@@ -24,6 +24,7 @@ export function registerChatCommand(app: App, gaia: GaiaClient) {
         platform: "slack",
         platformUserId: userId,
         channelId,
+        channelId,
       });
 
       if (!response.authenticated) {
@@ -39,10 +40,12 @@ export function registerChatCommand(app: App, gaia: GaiaClient) {
       await respond({
         text: truncated,
         response_type: "ephemeral",
+        response_type: "ephemeral",
       });
     } catch (error) {
       await respond({
         text: formatError(error),
+        response_type: "ephemeral",
         response_type: "ephemeral",
       });
     }

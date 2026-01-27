@@ -36,7 +36,10 @@ importers:
         version: 22.2.3(nx@22.4.1(@swc-node/register@1.11.1(@swc/core@1.15.5(@swc/helpers@0.5.15))(@swc/types@0.1.25)(typescript@5.9.3))(@swc/core@1.15.5(@swc/helpers@0.5.15)))
       '@nx/next':
         specifier: 22.2.3
-        version: 22.2.3(0cf38b9862c64d6f5de647076aedffe9)
+        version: 22.2.3(4a3c9227186b6afe72863cf24d6e81dc)
+      tsx:
+        specifier: ^4.21.0
+        version: 4.21.0
 
   apps/bots/discord:
     dependencies:

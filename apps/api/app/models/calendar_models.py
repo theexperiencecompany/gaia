@@ -9,6 +9,42 @@ class CalendarPreferencesUpdateRequest(BaseModel):
     selected_calendars: List[str]
 
 
+class CalendarEventsQueryRequest(BaseModel):
+    """Request model for querying calendar events via POST to avoid URL length limits."""
+
+    selected_calendars: List[str] = Field(
+        ..., description="List of calendar IDs to fetch events from"
+    )
+    start_date: Optional[str] = Field(
+        None, description="Start date in YYYY-MM-DD format"
+    )
+    end_date: Optional[str] = Field(None, description="End date in YYYY-MM-DD format")
+    fetch_all: bool = Field(
+        True,
+        description="Fetch ALL events in range (true) or limit per calendar (false)",
+    )
+    max_results: Optional[int] = Field(
+        None,
+        ge=1,
+        le=250,
+        description="Max events per calendar (only used if fetch_all=false)",
+    )
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def validate_date_format(cls, v):
+        """Validate date format is YYYY-MM-DD and date is valid."""
+        if v is not None:
+            date_pattern = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+            if not date_pattern.match(v):
+                raise ValueError(f"Invalid date format: {v}. Use YYYY-MM-DD format.")
+            try:
+                datetime.fromisoformat(v)
+            except ValueError:
+                raise ValueError(f"Invalid date: {v}")
+        return v
+
+
 class EventDeleteRequest(BaseModel):
     event_id: str = Field(..., title="Event ID to delete")
     calendar_id: str = Field("primary", title="Calendar ID containing the event")
@@ -537,102 +573,6 @@ class EventCreateRequest(BaseCalendarEvent):
                 pass
 
         return self
-
-
-class CalendarEventUpdateToolRequest(BaseModel):
-    """Request model for calendar event updates with timezone handling."""
-
-    event_lookup: EventLookupRequest = Field(
-        ..., description="Event lookup information"
-    )
-    user_time: str = Field(..., description="User's current time for timezone handling")
-
-    # Update fields
-    summary: Optional[str] = Field(None, description="Updated event summary")
-    description: Optional[str] = Field(None, description="Updated event description")
-    start: Optional[str] = Field(None, description="Updated start time")
-    end: Optional[str] = Field(None, description="Updated end time")
-    is_all_day: Optional[bool] = Field(None, description="Updated all-day status")
-    timezone_offset: Optional[str] = Field(
-        None, description="Timezone offset in (+|-)HH:MM format"
-    )
-    recurrence: Optional[RecurrenceData] = Field(
-        None, description="Updated recurrence pattern"
-    )
-
-    @field_validator("timezone_offset")
-    @classmethod
-    def validate_timezone_offset(cls, v):
-        """Validate timezone offset format (+|-)HH:MM"""
-        if v is not None:
-            if not re.match(r"^[+-]\d{2}:\d{2}$", v):
-                raise ValueError("Timezone offset must be in (+|-)HH:MM format")
-        return v
-
-    def _apply_timezone_offset(self, dt: datetime, offset_str: str) -> datetime:
-        """Apply timezone offset to datetime object."""
-        # Parse offset string (+|-)HH:MM
-        sign = 1 if offset_str.startswith("+") else -1
-        hours, minutes = map(int, offset_str[1:].split(":"))
-        offset_seconds = sign * (hours * 3600 + minutes * 60)
-        tz = timezone(timedelta(seconds=offset_seconds))
-        return dt.replace(tzinfo=tz)
-
-    def to_update_request(self) -> EventUpdateRequest:
-        """Convert to EventUpdateRequest with processed times."""
-        # Extract user's timezone from user_time
-        user_datetime = datetime.fromisoformat(self.user_time)
-        user_timezone = user_datetime.tzinfo if user_datetime.tzinfo else timezone.utc
-
-        # Process start time if provided
-        processed_start = None
-        if self.start is not None:
-            try:
-                dt = datetime.fromisoformat(self.start.replace(" ", "T"))
-
-                if self.timezone_offset:
-                    processed_start_dt = self._apply_timezone_offset(
-                        dt, self.timezone_offset
-                    )
-                else:
-                    processed_start_dt = dt.replace(tzinfo=user_timezone)
-
-                processed_start = processed_start_dt.isoformat()
-
-            except ValueError as e:
-                raise ValueError(f"Invalid start time format: {self.start}. Error: {e}")
-
-        # Process end time if provided
-        processed_end = None
-        if self.end is not None:
-            try:
-                dt = datetime.fromisoformat(self.end.replace(" ", "T"))
-
-                if self.timezone_offset:
-                    processed_end_dt = self._apply_timezone_offset(
-                        dt, self.timezone_offset
-                    )
-                else:
-                    processed_end_dt = dt.replace(tzinfo=user_timezone)
-
-                processed_end = processed_end_dt.isoformat()
-
-            except ValueError as e:
-                raise ValueError(f"Invalid end time format: {self.end}. Error: {e}")
-
-        return EventUpdateRequest(
-            event_id=self.event_lookup.event_id or "",
-            calendar_id=self.event_lookup.calendar_id or "primary",
-            summary=self.summary,
-            description=self.description,
-            start=processed_start,
-            end=processed_end,
-            is_all_day=self.is_all_day,
-            timezone=None,
-            timezone_offset=None,  # Processed times no longer need timezone_offset
-            original_summary=None,
-            recurrence=self.recurrence,
-        )
 
 
 class SingleEventInput(BaseModel):

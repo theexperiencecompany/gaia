@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import app_logger as logger
+from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
     ActionResult,
     BulkActions,
@@ -13,7 +14,6 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
 )
-from app.core.websocket_manager import websocket_manager
 from app.utils.notification.actions import (
     ActionHandler,
     ApiCallActionHandler,

@@ -1,0 +1,155 @@
+---
+title: "How Does GAIA Protect Your Data?"
+description: "Understanding the security measures, privacy practices, and data protection mechanisms that keep your information safe when using GAIA."
+---
+
+import GetStarted from "/snippets/get-started.mdx";
+
+# How Does GAIA Protect Your Data?
+
+GAIA protects your data through multiple layers of security including encryption at rest and in transit, secure authentication and authorization, isolated data storage, open source transparency, and a commitment to never selling or misusing your data. The system is designed with privacy as a core principle, not an afterthought.
+
+Data protection isn't just about preventing unauthorized access - it's about giving you control over your information, being transparent about what's collected and how it's used, and ensuring your data is never exploited for purposes you didn't agree to. GAIA's approach to data protection encompasses all of these dimensions.
+
+## Encryption
+
+Encryption is the foundation of data protection. GAIA encrypts data both at rest (when stored) and in transit (when transmitted). All data stored in databases is encrypted using industry-standard encryption algorithms. This means even if someone gained physical access to the database servers, they couldn't read your data without the encryption keys.
+
+Data in transit is protected using TLS (Transport Layer Security) for all network communications. When your browser communicates with GAIA's servers, that communication is encrypted. When GAIA communicates with external services like Gmail or Slack, those communications are encrypted. This prevents interception of your data as it moves across networks.
+
+Sensitive credentials like API keys and OAuth tokens are encrypted with additional layers of protection. These are never stored in plain text. Even database administrators can't see your actual credentials - they're encrypted with keys that are managed separately from the data.
+
+For self-hosted deployments, you control the encryption keys. This means you have complete control over data encryption and can implement additional encryption measures if your security requirements demand it.
+
+## Authentication and Authorization
+
+Access control ensures only authorized users can access data. GAIA implements multiple layers of authentication and authorization. User authentication uses secure password hashing (bcrypt) so passwords are never stored in plain text. Even GAIA administrators can't see your password.
+
+For organizations, GAIA supports enterprise single sign-on (SSO) through WorkOS. This allows using your organization's identity provider (Okta, Azure AD, Google Workspace) for authentication. This centralizes access control and allows enforcing organizational security policies.
+
+Multi-factor authentication (MFA) adds an additional security layer. Even if someone obtains your password, they can't access your account without the second factor. GAIA supports standard MFA methods including authenticator apps and SMS codes.
+
+Authorization ensures users can only access their own data. GAIA implements strict data isolation - your data is completely separate from other users' data. The system enforces authorization checks on every data access to ensure you can only see and modify your own information.
+
+## OAuth Security
+
+GAIA integrates with external services like Gmail, Slack, and Google Calendar using OAuth 2.0, the industry standard for secure authorization. OAuth allows GAIA to access these services on your behalf without ever seeing your passwords.
+
+When you connect a service, you authenticate directly with that service (Google, Slack, etc.), not with GAIA. The service provides GAIA with a token that grants specific permissions. GAIA can only access what you explicitly authorized - for example, read and send email, but not delete emails if you didn't grant that permission.
+
+These OAuth tokens are stored encrypted and are never exposed. They're automatically refreshed when they expire. If you disconnect a service, the token is revoked and GAIA can no longer access that service.
+
+You can revoke GAIA's access at any time through the service's security settings. For example, you can go to your Google account security settings and revoke GAIA's access to Gmail. This immediately prevents GAIA from accessing your Gmail, even if you don't explicitly disconnect it in GAIA.
+
+## Data Isolation
+
+In the hosted service, data isolation ensures your data is completely separate from other users' data. GAIA uses database-level isolation where each user's data is logically separated. Queries are scoped to the authenticated user, making it impossible for one user to access another user's data.
+
+The application code enforces this isolation at multiple levels. Every database query includes user identification. Every API endpoint verifies the authenticated user has permission to access the requested data. Every background job operates only on data belonging to the user who owns that job.
+
+For organizations using team features, data is isolated at the organization level. Team members can share certain data (shared workflows, team projects) while personal data (individual tasks, private emails) remains private.
+
+## Open Source Transparency
+
+GAIA's open source nature is itself a security feature. The entire codebase is available for inspection on GitHub. Security researchers, developers, and users can audit the code to verify there are no backdoors, no hidden data collection, and no security vulnerabilities.
+
+This transparency builds trust. You don't have to take GAIA's word that it's secure - you can verify it yourself or have security experts verify it. If vulnerabilities are discovered, they can be reported and fixed quickly. The community contributes to security by reviewing code and reporting issues.
+
+The open source license (PolyForm Noncommercial) allows you to modify the code if you find security concerns. You can add additional security measures, remove features you don't trust, or customize the system to meet your specific security requirements.
+
+## No Data Selling or Training
+
+GAIA's business model is based on subscriptions, not data exploitation. Your data is never sold to third parties. It's never used to train AI models that benefit other users. It's never shared with advertisers or data brokers. Your data is used solely to provide the service to you.
+
+This is a fundamental difference from many free services that monetize by exploiting user data. GAIA's paid model aligns incentives - the company succeeds by providing value to you, not by extracting value from your data.
+
+The AI models GAIA uses (OpenAI, Google, etc.) process your data to provide the service, but GAIA configures these services to not retain or train on your data. API calls to these services are made with settings that prevent data retention.
+
+For self-hosted deployments, you can use local AI models that never send data to external services. This provides complete data isolation - your data never leaves your infrastructure.
+
+## Data Retention and Deletion
+
+You control how long your data is retained. GAIA provides settings for automatic data deletion - you can configure how long to keep completed tasks, archived emails, old conversations, and other data. When data is deleted, it's permanently removed from all systems including backups.
+
+You can export all your data at any time. GAIA provides export functionality that gives you a complete copy of your data in standard formats. This ensures you're never locked in - you can take your data and leave if you choose.
+
+If you delete your account, all your data is permanently deleted within 30 days. This includes all tasks, emails, workflows, preferences, and any other data associated with your account. The deletion is complete and irreversible.
+
+For self-hosted deployments, you have complete control over data retention. You can keep data as long as you want or delete it immediately. You control the backups and can ensure deleted data is removed from backups as well.
+
+## Compliance and Certifications
+
+GAIA is designed to comply with major data protection regulations including GDPR (General Data Protection Regulation) in Europe and CCPA (California Consumer Privacy Act) in the United States. This means respecting user rights to access, correct, and delete their data, providing transparency about data collection and use, obtaining consent for data processing, and implementing appropriate security measures.
+
+For organizations with specific compliance requirements (HIPAA for healthcare, SOC 2 for enterprise), self-hosting allows implementing additional controls and obtaining necessary certifications. The open source nature makes it possible to audit and verify compliance.
+
+## Vulnerability Management
+
+Security vulnerabilities are inevitable in any software. What matters is how they're handled. GAIA has a responsible disclosure policy - security researchers can report vulnerabilities privately, and GAIA commits to fixing them promptly and notifying affected users.
+
+The open source community contributes to vulnerability discovery. More eyes on the code means vulnerabilities are more likely to be found and fixed. When vulnerabilities are discovered, fixes are released quickly and users are notified to update.
+
+For self-hosted deployments, you control when to apply security updates. Critical security fixes should be applied immediately. GAIA clearly marks security updates in release notes so you can prioritize them.
+
+## Network Security
+
+GAIA implements network security best practices. All web traffic uses HTTPS with strong TLS configurations. API endpoints implement rate limiting to prevent abuse. The system monitors for suspicious activity and can block malicious requests.
+
+For self-hosted deployments, you can implement additional network security measures. You can deploy behind a firewall, use VPNs for access, implement IP whitelisting, and integrate with your organization's security infrastructure.
+
+## Backup Security
+
+Backups are essential for data protection, but they're also a security concern - they contain all your data and need to be protected. GAIA's hosted service encrypts all backups and stores them securely with access controls.
+
+For self-hosted deployments, you're responsible for backup security. Backups should be encrypted, stored securely (preferably in a different location than primary data), and access should be restricted. GAIA provides backup scripts that include encryption.
+
+## Third-Party Integrations
+
+When you connect third-party services like Gmail or Slack, you're granting GAIA access to data in those services. GAIA only requests the minimum permissions necessary for functionality. For example, if GAIA only needs to read emails, it only requests read permission, not delete permission.
+
+You can review and revoke these permissions at any time. Each service provides security settings where you can see what applications have access and revoke that access. GAIA respects these revocations immediately.
+
+GAIA never stores more data from integrated services than necessary. Emails are processed to extract relevant information (action items, deadlines) but the full email content isn't necessarily stored permanently. You control what data is retained through settings.
+
+## Incident Response
+
+Despite best efforts, security incidents can occur. GAIA has an incident response plan that includes detecting incidents quickly through monitoring, containing incidents to prevent further damage, investigating to understand what happened, notifying affected users promptly and transparently, and fixing vulnerabilities to prevent recurrence.
+
+For the hosted service, GAIA handles incident response. For self-hosted deployments, you're responsible for incident response. GAIA provides guidance and tools, but implementation is your responsibility.
+
+## Privacy by Design
+
+GAIA is built with privacy by design - privacy considerations are integrated into every feature from the beginning, not added as an afterthought. This means minimizing data collection (only collecting what's necessary for functionality), providing user control (you decide what data is collected and how it's used), defaulting to privacy (privacy-protective settings are the default), and being transparent (clear information about what data is collected and why).
+
+This privacy-first approach means you can trust GAIA with sensitive information. The system is designed to protect your privacy, not exploit your data.
+
+## Real-World Data Protection Example
+
+Let's see data protection in action. You connect your Gmail account to GAIA. Here's how your data is protected throughout the process.
+
+First, authentication happens through Google's OAuth. You're redirected to Google's login page (not a GAIA page), you authenticate with Google, and Google asks if you want to grant GAIA access to your Gmail. You approve, and Google provides GAIA with an encrypted OAuth token.
+
+This token is transmitted to GAIA over HTTPS (encrypted in transit). GAIA stores the token in the database encrypted with a separate encryption key (encrypted at rest). The token grants only the permissions you approved - read and send email, but not delete.
+
+When GAIA checks your email, it uses the encrypted token to authenticate with Gmail. The communication between GAIA and Gmail is encrypted. GAIA processes the emails to identify action items. The processing happens in memory and the full email content isn't necessarily stored.
+
+If an email contains an action item, GAIA creates a task. The task is stored in your isolated database partition - other users can't see it. The task includes relevant context from the email but not necessarily the full email content.
+
+You can see the task in your task list. The connection between the task and the email is maintained in the knowledge graph. If you click the task, you can see the original email - GAIA retrieves it from Gmail using your OAuth token.
+
+If you disconnect Gmail, GAIA revokes the OAuth token. It can no longer access your Gmail. Existing tasks remain (they're your data), but GAIA can't create new tasks from emails or retrieve email content.
+
+If you delete your account, all your data is deleted - tasks, OAuth tokens, preferences, everything. The deletion is permanent and complete.
+
+Throughout this entire process, your data is encrypted, isolated from other users, never sold or shared, and under your control. That's data protection in practice.
+
+---
+
+**Related Reading:**
+- [How Does Self-Hosting Work?](/knowledge/how/self-hosting-works)
+- [What is Self-Hosted AI Assistant?](/knowledge/what-is/self-hosted-ai-assistant)
+- [What is Open Source AI Software?](/knowledge/what-is/open-source-ai-software)
+
+---
+
+<GetStarted />

@@ -140,6 +140,18 @@ async def close_checkpointer_manager():
         logger.error(f"Error closing checkpointer manager: {e}")
 
 
+async def close_mcp_client_pool():
+    """Close MCP client pool and all active connections."""
+    try:
+        if providers.is_initialized("mcp_client_pool"):
+            pool = await providers.aget("mcp_client_pool")
+            if pool:
+                await pool.shutdown()
+                logger.info("MCP client pool closed")
+    except Exception as e:
+        logger.error(f"Error closing MCP client pool: {e}")
+
+
 def _process_results(results, service_names):
     failed_services = []
     for i, result in enumerate(results):

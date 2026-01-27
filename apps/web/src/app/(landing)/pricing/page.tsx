@@ -18,6 +18,7 @@ export const metadata: Metadata = generatePageMetadata({
   description:
     "Compare GAIA's pricing plans and find the best AI assistant plan for your needs. Choose between free, monthly, and yearly subscriptions. Transparent pricing for every productivity level.",
   path: "/pricing",
+  image: "/api/og/pricing",
   keywords: [
     "GAIA Pricing",
     "AI Assistant Pricing",

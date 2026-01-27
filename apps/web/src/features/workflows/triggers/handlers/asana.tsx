@@ -13,10 +13,6 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { RegisteredHandler, TriggerSettingsProps } from "../registry";
 import type { TriggerConfig } from "../types";
 
-// =============================================================================
-// TYPE DEFINITIONS
-// =============================================================================
-
 interface AsanaTriggerData {
   trigger_name: string;
   project_id?: string;

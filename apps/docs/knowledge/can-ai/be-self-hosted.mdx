@@ -1,0 +1,151 @@
+---
+title: "Can an AI Assistant Be Self-Hosted?"
+description: "Understanding how self-hosted AI assistants work, why you might want one, and what's involved in running your own AI infrastructure."
+---
+
+import GetStarted from "/snippets/get-started.mdx";
+
+# Can an AI Assistant Be Self-Hosted?
+
+Yes, AI assistants can be self-hosted, and GAIA is specifically designed to support this. Self-hosting means running the AI assistant on your own infrastructure instead of using a cloud service. You control the servers, the data, and the entire system. Nothing leaves your environment unless you explicitly send it somewhere.
+
+Most AI assistants are cloud-only. You use ChatGPT, and your conversations go to OpenAI's servers. You use a productivity assistant, and your emails and calendar data go to that company's cloud. This is convenient but means you're trusting those companies with your data. For many people and organizations, that's not acceptable.
+
+Self-hosting solves this by giving you complete control. The AI runs on your servers. Your data stays on your infrastructure. You can inspect exactly what the system is doing. You can modify it if needed. You own the entire stack.
+
+## Why Self-Host an AI Assistant
+
+Privacy is the primary reason people self-host. Your emails, calendar, tasks, and documents contain sensitive information. Client communications, strategic plans, financial data, personal information. With self-hosting, this data never leaves your control. The AI processes it locally, and you don't have to trust a third party with your sensitive information.
+
+Compliance is another major reason. Many industries have regulations about where data can be stored and who can access it. Healthcare has HIPAA. Finance has various regulations. Government and defense have strict requirements. Self-hosting lets you meet these compliance requirements because you control exactly where data lives and who can access it.
+
+Data sovereignty matters for international organizations. Different countries have different laws about data storage and access. Self-hosting lets you keep data in specific jurisdictions to comply with local laws.
+
+Some organizations simply have policies against using cloud services for certain types of data. Self-hosting is the only option that meets their security requirements.
+
+## What Self-Hosting Involves
+
+Self-hosting GAIA means running several components on your infrastructure. You need servers to run the application backend, databases to store your data, and infrastructure to handle AI model inference. This can be on-premises servers, private cloud, or even a powerful local machine.
+
+The technical requirements aren't extreme for basic usage. A modern server with decent CPU, 16-32GB RAM, and storage for your data can run GAIA for individual or small team use. For larger deployments or heavy AI usage, you'll want more resources, particularly GPU access for running AI models locally.
+
+You need to handle deployment, updates, backups, and monitoring. GAIA provides Docker containers and deployment scripts to make this easier, but you're responsible for the operational aspects. This is more work than using a cloud service but gives you complete control.
+
+## Self-Hosted vs. Cloud-Hosted
+
+With cloud-hosted GAIA at heygaia.io, you sign up and start using it immediately. No setup, no infrastructure management, automatic updates. The trade-off is your data goes to GAIA's servers, and you trust GAIA to handle it securely.
+
+With self-hosted GAIA, you have setup work and ongoing maintenance. The benefit is complete data control and privacy. Your data never leaves your infrastructure. You can inspect and modify the system. You can integrate with internal systems that aren't accessible from the public internet.
+
+For most individuals and small teams, cloud-hosted is more practical. For organizations with strict security requirements, self-hosting is worth the additional complexity.
+
+## Data Privacy in Self-Hosted Setup
+
+When you self-host GAIA, your emails, calendar, tasks, and documents are processed entirely on your infrastructure. The AI reads your email to create tasks, but that processing happens on your servers. The data doesn't go to GAIA's servers or any third party.
+
+You still need to connect to external services like Gmail or Google Calendar. Those connections go directly from your self-hosted instance to Google's servers. GAIA's cloud infrastructure never sees that data. You're using GAIA as software you run, not as a service that processes your data.
+
+For AI model inference, you have options. You can use cloud AI services like OpenAI or Google AI, which means prompts go to those services. Or you can run AI models locally on your infrastructure for complete data isolation. Running models locally requires more resources but keeps everything private.
+
+## Open Source and Transparency
+
+GAIA is open source, which is crucial for self-hosting. You can inspect the code to verify it's not doing anything you don't want. You can modify it to meet your specific needs. You can audit the security yourself or hire someone to do it.
+
+This transparency is important for trust. With closed-source cloud services, you have to trust the company's claims about privacy and security. With open-source self-hosted software, you can verify everything yourself.
+
+The open-source nature also means you're not locked in. If GAIA the company disappears, you can continue running and maintaining your self-hosted instance. You own the software and your data.
+
+## Integration with Internal Systems
+
+Self-hosting enables integration with internal systems that aren't accessible from the public internet. Your internal wiki, your on-premises file servers, your internal databases. A cloud-hosted AI can't access these systems. A self-hosted AI running on your network can.
+
+This enables workflows that wouldn't be possible with cloud-hosted solutions. The AI can pull information from internal systems, update internal databases, and coordinate across your entire internal infrastructure.
+
+## Customization and Control
+
+When you self-host, you can customize GAIA to meet your specific needs. You can modify the code, add custom integrations, change how features work. You can't do this with a cloud service.
+
+You also control the update schedule. With cloud services, updates happen when the provider decides. With self-hosting, you control when to update. You can test updates in a staging environment before deploying to production. You can skip updates that don't work for you.
+
+## Cost Considerations
+
+Self-hosting has different cost structures than cloud services. Cloud services charge monthly subscription fees. Self-hosting requires infrastructure costs (servers, storage, bandwidth) and operational costs (time to manage the system, or paying someone to manage it).
+
+For individuals, cloud hosting is usually cheaper. For organizations with existing infrastructure and IT staff, self-hosting can be more cost-effective, especially at scale. You're paying for infrastructure you might already have rather than per-user subscription fees.
+
+There's also the value of data privacy and control. For organizations where data privacy is critical, the cost of self-hosting is worth it regardless of whether it's cheaper than cloud hosting.
+
+## Technical Requirements
+
+To self-host GAIA, you need Linux servers (or Windows/Mac for development). You need Docker for containerization. You need databases: MongoDB for primary data, PostgreSQL for workflows, Redis for caching, ChromaDB for vector search.
+
+For AI capabilities, you either need API keys for cloud AI services (OpenAI, Google AI, etc.) or the ability to run AI models locally. Running models locally requires significant compute resources, particularly GPU access for good performance.
+
+You need networking configured to allow GAIA to connect to external services like Gmail and Google Calendar. You need SSL certificates for secure connections. You need backup systems to protect your data.
+
+GAIA provides documentation and Docker Compose files to make deployment easier, but you need basic DevOps skills or someone with those skills to manage the system.
+
+## Security Considerations
+
+Self-hosting gives you control over security but also makes you responsible for it. You need to secure your servers, keep software updated, manage access controls, monitor for intrusions, and handle backups.
+
+This is more responsibility than with cloud hosting, where the provider handles infrastructure security. But it also means you can implement security measures that meet your specific requirements. You can use your organization's existing security infrastructure and policies.
+
+For organizations with strong security teams, self-hosting can be more secure than cloud hosting because you control every aspect. For individuals or small teams without security expertise, cloud hosting might actually be more secure because you benefit from the provider's security expertise.
+
+## Hybrid Approaches
+
+You don't have to choose all-or-nothing between cloud and self-hosted. You can self-host the core GAIA system while using cloud AI services for model inference. This keeps your data on your infrastructure while leveraging cloud AI capabilities.
+
+You can also run GAIA in a private cloud (AWS VPC, Google Cloud private network, etc.) which gives you more control than public cloud while being easier than on-premises hosting.
+
+Some organizations run self-hosted GAIA for sensitive work and cloud-hosted GAIA for less sensitive use cases. This balances convenience with security requirements.
+
+## Updates and Maintenance
+
+Self-hosted systems require ongoing maintenance. You need to apply security updates, upgrade to new versions, monitor system health, and handle issues when they arise.
+
+GAIA provides update mechanisms and documentation, but you're responsible for actually performing updates. You need to plan for downtime during updates or set up high-availability configurations to update without downtime.
+
+You also need backup and disaster recovery plans. If your self-hosted instance fails, you need to be able to restore it. This is your responsibility with self-hosting.
+
+## Community and Support
+
+GAIA has an open-source community that can help with self-hosting questions. Documentation, Discord community, GitHub issues. For organizations that need guaranteed support, GAIA offers enterprise support contracts for self-hosted deployments.
+
+The open-source nature means you're not entirely dependent on GAIA the company. The community can help, and you can hire developers to customize or maintain your instance if needed.
+
+## When Self-Hosting Makes Sense
+
+Self-hosting makes sense when data privacy is critical, when you have compliance requirements that prohibit cloud services, when you need integration with internal systems, or when you want complete control over your AI assistant.
+
+It makes sense for organizations with existing IT infrastructure and staff who can manage the system. It makes sense when the value of data privacy outweighs the convenience of cloud hosting.
+
+Self-hosting is probably overkill for most individuals unless you're particularly privacy-conscious or technically inclined. For organizations handling sensitive data, it's often the only acceptable option.
+
+## Getting Started with Self-Hosting
+
+GAIA provides Docker Compose files and deployment documentation to get started. You can run it on a single server for testing or small-scale use. For production deployments, you'll want proper infrastructure with redundancy, backups, and monitoring.
+
+Start with a test deployment to understand what's involved. Deploy on a development server, connect your accounts, and see how it works. Once you're comfortable, plan your production deployment with proper security, backups, and operational procedures.
+
+The GAIA community and documentation can help with common deployment scenarios. For complex deployments, consider enterprise support to ensure everything is set up correctly.
+
+## The GAIA Approach
+
+GAIA is designed from the ground up to support self-hosting. It's open source with a PolyForm Noncommercial License. It's containerized for easy deployment. It's documented for self-hosting scenarios.
+
+You can run GAIA entirely on your infrastructure with no data leaving your control. You can use cloud AI services for model inference or run models locally. You can integrate with internal systems. You have complete control.
+
+The result is an AI assistant with all the capabilities of cloud services but with complete data privacy and control. You get intelligent email management, task automation, calendar coordination, and workflow orchestration without trusting a third party with your sensitive data.
+
+---
+
+**Related Reading:**
+- [What is Self-Hosted AI Assistant?](/knowledge/what-is/self-hosted-ai-assistant)
+- [What is Open Source AI Software?](/knowledge/what-is/open-source-ai-software)
+- [Can an AI Run Locally?](/knowledge/can-ai/run-locally)
+
+---
+
+<GetStarted />

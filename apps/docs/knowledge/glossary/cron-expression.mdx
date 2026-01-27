@@ -1,0 +1,115 @@
+---
+title: "Cron Expression"
+description: "Understanding cron expressions, how they schedule recurring tasks, and why they're essential for automation and background jobs."
+---
+
+import GetStarted from "/snippets/get-started.mdx";
+
+# Cron Expression
+
+A cron expression is a string that defines a schedule for recurring tasks. Originally developed for the Unix cron scheduler, cron expressions have become the standard way to specify when automated tasks should run. They allow you to schedule tasks to run at specific times, on specific days, or at regular intervals using a compact, powerful syntax.
+
+The name "cron" comes from "chronos," the Greek word for time. A cron expression is essentially a time-based schedule written in a format that computers can parse and execute. Instead of saying "run this every Tuesday at 3pm," you write a cron expression that encodes that schedule.
+
+## Why Cron Expressions Matter
+
+Many tasks need to happen on a schedule. You might want to send a daily summary email every morning at 8am, run a backup every night at midnight, check for updates every hour, or generate a weekly report every Monday morning. Cron expressions provide a standardized way to specify these schedules.
+
+Before cron expressions, scheduling was often hardcoded or required complex configuration. Cron expressions provide a concise, flexible format that can express simple schedules like "every hour" or complex ones like "every weekday at 9am and 5pm except holidays."
+
+## Basic Syntax
+
+A standard cron expression consists of five or six fields separated by spaces. Each field represents a unit of time. The fields are minute (0-59), hour (0-23), day of month (1-31), month (1-12), and day of week (0-7, where both 0 and 7 represent Sunday). Some systems add a sixth field for seconds.
+
+For example, the expression "0 9 * * 1" means "at 9:00am every Monday." The first 0 means minute 0, the 9 means hour 9, the asterisks mean "every day" and "every month," and the 1 means Monday.
+
+Each field can contain a specific value, an asterisk meaning "every," a range like "1-5," a list like "1,3,5," or a step value like "*/15" meaning "every 15."
+
+## Common Patterns
+
+Certain cron patterns are used frequently. To run something every minute, you use "* * * * *" - every minute, every hour, every day, every month, every day of week. Every hour at minute 0 is "0 * * * *". Every day at midnight is "0 0 * * *". Every Monday at 9am is "0 9 * * 1". Every 15 minutes is "*/15 * * * *".
+
+These patterns can be combined and modified to create almost any schedule you need.
+
+## Advanced Features
+
+Cron expressions support sophisticated scheduling through various operators. The asterisk means "every" - every minute, every hour, every day. The comma allows lists - "1,15,30" means the 1st, 15th, and 30th. The hyphen specifies ranges - "1-5" means 1 through 5. The slash indicates steps - "*/10" means every 10.
+
+You can combine these operators. "0 9-17 * * 1-5" means "every hour from 9am to 5pm, Monday through Friday" - a typical work schedule. "*/30 9-17 * * 1-5" means "every 30 minutes during work hours on weekdays."
+
+## Day of Week vs. Day of Month
+
+One subtlety of cron expressions is how day of week and day of month interact. If both are specified (not asterisks), the task runs when either condition is met, not when both are met. This is often counterintuitive.
+
+For example, "0 9 1 * 1" means "9am on the 1st of every month OR 9am every Monday," not "9am on Mondays that are the 1st of the month." To specify "Mondays that are the 1st," you typically need to use conditional logic outside the cron expression itself.
+
+## Time Zones
+
+Cron expressions specify times but don't include time zone information. The time zone is determined by the system running the cron job. This can cause confusion when systems are in different time zones or when dealing with daylight saving time changes.
+
+Some modern cron implementations allow specifying time zones explicitly, but the standard cron expression format doesn't include this. When scheduling tasks across time zones, you need to be careful about which time zone the cron expression is interpreted in.
+
+## Cron in Different Systems
+
+While the basic cron format is standardized, different systems have variations. Unix cron uses five fields (minute through day of week). Some systems add a sixth field for seconds at the beginning. Some add a seventh field for year at the end. Some support special strings like "@hourly," "@daily," "@weekly," "@monthly," and "@yearly" as shortcuts.
+
+Some systems support additional operators like "L" for "last" (last day of month, last Friday of month), "W" for "weekday" (nearest weekday to a date), and "#" for "nth" (second Tuesday of the month).
+
+When using cron expressions, check the documentation for your specific system to understand which features are supported.
+
+## Cron for AI Assistants
+
+AI assistants like GAIA use cron expressions to schedule recurring tasks. You might want a daily planning session every morning, a weekly review every Sunday evening, or regular checks for overdue tasks. Cron expressions provide a flexible way to specify these schedules.
+
+Instead of requiring you to write cron expressions directly, GAIA can translate natural language into cron expressions. You say "every weekday morning at 9am" and GAIA creates the appropriate cron expression behind the scenes.
+
+## Testing Cron Expressions
+
+Cron expressions can be tricky to get right, especially complex ones. Several online tools help you test cron expressions. You can enter an expression and see when it would trigger, or describe a schedule and get the corresponding cron expression.
+
+These tools are invaluable for verifying that your expression does what you intend, especially for complex schedules or edge cases.
+
+## Common Mistakes
+
+Several mistakes are common when working with cron expressions. Confusing the order of fields is easy - remembering that it's minute, hour, day, month, weekday. Misunderstanding how day of week and day of month interact can lead to unexpected behavior. Forgetting about time zones can cause tasks to run at the wrong time. And off-by-one errors are common - remembering that hours are 0-23, not 1-24, and that both 0 and 7 represent Sunday.
+
+## Limitations
+
+Cron expressions have some limitations. They can't express schedules like "the last business day of the month" or "the second Tuesday of each month" without extensions. They don't handle holidays or special cases. They don't account for task duration - if a task takes longer than the interval between runs, you can get overlapping executions.
+
+For complex scheduling needs, you might need additional logic beyond the cron expression itself.
+
+## Alternatives to Cron
+
+While cron expressions are widely used, alternatives exist for different use cases. Natural language scheduling allows users to specify schedules in plain English. Calendar-based scheduling uses calendar events to trigger tasks. Event-driven scheduling triggers tasks based on events rather than time. And interval-based scheduling specifies delays between runs rather than absolute times.
+
+Each approach has advantages for different scenarios. Cron expressions excel at regular, time-based schedules.
+
+## Cron in Modern Applications
+
+Modern applications often use cron expressions even if they're not using the traditional Unix cron daemon. Task schedulers, job queues, and workflow engines frequently support cron expressions for specifying when tasks should run. Cloud platforms like AWS, Google Cloud, and Azure all support cron expressions for scheduled tasks.
+
+This widespread adoption means learning cron expressions is valuable across many different technologies and platforms.
+
+## Human-Readable Cron
+
+One challenge with cron expressions is that they're not human-readable. "0 9 * * 1-5" is concise but not immediately clear to someone unfamiliar with the syntax. Many systems now provide human-readable descriptions alongside cron expressions.
+
+GAIA does this by allowing you to specify schedules in natural language and showing you both the natural language description and the underlying cron expression. This makes scheduling accessible while still using the powerful cron format under the hood.
+
+## The Future of Scheduling
+
+While cron expressions remain widely used, scheduling is evolving. We're seeing more natural language interfaces that translate to cron expressions, better handling of time zones and daylight saving time, support for more complex schedules and conditions, and integration with AI that can suggest optimal schedules based on your patterns.
+
+The underlying cron expression format will likely remain relevant because it's standardized, concise, and powerful. But the interfaces for creating and managing schedules will become more user-friendly.
+
+---
+
+**Related Reading:**
+- [What is Task Automation?](/knowledge/glossary/task-automation)
+- [What is Workflow Automation?](/knowledge/glossary/workflow-automation)
+- [What is API Integration?](/knowledge/glossary/api-integration)
+
+---
+
+<GetStarted />

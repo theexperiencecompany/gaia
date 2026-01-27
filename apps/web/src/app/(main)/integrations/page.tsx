@@ -1,84 +1,291 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { useCallback, useEffect, useState } from "react";
+import { Kbd } from "@heroui/kbd";
+import { useQueryClient } from "@tanstack/react-query";
+import { useRouter, useSearchParams } from "next/navigation";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useHotkeys } from "react-hotkeys-hook";
+import { toast } from "sonner";
 
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
+import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
+import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
+import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
+import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
+import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ConnectIcon, MessageFavourite02Icon } from "@/icons";
+import { useIntegrationsStore } from "@/stores/integrationsStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
 export default function IntegrationsPage() {
-  const { integrations, connectIntegration, disconnectIntegration } =
-    useIntegrations();
+  const queryClient = useQueryClient();
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const { isMac } = usePlatform();
+  const { setHeader } = useHeader();
 
+  // Refs
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Integrations data and actions
+  const {
+    integrations,
+    connectIntegration,
+    disconnectIntegration,
+    deleteCustomIntegration,
+    publishIntegration,
+    unpublishIntegration,
+    refetch,
+  } = useIntegrations();
+
+  // Pre-fetch tools on page load
+  const { tools: _prefetchedTools } = useToolsWithIntegrations();
+
+  // Right sidebar store
   const setRightSidebarContent = useRightSidebar((state) => state.setContent);
   const closeRightSidebar = useRightSidebar((state) => state.close);
   const openRightSidebar = useRightSidebar((state) => state.open);
   const setRightSidebarVariant = useRightSidebar((state) => state.setVariant);
-  const { setHeader } = useHeader();
+  const isSidebarOpen = useRightSidebar((state) => state.isOpen);
 
+  // Integrations store for search
+  const searchQuery = useIntegrationsStore((state) => state.searchQuery);
+  const setSearchQuery = useIntegrationsStore((state) => state.setSearchQuery);
+  const clearSearch = useIntegrationsStore((state) => state.clearSearch);
+  const { filteredIntegrations } = useIntegrationSearch(integrations);
+
+  // Local state
   const [selectedIntegrationId, setSelectedIntegrationId] = useState<
     string | null
   >(null);
+  const [pendingIntegrationId, setPendingIntegrationId] = useState<
+    string | null
+  >(null);
   const [isSupportModalOpen, setIsSupportModalOpen] = useState(false);
+  const [bearerModalOpen, setBearerModalOpen] = useState(false);
+  const [bearerIntegrationId, setBearerIntegrationId] = useState("");
+  const [bearerIntegrationName, setBearerIntegrationName] = useState("");
 
-  // Set header
+  // Update sidebar content when selected integration status changes
   useEffect(() => {
-    setHeader(
-      <div className="py-2">
-        <HeaderTitle
-          icon={<ConnectIcon width={20} height={20} />}
-          text="Integrations"
-        />
-      </div>,
+    if (!selectedIntegrationId || !isSidebarOpen) return;
+
+    const selectedIntegration = integrations.find(
+      (i) => i.id === selectedIntegrationId,
     );
-    return () => setHeader(null);
-  }, []);
 
-  // Set sidebar to sidebar mode (not sheet)
+    if (!selectedIntegration) return;
+
+    const handleDisconnect = async (id: string) => {
+      await disconnectIntegration(id);
+      setTimeout(() => closeRightSidebar(), 500);
+    };
+
+    const handleDelete = async (id: string) => {
+      await deleteCustomIntegration(id);
+      setTimeout(() => closeRightSidebar(), 500);
+    };
+
+    const handlePublish = async (id: string) => {
+      await publishIntegration(id);
+    };
+
+    const handleUnpublish = async (id: string) => {
+      await unpublishIntegration(id);
+    };
+
+    // For custom integrations, always pass the handlers
+    // The sidebar component will determine when to show the buttons
+    const isCustomIntegration = selectedIntegration.source === "custom";
+
+    setRightSidebarContent(
+      <IntegrationSidebar
+        integration={selectedIntegration}
+        onConnect={connectIntegration}
+        onDisconnect={handleDisconnect}
+        onDelete={isCustomIntegration ? handleDelete : undefined}
+        onPublish={isCustomIntegration ? handlePublish : undefined}
+        onUnpublish={isCustomIntegration ? handleUnpublish : undefined}
+        category={selectedIntegration.name}
+      />,
+    );
+  }, [
+    selectedIntegrationId,
+    integrations,
+    isSidebarOpen,
+    setRightSidebarContent,
+    connectIntegration,
+    disconnectIntegration,
+    deleteCustomIntegration,
+    publishIntegration,
+    unpublishIntegration,
+    closeRightSidebar,
+  ]);
+
+  // Handle query params from backend redirects (status, oauth_success, etc.)
   useEffect(() => {
-    setRightSidebarVariant("sidebar");
-  }, [setRightSidebarVariant]);
+    const status = searchParams.get("status");
+    const integrationId = searchParams.get("id");
+    const oauthSuccess = searchParams.get("oauth_success");
+    const oauthIntegration = searchParams.get("integration");
+
+    // Handle OAuth success callback
+    if (oauthSuccess === "true") {
+      router.replace("/integrations", { scroll: false });
+      const integration = oauthIntegration
+        ? integrations.find(
+            (i) => i.id.toLowerCase() === oauthIntegration.toLowerCase(),
+          )
+        : null;
+      const integrationName =
+        integration?.name || oauthIntegration || "Integration";
+
+      toast.success(`Connected to ${integrationName}`);
+
+      // Invalidate cache and set pending integration to open sidebar after data refresh
+      // Use integrationId (from redirect_path) or oauthIntegration as fallback
+      const targetIntegrationId = integrationId || oauthIntegration;
+      if (targetIntegrationId) {
+        setPendingIntegrationId(targetIntegrationId);
+      }
+      queryClient.invalidateQueries({ queryKey: ["integrations"] });
+      queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+      return;
+    }
+
+    if (status && integrationId) {
+      router.replace("/integrations", { scroll: false });
+
+      if (status === "connected") {
+        const integration = integrations.find((i) => i.id === integrationId);
+        toast.success(`Connected to ${integration?.name || integrationId}`);
+        refetch();
+        queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+      } else if (status === "bearer_required") {
+        const integration = integrations.find((i) => i.id === integrationId);
+        setBearerIntegrationId(integrationId);
+        setBearerIntegrationName(integration?.name || integrationId);
+        setBearerModalOpen(true);
+      } else if (status === "failed") {
+        const error = searchParams.get("error");
+        toast.error(`Connection failed: ${error || "Unknown error"}`);
+      }
+    }
+  }, [searchParams, integrations, router, refetch, queryClient]);
+
+  const handleBearerSubmit = async (id: string, _token: string) => {
+    // Note: Bearer token handling is done via the BearerTokenModal component directly
+    await connectIntegration(id);
+    toast.success(`Connected to ${bearerIntegrationName}`);
+    refetch();
+  };
+
+  // Keyboard shortcut to focus search input
+  useHotkeys(
+    "mod+f",
+    (e) => {
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    },
+    {
+      enableOnFormTags: true,
+    },
+  );
 
   const handleIntegrationClick = useCallback(
     (integrationId: string) => {
       setSelectedIntegrationId(integrationId);
-      const selectedIntegration = integrations.find(
-        (i) => i.id === integrationId,
-      );
-
-      if (!selectedIntegration) return;
-
-      const handleDisconnect = async (id: string) => {
-        await disconnectIntegration(id);
-        // Close the sidebar after successful disconnect
-        setTimeout(() => closeRightSidebar(), 500);
-      };
-
-      setRightSidebarContent(
-        <IntegrationSidebar
-          integration={selectedIntegration}
-          onConnect={connectIntegration}
-          onDisconnect={handleDisconnect}
-          category={selectedIntegration.name}
-        />,
-      );
       openRightSidebar("sidebar");
     },
-    [
-      integrations,
-      setRightSidebarContent,
-      openRightSidebar,
-      connectIntegration,
-      disconnectIntegration,
-      closeRightSidebar,
-    ],
+    [openRightSidebar],
   );
+
+  // Handle standalone id param (from slash command dropdown navigation)
+  // Separated from the main useEffect to avoid using handleIntegrationClick before declaration
+  useEffect(() => {
+    const status = searchParams.get("status");
+    const integrationId = searchParams.get("id");
+    const oauthSuccess = searchParams.get("oauth_success");
+    const needsRefresh = searchParams.get("refresh") === "true";
+
+    // Only process if we have an id and no status/oauth params (to avoid double-processing)
+    if (integrationId && !status && !oauthSuccess) {
+      // Clear the URL param first to prevent re-triggering
+      router.replace("/integrations", { scroll: false });
+
+      // If refresh param is set (coming from marketplace add), invalidate cache and wait for fresh data
+      if (needsRefresh) {
+        // Set pending integration and trigger refetch
+        setPendingIntegrationId(integrationId);
+        queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+      } else {
+        // Normal navigation - open sidebar immediately
+        handleIntegrationClick(integrationId);
+      }
+    }
+  }, [searchParams, router, handleIntegrationClick, queryClient]);
+
+  // Open sidebar once pending integration data is available after refresh
+  useEffect(() => {
+    if (!pendingIntegrationId) return;
+
+    const integration = integrations.find((i) => i.id === pendingIntegrationId);
+    if (integration) {
+      handleIntegrationClick(pendingIntegrationId);
+      setPendingIntegrationId(null);
+    }
+  }, [pendingIntegrationId, integrations, handleIntegrationClick]);
+
+  // Handler for pressing Enter in search input
+  const handleEnterSearch = useCallback(() => {
+    if (filteredIntegrations.length > 0) {
+      handleIntegrationClick(filteredIntegrations[0].id);
+    }
+  }, [filteredIntegrations, handleIntegrationClick]);
+
+  // Set header with search input
+  useEffect(() => {
+    setHeader(
+      <div className="py-1 flex items-center justify-between w-full gap-4">
+        <HeaderTitle
+          icon={<ConnectIcon width={20} height={20} />}
+          text="Integrations"
+        />
+        <IntegrationsSearchInput
+          ref={searchInputRef}
+          value={searchQuery}
+          onChange={setSearchQuery}
+          onClear={clearSearch}
+          onEnter={handleEnterSearch}
+          endContent={
+            <div className="flex items-center gap-1.5">
+              <Kbd keys={[isMac ? "command" : "ctrl"]}>F</Kbd>
+            </div>
+          }
+        />
+      </div>,
+    );
+    return () => setHeader(null);
+  }, [
+    searchQuery,
+    setSearchQuery,
+    clearSearch,
+    setHeader,
+    isMac,
+    handleEnterSearch,
+  ]);
+
+  // Set sidebar to sidebar mode
+  useEffect(() => {
+    setRightSidebarVariant("sidebar");
+  }, [setRightSidebarVariant]);
 
   // Sync close action from right sidebar
   useEffect(() => {
@@ -112,7 +319,7 @@ export default function IntegrationsPage() {
         </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-20">
         <div className="flex w-full justify-center px-5">
           <div className="w-full">
             <IntegrationsList onIntegrationClick={handleIntegrationClick} />
@@ -129,6 +336,14 @@ export default function IntegrationsPage() {
           description:
             "I would like to request a new integration for:\n\n[Please describe the integration you need and how you plan to use it]",
         }}
+      />
+
+      <BearerTokenModal
+        isOpen={bearerModalOpen}
+        onClose={() => setBearerModalOpen(false)}
+        integrationId={bearerIntegrationId}
+        integrationName={bearerIntegrationName}
+        onSubmit={handleBearerSubmit}
       />
     </div>
   );

@@ -166,6 +166,7 @@ class ProductionSettings(CommonSettings):
     # AI & Machine Learning
     OPENAI_API_KEY: str
     GOOGLE_API_KEY: str
+    OPENROUTER_API_KEY: str
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: str
@@ -234,6 +235,16 @@ class ProductionSettings(CommonSettings):
     OPIK_WORKSPACE: str
 
     # ----------------------------------------------
+    # MCP OAuth Credentials
+    # ----------------------------------------------
+    MCP_ENCRYPTION_KEY: str
+    VERCEL_MCP_CLIENT_ID: str
+    NOTION_MCP_CLIENT_ID: str
+    NOTION_MCP_CLIENT_SECRET: str
+    FIGMA_MCP_CLIENT_ID: str
+    FIGMA_MCP_CLIENT_SECRET: str
+
+    # ----------------------------------------------
     # Opik Evaluation Config
     # ----------------------------------------------
     EVAL_USER_ID: Optional[str] = None
@@ -293,6 +304,7 @@ class DevelopmentSettings(CommonSettings):
     # AI & Machine Learning
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: Optional[str] = None
@@ -361,6 +373,16 @@ class DevelopmentSettings(CommonSettings):
     POSTHOG_API_KEY: Optional[str] = None
     OPIK_API_KEY: Optional[str] = None
     OPIK_WORKSPACE: Optional[str] = None
+
+    # ----------------------------------------------
+    # MCP OAuth Credentials
+    # ----------------------------------------------
+    MCP_ENCRYPTION_KEY: Optional[str] = None
+    VERCEL_MCP_CLIENT_ID: Optional[str] = None
+    NOTION_MCP_CLIENT_ID: Optional[str] = None
+    NOTION_MCP_CLIENT_SECRET: Optional[str] = None
+    FIGMA_MCP_CLIENT_ID: Optional[str] = None
+    FIGMA_MCP_CLIENT_SECRET: Optional[str] = None
 
     # ----------------------------------------------
     # Opik Evaluation Config

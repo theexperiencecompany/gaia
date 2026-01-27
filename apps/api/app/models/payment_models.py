@@ -2,7 +2,7 @@
 Payment and subscription related models for Dodo Payments integration.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
@@ -205,10 +205,12 @@ class PlanDB(BaseModel):
     features: List[str] = Field(default_factory=list, description="Features")
     is_active: bool = Field(True, description="Active status")
     created_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Creation timestamp"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Creation timestamp",
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Update timestamp"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Update timestamp",
     )
 
     class Config:
@@ -230,10 +232,12 @@ class SubscriptionDB(BaseModel):
         None, description="Webhook processing timestamp"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Creation timestamp"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Creation timestamp",
     )
     updated_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Update timestamp"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Update timestamp",
     )
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional data"
@@ -259,7 +263,8 @@ class PaymentDB(BaseModel):
         None, description="Webhook processing timestamp"
     )
     created_at: datetime = Field(
-        default_factory=datetime.utcnow, description="Creation timestamp"
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Creation timestamp",
     )
     metadata: Dict[str, Any] = Field(
         default_factory=dict, description="Additional data"

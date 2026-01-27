@@ -1,0 +1,76 @@
+---
+title: "Email to Task Workflow"
+description: "Automatically convert action-requiring emails into organized tasks with context, deadlines, and priorities"
+---
+
+import GetStarted from "/snippets/get-started.mdx";
+
+# Email to Task Workflow
+
+Email is where work requests arrive, but your inbox is a terrible place to manage that work. The email-to-task workflow in GAIA solves this fundamental productivity problem by automatically identifying emails that require action and converting them into properly structured tasks in your task management system. Instead of using your inbox as a de facto todo list—with important action items buried among newsletters, notifications, and FYI messages—this workflow ensures every actionable email becomes a trackable task with appropriate context, deadlines, and priorities.
+
+The intelligence of this workflow lies in its ability to distinguish between emails that require action and those that don't. Not every message needs to become a task—some are purely informational, others are already handled, and many are low-priority items that don't warrant formal tracking. GAIA's AI analyzes each incoming email to determine whether it contains an action request, a deadline, or an expectation of response. When it identifies actionable content, it extracts the relevant information and creates a task that captures what needs to be done, when it's due, and why it matters.
+
+## How the Workflow Operates
+
+The email-to-task workflow runs continuously in the background, monitoring your inbox for new messages. When an email arrives, GAIA's AI performs a multi-step analysis to determine if it requires action. The workflow examines the sender—is this someone whose requests typically need responses? It analyzes the content for action verbs like "please review," "can you send," "need your input," or "waiting for your response." It looks for explicit deadlines like "by end of week" or "before Tuesday's meeting." It also considers implicit urgency based on the sender's role and your relationship—an email from your manager asking for feedback is inherently higher priority than a similar request from a colleague.
+
+When the AI determines an email requires action, it extracts the key information needed to create a useful task. The task title is generated from the core request—if the email says "Can you review the Q3 budget proposal and send me your feedback by Friday?" the task becomes "Review Q3 budget proposal and provide feedback." The AI strips away conversational fluff to create a clear, actionable task title that immediately communicates what needs to be done.
+
+The workflow then enriches the task with context and metadata. It sets the due date based on any deadline mentioned in the email, defaulting to three days out if no explicit deadline exists. It assigns a priority level based on sender importance and urgency indicators—emails from key stakeholders with near-term deadlines get marked as high priority, while routine requests with flexible timing get medium or low priority. The task description includes a link back to the original email, relevant excerpts from the message, and any attachments that were included. This context ensures you have everything you need to complete the task without hunting through your inbox.
+
+The workflow also performs intelligent categorization by analyzing the task content and assigning it to the appropriate project or category. If the email is about the Q3 budget and you have a project called "Q3 Planning," the task automatically gets assigned there. If it's a request from a specific client and you have a project for that client, the task goes into that project. This automatic organization means your tasks arrive pre-sorted rather than dumping everything into a generic inbox that requires manual triage.
+
+For emails that involve multiple action items, the workflow creates separate tasks for each distinct action. An email that says "Please review the proposal, schedule a follow-up meeting, and send me the updated timeline" becomes three tasks: "Review proposal," "Schedule follow-up meeting," and "Send updated timeline." Each task gets its own due date based on logical sequencing—the proposal review might be due first, followed by the meeting scheduling, with the timeline update due after the meeting. This granular task creation ensures nothing gets lost in a single catch-all task.
+
+The workflow also handles email threads intelligently. If you're already tracking a task related to an email thread and a new message arrives in that thread, GAIA updates the existing task rather than creating a duplicate. It adds the new information to the task description and adjusts the due date if the new message changes expectations. This thread awareness prevents your task list from getting cluttered with multiple tasks for the same ongoing conversation.
+
+## Setting Up Your Email-to-Task Workflow
+
+Creating this workflow starts with connecting your email account to GAIA. Navigate to the integrations page and connect Gmail or Outlook using OAuth authentication. Grant GAIA read access to your inbox so it can monitor incoming messages, and write access if you want it to automatically archive or label emails after converting them to tasks. The workflow works with both personal and work email accounts, and you can set up separate workflows for each if you want different handling rules.
+
+Once your email is connected, open the workflow builder and search for "Email to Task" in the community templates. GAIA provides a pre-built workflow that you can activate immediately or customize to your preferences. The default configuration converts any email with action-indicating language into a task, but you'll want to refine this based on your email patterns and work style.
+
+Customize the action detection rules to match how people communicate with you. Add specific phrases that commonly appear in your work emails—if your team often uses "LGTM" (looks good to me) to indicate approval, teach GAIA that this doesn't require action. If your industry uses specific terminology for requests, add those terms to the action detection list. You can also create sender-based rules—emails from your manager always create tasks, emails from certain automated systems never do, and emails from colleagues create tasks only if they contain explicit requests.
+
+Configure your priority assignment logic based on what matters in your work. Set rules like "emails from my manager are always high priority," "emails with deadlines within 24 hours are high priority," "emails marked urgent are high priority," and "everything else defaults to medium priority." You can also create negative rules like "emails I'm CC'd on are low priority unless they explicitly mention my name." These rules ensure your task priorities reflect actual importance rather than treating everything equally.
+
+Define your project assignment rules to ensure tasks land in the right place. Create keyword-based routing—emails containing "budget" go to your Finance project, emails containing client names go to their respective client projects, emails about hiring go to your Recruiting project. You can also use sender-based routing—emails from your product team go to the Product Development project, emails from your sales team go to the Sales project. For emails that don't match any rules, set a default project like "Inbox" where they'll land for manual sorting.
+
+Set up your task template to control what information gets captured. Decide whether you want the full email body in the task description or just key excerpts. Choose whether to include all attachments or only certain file types. Configure whether the original email should be archived after task creation or left in your inbox. Some users prefer to archive immediately to achieve inbox zero, while others like to keep emails in their inbox until the task is complete.
+
+Configure notification preferences for created tasks. You might want immediate notifications for high-priority tasks so you can address them right away, while medium and low-priority tasks can be batched into a daily summary. You can also set up different notification channels—high-priority tasks trigger a push notification, while lower-priority tasks just appear in your task list without interrupting your focus.
+
+## Outcomes and Benefits
+
+The email-to-task workflow fundamentally changes your relationship with email. Instead of your inbox being a source of stress and overwhelm, it becomes a simple input channel that feeds into your organized task management system. You can process email quickly, knowing that anything requiring action is automatically captured and organized. This mental shift reduces email anxiety and helps you maintain inbox zero without the constant worry that you're forgetting something important.
+
+The workflow dramatically reduces the cognitive load of email management. You no longer need to read each email while simultaneously deciding whether it requires action, what that action is, when it's due, and how important it is. GAIA handles all that analysis automatically, leaving you to simply review and refine the tasks it creates. This cognitive offloading means you can process email faster and with less mental fatigue.
+
+Task capture becomes more reliable and comprehensive. When you manually convert emails to tasks, you inevitably miss some—you're busy, you get distracted, or you think you'll remember to handle it later. The automated workflow never misses an actionable email. Every request, every deadline, every commitment gets captured as a task. This reliability means you can trust your task system completely, knowing it contains everything you need to do.
+
+The workflow also improves your responsiveness and follow-through. When action-requiring emails immediately become tasks with due dates, you're much less likely to let things slip through the cracks. Colleagues and clients notice that you consistently follow through on requests and meet deadlines. Your reputation for reliability improves because your system ensures you don't forget commitments.
+
+The automatic context preservation is particularly valuable. When a task includes a link back to the original email, relevant excerpts, and attachments, you have everything you need to complete the work without searching through your inbox. This context preservation saves time and reduces friction—you can jump directly into completing the task rather than spending five minutes trying to remember what email it came from and what exactly was requested.
+
+The workflow also creates a valuable audit trail of commitments and requests. Your task list becomes a record of what was asked of you, when it was requested, and how you handled it. This documentation is useful for performance reviews, project retrospectives, and resolving disputes about who was supposed to do what. If someone claims you never responded to their request, you can check your task history to see whether a task was created and how you handled it.
+
+Over time, the workflow's AI improves through learning your patterns. It notices which emails you manually convert to tasks and which you ignore, refining its action detection to match your judgment. It learns your priority preferences by observing which tasks you tackle first. It understands your project organization by seeing how you manually categorize tasks. This continuous learning means the workflow becomes increasingly accurate and personalized the longer you use it.
+
+## Advanced Customizations
+
+Power users can extend the email-to-task workflow with sophisticated automation and intelligence. Add natural language processing to extract more nuanced information from emails—if someone says "this would be nice to have but isn't urgent," the task gets created with low priority and a flexible due date. If an email says "this is blocking the entire team," the task gets marked as high priority with a due date of today.
+
+Create conditional workflows based on email characteristics. For emails from certain VIP senders, automatically create the task and also send a confirmation reply saying you've received their request and will handle it by the specified deadline. For emails that arrive outside business hours, delay task creation until morning so your task list doesn't get cluttered overnight. For emails that contain specific keywords like "urgent" or "ASAP," create the task and also send you an immediate notification.
+
+Integrate with your calendar to create time blocks for completing tasks. When a high-priority task is created from an email, have GAIA automatically find a thirty-minute slot in your calendar before the due date and block it for working on that task. This integration ensures you not only capture what needs to be done but also allocate time to do it.
+
+Set up team coordination by sharing certain email-generated tasks with colleagues. If an email requests something that requires input from multiple people, the workflow can create tasks for each person involved and link them together. This coordination ensures everyone knows their role in fulfilling the request without requiring manual delegation.
+
+Create escalation rules for tasks that aren't completed by their due date. If a task generated from an email remains incomplete after the deadline, have GAIA automatically send a follow-up email to the original sender explaining the delay and providing a new estimated completion date. This proactive communication manages expectations and maintains relationships even when you fall behind.
+
+The email-to-task workflow represents a fundamental shift from reactive email management to proactive task management. By automatically converting action-requiring emails into organized, contextualized tasks, it ensures nothing falls through the cracks while dramatically reducing the cognitive load of managing your inbox.
+
+---
+
+<GetStarted />

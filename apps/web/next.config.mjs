@@ -12,6 +12,11 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig = {
+  compiler: {
+    removeConsole: {
+      exclude: ["error"],
+    },
+  },
   reactStrictMode: true,
   // Enable standalone output for Electron desktop app bundling
   // This creates a minimal production server with all dependencies
@@ -25,6 +30,8 @@ const nextConfig = {
       "mermaid",
       "react-syntax-highlighter",
       "cytoscape",
+      "@theexperiencecompany/gaia-icons",
+      "@heroui/*",
     ],
   },
   webpack: (config, { isServer }) => {

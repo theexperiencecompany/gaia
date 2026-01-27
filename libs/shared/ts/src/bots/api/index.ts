@@ -27,6 +27,8 @@ export class GaiaClient {
         "Content-Type": "application/json",
         "X-Bot-API-Key": apiKey,
       },
+        "X-Bot-API-Key": apiKey,
+      },
     });
   }
 
@@ -48,11 +50,13 @@ export class GaiaClient {
         platform: request.platform,
         platform_user_id: request.platformUserId,
         channel_id: request.channelId,
+        channel_id: request.channelId,
       });
 
       return {
         response: data.response,
         conversationId: data.conversation_id,
+        authenticated: data.authenticated,
         authenticated: data.authenticated,
       };
     } catch (error) {
@@ -83,11 +87,13 @@ export class GaiaClient {
         message: request.message,
         platform: request.platform,
         platform_user_id: request.platformUserId,
+        platform_user_id: request.platformUserId,
       });
 
       return {
         response: data.response,
         conversationId: data.conversation_id,
+        authenticated: false,
         authenticated: false,
       };
     } catch (error) {

@@ -23,6 +23,7 @@ const useFetchUser = () => {
       const data = await authApi.fetchUserInfo();
 
       setUser({
+        userId: data?.user_id,
         name: data?.name,
         email: data?.email,
         profilePicture: data?.picture,

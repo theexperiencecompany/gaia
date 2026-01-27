@@ -133,6 +133,7 @@ export function generateBlogStructuredData(
 export function generateUseCaseMetadata(useCase: UseCase): Metadata {
   const description = useCase.detailed_description || useCase.description || "";
   const canonicalUrl = `/use-cases/${useCase.slug}`;
+  const ogImageUrl = `/api/og/use-case?slug=${useCase.slug}`;
 
   const title = `${useCase.title} - ${siteConfig.short_name} Use Case`;
   const keywords = [
@@ -156,6 +157,31 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
       title,
       description,
       url: canonicalUrl,
+      siteName: siteConfig.name,
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: `${useCase.title} - GAIA Workflow`,
+        },
+      ],
+      type: "article",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [
+        {
+          url: ogImageUrl,
+          width: 1200,
+          height: 630,
+          alt: `${useCase.title} - GAIA Workflow`,
+        },
+      ],
+      site: "@trygaia",
+      creator: "@trygaia",
     },
     alternates: { canonical: canonicalUrl },
     robots: { index: true, follow: true },
@@ -168,12 +194,14 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
 export function generateUseCaseStructuredData(
   useCase: UseCase,
 ): WithContext<HowTo> {
+  const ogImageUrl = `/api/og/use-case?slug=${useCase.slug}`;
+
   const structuredData: WithContext<HowTo> = {
     "@context": "https://schema.org",
     "@type": "HowTo",
     name: useCase.title,
     description: useCase.detailed_description || useCase.description,
-    image: "/og-image.webp",
+    image: ogImageUrl,
     publisher: {
       "@type": "Organization",
       name: siteConfig.short_name,

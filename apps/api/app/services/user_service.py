@@ -3,6 +3,7 @@ from typing import Optional
 
 from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import users_collection
+from app.utils.oauth_utils import upload_user_picture
 from bson import ObjectId
 from fastapi import HTTPException
 
@@ -48,8 +49,6 @@ async def update_user_profile(
     Returns:
         Updated user data
     """
-    from app.utils.oauth_utils import upload_user_picture
-
     try:
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:

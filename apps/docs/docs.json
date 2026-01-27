@@ -15,9 +15,10 @@
       "og:image": "https://docs.heygaia.io/og-image.jpg",
       "og:url": "https://docs.heygaia.io",
       "canonical": "https://docs.heygaia.io",
-      "description": "Documentation for GAIA, the open-source AI assistant.",
+      "description": "GAIA is a proactive AI assistant that automates workflows, manages tasks, and integrates with 200+ apps. Open source, privacy-first, and available on web, desktop, mobile, and bots.",
       "twitter:card": "summary_large_image",
-      "twitter:image": "https://docs.heygaia.io/og-image.jpg"
+      "twitter:image": "https://docs.heygaia.io/og-image.jpg",
+      "keywords": "AI assistant, productivity, automation, workflows, open source, self-hosted, task management, email automation, calendar integration, proactive AI"
     }
   },
   "fonts": {
@@ -77,6 +78,261 @@
           {
             "group": "Guides",
             "pages": ["guides/create-public-workflow"]
+          }
+        ]
+      },
+      {
+        "tab": "Knowledge Base",
+        "icon": "brain",
+        "groups": [
+          {
+            "group": "What is GAIA?",
+            "pages": [
+              "knowledge/what-is/proactive-ai-assistant",
+              "knowledge/what-is/personal-ai-assistant-productivity",
+              "knowledge/what-is/context-aware-ai",
+              "knowledge/what-is/long-term-memory-ai",
+              "knowledge/what-is/workflow-orchestration",
+              "knowledge/what-is/task-automation-ai",
+              "knowledge/what-is/human-in-loop-automation",
+              "knowledge/what-is/ai-agent-vs-assistant",
+              "knowledge/what-is/unified-productivity-software",
+              "knowledge/what-is/ai-powered-task-management",
+              "knowledge/what-is/calendar-automation",
+              "knowledge/what-is/email-automation-ai",
+              "knowledge/what-is/cross-application-automation",
+              "knowledge/what-is/open-source-ai-software",
+              "knowledge/what-is/self-hosted-ai-assistant",
+              "knowledge/what-is/cognitive-load-reduction",
+              "knowledge/what-is/proactive-vs-reactive-ai",
+              "knowledge/what-is/intent-based-automation",
+              "knowledge/what-is/ai-driven-personal-organization"
+            ]
+          },
+          {
+            "group": "Can AI Do This?",
+            "pages": [
+              "knowledge/can-ai/manage-email",
+              "knowledge/can-ai/schedule-meetings",
+              "knowledge/can-ai/create-tasks-from-emails",
+              "knowledge/can-ai/prioritize-tasks",
+              "knowledge/can-ai/plan-my-day",
+              "knowledge/can-ai/work-across-apps",
+              "knowledge/can-ai/remember-context",
+              "knowledge/can-ai/work-without-prompts",
+              "knowledge/can-ai/replace-executive-assistant",
+              "knowledge/can-ai/automate-followups",
+              "knowledge/can-ai/handle-calendar-conflicts",
+              "knowledge/can-ai/manage-reminders",
+              "knowledge/can-ai/be-self-hosted",
+              "knowledge/can-ai/run-locally",
+              "knowledge/can-ai/work-for-teams",
+              "knowledge/can-ai/reduce-burnout",
+              "knowledge/can-ai/help-with-focus",
+              "knowledge/can-ai/automate-workflows",
+              "knowledge/can-ai/understand-priorities",
+              "knowledge/can-ai/adapt-to-habits"
+            ]
+          },
+          {
+            "group": "How Does It Work?",
+            "pages": [
+              "knowledge/how/proactive-ai-assistant-works",
+              "knowledge/how/gaia-understands-intent",
+              "knowledge/how/ai-task-prioritization",
+              "knowledge/how/ai-workflow-automation",
+              "knowledge/how/ai-memory-works",
+              "knowledge/how/gaia-connects-email-tasks",
+              "knowledge/how/ai-calendar-scheduling",
+              "knowledge/how/cross-app-automation",
+              "knowledge/how/context-awareness-improves-productivity",
+              "knowledge/how/gaia-decides-what-to-automate",
+              "knowledge/how/ai-reduces-cognitive-load",
+              "knowledge/how/self-hosting-works",
+              "knowledge/how/gaia-protects-data",
+              "knowledge/how/ai-handles-ambiguity",
+              "knowledge/how/natural-language-task-creation",
+              "knowledge/how/gaia-learns-preferences",
+              "knowledge/how/ai-balances-autonomy-control",
+              "knowledge/how/ai-assists-without-micromanaging",
+              "knowledge/how/ai-driven-planning",
+              "knowledge/how/gaia-differs-from-chatbots"
+            ]
+          },
+          {
+            "group": "Use Cases",
+            "pages": [
+              "knowledge/use-cases/email-overload",
+              "knowledge/use-cases/daily-planning",
+              "knowledge/use-cases/time-management",
+              "knowledge/use-cases/task-prioritization",
+              "knowledge/use-cases/meeting-preparation",
+              "knowledge/use-cases/followups",
+              "knowledge/use-cases/knowledge-workers",
+              "knowledge/use-cases/remote-workers",
+              "knowledge/use-cases/founders",
+              "knowledge/use-cases/executives",
+              "knowledge/use-cases/adhd-productivity",
+              "knowledge/use-cases/burnout-prevention",
+              "knowledge/use-cases/async-teams",
+              "knowledge/use-cases/deep-work",
+              "knowledge/use-cases/startup-operators",
+              "knowledge/use-cases/consultants",
+              "knowledge/use-cases/developers",
+              "knowledge/use-cases/students",
+              "knowledge/use-cases/personal-organization",
+              "knowledge/use-cases/managing-multiple-projects"
+            ]
+          },
+          {
+            "group": "Workflows & Automation",
+            "pages": [
+              "knowledge/workflows/daily-planning-workflow",
+              "knowledge/workflows/weekly-review-workflow",
+              "knowledge/workflows/email-to-task-workflow",
+              "knowledge/workflows/meeting-prep-workflow",
+              "knowledge/workflows/post-meeting-followup",
+              "knowledge/workflows/inbox-zero-workflow",
+              "knowledge/workflows/task-triage-automation",
+              "knowledge/workflows/calendar-optimization",
+              "knowledge/workflows/focus-time-protection",
+              "knowledge/workflows/personal-admin-automation",
+              "knowledge/workflows/founder-operating-system",
+              "knowledge/workflows/executive-assistant-automation",
+              "knowledge/workflows/cross-app-productivity",
+              "knowledge/workflows/habit-building-workflows",
+              "knowledge/workflows/priority-management",
+              "knowledge/workflows/async-communication",
+              "knowledge/workflows/deep-work-scheduling",
+              "knowledge/workflows/task-batching-automation",
+              "knowledge/workflows/context-switching-reduction",
+              "knowledge/workflows/end-of-day-planning"
+            ]
+          },
+          {
+            "group": "Privacy & Open Source",
+            "pages": [
+              "knowledge/privacy/self-hosted-explained",
+              "knowledge/privacy/open-source-benefits",
+              "knowledge/privacy/cloud-vs-self-hosted",
+              "knowledge/privacy/data-privacy-ai-tools",
+              "knowledge/privacy/who-should-self-host",
+              "knowledge/privacy/running-gaia-locally",
+              "knowledge/privacy/data-ownership",
+              "knowledge/privacy/security-considerations",
+              "knowledge/privacy/open-source-vs-proprietary",
+              "knowledge/privacy/privacy-first-software",
+              "knowledge/privacy/no-data-harvesting",
+              "knowledge/privacy/trust-in-automation",
+              "knowledge/privacy/offline-capable",
+              "knowledge/privacy/self-hosting-individuals-vs-teams",
+              "knowledge/privacy/risks-closed-assistants",
+              "knowledge/privacy/transparency-ai-systems",
+              "knowledge/privacy/compliance",
+              "knowledge/privacy/ethical-ai-tools",
+              "knowledge/privacy/open-ecosystems",
+              "knowledge/privacy/future-open-source-ai"
+            ]
+          },
+          {
+            "group": "Comparisons",
+            "pages": [
+              "knowledge/comparisons/gaia-vs-chatgpt",
+              "knowledge/comparisons/gaia-vs-notion-ai",
+              "knowledge/comparisons/gaia-vs-zapier",
+              "knowledge/comparisons/gaia-vs-task-managers",
+              "knowledge/comparisons/ai-assistant-vs-task-apps",
+              "knowledge/comparisons/ai-assistant-vs-automation-tools",
+              "knowledge/comparisons/proactive-vs-reactive-ai",
+              "knowledge/comparisons/ai-assistant-vs-calendars",
+              "knowledge/comparisons/ai-assistant-vs-human-assistant",
+              "knowledge/comparisons/open-source-vs-saas-ai",
+              "knowledge/comparisons/ai-agents-vs-assistants",
+              "knowledge/comparisons/gaia-vs-manual-systems",
+              "knowledge/comparisons/ai-productivity-tools-comparison",
+              "knowledge/comparisons/when-not-to-use-ai-assistant",
+              "knowledge/comparisons/ai-assistant-limitations",
+              "knowledge/comparisons/ai-automation-vs-human-judgment",
+              "knowledge/comparisons/productivity-apps-vs-ai",
+              "knowledge/comparisons/context-aware-vs-command-based",
+              "knowledge/comparisons/general-vs-domain-specific-ai",
+              "knowledge/comparisons/why-gaia-not-chatbot"
+            ]
+          },
+          {
+            "group": "Lists & Facts",
+            "pages": [
+              "knowledge/lists/key-features-proactive-ai",
+              "knowledge/lists/benefits-ai-task-automation",
+              "knowledge/lists/productivity-problems-ai-solves",
+              "knowledge/lists/tasks-ai-can-automate",
+              "knowledge/lists/tasks-ai-should-not-automate",
+              "knowledge/lists/signs-you-need-ai-assistant",
+              "knowledge/lists/best-practices-ai-productivity",
+              "knowledge/lists/limitations-ai-assistants",
+              "knowledge/lists/mistakes-ai-automation",
+              "knowledge/lists/myths-ai-productivity-tools",
+              "knowledge/lists/what-makes-ai-assistant-effective",
+              "knowledge/lists/characteristics-proactive-ai",
+              "knowledge/lists/indicators-workflow-overload",
+              "knowledge/lists/productivity-bottlenecks-ai-solves",
+              "knowledge/lists/ways-ai-reduces-cognitive-load",
+              "knowledge/lists/human-vs-ai-strengths",
+              "knowledge/lists/when-automation-improves-focus",
+              "knowledge/lists/when-automation-hurts-productivity",
+              "knowledge/lists/principles-good-automation",
+              "knowledge/lists/productivity-metrics-ai-improves"
+            ]
+          },
+          {
+            "group": "AI & Productivity Education",
+            "pages": [
+              "knowledge/education/future-personal-ai-assistants",
+              "knowledge/education/ai-future-of-work",
+              "knowledge/education/productivity-age-of-ai",
+              "knowledge/education/how-ai-changes-knowledge-work",
+              "knowledge/education/automation-vs-focus",
+              "knowledge/education/ai-as-cognitive-assistant",
+              "knowledge/education/designing-tools-that-think",
+              "knowledge/education/evolution-productivity-software",
+              "knowledge/education/why-productivity-tools-converging",
+              "knowledge/education/from-apps-to-assistants",
+              "knowledge/education/context-over-commands",
+              "knowledge/education/reducing-decision-fatigue",
+              "knowledge/education/attention-productivity-bottleneck",
+              "knowledge/education/ai-and-mental-load",
+              "knowledge/education/building-calm-software",
+              "knowledge/education/invisible-automation-principles",
+              "knowledge/education/human-centered-ai-productivity",
+              "knowledge/education/trust-autonomous-systems",
+              "knowledge/education/ai-as-operating-system",
+              "knowledge/education/end-manual-productivity-systems"
+            ]
+          },
+          {
+            "group": "Glossary",
+            "pages": [
+              "knowledge/glossary/ai-agent",
+              "knowledge/glossary/agentic-ai",
+              "knowledge/glossary/ai-assistant",
+              "knowledge/glossary/workflow-automation",
+              "knowledge/glossary/task-automation",
+              "knowledge/glossary/proactive-ai",
+              "knowledge/glossary/reactive-ai",
+              "knowledge/glossary/context-awareness",
+              "knowledge/glossary/knowledge-graph",
+              "knowledge/glossary/semantic-search",
+              "knowledge/glossary/llm",
+              "knowledge/glossary/langgraph",
+              "knowledge/glossary/vector-embeddings",
+              "knowledge/glossary/oauth",
+              "knowledge/glossary/webhook",
+              "knowledge/glossary/cron-expression",
+              "knowledge/glossary/api-integration",
+              "knowledge/glossary/self-hosting",
+              "knowledge/glossary/open-source",
+              "knowledge/glossary/cognitive-load"
+            ]
           }
         ]
       }

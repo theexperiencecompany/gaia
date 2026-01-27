@@ -2,8 +2,9 @@ import { apiService } from "@/lib/api";
 
 export interface ToolInfo {
   name: string;
-  category: string;
-  required_integration?: string;
+  category: string; // Integration ID
+  display_name: string; // REQUIRED - human-readable name
+  icon_url?: string;
 }
 
 export interface ToolsListResponse {
@@ -19,6 +20,6 @@ export interface ToolsCategoryResponse {
 export const fetchAvailableTools = async (): Promise<ToolsListResponse> => {
   return apiService.get<ToolsListResponse>("/tools", {
     errorMessage: "Failed to fetch available tools",
-    silent: true, // Don't show error toast since this is used in background
+    silent: true,
   });
 };

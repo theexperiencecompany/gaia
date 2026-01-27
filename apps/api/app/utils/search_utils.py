@@ -2,7 +2,7 @@ from typing import Optional
 
 from app.config.loggers import search_logger as logger
 from app.config.settings import settings
-from app.db.redis import ONE_HOUR_TTL
+from app.constants.cache import ONE_HOUR_TTL
 from app.decorators.caching import Cacheable
 from app.utils.exceptions import FetchError
 from firecrawl import FirecrawlApp

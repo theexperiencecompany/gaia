@@ -1,5 +1,5 @@
 import { Input } from "@heroui/input";
-import type React from "react";
+import { forwardRef, type KeyboardEvent } from "react";
 
 import { SearchIcon } from "@/icons";
 
@@ -7,21 +7,37 @@ interface IntegrationsSearchInputProps {
   value: string;
   onChange: (value: string) => void;
   onClear: () => void;
+  endContent?: React.ReactNode;
+  onEnter?: () => void;
 }
 
-export const IntegrationsSearchInput: React.FC<
+export const IntegrationsSearchInput = forwardRef<
+  HTMLInputElement,
   IntegrationsSearchInputProps
-> = ({ value, onChange }) => {
+>(({ value, onChange, endContent, onEnter }, ref) => {
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter" && onEnter) {
+      e.preventDefault();
+      onEnter();
+    }
+  };
+
   return (
     <Input
+      ref={ref}
       type="text"
       value={value}
-      isClearable
-      fullWidth
-      radius="full"
+      isClearable={!!value}
+      className="max-w-lg"
+      // radius="full"
+      // size="sm"
       startContent={<SearchIcon width={16} height={16} />}
+      endContent={!value ? endContent : undefined}
       onValueChange={onChange}
+      onKeyDown={handleKeyDown}
       placeholder="Search integrations..."
     />
   );
-};
+});
+
+IntegrationsSearchInput.displayName = "IntegrationsSearchInput";

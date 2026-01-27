@@ -82,7 +82,7 @@ const CustomAnchor = memo(
     return (
       <Tooltip
         showArrow
-        className="relative max-w-[280px] border border-zinc-700 bg-zinc-900 p-3 text-white shadow-lg"
+        className="relative max-w-[280px] border border-zinc-800 bg-zinc-900 p-3 text-white shadow-sm rounded-2xl"
         content={
           isLoading ? (
             <div className="flex justify-center p-5">
@@ -99,7 +99,7 @@ const CustomAnchor = memo(
               {!isStreaming &&
                 metadata.website_image &&
                 !failedUrls.has(metadata.website_image) && (
-                  <div className="relative aspect-video w-full overflow-hidden rounded-lg">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-xl">
                     <Image
                       src={metadata.website_image}
                       alt="Website Image"
@@ -107,7 +107,7 @@ const CustomAnchor = memo(
                       width={280}
                       height={157}
                       objectFit="cover"
-                      className="rounded-lg"
+                      className="rounded-xl"
                       onError={() => handleImageError(metadata.website_image!)}
                     />
                   </div>
@@ -190,7 +190,7 @@ const CustomAnchor = memo(
                 width={14}
                 height={14}
                 alt="Favicon"
-                className="h-3.5 w-3.5 flex-shrink-0 rounded-sm"
+                className="h-3.5 w-3.5 shrink-0 rounded-sm"
                 src={metadata.favicon}
                 onError={() => handleImageError(metadata.favicon!)}
               />

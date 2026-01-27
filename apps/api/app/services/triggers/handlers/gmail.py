@@ -15,7 +15,12 @@ from app.services.triggers.base import TriggerHandler
 
 
 class GmailTriggerHandler(TriggerHandler):
-    """Handler for Gmail triggers."""
+    """Handler for Gmail triggers.
+
+    Gmail triggers differ from other integrations in that they match workflows
+    by user_id rather than by trigger_id, since Gmail uses account-level triggers
+    via Composio (no per-resource registration like calendars).
+    """
 
     SUPPORTED_TRIGGERS = ["gmail_new_message"]
 
@@ -57,7 +62,11 @@ class GmailTriggerHandler(TriggerHandler):
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:
-        """Find workflows with Gmail/email triggers for a user."""
+        """Find workflows with Gmail triggers for a user.
+
+        Unlike other handlers that match by trigger_id, Gmail matches by user_id
+        since Gmail triggers are account-level (all emails trigger all Gmail workflows).
+        """
         try:
             # Validate payload structure (for logging/debugging purposes primarily)
             # We still rely on user_id from the top-level data dict for now as it might be an envelope field

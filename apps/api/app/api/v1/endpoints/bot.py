@@ -63,6 +63,7 @@ async def bot_chat(
             response="Please link your account first",
             conversation_id="",
             authenticated=False,
+            authenticated=False,
         )
 
     # Get or create conversation with full message history

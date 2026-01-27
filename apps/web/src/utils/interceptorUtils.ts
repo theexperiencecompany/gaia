@@ -17,7 +17,7 @@ interface ErrorHandlerDependencies {
 // Track active integration toasts to prevent duplicates
 const activeIntegrationToasts = new Set<string>();
 
-// Constants
+// Constants - Routes where we skip auto-opening login modal on 401
 const LANDING_ROUTES = [
   "/",
   "/terms",
@@ -28,11 +28,23 @@ const LANDING_ROUTES = [
   "/manifesto",
   "/blog",
   "/pricing",
+  "/use-cases",
+  "/marketplace",
+  "/profile",
+  "/desktop-login",
 ];
 
 // Utility functions
 export const isOnLandingRoute = (pathname: string): boolean => {
-  return LANDING_ROUTES.includes(pathname) || pathname.startsWith("/blog/");
+  // Exact matches
+  if (LANDING_ROUTES.includes(pathname)) return true;
+  // Prefix matches for nested routes
+  return (
+    pathname.startsWith("/blog/") ||
+    pathname.startsWith("/use-cases/") ||
+    pathname.startsWith("/marketplace/") ||
+    pathname.startsWith("/profile/")
+  );
 };
 
 // Main error processor

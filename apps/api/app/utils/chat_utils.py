@@ -131,7 +131,6 @@ async def generate_and_update_description(
 async def do_prompt_no_stream(
     prompt: str,
     system_prompt: str | None = None,
-    use_tools: bool = False,
 ) -> dict:
     """
     Execute a single LLM prompt without streaming.
@@ -139,7 +138,6 @@ async def do_prompt_no_stream(
     Args:
         prompt: The user prompt to send to the LLM
         system_prompt: Optional system message
-        use_tools: Whether tools should be available (currently unused)
 
     Returns:
         dict with "response" key containing the AI's response content

@@ -6,7 +6,7 @@ from typing import Any
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import chroma_logger as logger
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import get_subagent_integrations
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
 from langgraph.store.base import PutOp
@@ -75,12 +75,7 @@ async def _get_subagent_tools() -> dict[str, dict]:
         Dictionary mapping subagent tool names to their hash and namespace info
     """
     subagent_tools = {}
-
-    subagent_integrations = [
-        integration
-        for integration in OAUTH_INTEGRATIONS
-        if integration.subagent_config and integration.subagent_config.has_subagent
-    ]
+    subagent_integrations = get_subagent_integrations()
 
     for integration in subagent_integrations:
         cfg = integration.subagent_config
@@ -310,7 +305,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     name="chroma_tools_store",
     required_keys=[],
     strategy=MissingKeyStrategy.ERROR,
-    auto_initialize=False,
+    auto_initialize=True,
 )
 async def initialize_chroma_tools_store():
     """Initialize and return the ChromaDB-backed tools store with incremental updates.

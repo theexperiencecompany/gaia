@@ -21,7 +21,7 @@ export default function UseCasesPageClient({
 
   return (
     <>
-      <div className="relative z-[1] container mx-auto pb-8">
+      <div className="relative z-1 container mx-auto pb-8">
         <div className="mb-8 text-center">
           <h1 className="mb-1 font-serif text-8xl font-normal">
             See what's Possible

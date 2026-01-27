@@ -112,7 +112,7 @@ export default function ChatsList() {
       };
     }, [conversations]);
 
-  // Show loading only when there are no cached conversations and initial sync hasn't completed
+  // Show loading only when there are no cached conversations and hydration hasn't completed
   const isLoading = conversations.length === 0 && !initialSyncCompleted;
 
   // Calculate which accordions should be open - controlled state

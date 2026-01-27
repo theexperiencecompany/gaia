@@ -1,14 +1,21 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
+from app.config.loggers import chat_logger as logger
 from app.config.settings import settings
 from app.constants.llm import (
+    DEFAULT_GEMINI_FREE_MODEL_NAME,
     DEFAULT_GEMINI_MODEL_NAME,
+    DEFAULT_GROK_MODEL_NAME,
     DEFAULT_MODEL_NAME,
+    GEMINI_FREE_FALLBACK_MODELS,
+    OPENROUTER_BASE_URL,
 )
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from langchain_core.language_models.chat_models import (
     BaseChatModel,
 )
+from langchain_core.messages import BaseMessage
+from langchain_core.runnables import RunnableConfig
 from langchain_core.runnables.utils import ConfigurableField
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
@@ -17,10 +24,12 @@ from typing_extensions import TypedDict
 PROVIDER_MODELS = {
     "openai": DEFAULT_MODEL_NAME,
     "gemini": DEFAULT_GEMINI_MODEL_NAME,
+    "openrouter": DEFAULT_GROK_MODEL_NAME,
 }
 PROVIDER_PRIORITY = {
     1: "openai",
     2: "gemini",
+    3: "openrouter",
 }
 
 
@@ -67,7 +76,42 @@ def init_gemini_llm():
     )
 
 
-def init_llm(preferred_provider: Optional[str] = None, fallback_enabled: bool = True):
+@lazy_provider(
+    name="openrouter_llm",
+    required_keys=[settings.OPENROUTER_API_KEY],
+    strategy=MissingKeyStrategy.WARN,
+    warning_message="OpenRouter API key not configured. Models provided via OpenRouter (Grok, etc.) will not work.",
+)
+def init_openrouter_llm():
+    """Initialize OpenRouter LLM for Grok and other models with reasoning support."""
+    return ChatOpenAI(
+        model=PROVIDER_MODELS["openrouter"],
+        temperature=0.1,
+        streaming=True,
+        stream_usage=True,
+        api_key=settings.OPENROUTER_API_KEY,
+        base_url=OPENROUTER_BASE_URL,
+        default_headers={
+            "HTTP-Referer": settings.FRONTEND_URL,
+            "X-Title": "GAIA",
+        },
+        extra_body={
+            "reasoning": {
+                "effort": "medium",  # Enable reasoning for thinking models (Grok, Claude 3.7+, DeepSeek R1)
+            }
+        },
+    ).configurable_fields(
+        model_name=ConfigurableField(
+            id="model", name="Model", description="Which model to use"
+        ),
+    )
+
+
+def init_llm(
+    preferred_provider: Optional[str] = None,
+    fallback_enabled: bool = True,
+    use_free: bool = False,
+):
     """
     Initialize LLM with configurable alternatives based on provider priority.
 
@@ -76,6 +120,9 @@ def init_llm(preferred_provider: Optional[str] = None, fallback_enabled: bool = 
                                           If None, uses default priority order.
         fallback_enabled (bool): Whether to enable fallback to other providers
                                if preferred provider is not available.
+        use_free (bool): If True, uses Gemini 2.0 Flash (free) via OpenRouter with
+                        automatic fallbacks. Useful for auxiliary tasks like
+                        follow-up actions and description generation.
 
     Returns:
         Configured LLM instance with alternatives
@@ -84,6 +131,26 @@ def init_llm(preferred_provider: Optional[str] = None, fallback_enabled: bool = 
         RuntimeError: If no LLM providers are properly configured
         ValueError: If preferred_provider is not a valid provider name
     """
+    # Use free model via OpenRouter for cost-effective auxiliary tasks
+    if use_free:
+        if not settings.OPENROUTER_API_KEY:
+            raise RuntimeError(
+                "OpenRouter API key not configured. Free LLM requires OPENROUTER_API_KEY."
+            )
+        return ChatOpenAI(
+            model=DEFAULT_GEMINI_FREE_MODEL_NAME,
+            temperature=0.1,
+            streaming=False,
+            api_key=settings.OPENROUTER_API_KEY,
+            base_url=OPENROUTER_BASE_URL,
+            default_headers={
+                "HTTP-Referer": settings.FRONTEND_URL,
+                "X-Title": "GAIA",
+            },
+            extra_body={
+                "models": GEMINI_FREE_FALLBACK_MODELS,
+            },
+        )
 
     # Validate preferred provider if specified
     if preferred_provider and preferred_provider not in PROVIDER_MODELS:
@@ -128,6 +195,7 @@ def _get_available_providers() -> Dict[str, Any]:
     provider_instance_mapping = {
         "openai": "openai_llm",
         "gemini": "gemini_llm",
+        "openrouter": "openrouter_llm",
     }
 
     available = {}
@@ -215,3 +283,93 @@ def register_llm_providers():
     """Register LLM providers in the lazy loader."""
     init_openai_llm()
     init_gemini_llm()
+    init_openrouter_llm()
+
+
+def get_free_llm_chain() -> List[BaseChatModel]:
+    """
+    Get a chain of free/low-cost LLMs for auxiliary tasks with fallback support.
+
+    Returns a list of LLMs in priority order:
+    1. OpenRouter free models (Gemini 2.0 Flash free tier)
+    2. Direct Gemini API (as fallback if OpenRouter fails)
+
+    Returns:
+        List of LLM instances to try in order
+    """
+    llms: List[BaseChatModel] = []
+
+    # Primary: OpenRouter free model with automatic model fallback
+    if settings.OPENROUTER_API_KEY:
+        llms.append(
+            ChatOpenAI(
+                model=DEFAULT_GEMINI_FREE_MODEL_NAME,
+                temperature=0.1,
+                streaming=False,
+                api_key=settings.OPENROUTER_API_KEY,
+                base_url=OPENROUTER_BASE_URL,
+                default_headers={
+                    "HTTP-Referer": settings.FRONTEND_URL,
+                    "X-Title": "GAIA",
+                },
+                extra_body={
+                    "models": GEMINI_FREE_FALLBACK_MODELS,
+                },
+            )
+        )
+
+    # Fallback: Direct Gemini API
+    if settings.GOOGLE_API_KEY:
+        llms.append(
+            ChatGoogleGenerativeAI(
+                model=DEFAULT_GEMINI_MODEL_NAME,
+                temperature=0.1,
+            )
+        )
+
+    if not llms:
+        raise RuntimeError(
+            "No free LLM providers configured. Set OPENROUTER_API_KEY or GOOGLE_API_KEY."
+        )
+
+    return llms
+
+
+async def invoke_with_fallback(
+    llm_chain: List[BaseChatModel],
+    messages: Sequence[BaseMessage],
+    config: Optional[RunnableConfig] = None,
+) -> BaseMessage:
+    """
+    Invoke LLMs in sequence until one succeeds.
+
+    Tries each LLM in the chain, falling back to the next on failure.
+    Useful for auxiliary tasks like follow-up actions and description generation.
+
+    Args:
+        llm_chain: List of LLM instances to try in order
+        messages: Messages to send to the LLM
+        config: Optional config to pass to the LLM
+
+    Returns:
+        The response from the first successful LLM
+
+    Raises:
+        RuntimeError: If all LLMs in the chain fail
+    """
+    last_error: Optional[Exception] = None
+
+    for i, llm in enumerate(llm_chain):
+        try:
+            return await llm.ainvoke(messages, config=config)
+        except Exception as e:
+            provider_name = type(llm).__name__
+            last_error = e
+            if i < len(llm_chain) - 1:
+                logger.warning(
+                    f"LLM {provider_name} failed, falling back to next provider: {e}"
+                )
+            else:
+                logger.error(f"All LLM providers failed. Last error: {e}")
+
+    raise RuntimeError(f"All LLM providers failed. Last error: {last_error}")

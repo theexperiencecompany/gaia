@@ -7,12 +7,16 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.decorators.caching import Cacheable
+from app.db.redis import get_cache
 from app.models.tools_models import ToolsListResponse, ToolsCategoryResponse
-from app.services.tools_service import (
+from app.services.tools.tools_service import (
     get_available_tools,
     get_tools_by_category,
     get_tool_categories,
+    get_user_mcp_tools,
+    merge_tools_responses,
 )
+from app.services.tools.tools_warmup import GLOBAL_TOOLS_CACHE_KEY
 
 router = APIRouter()
 
@@ -24,11 +28,35 @@ async def list_available_tools(
     """
     Get a list of all available tools with their metadata.
 
+    Includes:
+    - Platform tools (always available)
+    - Global MCP tools (stored when any user first connects to an MCP integration)
+
+    Performance optimization:
+    - Global tools are cached for 6 hours (shared across all users)
+    - User-specific custom tools are fetched on-demand
+
+    Note: This endpoint returns global tool metadata for fast frontend visibility.
+    User-specific tool connections are validated separately via integration status.
+
     Returns:
         ToolsListResponse: List of tools with descriptions, parameters, and categories
     """
     try:
-        return await get_available_tools()
+        user_id = user.get("user_id")
+
+        # Try global cache first (warmed at startup, 6 hour TTL)
+        cached_global = await get_cache(GLOBAL_TOOLS_CACHE_KEY, model=ToolsListResponse)
+        if cached_global is not None:
+            # Overlay user's MCP tools on top of cached global tools
+            if user_id:
+                mcp_tools = await get_user_mcp_tools(user_id)
+                if mcp_tools:
+                    return merge_tools_responses(cached_global, mcp_tools)
+            return cached_global
+
+        # Cache miss - build tools response (will also populate cache)
+        return await get_available_tools(user_id=user_id)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to retrieve tools: {str(e)}"

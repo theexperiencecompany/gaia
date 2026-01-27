@@ -148,7 +148,7 @@ export default function SidebarTopButtons() {
                   className={`group-topbtns focus-visible:outline-none w-full justify-start text-sm ${
                     isRouteActive(route)
                       ? "text-zinc-300"
-                      : "text-zinc-500 hover:text-zinc-300"
+                      : "text-zinc-400 hover:text-zinc-300"
                   }`}
                   as={Link}
                   href={route}

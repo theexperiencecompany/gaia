@@ -117,6 +117,8 @@ _COLLECTION_MAPPINGS = {
     "plans_collection": "subscription_plans",
     "usage_snapshots_collection": "usage_snapshots",
     "ai_models_collection": "ai_models",
+    "integrations_collection": "integrations",
+    "user_integrations_collection": "user_integrations",
     "device_tokens_collection": "device_tokens",
 }
 

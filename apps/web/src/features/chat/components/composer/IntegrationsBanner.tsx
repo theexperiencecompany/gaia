@@ -36,10 +36,10 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
 
   return (
     <Button
-      className="absolute -top-6 z-[0] flex h-fit w-full max-w-xl bg-transparent!"
+      className="absolute -top-9 z-0 flex h-fit w-full bg-transparent!"
       onClick={onToggleSlashCommand}
     >
-      <div className="flex w-[80%] items-center justify-between rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 sm:w-[90%]">
+      <div className="flex w-[90%] items-center justify-between rounded-full bg-zinc-800/40 pr-4 pl-6 py-2 pb-10 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition">
         <span className="text-xs">Connect your tools to GAIA</span>
         <div className="ml-3 flex items-center gap-1">
           {shuffledIntegrations.slice(0, 10).map((integration) => (
@@ -59,7 +59,7 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
           ))}
           <div>
             {shuffledIntegrations.length > 10 && (
-              <div className="text-xs text-primary bg-primary/20 rounded-full w-fit px-1 ml-1">
+              <div className="text-xs ml-1 ">
                 +{shuffledIntegrations.length - 10}
               </div>
             )}

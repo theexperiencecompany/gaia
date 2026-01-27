@@ -85,16 +85,3 @@ Return ONLY a valid JSON object with this exact structure:
 }
 
 Evaluate now:"""
-
-
-TRAJECTORY_SUMMARY_PROMPT = """Summarize this agent execution trajectory concisely:
-
-Trajectory:
-{{trajectory}}
-
-Provide a brief summary of:
-1. What tools were called and in what order
-2. Any errors encountered
-3. The final outcome
-
-Keep it under 200 words."""

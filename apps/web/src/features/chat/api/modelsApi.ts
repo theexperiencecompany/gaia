@@ -3,8 +3,9 @@ import { apiService } from "@/lib/api";
 export interface ModelInfo {
   model_id: string;
   name: string;
-  model_provider?: string; // New field for model provider
-  inference_provider?: string; // New field for inference provider
+  model_provider?: string;
+  inference_provider?: string;
+  provider_model_name?: string;
   description?: string;
   logo_url?: string;
   max_tokens: number;

@@ -13,6 +13,7 @@ export interface OnboardingData {
 }
 
 interface UserState {
+  userId: string;
   profilePicture: string;
   name: string;
   email: string;
@@ -30,6 +31,7 @@ interface UserActions {
 type UserStore = UserState & UserActions;
 
 const initialState: UserState = {
+  userId: "",
   profilePicture: "",
   name: "",
   email: "",
@@ -54,6 +56,7 @@ export const useUserStore = create<UserStore>()(
       {
         name: "user-storage",
         partialize: (state) => ({
+          userId: state.userId,
           profilePicture: state.profilePicture,
           name: state.name,
           email: state.email,

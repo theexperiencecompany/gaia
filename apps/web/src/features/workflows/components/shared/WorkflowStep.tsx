@@ -58,7 +58,7 @@ export default function WorkflowStep({
             showArrow
           >
             <Chip
-              radius="sm"
+              radius="md"
               variant="flat"
               className={`${chipPadding} pl-2 space-x-1 truncate ${chipTextSize}`}
               startContent={
@@ -67,6 +67,7 @@ export default function WorkflowStep({
                     size: iconSize,
                     width: iconSize,
                     height: iconSize,
+                    showBackground: false,
                   })}
                 </div>
               }

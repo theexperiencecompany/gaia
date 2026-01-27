@@ -4,9 +4,9 @@ import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
-  ArrowLeft01Icon,
   Download01Icon,
   MoveIcon,
+  RedoIcon,
   ZoomInAreaIcon,
   ZoomOutAreaIcon,
 } from "@/icons";
@@ -120,7 +120,7 @@ const FlowchartPreview: React.FC<FlowchartPreviewProps> = ({ children }) => {
         </Tooltip>
         <Tooltip content="Reset Zoom">
           <Button size="sm" onPress={resetZoom} isIconOnly>
-            <ArrowLeft01Icon width={22} height={22} />
+            <RedoIcon width={18} height={18} />
           </Button>
         </Tooltip>
         <Tooltip content="Zoom In">

@@ -1,10 +1,12 @@
 import json
+import re
 from datetime import datetime, timezone
 from typing import List, Optional, cast
 from uuid import uuid4
 
 from langchain_core.messages import ToolCall
 
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import llm_logger as logger
 from app.models.chat_models import (
     MessageModel,
@@ -12,39 +14,147 @@ from app.models.chat_models import (
     UpdateMessagesRequest,
     tool_fields,
 )
+from app.config.oauth_config import get_integration_by_id
+from app.db.mongodb.collections import integrations_collection
+from app.decorators.caching import Cacheable
 from app.services.conversation_service import update_messages
 
+# UUID v4 pattern for identifying user ID suffixes
+# Matches: xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
+UUID_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$", re.IGNORECASE
+)
 
-async def format_tool_progress(tool_call: ToolCall) -> Optional[dict]:
-    """Format tool execution progress data for streaming UI updates.
 
-    Transforms a LangChain ToolCall object into a structured progress update
-    that can be displayed in the frontend. Extracts tool name, formats it for
-    display, and retrieves the tool category from the registry.
+def parse_subagent_id(subagent_id: str) -> tuple[str, Optional[str]]:
+    """Parse subagent ID from various formats and extract clean ID and display name.
+
+    Handles:
+      - 'subagent:Name [uuid]' -> ('uuid', 'Name')
+      - 'subagent:id (Name)' -> ('id', 'Name')
+      - 'subagent:id' -> ('id', None)
+      - 'id' -> ('id', None)
+    """
+    clean = subagent_id.replace("subagent:", "").strip()
+
+    if " [" in clean:
+        name = clean.split(" [")[0].strip()
+        clean_id = clean.split("[")[1].rstrip("]")
+        return clean_id, name
+
+    if " (" in clean:
+        clean_id = clean.split(" (")[0].strip()
+        name = clean.split("(")[1].rstrip(")")
+        return clean_id, name
+
+    return clean, None
+
+
+@Cacheable(key_pattern="handoff_name:{clean_id}", ttl=3600)
+async def _lookup_custom_integration_name(clean_id: str) -> Optional[str]:
+    """Look up custom integration name from MongoDB with caching."""
+    custom = await integrations_collection.find_one(
+        {"integration_id": {"$regex": f"^{clean_id}", "$options": "i"}}, {"name": 1}
+    )
+    return custom.get("name") if custom else None
+
+
+async def _resolve_handoff_display_name(subagent_id: str) -> str:
+    """Resolve human-readable display name for a subagent handoff."""
+    clean_id, parsed_name = parse_subagent_id(subagent_id)
+
+    if parsed_name:
+        return parsed_name
+
+    platform_integ = get_integration_by_id(clean_id)
+    if platform_integ:
+        return platform_integ.name
+
+    cached_name = await _lookup_custom_integration_name(clean_id)
+    if cached_name:
+        return cached_name
+
+    return clean_id.replace("_", " ").title()
+
+
+async def format_tool_call_entry(
+    tool_call: ToolCall,
+    icon_url: Optional[str] = None,
+    integration_id: Optional[str] = None,
+    integration_name: Optional[str] = None,
+) -> Optional[dict]:
+    """Format tool call as tool_data entry for frontend streaming.
+
+    Creates a unified tool_data entry that the frontend can directly append
+    to the message's tool_data array. This is emitted once per tool call
+    from the 'updates' stream when complete args are available.
 
     Args:
         tool_call: LangChain ToolCall object containing tool execution details
+        icon_url: Optional icon URL for custom integrations
+        integration_id: Optional integration ID to use as category (for custom MCPs)
+        integration_name: Optional friendly name for display (e.g., 'Researcher')
 
     Returns:
-        Dictionary with progress information including formatted message,
-        tool name, and category, or None if tool name is missing
+        Dictionary in tool_data entry format with tool_name="tool_calls_data",
+        or None if tool name is missing
     """
-    from app.agents.tools.core.registry import get_tool_registry
-
     tool_registry = await get_tool_registry()
     tool_name_raw = tool_call.get("name")
     if not tool_name_raw:
         return None
 
-    tool_name = tool_name_raw.replace("_", " ").title()
-    tool_category = tool_registry.get_category_of_tool(tool_name_raw)
+    # Special tools with custom display names and categories
+    # Format: (category, display_name, show_category)
+    special_tools = {
+        "retrieve_tools": ("retrieve_tools", "Retrieving tools", False),
+        "call_executor": ("executor", "Delegating to executor", False),
+        "handoff": ("handoff", None, False),  # message will be set from args
+    }
+
+    if tool_name_raw in special_tools:
+        tool_category, tool_display_name, show_category = special_tools[tool_name_raw]
+
+        if tool_name_raw == "handoff":
+            args = tool_call.get("args", {})
+            subagent_id = args.get("subagent_id", "subagent")
+            display_name = await _resolve_handoff_display_name(subagent_id)
+            tool_display_name = f"Handing off to {display_name}"
+    else:
+        # Use provided integration_id for custom MCPs, otherwise look up from registry
+        if integration_id:
+            tool_category = integration_id
+        else:
+            tool_category = tool_registry.get_category_of_tool(tool_name_raw)
+            # Extract integration name from MCP categories
+            # Category format: mcp_{integration_id} or mcp_{integration_id}_{user_id}
+            if tool_category and tool_category.startswith("mcp_"):
+                without_prefix = tool_category[4:]
+                parts = without_prefix.rsplit("_", 1)
+                if len(parts) == 2 and UUID_PATTERN.match(parts[-1]):
+                    tool_category = parts[0]
+                else:
+                    tool_category = without_prefix
+
+        tool_display_name = tool_name_raw.replace("_", " ").title()
+        show_category = True
+
+    timestamp = datetime.now(timezone.utc).isoformat()
 
     return {
-        "progress": {
-            "message": f"Executing {tool_name}...",
+        "tool_name": "tool_calls_data",
+        "tool_category": tool_category or "",
+        "data": {
             "tool_name": tool_name_raw,
-            "tool_category": tool_category,
-        }
+            "tool_category": tool_category or "",
+            "message": tool_display_name,
+            "show_category": show_category,
+            "tool_call_id": tool_call.get("id"),
+            "inputs": tool_call.get("args", {}),
+            "icon_url": icon_url,
+            "integration_name": integration_name,
+        },
+        "timestamp": timestamp,
     }
 
 

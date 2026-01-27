@@ -1,6 +1,6 @@
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
 import { useRef } from "react";
-
+import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -144,19 +144,92 @@ export const useChatStream = () => {
     };
   };
 
-  const handleProgressUpdate = (
-    progressData:
-      | string
-      | { message: string; tool_name?: string; tool_category?: string },
-  ) => {
-    if (typeof progressData === "string") {
-      setLoadingText(progressData);
-    } else if (typeof progressData === "object" && progressData.message) {
-      setLoadingText(progressData.message, {
-        toolName: progressData.tool_name,
-        toolCategory: progressData.tool_category,
-      });
+  const handleToolData = (toolData: ToolDataEntry) => {
+    // Append tool_data entry to botMessage.tool_data
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    updateBotMessage({
+      tool_data: [...existingToolData, toolData],
+    });
+
+    // Extract loading text from tool_data.data.message for UI indicator
+    if (
+      toolData.tool_name === "tool_calls_data" &&
+      typeof toolData.data === "object" &&
+      toolData.data !== null
+    ) {
+      const data = toolData.data as Record<string, unknown>;
+      if (data.message && typeof data.message === "string") {
+        setLoadingText(data.message, {
+          toolName: data.tool_name as string | undefined,
+          toolCategory: data.tool_category as string | undefined,
+          integrationName: data.integration_name as string | undefined,
+          iconUrl: data.icon_url as string | undefined,
+          showCategory: (data.show_category as boolean) ?? true,
+        });
+      }
     }
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
+  /**
+   * Helper to update tool_data entries by tool_call_id.
+   * Used by handleToolOutput to add output to existing entries.
+   */
+  const updateToolDataEntry = (
+    toolCallId: string,
+    updateFn: (data: Record<string, unknown>) => Record<string, unknown>,
+  ) => {
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
+      // Only update entries that:
+      // 1. Have tool_name === "tool_calls_data"
+      // 2. Have a valid data object with a matching tool_call_id
+      if (entry.tool_name === "tool_calls_data") {
+        const data = entry.data as Record<string, unknown>;
+        // Validate that the entry has a tool_call_id and it matches
+        if (
+          data &&
+          typeof data === "object" &&
+          "tool_call_id" in data &&
+          data.tool_call_id === toolCallId
+        ) {
+          return {
+            ...entry,
+            data: updateFn(data) as ToolDataEntry["data"],
+          };
+        }
+      }
+      return entry;
+    });
+
+    updateBotMessage({
+      tool_data: updatedToolData,
+    });
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
+  const handleToolOutput = (toolOutput: {
+    tool_call_id: string;
+    output: string;
+  }) => {
+    updateToolDataEntry(toolOutput.tool_call_id, (data) => ({
+      ...data,
+      output: toolOutput.output,
+    }));
   };
 
   const handleImageGeneration = (data: Record<string, unknown>) => {
@@ -328,7 +401,13 @@ export const useChatStream = () => {
       refs.current.accumulatedResponse += data.response;
     }
 
-    const streamUpdates = parseStreamData(data, refs.current.botMessage);
+    // Skip tool_data and tool_output - they're handled separately
+    // to avoid double-processing in parseStreamData
+    const { tool_data: _, tool_output: __, ...restData } = data;
+    const streamUpdates = parseStreamData(
+      restData as Partial<MessageType>,
+      refs.current.botMessage,
+    );
 
     updateBotMessage({
       ...streamUpdates,
@@ -417,8 +496,14 @@ export const useChatStream = () => {
         return;
       }
 
-      if (data.progress) {
-        handleProgressUpdate(data.progress);
+      // Handle tool_data events (tool calls with complete inputs)
+      if (data.tool_data) {
+        handleToolData(data.tool_data);
+      }
+
+      // Handle tool_output events (tool execution results)
+      if (data.tool_output) {
+        handleToolOutput(data.tool_output);
       }
 
       if (handleImageGeneration(data)) return;
@@ -573,6 +658,8 @@ export const useChatStream = () => {
       refs.current.userMessage =
         currentMessages.find((m) => m.type === "user") || null;
       refs.current.optimisticUserId = optimisticUserId || null;
+
+      resetLoadingText();
 
       refs.current.botMessage = {
         type: "bot",
