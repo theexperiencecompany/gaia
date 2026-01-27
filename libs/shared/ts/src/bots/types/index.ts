@@ -30,18 +30,6 @@ export interface ChatResponse {
 }
 
 /**
- * Represents session information for a bot conversation.
- */
-export interface SessionInfo {
-  /** The unique identifier for the conversation session. */
-  conversationId: string;
-  /** The platform associated with this session. */
-  platform: string;
-  /** The user ID on the platform. */
-  platformUserId: string;
-}
-
-/**
  * Configuration required for the bot to operate.
  */
 export interface BotConfig {
@@ -51,18 +39,6 @@ export interface BotConfig {
   gaiaApiKey: string;
   /** The base URL of the GAIA web app (for auth links). */
   gaiaWebUrl: string;
-}
-
-/**
- * Represents the authentication status of a user on a platform.
- */
-export interface AuthStatus {
-  /** Whether the user is authenticated/linked. */
-  authenticated: boolean;
-  /** The platform name. */
-  platform: string;
-  /** The user ID on the platform. */
-  platformUserId: string;
 }
 
 /**

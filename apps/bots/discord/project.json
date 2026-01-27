@@ -15,15 +15,8 @@
     },
     "dev": {
       "executor": "nx:run-commands",
-      "options": {
+      "optio===ns": {
         "command": "pnpm tsx watch src/index.ts",
-        "cwd": "{projectRoot}"
-      }
-    },
-    "deploy-commands": {
-      "executor": "nx:run-commands",
-      "options": {
-        "command": "pnpm tsx src/deploy-commands.ts",
         "cwd": "{projectRoot}"
       }
     },

@@ -1,10 +1,5 @@
-import type {
-  BotCommand,
-  GaiaClient,
-  Platform,
-  PlatformBot,
-} from "@gaia/shared";
-import { Bot } from "grammy";
+import type { GaiaClient, Platform, PlatformBot } from "@gaia/shared";
+import { Bot, type BotError } from "grammy";
 import { registerCommands } from "./commands";
 import { registerHandlers } from "./handlers";
 
@@ -23,18 +18,14 @@ export class TelegramBot implements PlatformBot {
     this.gaia = gaia;
     this.bot = new Bot(token);
 
-    this.bot.catch((err) => {
+    this.bot.catch((err: BotError) => {
       console.error("Bot error:", err);
     });
   }
 
-  registerCommands(_commands: BotCommand[]): void {
+  async start(): Promise<void> {
     registerCommands(this.bot, this.gaia);
     registerHandlers(this.bot, this.gaia);
-  }
-
-  async start(): Promise<void> {
-    this.registerCommands([]);
     this.bot.start({
       onStart: () => console.log("Telegram bot is running"),
     });

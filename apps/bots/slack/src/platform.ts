@@ -1,9 +1,4 @@
-import type {
-  BotCommand,
-  GaiaClient,
-  Platform,
-  PlatformBot,
-} from "@gaia/shared";
+import type { GaiaClient, Platform, PlatformBot } from "@gaia/shared";
 import { App } from "@slack/bolt";
 import { registerCommands } from "./commands";
 import { registerEvents } from "./events";
@@ -33,13 +28,9 @@ export class SlackBot implements PlatformBot {
     });
   }
 
-  registerCommands(_commands: BotCommand[]): void {
+  async start(): Promise<void> {
     registerCommands(this.app, this.gaia);
     registerEvents(this.app, this.gaia);
-  }
-
-  async start(): Promise<void> {
-    this.registerCommands([]);
     await this.app.start();
     console.log("Slack bot is running");
   }

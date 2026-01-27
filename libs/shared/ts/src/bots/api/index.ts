@@ -1,10 +1,8 @@
 import axios, { type AxiosInstance } from "axios";
 import type {
-  AuthStatus,
   ChatRequest,
   ChatResponse,
   ConnectedIntegration,
-  SessionInfo,
   UserSettings,
 } from "../types";
 
@@ -94,67 +92,6 @@ export class GaiaClient {
         conversationId: data.conversation_id,
         authenticated: false,
       };
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status || "unknown";
-        const message = error.response?.data?.detail || error.message;
-        throw new Error(`API error (${status}): ${message}`);
-      }
-      throw error instanceof Error ? error : new Error("Unknown error");
-    }
-  }
-
-  /**
-   * Retrieves or creates a session for a user on a specific platform.
-   *
-   * @param platform - The platform name (discord, slack, telegram).
-   * @param platformUserId - The user's ID on that platform.
-   * @param channelId - Optional channel ID to scope the session.
-   * @returns Session information including conversation ID.
-   * @throws Error if the API request fails.
-   */
-  async getSession(
-    platform: string,
-    platformUserId: string,
-    channelId?: string,
-  ): Promise<SessionInfo> {
-    const params = new URLSearchParams();
-    if (channelId) {
-      params.set("channel_id", channelId);
-    }
-
-    try {
-      const { data } = await this.client.get<SessionInfo>(
-        `/api/v1/bot/session/${platform}/${platformUserId}?${params.toString()}`,
-      );
-      return data;
-    } catch (error) {
-      if (axios.isAxiosError(error)) {
-        const status = error.response?.status || "unknown";
-        const message = error.response?.data?.detail || error.message;
-        throw new Error(`API error (${status}): ${message}`);
-      }
-      throw error instanceof Error ? error : new Error("Unknown error");
-    }
-  }
-
-  /**
-   * Checks if a platform user is linked to a GAIA account.
-   *
-   * @param platform - The platform name.
-   * @param platformUserId - The platform user ID.
-   * @returns Authentication status.
-   * @throws Error if the API request fails.
-   */
-  async checkAuthStatus(
-    platform: string,
-    platformUserId: string,
-  ): Promise<AuthStatus> {
-    try {
-      const { data } = await this.client.get<AuthStatus>(
-        `/api/v1/bot/auth/status/${platform}/${platformUserId}`,
-      );
-      return data;
     } catch (error) {
       if (axios.isAxiosError(error)) {
         const status = error.response?.status || "unknown";

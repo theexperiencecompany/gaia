@@ -1,7 +1,7 @@
-import type { Bot } from "grammy";
+import type { Bot, Context } from "grammy";
 
 export function registerStartCommand(bot: Bot) {
-  bot.command("start", async (ctx) => {
+  bot.command("start", async (ctx: Context) => {
     await ctx.reply(
       "👋 Welcome to GAIA!\n\n" +
         "**Commands:**\n" +

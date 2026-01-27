@@ -1,9 +1,4 @@
-import type {
-  BotCommand,
-  GaiaClient,
-  Platform,
-  PlatformBot,
-} from "@gaia/shared";
+import type { GaiaClient, Platform, PlatformBot } from "@gaia/shared";
 import {
   Client,
   Collection,
@@ -49,14 +44,8 @@ export class DiscordBot implements PlatformBot {
     this.setupEventHandlers();
   }
 
-  registerCommands(_commands: BotCommand[]): void {
-    // For now, use existing command registration
-    // Future: adapt BotCommand[] to Discord-specific format
-    this.commands = registerCommands();
-  }
-
   async start(): Promise<void> {
-    this.registerCommands([]);
+    this.commands = registerCommands();
     await this.client.login(this.token);
   }
 

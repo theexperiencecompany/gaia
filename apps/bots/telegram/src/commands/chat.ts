@@ -1,14 +1,15 @@
 import type { GaiaClient } from "@gaia/shared";
 import { formatError, truncateResponse } from "@gaia/shared";
-import type { Bot } from "grammy";
+import type { Bot, Context } from "grammy";
 
 export function registerChatCommand(bot: Bot, gaia: GaiaClient) {
-  bot.command("chat", async (ctx) => {
-    const message = ctx.match;
+  bot.command("chat", async (ctx: Context) => {
+    const message =
+      typeof ctx.match === "string" ? ctx.match : ctx.match?.join(" ");
     const userId = ctx.from?.id.toString();
-    const chatId = ctx.chat.id.toString();
+    const chatId = ctx.chat?.id.toString();
 
-    if (!userId) return;
+    if (!userId || !chatId) return;
 
     if (!message) {
       await ctx.reply("Usage: /chat <your message>");

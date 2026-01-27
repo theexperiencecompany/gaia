@@ -1,11 +1,12 @@
 import type { GaiaClient } from "@gaia/shared";
 import { formatError, truncateResponse } from "@gaia/shared";
-import type { Bot } from "grammy";
+import type { Bot, Context } from "grammy";
 
 export function registerMessageHandler(bot: Bot, gaia: GaiaClient) {
-  bot.on("message:text", async (ctx) => {
-    if (ctx.message.text.startsWith("/")) return;
-    if (ctx.chat.type !== "private") return;
+  bot.on("message:text", async (ctx: Context) => {
+    const text = ctx.message?.text;
+    if (!text || text.startsWith("/")) return;
+    if (ctx.chat?.type !== "private") return;
 
     const userId = ctx.from?.id.toString();
     if (!userId) return;
@@ -14,7 +15,7 @@ export function registerMessageHandler(bot: Bot, gaia: GaiaClient) {
       await ctx.replyWithChatAction("typing");
 
       const response = await gaia.chat({
-        message: ctx.message.text,
+        message: text,
         platform: "telegram",
         platformUserId: userId,
         channelId: ctx.chat.id.toString(),
