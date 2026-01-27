@@ -31,6 +31,7 @@ export default function BlurStack({
 
           return (
             <div
+              // biome-ignore lint/suspicious/noArrayIndexKey: static stack
               key={index}
               style={{
                 opacity: 1,
