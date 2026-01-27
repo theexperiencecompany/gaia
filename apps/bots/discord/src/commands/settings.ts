@@ -22,6 +22,8 @@ export async function execute(
   try {
     const settings = await gaia.getSettings("discord", userId);
 
+    console.log("Settings received:", JSON.stringify(settings, null, 2));
+
     if (!settings.authenticated) {
       const authUrl = gaia.getAuthUrl();
       await interaction.editReply({
@@ -40,15 +42,18 @@ export async function execute(
       });
     }
 
-    let integrationsText = "None connected";
-    if (settings.connectedIntegrations.length > 0) {
+    let integrationsText = "None added";
+    if (settings.connectedIntegrations?.length > 0) {
       integrationsText = settings.connectedIntegrations
-        .map((i) => `• ${i.name}`)
+        .map((i) => {
+          const dot = i.status === "connected" ? "🟢" : "🟠";
+          return `${dot} ${i.name || "Unknown"}`;
+        })
         .join("\n");
     }
 
     const embed = new EmbedBuilder()
-      .setTitle("⚙️ Your GAIA Settings")
+      .setTitle("Your GAIA Settings")
       .setColor(0x7c3aed)
       .addFields(
         {
@@ -73,15 +78,25 @@ export async function execute(
       .setFooter({ text: "Manage settings at heygaia.io/settings" })
       .setTimestamp();
 
-    if (settings.profileImageUrl) {
-      embed.setThumbnail(settings.profileImageUrl);
+    // Only set thumbnail if we have a valid URL
+    if (settings.profileImageUrl?.startsWith("http")) {
+      try {
+        embed.setThumbnail(settings.profileImageUrl);
+      } catch (err) {
+        console.warn("Failed to set profile thumbnail:", err);
+      }
     }
 
-    if (settings.selectedModelIconUrl) {
-      embed.setAuthor({
-        name: settings.selectedModelName || "AI Model",
-        iconURL: settings.selectedModelIconUrl,
-      });
+    // Only set author if we have a valid icon URL
+    if (settings.selectedModelIconUrl?.startsWith("http")) {
+      try {
+        embed.setAuthor({
+          name: settings.selectedModelName || "AI Model",
+          iconURL: settings.selectedModelIconUrl,
+        });
+      } catch (err) {
+        console.warn("Failed to set model icon:", err);
+      }
     }
 
     await interaction.editReply({ embeds: [embed] });

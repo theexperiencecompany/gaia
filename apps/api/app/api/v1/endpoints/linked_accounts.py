@@ -9,12 +9,12 @@ This is separate from Integrations which provide service access (Gmail, Calendar
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
-from bson import ObjectId
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import auth_logger as logger
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
-from app.services.oauth_state_service import create_oauth_state
+from app.services.oauth.oauth_state_service import create_oauth_state
+from bson import ObjectId
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel

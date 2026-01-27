@@ -95,10 +95,9 @@ def get_retrieve_tools_function(
 
     async def retrieve_tools(
         store: Annotated[BaseStore, InjectedStore],
+        config: RunnableConfig,
         query: Optional[str] = None,
         exact_tool_names: Optional[list[str]] = None,
-        config: Optional[RunnableConfig] = None,
-        user_id: Optional[str] = None,
     ) -> RetrieveToolsResult:
         """Discover available tools or load specific tools by exact name.
 
@@ -196,14 +195,13 @@ def get_retrieve_tools_function(
         available_tool_names = tool_registry.get_tool_names()
 
         # Get user_id from explicit arg OR config
-        if not user_id and config:
-            user_id = config.get("configurable", {}).get("user_id")
-            # Deep debugging for missing user_id
-            if not user_id:
-                logger.info(f"retrieve_tools config keys: {list(config.keys())}")
-                logger.info(
-                    f"retrieve_tools configurable: {config.get('configurable', {})}"
-                )
+        user_id = config.get("configurable", {}).get("user_id")
+        # Deep debugging for missing user_id
+        if not user_id:
+            logger.info(f"retrieve_tools config keys: {list(config.keys())}")
+            logger.info(
+                f"retrieve_tools configurable: {config.get('configurable', {})}"
+            )
 
         if not user_id:
             logger.warning("retrieve_tools called with NO user_id (arg or config)")

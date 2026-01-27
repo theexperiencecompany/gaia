@@ -3,16 +3,15 @@ Bot platform endpoints for Discord, Slack, Telegram, etc.
 """
 
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Union
+from typing import List, Union
 from uuid import uuid4
-
-from fastapi import APIRouter, Depends
 
 from app.agents.core.agent import call_agent
 from app.api.v1.dependencies.bot_dependencies import verify_bot_api_key
 from app.config.loggers import chat_logger as logger
-from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.constants.general import NEW_MESSAGE_BREAKER
+
+
 from app.helpers.bot_helpers import (
     get_or_create_bot_conversation,
     get_user_by_platform_id,
@@ -28,14 +27,15 @@ from app.schemas.bot.response import (
     ConnectedIntegration,
 )
 from app.services.conversation_service import update_messages
+from app.services.integrations.user_integrations import get_user_integrations
 from app.services.model_service import get_user_context, get_user_selected_model
-from app.services.oauth_service import get_all_integrations_status
+
 from app.utils.stream_utils import (
     extract_complete_message,
     extract_response_text,
     is_done_marker,
 )
-from app.config import settings
+from fastapi import APIRouter, Depends
 
 router = APIRouter()
 
@@ -62,7 +62,6 @@ async def bot_chat(
         return BotChatResponse(
             response="Please link your account first",
             conversation_id="",
-            authenticated=False,
             authenticated=False,
         )
 
@@ -235,43 +234,6 @@ async def check_auth_status(
     )
 
 
-# Integration icon paths matching toolIcons.tsx in web app
-# These are relative paths that get prefixed with FRONTEND_URL
-INTEGRATION_ICON_PATHS = {
-    "google_calendar": "/images/icons/googlecalendar.webp",
-    "gmail": "/images/icons/gmail.svg",
-    "google_docs": "/images/icons/google_docs.webp",
-    "googlesheets": "/images/icons/googlesheets.webp",
-    "googletasks": "/images/icons/googletasks.svg",
-    "googlemeet": "/images/icons/googlemeet.svg",
-    "google_maps": "/images/icons/google_maps.svg",
-    "notion": "/images/icons/notion.webp",
-    "slack": "/images/icons/slack.svg",
-    "twitter": "/images/icons/twitter.webp",
-    "linkedin": "/images/icons/linkedin.svg",
-    "github": "/images/icons/github.svg",
-    "reddit": "/images/icons/reddit.svg",
-    "instagram": "/images/icons/instagram.svg",
-    "airtable": "/images/icons/airtable.svg",
-    "linear": "/images/icons/linear.svg",
-    "hubspot": "/images/icons/hubspot.svg",
-    "todoist": "/images/icons/todoist.svg",
-    "microsoft_teams": "/images/icons/microsoft_teams.svg",
-    "zoom": "/images/icons/zoom.svg",
-    "asana": "/images/icons/asana.svg",
-    "trello": "/images/icons/trello.svg",
-    "clickup": "/images/icons/clickup.svg",
-}
-
-
-def get_integration_icon_url(integration_id: str) -> str | None:
-    """Get full icon URL for an integration."""
-    path = INTEGRATION_ICON_PATHS.get(integration_id)
-    if path:
-        return f"{settings.FRONTEND_URL}{path}"
-    return None
-
-
 @router.get(
     "/settings/{platform}/{platform_user_id}",
     response_model=BotSettingsResponse,
@@ -317,22 +279,21 @@ async def get_bot_settings(
         except Exception as e:
             logger.warning(f"Failed to get user model: {e}")
 
-    # Get connected integrations
+    # Get all user integrations with status
     connected_integrations: List[ConnectedIntegration] = []
     if user_id:
         try:
-            integration_status = await get_all_integrations_status(user_id)
-            for integration in OAUTH_INTEGRATIONS:
-                if integration_status.get(integration.id, False):
-                    connected_integrations.append(
-                        ConnectedIntegration(
-                            id=integration.id,
-                            name=integration.name,
-                            icon_url=get_integration_icon_url(integration.id),
-                        )
+            user_integrations = await get_user_integrations(user_id)
+            for ui in user_integrations.integrations:
+                connected_integrations.append(
+                    ConnectedIntegration(
+                        id=ui.integration_id,
+                        name=ui.integration.name,
+                        status=ui.status,  # "created" or "connected"
                     )
+                )
         except Exception as e:
-            logger.warning(f"Failed to get integration status: {e}")
+            logger.warning(f"Failed to get user integrations: {e}")
 
     # Get account creation date from MongoDB _id or created_at field
     created_at: Union[str, datetime, None] = user.get("created_at")

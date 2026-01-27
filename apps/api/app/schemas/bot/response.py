@@ -22,11 +22,11 @@ class AuthStatusResponse(BaseModel):
 
 
 class ConnectedIntegration(BaseModel):
-    """Connected integration info for bot display."""
+    """User integration info for bot display."""
 
     id: str
     name: str
-    icon_url: Optional[str] = None
+    status: str  # "created" = orange dot, "connected" = green dot
 
 
 class BotSettingsResponse(BaseModel):

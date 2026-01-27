@@ -37,8 +37,12 @@ export async function handleInteraction(
   try {
     await command.execute(interaction, gaia);
   } catch (error) {
-    console.error(`Error executing command ${interaction.commandName}:`, error);
-    const content = "An error occurred while executing this command.";
+    console.error(`Error executing command ${interaction.commandName}:`);
+    console.error(error);
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    const content = `An error occurred: ${errorMessage}`;
+
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
     } else {

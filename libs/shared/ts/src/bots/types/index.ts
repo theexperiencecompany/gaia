@@ -40,15 +40,15 @@ export interface BotConfig {
 }
 
 /**
- * Represents a connected integration for the user.
+ * Represents a user integration for the user.
  */
 export interface ConnectedIntegration {
   /** The unique identifier for the integration. */
   id: string;
   /** The display name of the integration. */
   name: string;
-  /** URL to the integration's icon. */
-  iconUrl: string | null;
+  /** The status of the integration: "created" (pending auth) or "connected" (active). */
+  status: "created" | "connected";
 }
 
 /**
