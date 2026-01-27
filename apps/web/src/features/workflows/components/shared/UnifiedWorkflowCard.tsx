@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { PlayIcon, ZapIcon } from "@/icons";
 import { posthog } from "@/lib";
 import { useAppendToInput } from "@/stores/composerStore";
+
 import type {
   CommunityWorkflow,
   PublicWorkflowStep,
@@ -20,7 +22,7 @@ import type {
 import { formatRunCount } from "@/utils/formatters";
 
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
-import { getTriggerDisplay } from "../../utils/triggerDisplay";
+import { getTriggerDisplayInfo } from "../../triggers";
 import {
   ActivationStatus,
   CreatorAvatar,
@@ -87,6 +89,9 @@ export default function UnifiedWorkflowCard({
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
+  // Auth check
+  const { isAuthenticated, openLoginModal } = useAuth();
+
   const { selectWorkflow } = useWorkflowSelection();
   const { createWorkflow } = useWorkflowCreation();
   const { integrations } = useIntegrations();
@@ -119,7 +124,7 @@ export default function UnifiedWorkflowCard({
 
   // Get trigger info for user workflows
   const triggerDisplay = workflow
-    ? getTriggerDisplay(workflow, integrations)
+    ? getTriggerDisplayInfo(workflow, integrations)
     : null;
   const nextRunText = workflow ? getNextRunDisplay(workflow) : null;
 
@@ -139,6 +144,13 @@ export default function UnifiedWorkflowCard({
 
   const handleCreateWorkflow = async () => {
     if (isLoading) return;
+
+    // Check authentication first - open login modal if not authenticated
+    if (!isAuthenticated) {
+      openLoginModal();
+      return;
+    }
+
     setIsLoading(true);
     const toastId = toast.loading("Creating workflow...");
 

@@ -26,6 +26,8 @@ import {
   workflowApi,
 } from "../api/workflowApi";
 import { useWorkflows } from "../hooks";
+import { CommunityBanner } from "./CommunityBanner";
+import CreateWorkflowModal from "./CreateWorkflowModal";
 import EditWorkflowModal from "./EditWorkflowModal";
 import UnifiedWorkflowCard from "./shared/UnifiedWorkflowCard";
 import { WorkflowListSkeleton } from "./WorkflowSkeletons";
@@ -43,12 +45,19 @@ export default function WorkflowPage() {
     onOpenChange: onEditOpenChange,
   } = useDisclosure();
 
+  const {
+    isOpen: isCreateOpen,
+    onOpen: onCreateOpen,
+    onOpenChange: onCreateOpenChange,
+  } = useDisclosure();
+
   const [selectedWorkflow, setSelectedWorkflow] = useState<Workflow | null>(
     null,
   );
 
   const { workflows, isLoading, error, refetch } = useWorkflows();
   const [exploreWorkflows, setExploreWorkflows] = useState<UseCase[]>([]);
+  const [exploreWorkflowsTotal, setExploreWorkflowsTotal] = useState(0);
   const [isLoadingExplore, setIsLoadingExplore] = useState(false);
 
   const [communityWorkflows, setCommunityWorkflows] = useState<
@@ -91,6 +100,7 @@ export default function WorkflowPage() {
         const response = await workflowApi.getExploreWorkflows(25, 0);
         const useCases = response.workflows.map(convertToUseCase);
         setExploreWorkflows(useCases);
+        setExploreWorkflowsTotal(response.total);
       } catch (error) {
         console.error("Error loading explore workflows:", error);
       } finally {
@@ -190,7 +200,7 @@ export default function WorkflowPage() {
 
     if (items.length === 0) {
       return (
-        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800 border-dashed border-2 border-zinc-700 py-16">
+        <div className="flex flex-col items-center justify-center space-y-4 rounded-3xl bg-zinc-800/30 border-dashed border-2 border-zinc-800 py-16">
           <div className="text-center">
             <h3 className="text-lg font-medium text-zinc-300">{emptyTitle}</h3>
             <p className="mt-2 text-sm text-zinc-500">{emptyDescription}</p>
@@ -212,12 +222,18 @@ export default function WorkflowPage() {
     description: string,
     children: ReactNode,
     icon?: ReactElement<IconProps>,
+    count?: number,
   ) => (
     <div className="mt-12 flex flex-col gap-3">
       <div className="flex flex-col space-y-1">
         <div className="flex items-center gap-2">
           {icon && <span> {React.cloneElement(icon)}</span>}
           <h2 className="text-2xl font-medium text-zinc-100">{title}</h2>
+          {count !== undefined && count > 0 && (
+            <span className="rounded-full bg-zinc-800 px-2.5 py-0.5 text-sm font-medium text-zinc-400">
+              {count}
+            </span>
+          )}
         </div>
         <p className="font-light text-zinc-500">{description}</p>
       </div>
@@ -245,6 +261,11 @@ export default function WorkflowPage() {
         </>
       ) : (
         <>
+          {/* Community Banner */}
+          <div className="mb-6">
+            <CommunityBanner onCreateWorkflow={onCreateOpen} />
+          </div>
+
           <div className="flex flex-col gap-6">
             {renderGrid(
               workflows,
@@ -263,18 +284,6 @@ export default function WorkflowPage() {
                   onCardClick={() => handleWorkflowClick(workflow.id)}
                 />
               ),
-              <Button
-                color="primary"
-                variant="flat"
-                onPress={() => {
-                  const btn = document.querySelector(
-                    '[data-keyboard-shortcut="create-workflow"]',
-                  ) as HTMLButtonElement;
-                  btn?.click();
-                }}
-              >
-                Create Your First Workflow
-              </Button>,
             )}
           </div>
 
@@ -288,6 +297,8 @@ export default function WorkflowPage() {
                 hideUserWorkflows={true}
                 exploreWorkflows={exploreWorkflows}
               />,
+              undefined,
+              exploreWorkflowsTotal,
             )}
 
           {renderSection(
@@ -320,6 +331,11 @@ export default function WorkflowPage() {
         onWorkflowUpdated={() => refetch()}
         onWorkflowDeleted={handleWorkflowDeleted}
         workflow={selectedWorkflow}
+      />
+
+      <CreateWorkflowModal
+        isOpen={isCreateOpen}
+        onOpenChange={onCreateOpenChange}
       />
     </div>
   );

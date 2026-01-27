@@ -4,7 +4,8 @@
     "strict": true,
     "paths": {
       "@/*": ["./src/*"],
-      "@/assets/*": ["./assets/*"]
+      "@/assets/*": ["./assets/*"],
+      "@shared/*": ["../../libs/shared/*"]
     }
   },
   "include": [
@@ -12,6 +13,6 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts",
-    "nativewind-env.d.ts"
+    "src/uniwind-types.d.ts"
   ]
 }

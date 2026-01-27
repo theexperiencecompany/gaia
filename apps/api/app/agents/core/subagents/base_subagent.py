@@ -11,10 +11,8 @@ invoked via tool-calling pattern similar to executor_agent.
 import asyncio
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.agents.core.nodes import trim_messages_node
-from app.agents.core.nodes.delete_system_messages import (
-    create_delete_system_messages_node,
-)
+from app.agents.core.nodes import manage_system_prompts_node, trim_messages_node
+from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.memory_tools import search_memory
@@ -57,33 +55,35 @@ class SubAgentFactory:
         store, tool_registry = await asyncio.gather(
             get_tools_store(), get_tool_registry()
         )
-        tool_dict = tool_registry.get_tool_dict()
+
+        # Build scoped tool_dict containing only tools for this subagent's tool_space
+        # This ensures subagents can only access their own integration's tools
+        scoped_tool_dict: dict = {}
+        initial_tool_ids: list[str] = []
+
+        # Get category by tool_space (handles dynamic category names like mcp_{integration}_{user_id})
+        category = tool_registry.get_category_by_space(tool_space)
+        if category is not None:
+            for t in category.tools:
+                scoped_tool_dict[t.name] = t.tool
+                initial_tool_ids.append(t.name)
+
+        # Add search_memory to scoped_tool_dict so subagents can access user memories
+        scoped_tool_dict[search_memory.name] = search_memory
 
         common_kwargs = {
             "llm": llm,
-            "tool_registry": tool_dict,
+            "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_name": name,
             "pre_model_hooks": [
+                filter_messages_node,
+                manage_system_prompts_node,
                 trim_messages_node,
-            ],
-            "end_graph_hooks": [
-                create_delete_system_messages_node(),
             ],
         }
 
         if use_direct_tools:
-            initial_tool_ids: list[str] = []
-            category = tool_registry.get_category(tool_space)
-            if category is not None:
-                initial_tool_ids.extend([t.name for t in category.tools])
-
-            try:
-                initial_tool_ids.extend([search_memory.name])
-            except Exception as e:
-                logger.warning(
-                    f"Failed to add memory/list tools to subagent: {e}. Continuing without them."
-                )
-
+            # Direct binding: tools are already extracted above
             common_kwargs.update(
                 {
                     "initial_tool_ids": initial_tool_ids,
@@ -91,6 +91,8 @@ class SubAgentFactory:
                 }
             )
         else:
+            # Use retrieve_tools with scoped tool_space (no subagent nesting)
+            # No initial_tool_ids needed - subagent will retrieve tools dynamically
             common_kwargs.update(
                 {
                     "retrieve_tools_coroutine": get_retrieve_tools_function(

@@ -4,6 +4,9 @@ import { Avatar } from "@heroui/avatar";
 import { PlayIcon } from "@theexperiencecompany/gaia-icons/solid-standard";
 import Image from "next/image";
 import { useState } from "react";
+
+import { wallpapers } from "@/config/wallpapers";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -15,7 +18,7 @@ import type { UseCase } from "@/features/use-cases/types";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
-import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
+import { getTriggerDisplayInfo } from "@/features/workflows/triggers";
 import { UserCircle02Icon } from "@/icons";
 
 interface UseCaseDetailClientProps {
@@ -34,7 +37,16 @@ export default function UseCaseDetailClient({
   const { selectWorkflow } = useWorkflowSelection();
   const { integrations } = useIntegrations();
 
+  // Auth check
+  const { isAuthenticated, openLoginModal } = useAuth();
+
   const handleCreateWorkflow = async () => {
+    // Check authentication first - open login modal if not authenticated
+    if (!isAuthenticated) {
+      openLoginModal();
+      return;
+    }
+
     const title = useCase?.title || communityWorkflow?.title;
     const description = useCase?.description || communityWorkflow?.description;
     const existingSteps = useCase?.steps || communityWorkflow?.steps;
@@ -135,7 +147,7 @@ export default function UseCaseDetailClient({
 
   // Prepare trigger info (only for community workflows)
   const triggerInfo = communityWorkflow
-    ? getTriggerDisplay(communityWorkflow, integrations)
+    ? getTriggerDisplayInfo(communityWorkflow, integrations)
     : null;
   const shouldShowTrigger =
     communityWorkflow && communityWorkflow.trigger_config.type !== "manual";
@@ -154,7 +166,7 @@ export default function UseCaseDetailClient({
   return (
     <div className="relative">
       <Image
-        src={"/images/wallpapers/meadow.webp"}
+        src={wallpapers.useCases.webp}
         alt="GAIA Use-Cases Wallpaper"
         priority
         fill
@@ -163,7 +175,7 @@ export default function UseCaseDetailClient({
       <UseCaseDetailLayout
         breadcrumbs={breadcrumbs}
         title={title}
-        slug={currentSlug}
+        id={currentSlug}
         isCreating={isCreating}
         onCreateWorkflow={handleCreateWorkflow}
         metaInfo={
@@ -224,7 +236,7 @@ export default function UseCaseDetailClient({
           steps && steps.length > 0 ? (
             <div className="w-fit shrink-0">
               <div className="sticky top-8 rounded-3xl bg-zinc-900 px-6 pt-4 pb-2">
-                <div className="text-sm font-medium text-zinc-500">
+                <div className="text-sm font-medium text-zinc-500 mb-3">
                   Workflow Steps:
                 </div>
                 <WorkflowSteps steps={stepsFormatted || []} size="large" />

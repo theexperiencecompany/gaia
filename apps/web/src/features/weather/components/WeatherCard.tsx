@@ -19,8 +19,8 @@ import {
   CloudSnowIcon,
   DropletIcon,
   FastWindIcon,
+  Location01Icon,
   Moon02Icon,
-  PinIcon,
   Sun03Icon,
   SunriseIcon,
   SunsetIcon,
@@ -337,7 +337,10 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
       {/* Location Info */}
       <div className="mb-3 flex items-start justify-between gap-10">
         <div className="flex items-start">
-          <PinIcon className="relative top-1 mr-2 h-5 w-5" color={"white"} />
+          <Location01Icon
+            className="relative top-1 mr-2 h-5 w-5"
+            color={"white"}
+          />
           <div>
             <h2 className="flex items-center text-xl font-bold text-white">
               {weatherData.location.city}
@@ -447,7 +450,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                 return (
                   <div
                     key={dayTemp + nightTemp}
-                    className="flex items-center justify-start rounded-2xl bg-black/10 px-2 py-1 text-white"
+                    className="flex items-center justify-start rounded-xl bg-black/15 px-2 py-1 text-white"
                   >
                     <div className="flex w-full flex-1 items-center justify-start gap-2">
                       <div className="flex items-center justify-center">

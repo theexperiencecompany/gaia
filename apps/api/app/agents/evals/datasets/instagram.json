@@ -1,0 +1,114 @@
+{
+  "name": "Instagram Capabilities",
+  "description": "Evaluation dataset for Instagram subagent capabilities including media posting, comments, DMs, and insights. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "instagram_agent",
+  "integration_id": "instagram",
+  "items": [
+    {
+      "input": "post image to instagram with caption",
+      "expected_output": "1. Create media container. 2. Publish post.",
+      "context": "User wants to post image",
+      "tags": ["post", "create", "image"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get my instagram posts",
+      "expected_output": "Get media for authenticated user.",
+      "context": "User wants to see posts",
+      "tags": ["media", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get comments on my latest post",
+      "expected_output": "1. Get user's media. 2. Find latest. 3. Get comments.",
+      "context": "User wants post comments",
+      "tags": ["comment", "list", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "reply to comment on my post",
+      "expected_output": "1. Find post. 2. Find comment. 3. Create reply comment.",
+      "context": "User wants to reply",
+      "tags": ["comment", "reply", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete comment on my photo",
+      "expected_output": "1. Find photo. 2. Find comment. 3. Request confirmation. 4. Delete comment.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["comment", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create carousel post with multiple images",
+      "expected_output": "1. Create carousel container. 2. Add children. 3. Publish.",
+      "context": "User wants carousel post",
+      "tags": ["post", "create", "carousel"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "get my insta profile info",
+      "expected_output": "1. Recognize 'insta' as short for 'instagram'. 2. Get user info.",
+      "context": "User used abbreviation",
+      "tags": ["profile", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get DM conversation details",
+      "expected_output": "Get conversation details for Instagram DM.",
+      "context": "User wants DM info",
+      "tags": ["dm", "get"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get media insights for post",
+      "expected_output": "1. Find post. 2. Get insights for media.",
+      "context": "User wants analytics",
+      "tags": ["media", "insights", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get replies to comment",
+      "expected_output": "1. Find comment. 2. Get comment replies.",
+      "context": "User wants comment replies",
+      "tags": ["comment", "replies", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "post reel to instagran",
+      "expected_output": "1. Recognize 'instagran' as typo for 'instagram'. 2. Create media container for reel. 3. Publish.",
+      "context": "User made typo",
+      "tags": ["post", "create", "reel", "mistake", "robustness"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get children of carousel post",
+      "expected_output": "1. Find carousel post. 2. Get media children.",
+      "context": "User wants carousel items",
+      "tags": ["media", "children", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get details for specific post",
+      "expected_output": "Get Instagram media by ID.",
+      "context": "User wants post details",
+      "tags": ["media", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create story post",
+      "expected_output": "1. Create media container for story. 2. Publish story.",
+      "context": "User wants to post story",
+      "tags": ["post", "create", "story"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get my account insights",
+      "expected_output": "Get account insights for authenticated user.",
+      "context": "User wants account analytics",
+      "tags": ["insights", "get"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

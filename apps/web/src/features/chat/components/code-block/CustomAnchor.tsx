@@ -218,7 +218,7 @@ const CustomAnchor = memo(
                 width={14}
                 height={14}
                 alt="Favicon"
-                className="h-3.5 w-3.5 flex-shrink-0 rounded-sm"
+                className="h-3.5 w-3.5 shrink-0 rounded-sm"
                 src={metadata.favicon}
                 onError={() => handleImageError(metadata.favicon!)}
               />

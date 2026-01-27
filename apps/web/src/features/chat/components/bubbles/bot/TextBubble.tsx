@@ -14,10 +14,10 @@ function getTypedData<K extends ToolName>(
 
 import { Chip } from "@heroui/chip";
 import React, { useId } from "react";
-
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
+  type ToolCallEntry,
   type ToolDataEntry,
   type ToolDataMap,
   type ToolName,
@@ -29,10 +29,13 @@ import EmailThreadCard from "@/features/chat/components/bubbles/bot/EmailThreadC
 import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/IntegrationConnectionPrompt";
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
+import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
+import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations";
+import type { IntegrationConnectionData } from "@/features/integrations/types";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import { Alert01Icon } from "@/icons";
@@ -57,7 +60,6 @@ import type {
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
-import type { IntegrationConnectionData } from "@/types/features/integrationTypes";
 import type {
   ContactData,
   EmailFetchData,
@@ -73,6 +75,10 @@ import type {
   RedditSearchData,
 } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
+import type {
+  TwitterSearchData,
+  TwitterUserData,
+} from "@/types/features/twitterTypes";
 
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
@@ -94,6 +100,8 @@ import RedditPostSection from "./RedditPostSection";
 import RedditSearchSection from "./RedditSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
 import TodoSection from "./TodoSection";
+import TwitterSearchSection from "./TwitterSearchSection";
+import TwitterUserSection from "./TwitterUserSection";
 
 // Map of tool_name -> renderer function for unified tool_data rendering
 type RendererMap = {
@@ -283,6 +291,29 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     return <IntegrationListSection key={`tool-integration-list-${index}`} />;
   },
 
+  // Twitter
+  twitter_search_data: (data, index) => (
+    <TwitterSearchSection
+      key={`tool-twitter-search-${index}`}
+      twitter_search_data={data as TwitterSearchData}
+    />
+  ),
+  twitter_user_data: (data, index) => (
+    <TwitterUserSection
+      key={`tool-twitter-users-${index}`}
+      twitter_user_data={
+        (Array.isArray(data) ? data : [data]) as TwitterUserData[]
+      }
+    />
+  ),
+
+  tool_calls_data: (data, index) => {
+    const calls = (Array.isArray(data) ? data : [data]) as ToolCallEntry[];
+    return (
+      <ToolCallsSection key={`tool-calls-${index}`} tool_calls_data={calls} />
+    );
+  },
+
   reddit_data: (data) => {
     const items = (Array.isArray(data) ? data : [data]) as RedditData[];
     const groups: {
@@ -440,9 +471,13 @@ export default function TextBubble({
                 const isLast = index === textParts.length - 1;
                 const isSingle = textParts.length === 1;
 
+                // Emoji detection for this specific part
+                const isEmojiOnly = isOnlyEmojis(part);
+                const emojiCount = isEmojiOnly ? getEmojiCount(part) : 0;
+
                 // Single message should show tail (use last styling)
                 // Otherwise: first = no tail, middle = no tail, last = show tail
-                const groupedClasses = isSingle
+                let groupedClasses = isSingle
                   ? "imessage-grouped-last"
                   : isFirst
                     ? "imessage-grouped-first mb-1.5"
@@ -450,13 +485,32 @@ export default function TextBubble({
                       ? "imessage-grouped-last"
                       : "imessage-grouped-middle mb-1.5";
 
+                let bubbleClassName = "imessage-bubble imessage-from-them";
+
+                // Construct styles for emoji-only messages
+                let textClass = "";
+
+                if (isEmojiOnly) {
+                  if (emojiCount === 1) {
+                    bubbleClassName = "select-none";
+                    groupedClasses = "";
+                    textClass = "text-[4rem] leading-none";
+                  } else if (emojiCount === 2) {
+                    textClass = "text-5xl";
+                  } else if (emojiCount === 3) {
+                    textClass = "text-4xl";
+                  }
+                }
+
                 return (
                   <div
                     // biome-ignore lint/suspicious/noArrayIndexKey: array is stable
                     key={`${baseId}-text-part-${index}`}
-                    className={`imessage-bubble imessage-from-them ${groupedClasses}`}
+                    className={`${bubbleClassName} ${groupedClasses}`}
                   >
-                    {renderBubbleContent(part, isLast)}
+                    <div className={textClass}>
+                      {renderBubbleContent(part, isLast)}
+                    </div>
                   </div>
                 );
               })}

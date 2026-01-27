@@ -1,3 +1,4 @@
+import type { IntegrationConnectionData } from "@/features/integrations/types";
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -17,7 +18,6 @@ import type {
   CalendarFetchData,
   CalendarListFetchData,
 } from "@/types/features/calendarTypes";
-import type { IntegrationConnectionData } from "@/types/features/integrationTypes";
 import type {
   ContactData,
   EmailFetchData,
@@ -27,6 +27,10 @@ import type {
 import type { NotificationRecord } from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
+import type {
+  TwitterSearchData,
+  TwitterUserData,
+} from "@/types/features/twitterTypes";
 
 // Tool Registry
 // Single source of truth for tool names and their data payload types.
@@ -57,6 +61,19 @@ import type { SupportTicketData } from "@/types/features/supportTypes";
 // 3) If you stream or store this tool’s data in messages, no extra typing is required;
 //    the message schema derives from this registry.
 // 4) Optionally, add tests and docs/examples demonstrating the new tool.
+// Entry for a single tool call progress
+export interface ToolCallEntry {
+  tool_name: string;
+  tool_category: string;
+  message: string;
+  show_category?: boolean;
+  tool_call_id?: string;
+  inputs?: Record<string, unknown>;
+  output?: string;
+  icon_url?: string; // For custom integrations with dynamic icons
+  integration_name?: string; // Friendly name (e.g., 'Researcher')
+}
+
 export const TOOL_REGISTRY = {
   search_results: null as unknown as SearchResults,
   deep_research_results: null as unknown as DeepResearchResults,
@@ -82,6 +99,9 @@ export const TOOL_REGISTRY = {
   notification_data: null as unknown as { notifications: NotificationRecord[] },
   integration_connection_required: null as unknown as IntegrationConnectionData,
   integration_list_data: null as unknown as Record<string, never>,
+  tool_calls_data: null as unknown as ToolCallEntry[],
+  twitter_search_data: null as unknown as TwitterSearchData,
+  twitter_user_data: null as unknown as TwitterUserData[],
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
@@ -113,6 +133,7 @@ export const TOOLS_MESSAGE_KEYS = Object.keys(
 // Add any tool name here - its data will be accumulated into an array
 export const GROUPED_TOOLS = new Set<ToolName>([
   "reddit_data",
+  "tool_calls_data",
   // "email_fetch_data",
   // "test_data",
   // Add any tool you want to group here

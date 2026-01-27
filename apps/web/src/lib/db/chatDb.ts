@@ -108,6 +108,14 @@ class DBEventEmitter extends EventEmitter {
   emitConversationUpdated(conversation: IConversation) {
     this.emit("conversationUpdated", conversation);
   }
+
+  emitConversationDeleted(conversationId: string) {
+    this.emit("conversationDeleted", conversationId);
+  }
+
+  emitConversationsDeletedBulk(conversationIds: string[]) {
+    this.emit("conversationsDeletedBulk", conversationIds);
+  }
 }
 
 export const dbEventEmitter = new DBEventEmitter();
@@ -172,6 +180,10 @@ export class ChatDexie extends Dexie {
       .sortBy("createdAt");
   }
 
+  public getAllMessages(): Promise<IMessage[]> {
+    return this.messages.orderBy("createdAt").toArray();
+  }
+
   public async getConversationIdsWithMessages(): Promise<string[]> {
     const conversationIds = await this.messages
       .orderBy("conversationId")
@@ -225,6 +237,38 @@ export class ChatDexie extends Dexie {
         },
       ),
     );
+  }
+
+  /**
+   * Bulk delete multiple conversations and their messages.
+   * Used by sync service to clean up deleted conversations.
+   */
+  public async deleteConversationsAndMessagesBulk(
+    conversationIds: string[],
+  ): Promise<void> {
+    if (conversationIds.length === 0) return;
+
+    await messageQueue.enqueue(() =>
+      (this as Dexie).transaction(
+        "rw",
+        this.conversations,
+        this.messages,
+        async () => {
+          // Delete all messages for these conversations
+          for (const conversationId of conversationIds) {
+            await this.messages
+              .where("conversationId")
+              .equals(conversationId)
+              .delete();
+          }
+          // Delete the conversations themselves
+          await this.conversations.bulkDelete(conversationIds);
+        },
+      ),
+    );
+
+    // Emit event for store synchronization
+    dbEventEmitter.emitConversationsDeletedBulk(conversationIds);
   }
 
   public async updateMessageContent(

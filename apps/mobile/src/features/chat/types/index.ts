@@ -1,9 +1,10 @@
-export interface Message {
-  id: string;
-  text: string;
-  isUser: boolean;
-  timestamp: Date;
-}
+export type {
+  ApiFileData,
+  ApiToolData,
+  Message,
+} from "@/features/chat/api/chat-api";
+
+import type { Message } from "@/features/chat/api/chat-api";
 
 export interface ChatSession {
   id: string;
@@ -12,16 +13,33 @@ export interface ChatSession {
   timestamp: Date;
 }
 
-export interface Suggestion {
-  id: string;
-  iconUrl: string;
-  text: string;
-}
-
 export interface ChatState {
   messages: Message[];
   isTyping: boolean;
   activeSessionId?: string;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+  is_starred?: boolean;
+  is_unread?: boolean;
+}
+
+export interface GroupedConversations {
+  starred: Conversation[];
+  today: Conversation[];
+  yesterday: Conversation[];
+  lastWeek: Conversation[];
+  previousChats: Conversation[];
+}
+
+export interface Suggestion {
+  id: string;
+  iconUrl: string;
+  text: string;
 }
 
 export interface AIModel {

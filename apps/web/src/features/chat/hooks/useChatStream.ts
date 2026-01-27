@@ -1,7 +1,6 @@
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
-import { useRouter } from "next/navigation";
 import { useRef } from "react";
-
+import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -20,7 +19,6 @@ import { useLoadingText } from "./useLoadingText";
 import { parseStreamData } from "./useStreamDataParser";
 
 export const useChatStream = () => {
-  const router = useRouter();
   const { setIsLoading, setAbortController } = useLoading();
   const { convoMessages } = useConversation();
   const { setLoadingText, resetLoadingText } = useLoadingText();
@@ -60,7 +58,8 @@ export const useChatStream = () => {
     streamController.clear();
     setAbortController(null);
 
-    // Clear any remaining optimistic message (error/abort scenarios)
+    // Clear streaming indicator and any remaining optimistic message
+    useChatStore.getState().setStreamingConversationId(null);
     useChatStore.getState().clearOptimisticMessage();
   };
 
@@ -110,30 +109,6 @@ export const useChatStream = () => {
     }
   };
 
-  const saveIncompleteConversation = async () => {
-    if (!refs.current.botMessage || !refs.current.accumulatedResponse) return;
-
-    try {
-      const response = await chatApi.saveIncompleteConversation(
-        refs.current.userPrompt,
-        refs.current.newConversation.id || null,
-        refs.current.accumulatedResponse,
-        refs.current.botMessage.fileData || [],
-        refs.current.botMessage.selectedTool || null,
-        refs.current.botMessage.toolCategory || null,
-        refs.current.botMessage.selectedWorkflow || null,
-        refs.current.botMessage.selectedCalendarEvent || null,
-      );
-
-      // Handle navigation for incomplete conversations
-      if (response.conversation_id && !refs.current.newConversation.id) {
-        router.replace(`/c/${response.conversation_id}`);
-      }
-    } catch (saveError) {
-      console.error("Failed to save incomplete conversation:", saveError);
-    }
-  };
-
   const createIMessage = (
     messageId: string,
     conversationId: string,
@@ -169,19 +144,92 @@ export const useChatStream = () => {
     };
   };
 
-  const handleProgressUpdate = (
-    progressData:
-      | string
-      | { message: string; tool_name?: string; tool_category?: string },
-  ) => {
-    if (typeof progressData === "string") {
-      setLoadingText(progressData);
-    } else if (typeof progressData === "object" && progressData.message) {
-      setLoadingText(progressData.message, {
-        toolName: progressData.tool_name,
-        toolCategory: progressData.tool_category,
-      });
+  const handleToolData = (toolData: ToolDataEntry) => {
+    // Append tool_data entry to botMessage.tool_data
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    updateBotMessage({
+      tool_data: [...existingToolData, toolData],
+    });
+
+    // Extract loading text from tool_data.data.message for UI indicator
+    if (
+      toolData.tool_name === "tool_calls_data" &&
+      typeof toolData.data === "object" &&
+      toolData.data !== null
+    ) {
+      const data = toolData.data as Record<string, unknown>;
+      if (data.message && typeof data.message === "string") {
+        setLoadingText(data.message, {
+          toolName: data.tool_name as string | undefined,
+          toolCategory: data.tool_category as string | undefined,
+          integrationName: data.integration_name as string | undefined,
+          iconUrl: data.icon_url as string | undefined,
+          showCategory: (data.show_category as boolean) ?? true,
+        });
+      }
     }
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
+  /**
+   * Helper to update tool_data entries by tool_call_id.
+   * Used by handleToolOutput to add output to existing entries.
+   */
+  const updateToolDataEntry = (
+    toolCallId: string,
+    updateFn: (data: Record<string, unknown>) => Record<string, unknown>,
+  ) => {
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
+      // Only update entries that:
+      // 1. Have tool_name === "tool_calls_data"
+      // 2. Have a valid data object with a matching tool_call_id
+      if (entry.tool_name === "tool_calls_data") {
+        const data = entry.data as Record<string, unknown>;
+        // Validate that the entry has a tool_call_id and it matches
+        if (
+          data &&
+          typeof data === "object" &&
+          "tool_call_id" in data &&
+          data.tool_call_id === toolCallId
+        ) {
+          return {
+            ...entry,
+            data: updateFn(data) as ToolDataEntry["data"],
+          };
+        }
+      }
+      return entry;
+    });
+
+    updateBotMessage({
+      tool_data: updatedToolData,
+    });
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
+  const handleToolOutput = (toolOutput: {
+    tool_call_id: string;
+    output: string;
+  }) => {
+    updateToolDataEntry(toolOutput.tool_call_id, (data) => ({
+      ...data,
+      output: toolOutput.output,
+    }));
   };
 
   const handleImageGeneration = (data: Record<string, unknown>) => {
@@ -262,16 +310,23 @@ export const useChatStream = () => {
     conversation_description: string | null;
     bot_message_id?: string;
     user_message_id?: string;
+    stream_id?: string;
   }) => {
     const {
       conversation_id,
       conversation_description,
       bot_message_id,
       user_message_id,
+      stream_id,
     } = data;
 
     refs.current.newConversation.id = conversation_id;
     refs.current.newConversation.description = conversation_description;
+
+    // Set stream_id for backend cancellation support
+    if (stream_id) {
+      streamController.setStreamId(stream_id);
+    }
 
     // CRITICAL: Update streamState with the new conversationId for sync protection
     // This prevents background sync from syncing this conversation while it's being streamed
@@ -298,15 +353,27 @@ export const useChatStream = () => {
     useChatStore.getState().clearOptimisticMessage();
     window.history.replaceState({}, "", `/c/${conversation_id}`);
     useChatStore.getState().setActiveConversationId(conversation_id);
+
+    // Set streaming indicator for sidebar
+    useChatStore.getState().setStreamingConversationId(conversation_id);
   };
 
   const handleExistingConversationMessages = async (data: {
     user_message_id: string;
     bot_message_id: string;
+    stream_id?: string;
   }) => {
-    const { user_message_id, bot_message_id } = data;
+    const { user_message_id, bot_message_id, stream_id } = data;
     const conversationId = useChatStore.getState().activeConversationId;
     if (!conversationId) return;
+
+    // Set stream_id for backend cancellation support
+    if (stream_id) {
+      streamController.setStreamId(stream_id);
+    }
+
+    // Set streaming indicator for sidebar (existing conversation)
+    useChatStore.getState().setStreamingConversationId(conversationId);
 
     if (refs.current.optimisticUserId) {
       try {
@@ -334,7 +401,13 @@ export const useChatStream = () => {
       refs.current.accumulatedResponse += data.response;
     }
 
-    const streamUpdates = parseStreamData(data, refs.current.botMessage);
+    // Skip tool_data and tool_output - they're handled separately
+    // to avoid double-processing in parseStreamData
+    const { tool_data: _, tool_output: __, ...restData } = data;
+    const streamUpdates = parseStreamData(
+      restData as Partial<MessageType>,
+      refs.current.botMessage,
+    );
 
     updateBotMessage({
       ...streamUpdates,
@@ -423,8 +496,14 @@ export const useChatStream = () => {
         return;
       }
 
-      if (data.progress) {
-        handleProgressUpdate(data.progress);
+      // Handle tool_data events (tool calls with complete inputs)
+      if (data.tool_data) {
+        handleToolData(data.tool_data);
+      }
+
+      // Handle tool_output events (tool execution results)
+      if (data.tool_output) {
+        handleToolOutput(data.tool_output);
       }
 
       if (handleImageGeneration(data)) return;
@@ -516,6 +595,9 @@ export const useChatStream = () => {
       refs.current.botMessage = null;
       refs.current.currentStreamingMessages = [];
       refs.current.newConversation = { id: null, description: null };
+
+      // Clear streaming indicator
+      useChatStore.getState().setStreamingConversationId(null);
     } catch (error) {
       console.error("Error handling stream close:", error);
       resetStreamState(); // Ensure state is reset even on error
@@ -577,6 +659,8 @@ export const useChatStream = () => {
         currentMessages.find((m) => m.type === "user") || null;
       refs.current.optimisticUserId = optimisticUserId || null;
 
+      resetLoadingText();
+
       refs.current.botMessage = {
         type: "bot",
         message_id: "", // Will be set by backend
@@ -597,18 +681,36 @@ export const useChatStream = () => {
       const controller = new AbortController();
       setAbortController(controller);
 
-      // Register the save callback for when user clicks stop
-      streamController.setSaveCallback(() => {
+      // Register the stop callback for when user clicks stop
+      // This persists the current accumulated response to Dexie immediately
+      streamController.setSaveCallback(async () => {
         // Update the UI immediately when stop is clicked
         if (refs.current.botMessage) {
           updateBotMessage({
             response: refs.current.accumulatedResponse,
             loading: false,
           });
-        }
 
-        // Save the incomplete conversation
-        saveIncompleteConversation();
+          // Persist accumulated response to Dexie using atomic merge-update
+          // This preserves existing metadata (tool_data, follow_up_actions, image_data, etc.)
+          const conversationId =
+            refs.current.newConversation.id ||
+            useChatStore.getState().activeConversationId;
+
+          if (conversationId && refs.current.botMessage.message_id) {
+            try {
+              // Use updateMessage for atomic merge-update instead of putMessage
+              // This only updates content/status/updatedAt while preserving all other fields
+              await db.updateMessage(refs.current.botMessage.message_id, {
+                content: refs.current.accumulatedResponse,
+                status: "sent",
+              });
+            } catch (error) {
+              console.error("Failed to persist message on abort:", error);
+            }
+          }
+        }
+        // Note: Backend also saves - streamController.abort() schedules sync after 3s
       });
 
       await chatApi.fetchChatStream(

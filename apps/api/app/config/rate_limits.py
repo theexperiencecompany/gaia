@@ -105,12 +105,12 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
             description="Create, execute, and manage AI workflows",
         ),
     ),
-    "email_workflow_executions": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),
+    "trigger_workflow_executions": TieredRateLimits(
+        free=RateLimitConfig(day=5, month=20),
         pro=RateLimitConfig(day=100, month=3000),
         info=FeatureInfo(
-            title="Email Workflow Executions",
-            description="Automated workflow executions triggered by incoming emails",
+            title="Trigger Workflow Executions",
+            description="Automated workflow executions triggered by integrations (email, calendar, etc.)",
         ),
     ),
     "goal_tracking": TieredRateLimits(
@@ -203,6 +203,22 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
             title="Notification Operations", description="Manage user notifications"
         ),
     ),
+    "integration_publish": TieredRateLimits(
+        free=RateLimitConfig(day=10, month=50),
+        pro=RateLimitConfig(day=50, month=500),
+        info=FeatureInfo(
+            title="Integration Publishing",
+            description="Publish custom integrations to the community marketplace",
+        ),
+    ),
+    "integration_clone": TieredRateLimits(
+        free=RateLimitConfig(day=20, month=100),
+        pro=RateLimitConfig(day=100, month=1000),
+        info=FeatureInfo(
+            title="Integration Cloning",
+            description="Clone community integrations to your workspace",
+        ),
+    ),
 }
 
 
@@ -261,8 +277,3 @@ def get_feature_info(feature_key: str) -> Dict[str, str]:
         "title": feature_key.replace("_", " ").title(),
         "description": f"Usage for {feature_key}",
     }
-
-
-def list_all_features() -> list[str]:
-    """Get a list of all available feature keys."""
-    return list(FEATURE_LIMITS.keys())

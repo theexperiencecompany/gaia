@@ -1,5 +1,8 @@
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
+from zoneinfo import ZoneInfo
+
+from langchain_core.messages import SystemMessage
 
 from app.agents.prompts.workflow_prompts import (
     EMAIL_TRIGGERED_WORKFLOW_PROMPT,
@@ -21,7 +24,6 @@ from app.services.workflow import WorkflowService
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
-from langchain_core.messages import SystemMessage
 
 
 def create_system_message(
@@ -41,15 +43,7 @@ def create_system_message(
         "executor": EXECUTOR_PROMPT_TEMPLATE,
     }.get(agent_type, COMMS_PROMPT_TEMPLATE)
 
-    visible_to = {
-        "comms": "comms_agent",
-        "executor": "executor_agent",
-    }.get(agent_type, "comms_agent")
-
-    return SystemMessage(
-        content=template.format(user_name=user_name or "there"),
-        additional_kwargs={"visible_to": {visible_to}},
-    )
+    return SystemMessage(content=template.format(user_name=user_name or "there"))
 
 
 async def get_memory_message(
@@ -78,7 +72,6 @@ async def get_memory_message(
     Returns:
         SystemMessage with user context and memories
     """
-    from zoneinfo import ZoneInfo
 
     try:
         context_parts = []
@@ -125,11 +118,7 @@ async def get_memory_message(
 
         # Combine all sections
         content = "\n".join(context_parts) + memories_section
-        return SystemMessage(
-            content=content,
-            memory_message=True,
-            additional_kwargs={"visible_to": {"main_agent"}},
-        )
+        return SystemMessage(content=content, memory_message=True)
 
     except Exception as e:
         logger.error(f"Error creating memory message: {e}")
@@ -138,29 +127,43 @@ async def get_memory_message(
             "%A, %B %d, %Y, %H:%M:%S UTC"
         )
         return SystemMessage(
-            content=f"Current UTC Time: {utc_time_str}",
-            memory_message=True,
-            additional_kwargs={"visible_to": {"main_agent"}},
+            content=f"Current UTC Time: {utc_time_str}", memory_message=True
         )
 
 
-def format_tool_selection_message(selected_tool: str, existing_content: str) -> str:
-    """Format tool selection message, handling both standalone and combined requests."""
+def format_tool_selection_message(
+    selected_tool: str, existing_content: str, tool_category: Optional[str] = None
+) -> str:
+    """Format tool selection message, handling both standalone and combined requests.
+
+    The comms_agent delegates to executor via call_executor. The executor will
+    use semantic search to find the right tool/subagent, then execute.
+    """
     tool_name = selected_tool.replace("_", " ").title()
-    retrieval_instruction = f"FIRST, call retrieve_tools with exact_tool_names=['{selected_tool}'] to make the tool available, THEN execute it."
+    search_hint = f"{selected_tool} {tool_category}" if tool_category else selected_tool
 
     # If user provided content, append tool instruction to their message
     if existing_content:
         return f"""{existing_content}
 
-**TOOL SELECTION:** The user has specifically selected the '{tool_name}' tool (exact name: {selected_tool}) to handle their request above.
+**TOOL SELECTION:** The user has specifically selected the '{tool_name}' tool (category: {tool_category or "general"}).
 
-{retrieval_instruction} Do not use semantic search queries - use the exact tool name provided. Follow your system prompt instructions for provider-specific tools and use appropriate handoff tools when needed. Do not ask for additional information - execute the selected functionality now."""
+Use call_executor to delegate this task. The executor should:
+1. Use `retrieve_tools(query="{search_hint}")` to find the tool or subagent
+2. If a subagent is returned (e.g. subagent:{tool_category}), use `handoff(subagent_id="{tool_category}", task="Use {selected_tool} to [user's request]")`
+3. If a direct tool is returned, bind it with `retrieve_tools(exact_tool_names=[...])` and execute
+
+Execute immediately without asking for clarification."""
 
     # Pure tool execution without user message
-    return f"""**TOOL EXECUTION REQUEST:** The user has selected the '{tool_name}' tool (exact name: {selected_tool}) and wants you to execute it immediately.
+    return f"""**TOOL EXECUTION REQUEST:** The user has selected the '{tool_name}' tool (category: {tool_category or "general"}).
 
-{retrieval_instruction} Do not use semantic search queries - use the exact tool name provided. Follow your system prompt instructions for provider-specific tools and use appropriate handoff tools when needed. Do not ask for additional information or clarification - proceed with executing the selected tool functionality right away."""
+Use call_executor to delegate this task. The executor should:
+1. Use `retrieve_tools(query="{search_hint}")` to find the tool or subagent
+2. If a subagent is returned (e.g. subagent:{tool_category}), use `handoff(subagent_id="{tool_category}", task="Use {selected_tool} to execute the user's request")`
+3. If a direct tool is returned, bind it with `retrieve_tools(exact_tool_names=[...])` and execute
+
+Execute immediately without asking for clarification."""
 
 
 async def format_workflow_execution_message(

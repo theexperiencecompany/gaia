@@ -1,11 +1,12 @@
 import { Redirect, Stack } from "expo-router";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "@/features/auth";
+import { SidebarProvider } from "@/features/chat";
+import { NotificationProvider } from "@/features/notifications/components/notification-provider";
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
 
-  // Show a loading screen while checking auth status
   if (isLoading) {
     return (
       <View className="flex-1 justify-center items-center bg-[#0a1929]">
@@ -14,16 +15,27 @@ export default function AppLayout() {
     );
   }
 
-  // If not authenticated, redirect to the login screen
   if (!isAuthenticated) {
     return <Redirect href="/login" />;
   }
 
-  // If authenticated, render the children routes
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="(chat)/[id]" />
-    </Stack>
+    <NotificationProvider>
+      <SidebarProvider>
+        <View className="flex-1 bg-background">
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: "#0a0a0a" },
+              animation: "none",
+              animationDuration: 0,
+            }}
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen name="test/index" />
+          </Stack>
+        </View>
+      </SidebarProvider>
+    </NotificationProvider>
   );
 }

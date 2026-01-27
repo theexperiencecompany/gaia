@@ -11,11 +11,10 @@
  */
 
 import type {
-  EmailTriggerConfig,
-  ManualTriggerConfig,
-  ScheduleTriggerConfig,
   TriggerConfig,
-} from "@/config/registries/triggerRegistry";
+  TriggerFieldSchema,
+  TriggerSchema,
+} from "@/features/workflows/triggers/types";
 import type { ContentCreator } from "@/types/shared/contentTypes";
 
 // ============================================================================
@@ -59,12 +58,7 @@ export interface PublicWorkflowStep {
 // ============================================================================
 
 // Re-export trigger types for convenience
-export type {
-  EmailTriggerConfig,
-  ManualTriggerConfig,
-  ScheduleTriggerConfig,
-  TriggerConfig,
-};
+export type { TriggerConfig, TriggerFieldSchema, TriggerSchema };
 
 /**
  * Execution configuration for workflows
@@ -93,6 +87,9 @@ export interface WorkflowMetadata {
   last_execution_at?: string;
   average_execution_time?: number;
 }
+
+// Note: TriggerSchema and TriggerFieldSchema are now defined in
+// @/features/workflows/triggers/types and re-exported above
 
 // ============================================================================
 // COMMUNITY & EXPLORE WORKFLOW TYPES

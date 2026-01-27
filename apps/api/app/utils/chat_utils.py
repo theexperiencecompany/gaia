@@ -59,6 +59,7 @@ async def create_conversation(
     selectedTool: Optional[str] | None,
     selectedWorkflow: Optional[SelectedWorkflowData] | None = None,
     generate_description: bool = True,
+    conversation_id: Optional[str] = None,
 ) -> dict:
     """
     Create a new conversation with optional description generation.
@@ -69,11 +70,13 @@ async def create_conversation(
         selectedTool: Optional tool selection
         selectedWorkflow: Optional workflow selection
         generate_description: If False, uses "New Chat" as placeholder
+        conversation_id: Optional pre-generated conversation ID (for background streaming)
 
     Returns:
         dict with conversation_id and conversation_description
     """
-    uuid_value = uuid7str()
+    # Use provided ID or generate new one
+    uuid_value = conversation_id or uuid7str()
 
     description = (
         "New Chat"
@@ -128,7 +131,6 @@ async def generate_and_update_description(
 async def do_prompt_no_stream(
     prompt: str,
     system_prompt: str | None = None,
-    use_tools: bool = False,
 ) -> dict:
     """
     Execute a single LLM prompt without streaming.
@@ -136,7 +138,6 @@ async def do_prompt_no_stream(
     Args:
         prompt: The user prompt to send to the LLM
         system_prompt: Optional system message
-        use_tools: Whether tools should be available (currently unused)
 
     Returns:
         dict with "response" key containing the AI's response content

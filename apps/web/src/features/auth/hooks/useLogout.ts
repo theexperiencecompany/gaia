@@ -63,6 +63,10 @@ export const useLogout = () => {
                 // Still resolve because we tried
                 resolve();
               };
+
+              request.onsuccess = () => {
+                resolve();
+              };
             }),
         );
 
@@ -73,7 +77,7 @@ export const useLogout = () => {
   }, [queryClient]);
 
   const logout = useCallback(async () => {
-    router.push("/");
+    await clearAllStorage();
 
     try {
       await authApi.logout();
@@ -81,7 +85,10 @@ export const useLogout = () => {
       console.error("Logout API error:", error);
     }
 
-    await clearAllStorage();
+    // Redirection will be handled by the authApi.logout method
+    // but in case it doesn't (for example, if there's no logout_url),
+    // we redirect to the homepage
+    router.push("/");
   }, [clearAllStorage, router]);
 
   return { logout };

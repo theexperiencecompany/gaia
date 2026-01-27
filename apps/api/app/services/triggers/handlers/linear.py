@@ -1,0 +1,202 @@
+"""
+Linear trigger handler.
+"""
+
+import asyncio
+from typing import Any, Dict, List, Optional, Set
+
+from app.config.loggers import general_logger as logger
+from app.db.mongodb.collections import workflows_collection
+from app.models.composio_schemas import (
+    LinearCommentAddedPayload,
+    LinearGetAllTeamsData,
+    LinearIssueCreatedPayload,
+)
+from app.models.trigger_configs import (
+    LinearCommentAddedConfig,
+    LinearIssueCreatedConfig,
+    LinearIssueUpdatedConfig,
+)
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
+from app.services.composio.composio_service import get_composio_service
+from app.services.triggers.base import TriggerHandler
+from app.utils.exceptions import TriggerRegistrationError
+from composio.types import ToolExecutionResponse
+
+
+class LinearTriggerHandler(TriggerHandler):
+    """Handler for Linear triggers."""
+
+    SUPPORTED_TRIGGERS = [
+        "linear_issue_created",
+        "linear_issue_updated",
+        "linear_comment_added",
+    ]
+
+    SUPPORTED_EVENTS = {
+        "LINEAR_ISSUE_CREATED_TRIGGER",
+        "LINEAR_ISSUE_UPDATED_TRIGGER",
+        "LINEAR_COMMENT_EVENT_TRIGGER",
+    }
+
+    TRIGGER_TO_COMPOSIO = {
+        "linear_issue_created": "LINEAR_ISSUE_CREATED_TRIGGER",
+        "linear_issue_updated": "LINEAR_ISSUE_UPDATED_TRIGGER",
+        "linear_comment_added": "LINEAR_COMMENT_EVENT_TRIGGER",
+    }
+
+    @property
+    def trigger_names(self) -> List[str]:
+        return self.SUPPORTED_TRIGGERS
+
+    @property
+    def event_types(self) -> Set[str]:
+        return self.SUPPORTED_EVENTS
+
+    async def get_config_options(
+        self,
+        trigger_name: str,
+        field_name: str,
+        user_id: str,
+        integration_id: str,
+        parent_ids: Optional[List[str]] = None,
+        **kwargs: Any,
+    ) -> List[Dict[str, Any]]:
+        """Get dynamic options for Linear trigger config fields."""
+        composio_service = get_composio_service()
+
+        if field_name == "team_id":
+            tool = composio_service.get_tool(
+                "LINEAR_GET_ALL_LINEAR_TEAMS", user_id=user_id
+            )
+            if not tool:
+                logger.error("Linear get all teams tool not found")
+                return []
+
+            # Invoke the tool
+            result: ToolExecutionResponse = await asyncio.to_thread(tool.invoke, {})
+
+            # Check response status
+            if not result["successful"]:
+                logger.error(f"Linear API error: {result['error']}")
+                return []
+
+            # Extract and parse data
+            data = LinearGetAllTeamsData.model_validate(result["data"])
+            teams = data.get_teams()
+
+            # Filter by search string if provided
+            search_term = kwargs.get("search", "").lower()
+            options = []
+
+            for team in teams:
+                if search_term and search_term not in team.name.lower():
+                    continue
+                options.append({"value": team.id, "label": team.name})
+
+            logger.info(f"Returning {len(options)} Linear team options")
+            return options
+
+        return []
+
+    async def register(
+        self,
+        user_id: str,
+        workflow_id: str,
+        trigger_name: str,
+        trigger_config: TriggerConfig,
+    ) -> List[str]:
+        """Register Linear triggers.
+
+        Raises:
+            TriggerRegistrationError: If trigger registration fails
+        """
+        composio_slug = self.TRIGGER_TO_COMPOSIO.get(trigger_name)
+        if not composio_slug:
+            raise TriggerRegistrationError(
+                f"Unknown Linear trigger: {trigger_name}",
+                trigger_name,
+            )
+
+        trigger_data = trigger_config.trigger_data
+
+        # Validate trigger_data type based on trigger_name
+        if trigger_name == "linear_issue_created":
+            if not isinstance(trigger_data, LinearIssueCreatedConfig):
+                raise TypeError(
+                    f"Expected LinearIssueCreatedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+        elif trigger_name == "linear_issue_updated":
+            if not isinstance(trigger_data, LinearIssueUpdatedConfig):
+                raise TypeError(
+                    f"Expected LinearIssueUpdatedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+        elif trigger_name == "linear_comment_added":
+            if not isinstance(trigger_data, LinearCommentAddedConfig):
+                raise TypeError(
+                    f"Expected LinearCommentAddedConfig for trigger '{trigger_name}', "
+                    f"but got {type(trigger_data).__name__ if trigger_data else 'None'}"
+                )
+        else:
+            raise TriggerRegistrationError(
+                f"Unknown Linear trigger: {trigger_name}",
+                trigger_name,
+            )
+
+        composio_trigger_config: Dict[str, Any] = {}
+        if trigger_data.team_id:
+            composio_trigger_config["team_id"] = trigger_data.team_id
+
+        # Use the base class helper for consistent error handling
+        return await self._register_triggers_parallel(
+            user_id=user_id,
+            trigger_name=trigger_name,
+            configs=[composio_trigger_config],
+            composio_slug=composio_slug,
+        )
+
+    async def find_workflows(
+        self, event_type: str, trigger_id: str, data: Dict[str, Any]
+    ) -> List[Workflow]:
+        """Find workflows matching a Linear trigger event."""
+        try:
+            query = {
+                "activated": True,
+                "trigger_config.type": TriggerType.INTEGRATION,
+                "trigger_config.enabled": True,
+                "trigger_config.composio_trigger_ids": trigger_id,
+            }
+
+            # Validate payload
+            try:
+                if "issue_created" in event_type.lower():
+                    LinearIssueCreatedPayload.model_validate(data)
+                elif "comment_added" in event_type.lower():
+                    LinearCommentAddedPayload.model_validate(data)
+            except Exception as e:
+                logger.debug(f"Linear payload validation failed: {e}")
+
+            cursor = workflows_collection.find(query)
+            workflows: List[Workflow] = []
+
+            async for workflow_doc in cursor:
+                try:
+                    workflow_doc["id"] = workflow_doc.get("_id")
+                    if "_id" in workflow_doc:
+                        del workflow_doc["_id"]
+                    workflow = Workflow(**workflow_doc)
+                    workflows.append(workflow)
+                except Exception as e:
+                    logger.error(f"Error processing workflow document: {e}")
+                    continue
+
+            return workflows
+
+        except Exception as e:
+            logger.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            return []
+
+
+linear_trigger_handler = LinearTriggerHandler()

@@ -146,6 +146,13 @@
       "metadata": { "difficulty": "medium" }
     },
     {
+      "input": "Find which branch has e7c2b37efad1da5072bdb59f3f81ea4237c1327f commit in gaoa-personal repo",
+      "expected_output": "Branch name displayed.",
+      "context": "User wants to find branch with specific commit",
+      "tags": ["branch", "commit", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
       "input": "add aryanranderiya to my-tool",
       "expected_output": "1. Search for 'my-tool' in user's repositories. 2. Identify 'Dhruv-Maradiya/my-tool'. 3. Add aryanranderiya as collaborator.",
       "context": "User provided partial repo name (assumed to be owned by user)",

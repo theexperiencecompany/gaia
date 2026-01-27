@@ -268,7 +268,7 @@ class SubagentEvaluator:
                 "email": settings.EVAL_USER_EMAIL,
                 "name": settings.EVAL_USER_NAME,
             },
-            user_model_config=await get_model_by_id("gemini-2.0-flash"),
+            user_model_config=await get_model_by_id("gemini-2.5-flash"),
             user_time=datetime.now(),
             agent_name=self.config.agent_name,
         )

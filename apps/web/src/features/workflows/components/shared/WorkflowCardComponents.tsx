@@ -22,7 +22,8 @@ export function getNextRunDisplay(workflow: Workflow): string | null {
   const { trigger_config } = workflow;
 
   if (trigger_config.type === "schedule" && trigger_config.next_run) {
-    const nextRun = new Date(trigger_config.next_run);
+    const nextRunValue = trigger_config.next_run as string;
+    const nextRun = new Date(nextRunValue);
     const now = new Date();
 
     // Check if next run is in the future

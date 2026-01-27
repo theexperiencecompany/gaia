@@ -1,0 +1,219 @@
+{
+  "name": "Slack Capabilities",
+  "description": "Evaluation dataset for Slack subagent capabilities including messaging, channel management, user lookup, and workspace operations. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "slack_agent",
+  "integration_id": "slack",
+  "items": [
+    {
+      "input": "send message to #general saying good morning team",
+      "expected_output": "1. Find channel #general. 2. Send message 'good morning team'.",
+      "context": "User wants to send a simple channel message",
+      "tags": ["message", "send", "channel"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "dm john about the meeting at 3pm",
+      "expected_output": "1. Find user john. 2. Open/create DM conversation. 3. Send message about 3pm meeting.",
+      "context": "User wants to send direct message",
+      "tags": ["message", "dm", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create channel called project-alpha",
+      "expected_output": "Create new Slack channel named 'project-alpha'.",
+      "context": "User wants to create a new channel",
+      "tags": ["channel", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "find channel about marketing",
+      "expected_output": "Search channels by name/topic/purpose matching 'marketing'.",
+      "context": "User wants to find marketing channel",
+      "tags": ["channel", "search", "lazy"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add reaction 👍 to the last message in #standup",
+      "expected_output": "1. Find #standup channel. 2. Get recent messages. 3. Add thumbsup reaction to latest message.",
+      "context": "User wants to react to message",
+      "tags": ["reaction", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "invite sarah@company.com to #engineers channel",
+      "expected_output": "1. Find user by email sarah@company.com. 2. Find #engineers channel. 3. Invite user to channel.",
+      "context": "User wants to add someone to channel",
+      "tags": ["channel", "invite", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "set my status to 'In a meeting' with 🗓️ emoji",
+      "expected_output": "Set user status with text 'In a meeting' and calendar emoji.",
+      "context": "User wants to update status",
+      "tags": ["status", "set", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "clear my slack status",
+      "expected_output": "Clear the authenticated user's status.",
+      "context": "User wants to remove status",
+      "tags": ["status", "clear"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "list all channels I'm in",
+      "expected_output": "List conversations/channels where user is a member.",
+      "context": "User wants to see their channels",
+      "tags": ["channel", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "search messages about 'quarterly budget'",
+      "expected_output": "Search messages across workspace for 'quarterly budget'.",
+      "context": "User wants to search message history",
+      "tags": ["message", "search"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "schedule message to #announcements for monday 9am saying 'Team meeting at 10am'",
+      "expected_output": "Schedule message to #announcements channel for Monday 9am.",
+      "context": "User wants to schedule a message",
+      "tags": ["message", "schedule", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create a reminder to check emails in 30 minutes",
+      "expected_output": "Create Slack reminder with text 'check emails' for 30 minutes from now.",
+      "context": "User wants to set a reminder",
+      "tags": ["reminder", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "archive the #old-project channel",
+      "expected_output": "1. Find #old-project channel. 2. Request user confirmation. 3. Archive the channel.",
+      "context": "User wants to archive channel - needs consent",
+      "tags": ["channel", "archive", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "who is online right now",
+      "expected_output": "List users and check presence status for active/away users.",
+      "context": "User wants to see who's available",
+      "tags": ["user", "presence", "list"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get info about user mike.smith",
+      "expected_output": "Find user by name 'mike.smith' and retrieve profile information.",
+      "context": "User wants user details",
+      "tags": ["user", "profile", "search"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "reply to the thread about deployment issues",
+      "expected_output": "1. Search messages for 'deployment issues'. 2. Find parent message/thread. 3. Reply in thread.",
+      "context": "User wants to reply to specific thread",
+      "tags": ["message", "thread", "reply", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "set channel topic for #team to 'Daily standups and updates'",
+      "expected_output": "1. Find #team channel. 2. Set channel topic.",
+      "context": "User wants to update channel topic",
+      "tags": ["channel", "topic", "set"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "find messages from @sarah in #dev channel",
+      "expected_output": "1. Find user sarah. 2. Find #dev channel. 3. Search messages in channel from user.",
+      "context": "User wants filtered message search",
+      "tags": ["message", "search", "filter", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create user group @frontend-team with john and sarah",
+      "expected_output": "1. Find users john and sarah. 2. Create user group with name 'frontend-team' containing those users.",
+      "context": "User wants to create a group",
+      "tags": ["usergroup", "create", "detailed"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "list my reminders",
+      "expected_output": "List all reminders for authenticated user.",
+      "context": "User wants to see reminders",
+      "tags": ["reminder", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "delete the reminder about report",
+      "expected_output": "1. List reminders. 2. Find reminder about report. 3. Confirm and delete.",
+      "context": "User wants to delete reminder",
+      "tags": ["reminder", "delete", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "pin the important message in #general about policy update",
+      "expected_output": "1. Find #general channel. 2. Search for message about policy update. 3. Pin message.",
+      "context": "User wants to pin a message",
+      "tags": ["message", "pin", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get recent messages from #support channel",
+      "expected_output": "1. Find #support channel. 2. Fetch conversation history.",
+      "context": "User wants to see channel history",
+      "tags": ["message", "history", "channel"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create a canvas called 'Q4 Planning Notes'",
+      "expected_output": "Create new Slack canvas with title 'Q4 Planning Notes'.",
+      "context": "User wants to create a canvas",
+      "tags": ["canvas", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "leave the #random channel",
+      "expected_output": "1. Find #random channel. 2. Leave the channel.",
+      "context": "User wants to leave a channel",
+      "tags": ["channel", "leave"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "send message to slacc channel #team",
+      "expected_output": "1. Recognize 'slacc' as typo for 'slack'. 2. Find #team channel. 3. Ask for message content or send message.",
+      "context": "User made typo in 'slack'",
+      "tags": ["message", "send", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "who are the members of #engineering",
+      "expected_output": "1. Find #engineering channel. 2. List channel members.",
+      "context": "User wants channel member list",
+      "tags": ["channel", "members", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "star the last message from boss in #leadership",
+      "expected_output": "1. Find #leadership channel. 2. Find recent message from 'boss'. 3. Add star to the message.",
+      "context": "User wants to star a message",
+      "tags": ["message", "star", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "rename channel #proj-x to #project-x",
+      "expected_output": "1. Find #proj-x channel. 2. Rename to 'project-x'.",
+      "context": "User wants to rename channel",
+      "tags": ["channel", "rename", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "mark the reminder about standup as complete",
+      "expected_output": "1. List reminders. 2. Find reminder about standup. 3. Mark as complete.",
+      "context": "User wants to complete a reminder",
+      "tags": ["reminder", "complete", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

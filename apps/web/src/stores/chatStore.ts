@@ -5,8 +5,6 @@ import type { IConversation, IMessage } from "@/lib/db/chatDb";
 import { db, dbEventEmitter } from "@/lib/db/chatDb";
 import type { FileData } from "@/types/shared";
 
-type LoadingStatus = "idle" | "loading" | "success" | "error";
-
 // Optimistic message for new conversations (before conversation ID is assigned)
 // These are stored in Zustand only to avoid IndexedDB pollution if not cleared properly
 interface OptimisticMessage {
@@ -27,7 +25,8 @@ interface ChatState {
   conversations: IConversation[];
   messagesByConversation: Record<string, IMessage[]>;
   activeConversationId: string | null;
-  conversationsLoadingStatus: LoadingStatus;
+  streamingConversationId: string | null; // ID of conversation currently streaming
+  hydrationCompleted: boolean; // True when IndexedDB hydration is done
   // Single optimistic message for new conversations (not yet persisted to IndexedDB)
   // Only ONE optimistic message can exist at a time - enforced by using single object instead of array
   optimisticMessage: OptimisticMessage | null;
@@ -45,7 +44,8 @@ interface ChatState {
   removeConversation: (conversationId: string) => void;
   removeMessage: (messageId: string, conversationId: string) => void;
   setActiveConversationId: (id: string | null) => void;
-  setConversationsLoadingStatus: (status: LoadingStatus) => void;
+  setStreamingConversationId: (id: string | null) => void;
+  setHydrationCompleted: (completed: boolean) => void;
   // Optimistic message management for new conversations (single message only)
   setOptimisticMessage: (message: OptimisticMessage | null) => void;
   clearOptimisticMessage: () => void;
@@ -55,7 +55,8 @@ export const useChatStore = create<ChatState>((set) => ({
   conversations: [],
   messagesByConversation: {},
   activeConversationId: null,
-  conversationsLoadingStatus: "idle",
+  streamingConversationId: null, // Track which conversation is streaming
+  hydrationCompleted: false, // Becomes true when IndexedDB hydration is done
   // Single optimistic message for new conversations (prevents IndexedDB pollution)
   // Only one message at a time - enforced by type
   optimisticMessage: null,
@@ -132,10 +133,17 @@ export const useChatStore = create<ChatState>((set) => ({
           ? null
           : state.activeConversationId;
 
+      // Clear streaming indicator if the removed conversation was being streamed
+      const streamingConversationId =
+        state.streamingConversationId === conversationId
+          ? null
+          : state.streamingConversationId;
+
       return {
         conversations,
         messagesByConversation: remainingMessages,
         activeConversationId,
+        streamingConversationId,
       };
     }),
 
@@ -154,8 +162,9 @@ export const useChatStore = create<ChatState>((set) => ({
 
   setActiveConversationId: (id) => set({ activeConversationId: id }),
 
-  setConversationsLoadingStatus: (status) =>
-    set({ conversationsLoadingStatus: status }),
+  setStreamingConversationId: (id) => set({ streamingConversationId: id }),
+
+  setHydrationCompleted: (completed) => set({ hydrationCompleted: completed }),
 
   // Set the single optimistic message (replaces any existing one)
   // Only one optimistic message can exist at a time
@@ -165,48 +174,57 @@ export const useChatStore = create<ChatState>((set) => ({
   clearOptimisticMessage: () => set({ optimisticMessage: null }),
 }));
 
-// Event-driven synchronization with IndexedDB
-let syncInitialized = false; // Guard against multiple initializations
+// Hydrate immediately on module load (before any React renders)
+// This runs once when the module is first imported, AFTER the store is defined
+let hydrationStarted = false;
+const startHydration = async () => {
+  if (hydrationStarted) return;
+  hydrationStarted = true;
 
+  try {
+    // Load all conversations and messages in parallel (2 queries total)
+    const [conversations, allMessages] = await Promise.all([
+      db.getAllConversations(),
+      db.getAllMessages(),
+    ]);
+
+    useChatStore.getState().setConversations(conversations);
+
+    // Group messages by conversationId client-side (instant, no I/O)
+    const messagesByConversation = allMessages.reduce(
+      (acc, msg) => {
+        if (!acc[msg.conversationId]) acc[msg.conversationId] = [];
+        acc[msg.conversationId].push(msg);
+        return acc;
+      },
+      {} as Record<string, IMessage[]>,
+    );
+
+    // Set all messages at once
+    for (const [conversationId, messages] of Object.entries(
+      messagesByConversation,
+    )) {
+      useChatStore
+        .getState()
+        .setMessagesForConversation(conversationId, messages);
+    }
+  } catch (error) {
+    console.error("Failed to hydrate from IndexedDB:", error);
+  } finally {
+    useChatStore.getState().setHydrationCompleted(true);
+  }
+};
+
+// Start hydration immediately (client-side only)
+if (typeof window !== "undefined") {
+  startHydration();
+}
+
+// Event-driven synchronization with IndexedDB
+// Hydration happens at module load (above), this just sets up event listeners
 export const useChatStoreSync = () => {
   useEffect(() => {
-    // Prevent multiple sync initializations
-    if (syncInitialized) {
-      console.warn("[chatStore] Sync already initialized, skipping");
-      return;
-    }
-    syncInitialized = true;
-
-    let isActive = true;
-
-    // Initial hydration from IndexedDB
-    const hydrateFromIndexedDB = async () => {
-      try {
-        // Load all conversations
-        const conversations = await db.getAllConversations();
-        if (isActive) {
-          useChatStore.getState().setConversations(conversations);
-        }
-
-        // Load messages for all conversations
-        const conversationIds = await db.getConversationIdsWithMessages();
-        for (const conversationId of conversationIds) {
-          if (!isActive) break;
-          const messages = await db.getMessagesForConversation(conversationId);
-          if (isActive && messages.length > 0) {
-            useChatStore
-              .getState()
-              .setMessagesForConversation(conversationId, messages);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to hydrate from IndexedDB:", error);
-      }
-    };
-
-    hydrateFromIndexedDB();
-
-    // Event handlers
+    // Event handlers for real-time updates from IndexedDB
     const handleMessageAdded = (message: IMessage) => {
       useChatStore.getState().addOrUpdateMessage(message);
     };
@@ -252,6 +270,16 @@ export const useChatStoreSync = () => {
       useChatStore.getState().upsertConversation(conversation);
     };
 
+    const handleConversationDeleted = (conversationId: string) => {
+      useChatStore.getState().removeConversation(conversationId);
+    };
+
+    const handleConversationsDeletedBulk = (conversationIds: string[]) => {
+      conversationIds.forEach((id) => {
+        useChatStore.getState().removeConversation(id);
+      });
+    };
+
     dbEventEmitter.on("messageAdded", handleMessageAdded);
     dbEventEmitter.on("messageUpdated", handleMessageUpdated);
     dbEventEmitter.on("messageDeleted", handleMessageDeleted);
@@ -259,10 +287,13 @@ export const useChatStoreSync = () => {
     dbEventEmitter.on("messageIdReplaced", handleMessageIdReplaced);
     dbEventEmitter.on("conversationAdded", handleConversationAdded);
     dbEventEmitter.on("conversationUpdated", handleConversationUpdated);
+    dbEventEmitter.on("conversationDeleted", handleConversationDeleted);
+    dbEventEmitter.on(
+      "conversationsDeletedBulk",
+      handleConversationsDeletedBulk,
+    );
 
     return () => {
-      isActive = false;
-      syncInitialized = false; // Reset flag on cleanup
       dbEventEmitter.off("messageAdded", handleMessageAdded);
       dbEventEmitter.off("messageUpdated", handleMessageUpdated);
       dbEventEmitter.off("messageDeleted", handleMessageDeleted);
@@ -270,6 +301,11 @@ export const useChatStoreSync = () => {
       dbEventEmitter.off("messageIdReplaced", handleMessageIdReplaced);
       dbEventEmitter.off("conversationAdded", handleConversationAdded);
       dbEventEmitter.off("conversationUpdated", handleConversationUpdated);
+      dbEventEmitter.off("conversationDeleted", handleConversationDeleted);
+      dbEventEmitter.off(
+        "conversationsDeletedBulk",
+        handleConversationsDeletedBulk,
+      );
     };
   }, []);
 };

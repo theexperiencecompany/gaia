@@ -1,5 +1,6 @@
 """Memory service layer for handling all memory operations with latest Mem0 API."""
 
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, cast
 
@@ -490,8 +491,6 @@ class MemoryService:
             return False
 
         # Start timing
-        import time
-
         batch_start = time.time()
 
         try:

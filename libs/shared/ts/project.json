@@ -5,21 +5,20 @@
   "sourceRoot": "libs/shared/ts/src",
   "projectType": "library",
   "targets": {
-    "lint": {
+    "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "echo '⏳ shared-typescript lint: placeholder - no config yet'",
+        "command": "pnpm tsc",
         "cwd": "{projectRoot}"
       },
       "cache": true
     },
-    "build": {
+    "lint": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "echo '⏳ shared-typescript build: placeholder - no config yet'",
+        "command": "echo 'Linting shared-typescript'",
         "cwd": "{projectRoot}"
-      },
-      "cache": true
+      }
     }
   }
 }

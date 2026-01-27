@@ -5,21 +5,26 @@ import { Tooltip } from "@heroui/tooltip";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { ArrowUp02Icon, StopIcon } from "@/icons";
+import {
+  AiVoiceGeneratorIcon,
+  AiVoiceIcon,
+  ArrowUp02Icon,
+  StopIcon,
+} from "@/icons";
 import { useComposerFiles } from "@/stores/composerStore";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
   searchbarText: string | null | undefined;
   selectedTool?: string | null;
-  // setvoiceModeActive: () => void;
+  setvoiceModeActive: () => void;
 }
 
 export default function RightSide({
   handleFormSubmit,
   searchbarText,
   selectedTool,
-  // setvoiceModeActive,
+  setvoiceModeActive,
 }: RightSideProps) {
   const { isLoading, stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
@@ -96,7 +101,7 @@ export default function RightSide({
 
   return (
     <div className="ml-2 flex items-center gap-2">
-      {/* <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
+      <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
         <Button
           isIconOnly
           aria-label="Voice Mode"
@@ -106,9 +111,9 @@ export default function RightSide({
           type="button"
           onPress={() => setvoiceModeActive()}
         >
-          <AudioWaveIcon className="text-zinc-400" />
+          <AiVoiceIcon className="text-zinc-400" />
         </Button>
-      </Tooltip> */}
+      </Tooltip>
 
       <Tooltip
         content={getTooltipContent()}

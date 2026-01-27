@@ -25,7 +25,12 @@ async def websocket_endpoint(websocket: WebSocket):
         return
 
     # Accept the connection now that we've verified the user
-    await websocket.accept()
+    # If client used subprotocol auth, echo back "Bearer" to complete handshake
+    protocol_header = websocket.headers.get("sec-websocket-protocol", "")
+    if protocol_header.startswith("Bearer, "):
+        await websocket.accept(subprotocol="Bearer")
+    else:
+        await websocket.accept()
 
     # Add the connection to our manager
     connection_manager.add_connection(user_id=user_id, websocket=websocket)

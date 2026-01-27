@@ -1,15 +1,21 @@
 import { useRouter } from "expo-router";
-import { Image, KeyboardAvoidingView, Platform, View } from "react-native";
+import { Button, PressableFeedback } from "heroui-native";
+import {
+  Image,
+  KeyboardAvoidingView,
+  Linking,
+  Platform,
+  View,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
+import { useResponsive } from "@/lib/responsive";
 
 export default function SignUpScreen() {
   const router = useRouter();
+  const { spacing, fontSize, moderateScale, width } = useResponsive();
 
   const handleGoogleSignUp = () => {
-    console.log("Google Sign Up");
-    // TODO: Implement Google sign up
     router.replace("/");
   };
 
@@ -17,95 +23,179 @@ export default function SignUpScreen() {
     router.push("/login");
   };
 
+  // Card max width adapts to screen size
+  const cardMaxWidth = Math.min(width * 0.9, 400);
+  const logoSize = moderateScale(48, 0.5);
+  const logoContainerSize = moderateScale(72, 0.5);
+
   return (
-    <View className="flex-1 bg-[#0c1f3d]">
+    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
       {/* Full Background Image */}
       <Image
         source={require("@/assets/background/signup.webp")}
-        className="absolute w-full h-full"
+        style={{ position: "absolute", width: "100%", height: "100%" }}
         resizeMode="cover"
         blurRadius={0.5}
-        fadeDuration={300}
       />
 
       {/* Dark Overlay */}
-      <View className="absolute w-full h-full bg-black/50" />
+      <View
+        style={{
+          position: "absolute",
+          width: "100%",
+          height: "100%",
+          backgroundColor: "rgba(0,0,0,0.5)",
+        }}
+      />
 
-      <SafeAreaView className="flex-1">
+      <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView
-          className="flex-1 justify-center items-center px-6"
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            paddingHorizontal: spacing.lg,
+          }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Sign Up Card */}
-          <View className="w-full max-w-[450px] bg-[#1a1a1a]/95 rounded-[20px] px-8 py-10 border border-white/10 shadow-2xl elevation-20">
+          <View
+            style={{
+              width: "100%",
+              maxWidth: cardMaxWidth,
+              backgroundColor: "rgba(28,28,30,0.95)",
+              borderRadius: moderateScale(24, 0.5),
+              paddingHorizontal: spacing.xl,
+              paddingVertical: moderateScale(40, 0.5),
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.1)",
+            }}
+          >
             {/* Logo and Title */}
-            <View className="items-center mb-8">
-              <View className="w-[70px] h-[70px] rounded-full bg-[#16c1ff]/15 items-center justify-center mb-4">
+            <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
+              <View
+                style={{
+                  width: logoContainerSize,
+                  height: logoContainerSize,
+                  borderRadius: logoContainerSize / 2,
+                  backgroundColor: "rgba(0,187,255,0.15)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: spacing.md,
+                }}
+              >
                 <Image
-                  source={require("@/assets/logo/logo.webp")}
-                  className="w-[50px] h-[50px]"
+                  source={require("@shared/assets/logo/logo.webp")}
+                  style={{ width: logoSize, height: logoSize }}
                   resizeMode="contain"
                 />
               </View>
-              <Text className="text-2xl font-bold text-white text-center">
+              <Text
+                style={{
+                  fontSize: fontSize["2xl"],
+                  fontWeight: "bold",
+                  textAlign: "center",
+                }}
+              >
                 Time to Supercharge You.
               </Text>
             </View>
 
             {/* Sign Up Form */}
-            <View className="w-full">
+            <View style={{ width: "100%" }}>
               {/* Google Button */}
-              <Button
-                variant="secondary"
-                size="lg"
-                className="bg-zinc-800/80 rounded-xl mb-4 flex-row items-center justify-center gap-2 border border-white/20"
-                onPress={handleGoogleSignUp}
-              >
+              <Button size="lg" variant="ghost" onPress={handleGoogleSignUp}>
                 <Image
                   source={require("@/assets/icons/google-logo.png")}
-                  className="w-[18px] h-[18px]"
+                  style={{
+                    width: moderateScale(20, 0.5),
+                    height: moderateScale(20, 0.5),
+                    marginRight: spacing.sm,
+                  }}
                   resizeMode="contain"
                 />
-                <Text className="text-base font-medium text-white">
-                  Continue with Google
-                </Text>
+                <Button.Label>Continue with Google</Button.Label>
               </Button>
 
               {/* Sign In Link */}
-              <View className="flex-row items-center justify-center mt-4">
-                <Text className="text-base text-zinc-400">
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: spacing.md,
+                }}
+              >
+                <Text style={{ fontSize: fontSize.base, color: "#8e8e93" }}>
                   Already have an account?{" "}
                 </Text>
-                <Button
-                  variant="link"
-                  size="sm"
-                  onPress={handleSignIn}
-                  className="p-0 h-auto"
-                >
-                  <Text className="text-base text-[#16c1ff] font-semibold">
+                <PressableFeedback onPress={handleSignIn}>
+                  <Text
+                    style={{
+                      fontSize: fontSize.base,
+                      color: "#00bbff",
+                      fontWeight: "600",
+                    }}
+                  >
                     Sign in
                   </Text>
-                </Button>
+                </PressableFeedback>
               </View>
             </View>
 
             {/* Footer */}
-            <View className="items-center justify-center mt-6">
-              <Text className="text-sm text-zinc-400 text-center">
-                By creating an account, you agree to the{" "}
+            <View style={{ alignItems: "center", marginTop: spacing.lg }}>
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  color: "#8e8e93",
+                  textAlign: "center",
+                }}
+              >
+                By creating an account, you agree to the
               </Text>
-              <View className="flex-row flex-wrap justify-center">
-                <Button variant="link" size="sm" className="p-0 h-auto">
-                  <Text className="text-sm text-zinc-400 underline">
+              <View
+                style={{
+                  flexDirection: "row",
+                  flexWrap: "wrap",
+                  justifyContent: "center",
+                }}
+              >
+                <PressableFeedback
+                  onPress={() => Linking.openURL("https://heygaia.io/terms")}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.sm,
+                      color: "#8e8e93",
+                      textDecorationLine: "underline",
+                    }}
+                  >
                     Terms of Service
                   </Text>
-                </Button>
-                <Text className="text-sm text-zinc-400 mx-1"> and </Text>
-                <Button variant="link" size="sm" className="p-0 h-auto">
-                  <Text className="text-sm text-zinc-400 underline">
+                </PressableFeedback>
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    color: "#8e8e93",
+                    marginHorizontal: spacing.xs,
+                  }}
+                >
+                  and
+                </Text>
+                <PressableFeedback
+                  onPress={() => Linking.openURL("https://heygaia.io/privacy")}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.sm,
+                      color: "#8e8e93",
+                      textDecorationLine: "underline",
+                    }}
+                  >
                     Privacy Policy
                   </Text>
-                </Button>
+                </PressableFeedback>
               </View>
             </View>
           </View>

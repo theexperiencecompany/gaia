@@ -1,9 +1,13 @@
+"""
+General Constants.
+
+Centralized general-purpose constants.
+"""
+
 ORCHESTRATOR_MAX_ITERATIONS = 10
-STATE_TOKEN_TTL = 600
-STATE_KEY_PREFIX = "oauth_state"
 NEW_MESSAGE_BREAKER = "<NEW_MESSAGE_BREAK>"
 
 MAX_EMAILS_PER_PLATFORM = 20
 DEDUPLICATION_SIMILARITY_THRESHOLD = 0.9
-PROFILE_EXTRACTION_LLM_PROVIDER = "gemini"  # Use Gemini for profile extraction
+PROFILE_EXTRACTION_LLM_PROVIDER = "gemini"
 PROFILE_EXTRACTION_LLM_MODEL = "gemini-2.0-flash"

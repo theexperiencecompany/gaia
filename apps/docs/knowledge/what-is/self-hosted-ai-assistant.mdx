@@ -1,0 +1,293 @@
+---
+title: "What is a Self-Hosted AI Assistant?"
+description: "Understanding self-hosted AI assistants, how they work, and why you might want to run your own AI assistant on your own infrastructure."
+---
+
+import GetStarted from "/snippets/get-started.mdx";
+
+# What is a Self-Hosted AI Assistant?
+
+A self-hosted AI assistant is AI software that you run on your own servers or infrastructure instead of using a cloud service controlled by a company. You have complete control over the software, your data, and how it operates.
+
+Think of it like the difference between using Gmail (hosted by Google) versus running your own email server. With Gmail, Google controls everything. With your own email server, you control everything. Same concept applies to AI assistants.
+
+## How It Works
+
+**Traditional Cloud AI (ChatGPT, Claude, etc.)**:
+- Software runs on the company's servers
+- Your data goes to their servers
+- You access it through their website or app
+- They control updates, features, and pricing
+- You're dependent on their service staying online
+
+**Self-Hosted AI (GAIA, etc.)**:
+- Software runs on your servers (or your computer)
+- Your data stays on your infrastructure
+- You access it through your own deployment
+- You control updates and configuration
+- You're independent of any company's service
+
+## Why Self-Host?
+
+**Complete Data Control**:
+Your conversations, tasks, emails, calendar - everything stays on your infrastructure. No third party ever sees it.
+
+**Privacy Assurance**:
+You don't have to trust a company's privacy policy. You can verify that your data never leaves your control.
+
+**Customization**:
+Modify the software to work exactly how you need it. Add features, change behavior, integrate with internal systems.
+
+**Independence**:
+Not dependent on a company staying in business, maintaining their service, or keeping prices reasonable.
+
+**Compliance**:
+Meet strict data residency and compliance requirements that cloud services can't satisfy.
+
+**Cost Control**:
+Pay for infrastructure instead of per-user subscriptions. Can be cheaper at scale.
+
+## What You Need
+
+**Infrastructure**:
+- A server (physical or cloud VM)
+- Adequate CPU, RAM, and storage
+- Network connectivity
+- For GAIA: 4GB RAM minimum, 8GB recommended
+
+**Technical Knowledge**:
+- Basic server administration
+- Docker and containerization
+- Networking and security
+- Database management
+- Or willingness to learn
+
+**Time**:
+- Initial setup: Few hours
+- Ongoing maintenance: Few hours per month
+- Updates and troubleshooting as needed
+
+## Setup Process
+
+For GAIA specifically:
+
+1. **Provision Server**: Set up a Linux server (local or cloud)
+2. **Install Dependencies**: Docker, Docker Compose, etc.
+3. **Clone Repository**: Get the GAIA code from GitHub
+4. **Configure Environment**: Set up environment variables
+5. **Start Services**: Run Docker Compose to start all components
+6. **Configure Integrations**: Connect to email, calendar, etc.
+7. **Access Interface**: Open the web interface and start using it
+
+The GAIA documentation provides detailed step-by-step instructions.
+
+## Components You're Running
+
+When you self-host GAIA, you're running:
+
+**Application Server**: FastAPI backend handling AI logic and workflows
+
+**Databases**: MongoDB (data), PostgreSQL (workflows), Redis (caching), ChromaDB (vectors)
+
+**Task Queue**: ARQ for background job processing
+
+**Web Interface**: Next.js frontend for the user interface
+
+**AI Models**: Connections to AI providers (OpenAI, Google, etc.) or local models
+
+All of this runs on your infrastructure under your control.
+
+## Data Storage
+
+With self-hosting, all your data stays local:
+
+**User Data**: Your profile, preferences, settings
+
+**Work Data**: Tasks, emails, calendar events, notes
+
+**Conversations**: All chat history with the AI
+
+**Workflows**: Your automation configurations
+
+**Integrations**: Connection credentials (encrypted)
+
+**Logs**: System logs and execution history
+
+Nothing leaves your infrastructure unless you explicitly configure external integrations.
+
+## Security Considerations
+
+Self-hosting gives you control but also responsibility:
+
+**You Must Handle**:
+- Server security and hardening
+- Network security and firewalls
+- SSL/TLS certificates
+- Regular security updates
+- Backup and disaster recovery
+- Access control and authentication
+
+**Benefits**:
+- No third-party access to your data
+- You control security measures
+- Can meet strict security requirements
+- Audit everything yourself
+
+**Challenges**:
+- Requires security knowledge
+- You're responsible for breaches
+- Must stay on top of updates
+
+## Cost Comparison
+
+**Cloud Service (Typical)**:
+- $10-20/month per user
+- $120-240/year per user
+- Scales linearly with users
+- No infrastructure management
+
+**Self-Hosted**:
+- Server: $20-100/month (supports multiple users)
+- Time: Few hours/month maintenance
+- One-time setup effort
+- Scales better for teams
+
+Self-hosting can be cheaper for teams or power users, but requires more effort.
+
+## Hybrid Approach
+
+You don't have to choose all-or-nothing:
+
+**Self-Host Core**: Run GAIA on your infrastructure
+
+**Use Cloud AI**: Connect to OpenAI, Google, etc. for AI models
+
+**Cloud Integrations**: Connect to Gmail, Slack, etc. through their APIs
+
+This gives you data control while leveraging cloud services where appropriate.
+
+## Common Challenges
+
+**Initial Setup Complexity**:
+First-time setup can be intimidating. GAIA provides Docker Compose to simplify this.
+
+**Maintenance Burden**:
+You're responsible for updates, backups, and troubleshooting.
+
+**Technical Knowledge Required**:
+Need to understand servers, databases, networking.
+
+**Scaling Complexity**:
+Growing beyond one server requires more sophisticated setup.
+
+**No Managed Support**:
+You're on your own for issues (though community can help).
+
+## When to Self-Host
+
+Self-hosting makes sense if you:
+
+- Have strict privacy or compliance requirements
+- Want complete control over your data
+- Have technical knowledge or resources
+- Need customization beyond what hosted services offer
+- Want independence from vendors
+- Have multiple users (better economics)
+- Work with sensitive information
+
+## When to Use Hosted
+
+Hosted services make sense if you:
+
+- Want convenience over control
+- Don't have technical resources
+- Need it working immediately
+- Prefer subscription pricing
+- Don't have compliance requirements
+- Are a single user or small team
+
+## The GAIA Approach
+
+GAIA is designed to support both:
+
+**Self-Hosted**:
+- Complete source code on GitHub
+- Docker Compose for easy deployment
+- Comprehensive documentation
+- Community support
+- Free for personal use
+
+**Hosted Service (heygaia.io)**:
+- Managed infrastructure
+- Automatic updates
+- Professional support
+- Subscription pricing
+- Instant setup
+
+You can start with hosted and move to self-hosted later, or vice versa.
+
+## Migration Path
+
+**From Cloud to Self-Hosted**:
+1. Set up self-hosted instance
+2. Export data from cloud service
+3. Import into self-hosted instance
+4. Verify everything works
+5. Switch over
+
+**From Self-Hosted to Cloud**:
+1. Sign up for hosted service
+2. Export data from self-hosted
+3. Import into hosted service
+4. Verify everything works
+5. Shut down self-hosted instance
+
+GAIA supports data export/import to enable this flexibility.
+
+## Community and Support
+
+Self-hosting doesn't mean you're alone:
+
+**Documentation**: Comprehensive setup and troubleshooting guides
+
+**Community**: Discord, GitHub discussions, forums
+
+**Open Issues**: Report bugs and get help on GitHub
+
+**Contributions**: Community members help each other
+
+**Professional Support**: Available for commercial users
+
+## The Future
+
+Self-hosted AI will become more important as:
+
+- Privacy concerns grow
+- Data regulations tighten
+- AI becomes more powerful
+- People want more control
+- Customization needs increase
+
+## Getting Started
+
+If you want to try self-hosting GAIA:
+
+1. **Review Requirements**: Check if you have necessary resources
+2. **Read Documentation**: Understand the setup process
+3. **Prepare Infrastructure**: Set up a server
+4. **Follow Setup Guide**: Step-by-step instructions in docs
+5. **Join Community**: Get help if you need it
+6. **Start Small**: Begin with basic features, expand gradually
+
+Or start with hosted version at [heygaia.io](https://heygaia.io) and self-host later if you want more control.
+
+---
+
+**Related Reading:**
+- [What is Open-Source AI Software?](/knowledge/what-is/open-source-ai-software)
+- [Self-Hosted AI Assistant Explained](/knowledge/privacy/self-hosted-explained)
+- [Who Should Self-Host an AI Assistant?](/knowledge/privacy/who-should-self-host)
+
+---
+
+<GetStarted />

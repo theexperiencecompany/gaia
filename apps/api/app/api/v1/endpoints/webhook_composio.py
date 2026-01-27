@@ -1,18 +1,31 @@
+"""
+Composio webhook endpoint.
+
+Handles incoming webhooks from Composio and routes them to the appropriate handlers.
+Uses the trigger registry for extensible event handling.
+
+Each handler implements its own `process_event()` method which handles:
+- Finding matching workflows
+- Queuing workflow execution via WorkflowQueueService
+"""
+
 from app.config.loggers import mail_webhook_logger as logger
 from app.models.webhook_models import ComposioWebhookEvent
-from app.services.mail.mail_webhook_service import queue_email_processing
+from app.services.triggers import get_handler_by_event
 from app.utils.webhook_utils import verify_composio_webhook_signature
-from fastapi import APIRouter, HTTPException, Request
+from fastapi import APIRouter, Request
 
 router = APIRouter()
 
 
-@router.post(
-    "/webhook/composio",
-)
-async def webhook_composio(
-    request: Request,
-):
+@router.post("/webhook/composio")
+async def webhook_composio(request: Request):
+    """Handle incoming Composio webhooks.
+
+    Routes events to the appropriate handler based on event type.
+    Each handler manages its own workflow matching and execution logic
+    via its `process_event()` method.
+    """
     await verify_composio_webhook_signature(request)
     body = await request.json()
     data = body.get("data")
@@ -28,20 +41,19 @@ async def webhook_composio(
         type=body.get("type"),
     )
 
-    # Process specific webhook types
-    if event_data.type == "GMAIL_NEW_GMAIL_MESSAGE":
-        # Extract user_id from the webhook event
-        user_id = event_data.user_id
+    # Find handler for this event type
+    handler = get_handler_by_event(event_data.type)
+    if not handler:
+        logger.debug(f"Unhandled webhook type: {event_data.type}")
+        return {"status": "success", "message": "Webhook received"}
 
-        if not user_id:
-            logger.error("User ID is missing in Composio webhook")
-            raise HTTPException(
-                status_code=422,
-                detail="User ID must be provided in webhook data.",
-            )
-
-        # Queue email processing with Composio data
-        return await queue_email_processing(user_id, event_data.data)
-
-    # Log unhandled webhook types for monitoring
-    return {"status": "success", "message": "Webhook received"}
+    # Delegate all processing to the handler
+    # Each handler decides how to find workflows and execute them:
+    # - Default: find_workflows by trigger_id + WorkflowQueueService
+    # - Gmail: queries by user_id instead of trigger_id
+    return await handler.process_event(
+        event_type=event_data.type,
+        trigger_id=event_data.trigger_id,
+        user_id=event_data.user_id,
+        data=event_data.data,
+    )

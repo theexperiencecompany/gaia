@@ -1,3 +1,4 @@
+import secrets
 from typing import Optional
 
 import httpx
@@ -5,15 +6,20 @@ from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import get_integration_by_config
 from app.config.settings import settings
 from app.config.token_repository import token_repository
+from app.constants.cache import MOBILE_REDIRECT_TTL
 from app.constants.keys import OAUTH_STATUS_KEY
-from app.db.redis import delete_cache
+from app.db.redis import delete_cache, redis_cache
+from app.helpers.mcp_helpers import get_api_base_url
 from app.services.calendar_service import initialize_calendar_preferences
 from app.services.composio.composio_service import get_composio_service
-from app.services.oauth_service import handle_oauth_connection, store_user_info
-from app.services.oauth_state_service import validate_and_consume_oauth_state
+from app.services.integrations.user_integration_status import (
+    update_user_integration_status,
+)
+from app.services.oauth.oauth_service import handle_oauth_connection, store_user_info
+from app.services.oauth.oauth_state_service import validate_and_consume_oauth_state
 from app.utils.oauth_utils import fetch_user_info_from_google, get_tokens_from_code
 from fastapi import APIRouter, BackgroundTasks, HTTPException
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 from workos import WorkOSClient
 
 router = APIRouter()
@@ -22,6 +28,37 @@ http_async_client = httpx.AsyncClient()
 workos = WorkOSClient(
     api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
 )
+
+
+@router.get("/client-metadata.json")
+async def get_client_metadata():
+    """
+    OAuth Client ID Metadata Document per draft-ietf-oauth-client-id-metadata-document-00.
+
+    Authorization servers fetch this document when encountering a URL-formatted
+    client_id. This enables OAuth flows without pre-registration or DCR.
+
+    The document URL is used as the client_id value.
+    See: https://datatracker.ietf.org/doc/html/draft-ietf-oauth-client-id-metadata-document-00
+    """
+    base_url = get_api_base_url()  # e.g., https://api.heygaia.com
+    metadata_url = f"{base_url}/api/v1/oauth/client-metadata.json"
+
+    return JSONResponse(
+        content={
+            # MUST match this document's URL exactly per spec Section 4.1
+            "client_id": metadata_url,
+            "client_name": "GAIA AI Assistant",
+            "client_uri": "https://heygaia.com",
+            "logo_uri": f"{base_url}/static/logo.png",
+            "redirect_uris": [f"{base_url}/api/v1/mcp/oauth/callback"],
+            "grant_types": ["authorization_code", "refresh_token"],
+            "response_types": ["code"],
+            # MUST be "none" - no client secrets allowed per spec Section 4.1
+            "token_endpoint_auth_method": "none",  # nosec B105 - OAuth spec requires literal "none"
+        },
+        media_type="application/json",
+    )
 
 
 @router.get("/login/workos")
@@ -41,28 +78,76 @@ async def login_workos():
     return RedirectResponse(url=authorization_url)
 
 
+async def _store_mobile_redirect(state: str, redirect_uri: str) -> None:
+    """Store mobile redirect URI in Redis with TTL."""
+    await redis_cache.client.setex(
+        f"mobile_redirect:{state}", MOBILE_REDIRECT_TTL, redirect_uri
+    )
+
+
+async def _get_and_delete_mobile_redirect(state: str) -> str | None:
+    """Get and delete mobile redirect URI from Redis (consume once)."""
+    key = f"mobile_redirect:{state}"
+    uri = await redis_cache.client.get(key)
+    if uri:
+        await redis_cache.client.delete(key)
+    return uri
+
+
 @router.get("/login/workos/mobile")
-async def login_workos_mobile():
-    """Start WorkOS SSO flow for mobile apps (Expo)."""
+async def login_workos_mobile(redirect_uri: Optional[str] = None):
+    """
+    Start WorkOS SSO flow for mobile apps (Expo).
+
+    Args:
+        redirect_uri: The deep link URI to redirect back to (from Linking.createURL)
+    """
+    # Generate a unique state to track this auth flow
+    state = secrets.token_urlsafe(32)
+
+    # Store the mobile app's redirect URI
+    # Default to gaiamobile:// scheme if not provided
+    mobile_callback = redirect_uri or "gaiamobile://auth/callback"
+    await _store_mobile_redirect(state, mobile_callback)
+
+    logger.info(
+        f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}..."
+    )
+
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_MOBILE_REDIRECT_URI,
+        state=state,
     )
     return {"url": authorization_url}
 
 
 @router.get("/workos/mobile/callback")
-async def workos_mobile_callback(code: Optional[str] = None) -> RedirectResponse:
+async def workos_mobile_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+) -> RedirectResponse:
     """
     Handle WorkOS SSO callback for mobile (Expo) apps.
     Returns a deep link redirect to the mobile app with the auth token.
     """
+    # Get the stored redirect URI for this auth flow
+    mobile_redirect: str | None = None
+    if state:
+        mobile_redirect = await _get_and_delete_mobile_redirect(state)
+
+    if not mobile_redirect:
+        mobile_redirect = "gaiamobile://auth/callback"
+        logger.warning(
+            f"No stored redirect URI for state, using default: {mobile_redirect}"
+        )
+
+    logger.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
+
     try:
         if not code:
             logger.error("No authorization code received from WorkOS (mobile)")
-            return RedirectResponse(
-                url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error=missing_code"
-            )
+            return RedirectResponse(url=f"{mobile_redirect}?error=missing_code")
 
         auth_response = workos.user_management.authenticate_with_code(
             code=code,
@@ -83,13 +168,11 @@ async def workos_mobile_callback(code: Optional[str] = None) -> RedirectResponse
         await store_user_info(name, email, picture_url)
 
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(url=f"gaiamobile://auth/callback?token={token}")
+        return RedirectResponse(url=f"{mobile_redirect}?token={token}")
 
     except HTTPException as e:
         logger.error(f"HTTP error during WorkOS mobile auth: {e.detail}")
-        return RedirectResponse(
-            url=f"{settings.WORKOS_MOBILE_REDIRECT_URI}?error={e.detail}"
-        )
+        return RedirectResponse(url=f"{mobile_redirect}?error={e.detail}")
 
     except Exception as e:
         logger.error(f"Unexpected error during WorkOS mobile callback: {str(e)}")
@@ -332,11 +415,9 @@ async def composio_callback(
             f"Composio connection successful: user={user_id}, "
             f"integration={integration_config.id}, account={connectedAccountId}"
         )
-        # Add success parameter to URL
+        # Add success parameter and integration name to URL
         separator = "?" if "?" not in redirect_path else "&"
-        redirect_url = (
-            f"{settings.FRONTEND_URL}/{redirect_path}{separator}oauth_success=true"
-        )
+        redirect_url = f"{settings.FRONTEND_URL}/{redirect_path}{separator}oauth_success=true&integration={integration_config.id}"
         return RedirectResponse(url=redirect_url)
 
     except Exception as e:
@@ -434,7 +515,8 @@ async def callback(
                 "access_token": access_token,
                 "refresh_token": refresh_token,
                 "token_type": tokens.get("token_type", "Bearer"),
-                "expires_in": tokens.get("expires_in", 3600),  # Default 1 hour,
+                # Default 1 hour,
+                "expires_in": tokens.get("expires_in", 3600),
                 "scope": tokens.get("scope", ""),
             },
         )
@@ -448,16 +530,28 @@ async def callback(
             logger.warning(f"Failed to invalidate OAuth status cache: {e}")
 
         # Initialize calendar preferences (select all calendars by default)
-        await initialize_calendar_preferences(
+        initialize_calendar_preferences(
             user_id=str(user_id),
             access_token=access_token,
         )
 
+        # Update user_integrations for connected Google integrations
+        try:
+            scope = tokens.get("scope", "")
+            if "gmail" in scope.lower() or "mail" in scope.lower():
+                await update_user_integration_status(str(user_id), "gmail", "connected")
+                logger.info("Updated user_integrations for gmail")
+            if "calendar" in scope.lower():
+                await update_user_integration_status(
+                    str(user_id), "google_calendar", "connected"
+                )
+                logger.info("Updated user_integrations for google_calendar")
+        except Exception as e:
+            logger.warning(f"Failed to update user_integrations for Google scopes: {e}")
+
         # Redirect to the original page with success indicator
         separator = "&" if "?" in redirect_path else "?"
-        redirect_url = (
-            f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true"
-        )
+        redirect_url = f"{settings.FRONTEND_URL}{redirect_path}{separator}oauth_success=true&integration=google"
         response = RedirectResponse(url=redirect_url)
 
         return response

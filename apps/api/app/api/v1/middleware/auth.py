@@ -7,16 +7,16 @@ from datetime import datetime
 from datetime import timezone as tz
 from typing import Any, Awaitable, Callable, Dict, Optional
 
+from app.api.v1.middleware.agent_auth import verify_agent_token
 from app.config.loggers import auth_logger as logger
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
 from app.utils.auth_utils import authenticate_workos_session
+from bson import ObjectId
 from fastapi import Request, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.types import ASGIApp
 from workos import AsyncWorkOSClient
-from app.api.v1.middleware.agent_auth import verify_agent_token
-from bson import ObjectId
 
 
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
@@ -47,7 +47,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/oauth/login",
             "/oauth/workos/callback",
             "/oauth/google/callback",
-            "/oauth/logout",
+            "/user/logout",
             "/health",
         ]
         # agent only paths
@@ -74,6 +74,12 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
         # Extract authentication cookies
         wos_session = request.cookies.get("wos_session")
+
+        # Fallback to Authorization header (for mobile/API clients)
+        if not wos_session:
+            auth_header = request.headers.get("Authorization")
+            if auth_header and auth_header.startswith("Bearer "):
+                wos_session = auth_header.split(" ", 1)[1]
 
         # Initialize state
         request.state.user = None

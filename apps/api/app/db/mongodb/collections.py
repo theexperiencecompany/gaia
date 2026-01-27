@@ -22,14 +22,22 @@ Performance:
     - Runtime: First access initializes, subsequent access is cached
 """
 
+import pymongo
 from app.config.loggers import app_logger as logger  # Cache for lazy-loaded collections
+from pymongo.server_api import ServerApi
 
+# Cache for async (Motor) collections
 _collections_cache = {}
 _mongodb_instance = None
 
+# Cache for sync (PyMongo) collections
+_sync_collections_cache = {}
+_sync_client = None
+_sync_db = None
+
 
 def _get_mongodb_instance():
-    """Get or create MongoDB instance."""
+    """Get or create async MongoDB instance (Motor)."""
     global _mongodb_instance
     if _mongodb_instance is None:
         logger.info("Initializing MongoDB instance (lazy loading)")
@@ -41,14 +49,47 @@ def _get_mongodb_instance():
 
 
 def _get_collection(collection_name: str):
-    """Get collection with lazy loading and caching."""
+    """Get async collection with lazy loading and caching."""
     if collection_name not in _collections_cache:
-        logger.info(f"Creating collection '{collection_name}' (lazy loading)")
+        logger.info(f"Creating async collection '{collection_name}' (lazy loading)")
         mongodb_instance = _get_mongodb_instance()
         _collections_cache[collection_name] = mongodb_instance.get_collection(
             collection_name
         )
     return _collections_cache[collection_name]
+
+
+def _get_sync_db():
+    """Get or create sync PyMongo client and database."""
+    global _sync_client, _sync_db
+    if _sync_db is None:
+        from app.config.settings import settings
+
+        logger.info("Initializing sync MongoDB client (PyMongo)")
+        _sync_client = pymongo.MongoClient(settings.MONGO_DB, server_api=ServerApi("1"))
+        _sync_db = _sync_client.get_database("GAIA")
+        logger.info("Sync MongoDB client initialized")
+    return _sync_db
+
+
+def get_sync_collection(collection_name: str):
+    """
+    Get a synchronous PyMongo collection for use in sync code.
+
+    This is useful for sync functions that need to access MongoDB
+    without using asyncio (e.g., Composio tools, sync services).
+
+    Args:
+        collection_name: The name of the MongoDB collection
+
+    Returns:
+        A PyMongo Collection object (sync)
+    """
+    if collection_name not in _sync_collections_cache:
+        logger.info(f"Creating sync collection '{collection_name}' (lazy loading)")
+        db = _get_sync_db()
+        _sync_collections_cache[collection_name] = db.get_collection(collection_name)
+    return _sync_collections_cache[collection_name]
 
 
 # Collection name mappings
@@ -76,6 +117,9 @@ _COLLECTION_MAPPINGS = {
     "plans_collection": "subscription_plans",
     "usage_snapshots_collection": "usage_snapshots",
     "ai_models_collection": "ai_models",
+    "integrations_collection": "integrations",
+    "user_integrations_collection": "user_integrations",
+    "device_tokens_collection": "device_tokens",
 }
 
 

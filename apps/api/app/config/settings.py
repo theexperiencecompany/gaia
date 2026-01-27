@@ -160,6 +160,7 @@ class ProductionSettings(CommonSettings):
     # AI & Machine Learning
     OPENAI_API_KEY: str
     GOOGLE_API_KEY: str
+    OPENROUTER_API_KEY: str
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: str
@@ -228,6 +229,16 @@ class ProductionSettings(CommonSettings):
     OPIK_WORKSPACE: str
 
     # ----------------------------------------------
+    # MCP OAuth Credentials
+    # ----------------------------------------------
+    MCP_ENCRYPTION_KEY: str
+    VERCEL_MCP_CLIENT_ID: str
+    NOTION_MCP_CLIENT_ID: str
+    NOTION_MCP_CLIENT_SECRET: str
+    FIGMA_MCP_CLIENT_ID: str
+    FIGMA_MCP_CLIENT_SECRET: str
+
+    # ----------------------------------------------
     # Opik Evaluation Config
     # ----------------------------------------------
     EVAL_USER_ID: Optional[str] = None
@@ -238,6 +249,17 @@ class ProductionSettings(CommonSettings):
     # Debug Config
     # ----------------------------------------------
     DEBUG_EMAIL_PROCESSING: bool = False
+
+    # ----------------------------------------------
+    # Bot Configuration
+    # ----------------------------------------------
+    GAIA_BOT_API_KEY: str
+    DISCORD_BOT_TOKEN: str
+    DISCORD_CLIENT_ID: str
+    SLACK_BOT_TOKEN: str
+    SLACK_SIGNING_SECRET: str
+    SLACK_APP_TOKEN: str
+    TELEGRAM_BOT_TOKEN: str
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -275,6 +297,7 @@ class DevelopmentSettings(CommonSettings):
     # AI & Machine Learning
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
+    OPENROUTER_API_KEY: Optional[str] = None
 
     # Media & Content Processing
     ASSEMBLYAI_API_KEY: Optional[str] = None
@@ -345,6 +368,16 @@ class DevelopmentSettings(CommonSettings):
     OPIK_WORKSPACE: Optional[str] = None
 
     # ----------------------------------------------
+    # MCP OAuth Credentials
+    # ----------------------------------------------
+    MCP_ENCRYPTION_KEY: Optional[str] = None
+    VERCEL_MCP_CLIENT_ID: Optional[str] = None
+    NOTION_MCP_CLIENT_ID: Optional[str] = None
+    NOTION_MCP_CLIENT_SECRET: Optional[str] = None
+    FIGMA_MCP_CLIENT_ID: Optional[str] = None
+    FIGMA_MCP_CLIENT_SECRET: Optional[str] = None
+
+    # ----------------------------------------------
     # Opik Evaluation Config
     # ----------------------------------------------
     EVAL_USER_ID: Optional[str] = None
@@ -363,6 +396,17 @@ class DevelopmentSettings(CommonSettings):
 
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
+
+    # ----------------------------------------------
+    # Bot Configuration
+    # ----------------------------------------------
+    GAIA_BOT_API_KEY: Optional[str] = None
+    DISCORD_BOT_TOKEN: Optional[str] = None
+    DISCORD_CLIENT_ID: Optional[str] = None
+    SLACK_BOT_TOKEN: Optional[str] = None
+    SLACK_SIGNING_SECRET: Optional[str] = None
+    SLACK_APP_TOKEN: Optional[str] = None
+    TELEGRAM_BOT_TOKEN: Optional[str] = None
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

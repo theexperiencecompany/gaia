@@ -11,7 +11,6 @@ import {
 import { Input, Textarea } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
-import { Select, SelectItem } from "@heroui/select";
 import { Skeleton } from "@heroui/skeleton";
 import { Switch } from "@heroui/switch";
 import { Tab, Tabs } from "@heroui/tabs";
@@ -24,8 +23,6 @@ import { useHotkeys } from "react-hotkeys-hook";
 import { toast } from "sonner";
 import CustomSpinner from "@/components/ui/spinner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import {
   AlertCircleIcon,
@@ -50,9 +47,11 @@ import {
 } from "../schemas/workflowFormSchema";
 import { useWorkflowModalStore } from "../stores/workflowModalStore";
 import { useWorkflowsStore } from "../stores/workflowsStore";
-import { getTriggerEnabledIntegrations } from "../utils/triggerDisplay";
+import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
+import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
 import { ScheduleBuilder } from "./ScheduleBuilder";
 import WorkflowSteps from "./shared/WorkflowSteps";
+import { TriggerConfigForm } from "./TriggerConfigForm";
 
 interface WorkflowModalProps {
   isOpen: boolean;
@@ -80,7 +79,6 @@ export default function WorkflowModal({
   } = useWorkflowCreation();
 
   const { selectWorkflow } = useWorkflowSelection();
-  const { integrations } = useIntegrations();
 
   // Get workflows store actions for optimistic updates
   const {
@@ -108,6 +106,9 @@ export default function WorkflowModal({
 
   // Single source of truth for workflow data
   const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(null);
+
+  // Prefetch trigger schemas so they are ready when the user switches to the Trigger tab
+  useTriggerSchemas();
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -139,18 +140,46 @@ export default function WorkflowModal({
   // Platform detection for keyboard shortcuts
   const { modifierKeyName } = usePlatform();
 
-  // Check if save button should be disabled (used for hotkey)
+  // Check if save button should be disabled (used for hotkey and button)
   const isSaveDisabled = useCallback(() => {
-    return (
-      !formData.title.trim() ||
-      !formData.description.trim() ||
-      (formData.activeTab === "schedule" &&
-        formData.trigger_config.type === "schedule" &&
-        !formData.trigger_config.cron_expression) ||
-      (mode === "edit" && !hasFormChanges()) ||
-      isCreating
-    );
-  }, [formData, mode, isCreating]);
+    if (!formData.title.trim() || !formData.description.trim()) {
+      return true;
+    }
+
+    if (
+      formData.activeTab === "schedule" &&
+      formData.trigger_config.type === "schedule" &&
+      !formData.trigger_config.cron_expression
+    ) {
+      // Schedule tab requires cron expression
+      return true;
+    }
+
+    if (formData.activeTab === "trigger" && !formData.selectedTrigger) {
+      // Trigger tab requires a trigger to be selected
+      return true;
+    }
+
+    if (
+      isIntegrationTrigger(formData.trigger_config) &&
+      !hasValidTriggerName(formData.trigger_config)
+    ) {
+      // Integration triggers MUST have a valid trigger_name
+      return true;
+    }
+
+    if (mode === "edit" && !hasFormChanges()) {
+      // Edit mode requires changes
+      return true;
+    }
+
+    if (isCreating) {
+      // Block while creating
+      return true;
+    }
+
+    return false;
+  }, [formData, mode, isCreating, existingWorkflow]);
 
   // Keyboard shortcut: Escape to close modal
   useHotkeys(
@@ -533,76 +562,14 @@ export default function WorkflowModal({
     }
   };
 
-  const renderTriggerTab = () => {
-    const triggerOptions = getTriggerEnabledIntegrations(integrations);
-    const selectedTriggerOption = triggerOptions.find(
-      (t) => t.id === formData.selectedTrigger,
-    );
-
-    return (
-      <div className="w-full">
-        <div className="w-full">
-          <Select
-            aria-label="Choose a custom trigger for your workflow"
-            placeholder="Choose a trigger for your workflow"
-            fullWidth
-            className="w-screen max-w-xl"
-            selectedKeys={
-              formData.selectedTrigger ? [formData.selectedTrigger] : []
-            }
-            onSelectionChange={(keys) => {
-              const selectedTrigger = Array.from(keys)[0] as string;
-              setValue("selectedTrigger", selectedTrigger);
-
-              // Update trigger config based on selection
-              if (selectedTrigger === "gmail") {
-                setValue("trigger_config", {
-                  type: "email",
-                  enabled: true,
-                });
-              } else {
-                setValue("trigger_config", {
-                  type: "manual",
-                  enabled: true,
-                });
-              }
-            }}
-            startContent={
-              selectedTriggerOption &&
-              getToolCategoryIcon(selectedTriggerOption.id, {
-                width: 20,
-                height: 20,
-                showBackground: false,
-              })
-            }
-          >
-            {triggerOptions.map((trigger) => (
-              <SelectItem
-                key={trigger.id}
-                textValue={trigger.name}
-                startContent={getToolCategoryIcon(trigger.id, {
-                  width: 20,
-                  height: 20,
-                  showBackground: false,
-                })}
-                description={trigger.description}
-              >
-                {trigger.name}
-              </SelectItem>
-            ))}
-          </Select>
-        </div>
-
-        {selectedTriggerOption && (
-          <div className="mt-4 max-w-xl space-y-4">
-            <p className="px-1 text-xs text-zinc-500">
-              {selectedTriggerOption.description}
-            </p>
-          </div>
-        )}
-      </div>
-    );
-  };
+  const renderTriggerTab = () => (
+    <TriggerConfigForm
+      selectedTrigger={formData.selectedTrigger}
+      triggerConfig={formData.trigger_config}
+      onTriggerChange={(trigger) => setValue("selectedTrigger", trigger)}
+      onConfigChange={(config) => setValue("trigger_config", config)}
+    />
+  );
 
   const renderManualTab = () => (
     <div className="w-full">
@@ -617,7 +584,7 @@ export default function WorkflowModal({
       <ScheduleBuilder
         value={
           formData.trigger_config.type === "schedule"
-            ? formData.trigger_config.cron_expression || ""
+            ? (formData.trigger_config.cron_expression as string) || ""
             : ""
         }
         onChange={(cronExpression) => {
@@ -791,7 +758,6 @@ export default function WorkflowModal({
                       </Dropdown>
                     )}
                   </div>
-
                   {/* Trigger/Schedule Configuration */}
                   <div className="space-y-3">
                     <div className="flex items-start gap-3">
@@ -847,26 +813,47 @@ export default function WorkflowModal({
                             setValue("activeTab", tabKey);
 
                             // Set appropriate trigger config based on tab
+                            // Only change trigger_config if the current config doesn't match the tab
                             if (tabKey === "schedule") {
-                              setValue("trigger_config", {
-                                type: "schedule",
-                                enabled: true,
-                                cron_expression:
-                                  formData.trigger_config.type === "schedule"
-                                    ? formData.trigger_config.cron_expression
-                                    : "0 9 * * *",
-                                timezone: "UTC",
-                              });
+                              // Only reset if not already a schedule type
+                              if (formData.trigger_config.type !== "schedule") {
+                                setValue("trigger_config", {
+                                  type: "schedule",
+                                  enabled: true,
+                                  cron_expression: "0 9 * * *",
+                                  timezone: "UTC",
+                                });
+                              }
                             } else if (tabKey === "trigger") {
-                              setValue("trigger_config", {
-                                type: "email",
-                                enabled: true,
-                              });
+                              // Preserve existing trigger selection if it's a trigger type
+                              // Only reset if current type is schedule or manual
+                              const currentType = formData.trigger_config.type;
+                              const isTriggerType =
+                                currentType !== "schedule" &&
+                                currentType !== "manual";
+
+                              if (!isTriggerType) {
+                                // Check if we have a previously selected trigger
+                                if (formData.selectedTrigger) {
+                                  // Don't change config - let TriggerConfigForm handle it
+                                  // The selectedTrigger is preserved in form state
+                                } else {
+                                  // No previous selection, set to email as default
+                                  setValue("trigger_config", {
+                                    type: "email",
+                                    enabled: true,
+                                  });
+                                }
+                              }
+                              // If already a trigger type, keep current config
                             } else {
-                              setValue("trigger_config", {
-                                type: "manual",
-                                enabled: true,
-                              });
+                              // Manual tab - only reset if not already manual
+                              if (formData.trigger_config.type !== "manual") {
+                                setValue("trigger_config", {
+                                  type: "manual",
+                                  enabled: true,
+                                });
+                              }
                             }
                           }}
                         >
@@ -883,10 +870,8 @@ export default function WorkflowModal({
                       </div>
                     </div>
                   </div>
-
                   {/* Separator */}
                   <div className="border-t border-zinc-800" />
-
                   {/* Description Section */}
                   <div className="space-y-4">
                     <Controller
@@ -978,14 +963,7 @@ export default function WorkflowModal({
                         color="primary"
                         onPress={() => handleSubmit(handleSave)()}
                         isLoading={isCreating}
-                        isDisabled={
-                          !formData.title.trim() ||
-                          !formData.description.trim() ||
-                          (formData.activeTab === "schedule" &&
-                            formData.trigger_config.type === "schedule" &&
-                            !formData.trigger_config.cron_expression) ||
-                          (mode === "edit" && !hasFormChanges())
-                        }
+                        isDisabled={isSaveDisabled()}
                         endContent={
                           !isCreating && (
                             <Kbd keys={[modifierKeyName, "enter"]} />

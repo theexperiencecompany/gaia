@@ -73,9 +73,13 @@ export default function ChatBubbleBot(
 
   // Don't render the full bubble structure if only loading with no content
   // Let ChatRenderer's loading indicator handle it
-  if (loading && !hasContent) {
-    return null;
-  }
+  if (loading && !hasContent) return null;
+
+  const itShouldShowTextBubble = shouldShowTextBubble(
+    text,
+    isConvoSystemGenerated,
+    systemPurpose,
+  );
 
   return (
     (loading || hasContent) && (
@@ -83,15 +87,11 @@ export default function ChatBubbleBot(
         id={message_id}
         onMouseOver={handleMouseOver}
         onMouseOut={handleMouseOut}
-        className="relative flex flex-col pb-9"
+        className="relative flex flex-col"
       >
         <div className="flex items-end gap-1">
           <div className="relative bottom-0 min-w-10 shrink-0">
-            {shouldShowTextBubble(
-              text,
-              isConvoSystemGenerated,
-              systemPurpose,
-            ) && (
+            {itShouldShowTextBubble && (
               <Image
                 alt="GAIA Logo"
                 src={"/images/logos/logo.webp"}
@@ -115,41 +115,47 @@ export default function ChatBubbleBot(
           </div>
         </div>
 
-        <div className="ml-10.75 flex flex-col">
-          {!!follow_up_actions && follow_up_actions?.length > 0 && (
-            <FollowUpActions actions={follow_up_actions} loading={!!loading} />
-          )}
-
-          <div
-            ref={actionsRef}
-            className={`absolute -bottom-7 flex flex-col transition-all ${disableActions ? "hidden" : loading ? "opacity-0!" : "opacity-100"}`}
-            style={{
-              opacity: disableActions ? 1 : 0,
-              visibility: disableActions ? "visible" : "hidden",
-            }}
-          >
-            {date && !disableActions && (
-              <span className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400 select-text">
-                {parseDate(date)}
-              </span>
+        {itShouldShowTextBubble && (
+          <div className="ml-10.75 flex flex-col">
+            {!!follow_up_actions && follow_up_actions?.length > 0 && (
+              <FollowUpActions
+                actions={follow_up_actions}
+                loading={!!loading}
+              />
             )}
 
-            {!disableActions &&
-              (image_data ? (
-                <ChatBubble_Actions_Image image_data={image_data} />
-              ) : (
-                <ChatBubble_Actions
-                  loading={loading}
-                  message_id={message_id}
-                  pinned={pinned}
-                  text={text}
-                  messageRole="assistant"
-                  onRetry={onRetry}
-                  isRetrying={isRetrying}
-                />
-              ))}
+            <div
+              ref={actionsRef}
+              className={`flex flex-col transition-all ${disableActions ? "hidden" : loading ? "opacity-0!" : "opacity-100"}`}
+              style={{
+                opacity: disableActions ? 1 : 0,
+                visibility: disableActions ? "visible" : "hidden",
+              }}
+            >
+              {date && !disableActions && (
+                <span className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400 select-text">
+                  {parseDate(date)}
+                </span>
+              )}
+
+              {!disableActions &&
+                (image_data ? (
+                  <ChatBubble_Actions_Image image_data={image_data} />
+                ) : (
+                  <ChatBubble_Actions
+                    loading={loading}
+                    message_id={message_id}
+                    pinned={pinned}
+                    text={text}
+                    messageRole="assistant"
+                    onRetry={onRetry}
+                    isRetrying={isRetrying}
+                  />
+                ))}
+            </div>
           </div>
-        </div>
+        )}
+
         {children}
       </div>
     )

@@ -31,6 +31,9 @@ from app.models.models_models import ModelConfig
 from app.utils.memory_utils import store_user_message_memory
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
+# Set to hold references to background tasks to prevent garbage collection
+_background_tasks: set[asyncio.Task] = set()
+
 
 async def _core_agent_logic(
     request: MessageRequestWithHistory,
@@ -76,6 +79,7 @@ async def _core_agent_logic(
             user_name=user.get("name"),
             user_dict=user,
             selected_tool=request.selectedTool,
+            tool_category=request.toolCategory,
             selected_workflow=request.selectedWorkflow,
             selected_calendar_event=request.selectedCalendarEvent,
             reply_to_message=request.replyToMessage,
@@ -89,9 +93,11 @@ async def _core_agent_logic(
 
     # Start memory storage in background (fire and forget)
     if user_id and request.message:
-        asyncio.create_task(
+        task = asyncio.create_task(
             store_user_message_memory(user_id, request.message, conversation_id)
         )
+        _background_tasks.add(task)
+        task.add_done_callback(_background_tasks.discard)
 
     # Build config with optional tokens
     config = build_agent_config(
@@ -101,6 +107,8 @@ async def _core_agent_logic(
         user_model_config=user_model_config,
         usage_metadata_callback=usage_metadata_callback,
         agent_name="comms_agent",
+        selected_tool=request.selectedTool,
+        tool_category=request.toolCategory,
     )
 
     return graph, initial_state, config
@@ -113,9 +121,14 @@ async def call_agent(
     user_time: datetime,
     user_model_config: Optional[ModelConfig] = None,
     usage_metadata_callback: Optional[UsageMetadataCallbackHandler] = None,
+    stream_id: Optional[str] = None,
 ) -> AsyncGenerator[str, None]:
     """
     Execute agent in streaming mode for interactive chat.
+
+    Args:
+        stream_id: Optional stream ID for Redis-based cancellation checking.
+                   When provided, streaming can be cancelled via stream_manager.
 
     Returns an AsyncGenerator that yields SSE-formatted streaming data.
     """
@@ -128,6 +141,10 @@ async def call_agent(
             user_model_config,
             usage_metadata_callback=usage_metadata_callback,
         )
+
+        # Add stream_id to config for cancellation checking
+        if stream_id:
+            config["configurable"]["stream_id"] = stream_id
 
         return execute_graph_streaming(graph, initial_state, config)
 

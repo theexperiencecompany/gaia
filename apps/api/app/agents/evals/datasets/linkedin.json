@@ -1,0 +1,114 @@
+{
+  "name": "LinkedIn Capabilities",
+  "description": "Evaluation dataset for LinkedIn subagent capabilities including posting, profile management, and company information. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "linkedin_agent",
+  "integration_id": "linkedin",
+  "items": [
+    {
+      "input": "create a linkedin post about our new product launch",
+      "expected_output": "Create LinkedIn post with content about product launch.",
+      "context": "User wants to post on LinkedIn",
+      "tags": ["post", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "share article about AI trends",
+      "expected_output": "Create LinkedIn post sharing article about AI trends.",
+      "context": "User wants to share content",
+      "tags": ["post", "create", "share"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get my linkedin profile info",
+      "expected_output": "Get authenticated user's profile information including author_id.",
+      "context": "User wants their profile",
+      "tags": ["profile", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "post to company page about hiring",
+      "expected_output": "1. Get company info. 2. Create post on behalf of organization.",
+      "context": "User wants to post as company",
+      "tags": ["post", "company", "create"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "what companies do I manage",
+      "expected_output": "Get company info to list organizations user has roles in.",
+      "context": "User wants to see managed companies",
+      "tags": ["company", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "delete my post about the event",
+      "expected_output": "1. Find post about event. 2. Request confirmation. 3. Delete LinkedIn post.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["post", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "post announcement for team expansion",
+      "expected_output": "Create LinkedIn post announcing team expansion.",
+      "context": "User wants to post announcement",
+      "tags": ["post", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "share on linkdin about conference",
+      "expected_output": "1. Recognize 'linkdin' as typo for 'linkedin'. 2. Create post about conference.",
+      "context": "User made typo",
+      "tags": ["post", "create", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get my author id for posting",
+      "expected_output": "Get my info to retrieve author_id.",
+      "context": "User needs author ID",
+      "tags": ["profile", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "post job opening for software engineer",
+      "expected_output": "Create LinkedIn post about software engineer job opening.",
+      "context": "User wants to post job",
+      "tags": ["post", "create", "job"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "share company milestone 100k users",
+      "expected_output": "Create LinkedIn post celebrating 100k users milestone.",
+      "context": "User wants to share milestone",
+      "tags": ["post", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "announce new partnership with TechCorp",
+      "expected_output": "Create LinkedIn post announcing partnership.",
+      "context": "User wants to announce partnership",
+      "tags": ["post", "create", "announcement"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "post thought leadership content about industry trends",
+      "expected_output": "Create LinkedIn post with thought leadership content.",
+      "context": "User wants thought leadership post",
+      "tags": ["post", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "share our blog article on linkedin",
+      "expected_output": "Create LinkedIn post sharing blog article link.",
+      "context": "User wants to share blog",
+      "tags": ["post", "create", "share"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "post on behalf of my company about Q4 results",
+      "expected_output": "1. Get company info. 2. Create organizational post about Q4 results.",
+      "context": "User wants company post",
+      "tags": ["post", "company", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

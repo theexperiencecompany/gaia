@@ -45,6 +45,7 @@ export const metadata: Metadata = {
   manifest: "/site.webmanifest",
   keywords: [
     siteConfig.short_name,
+    "GAIA AI",
     "Personal AI Assistant",
     "AI",
     "ai assistant",

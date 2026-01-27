@@ -1,0 +1,147 @@
+---
+title: "How Does Self-Hosting Work?"
+description: "Understanding how to deploy and run GAIA on your own infrastructure for complete control over your data and privacy."
+---
+
+import GetStarted from "/snippets/get-started.mdx";
+
+# How Does Self-Hosting Work?
+
+Self-hosting works by deploying GAIA's open source codebase on your own servers or cloud infrastructure, giving you complete control over your data, privacy, and customization. Instead of using the hosted service at heygaia.io, you run the entire system yourself - the backend API, databases, frontend application, and all integrations.
+
+The appeal of self-hosting is control. Your data never leaves your infrastructure. You can customize the system to your specific needs. You're not dependent on a third-party service. You can integrate with internal systems that aren't accessible from the public internet. For privacy-conscious users and organizations, self-hosting is the only acceptable option.
+
+## The Architecture Components
+
+GAIA's architecture consists of several components that need to be deployed for self-hosting. The backend API is built with FastAPI and Python, handling all the core logic, AI interactions, and workflow orchestration. This is the heart of the system and must be running for GAIA to function.
+
+The databases include MongoDB for primary data storage (users, tasks, emails, workflows), PostgreSQL for LangGraph workflow state and checkpoints, Redis for caching and task queuing, and ChromaDB for vector embeddings and semantic search. Each database serves a specific purpose and all are required for full functionality.
+
+The frontend applications include the Next.js web application, the Electron desktop apps for macOS/Windows/Linux, and the React Native mobile apps for iOS/Android. These can be deployed separately or together depending on which platforms you want to support.
+
+The background workers handle asynchronous tasks like workflow execution, email monitoring, and scheduled jobs. These run using ARQ task queue and need to be running continuously for proactive features to work.
+
+The integration services connect to external applications like Gmail, Slack, Google Calendar, and others. These require API credentials and proper configuration to function.
+
+## Deployment Options
+
+Self-hosting can be done in several ways depending on your technical expertise and infrastructure. The simplest option is using Docker Compose, which packages all components into containers that can be deployed with a single command. GAIA provides a docker-compose.yml file that defines all services and their dependencies.
+
+For production deployments, Kubernetes is recommended. GAIA provides Kubernetes manifests that define deployments, services, and configurations for all components. Kubernetes provides better scalability, reliability, and management for production workloads.
+
+For cloud deployments, you can use managed services for databases (MongoDB Atlas, AWS RDS for PostgreSQL, Redis Cloud) and deploy the application components on compute services (AWS ECS, Google Cloud Run, Azure Container Instances). This reduces operational overhead while maintaining control over your data.
+
+For on-premises deployments, you run everything on your own hardware. This provides maximum control and is necessary for organizations with strict data residency requirements. It requires more operational expertise but gives complete independence from cloud providers.
+
+## Installation Process
+
+The installation process starts with cloning the GAIA repository from GitHub. The repository contains all the source code, configuration files, and deployment scripts needed for self-hosting.
+
+Next, you configure environment variables. These include database connection strings, API keys for AI models (OpenAI, Google, etc.), integration credentials (Gmail, Slack, etc.), and system settings. GAIA provides a template .env file that documents all required variables.
+
+Then you set up the databases. If using Docker Compose, this is automatic - the databases are created as containers. If using managed services, you create the database instances and configure connection strings. The application includes migration scripts that set up the necessary database schemas.
+
+After databases are ready, you build and deploy the application components. For Docker, this is `docker-compose up`. For Kubernetes, you apply the manifests. For manual deployment, you build the Docker images and deploy them to your infrastructure.
+
+Finally, you configure integrations. This involves setting up OAuth applications for services like Gmail and Slack, configuring webhooks for real-time events, and testing that integrations work correctly. GAIA provides documentation for each integration's setup process.
+
+## Data Migration
+
+If you're moving from the hosted service to self-hosting, you need to migrate your data. GAIA provides export and import tools for this purpose. You export your data from the hosted service (tasks, emails, workflows, preferences), download the export file, and import it into your self-hosted instance.
+
+The migration preserves all your data including tasks, projects, goals, workflows, email connections, calendar events, learned preferences, and conversation history. The knowledge graph relationships are maintained so everything remains connected.
+
+After migration, you need to reconnect integrations since OAuth tokens can't be transferred for security reasons. You authenticate with each service again in your self-hosted instance, and the connections are re-established.
+
+## Customization Possibilities
+
+Self-hosting enables customization that isn't possible with the hosted service. You can modify the source code to add features specific to your needs. You can integrate with internal systems that aren't publicly accessible. You can customize the AI models and prompts. You can adjust the user interface to match your preferences.
+
+GAIA's open source license (PolyForm Noncommercial) allows modification for personal and internal use. You can fork the repository, make changes, and run your customized version. The modular architecture makes it relatively easy to add new integrations, modify workflows, or adjust behavior.
+
+Common customizations include adding integrations with internal tools, modifying the AI prompts for domain-specific language, adjusting the user interface theme and layout, implementing custom workflow triggers, and adding organization-specific features.
+
+## Scaling Considerations
+
+As usage grows, you may need to scale your self-hosted deployment. GAIA's architecture supports horizontal scaling - you can run multiple instances of the API and workers behind a load balancer. The databases can be scaled independently - MongoDB supports sharding, PostgreSQL supports read replicas, Redis supports clustering.
+
+For small deployments (single user or small team), a single server with modest resources is sufficient. A machine with 4 CPU cores, 8GB RAM, and 100GB storage can handle dozens of users comfortably.
+
+For larger deployments (large teams or organizations), you'll want dedicated database servers, multiple API instances behind a load balancer, multiple worker instances for background jobs, and proper monitoring and alerting. Cloud auto-scaling can adjust resources based on load.
+
+## Security Considerations
+
+Self-hosting puts security responsibility on you. You need to ensure your deployment is secure. This includes using HTTPS with valid SSL certificates for all web traffic, securing database access with strong passwords and network isolation, implementing proper authentication and authorization, keeping all components updated with security patches, and monitoring for suspicious activity.
+
+GAIA provides security best practices documentation, but implementation is your responsibility. For organizations, this typically involves working with IT security teams to ensure the deployment meets security requirements.
+
+The advantage of self-hosting is that you control the security. You can implement additional security measures beyond what the hosted service provides. You can integrate with your organization's security infrastructure. You can audit the code to verify there are no security issues.
+
+## Backup and Recovery
+
+With self-hosting, you're responsible for backups. You need to regularly backup all databases to prevent data loss. GAIA provides backup scripts that can be run on a schedule. Backups should be stored securely, preferably in a different location than the primary deployment.
+
+Recovery procedures should be tested regularly. Can you restore from backup? How long does it take? What data might be lost? Having tested recovery procedures ensures you can recover quickly if something goes wrong.
+
+For critical deployments, consider high availability configurations with database replication, redundant application instances, and automatic failover. This ensures the system remains available even if individual components fail.
+
+## Monitoring and Maintenance
+
+Self-hosted deployments require ongoing monitoring and maintenance. You need to monitor system health (CPU, memory, disk usage), application performance (response times, error rates), database performance (query times, connection counts), and integration status (API rate limits, authentication status).
+
+GAIA integrates with standard monitoring tools like Prometheus and Grafana. You can set up dashboards to visualize system metrics and alerts to notify you of issues.
+
+Maintenance includes applying updates (GAIA releases updates regularly with bug fixes and new features), updating dependencies (Python packages, Node modules, system libraries), rotating credentials (API keys, database passwords), and cleaning up old data (archived tasks, old logs).
+
+## Cost Considerations
+
+Self-hosting has different cost characteristics than the hosted service. Instead of a monthly subscription, you pay for infrastructure. For small deployments, this can be cheaper - a $20/month VPS can run GAIA for a single user. For larger deployments, infrastructure costs can be significant - databases, compute instances, storage, and bandwidth add up.
+
+You also need to consider operational costs. Someone needs to manage the deployment, handle issues, apply updates, and ensure security. For individuals, this might be your own time. For organizations, this is IT staff time.
+
+The cost advantage of self-hosting depends on scale and requirements. For individuals and small teams, self-hosting can be cheaper. For large organizations, the hosted service might be more cost-effective when operational overhead is considered. For organizations with strict data control requirements, self-hosting is necessary regardless of cost.
+
+## Support and Community
+
+Self-hosting means you're responsible for troubleshooting issues. GAIA provides documentation, but you may encounter problems that require investigation. The community can help - there's a Discord server where self-hosters share experiences and help each other.
+
+For organizations, commercial support is available. This provides guaranteed response times, help with deployment and configuration, and assistance with issues. This can be valuable for organizations that don't have deep technical expertise in-house.
+
+The open source nature means you can also hire developers to help with customization, deployment, or ongoing maintenance. The code is available for anyone to work with.
+
+## Updates and Upgrades
+
+GAIA releases updates regularly. With self-hosting, you control when to apply updates. You can test updates in a staging environment before applying to production. You can delay updates if you're concerned about stability. You have complete control over the update schedule.
+
+Applying updates typically involves pulling the latest code from GitHub, rebuilding Docker images, running database migrations if needed, and restarting services. GAIA provides upgrade documentation for each release noting any breaking changes or special considerations.
+
+For critical security updates, you should apply them quickly. For feature updates, you can take your time and test thoroughly. The flexibility to control updates is an advantage of self-hosting.
+
+## Real-World Self-Hosting Example
+
+Let's walk through a realistic self-hosting scenario. You're a privacy-conscious developer who wants complete control over your data. You have a VPS with 4 CPU cores, 8GB RAM, and 100GB SSD storage running Ubuntu.
+
+You start by cloning the GAIA repository and reviewing the documentation. You decide to use Docker Compose for simplicity. You copy the example .env file and fill in your configuration - OpenAI API key for AI models, Gmail OAuth credentials for email integration, and system settings.
+
+You run `docker-compose up -d` and Docker pulls all the necessary images and starts the containers. MongoDB, PostgreSQL, Redis, and ChromaDB start as database containers. The FastAPI backend starts and runs database migrations. The Next.js frontend starts and connects to the backend. The ARQ workers start for background jobs.
+
+You access the web interface at your server's IP address. You create your account, which is stored in your local MongoDB instance. You connect your Gmail account through OAuth, and the credentials are stored encrypted in your database. You connect your Google Calendar and Slack.
+
+GAIA starts monitoring your Gmail for new emails. When an important email arrives, it creates a task automatically. The task is stored in your MongoDB. The workflow execution happens in your ARQ workers. Everything is running on your infrastructure.
+
+You customize the system by modifying the AI prompts to use terminology specific to your work. You add a custom integration with your company's internal project management system. You adjust the UI theme to your preference. These customizations are possible because you have access to the source code.
+
+You set up automated backups of your databases to run nightly. You configure monitoring to alert you if the system goes down. You update your deployment every few weeks when new GAIA releases come out.
+
+Your data never leaves your server. You have complete control. You can customize anything. You're not dependent on a third-party service. That's the power of self-hosting.
+
+---
+
+**Related Reading:**
+- [What is Self-Hosted AI Assistant?](/knowledge/what-is/self-hosted-ai-assistant)
+- [What is Open Source AI Software?](/knowledge/what-is/open-source-ai-software)
+- [How Does GAIA Protect Your Data?](/knowledge/how/gaia-protects-data)
+
+---
+
+<GetStarted />

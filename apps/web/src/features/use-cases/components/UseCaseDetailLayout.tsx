@@ -11,7 +11,7 @@ interface UseCaseDetailLayoutProps {
   breadcrumbs: Array<{ label: string; href?: string }>;
   title: string;
   description?: string;
-  slug: string;
+  id: string;
   isCreating: boolean;
   onCreateWorkflow: () => void;
   metaInfo: ReactNode;
@@ -25,7 +25,7 @@ export default function UseCaseDetailLayout({
   breadcrumbs,
   title,
   description,
-  slug,
+  id,
   isCreating,
   onCreateWorkflow,
   metaInfo,
@@ -36,7 +36,7 @@ export default function UseCaseDetailLayout({
 }: UseCaseDetailLayoutProps) {
   return (
     <div className="flex min-h-screen w-screen justify-center overflow-y-auto pt-34 pb-20 relative z-[1]">
-      <div className="container mx-auto w-full max-w-7xl space-y-5">
+      <div className="container mx-auto w-full max-w-5xl space-y-5">
         <div className="mb-3 text-sm text-zinc-500">
           <Breadcrumbs>
             {breadcrumbs.map((crumb) => (
@@ -58,14 +58,14 @@ export default function UseCaseDetailLayout({
           </div>
 
           <div className="flex items-center gap-3">
-            <ShareButton slug={slug} />
+            <ShareButton id={id} />
             <RaisedButton
               color="#00bbff"
-              className="flex-shrink-0 text-black!"
+              className="shrink-0 text-black!"
               onClick={onCreateWorkflow}
               disabled={isCreating}
             >
-              {isCreating ? "Creating..." : "Add to GAIA"}
+              {isCreating ? "Creating..." : "Add to your GAIA"}
             </RaisedButton>
           </div>
         </div>
@@ -82,7 +82,7 @@ export default function UseCaseDetailLayout({
 
         {similarContent}
 
-        <YouMightAlsoLike currentSlug={slug} categories={categories} />
+        <YouMightAlsoLike currentId={id} categories={categories} />
 
         <PublishWorkflowCTA />
       </div>

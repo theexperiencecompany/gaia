@@ -1,37 +1,16 @@
 from enum import Enum
 from typing import List, Optional, Union
 
-from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from typing_extensions import TypedDict
+
+from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
 
 
 class ImageData(BaseModel):
     url: str
     prompt: str
     improved_prompt: Optional[str] = None
-
-
-class SupportTicketData(BaseModel):
-    """Data structure for support ticket creation."""
-
-    type: str = Field(
-        ..., description="Type of support request: 'support' or 'feature'"
-    )
-    title: str = Field(
-        ...,
-        min_length=1,
-        max_length=200,
-        description="Brief title of the issue or request",
-    )
-    description: str = Field(
-        ...,
-        min_length=10,
-        max_length=5000,
-        description="Detailed description of the issue or request",
-    )
-    user_name: Optional[str] = Field(None, description="Name of the user")
-    user_email: Optional[str] = Field(None, description="Email of the user")
 
 
 class ToolDataEntry(TypedDict):
@@ -68,6 +47,8 @@ tool_fields = [
     "integration_connection_required",
     "integration_list_data",
     "reddit_data",
+    "twitter_user_data",
+    "twitter_search_data",
 ]
 
 

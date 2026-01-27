@@ -22,7 +22,7 @@ export default function HeroSection() {
         disableIntersectionObserver={true}
       >
         <div className="mx-auto flex w-full justify-center gap-2">
-          <Link href="https://github.com/theexperiencecompany/gaia/blob/master/CHANGELOG.md">
+          <Link href="https://github.com/theexperiencecompany/gaia/releases">
             <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-white/40 text-zinc-700 p-1 px-4 pl-1 text-sm font-light outline-1 outline-white/50  hover:outline-zinc-200 transition">
               <Github width={20} height={20} />
               <ShinyText

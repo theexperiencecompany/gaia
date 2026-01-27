@@ -283,7 +283,7 @@ async def execute_workflow_by_id(
             await scheduler.close()
 
 
-@tiered_rate_limit("email_workflow_executions")
+@tiered_rate_limit("trigger_workflow_executions")
 async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
     """
     Execute workflow as a single chat session, just like normal user chat.

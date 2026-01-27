@@ -1,0 +1,184 @@
+{
+  "name": "Zoom Capabilities",
+  "description": "Evaluation dataset for Zoom subagent capabilities including meeting management, webinars, recordings, and participant tracking. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "zoom_agent",
+  "integration_id": "zoom",
+  "items": [
+    {
+      "input": "create a zoom meeting for tomorrow at 2pm",
+      "expected_output": "Create scheduled meeting (type=2) with start_time set to tomorrow 2pm.",
+      "context": "User wants to schedule a meeting",
+      "tags": ["meeting", "create", "schedule"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "start an instant meeting now",
+      "expected_output": "Create instant meeting (type=1) that starts immediately.",
+      "context": "User wants immediate meeting",
+      "tags": ["meeting", "create", "instant"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show my upcoming meetings",
+      "expected_output": "List user's scheduled meetings.",
+      "context": "User wants to see meetings",
+      "tags": ["meeting", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get details for meeting 123456789",
+      "expected_output": "Get meeting information by meeting ID.",
+      "context": "User wants specific meeting info",
+      "tags": ["meeting", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create meeting called 'Team Standup' with password and waiting room enabled",
+      "expected_output": "Create meeting with topic 'Team Standup', password set, and waiting_room=true.",
+      "context": "User wants secure meeting",
+      "tags": ["meeting", "create", "detailed", "secure"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update meeting time to 4pm",
+      "expected_output": "1. List meetings. 2. Find relevant meeting. 3. Update meeting start_time to 4pm.",
+      "context": "User wants to reschedule without specifying which meeting",
+      "tags": ["meeting", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get the invite text for meeting about quarterly review",
+      "expected_output": "1. List meetings. 2. Find meeting about quarterly review. 3. Get meeting invitation text.",
+      "context": "User wants invitation for sharing",
+      "tags": ["meeting", "invitation", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "who attended the last team meeting",
+      "expected_output": "1. List meetings/past meetings. 2. Find team meeting. 3. Get past meeting participants.",
+      "context": "User wants attendance info",
+      "tags": ["meeting", "participants", "past", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list my recordings",
+      "expected_output": "List all cloud recordings for user.",
+      "context": "User wants to see recordings",
+      "tags": ["recording", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get recording for the budget meeting",
+      "expected_output": "1. List recordings. 2. Find recording for budget meeting. 3. Get recording details/download link.",
+      "context": "User wants specific recording",
+      "tags": ["recording", "get", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete recording from last week",
+      "expected_output": "1. List recordings. 2. Find recording from last week. 3. Request confirmation. 4. Delete recording.",
+      "context": "User wants to delete recording - needs consent",
+      "tags": ["recording", "delete", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create a webinar about product launch",
+      "expected_output": "Create webinar with topic about product launch.",
+      "context": "User wants to create webinar",
+      "tags": ["webinar", "create"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list my webinars",
+      "expected_output": "List user's scheduled webinars.",
+      "context": "User wants to see webinars",
+      "tags": ["webinar", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add registrant john@example.com to meeting 987654321",
+      "expected_output": "Add meeting registrant with email john@example.com to meeting.",
+      "context": "User wants to register attendee",
+      "tags": ["meeting", "registrant", "add"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "cancel the meeting tomorrow",
+      "expected_output": "1. List meetings. 2. Find meeting scheduled for tomorrow. 3. Request confirmation. 4. Delete meeting.",
+      "context": "User wants to cancel meeting - needs consent",
+      "tags": ["meeting", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create recurring weekly meeting every monday at 10am",
+      "expected_output": "Create recurring meeting (type=3) with recurrence settings for weekly on Monday.",
+      "context": "User wants recurring meeting",
+      "tags": ["meeting", "create", "recurring", "detailed"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "get my zom devices",
+      "expected_output": "1. Recognize 'zom' as typo for 'zoom'. 2. List user's Zoom Rooms devices.",
+      "context": "User made typo in 'zoom'",
+      "tags": ["device", "list", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "what's my daily usage for this month",
+      "expected_output": "Get daily usage report for current month.",
+      "context": "User wants usage statistics",
+      "tags": ["report", "usage", "stats"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get webinar information for ID 999888777",
+      "expected_output": "Get webinar details by webinar ID.",
+      "context": "User wants webinar info",
+      "tags": ["webinar", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get meeting summary",
+      "expected_output": "1. List recent meetings. 2. Get meeting summary for most recent or specified meeting.",
+      "context": "User wants AI-generated summary",
+      "tags": ["meeting", "summary", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add webinar registrant sarah@company.com to upcoming webinar",
+      "expected_output": "1. List webinars. 2. Find upcoming webinar. 3. Add registrant.",
+      "context": "User wants to register for webinar",
+      "tags": ["webinar", "registrant", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create meeting with 1 hour duration",
+      "expected_output": "Create meeting with duration=60 minutes.",
+      "context": "User specifies duration",
+      "tags": ["meeting", "create", "duration"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "who were the participants in webinar about training",
+      "expected_output": "1. List webinars. 2. Find training webinar. 3. Get webinar participants.",
+      "context": "User wants webinar attendance",
+      "tags": ["webinar", "participants", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "schedule meeting for client demo next tuesday",
+      "expected_output": "Create scheduled meeting with topic 'client demo' for next Tuesday.",
+      "context": "User wants to schedule with natural language date",
+      "tags": ["meeting", "create", "schedule", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list archived files",
+      "expected_output": "List archived meeting files.",
+      "context": "User wants to see archived content",
+      "tags": ["archive", "list"],
+      "metadata": { "difficulty": "easy" }
+    }
+  ]
+}

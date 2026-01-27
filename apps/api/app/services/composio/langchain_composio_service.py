@@ -44,8 +44,9 @@ class LangchainProvider(
         def function(**kwargs: t.Any) -> t.Dict:
             """Wrapper function for composio action."""
 
-            # Discardnig other data except metadata from __runnable_config__
-            runnable_config = kwargs.get("__runnable_config__", {})
+            # Discarding other data except metadata from __runnable_config__
+            # Use 'or {}' to handle None case when called directly without LangChain
+            runnable_config = kwargs.get("__runnable_config__") or {}
             kwargs["__runnable_config__"] = {
                 "metadata": runnable_config.get("metadata", {})
             }

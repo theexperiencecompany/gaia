@@ -12,7 +12,7 @@ Flow:
 import asyncio
 import time
 import traceback
-from typing import Dict, List, Set
+from typing import Dict
 
 from app.config.loggers import memory_logger as logger
 from crawl4ai import AsyncWebCrawler
@@ -84,49 +84,3 @@ async def crawl_profile_url(
                 "content": None,
                 "error": f"{error_type}: {error_msg}",
             }
-
-
-async def crawl_profiles_batch(
-    profile_urls: Dict[str, Set[str]], max_concurrent: int = 10
-) -> List[Dict]:
-    """
-    Crawl multiple profile URLs concurrently.
-
-    Args:
-        profile_urls: Dict mapping platform names to sets of URLs
-        max_concurrent: Maximum number of concurrent crawls
-
-    Returns:
-        List of crawl results (dicts with url, platform, content, error)
-    """
-    if not profile_urls:
-        return []
-
-    batch_start_time = time.time()
-    semaphore = asyncio.Semaphore(max_concurrent)
-    tasks = []
-
-    for platform, urls in profile_urls.items():
-        for url in urls:
-            task = crawl_profile_url(url, platform, semaphore)
-            tasks.append(task)
-
-    logger.info(
-        f"Starting to crawl {len(tasks)} profile URLs (max {max_concurrent} concurrent)"
-    )
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    # Filter out exceptions and convert to list
-    valid_results = [r for r in results if isinstance(r, dict)]
-
-    successful = sum(1 for r in valid_results if r["content"] is not None)
-    failed = len(valid_results) - successful
-
-    batch_elapsed = time.time() - batch_start_time
-    avg_time = batch_elapsed / len(tasks) if tasks else 0
-    logger.info(
-        f"Crawl batch completed in {batch_elapsed:.2f}s: {successful} succeeded, {failed} failed "
-        f"(avg {avg_time:.2f}s per URL)"
-    )
-
-    return valid_results

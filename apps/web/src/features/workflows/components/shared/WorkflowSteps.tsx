@@ -20,12 +20,12 @@ export default function WorkflowSteps({
   const timelineTopPosition = size === "large" ? "top-5" : "top-4";
 
   return (
-    <div className="relative">
+    <div className="relative pb-5">
       <div
         className={`absolute ${timelineTopPosition} bottom-8 ${timelineLeftPosition} w-px bg-linear-to-b from-primary via-primary/80 to-transparent`}
       />
 
-      <div className="space-y-8">
+      <div className="space-y-6">
         {steps.map((step, index) => (
           <WorkflowStep key={step.id} step={step} index={index} size={size} />
         ))}

@@ -4,8 +4,8 @@ import { Chip } from "@heroui/chip";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations";
+import type { IntegrationConnectionData } from "@/features/integrations/types";
 import { AlertCircleIcon } from "@/icons";
-import type { IntegrationConnectionData } from "@/types/features/integrationTypes";
 
 interface IntegrationConnectionPromptProps {
   integration_connection_required: IntegrationConnectionData;
@@ -24,7 +24,7 @@ export default function IntegrationConnectionPrompt({
   }
 
   const isConnected = integration.status === "connected";
-  const isAvailable = !!integration.loginEndpoint;
+  const isAvailable = integration.source === "custom" || integration.available;
 
   const handleConnect = async () => {
     try {

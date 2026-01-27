@@ -23,7 +23,7 @@ export interface UseToolsWithIntegrationsReturn {
  * to determine which tools are locked/available
  */
 export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
-  const { getIntegrationsWithStatus } = useIntegrations();
+  const { integrations } = useIntegrations();
 
   // Use shared tools query with consistent 3-hour caching
   const {
@@ -52,53 +52,23 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
   const enhancedTools = useMemo((): EnhancedToolInfo[] => {
     if (!toolsData?.tools) return [];
 
-    const integrationsWithStatus = getIntegrationsWithStatus();
-
     return toolsData.tools.map((tool: ToolInfo): EnhancedToolInfo => {
-      let isLocked = false;
+      // Check if integration is connected (use category as integration ID)
+      const integration = integrations.find(
+        (int) => int.id.toLowerCase() === tool.category.toLowerCase(),
+      );
+      const isLocked = !integration || integration.status !== "connected";
 
-      if (tool.required_integration) {
-        // Normalize to lowercase for case-insensitive matching (backend returns uppercase)
-        const normalizedRequiredIntegration =
-          tool.required_integration.toLowerCase();
-
-        // Check if required integration is connected
-        const requiredIntegration = integrationsWithStatus.find(
-          (integration) =>
-            integration.id.toLowerCase() === normalizedRequiredIntegration,
-        );
-
-        isLocked =
-          !requiredIntegration || requiredIntegration.status !== "connected";
-      }
-
-      // Find integration details (normalize for case-insensitive lookup)
-      const integrationDetails = tool.required_integration
-        ? integrationsWithStatus.find(
-            (integration) =>
-              integration.id.toLowerCase() ===
-              tool.required_integration!.toLowerCase(),
-          )
-        : undefined;
-
+      // Simple, direct property access - no fallbacks needed
       return {
         name: tool.name,
         category: tool.category,
-        integration: tool.required_integration
-          ? {
-              toolName: tool.name,
-              category: tool.category,
-              // Store normalized (lowercase) integration ID for consistent matching
-              requiredIntegration: tool.required_integration.toLowerCase(),
-              integrationName:
-                integrationDetails?.name || tool.required_integration,
-              isRequired: true,
-            }
-          : undefined,
+        displayName: tool.display_name, // Single source of truth from backend
+        iconUrl: tool.icon_url,
         isLocked,
       };
     });
-  }, [toolsData?.tools, getIntegrationsWithStatus]);
+  }, [toolsData?.tools, integrations]);
 
   // Group tools by category
   const toolsByCategory = useMemo((): Record<string, EnhancedToolInfo[]> => {

@@ -1,5 +1,39 @@
 // Tool data types for various AI-powered features
 
+/**
+ * Progress data for tool execution updates from backend.
+ */
+export interface ToolProgressData {
+  /** Display message for the tool execution */
+  message: string;
+  /** Raw tool name identifier */
+  tool_name: string;
+  /** Category for icon display */
+  tool_category?: string;
+  /** Whether to show category text in UI (default: true) */
+  show_category?: boolean;
+  /** Unique ID for this tool call */
+  tool_call_id?: string;
+  /** Tool input arguments */
+  inputs?: Record<string, unknown>;
+  /** Tool output result */
+  output?: string;
+  /** Icon URL for custom integrations */
+  icon_url?: string;
+  /** Friendly name of the integration (e.g., 'Researcher') */
+  integration_name?: string;
+}
+
+/**
+ * Tool output data from backend when tool execution completes.
+ */
+export interface ToolOutputData {
+  /** The tool_call_id this output corresponds to */
+  tool_call_id: string;
+  /** The output from the tool execution */
+  output: string;
+}
+
 // Define image data structure for image generation
 export type ImageData = {
   url: string;

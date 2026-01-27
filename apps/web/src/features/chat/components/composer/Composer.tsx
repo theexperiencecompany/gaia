@@ -1,3 +1,4 @@
+import { useRouter } from "next/navigation";
 import type React from "react";
 import {
   useCallback,
@@ -51,7 +52,7 @@ interface MainSearchbarProps {
   onDroppedFilesProcessed?: () => void;
   hasMessages: boolean;
   conversationId?: string;
-  // voiceModeActive: () => void;
+  voiceModeActive: () => void;
 }
 
 const Composer: React.FC<MainSearchbarProps> = ({
@@ -63,8 +64,9 @@ const Composer: React.FC<MainSearchbarProps> = ({
   onDroppedFilesProcessed,
   hasMessages,
   conversationId,
-  // voiceModeActive,
+  voiceModeActive,
 }) => {
+  const router = useRouter();
   const [currentHeight, setCurrentHeight] = useState<number>(24);
   const composerInputRef = useRef<ComposerInputRef>(null);
   const inputText = useInputText();
@@ -326,6 +328,18 @@ const Composer: React.FC<MainSearchbarProps> = ({
     setSelectedToolCategory(null);
   };
 
+  // Handle clicking on an integration in the slash command dropdown
+  const handleIntegrationClick = useCallback(
+    (integrationId: string) => {
+      // Close the dropdown first
+      composerInputRef.current?.toggleSlashCommandDropdown();
+      setIsSlashCommandDropdownOpen(false);
+      // Navigate to integrations page with id param
+      router.push(`/integrations?id=${encodeURIComponent(integrationId)}`);
+    },
+    [router, setIsSlashCommandDropdownOpen],
+  );
+
   const handleToggleSlashCommandDropdown = () => {
     // Focus the input first - this will naturally trigger slash command detection
     if (inputRef.current) {
@@ -453,13 +467,13 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
-      <IntegrationsBanner
-        integrations={integrations}
-        isLoading={integrationsLoading}
-        hasMessages={hasMessages}
-        onToggleSlashCommand={handleToggleSlashCommandDropdown}
-      />
       <div className="searchbar relative transition-all z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
+        <IntegrationsBanner
+          integrations={integrations}
+          isLoading={integrationsLoading}
+          hasMessages={hasMessages}
+          onToggleSlashCommand={handleToggleSlashCommandDropdown}
+        />
         <FilePreview files={uploadedFiles} onRemove={removeUploadedFile} />
         <SelectedToolIndicator
           toolName={selectedTool}
@@ -505,6 +519,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
           inputRef={inputRef}
           hasMessages={hasMessages}
           onSlashCommandSelect={handleSlashCommandSelect}
+          onIntegrationClick={handleIntegrationClick}
         />
         <ComposerToolbar
           selectedMode={selectedMode}
@@ -515,7 +530,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
           selectedTool={selectedTool}
           onToggleSlashCommandDropdown={handleToggleSlashCommandDropdown}
           isSlashCommandDropdownOpen={isSlashCommandDropdownOpen}
-          // voiceModeActive={voiceModeActive}
+          voiceModeActive={voiceModeActive}
         />
       </div>
       <FileUpload

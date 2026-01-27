@@ -10,6 +10,7 @@ import { Suspense } from "react";
 import ChatsList from "@/components/layout/sidebar/ChatsList";
 import CalendarSidebar from "@/components/layout/sidebar/variants/CalendarSidebar";
 import GoalsSidebar from "@/components/layout/sidebar/variants/GoalsSidebar";
+import IntegrationsSidebar from "@/components/layout/sidebar/variants/IntegrationsSidebar";
 import EmailSidebar from "@/components/layout/sidebar/variants/MailSidebar";
 import SettingsSidebar from "@/components/layout/sidebar/variants/SettingsSidebar";
 import TodoSidebar from "@/components/layout/sidebar/variants/TodoSidebar";
@@ -33,12 +34,14 @@ export default function Sidebar() {
       </Suspense>
     );
 
-  // Dashboard and integrations - empty sidebar (no chats list)
-  if (
-    pathname.startsWith("/dashboard") ||
-    pathname.startsWith("/integrations")
-  ) {
+  // Dashboard - empty sidebar (no chats list)
+  if (pathname.startsWith("/dashboard")) {
     return null;
+  }
+
+  // Integrations - show integrations sidebar
+  if (pathname.startsWith("/integrations")) {
+    return <IntegrationsSidebar />;
   }
 
   // Chat pages (/c and /c/[id]) - show chat sidebar with ChatsList

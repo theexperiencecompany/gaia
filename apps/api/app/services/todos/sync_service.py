@@ -8,7 +8,11 @@ from datetime import datetime
 from typing import Optional
 
 from app.config.loggers import goals_logger as logger
-from app.db.mongodb.collections import goals_collection, todos_collection
+from app.db.mongodb.collections import (
+    goals_collection,
+    projects_collection,
+    todos_collection,
+)
 from app.db.redis import delete_cache, delete_cache_by_pattern
 from app.models.todo_models import Priority, SubTask, TodoModel
 from bson import ObjectId
@@ -257,8 +261,6 @@ async def create_goal_project_and_todo(
 
 async def _get_or_create_goals_project(user_id: str) -> str:
     """Get or create the shared 'Goals' project for a user."""
-    from app.db.mongodb.collections import projects_collection
-
     existing = await projects_collection.find_one(
         {"user_id": user_id, "name": "Goals", "color": "#8B5CF6"}
     )
