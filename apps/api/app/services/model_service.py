@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import List, Optional, Tuple
+from zoneinfo import ZoneInfo
 
 from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import ai_models_collection, users_collection
@@ -231,3 +232,38 @@ async def get_default_model() -> Optional[ModelConfig]:
     except Exception as e:
         logger.error(f"Error fetching default model: {e}")
         return None
+
+
+async def get_user_context(user: dict) -> Tuple[Optional[ModelConfig], datetime]:
+    """
+    Get user's model config and timezone-aware datetime.
+
+    Shared utility used by both web chat and bot chat flows.
+
+    Args:
+        user: User document from database
+
+    Returns:
+        Tuple of (model_config, user_time)
+        - model_config: User's selected model or default
+        - user_time: Current time in user's timezone
+    """
+    # Get user's selected model preference
+    user_model_config = None
+    user_id = user.get("_id")
+    if user_id:
+        try:
+            user_model_config = await get_user_selected_model(str(user_id))
+        except Exception as e:
+            logger.warning(f"Failed to get user model config: {e}")
+
+    # Get user's timezone for accurate datetime
+    user_timezone_str = user.get("timezone", "UTC")
+    try:
+        user_tz = ZoneInfo(user_timezone_str)
+        user_time = datetime.now(user_tz)
+    except Exception as e:
+        logger.warning(f"Invalid timezone '{user_timezone_str}', using UTC: {e}")
+        user_time = datetime.now(timezone.utc)
+
+    return user_model_config, user_time

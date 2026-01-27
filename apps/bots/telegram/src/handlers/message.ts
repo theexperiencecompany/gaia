@@ -2,13 +2,6 @@ import type { GaiaClient } from "@gaia/shared";
 import { formatError, truncateResponse } from "@gaia/shared";
 import type { Bot } from "grammy";
 
-/**
- * Registers the text message handler for private chats.
- * Forwards any private message to the GAIA agent (authenticated chat).
- *
- * @param {Bot} bot - The Telegram Bot instance.
- * @param {GaiaClient} gaia - The GAIA API client.
- */
 export function registerMessageHandler(bot: Bot, gaia: GaiaClient) {
   bot.on("message:text", async (ctx) => {
     if (ctx.message.text.startsWith("/")) return;
@@ -28,8 +21,10 @@ export function registerMessageHandler(bot: Bot, gaia: GaiaClient) {
       });
 
       if (!response.authenticated) {
-        const authUrl = gaia.getAuthUrl("telegram", userId);
-        await ctx.reply(`Please authenticate first: ${authUrl}`);
+        const authUrl = gaia.getAuthUrl();
+        await ctx.reply(
+          `🔗 Link your Telegram account to GAIA to chat:\n${authUrl}\n\nSign in to GAIA and connect Telegram in Settings → Linked Accounts.`,
+        );
         return;
       }
 

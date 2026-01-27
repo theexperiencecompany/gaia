@@ -1,8 +1,10 @@
+import { loadConfig } from "@gaia/shared";
 import { REST, Routes } from "discord.js";
 import { getAllCommands } from "./commands";
 
-const commands = getAllCommands();
+loadConfig();
 
+const commands = getAllCommands();
 const token = process.env.DISCORD_BOT_TOKEN;
 const clientId = process.env.DISCORD_CLIENT_ID;
 

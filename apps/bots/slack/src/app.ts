@@ -1,42 +1,14 @@
 import { GaiaClient, loadConfig } from "@gaia/shared";
-import { App } from "@slack/bolt";
-import { registerCommands } from "./commands";
-import { registerEvents } from "./events";
+import { SlackBot } from "./platform";
 
-/**
- * Initializes and starts the Slack bot application.
- * Sets up command listeners, event listeners, and proper configuration.
- *
- * @returns {Promise<App>} The initialized Slack App instance.
- * @throws {Error} If SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, or SLACK_APP_TOKEN are missing.
- */
-export async function createApp() {
+export async function createApp(): Promise<SlackBot> {
   const config = loadConfig();
-
-  const token = process.env.SLACK_BOT_TOKEN;
-  const signingSecret = process.env.SLACK_SIGNING_SECRET;
-  const appToken = process.env.SLACK_APP_TOKEN;
-
-  if (!token || !signingSecret || !appToken) {
-    throw new Error(
-      "Missing SLACK_BOT_TOKEN, SLACK_SIGNING_SECRET, or SLACK_APP_TOKEN",
-    );
-  }
-
-  const app = new App({
-    token,
-    signingSecret,
-    socketMode: true,
-    appToken,
-  });
-
-  const gaia = new GaiaClient(config.gaiaApiUrl, config.gaiaApiKey);
-
-  registerCommands(app, gaia);
-  registerEvents(app, gaia);
-
-  await app.start();
-  console.log("Slack bot is running");
-
-  return app;
+  const gaia = new GaiaClient(
+    config.gaiaApiUrl,
+    config.gaiaApiKey,
+    config.gaiaWebUrl,
+  );
+  const bot = new SlackBot(gaia);
+  await bot.start();
+  return bot;
 }

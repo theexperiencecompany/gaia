@@ -24,6 +24,7 @@ export async function execute(
         name: "📝 Slash Commands",
         value: [
           "`/chat <message>` - Chat with GAIA privately (ephemeral)",
+          "`/settings` - View your account and connected integrations",
           "`/help` - Show this help message",
         ].join("\n"),
       },

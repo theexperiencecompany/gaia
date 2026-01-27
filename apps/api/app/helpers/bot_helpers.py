@@ -1,25 +1,22 @@
 """
 Bot platform helper functions.
 
-Provides utilities for bot authentication, user lookup, session management,
-and message processing across Discord, Slack, Telegram platforms.
+Provides utilities for bot authentication, user lookup, and conversation management
+across Discord, Slack, Telegram platforms.
 """
 
-from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
-from zoneinfo import ZoneInfo
 
 from fastapi import HTTPException, status
 
-from app.agents.core.agent import call_agent_silent
 from app.config.loggers import chat_logger as logger
-from app.db.mongodb.collections import users_collection
-from app.models.message_models import MessageRequestWithHistory
-from app.services.model_service import get_user_selected_model
+from app.db.mongodb.collections import conversations_collection, users_collection
+from app.models.chat_models import ConversationModel
+from app.services.conversation_service import create_conversation_service
 
 # Supported platforms for bot integration
-SUPPORTED_PLATFORMS = {"discord", "slack", "telegram"}
+SUPPORTED_PLATFORMS = {"discord", "slack", "telegram", "whatsapp", "cli"}
 
 
 def validate_platform(platform: str) -> None:
@@ -50,100 +47,90 @@ async def get_user_by_platform_id(
         platform_user_id: User's ID on that platform
 
     Returns:
-        User document if found, None otherwise
+        User dict with user_id field (same format as web auth), or None
     """
-    return await users_collection.find_one(
+    user_data = await users_collection.find_one(
         {f"platform_links.{platform}.{platform}_id": platform_user_id}
     )
+    if not user_data:
+        return None
+
+    # Convert to same format as web auth (user_id string instead of _id ObjectId)
+    user_info = {
+        "user_id": str(user_data.get("_id")),
+        **user_data,
+    }
+    user_info.pop("_id", None)
+    return user_info
 
 
-async def get_or_create_session(
-    platform: str, platform_user_id: str, channel_id: Optional[str]
-) -> str:
+async def get_or_create_bot_conversation(
+    platform: str,
+    platform_user_id: str,
+    channel_id: Optional[str],
+    user_doc: dict,
+) -> tuple[str, list]:
     """
-    Get or create a conversation session.
+    Get existing bot conversation or create new one with full message history.
 
-    Note: Currently stateless - returns new conversation ID each time.
-    TODO: Implement persistent session storage (Redis/MongoDB) to maintain
-    conversation history across multiple messages.
+    Conversations are scoped per platform/user/channel using session_key.
 
     Args:
-        platform: Platform name
-        platform_user_id: User's platform ID
+        platform: Platform name (discord, slack, telegram)
+        platform_user_id: User's ID on the platform
         channel_id: Optional channel/thread ID for scoping
+        user_doc: GAIA user document from database
 
     Returns:
-        Conversation ID (currently always new UUID)
+        Tuple of (conversation_id, messages_history)
+        - conversation_id: Unique conversation identifier
+        - messages_history: List of {"role": str, "content": str} messages
     """
-    return str(uuid4())
+    session_key = f"bot_{platform}_{platform_user_id}_{channel_id or 'dm'}"
 
-
-async def get_user_context(user: dict) -> tuple[Optional[object], datetime]:
-    """
-    Get user's model config and timezone-aware datetime.
-
-    Args:
-        user: User document from database
-
-    Returns:
-        Tuple of (model_config, user_time)
-    """
-    # Get user's selected model preference
-    user_model_config = None
-    user_id = user.get("_id")
-    if user_id:
-        try:
-            user_model_config = await get_user_selected_model(str(user_id))
-        except Exception as e:
-            logger.warning(f"Failed to get user model config: {e}")
-
-    # Get user's timezone for accurate datetime
-    user_timezone_str = user.get("timezone", "UTC")
-    try:
-        user_tz = ZoneInfo(user_timezone_str)
-        user_time = datetime.now(user_tz)
-    except Exception as e:
-        logger.warning(f"Invalid timezone '{user_timezone_str}', using UTC: {e}")
-        user_time = datetime.now(timezone.utc)
-
-    return user_model_config, user_time
-
-
-async def process_chat_message(
-    message: str,
-    conversation_id: str,
-    user: dict,
-    user_model_config: Optional[object],
-    user_time: datetime,
-) -> str:
-    """
-    Process chat message through GAIA agent.
-
-    Args:
-        message: User's message
-        conversation_id: Conversation ID
-        user: User document
-        user_model_config: User's selected model config
-        user_time: Timezone-aware current time
-
-    Returns:
-        Agent's response text
-
-    Raises:
-        Exception: If agent processing fails
-    """
-    message_request = MessageRequestWithHistory(
-        message=message,
-        conversation_id=conversation_id,
-        messages=[{"role": "user", "content": message}],
+    conversation = await conversations_collection.find_one(
+        {"user_id": user_doc["user_id"], "session_key": session_key}
     )
 
-    response_text, _ = await call_agent_silent(
-        request=message_request,
-        conversation_id=conversation_id,
-        user=user,
-        user_time=user_time,
-        user_model_config=user_model_config,
+    if conversation:
+        messages = conversation.get("messages", [])
+        # Map stored "bot" type to "assistant" role for LangChain compatibility
+        formatted_messages = [
+            {
+                "role": "assistant" if msg["type"] == "bot" else msg["type"],
+                "content": msg["response"],
+            }
+            for msg in messages
+        ]
+        logger.info(
+            f"Found existing bot conversation {conversation['conversation_id']} "
+            f"with {len(formatted_messages)} messages"
+        )
+        return conversation["conversation_id"], formatted_messages
+
+    # Create new conversation (same as web flow)
+    conversation_id = str(uuid4())
+    await create_conversation_service(
+        ConversationModel(
+            conversation_id=conversation_id,
+            description=f"{platform.title()} Chat",
+        ),
+        user_doc,
     )
 
-    return response_text
+    # Add bot-specific metadata
+    await conversations_collection.update_one(
+        {"user_id": user_doc["user_id"], "conversation_id": conversation_id},
+        {
+            "$set": {
+                "session_key": session_key,
+                "platform": platform,
+                "channel_id": channel_id,
+            }
+        },
+    )
+
+    logger.info(
+        f"Created new bot conversation {conversation_id} for {platform}/{platform_user_id}"
+    )
+    return conversation_id, []

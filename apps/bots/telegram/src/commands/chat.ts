@@ -2,13 +2,6 @@ import type { GaiaClient } from "@gaia/shared";
 import { formatError, truncateResponse } from "@gaia/shared";
 import type { Bot } from "grammy";
 
-/**
- * Registers the /chat command handler.
- * Allows users to chat with the GAIA agent directly.
- *
- * @param {Bot} bot - The Telegram Bot instance.
- * @param {GaiaClient} gaia - The GAIA API client.
- */
 export function registerChatCommand(bot: Bot, gaia: GaiaClient) {
   bot.command("chat", async (ctx) => {
     const message = ctx.match;
@@ -33,8 +26,10 @@ export function registerChatCommand(bot: Bot, gaia: GaiaClient) {
       });
 
       if (!response.authenticated) {
-        const authUrl = gaia.getAuthUrl("telegram", userId);
-        await ctx.reply(`Please authenticate first: ${authUrl}`);
+        const authUrl = gaia.getAuthUrl();
+        await ctx.reply(
+          `🔗 Link your Telegram account to GAIA to chat:\n${authUrl}\n\nSign in to GAIA and connect Telegram in Settings → Linked Accounts.`,
+        );
         return;
       }
 

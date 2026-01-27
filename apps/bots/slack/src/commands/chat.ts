@@ -2,13 +2,6 @@ import type { GaiaClient } from "@gaia/shared";
 import { formatError, truncateResponse } from "@gaia/shared";
 import type { App } from "@slack/bolt";
 
-/**
- * Registers the /chat slash command listener.
- * Handles authenticated chat with the GAIA agent.
- *
- * @param {App} app - The Slack App instance.
- * @param {GaiaClient} gaia - The GAIA API client.
- */
 export function registerChatCommand(app: App, gaia: GaiaClient) {
   app.command("/chat", async ({ command, ack, respond }) => {
     await ack();
@@ -34,9 +27,9 @@ export function registerChatCommand(app: App, gaia: GaiaClient) {
       });
 
       if (!response.authenticated) {
-        const authUrl = gaia.getAuthUrl("slack", userId);
+        const authUrl = gaia.getAuthUrl();
         await respond({
-          text: `Please authenticate first: ${authUrl}`,
+          text: `🔗 Link your Slack account to GAIA to chat:\n${authUrl}\n\nSign in to GAIA and connect Slack in Settings → Linked Accounts.`,
           response_type: "ephemeral",
         });
         return;

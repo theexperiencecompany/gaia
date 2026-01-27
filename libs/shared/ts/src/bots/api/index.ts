@@ -3,7 +3,9 @@ import type {
   AuthStatus,
   ChatRequest,
   ChatResponse,
+  ConnectedIntegration,
   SessionInfo,
+  UserSettings,
 } from "../types";
 
 /**
@@ -172,5 +174,57 @@ export class GaiaClient {
    */
   getAuthUrl(): string {
     return `${this.webUrl}/settings?section=linked-accounts`;
+  }
+
+  /**
+   * Retrieves user settings including profile, integrations, and selected model.
+   *
+   * @param platform - The platform name.
+   * @param platformUserId - The platform user ID.
+   * @returns User settings information.
+   * @throws Error if the API request fails.
+   */
+  async getSettings(
+    platform: string,
+    platformUserId: string,
+  ): Promise<UserSettings> {
+    try {
+      const { data } = await this.client.get<{
+        authenticated: boolean;
+        user_name: string | null;
+        profile_image_url: string | null;
+        account_created_at: string | null;
+        selected_model_name: string | null;
+        selected_model_icon_url: string | null;
+        connected_integrations: Array<{
+          id: string;
+          name: string;
+          icon_url: string | null;
+        }>;
+      }>(`/api/v1/bot/settings/${platform}/${platformUserId}`);
+
+      return {
+        authenticated: data.authenticated,
+        userName: data.user_name,
+        profileImageUrl: data.profile_image_url,
+        accountCreatedAt: data.account_created_at,
+        selectedModelName: data.selected_model_name,
+        selectedModelIconUrl: data.selected_model_icon_url,
+        connectedIntegrations: data.connected_integrations.map(
+          (i): ConnectedIntegration => ({
+            id: i.id,
+            name: i.name,
+            iconUrl: i.icon_url,
+          }),
+        ),
+      };
+    } catch (error) {
+      if (axios.isAxiosError(error)) {
+        const status = error.response?.status || "unknown";
+        const message = error.response?.data?.detail || error.message;
+        throw new Error(`API error (${status}): ${message}`);
+      }
+      throw error instanceof Error ? error : new Error("Unknown error");
+    }
   }
 }

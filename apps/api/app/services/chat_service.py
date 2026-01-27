@@ -32,6 +32,7 @@ from app.services.file_service import get_files
 from app.services.model_service import get_user_selected_model
 from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
+from app.utils.stream_utils import extract_response_text
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
 # =============================================================================
@@ -134,7 +135,7 @@ async def run_chat_stream_background(
                         await stream_manager.publish_chunk(stream_id, chunk)
 
                     # Update progress for recovery
-                    response_text = _extract_response_text(chunk)
+                    response_text = extract_response_text(chunk)
                     if response_text:
                         await stream_manager.update_progress(
                             stream_id,
@@ -238,18 +239,6 @@ async def _initialize_new_conversation(
     }
 
     return f"data: {json.dumps(init_data)}\n\n"
-
-
-def _extract_response_text(chunk: str) -> str:
-    """Extract response text from a data chunk."""
-    try:
-        if chunk.startswith("data: "):
-            chunk = chunk[6:]
-        data = json.loads(chunk)
-        return data.get("response", "")
-    except (json.JSONDecodeError, KeyError):
-        pass
-    return ""
 
 
 async def _save_conversation_async(

@@ -1,22 +1,14 @@
 import type { GaiaClient } from "@gaia/shared";
 import type { App } from "@slack/bolt";
 
-/**
- * Registers the /auth slash command listener.
- * Provides a link for users to authenticate their Slack account with GAIA.
- *
- * @param {App} app - The Slack App instance.
- * @param {GaiaClient} gaia - The GAIA API client.
- */
 export function registerAuthCommand(app: App, gaia: GaiaClient) {
-  app.command("/auth", async ({ command, ack, respond }) => {
+  app.command("/auth", async ({ ack, respond }) => {
     await ack();
 
-    const userId = command.user_id;
-    const authUrl = gaia.getAuthUrl("slack", userId);
+    const authUrl = gaia.getAuthUrl();
 
     await respond({
-      text: `Click to link your Slack account to GAIA: ${authUrl}`,
+      text: `🔗 Link your Slack account to GAIA:\n${authUrl}\n\nSign in to GAIA and connect Slack in Settings → Linked Accounts.`,
       response_type: "ephemeral",
     });
   });

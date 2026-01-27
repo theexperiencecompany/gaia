@@ -1,15 +1,15 @@
 import { createBot } from "./bot";
 
-let client: Awaited<ReturnType<typeof createBot>> | null = null;
+let bot: Awaited<ReturnType<typeof createBot>> | null = null;
 
 async function main() {
-  client = await createBot();
+  bot = await createBot();
 }
 
 async function shutdown() {
   console.log("Shutting down Discord bot...");
-  if (client) {
-    client.destroy();
+  if (bot) {
+    await bot.stop();
   }
   process.exit(0);
 }
