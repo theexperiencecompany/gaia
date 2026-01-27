@@ -185,7 +185,7 @@ export const appConfig = {
         description: "Follow us for updates",
       },
       {
-        href: "https://github.com/theexperiencecompany",
+        href: "https://github.com/theexperiencecompany/gaia",
         label: "GitHub",
         icon: <Github width={20} height={20} color="white" />,
         external: true,
@@ -199,7 +199,7 @@ export const appConfig = {
         description: "Join WhatsApp Community",
       },
       {
-        href: "https://youtube.com/@heygaia_io",
+        href: "https://youtube.com/@theexperiencecompany",
         label: "YouTube",
         icon: <YoutubeIcon width={25} height={25} color="#FF0000" />,
         external: true,

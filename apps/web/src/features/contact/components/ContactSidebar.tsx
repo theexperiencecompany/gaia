@@ -41,7 +41,7 @@ const socialLinks = [
   },
   {
     ariaLabel: "GitHub",
-    href: "https://github.com/theexperiencecompany",
+    href: "https://github.com/theexperiencecompany/gaia",
     Icon: Github,
   },
   {
@@ -51,7 +51,7 @@ const socialLinks = [
   },
   {
     ariaLabel: "YouTube",
-    href: "https://youtube.com/@heygaia_io",
+    href: "https://youtube.com/@theexperiencecompany",
     Icon: YoutubeIcon,
   },
   {

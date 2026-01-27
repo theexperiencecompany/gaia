@@ -36,7 +36,7 @@ export const siteConfig = {
     github: "https://github.com/theexperiencecompany",
     discord: "https://discord.heygaia.io",
     linkedin: "https://www.linkedin.com/company/heygaia",
-    youtube: "https://youtube.com/@heygaia_io",
+    youtube: "https://youtube.com/@theexperiencecompany",
     whatsapp: "https://whatsapp.heygaia.io",
   },
   founders: [
