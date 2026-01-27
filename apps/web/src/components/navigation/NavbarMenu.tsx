@@ -154,7 +154,7 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
                 icon={link.icon}
                 backgroundImage={
                   link.href === "/login"
-                    ? "/images/wallpapers/surreal.webp"
+                    ? "/images/wallpapers/landscape.webp"
                     : link.href === "/use-cases"
                       ? wallpapers.useCases.webp
                       : link.href === "/marketplace"

@@ -72,7 +72,7 @@ export default function FinalSection({
     <div className="relative z-1 m-0! flex min-h-[90vh] w-screen flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="absolute inset-0 h-full w-full">
         <Image
-          src="/images/wallpapers/surreal.webp"
+          src="/images/wallpapers/landscape.webp"
           alt="Wallpaper"
           fill
           sizes="100vw"
