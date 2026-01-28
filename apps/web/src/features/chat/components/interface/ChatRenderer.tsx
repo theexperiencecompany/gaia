@@ -1,9 +1,9 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import { WaveSpinnerSquare } from "@/components/shared/WaveSpinnerSquare";
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
@@ -144,21 +144,17 @@ export default function ChatRenderer({
             ?.description || "New chat"
         } | GAIA`}
       </title>
-
       <GeneratedImageSheet
         imageData={imageData}
         openImage={openGeneratedImage}
         setOpenImage={setOpenGeneratedImage}
       />
-
       <MemoryModal
         isOpen={openMemoryModal}
         onClose={() => setOpenMemoryModal(false)}
       />
-
       <SearchedImageDialog />
       <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
-
       {filteredMessages?.map((message: MessageType, index: number) => {
         let messageProps = null;
 
@@ -186,7 +182,7 @@ export default function ChatRenderer({
       })}
       {isLoading && (
         <div className="flex items-center gap-4 pl-12 text-sm font-medium">
-          {toolInfo?.toolCategory &&
+          {toolInfo?.toolCategory ? (
             getToolCategoryIcon(
               toolInfo.toolCategory,
               {
@@ -196,14 +192,16 @@ export default function ChatRenderer({
                 iconOnly: true,
               },
               toolInfo.iconUrl,
-            )}
+            )
+          ) : (
+            <WaveSpinnerSquare />
+          )}
           <span>
             {toolInfo?.showCategory !== false && toolInfo?.toolCategory
               ? `${toolInfo.integrationName || formatCategoryName(toolInfo.toolCategory)}: `
               : ""}
             {loadingText || "GAIA is thinking..."}
           </span>
-          <Spinner variant="dots" color="primary" />
         </div>
       )}
     </>
