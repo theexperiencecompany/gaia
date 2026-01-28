@@ -9,7 +9,17 @@ This module provides the retrieve_tools function factory that supports:
 """
 
 import asyncio
-from typing import Annotated, Any, Awaitable, Callable, List, Optional, TypedDict, Union
+from typing import (
+    Annotated,
+    Any,
+    Awaitable,
+    Callable,
+    List,
+    Optional,
+    Set,
+    TypedDict,
+    Union,
+)
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
@@ -18,7 +28,6 @@ from app.db.chroma.public_integrations_store import search_public_integrations
 from app.services.integrations.integration_service import (
     get_user_available_tool_namespaces,
 )
-from app.utils.agent_utils import parse_subagent_id
 from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore, SearchItem
@@ -29,6 +38,242 @@ class RetrieveToolsResult(TypedDict):
 
     tools_to_bind: list[str]
     response: list[str]
+
+
+async def _get_user_context(
+    user_id: Optional[str],
+    tool_space: str,
+) -> tuple[Set[str], Set[str], Set[str]]:
+    """Get user's available namespaces and connected integrations.
+
+    Returns:
+        Tuple of (user_namespaces, connected_integrations, internal_subagents)
+    """
+    user_namespaces: Set[str] = {tool_space, "general"}
+    connected_integrations: Set[str] = set()
+
+    # Internal subagents are always available (core platform features)
+    internal_subagents: Set[str] = {
+        integration.id
+        for integration in OAUTH_INTEGRATIONS
+        if integration.managed_by == "internal"
+        and integration.subagent_config
+        and integration.subagent_config.has_subagent
+    }
+
+    if not user_id:
+        return user_namespaces, connected_integrations, internal_subagents
+
+    try:
+        user_namespaces = await get_user_available_tool_namespaces(user_id)
+        raw_connected = user_namespaces - {"general", "subagents"}
+
+        # Filter to only integrations with subagent configurations
+        connected_integrations = {
+            integration_id
+            for integration_id in raw_connected
+            if (
+                # Platform integrations with subagent config
+                (
+                    (integ := get_integration_by_id(integration_id))
+                    and integ.subagent_config
+                    and integ.subagent_config.has_subagent
+                )
+                # Custom/public integrations (not in platform config)
+                or get_integration_by_id(integration_id) is None
+            )
+        }
+
+        logger.info(f"User {user_id} namespaces: {user_namespaces}")
+        logger.info(f"User {user_id} connected subagents: {connected_integrations}")
+    except Exception as e:
+        logger.warning(f"Failed to get user namespaces: {e}")
+
+    return user_namespaces, connected_integrations, internal_subagents
+
+
+async def _log_store_diagnostics(store: BaseStore) -> None:
+    """Log diagnostic information about store contents."""
+    try:
+        logger.info("DIAGNOSTIC: Inspecting store namespaces...")
+
+        # Check subagents namespace
+        subagents_items = await store.asearch(("subagents",), query="", limit=5)
+        logger.info(f"DIAGNOSTIC: Subagents namespace has {len(subagents_items)} items")
+
+        for item in subagents_items[:3]:
+            logger.info(
+                f"DIAGNOSTIC: Item - key='{item.key}', "
+                f"namespace={getattr(item, 'namespace', 'N/A')}"
+            )
+    except Exception as e:
+        logger.warning(f"DIAGNOSTIC: Failed to inspect store: {e}")
+
+
+def _build_search_tasks(
+    store: BaseStore,
+    query: str,
+    tool_space: str,
+    user_namespaces: Set[str],
+    include_subagents: bool,
+    limit: int,
+) -> List[Awaitable[Union[List[SearchItem], List[dict[str, Any]]]]]:
+    """Build list of search tasks to execute."""
+    search_tasks: List[Awaitable[Union[List[SearchItem], List[dict[str, Any]]]]] = []
+
+    # Search in tool_space
+    if tool_space in user_namespaces or tool_space == "general":
+        logger.info(f"Adding search for tool_space: {tool_space}")
+        search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
+
+    # Search subagents namespace
+    if include_subagents:
+        logger.info("Adding search for subagents namespace")
+        search_tasks.append(store.asearch(("subagents",), query=query, limit=15))
+        search_tasks.append(search_public_integrations(query=query, limit=15))
+
+    return search_tasks
+
+
+def _process_public_integration_result(
+    result: List[dict[str, Any]],
+    task_idx: int,
+) -> List[dict[str, float]]:
+    """Process public integration search results."""
+    processed = []
+
+    for item in result:
+        integration_id = item.get("integration_id")
+        if integration_id:
+            subagent_key = f"subagent:{integration_id}"
+            processed.append(
+                {
+                    "id": subagent_key,
+                    "score": item.get("relevance_score", 0),
+                }
+            )
+
+    return processed
+
+
+def _process_chroma_search_result(
+    result: List[SearchItem],
+    task_idx: int,
+    available_tool_names: Set[str],
+    tool_registry,
+    include_subagents: bool,
+) -> List[dict[str, float]]:
+    """Process Chroma store search results."""
+    processed = []
+
+    for item in result:
+        tool_key = str(item.key)
+
+        # Handle subagent results from subagents namespace
+        if hasattr(item, "namespace") and item.namespace == ("subagents",):
+            subagent_key = (
+                tool_key if tool_key.startswith("subagent:") else f"subagent:{tool_key}"
+            )
+            processed.append({"id": subagent_key, "score": item.score})
+            continue
+
+        # Handle keys with subagent: prefix
+        if tool_key.startswith("subagent:"):
+            processed.append({"id": tool_key, "score": item.score})
+            continue
+
+        # Filter delegated tools in main agent context
+        if include_subagents:
+            tool_category_name = tool_registry.get_category_of_tool(tool_key)
+            if tool_category_name:
+                category = tool_registry.get_category(name=tool_category_name)
+                if category and category.is_delegated:
+                    continue
+
+        # Add regular tools
+        if tool_key in available_tool_names:
+            processed.append({"id": tool_key, "score": item.score})
+
+    return processed
+
+
+async def _process_search_results(
+    results: List[Any],
+    available_tool_names: Set[str],
+    tool_registry,
+    include_subagents: bool,
+) -> List[dict[str, float]]:
+    """Process all search results and return unified list."""
+    all_results = []
+
+    for idx, result in enumerate(results):
+        if isinstance(result, BaseException):
+            logger.warning(f"Task {idx}: Search error - {result}")
+            continue
+
+        if not result:
+            continue
+
+        # Determine result type and process accordingly
+        is_public_search = isinstance(result[0], dict)
+
+        if is_public_search:
+            processed = _process_public_integration_result(result, idx)
+        else:
+            processed = _process_chroma_search_result(
+                result, idx, available_tool_names, tool_registry, include_subagents
+            )
+
+        all_results.extend(processed)
+
+    return all_results
+
+
+def _deduplicate_and_sort(
+    results: List[dict[str, float]],
+    limit: int,
+) -> List[str]:
+    """Remove duplicates, sort by score, and return top results."""
+    seen = set()
+    unique_results = []
+
+    for r in results:
+        if r["id"] not in seen:
+            seen.add(r["id"])
+            unique_results.append(r)
+
+    unique_results.sort(key=lambda x: x["score"] or 0.0, reverse=True)
+    return [str(r["id"]) for r in unique_results[:limit]]
+
+
+def _inject_available_subagents(
+    discovered_tools: List[str],
+    internal_subagents: Set[str],
+    connected_integrations: Set[str],
+    include_subagents: bool,
+) -> List[str]:
+    """Inject available subagents that user has access to."""
+    if not include_subagents:
+        return discovered_tools
+
+    seen = set(discovered_tools)
+    result = list(discovered_tools)
+
+    # Add internal subagents (always available)
+    for integration_id in internal_subagents:
+        subagent_key = f"subagent:{integration_id}"
+        if subagent_key not in seen:
+            result.append(subagent_key)
+            seen.add(subagent_key)
+
+    # Add connected integration subagents
+    for integration_id in connected_integrations:
+        subagent_key = f"subagent:{integration_id}"
+        if subagent_key not in seen:
+            result.append(subagent_key)
+            seen.add(subagent_key)
+
+    return result
 
 
 def get_retrieve_tools_function(
@@ -53,28 +298,27 @@ def get_retrieve_tools_function(
 
     async def retrieve_tools(
         store: Annotated[BaseStore, InjectedStore],
+        config: RunnableConfig,
         query: Optional[str] = None,
         exact_tool_names: Optional[list[str]] = None,
-        config: Optional[RunnableConfig] = None,
-        user_id: Optional[str] = None,
     ) -> RetrieveToolsResult:
         """Discover available tools or load specific tools by exact name.
 
-                This is your primary interface to the tool ecosystem. It supports TWO modes:
+        This is your primary interface to the tool ecosystem. It supports TWO modes:
 
         —DISCOVERY MODE (query)
         Use natural language to semantically search for relevant tools.
 
-                IMPORTANT BEHAVIOR:
-                - Discovery results are LIMITED and NOT exhaustive
-                - Not all relevant tools may be returned in a single query
-                - Absence of a tool in results does NOT mean it does not exist
-                - You are expected to retry with different wording if needed
+        IMPORTANT BEHAVIOR:
+        - Discovery results are LIMITED and NOT exhaustive
+        - Not all relevant tools may be returned in a single query
+        - Absence of a tool in results does NOT mean it does not exist
+        - You are expected to retry with different wording if needed
 
-                You may:
-                - Rephrase queries
-                - Try broader or narrower intent
-                - Use multiple intents in a single query (comma-separated)
+        You may:
+        - Rephrase queries
+        - Try broader or narrower intent
+        - Use multiple intents in a single query (comma-separated)
 
         Examples of valid queries:
         - "send email"
@@ -86,7 +330,7 @@ def get_retrieve_tools_function(
         are treated as a single semantic search and are encouraged when
         exploring related capabilities.
 
-                Discovery mode ONLY returns tool names. Tools are NOT loaded.
+        Discovery mode ONLY returns tool names. Tools are NOT loaded.
 
         —BINDING MODE (exact_tool_names)
         Load tools by their exact names.
@@ -152,27 +396,18 @@ def get_retrieve_tools_function(
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
+        logger.info(f"Registry has {len(available_tool_names)} available tools")
 
-        # Get user_id from explicit arg OR config
-        if not user_id and config:
-            user_id = config.get("configurable", {}).get("user_id")
-            # Deep debugging for missing user_id
-            if not user_id:
-                logger.info(f"retrieve_tools config keys: {list(config.keys())}")
-                logger.info(
-                    f"retrieve_tools configurable: {config.get('configurable', {})}"
-                )
-
+        # Get user_id from config
+        user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
-            logger.warning("retrieve_tools called with NO user_id (arg or config)")
+            logger.warning("retrieve_tools called with NO user_id")
 
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
             validated_tool_names = []
             for tool_name in exact_tool_names:
-                # Subagent keys (e.g., "subagent:gmail", "subagent:fb9dfd7e05f8")
-                # are not in the tool registry - they're used with the handoff tool
-                # and don't need binding. Pass them through for discovery response.
+                # Subagent keys don't need binding - pass through for discovery
                 if tool_name.startswith("subagent:"):
                     validated_tool_names.append(tool_name)
                 elif tool_name in available_tool_names:
@@ -183,185 +418,53 @@ def get_retrieve_tools_function(
             )
 
         # DISCOVERY MODE: Semantic search for tools
-        # Get user's connected integration namespaces for filtering
-        user_namespaces: set[str] = {tool_space, "general"}
-        connected_integrations: set[str] = set()
-
-        # Internal subagents (like todos) are ALWAYS available - they're core platform features
-        # NOT integrations that need connecting. Only external integrations require UI connection.
-        internal_subagents: set[str] = {
-            integration.id
-            for integration in OAUTH_INTEGRATIONS
-            if integration.managed_by == "internal"
-            and integration.subagent_config
-            and integration.subagent_config.has_subagent
-        }
-
         logger.info(
-            f"retrieve_tools DISCOVERY: query='{query}', user_id={user_id}, "
+            f"DISCOVERY: query='{query}', user_id={user_id}, "
             f"include_subagents={include_subagents}, tool_space={tool_space}"
         )
+
+        # Get user context
+        (
+            user_namespaces,
+            connected_integrations,
+            internal_subagents,
+        ) = await _get_user_context(user_id, tool_space)
+
+        logger.info(f"User namespaces: {user_namespaces}")
         logger.info(f"Internal subagents (always available): {internal_subagents}")
 
-        if user_id:
-            try:
-                user_namespaces = await get_user_available_tool_namespaces(user_id)
-                # Extract connected integrations (excluding general and subagents)
-                raw_connected = user_namespaces - {"general", "subagents"}
+        # Run diagnostics
+        await _log_store_diagnostics(store)
 
-                # Filter to only integrations that have subagent configurations
-                # OR are custom/public integrations (which are always subagent-capable)
-                connected_integrations = {
-                    integration_id
-                    for integration_id in raw_connected
-                    if (
-                        # Platform integrations with subagent config
-                        (
-                            (integ := get_integration_by_id(integration_id))
-                            and integ.subagent_config
-                            and integ.subagent_config.has_subagent
-                        )
-                        # Custom/public integrations: anything not in platform config
-                        # is a custom integration (from MongoDB) and is subagent-capable
-                        or get_integration_by_id(integration_id) is None
-                    )
-                }
+        # Build and execute search tasks
+        search_tasks = _build_search_tasks(
+            store, query or "", tool_space, user_namespaces, include_subagents, limit
+        )
 
-                logger.info(f"User {user_id} namespaces: {user_namespaces}")
-                logger.info(f"User {user_id} raw connected: {raw_connected}")
-                logger.info(
-                    f"User {user_id} connected subagent integrations: {connected_integrations}"
-                )
-            except Exception as e:
-                logger.warning(f"Failed to get user namespaces: {e}")
-                # Fall back to general search
+        logger.info(f"Executing {len(search_tasks)} search tasks")
+        results = await asyncio.gather(*search_tasks, return_exceptions=True)
+        logger.info(f"Got {len(results)} search results")
 
-        # Build search tasks - only search general + subagents
-        # Individual integration tools are accessed via handoff to subagents
-        search_tasks: List[
-            Awaitable[Union[List[SearchItem], List[dict[str, Any]]]]
-        ] = []
+        # Process results
+        all_results = await _process_search_results(
+            results, set(available_tool_names), tool_registry, include_subagents
+        )
 
-        # Search in tool_space (general for main agent, or specific space for subagent)
-        if tool_space in user_namespaces or tool_space == "general":
-            search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
+        # Deduplicate and sort
+        discovered_tools = _deduplicate_and_sort(all_results, limit)
 
-        # Include subagents search for main agent context
-        if include_subagents:
-            search_tasks.append(store.asearch(("subagents",), query=query, limit=15))
-            # Search public integrations to discover unconnected tools
-            # query is guaranteed to be str here due to checks above, but mypy doesn't know
-            search_tasks.append(search_public_integrations(query=query or "", limit=15))
+        # Inject available subagents
+        final_tools = _inject_available_subagents(
+            discovered_tools,
+            internal_subagents,
+            connected_integrations,
+            include_subagents,
+        )
 
-        # Execute all searches
-        if search_tasks:
-            results = await asyncio.gather(*search_tasks, return_exceptions=True)
-        else:
-            results = []
-
-        all_results = []
-
-        for result in results:
-            if isinstance(result, BaseException):
-                logger.warning(f"Search error: {result}")
-                continue
-            # result is now known to be list[SearchItem] or list[dict]
-            if not result:
-                continue
-
-            # Check first item to determine if this is a list of dicts (public integrations)
-            # or list of SearchItems (Chroma store results)
-            is_public_search = isinstance(result[0], dict)
-
-            if is_public_search:
-                # Handle public integration search results
-                public_result: List[dict[str, Any]] = result  # type: ignore[assignment]
-                for public_item in public_result:
-                    integration_id = public_item.get("integration_id")
-                    if integration_id:
-                        subagent_key = f"subagent:{integration_id}"
-                        all_results.append(
-                            {
-                                "id": subagent_key,
-                                "score": public_item.get("relevance_score", 0),
-                            }
-                        )
-            else:
-                # Handle Chroma store SearchItems
-                search_result: List[SearchItem] = result  # type: ignore[assignment]
-                for search_item in search_result:
-                    tool_key = str(search_item.key)
-
-                    # Check if this is a subagent result from the subagents namespace
-                    if hasattr(search_item, "namespace") and search_item.namespace == (
-                        "subagents",
-                    ):
-                        subagent_key = tool_key
-                        # Ensure it starts with subagent:
-                        if not subagent_key.startswith("subagent:"):
-                            subagent_key = f"subagent:{subagent_key}"
-                        all_results.append(
-                            {"id": subagent_key, "score": search_item.score}
-                        )
-                        continue
-
-                    if tool_key.startswith("subagent:"):
-                        integration_id, _ = parse_subagent_id(tool_key)
-                        all_results.append({"id": tool_key, "score": search_item.score})
-                        continue
-
-                    # Filter out tools from delegated categories ONLY in main agent context
-                    # When include_subagents=False, we're inside a subagent and should
-                    # NOT filter out delegated tools (the subagent needs its own tools)
-                    if include_subagents:
-                        tool_category_name = tool_registry.get_category_of_tool(
-                            tool_key
-                        )
-                        if tool_category_name:
-                            category = tool_registry.get_category(
-                                name=tool_category_name
-                            )
-                            if category and category.is_delegated:
-                                logger.debug(
-                                    f"Filtering out {tool_key} - delegated category {tool_category_name}"
-                                )
-                                continue
-
-                    # Include if it's in available tools
-                    if tool_key in available_tool_names:
-                        all_results.append({"id": tool_key, "score": search_item.score})
-
-        # Remove duplicates and sort by score
-        seen = set()
-        unique_results = []
-        for r in all_results:
-            if r["id"] not in seen:
-                seen.add(r["id"])
-                unique_results.append(r)
-
-        # Always inject available subagents that user has access to
-        # This ensures subagents appear regardless of semantic match quality
-        if include_subagents:
-            # Add internal subagents (always available - not integrations)
-            for integration_id in internal_subagents:
-                subagent_key = f"subagent:{integration_id}"
-                if subagent_key not in seen:
-                    seen.add(subagent_key)
-                    unique_results.append({"id": subagent_key, "score": 0.5})
-
-            # Add connected integration subagents
-            for integration_id in connected_integrations:
-                subagent_key = f"subagent:{integration_id}"
-                if subagent_key not in seen:
-                    seen.add(subagent_key)
-                    unique_results.append({"id": subagent_key, "score": 0.5})
-
-        unique_results.sort(key=lambda x: x["score"] or 0.0, reverse=True)
-
-        discovered_tools: list[str] = [str(r["id"]) for r in unique_results[:limit]]
+        logger.info(f"Final discovered tools ({len(final_tools)}): {final_tools}")
         return RetrieveToolsResult(
             tools_to_bind=[],
-            response=discovered_tools,
+            response=final_tools,
         )
 
     return retrieve_tools

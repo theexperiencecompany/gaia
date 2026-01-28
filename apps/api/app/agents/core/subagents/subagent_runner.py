@@ -15,6 +15,7 @@ Key exports:
 - prepare_executor_execution(): Prepare context for executor agent
 """
 
+import json
 from datetime import datetime
 from typing import AsyncGenerator, List, Optional
 
@@ -86,13 +87,14 @@ async def build_initial_messages(
     configurable: dict,
     task: str,
     user_id: Optional[str] = None,
+    subagent_id: Optional[str] = None,
 ) -> list:
     """
     Build the standard message list for subagent/executor execution.
 
     Creates a consistent message structure with:
     1. System message (agent-specific instructions)
-    2. Context message (time, timezone, memories)
+    2. Context message (time, timezone, memories, skills)
     3. Human message (the task)
 
     Args:
@@ -101,6 +103,7 @@ async def build_initial_messages(
         configurable: Config dict with user_time, user_name, etc.
         task: The task/query to execute
         user_id: Optional user ID for memory retrieval
+        subagent_id: Optional subagent ID for skill retrieval (e.g., "twitter", "github")
 
     Returns:
         List of [system_message, context_message, human_message]
@@ -110,6 +113,7 @@ async def build_initial_messages(
         configurable=configurable,
         user_id=user_id,
         query=task,
+        subagent_id=subagent_id,
     )
 
     return [
@@ -179,6 +183,7 @@ async def prepare_subagent_execution(
         base_configurable=base_configurable,
         agent_name=agent_name,
         user_model_config=user_model_config,
+        subagent_id=agent_name,
     )
     configurable = config.get("configurable", {})
 
@@ -195,6 +200,7 @@ async def prepare_subagent_execution(
         configurable=configurable,
         task=task,
         user_id=user_id,
+        subagent_id=integration.id,  # Pass for skill retrieval
     )
 
     initial_state = {"messages": messages}
@@ -245,9 +251,6 @@ async def execute_subagent_stream(
             continue
         stream_mode, payload = event
 
-        # ─────────────────────────────────────────────────────────────────────
-        # UPDATES STREAM: Emit tool_data when tool calls are detected
-        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
                 # Use shared helper to extract and format tool entries
@@ -261,9 +264,6 @@ async def execute_subagent_stream(
                         stream_writer({"tool_data": tool_entry})
             continue
 
-        # ─────────────────────────────────────────────────────────────────────
-        # MESSAGES STREAM: Stream content and emit tool_output
-        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "messages":
             chunk, metadata = payload
             if metadata.get("silent"):
@@ -288,9 +288,6 @@ async def execute_subagent_stream(
                     )
             continue
 
-        # ─────────────────────────────────────────────────────────────────────
-        # CUSTOM STREAM: Forward custom events from tools
-        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "custom":
             if stream_writer:
                 stream_writer(payload)
@@ -347,6 +344,7 @@ async def prepare_executor_execution(
         thread_id=executor_thread_id,
         base_configurable=configurable,
         agent_name="executor_agent",
+        subagent_id="executor_agent",  # Use agent_name as agent_id in mem0
     )
     new_configurable = config.get("configurable", {})
 
@@ -434,8 +432,6 @@ async def call_subagent(
         ):
             yield chunk
     """
-    import json
-
     user_id = user.get("user_id")
 
     # Optional integration check (before prepare to fail fast)
@@ -482,9 +478,6 @@ async def call_subagent(
             continue
         stream_mode, payload = event
 
-        # ─────────────────────────────────────────────────────────────────────
-        # UPDATES STREAM: Emit tool_data when tool calls are detected
-        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
                 # Use shared helper to extract and format tool entries
@@ -496,9 +489,6 @@ async def call_subagent(
                     yield f"data: {json.dumps({'tool_data': tool_entry})}\n\n"
             continue
 
-        # ─────────────────────────────────────────────────────────────────────
-        # MESSAGES STREAM: Stream content and emit tool_output
-        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "messages":
             chunk, metadata = payload
             if metadata.get("silent"):
@@ -516,9 +506,6 @@ async def call_subagent(
                 yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': chunk.text()[:3000]}})}\n\n"
             continue
 
-        # ─────────────────────────────────────────────────────────────────────
-        # CUSTOM STREAM: Forward custom events from tools
-        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "custom":
             yield f"data: {json.dumps(payload)}\n\n"
 

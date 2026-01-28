@@ -184,42 +184,40 @@ export default function IntegrationsSidebar() {
   );
 
   return (
-    <>
-      <div className="flex flex-col space-y-3">
-        <Tooltip
-          content={
-            <span className="flex items-center gap-2">
-              Create Custom Integration
-              <Kbd className="text-[10px]">C</Kbd>
-            </span>
-          }
-          placement="right"
-        >
-          <Button
-            className="w-full justify-start text-sm text-primary"
-            color="primary"
-            size="sm"
-            variant="flat"
-            startContent={
-              <CursorAddSelectionIcon className="h-4 w-4 outline-0" />
-            }
-            onPress={openIntegrationModal}
-            data-keyboard-shortcut="create-integration"
-          >
+    <div className="flex flex-col space-y-3">
+      <Tooltip
+        content={
+          <span className="flex items-center gap-2">
             Create Custom Integration
-          </Button>
-        </Tooltip>
+            <Kbd className="text-[10px]">C</Kbd>
+          </span>
+        }
+        placement="right"
+      >
+        <Button
+          className="w-full justify-start text-sm text-primary"
+          color="primary"
+          size="sm"
+          variant="flat"
+          startContent={
+            <CursorAddSelectionIcon className="h-4 w-4 outline-0" />
+          }
+          onPress={openIntegrationModal}
+          data-keyboard-shortcut="create-integration"
+        >
+          Create Custom Integration
+        </Button>
+      </Tooltip>
 
-        {integrations.length > 0 && (
-          <div className="space-y-1">
-            <ScrollShadow className="max-h-[calc(100vh-27rem)]" hideScrollBar>
-              <div className="space-y-0.5">
-                {integrations.map(renderIntegrationItem)}
-              </div>
-            </ScrollShadow>
-          </div>
-        )}
-      </div>
-    </>
+      {integrations.length > 0 && (
+        <div className="space-y-1">
+          <ScrollShadow className="max-h-[calc(100vh-27rem)]" hideScrollBar>
+            <div className="space-y-0.5">
+              {integrations.map(renderIntegrationItem)}
+            </div>
+          </ScrollShadow>
+        </div>
+      )}
+    </div>
   );
 }

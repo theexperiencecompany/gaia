@@ -104,12 +104,18 @@ export const useChatStore = create<ChatState>((set) => ({
         (existing) => existing.id === message.id,
       );
 
-      const updatedMessages =
+      let updatedMessages =
         index === -1
           ? [...existingMessages, message]
           : existingMessages.map((existing) =>
               existing.id === message.id ? message : existing,
             );
+
+      // Sort by createdAt to ensure correct chronological order
+      // This is critical: events may arrive out of order (bot before user)
+      updatedMessages = updatedMessages.sort(
+        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
+      );
 
       return {
         messagesByConversation: {
@@ -222,16 +228,11 @@ if (typeof window !== "undefined") {
 
 // Event-driven synchronization with IndexedDB
 // Hydration happens at module load (above), this just sets up event listeners
+// Note: messageAdded/messageUpdated events are NOT used - store is updated directly
+// by the streaming code for immediate UI updates. Only other events are subscribed.
 export const useChatStoreSync = () => {
   useEffect(() => {
     // Event handlers for real-time updates from IndexedDB
-    const handleMessageAdded = (message: IMessage) => {
-      useChatStore.getState().addOrUpdateMessage(message);
-    };
-
-    const handleMessageUpdated = (message: IMessage) => {
-      useChatStore.getState().addOrUpdateMessage(message);
-    };
 
     const handleMessageDeleted = (
       messageId: string,
@@ -280,8 +281,6 @@ export const useChatStoreSync = () => {
       });
     };
 
-    dbEventEmitter.on("messageAdded", handleMessageAdded);
-    dbEventEmitter.on("messageUpdated", handleMessageUpdated);
     dbEventEmitter.on("messageDeleted", handleMessageDeleted);
     dbEventEmitter.on("messagesSynced", handleMessagesSynced);
     dbEventEmitter.on("messageIdReplaced", handleMessageIdReplaced);
@@ -294,8 +293,6 @@ export const useChatStoreSync = () => {
     );
 
     return () => {
-      dbEventEmitter.off("messageAdded", handleMessageAdded);
-      dbEventEmitter.off("messageUpdated", handleMessageUpdated);
       dbEventEmitter.off("messageDeleted", handleMessageDeleted);
       dbEventEmitter.off("messagesSynced", handleMessagesSynced);
       dbEventEmitter.off("messageIdReplaced", handleMessageIdReplaced);

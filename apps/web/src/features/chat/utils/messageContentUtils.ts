@@ -95,8 +95,10 @@ export const filterEmptyMessagePairs = (
           isConvoSystemGenerated,
         };
 
+        // Always include the user message
+        filteredMessages.push(currentMessage);
+        // Only include bot message if it has content
         if (!isBotMessageEmpty(botProps)) {
-          filteredMessages.push(currentMessage);
           filteredMessages.push(nextMessage);
         }
         i++;

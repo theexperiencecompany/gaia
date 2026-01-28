@@ -206,6 +206,7 @@ def build_agent_config(
     base_configurable: Optional[dict] = None,
     selected_tool: Optional[str] = None,
     tool_category: Optional[str] = None,
+    subagent_id: Optional[str] = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -221,6 +222,7 @@ def build_agent_config(
         base_configurable: Optional base configurable to inherit from (for child agents)
         selected_tool: Optional tool name selected via slash command
         tool_category: Optional category of the selected tool
+        subagent_id: Optional subagent ID for skill learning (e.g., "twitter", "github")
 
     Returns:
         Configuration dictionary formatted for LangGraph execution with configurable
@@ -286,6 +288,7 @@ def build_agent_config(
         model_name = base_configurable.get("model_name", model_name)
         selected_tool = selected_tool or base_configurable.get("selected_tool")
         tool_category = tool_category or base_configurable.get("tool_category")
+        subagent_id = subagent_id or base_configurable.get("subagent_id")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -299,6 +302,7 @@ def build_agent_config(
         "model": model_name,
         "selected_tool": selected_tool,
         "tool_category": tool_category,
+        "subagent_id": subagent_id,
     }
 
     config = {
@@ -487,9 +491,6 @@ async def execute_graph_streaming(
         else:
             continue
 
-        # ─────────────────────────────────────────────────────────────────────
-        # UPDATES STREAM: Emit tool_data when tool calls are detected
-        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "updates":
             for node_name, state_update in payload.items():
                 # Process tool entries with metadata lookup
@@ -530,9 +531,6 @@ async def execute_graph_streaming(
                                 emitted_tool_calls.add(tc_id)
             continue
 
-        # ─────────────────────────────────────────────────────────────────────
-        # MESSAGES STREAM: Stream content and emit tool_output
-        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "messages":
             chunk, metadata = payload
             if metadata.get("silent"):
@@ -562,9 +560,6 @@ async def execute_graph_streaming(
                 )
             continue
 
-        # ─────────────────────────────────────────────────────────────────────
-        # CUSTOM STREAM: Forward custom events from tools
-        # ─────────────────────────────────────────────────────────────────────
         if stream_mode == "custom":
             yield f"data: {json.dumps(payload)}\n\n"
 

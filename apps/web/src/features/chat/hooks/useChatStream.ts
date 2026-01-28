@@ -117,13 +117,19 @@ export const useChatStream = () => {
     status: IMessage["status"],
     sourceMessage: MessageType,
   ): IMessage => {
+    // Preserve original timestamp from sourceMessage to maintain correct ordering
+    // This is critical: messages must be ordered by their creation time, not persist time
+    const createdAt = sourceMessage.date
+      ? new Date(sourceMessage.date)
+      : new Date();
+
     return {
       id: messageId,
       conversationId,
       content,
       role,
       status,
-      createdAt: new Date(),
+      createdAt,
       updatedAt: new Date(),
       messageId,
       fileIds: sourceMessage.fileIds,
@@ -259,29 +265,6 @@ export const useChatStream = () => {
     updateBotMessage({ loading: false });
   };
 
-  const persistUserMessage = async (
-    conversationId: string,
-    messageId: string,
-  ) => {
-    if (!refs.current.userMessage || !refs.current.optimisticUserId) return;
-
-    try {
-      await db.putMessage(
-        createIMessage(
-          messageId,
-          conversationId,
-          refs.current.userMessage.response || "",
-          "user",
-          "sent",
-          refs.current.userMessage,
-        ),
-      );
-      refs.current.userMessage.message_id = messageId;
-    } catch (error) {
-      console.error("Failed to persist user message:", error);
-    }
-  };
-
   const persistBotMessage = async (
     conversationId: string,
     messageId: string,
@@ -342,14 +325,54 @@ export const useChatStream = () => {
 
     await handleConversationCreation(conversation_id, conversation_description);
 
-    if (user_message_id && refs.current.optimisticUserId) {
-      await persistUserMessage(conversation_id, user_message_id);
+    // Create IMessage objects for atomic persistence
+    let userIMessage: IMessage | null = null;
+    let botIMessage: IMessage | null = null;
+
+    if (
+      user_message_id &&
+      refs.current.optimisticUserId &&
+      refs.current.userMessage
+    ) {
+      userIMessage = createIMessage(
+        user_message_id,
+        conversation_id,
+        refs.current.userMessage.response || "",
+        "user",
+        "sent",
+        refs.current.userMessage,
+      );
+      refs.current.userMessage.message_id = user_message_id;
     }
 
-    if (bot_message_id) {
-      await persistBotMessage(conversation_id, bot_message_id);
+    if (bot_message_id && refs.current.botMessage) {
+      botIMessage = createIMessage(
+        bot_message_id,
+        conversation_id,
+        "",
+        "assistant",
+        "sending",
+        refs.current.botMessage,
+      );
     }
 
+    // Atomically persist both messages in a single transaction
+    try {
+      await db.persistMessagePair(userIMessage, botIMessage);
+    } catch (error) {
+      console.error("Failed to persist message pair:", error);
+    }
+
+    // CRITICAL: Direct store update BEFORE clearing optimistic message
+    // This ensures messages are visible immediately without waiting for event propagation
+    if (userIMessage) {
+      useChatStore.getState().addOrUpdateMessage(userIMessage);
+    }
+    if (botIMessage) {
+      useChatStore.getState().addOrUpdateMessage(botIMessage);
+    }
+
+    // Now safe to clear optimistic - messages are already in the store
     useChatStore.getState().clearOptimisticMessage();
     window.history.replaceState({}, "", `/c/${conversation_id}`);
     useChatStore.getState().setActiveConversationId(conversation_id);
@@ -545,53 +568,48 @@ export const useChatStream = () => {
   const handleStreamClose = async () => {
     streamState.endStream();
     try {
-      if (!refs.current.botMessage) return;
+      if (!refs.current.botMessage?.message_id) return;
 
       setIsLoading(false);
       resetLoadingText();
       streamController.clear();
 
-      if (refs.current.botMessage && refs.current.newConversation.id) {
-        updateBotMessage({ loading: false });
-      }
+      updateBotMessage({ loading: false });
 
-      // Persist final message state to IndexedDB after stream completion
-      if (refs.current.botMessage?.message_id) {
-        const conversationId =
-          refs.current.newConversation.id ||
-          useChatStore.getState().activeConversationId;
+      const conversationId =
+        refs.current.newConversation.id ||
+        useChatStore.getState().activeConversationId;
 
-        if (conversationId) {
-          try {
-            // Get the complete message from store to ensure all streamed data is persisted
-            const messageFromStore = useChatStore
-              .getState()
-              .messagesByConversation[conversationId]?.find(
-                (msg) => msg.id === refs.current.botMessage?.message_id,
-              );
+      if (conversationId) {
+        try {
+          // CRITICAL: Use refs.current.botMessage directly as single source of truth
+          // Don't rely on store which may not have the latest data due to event lag
+          const finalMessage = createIMessage(
+            refs.current.botMessage.message_id,
+            conversationId,
+            refs.current.accumulatedResponse,
+            "assistant",
+            "sent",
+            refs.current.botMessage,
+          );
 
-            if (messageFromStore) {
-              // Persist the complete message with final status
-              await db.putMessage({
-                ...messageFromStore,
-                status: "sent",
-                updatedAt: new Date(),
-              });
-            }
+          // Persist the complete message with final status
+          await db.putMessage(finalMessage);
 
-            // Update conversation metadata only when stream ends
-            await db.updateConversationFields(conversationId, {
-              updatedAt: new Date(),
-            });
-          } catch (error) {
-            console.error("Failed to persist final message:", error);
-          }
+          // Also update the store directly to ensure UI has final state
+          useChatStore.getState().addOrUpdateMessage(finalMessage);
+
+          // Update conversation metadata only when stream ends
+          await db.updateConversationFields(conversationId, {
+            updatedAt: new Date(),
+          });
+        } catch (error) {
+          console.error("Failed to persist final message:", error);
         }
       }
 
       // Reset stream state after successful completion
       streamInProgressRef.current = false;
-      streamState.endStream();
       refs.current.botMessage = null;
       refs.current.currentStreamingMessages = [];
       refs.current.newConversation = { id: null, description: null };
@@ -684,31 +702,37 @@ export const useChatStream = () => {
       // Register the stop callback for when user clicks stop
       // This persists the current accumulated response to Dexie immediately
       streamController.setSaveCallback(async () => {
-        // Update the UI immediately when stop is clicked
-        if (refs.current.botMessage) {
-          updateBotMessage({
-            response: refs.current.accumulatedResponse,
-            loading: false,
-          });
+        // Set pending save flag to block sync operations during save
+        streamState.setPendingSave(true);
 
-          // Persist accumulated response to Dexie using atomic merge-update
-          // This preserves existing metadata (tool_data, follow_up_actions, image_data, etc.)
-          const conversationId =
-            refs.current.newConversation.id ||
-            useChatStore.getState().activeConversationId;
+        try {
+          // Update the UI immediately when stop is clicked
+          if (refs.current.botMessage) {
+            updateBotMessage({
+              response: refs.current.accumulatedResponse,
+              loading: false,
+            });
 
-          if (conversationId && refs.current.botMessage.message_id) {
-            try {
+            // Persist accumulated response to Dexie using atomic merge-update
+            // This preserves existing metadata (tool_data, follow_up_actions, image_data, etc.)
+            const conversationId =
+              refs.current.newConversation.id ||
+              useChatStore.getState().activeConversationId;
+
+            if (conversationId && refs.current.botMessage.message_id) {
               // Use updateMessage for atomic merge-update instead of putMessage
               // This only updates content/status/updatedAt while preserving all other fields
               await db.updateMessage(refs.current.botMessage.message_id, {
                 content: refs.current.accumulatedResponse,
                 status: "sent",
               });
-            } catch (error) {
-              console.error("Failed to persist message on abort:", error);
             }
           }
+        } catch (error) {
+          console.error("Failed to persist message on abort:", error);
+        } finally {
+          // Clear pending save flag after save completes
+          streamState.setPendingSave(false);
         }
         // Note: Backend also saves - streamController.abort() schedules sync after 3s
       });

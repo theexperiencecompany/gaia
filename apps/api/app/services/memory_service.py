@@ -466,7 +466,8 @@ class MemoryService:
     async def store_memory_batch(
         self,
         messages: List[Dict[str, str]],
-        user_id: Optional[str],
+        user_id: Optional[str] = None,
+        agent_id: Optional[str] = None,
         conversation_id: Optional[str] = None,
         metadata: Optional[Dict[str, Any]] = None,
         async_mode: bool = True,
@@ -477,17 +478,25 @@ class MemoryService:
 
         Args:
             messages: List of message dictionaries with 'role' and 'content'
-            user_id: User identifier
+            user_id: User identifier (for user memory namespace)
+            agent_id: Agent identifier (for skill memory namespace)
             conversation_id: Optional conversation/run identifier
             metadata: Additional metadata
             async_mode: If True, queue for background processing (default: True)
             custom_instructions: Project-specific guidelines for handling memories
 
+        Note:
+            Must provide at least one of user_id or agent_id for memory isolation.
+            - user_id: For personal memories (IDs, contacts, preferences)
+            - agent_id: For skill memories (procedures, workflows)
+
         Returns:
             True if successful, False otherwise
         """
-        user_id = self._validate_user_id(user_id)
-        if not user_id:
+        # Validate at least one namespace identifier
+        user_id = self._validate_user_id(user_id) if user_id else None
+        if not user_id and not agent_id:
+            self.logger.warning("No user_id or agent_id provided for memory batch")
             return False
 
         # Start timing
@@ -502,23 +511,34 @@ class MemoryService:
             # Get client
             client = await self._get_client()
 
+            # Build add kwargs - only include non-None identifiers
+            add_kwargs: Dict[str, Any] = {
+                "messages": messages,
+                "metadata": metadata,
+                "run_id": conversation_id,
+                "async_mode": async_mode,
+            }
+            if user_id:
+                add_kwargs["user_id"] = user_id
+            if agent_id:
+                add_kwargs["agent_id"] = agent_id
+            if custom_instructions:
+                add_kwargs["custom_instructions"] = custom_instructions
+
             # Use v2 API to add multiple memories in one call
-            result = await client.add(
-                messages=messages,
-                user_id=user_id,
-                metadata=metadata,
-                run_id=conversation_id,
-                async_mode=async_mode,
-                **(
-                    {"custom_instructions": custom_instructions}
-                    if custom_instructions
-                    else {}
-                ),
-            )
+            result = await client.add(**add_kwargs)
+
+            # Build namespace description for logging
+            namespace_desc = []
+            if user_id:
+                namespace_desc.append(f"user={user_id[:8]}...")
+            if agent_id:
+                namespace_desc.append(f"agent={agent_id}")
+            namespace_str = ", ".join(namespace_desc) if namespace_desc else "unknown"
 
             mode_str = "async" if async_mode else "sync"
             self.logger.info(
-                f"Batch of {len(messages)} memories stored for user {user_id} (mode: {mode_str})"
+                f"Batch of {len(messages)} memories stored ({namespace_str}, mode: {mode_str})"
             )
 
             # Log the raw response structure

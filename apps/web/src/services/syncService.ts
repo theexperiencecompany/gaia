@@ -238,8 +238,8 @@ export const batchSyncConversations = async (): Promise<void> => {
         const conversationId = conversation.conversation_id;
         const messages = conversation.messages ?? [];
 
-        // Double-check: Skip syncing this conversation if it's currently being streamed
-        if (streamState.isStreamingConversation(conversationId)) return;
+        // Skip syncing if streaming or pending save (e.g., after abort)
+        if (streamState.shouldBlockSync(conversationId)) return;
 
         const mappedConversation: IConversation = {
           id: conversationId,

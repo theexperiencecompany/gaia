@@ -1,7 +1,7 @@
 import asyncio
 import hashlib
 from collections import defaultdict
-from collections.abc import Mapping
+from collections.abc import KeysView, Mapping
 from functools import cache
 from typing import Dict, Iterator, List, Optional
 
@@ -82,8 +82,10 @@ class DynamicToolDict(Mapping[str, BaseTool]):
         all_tools.update(self._extra_tools)
         return all_tools.values()
 
-    def keys(self):
-        return list(self)
+    def keys(self) -> KeysView[str]:
+        all_tools = dict(self._registry._get_tool_dict_internal())
+        all_tools.update(self._extra_tools)
+        return all_tools.keys()
 
     def items(self):
         all_tools = dict(self._registry._get_tool_dict_internal())

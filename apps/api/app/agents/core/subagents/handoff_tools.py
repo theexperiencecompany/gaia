@@ -402,6 +402,7 @@ async def handoff(
             thread_id=subagent_thread_id,
             base_configurable=configurable,
             agent_name=agent_name,
+            subagent_id=agent_name,
         )
         new_configurable = subagent_config.get("configurable", {})
 

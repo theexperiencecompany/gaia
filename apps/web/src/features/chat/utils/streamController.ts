@@ -18,7 +18,7 @@ import { useChatStore } from "@/stores/chatStore";
 let currentAbortController: AbortController | null = null;
 let currentStreamId: string | null = null;
 let wasManuallyAborted = false;
-let saveCallback: (() => void) | null = null;
+let saveCallback: (() => Promise<void>) | null = null;
 
 export const streamController = {
   /**
@@ -50,11 +50,16 @@ export const streamController = {
 
   /**
    * Abort the current stream and notify backend.
+   * IMPORTANT: This is now async to properly await the save callback.
    * Returns true if a stream was aborted.
    */
-  abort: () => {
+  abort: async (): Promise<boolean> => {
     if (currentAbortController) {
       wasManuallyAborted = true;
+
+      // CRITICAL: Await save callback BEFORE aborting to ensure data is persisted
+      await streamController.triggerSave();
+
       currentAbortController.abort();
       currentAbortController = null;
 
@@ -91,17 +96,23 @@ export const streamController = {
 
   /**
    * Set a callback to save progress before aborting.
+   * The callback should be async and will be awaited during abort.
    */
-  setSaveCallback: (callback: (() => void) | null) => {
+  setSaveCallback: (callback: (() => Promise<void>) | null) => {
     saveCallback = callback;
   },
 
   /**
    * Trigger the save callback (called before abort).
+   * Now properly async and returns a Promise.
    */
-  triggerSave: () => {
+  triggerSave: async (): Promise<void> => {
     if (saveCallback) {
-      saveCallback();
+      try {
+        await saveCallback();
+      } catch (error) {
+        console.error("Error in save callback:", error);
+      }
     }
   },
 

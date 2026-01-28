@@ -6,12 +6,22 @@ that can handle specific tool categories with deep domain expertise.
 
 Subagents are now standalone graphs with their own checkpointers,
 invoked via tool-calling pattern similar to executor_agent.
+
+MEMORY LEARNING: Each subagent has memory_learning_node as an end_graph_hook.
+This allows subagents to learn both:
+- Skills: Procedural knowledge (how to do tasks) - stored per agent
+- User memories: IDs, preferences, contacts - stored per user
+Both are stored in separate mem0 namespaces and don't interfere.
 """
 
 import asyncio
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
-from app.agents.core.nodes import manage_system_prompts_node, trim_messages_node
+from app.agents.core.nodes import (
+    manage_system_prompts_node,
+    trim_messages_node,
+    memory_learning_node,
+)
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
@@ -80,6 +90,7 @@ class SubAgentFactory:
                 manage_system_prompts_node,
                 trim_messages_node,
             ],
+            "end_graph_hooks": [memory_learning_node],  # Always enabled
         }
 
         if use_direct_tools:

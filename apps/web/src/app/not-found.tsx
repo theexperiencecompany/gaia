@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 
 import { Home01Icon } from "@/components";
-import Navbar from "@/components/navigation/Navbar";
 import { RaisedButton } from "@/components/ui";
 import { ChevronLeft } from "@/icons";
 

@@ -90,6 +90,11 @@ class CommonSettings(BaseAppSettings):
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
 
     # ----------------------------------------------
+    # Skill Learning (Agent Memory)
+    # ----------------------------------------------
+    SKILL_LEARNING_ENABLED: bool = False  # Disabled until ready for production
+
+    # ----------------------------------------------
     # Computed Properties
     # ----------------------------------------------
 
