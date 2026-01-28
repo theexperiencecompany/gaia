@@ -13,6 +13,7 @@ from app.agents.memory.skill_learning.service import get_skill_learning_service
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
+from app.config.settings import settings
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage
@@ -199,9 +200,9 @@ async def create_agent_context_message(
         except Exception as e:
             logger.warning(f"Error retrieving memories for subagent: {e}")
 
-    # Search for relevant skills (only for subagents)
+    # Search for relevant skills (only for subagents, and only if skill learning is enabled)
     skills_section = ""
-    if subagent_id and query:
+    if subagent_id and query and settings.SKILL_LEARNING_ENABLED:
         try:
             skill_service = get_skill_learning_service()
             result = await skill_service.search_skills(
