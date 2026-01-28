@@ -187,6 +187,9 @@ class SkillLearningService:
     ) -> str:
         """Format skills for injection into system prompt.
 
+        Includes verbose fields like what_worked, gotchas, optimal_approach
+        to give the LLM actionable insights from past experiences.
+
         Args:
             skills: List of skills to format
             agent_id: Agent name for header
@@ -205,10 +208,35 @@ class SkillLearningService:
         for i, skill in enumerate(skills, 1):
             lines.append(f"### {i}. {skill.trigger}")
             lines.append(skill.procedure)
+
             if skill.tools_used:
-                lines.append(f"Tools: {', '.join(skill.tools_used)}")
+                lines.append(f"**Tools:** {', '.join(skill.tools_used)}")
+
+            # Include optimal approach if different from procedure
+            if skill.optimal_approach:
+                lines.append(f"**Optimal approach:** {skill.optimal_approach}")
+
+            # Include what worked well
+            if skill.what_worked:
+                lines.append(f"**What worked:** {skill.what_worked}")
+
+            # Include gotchas and edge cases (critical for avoiding mistakes)
+            if skill.gotchas:
+                lines.append(f"**Watch out for:** {skill.gotchas}")
+
+            # Include what didn't work (to avoid repeating mistakes)
+            if skill.what_didnt_work:
+                lines.append(f"**Avoid:** {skill.what_didnt_work}")
+
+            # Include unnecessary tools to avoid
+            if skill.unnecessary_tools:
+                lines.append(
+                    f"**Skip these tools:** {', '.join(skill.unnecessary_tools)}"
+                )
+
             if skill.success_criteria:
-                lines.append(f"Success: {skill.success_criteria}")
+                lines.append(f"**Success criteria:** {skill.success_criteria}")
+
             lines.append("")
 
         return "\n".join(lines)
