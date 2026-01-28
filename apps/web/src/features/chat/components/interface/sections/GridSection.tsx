@@ -53,7 +53,7 @@ export const GridSection = ({
 
   return (
     <div className="relative flex h-fit w-full snap-start flex-col items-center justify-center">
-      <div className="mb-20 grid min-h-screen w-full max-w-7xl grid-cols-1 grid-rows-1  sm:grid-cols-2 sm:space-y-0">
+      <div className="mb-20 grid min-h-screen w-full grid-cols-1 grid-rows-1  sm:grid-cols-2 sm:space-y-0">
         <UnreadEmailsView
           emails={unreadEmails}
           isConnected={isGmailConnected}

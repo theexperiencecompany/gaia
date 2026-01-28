@@ -1,12 +1,10 @@
-import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
-import Image from "next/image";
-import Link from "next/link";
 import type { ReactNode } from "react";
 import { SidebarHeaderButton } from "@/components";
 import ContactSupport from "@/components/layout/sidebar/ContactSupport";
 import SidebarTopButtons from "@/components/layout/sidebar/SidebarTopButtons";
 import UserContainer from "@/components/layout/sidebar/UserContainer";
+import { LogoWithContextMenu } from "@/components/shared/LogoWithContextMenu";
 import {
   Sidebar,
   SidebarContent,
@@ -60,21 +58,8 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
     >
       <SidebarHeader className="pb-0">
         <div className="flex items-center justify-between">
-          <Link href={"/"}>
-            <Button
-              className="group ml-2 flex items-center gap-2 px-1"
-              size="sm"
-              variant="light"
-            >
-              <Image
-                src="/images/logos/text_w_logo_white.webp"
-                alt="GAIA Logo"
-                width={100}
-                height={30}
-                className="object-contain"
-              />
-            </Button>
-          </Link>
+          <LogoWithContextMenu className="group ml-2 flex items-center gap-2 px-1" />
+          <CustomSidebarTrigger />
         </div>
       </SidebarHeader>
 

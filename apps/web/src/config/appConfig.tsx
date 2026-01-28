@@ -247,6 +247,7 @@ export const appConfig = {
     Product: ["product"],
     Resources: ["resources"],
     Company: ["company"],
+    Socials: ["connect"],
   } as Record<string, string[]>,
 };
 

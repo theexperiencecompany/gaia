@@ -284,7 +284,7 @@ export default function UnifiedWorkflowCard({
           ) : null;
         })}
         {categories.length > 3 && (
-          <div className="z-0 flex size-[34px] min-h-[34px] min-w-[34px] items-center justify-center rounded-lg bg-zinc-700/60 text-sm text-foreground-500">
+          <div className="z-0 flex size-8.5 min-h-8.5 min-w-8.5 items-center justify-center rounded-lg bg-zinc-700/60 text-sm text-foreground-500">
             +{categories.length - 3}
           </div>
         )}
@@ -382,7 +382,7 @@ export default function UnifiedWorkflowCard({
       classNames={{
         content: "bg-zinc-800 p-4 rounded-3xl",
       }}
-      delay={0}
+      delay={200}
       closeDelay={0}
     >
       {cardContent}

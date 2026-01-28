@@ -9,6 +9,7 @@ import {
   Copy01Icon,
   LinkBackwardIcon,
   PinIcon,
+  RedoIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "@/icons";
@@ -21,6 +22,8 @@ interface ChatBubbleActionsProps {
   pinned?: boolean;
   message_id: string;
   messageRole?: "user" | "assistant";
+  onRetry?: () => void;
+  isRetrying?: boolean;
 }
 
 export default function ChatBubble_Actions({
@@ -29,6 +32,8 @@ export default function ChatBubble_Actions({
   text,
   pinned = false,
   messageRole = "assistant",
+  onRetry,
+  isRetrying = false,
 }: ChatBubbleActionsProps) {
   const { id: convoIdParam } = useParams<{ id: string }>();
   const { updateConvoMessages } = useConversation();
@@ -187,6 +192,25 @@ export default function ChatBubble_Actions({
                   className={`cursor-pointer`}
                   height="20"
                   width="20"
+                />
+              </Button>
+            </Tooltip>
+          )}
+
+          {onRetry && (
+            <Tooltip content="Retry" placement="bottom">
+              <Button
+                isIconOnly
+                isDisabled={isRetrying}
+                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                variant="light"
+                radius="lg"
+                onPress={onRetry}
+              >
+                <RedoIcon
+                  className={`cursor-pointer ${isRetrying ? "animate-spin" : ""}`}
+                  height="18"
+                  width="18"
                 />
               </Button>
             </Tooltip>

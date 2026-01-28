@@ -72,25 +72,25 @@ export default function FinalSection({
     <div className="relative z-1 m-0! flex min-h-[90vh] w-screen flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="absolute inset-0 h-full w-full">
         <Image
-          src="/images/wallpapers/surreal.webp"
+          src="/images/wallpapers/landscape.webp"
           alt="Wallpaper"
           fill
           sizes="100vw"
-          className="noisy [mask-image:linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-70"
+          className="noisy mask-[linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-70"
           priority
         />
       </div>
 
       <div
-        className={`relative z-2 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4 sm:gap-6`}
+        className={`relative z-2 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
       >
         <SplitTextBlur
           text="Your Life, Supercharged by GAIA"
           delay={0}
-          className="leading-tighter z-[10] max-w-(--breakpoint-xl) text-center text-[2.2rem] font-medium sm:text-8xl sm:leading-none"
+          className="z-10 text-center text-[2.2rem] font-medium sm:text-8xl tracking-tight leading-snug"
         />
 
-        <div className="z-[1] mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-foreground-600 sm:px-0 sm:text-lg sm:leading-7 md:text-xl">
+        <div className="z-1 mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-foreground-600 sm:px-0 sm:text-xl sm:leading-7 md:text-2xl">
           Join thousands already upgrading their productivity.
         </div>
         <GetStartedButton />

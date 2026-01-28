@@ -283,6 +283,11 @@ const Composer: React.FC<MainSearchbarProps> = ({
         event.preventDefault();
         clearSelectedWorkflow();
       }
+      // If there's a reply-to message, clear it
+      else if (replyToMessage) {
+        event.preventDefault();
+        clearReplyToMessage();
+      }
     }
   };
 

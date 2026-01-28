@@ -23,7 +23,7 @@ export default function HeroSection() {
       >
         <div className="mx-auto flex w-full justify-center gap-2">
           <Link href="https://github.com/theexperiencecompany/gaia/releases">
-            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-white/40 text-zinc-700 p-1 px-4 pl-1 text-sm font-light outline-1 outline-white/50">
+            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-2 rounded-full bg-white/40 text-zinc-700 p-1 px-4 pl-1 text-sm font-light outline-1 outline-white/50  hover:outline-zinc-200 transition">
               <Github width={20} height={20} />
               <ShinyText
                 heading="New: "
@@ -34,18 +34,18 @@ export default function HeroSection() {
           </Link>
 
           <Link href="/blog/public-beta">
-            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-1 rounded-full bg-white/40 text-zinc-700 p-1 px-2 text-sm font-light outline-1 outline-white/50">
+            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-1 rounded-full bg-white/40 text-zinc-700 p-1 px-2 text-sm font-light outline-1 outline-white/50  hover:outline-zinc-200 transition">
               <ShinyText heading="Status: " text={`Public Beta`} speed={10} />
               <ChevronRight width={15} height={15} />
             </div>
           </Link>
         </div>
         <SplitTextBlur
-          text="Meet the personal assistant you’ve always wanted"
+          text="Meet the personal assistant you've always wanted"
           delay={0}
           staggerDelay={0.15}
-          className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-8xl font-semibold"
-          gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), oklch(21% 0.006 285.885))"
+          className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[5.8rem] font-normal tracking-tight"
+          gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), #000000)"
           disableIntersectionObserver
           as="h1"
           showGlowTextBg
@@ -61,12 +61,6 @@ export default function HeroSection() {
         </div>
         <div className="flex gap-4">
           <GetStartedButton />
-
-          {/* <Link href={"/manifesto"}>
-            <Button className="rounded-xl bg-black/20 px-8! py-5 text-sm! font-light text-zinc-300 backdrop-blur-2xl! transition-all! duration-200 hover:scale-110 hover:bg-black/40">
-              Read the Manifesto <ArrowRight01Icon width={20} height={20} />
-            </Button>
-          </Link> */}
         </div>
       </MotionContainer>
     </div>
