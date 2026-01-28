@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.13.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.12.0...web-v0.13.0) (2026-01-28)
+
+
+### Features
+
+* add chat description in sidebar when new conversation initiated in voice mode ([e4e3849](https://github.com/theexperiencecompany/gaia/commit/e4e384938af57b5e05d4e4235049d0c555f05423))
+* add NotificationProvider and UI updates ([#422](https://github.com/theexperiencecompany/gaia/issues/422)) ([8608485](https://github.com/theexperiencecompany/gaia/commit/8608485f6e4e3372af6919b1c22cd5cb38804642))
+* Add WaveSpinnerSquare component and wave animation styles ([9768068](https://github.com/theexperiencecompany/gaia/commit/9768068ea700f2044bdc2ec8affac8c4c0750113))
+* **notifications:** implement real-time notifications via WebSocket and add related hooks ([2756256](https://github.com/theexperiencecompany/gaia/commit/27562566d6ed826161decaadd5d146968106f76c))
+* Public Integrations and MCP with Marketplace page ([#430](https://github.com/theexperiencecompany/gaia/issues/430)) ([1ba6055](https://github.com/theexperiencecompany/gaia/commit/1ba6055f8d81c223d33ffc89d0ece1a6d28fa74b))
+* push notification for mobile app ([#421](https://github.com/theexperiencecompany/gaia/issues/421)) ([a00820f](https://github.com/theexperiencecompany/gaia/commit/a00820feafa8288488384d1f9ffdcfcaf4431cb7))
+* Retry message and minor landing page improvements ([#427](https://github.com/theexperiencecompany/gaia/issues/427)) ([eb17c6c](https://github.com/theexperiencecompany/gaia/commit/eb17c6ccdd6c55f54622e5e192641bdc153b7934))
+
+
+### Bug Fixes
+
+* prevent duplicate voice msg by manual sync on endCall ([8f5a9b8](https://github.com/theexperiencecompany/gaia/commit/8f5a9b88dc2452e10fff0be3ffde4467b5e7545d))
+* sensitive bar visualizer bug fixed ([9af70b2](https://github.com/theexperiencecompany/gaia/commit/9af70b2333f53be1b767360b34a6461bc4a1eccb))
+* streaming issues and minor bugs ([#429](https://github.com/theexperiencecompany/gaia/issues/429)) ([98bb4d7](https://github.com/theexperiencecompany/gaia/commit/98bb4d7ea1ca4f4827093b3062d638a240d689f7))
+
 ## 0.12.0 (2025-12-21)
 
 ## What's Changed

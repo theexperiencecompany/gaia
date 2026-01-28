@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.12.1](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.0...api-v0.12.1) (2026-01-28)
+
+
+### Features
+
+* add email compose and accordion components, and update mobile auth callback URI. ([cbbd7ee](https://github.com/theexperiencecompany/gaia/commit/cbbd7ee79792df7d8a3239041abc91dccca1bf8f))
+* Add new `voice-agent` app to monorepo and introduce shared Python and TypeScript libraries ([#403](https://github.com/theexperiencecompany/gaia/issues/403)) ([3537679](https://github.com/theexperiencecompany/gaia/commit/353767926fc65d591aabca0ee16e744d5b2c11bd))
+* Add new `voice-agent` application and introduce shared Python and TypeScript libraries with updated project configuration. ([5f3d854](https://github.com/theexperiencecompany/gaia/commit/5f3d854d1b80e56529f3592c465e26da5ce20451))
+* add NotificationProvider and UI updates ([#422](https://github.com/theexperiencecompany/gaia/issues/422)) ([8608485](https://github.com/theexperiencecompany/gaia/commit/8608485f6e4e3372af6919b1c22cd5cb38804642))
+* backend set up for register and deregister device token ([04f37d6](https://github.com/theexperiencecompany/gaia/commit/04f37d6bddafb79b608e335a97dbdbfd8a3b1691))
+* Implement bearer token authentication for mobile clients, update app configuration ([26d3012](https://github.com/theexperiencecompany/gaia/commit/26d3012473c066b49e21e252c5e322435d1df7d3))
+* Implement secure WebSocket authentication via subprotocols and enhance notification error handling for mobile. ([ac16851](https://github.com/theexperiencecompany/gaia/commit/ac168518566a45b1b1db874a8e03a52c1c49ab15))
+* init push noti det up ([1d1e0cd](https://github.com/theexperiencecompany/gaia/commit/1d1e0cd66e09a8ee79c4c186ac00e435af67ca3c))
+* Introduce chat streaming functionality and integreate Hero UI native ([#410](https://github.com/theexperiencecompany/gaia/issues/410)) ([186e0cb](https://github.com/theexperiencecompany/gaia/commit/186e0cbec1344bb218d783da50cb2a1931f7a305))
+* Introduce initial implementations for Discord, Slack, and Telegram bots with supporting API endpoints and shared utilities. ([08f3b55](https://github.com/theexperiencecompany/gaia/commit/08f3b55cbd36771c212a15787f8ab3b882d3d15d))
+* **notifications:** add token validation and device limit enforcement ([d8ae2d5](https://github.com/theexperiencecompany/gaia/commit/d8ae2d536b931a87ab9c950ed77c89eec04a74e7))
+* **notifications:** enhance push notification handling and add Firebase setup instructions ([0c5c299](https://github.com/theexperiencecompany/gaia/commit/0c5c299572d47cbdecfb38fd370976203985d8ea))
+* **notifications:** implement device token management for push notifications ([2137b56](https://github.com/theexperiencecompany/gaia/commit/2137b565525023200cde8c5d89a78525c6349fca))
+* **notifications:** implement real-time notifications via WebSocket and add related hooks ([2756256](https://github.com/theexperiencecompany/gaia/commit/27562566d6ed826161decaadd5d146968106f76c))
+* Public Integrations and MCP with Marketplace page ([#430](https://github.com/theexperiencecompany/gaia/issues/430)) ([1ba6055](https://github.com/theexperiencecompany/gaia/commit/1ba6055f8d81c223d33ffc89d0ece1a6d28fa74b))
+* push notification for mobile app ([#421](https://github.com/theexperiencecompany/gaia/issues/421)) ([a00820f](https://github.com/theexperiencecompany/gaia/commit/a00820feafa8288488384d1f9ffdcfcaf4431cb7))
+* Replace system message deletion with a new node to manage system prompts, preserving memory messages and updating agent graph hooks. ([903eb15](https://github.com/theexperiencecompany/gaia/commit/903eb15db3649d511f79e07045389d896938f258))
+
+
+### Bug Fixes
+
+* Add docker push to docker:build commands to push images to GHCR ([b4749b8](https://github.com/theexperiencecompany/gaia/commit/b4749b8e8bbd8cf8b3c5cfa36476129d0b0cd760))
+* **ci:** Update Docker build commands to include additional image tags for API and voice-agent applications ([878fdbb](https://github.com/theexperiencecompany/gaia/commit/878fdbbec7a387e9046ed48084c4d7298b7090fa))
+* **ci:** Update Dockerfiles to use `uv run` for command execution in API and voice-agent applications ([#407](https://github.com/theexperiencecompany/gaia/issues/407)) ([7739606](https://github.com/theexperiencecompany/gaia/commit/7739606cdd390e16b8b3d2889daea7fc42e2ca40))
+* Correct Infisical machine identity variable typo, update Dockerfiles to use `uv sync` for dependency installation, and add error handling to voice agent command execution. ([aec25ce](https://github.com/theexperiencecompany/gaia/commit/aec25ce706ed793e1cb3ddd207fbc35529b1194d))
+* fixed deps group issues in api ([6a5b2e5](https://github.com/theexperiencecompany/gaia/commit/6a5b2e50840fbcf95d8795ea0e109137f8da9b0b))
+* no tool results error ([#416](https://github.com/theexperiencecompany/gaia/issues/416)) ([3006d26](https://github.com/theexperiencecompany/gaia/commit/3006d26275f4b04a0b41d639d4df15fab7b5ef12))
+* **notifications:** refactor push notification setup and improve token management ([5f465a3](https://github.com/theexperiencecompany/gaia/commit/5f465a3e251be3db89f2cfd6752153c5413bfb4e))
+* streaming issues and minor bugs ([#429](https://github.com/theexperiencecompany/gaia/issues/429)) ([98bb4d7](https://github.com/theexperiencecompany/gaia/commit/98bb4d7ea1ca4f4827093b3062d638a240d689f7))
+* temporary removed auto-loading of tools in prod ([2fc4315](https://github.com/theexperiencecompany/gaia/commit/2fc4315f254a882aaf90aba6f9e85ebdbfa27e73))
+* Update Dockerfiles to use `uv run` for command execution in API and voice-agent applications ([600a74d](https://github.com/theexperiencecompany/gaia/commit/600a74de0812a528417e41f86cc09ad0c81dea43))
+* update mobile redirect URI to use settings configuration ([bc38985](https://github.com/theexperiencecompany/gaia/commit/bc38985b5b5c9df08ac951165bbf79e58094ef88))
+
+
+### Code Refactoring
+
+* Add voice agent as an app in monorepo with python shared packages ([#404](https://github.com/theexperiencecompany/gaia/issues/404)) ([6ce927e](https://github.com/theexperiencecompany/gaia/commit/6ce927e3343347c398f55b5a494fb72f050637a3))
+
 ## 0.12.0 (2025-12-21)
 
 ## What's Changed
