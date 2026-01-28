@@ -6,12 +6,10 @@ from datetime import datetime, timedelta, timezone
 from typing import List, Union
 from uuid import uuid4
 
-from app.agents.core.agent import call_agent
+from app.agents.core.agent import call_agent, call_agent_silent
 from app.api.v1.dependencies.bot_dependencies import verify_bot_api_key
 from app.config.loggers import chat_logger as logger
 from app.constants.general import NEW_MESSAGE_BREAKER
-
-
 from app.helpers.bot_helpers import (
     get_or_create_bot_conversation,
     get_user_by_platform_id,
@@ -29,7 +27,6 @@ from app.schemas.bot.response import (
 from app.services.conversation_service import update_messages
 from app.services.integrations.user_integrations import get_user_integrations
 from app.services.model_service import get_user_context, get_user_selected_model
-
 from app.utils.stream_utils import (
     extract_complete_message,
     extract_response_text,
@@ -93,7 +90,7 @@ async def bot_chat(
             request=message_request,
             conversation_id=conversation_id,
             user=user,
-            user_time=user_time,
+            user_time=datetime.now(timezone.utc),
             user_model_config=user_model_config,
         ):
             nostream_msg = extract_complete_message(chunk)
@@ -107,7 +104,7 @@ async def bot_chat(
                 complete_message += response_text
 
         # Replace message breaks with newlines for bot platforms
-        response_text = complete_message.replace(NEW_MESSAGE_BREAKER, "\n\n")
+        response_text = complete_message.replace(NEW_MESSAGE_BREAKER, "\n")
 
         # Save conversation (same as web flow in chat_service._save_conversation_async)
         user_message_id = str(uuid4())
@@ -134,6 +131,57 @@ async def bot_chat(
                 messages=[user_message, bot_message],
             ),
             user=user,
+        )
+    except Exception as e:
+        logger.error(f"Bot chat error: {e}")
+        response_text = "An error occurred while processing your request."
+
+    return BotChatResponse(
+        response=response_text, conversation_id=conversation_id, authenticated=True
+    )
+
+
+@router.post(
+    "/chat/public",
+    response_model=BotChatResponse,
+    status_code=200,
+    summary="Public Bot Chat",
+    description="Process a public (unauthenticated) chat message.",
+)
+async def bot_chat_public(
+    request: BotChatRequest, _: None = Depends(verify_bot_api_key)
+) -> BotChatResponse:
+    """
+    Handle an unauthenticated public chat request.
+
+    This endpoint creates a temporary session and bot user context.
+
+    Args:
+        request (BotChatRequest): The chat request.
+
+    Returns:
+        BotChatResponse: The agent's response.
+    """
+    conversation_id = str(uuid4())
+
+    bot_user = {
+        "user_id": f"bot_{request.platform}",
+        "email": f"bot@{request.platform}.gaia",
+        "name": "GAIA Bot",
+    }
+
+    message_request = MessageRequestWithHistory(
+        message=request.message,
+        conversation_id=conversation_id,
+        messages=[{"role": "user", "content": request.message}],
+    )
+
+    try:
+        response_text, _meta = await call_agent_silent(
+            request=message_request,
+            conversation_id=conversation_id,
+            user=bot_user,
+            user_time=datetime.now(timezone.utc),
         )
     except Exception as e:
         logger.error(
