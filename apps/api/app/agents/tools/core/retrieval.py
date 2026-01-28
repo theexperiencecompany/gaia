@@ -138,7 +138,7 @@ def _build_search_tasks(
 def _process_public_integration_result(
     result: List[dict[str, Any]],
     task_idx: int,
-) -> List[dict[str, float]]:
+) -> List[dict[str, str | float | None]]:
     """Process public integration search results."""
     processed = []
 
@@ -162,9 +162,9 @@ def _process_chroma_search_result(
     available_tool_names: Set[str],
     tool_registry,
     include_subagents: bool,
-) -> List[dict[str, float]]:
+) -> List[dict[str, str | float | None]]:
     """Process Chroma store search results."""
-    processed = []
+    processed: List[dict[str, str | float | None]] = []
 
     for item in result:
         tool_key = str(item.key)
@@ -202,7 +202,7 @@ async def _process_search_results(
     available_tool_names: Set[str],
     tool_registry,
     include_subagents: bool,
-) -> List[dict[str, float]]:
+) -> List[dict[str, str | float | None]]:
     """Process all search results and return unified list."""
     all_results = []
 
@@ -230,7 +230,7 @@ async def _process_search_results(
 
 
 def _deduplicate_and_sort(
-    results: List[dict[str, float]],
+    results: List[dict[str, str | float | None]],
     limit: int,
 ) -> List[str]:
     """Remove duplicates, sort by score, and return top results."""
