@@ -10,3 +10,4 @@ export { ConfirmActionDialog } from "./ConfirmActionDialog";
 export * from "./icons";
 export { LabeledField } from "./LabeledField";
 export { LinkButton } from "./LinkButton";
+export { LogoWithContextMenu } from "./LogoWithContextMenu";

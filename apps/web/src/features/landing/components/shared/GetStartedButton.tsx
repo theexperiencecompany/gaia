@@ -13,10 +13,10 @@ export default function GetStartedButton({
   text?: string;
 }) {
   return (
-    <div className="relative z-[2] flex flex-col items-center gap-4 group">
+    <div className="relative z-2 flex flex-col items-center gap-4 group">
       <Link href={"/signup"}>
         <RaisedButton
-          className="rounded-xl px-4 text-black! before:rounded-xl hover:scale-110 group shadow-black"
+          className="rounded-xl px-1 text-black! before:rounded-xl hover:pl-2 duration-400 ease-out group shadow-black"
           color="#00bbff"
           onClick={() => {
             posthog.capture("cta:get_started_clicked", {
@@ -25,13 +25,13 @@ export default function GetStartedButton({
             });
           }}
         >
-          <span className="group-hover:-translate-x-0 translate-x-3 transition ease-out duration-300">
+          <span className="group-hover:translate-x-1 translate-x-3 transition ease-out duration-300">
             {text}
           </span>
           <ChevronRight
             width={19}
             height={19}
-            className="group-hover:-translate-x-0 transition translate-x-9 ease-out duration-300"
+            className="group-hover:translate-x-0 transition translate-x-9 ease-out duration-300"
           />
         </RaisedButton>
       </Link>

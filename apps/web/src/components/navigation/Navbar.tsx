@@ -1,12 +1,9 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import AnimatedNumber from "animated-number-react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-
 import MobileMenu from "@/components/navigation/MobileMenu";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { appConfig } from "@/config/appConfig";
@@ -20,8 +17,9 @@ import {
   StarFilledIcon,
 } from "@/icons";
 import { posthog } from "@/lib";
-
 import { Github } from "../shared";
+import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
+import { Button } from "../ui";
 import { RaisedButton } from "../ui/raised-button";
 import { NavbarMenu } from "./NavbarMenu";
 
@@ -49,11 +47,12 @@ export default function Navbar() {
   // Define navbar items - can be single links or dropdown menus
   const navbarItems = [
     { type: "dropdown", label: "Product", menu: "product" },
-    { type: "dropdown", label: "Resources", menu: "resources" },
     { type: "link", label: "Pricing", href: "/pricing" },
-    { type: "link", label: "Download", href: "/download" },
-    { type: "dropdown", label: "Company", menu: "company" },
-    { type: "dropdown", label: "Socials", menu: "socials" },
+    { type: "link", label: "Manifesto", href: "/manifesto" },
+    { type: "dropdown", label: "Resources", menu: "resources" },
+    // { type: "link", label: "Download", href: "/download" },
+    // { type: "dropdown", label: "Company", menu: "company" },
+    // { type: "dropdown", label: "Socials", menu: "socials" },
   ] as const;
 
   // Function to control backdrop blur
@@ -114,15 +113,7 @@ export default function Navbar() {
                 : "rounded-2xl border-transparent bg-transparent"
           }`}
         >
-          <Button as={Link} href={"/"} variant="light" className="px-2">
-            <Image
-              src="/images/logos/text_w_logo_white.webp"
-              alt="GAIA Logo"
-              width={100}
-              height={30}
-              className="object-contain"
-            />
-          </Button>
+          <LogoWithContextMenu className="px-2" />
 
           <div className="hidden items-center gap-1 sm:flex">
             {appConfig.links.main
@@ -222,11 +213,7 @@ export default function Navbar() {
                   });
                 }}
               >
-                <RaisedButton
-                  size={"sm"}
-                  className="group rounded-xl border-0!"
-                  color="#1c1c1c"
-                >
+                <Button className="group rounded-xl border-0! bg-black/60 hover:bg-black/40 text-white">
                   <div className="flex items-center">
                     <Github className="mr-1 size-4 fill-white" />
                     <span className="ml-1 lg:hidden">Star</span>
@@ -243,7 +230,7 @@ export default function Navbar() {
                       />
                     </span>
                   </div>
-                </RaisedButton>
+                </Button>
               </a>
               <Link href={user.email ? "/c" : "/signup"}>
                 <RaisedButton

@@ -13,7 +13,40 @@ import {
   formatUSDFromCents,
 } from "@/features/pricing/utils/currencyConverter";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
-import { CreditCardIcon } from "@/icons";
+import { Calendar03Icon, CreditCardIcon } from "@/icons";
+
+/**
+ * Formats a date string to a human-readable format
+ */
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return "N/A";
+  try {
+    const date = new Date(dateString);
+    return date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return "N/A";
+  }
+};
+
+/**
+ * Calculates days until a future date
+ */
+const getDaysUntil = (dateString?: string): number | null => {
+  if (!dateString) return null;
+  try {
+    const targetDate = new Date(dateString);
+    const today = new Date();
+    const diffTime = targetDate.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays > 0 ? diffDays : 0;
+  } catch {
+    return null;
+  }
+};
 
 export function SubscriptionSettings() {
   const { data: subscriptionStatus, isLoading } = useUserSubscriptionStatus();
@@ -38,8 +71,8 @@ export function SubscriptionSettings() {
     );
   }
 
-  // Free plan display
-  if (!subscriptionStatus?.is_subscribed || !subscriptionStatus.current_plan) {
+  // Free plan display - only show if NOT subscribed
+  if (!subscriptionStatus?.is_subscribed) {
     return (
       <SettingsCard
         icon={<CreditCardIcon className="h-5 w-5 text-primary" />}
@@ -55,7 +88,7 @@ export function SubscriptionSettings() {
                     Free
                   </span>
                   <Chip
-                    className="flex items-center gap-[2px] text-xs"
+                    className="flex items-center gap-0.5 text-xs"
                     color="success"
                     variant="flat"
                   >
@@ -112,12 +145,46 @@ export function SubscriptionSettings() {
     );
   }
 
+  // Get plan and subscription data
   const plan = subscriptionStatus.current_plan;
   const subscription = subscriptionStatus.subscription;
 
-  // Convert price to USD for display
-  const priceInUSDCents = convertToUSDCents(plan.amount, plan.currency);
-  const priceFormatted = formatUSDFromCents(priceInUSDCents);
+  // Derive price from plan or subscription data
+  const getPriceFormatted = () => {
+    if (plan) {
+      const priceInUSDCents = convertToUSDCents(plan.amount, plan.currency);
+      return formatUSDFromCents(priceInUSDCents);
+    }
+    // Fallback to subscription's recurring amount (already in cents for USD)
+    if (subscription?.recurring_pre_tax_amount) {
+      return formatUSDFromCents(subscription.recurring_pre_tax_amount);
+    }
+    return "$0";
+  };
+
+  const priceFormatted = getPriceFormatted();
+
+  // Derive billing cycle from plan or subscription
+  const getBillingCycle = () => {
+    if (plan?.duration) return plan.duration;
+    if (subscription?.payment_frequency_interval) {
+      const interval = subscription.payment_frequency_interval.toLowerCase();
+      if (interval === "month") return "monthly";
+      if (interval === "year") return "yearly";
+      return interval;
+    }
+    return "monthly";
+  };
+
+  const billingCycle = getBillingCycle();
+
+  // Get plan name - fallback to plan_type if no plan object
+  const planName =
+    plan?.name ||
+    (subscriptionStatus.plan_type === "pro" ? "GAIA Pro" : "GAIA Free");
+
+  // Calculate days until next billing
+  const daysUntilNextBilling = getDaysUntil(subscription?.next_billing_date);
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -128,6 +195,8 @@ export function SubscriptionSettings() {
       case "cancelled":
       case "expired":
         return "danger";
+      case "on_hold":
+        return "warning";
       default:
         return "default";
     }
@@ -143,6 +212,8 @@ export function SubscriptionSettings() {
         return "Cancelled";
       case "expired":
         return "Expired";
+      case "on_hold":
+        return "On Hold";
       default:
         return status;
     }
@@ -153,88 +224,201 @@ export function SubscriptionSettings() {
       icon={<CreditCardIcon className="h-5 w-5 text-blue-400" />}
       title="Subscription"
     >
-      <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-800/40 p-6 backdrop-blur-xl">
-        <div className="flex h-full flex-col gap-4">
-          {/* Header */}
-          <div className="flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-semibold text-white">
-                {plan.name}
-              </span>
-              <Chip
-                color={getStatusColor(subscription?.status || "unknown")}
-                variant="flat"
-                size="sm"
-                className="text-xs"
-              >
-                {getStatusText(subscription?.status || "unknown")}
-              </Chip>
-            </div>
-          </div>
-
-          {/* Price Section */}
-          <div className="flex flex-col gap-0">
-            <div className="flex items-baseline gap-2">
-              <span className="text-5xl font-bold text-white">
-                {priceFormatted}
-              </span>
-              <span className="text-2xl text-zinc-400">USD</span>
-            </div>
-            <span className="min-h-5 text-sm font-normal text-zinc-400">
-              / per {plan.duration}
-            </span>
-          </div>
-
-          {/* Plan Information */}
-          <div className="mt-2 flex-1 space-y-3">
-            {plan.description && (
-              <div className="mb-3 text-sm text-zinc-300">
-                {plan.description}
+      <div className="flex flex-col gap-4 lg:flex-row">
+        {/* Main Subscription Card */}
+        <div className="relative w-full overflow-hidden rounded-2xl bg-zinc-800/40 p-6 backdrop-blur-xl lg:flex-1">
+          <div className="flex h-full flex-col gap-4">
+            {/* Header */}
+            <div className="flex flex-row items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl font-semibold text-white">
+                  {planName}
+                </span>
+                <Chip
+                  color={getStatusColor(subscription?.status || "unknown")}
+                  variant="flat"
+                  size="sm"
+                  className="text-xs"
+                >
+                  {getStatusText(subscription?.status || "unknown")}
+                </Chip>
               </div>
-            )}
+            </div>
 
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-zinc-400">Billing Cycle</span>
-              <span className="font-medium text-white capitalize">
-                {plan.duration}
+            {/* Price Section */}
+            <div className="flex flex-col gap-0">
+              <div className="flex items-baseline gap-2">
+                <span className="text-5xl font-bold text-white">
+                  {priceFormatted}
+                </span>
+                <span className="text-2xl text-zinc-400">
+                  {subscription?.currency || "USD"}
+                </span>
+              </div>
+              <span className="min-h-5 text-sm font-normal text-zinc-400">
+                / per {billingCycle}
               </span>
             </div>
 
-            {subscriptionStatus.days_remaining !== undefined &&
-              subscriptionStatus.days_remaining !== null && (
+            {/* Plan Information */}
+            <div className="mt-2 flex-1 space-y-3">
+              {plan?.description && (
+                <div className="mb-3 text-sm text-zinc-300">
+                  {plan.description}
+                </div>
+              )}
+
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-zinc-400">Billing Cycle</span>
+                <span className="font-medium capitalize text-white">
+                  {billingCycle}
+                </span>
+              </div>
+
+              {subscription?.next_billing_date && (
                 <div className="flex items-center justify-between">
-                  <span className="text-sm text-zinc-400">Days Remaining</span>
+                  <span className="text-sm text-zinc-400">Next Billing</span>
                   <span className="font-medium text-white">
-                    {subscriptionStatus.days_remaining} days
+                    {formatDate(subscription.next_billing_date)}
                   </span>
                 </div>
               )}
+
+              {daysUntilNextBilling !== null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">Days Remaining</span>
+                  <span className="font-medium text-white">
+                    {daysUntilNextBilling} days
+                  </span>
+                </div>
+              )}
+
+              {subscription?.created_at && (
+                <div className="flex items-center justify-between">
+                  <span className="text-sm text-zinc-400">Member Since</span>
+                  <span className="font-medium text-white">
+                    {formatDate(subscription.created_at)}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-3">
+              <Button
+                color="primary"
+                variant="flat"
+                onPress={handleUpgrade}
+                className="w-full"
+              >
+                View Plans
+              </Button>
+
+              {subscription?.status === "active" && (
+                <Tooltip content="Please contact support to cancel your subscription for now">
+                  <Button
+                    color="danger"
+                    variant="light"
+                    isDisabled
+                    className="w-full"
+                  >
+                    Cancel Subscription
+                  </Button>
+                </Tooltip>
+              )}
+            </div>
           </div>
+        </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-3">
-            <Button
-              color="primary"
-              variant="flat"
-              onPress={handleUpgrade}
-              className="w-full"
-            >
-              View Plans
-            </Button>
+        {/* Billing Info Side Panel */}
+        <div className="flex w-full flex-col gap-4 lg:w-80">
+          {/* Next Payment Card */}
+          {subscription?.next_billing_date && (
+            <div className="rounded-2xl bg-zinc-800/40 p-5 backdrop-blur-xl">
+              <div className="mb-3 flex items-center gap-2">
+                <Calendar03Icon className="h-4 w-4 text-blue-400" />
+                <span className="text-sm font-medium text-zinc-300">
+                  Next Payment
+                </span>
+              </div>
+              <div className="space-y-2">
+                <p className="text-lg font-semibold text-white">
+                  {formatDate(subscription.next_billing_date)}
+                </p>
+                {daysUntilNextBilling !== null && (
+                  <p className="text-sm text-zinc-400">
+                    {daysUntilNextBilling === 0
+                      ? "Due today"
+                      : daysUntilNextBilling === 1
+                        ? "Due tomorrow"
+                        : `In ${daysUntilNextBilling} days`}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
-            {subscription?.status === "active" && (
-              <Tooltip content="Please contact support to cancel your subscription for now">
-                <Button
-                  color="danger"
-                  variant="light"
-                  isDisabled
-                  className="w-full"
+          {/* Subscription Details Card */}
+          <div className="rounded-2xl bg-zinc-800/40 p-5 backdrop-blur-xl">
+            <div className="mb-3 flex items-center gap-2">
+              <CreditCardIcon className="h-4 w-4 text-green-400" />
+              <span className="text-sm font-medium text-zinc-300">
+                Subscription Details
+              </span>
+            </div>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span className="text-zinc-400">Subscription ID</span>
+                <span
+                  className="max-w-32 truncate font-mono text-zinc-300"
+                  title={subscription?.dodo_subscription_id}
                 >
-                  Cancel Subscription
-                </Button>
-              </Tooltip>
-            )}
+                  {subscription?.dodo_subscription_id?.slice(-8) || "N/A"}
+                </span>
+              </div>
+              {subscription?.previous_billing_date && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Last Payment</span>
+                  <span className="text-zinc-300">
+                    {formatDate(subscription.previous_billing_date)}
+                  </span>
+                </div>
+              )}
+              {subscription?.cancelled_at && (
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Cancelled On</span>
+                  <span className="text-red-400">
+                    {formatDate(subscription.cancelled_at)}
+                  </span>
+                </div>
+              )}
+            </div>
           </div>
+
+          {/* Plan Features */}
+          {plan?.features && plan.features.length > 0 && (
+            <div className="rounded-2xl bg-zinc-800/40 p-5 backdrop-blur-xl">
+              <span className="mb-3 block text-sm font-medium text-zinc-300">
+                Plan Features
+              </span>
+              <ul className="space-y-2">
+                {plan.features.slice(0, 5).map((feature) => (
+                  <li
+                    key={feature}
+                    className="flex items-start gap-2 text-sm text-zinc-400"
+                  >
+                    <span className="mt-1 text-green-400">✓</span>
+                    <span>{feature}</span>
+                  </li>
+                ))}
+                {plan.features.length > 5 && (
+                  <li className="text-xs text-zinc-500">
+                    +{plan.features.length - 5} more features
+                  </li>
+                )}
+              </ul>
+            </div>
+          )}
         </div>
       </div>
     </SettingsCard>

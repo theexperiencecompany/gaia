@@ -202,7 +202,8 @@ async def get_tools_by_category(category: str) -> ToolsCategoryResponse:
         tool_info = ToolInfo(
             name=tool.name,
             category=category,
-            required_integration=category_obj.integration_name,
+            display_name=get_integration_name(category)
+            or category.replace("_", " ").title(),
         )
         tool_infos.append(tool_info)
 

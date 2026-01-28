@@ -73,7 +73,7 @@ export default function Footer() {
       <JsonLd data={navigationSchema} />
       <div className="relative z-[1] m-0! flex flex-col items-center gap-6 overflow-hidden p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
         <div className="flex h-fit w-screen items-center justify-center px-2 sm:px-4">
-          <div className="grid w-full max-w-5xl grid-cols-4 gap-6 sm:gap-8">
+          <div className="grid w-full max-w-5xl grid-cols-5 gap-6 sm:gap-8">
             <div className="relative -top-1 col-span-1 flex h-full w-fit flex-col gap-1 text-foreground-600 sm:-top-2">
               <div className="flex w-fit items-center justify-center rounded-xl p-1">
                 <iframe

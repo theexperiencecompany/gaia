@@ -49,8 +49,8 @@ jobs:
 
       - name: Sync Python dependencies (Nx cached)
         run: npx nx sync api
-        env:
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+        # env:
+        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       - name: Check if api is affected
         id: affected
@@ -88,8 +88,8 @@ jobs:
       - name: Release Docker images
         if: steps.affected.outputs.api == 'true'
         run: npx nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
-        env:
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+        # env:
+        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       - name: Skip notification
         if: steps.affected.outputs.api != 'true'

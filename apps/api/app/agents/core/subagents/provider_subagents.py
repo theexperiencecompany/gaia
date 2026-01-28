@@ -10,7 +10,7 @@ Configuration comes from oauth_config.py OAUTH_INTEGRATIONS.
 Tools are registered on-demand when subagent is first created.
 """
 
-from typing import Optional
+from typing import Any, Optional
 
 from app.agents.llm.client import init_llm
 from app.agents.tools.core.registry import get_tool_registry
@@ -230,7 +230,7 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
 
     # Use user-specific category name to avoid conflicts
     category_name = f"mcp_{integration_id}_{user_id}"
-    tools = None  # Track tools for count-based strategy decision
+    tools: list[Any] | None = None  # Track tools for count-based strategy decision
 
     if category_name not in tool_registry._categories:
         # Lazy import to avoid circular dependency

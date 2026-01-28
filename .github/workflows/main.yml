@@ -47,8 +47,8 @@ jobs:
 
       - name: Sync Python dependencies (Nx cached)
         run: npx nx sync api
-        env:
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+        # env:
+        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
       - name: Install prek
         run: uv tool install prek
@@ -61,7 +61,7 @@ jobs:
         run: npx nx affected -t lint type-check build --parallel=3
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+          # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
   # Only trigger builds on master when checks pass
   trigger-build:

@@ -1,46 +1,9 @@
-// import { Chip } from "@heroui/react";
-// import Image from "next/image";
-// import { useEffect, useState } from "react";
 import { ContentSection } from "../shared/ContentSection";
 import LargeHeader from "../shared/LargeHeader";
 
-// const imageOptions = [
-//   {
-//     name: "Calendar",
-//     src: "/images/screenshots/calendar.webp",
-//   },
-//   {
-//     name: "Chats",
-//     src: "/images/screenshots/chats.png",
-//   },
-
-//   {
-//     name: "Todos",
-//     src: "/images/screenshots/todos.png",
-//   },
-//   {
-//     name: "Goals",
-//     src: "/images/screenshots/goals.png",
-//   },
-//   {
-//     name: "Mail",
-//     src: "/images/screenshots/mail.webp",
-//   },
-// ];
-
 export default function ProductivityOS() {
-  // const [selected, setSelected] = useState(imageOptions[2]);
-
-  // Preload all images
-  // useEffect(() => {
-  //   imageOptions.forEach((img) => {
-  //     const preload = new window.Image();
-  //     preload.src = img.src;
-  //   });
-  // }, []);
-
   return (
-    <div className="min-h-screen flex items-center justify-start flex-col gap-16 max-w-7xl mx-auto z-[1] relative">
+    <div className="min-h-screen flex items-center justify-start flex-col gap-16 max-w-7xl mx-auto z-1 relative">
       <LargeHeader
         chipText="The future of personal assistants"
         headingText="Your Productivity Operating System"
@@ -48,7 +11,7 @@ export default function ProductivityOS() {
         centered
       />
 
-      <div className="grid w-full gap-6 grid-cols-2 sm:gap-8 lg:gap-10 relative z-[1]">
+      <div className="grid w-full gap-6 grid-cols-2 sm:gap-8 lg:gap-10 relative z-1">
         <div className="row-span-3 space-y-7">
           <ContentSection
             title="A future where everyone has a real personal assistant"
@@ -81,32 +44,6 @@ export default function ProductivityOS() {
           description="One system for your todos, emails, calendar, goals and more, all driven by an assistant that actually knows what’s going on. GAIA keeps your work in one place, understands the context, and handles the coordination for you. The interface is fast and command-driven, inspired by tools like Linear and Superhuman, so you can move quickly without fighting your workflow."
         />
       </div>
-      {/* 
-      <div className="flex flex-col justify-center gap-6 items-center">
-        <div className="flex gap-3">
-          {imageOptions.map((option) => (
-            <Chip
-              key={option.name}
-              onClick={() => setSelected(option)}
-              color={selected.name === option.name ? "primary" : "default"}
-              className="cursor-pointer"
-              variant={"solid"}
-              size="lg"
-            >
-              {option.name}
-            </Chip>
-          ))}
-        </div>
-
-        <Image
-          width={1920}
-          height={1080}
-          className="w-full rounded-3xl border-2 border-zinc-800 min-w-full"
-          src={selected.src}
-          alt={selected.name}
-          priority
-        />
-      </div> */}
     </div>
   );
 }

@@ -1,8 +1,8 @@
+import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 import { memo, type ReactNode, useEffect, useRef, useState } from "react";
 
-import Spinner from "@/components/ui/spinner";
 import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
@@ -24,6 +24,7 @@ const CustomAnchor = memo(
   }) => {
     const elementRef = useRef<HTMLAnchorElement>(null);
     const [isInView, setIsInView] = useState(false);
+    const [imageLoading, setImageLoading] = useState(true);
 
     // Only fetch when element is in view
     const {
@@ -82,11 +83,31 @@ const CustomAnchor = memo(
     return (
       <Tooltip
         showArrow
-        className="relative max-w-[280px] border border-zinc-800 bg-zinc-900 p-3 text-white shadow-sm rounded-2xl"
+        className="relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 bg-secondary-bg p-3 text-white shadow-lg"
         content={
           isLoading ? (
-            <div className="flex justify-center p-5">
-              <Spinner />
+            <div className="flex w-full flex-col gap-2">
+              {/* Website Image Skeleton */}
+              <Skeleton className="relative aspect-video w-full rounded-lg" />
+
+              {/* Website Name & Favicon Skeleton */}
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-5 w-5 rounded-full" />
+                <Skeleton className="h-4 w-32 rounded" />
+              </div>
+
+              {/* Title Skeleton */}
+              <Skeleton className="h-4 w-full rounded" />
+
+              {/* Description Skeleton (3 lines) */}
+              <div className="flex flex-col gap-1">
+                <Skeleton className="h-3 w-full rounded" />
+                <Skeleton className="h-3 w-full rounded" />
+                <Skeleton className="h-3 w-3/4 rounded" />
+              </div>
+
+              {/* URL Link Skeleton */}
+              <Skeleton className="h-3 w-48 rounded" />
             </div>
           ) : error ? (
             <div className="flex items-center gap-2 p-3 text-red-400">
@@ -99,7 +120,10 @@ const CustomAnchor = memo(
               {!isStreaming &&
                 metadata.website_image &&
                 !failedUrls.has(metadata.website_image) && (
-                  <div className="relative aspect-video w-full overflow-hidden rounded-xl">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-lg">
+                    {imageLoading && (
+                      <Skeleton className="absolute inset-0 z-10 h-full w-full rounded-lg" />
+                    )}
                     <Image
                       src={metadata.website_image}
                       alt="Website Image"
@@ -107,8 +131,12 @@ const CustomAnchor = memo(
                       width={280}
                       height={157}
                       objectFit="cover"
-                      className="rounded-xl"
-                      onError={() => handleImageError(metadata.website_image!)}
+                      className="rounded-lg"
+                      onLoadingComplete={() => setImageLoading(false)}
+                      onError={() => {
+                        setImageLoading(false);
+                        handleImageError(metadata.website_image!);
+                      }}
                     />
                   </div>
                 )}

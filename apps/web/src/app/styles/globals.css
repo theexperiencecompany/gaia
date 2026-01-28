@@ -27,6 +27,11 @@ input {
   outline: 0 transparent;
 }
 
+code {
+  border-radius: 10px;
+  padding: 4px;
+}
+
 code,
 .monospace {
   font-family: var(--font-mono);

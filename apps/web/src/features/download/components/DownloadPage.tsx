@@ -80,7 +80,9 @@ function DownloadSectionLayout({
         >
           {chip && chip}
           <div className="flex flex-col gap-2">
-            <h2 className="text-4xl font-medium text-white">{title}</h2>
+            <h2 className="text-5xl font-medium text-white font-serif">
+              {title}
+            </h2>
             <p className="text-sm text-zinc-400">{description}</p>
           </div>
 
@@ -530,8 +532,8 @@ export function LandingDownloadSection() {
               className="object-cover object-center scale-115"
             />
           </div>
-          <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center pt-4">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center pt-6.5">
+            <div className="flex items-center gap-4">
               <Chip variant="flat" color="warning" size="sm">
                 Coming Soon
               </Chip>
@@ -587,7 +589,7 @@ export default function DownloadPage() {
   return (
     <div className="relative flex min-h-screen w-full flex-col items-center">
       <section className="relative z-10 flex w-full max-w-5xl flex-col items-center gap-4 px-6 pb-8 pt-24 sm:pt-32">
-        <h1 className="text-4xl font-medium text-white sm:text-5xl">
+        <h1 className="text-4xl font-medium text-white sm:text-7xl font-serif mt-8">
           Download GAIA
         </h1>
         <p className="max-w-xl text-center text-lg text-zinc-400">

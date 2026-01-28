@@ -36,6 +36,8 @@ export default function ChatBubbleBot(
     isLastMessage,
     disableActions = false,
     children,
+    onRetry,
+    isRetrying,
   } = props;
   const { isLoading } = useLoading();
 
@@ -146,6 +148,8 @@ export default function ChatBubbleBot(
                     pinned={pinned}
                     text={text}
                     messageRole="assistant"
+                    onRetry={onRetry}
+                    isRetrying={isRetrying}
                   />
                 ))}
             </div>

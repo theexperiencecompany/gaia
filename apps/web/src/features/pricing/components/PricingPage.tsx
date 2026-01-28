@@ -44,7 +44,7 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background via-background to-transparent" />
       </div>
 
-      <div className="relative z-[1] flex flex-col items-center gap-2">
+      <div className="relative z-1 flex flex-col items-center gap-2">
         <div className="flex w-full flex-col items-center justify-center gap-3 text-white">
           <h1 className="font-serif text-8xl font-normal">Level Up</h1>
           <span className="text-xl font-light text-zinc-300">

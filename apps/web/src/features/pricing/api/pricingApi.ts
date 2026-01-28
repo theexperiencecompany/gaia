@@ -41,10 +41,19 @@ export interface Subscription {
   status: string;
   quantity: number;
   payment_link?: string;
-  webhook_verified: boolean;
+  webhook_verified?: boolean;
   created_at: string;
   updated_at: string;
   metadata?: Record<string, unknown>;
+  // Billing info from webhook
+  currency?: string;
+  recurring_pre_tax_amount?: number;
+  next_billing_date?: string;
+  previous_billing_date?: string;
+  payment_frequency_interval?: string;
+  subscription_period_count?: number;
+  subscription_period_interval?: string;
+  cancelled_at?: string;
 }
 
 export interface UserSubscriptionStatus {
@@ -55,6 +64,10 @@ export interface UserSubscriptionStatus {
   days_remaining?: number;
   can_upgrade: boolean;
   can_downgrade: boolean;
+  // Legacy fields from backend
+  has_subscription?: boolean;
+  plan_type?: "free" | "pro";
+  status?: string;
 }
 
 // Helper function for consistent error handling
