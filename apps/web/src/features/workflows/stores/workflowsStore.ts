@@ -2,14 +2,14 @@ import { create } from "zustand";
 
 import { type Workflow, workflowApi } from "../api/workflowApi";
 
+const CACHE_TTL = 60 * 1000; // 1 minute in milliseconds
+
 interface WorkflowsState {
-  // State
   workflows: Workflow[];
   isLoading: boolean;
   error: string | null;
   lastFetched: number | null;
 
-  // Actions
   fetchWorkflows: () => Promise<void>;
   addWorkflow: (workflow: Workflow) => void;
   updateWorkflow: (workflowId: string, updates: Partial<Workflow>) => void;
@@ -19,16 +19,21 @@ interface WorkflowsState {
 }
 
 export const useWorkflowsStore = create<WorkflowsState>((set, get) => ({
-  // Initial state
   workflows: [],
   isLoading: false,
   error: null,
   lastFetched: null,
 
-  // Actions
   fetchWorkflows: async () => {
-    // Prevent duplicate fetches while loading
-    if (get().isLoading) return;
+    const { isLoading, lastFetched } = get();
+
+    // Skip if already loading
+    if (isLoading) return;
+
+    // Skip if cache is still fresh
+    if (lastFetched && Date.now() - lastFetched < CACHE_TTL) {
+      return;
+    }
 
     try {
       set({ isLoading: true, error: null });

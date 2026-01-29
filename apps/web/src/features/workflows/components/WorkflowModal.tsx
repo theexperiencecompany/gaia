@@ -352,8 +352,7 @@ export default function WorkflowModal({
 
         // Notify parent callbacks if provided (for backwards compatibility)
         if (onWorkflowSaved) onWorkflowSaved(result.workflow.id);
-        // Refresh full list in background to ensure consistency
-        fetchWorkflows();
+        await fetchWorkflows();
 
         handleClose();
       } else {
@@ -389,11 +388,9 @@ export default function WorkflowModal({
       // Optimistic update: update in store immediately
       updateInStore(currentWorkflow.id, updateRequest);
 
-      if (onWorkflowSaved) {
-        onWorkflowSaved(currentWorkflow.id);
-      }
-      // Refresh full list in background to ensure consistency
-      fetchWorkflows();
+      if (onWorkflowSaved) onWorkflowSaved(currentWorkflow.id);
+
+      await fetchWorkflows();
       handleClose();
     } catch (error) {
       console.error("Failed to update workflow:", error);
@@ -422,11 +419,9 @@ export default function WorkflowModal({
         // Optimistic update: remove from store immediately
         removeFromStore(existingWorkflow.id);
 
-        if (onWorkflowDeleted) {
-          onWorkflowDeleted(existingWorkflow.id);
-        }
-        // Refresh full list in background to ensure consistency
-        fetchWorkflows();
+        if (onWorkflowDeleted) onWorkflowDeleted(existingWorkflow.id);
+
+        await fetchWorkflows();
         handleClose();
       } catch (error) {
         console.error("Failed to delete workflow:", error);
@@ -452,11 +447,8 @@ export default function WorkflowModal({
         activated: newActivated,
       });
       setIsActivated(newActivated);
-
-      // Optimistic update: update activation state in store
       updateInStore(currentWorkflow.id, { activated: newActivated });
-      // Refresh full list in background to ensure consistency
-      fetchWorkflows();
+      await fetchWorkflows();
     } catch (error) {
       console.error("Failed to toggle workflow activation:", error);
     } finally {
@@ -503,8 +495,7 @@ export default function WorkflowModal({
       }
 
       if (onWorkflowSaved) onWorkflowSaved(currentWorkflow.id);
-      // Refresh workflow list to sync with server
-      fetchWorkflows();
+      await fetchWorkflows();
 
       setIsRegeneratingSteps(false);
     } catch (error) {
@@ -697,8 +688,7 @@ export default function WorkflowModal({
                                   error,
                                 );
                               }
-                              // Refresh workflow list to sync with server
-                              fetchWorkflows();
+                              await fetchWorkflows();
                             } else if (key === "marketplace") {
                               router.push("/use-cases#community-section");
                             } else if (key === "delete") {

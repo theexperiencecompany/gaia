@@ -1,10 +1,10 @@
 import { Button } from "@heroui/button";
 import { motion } from "framer-motion";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
-import { workflowApi } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
+import { useExploreWorkflows } from "@/features/workflows/hooks";
 import { UndoIcon } from "@/icons";
 import { posthog } from "@/lib/posthog";
 import { useComposerTextActions } from "@/stores/composerStore";
@@ -24,36 +24,29 @@ interface ChatSuggestionsProps {
 }
 
 export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
-  const [allWorkflows, setAllWorkflows] = useState<CommunityWorkflow[]>([]);
+  const { workflows: allWorkflows } = useExploreWorkflows();
   const [currentSuggestions, setCurrentSuggestions] = useState<
     CommunityWorkflow[]
   >([]);
   const { clearInputText } = useComposerTextActions();
   const { setContextualLoading } = useLoadingText();
 
-  // Fetch featured workflows on mount
-  useEffect(() => {
-    const fetchFeaturedWorkflows = async () => {
-      try {
-        const response = await workflowApi.getExploreWorkflows(50, 0);
+  // Filter for only featured workflows
+  const featuredWorkflows = useMemo(
+    () =>
+      allWorkflows.filter((workflow) =>
+        workflow.categories?.includes("featured"),
+      ),
+    [allWorkflows],
+  );
 
-        // Filter for only featured workflows
-        const featuredWorkflows = response.workflows.filter((workflow) =>
-          workflow.categories?.includes("featured"),
-        );
-
-        setAllWorkflows(featuredWorkflows);
-
-        // Set initial 3 random suggestions
-        const initialSuggestions = shuffleArray(featuredWorkflows).slice(0, 3);
-        setCurrentSuggestions(initialSuggestions);
-      } catch (error) {
-        console.error("Error fetching featured workflows:", error);
-      }
-    };
-
-    fetchFeaturedWorkflows();
-  }, []);
+  // Set initial suggestions when featured workflows are available
+  useMemo(() => {
+    if (featuredWorkflows.length > 0 && currentSuggestions.length === 0) {
+      const initialSuggestions = shuffleArray(featuredWorkflows).slice(0, 3);
+      setCurrentSuggestions(initialSuggestions);
+    }
+  }, [featuredWorkflows, currentSuggestions.length]);
 
   const handleShuffle = useCallback(() => {
     posthog.capture("chat:suggestion_shuffled", {
@@ -63,19 +56,19 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
     const currentIds = new Set(currentSuggestions.map((w) => w.id));
 
     // Filter out currently displayed workflows
-    const availableWorkflows = allWorkflows.filter(
+    const availableWorkflows = featuredWorkflows.filter(
       (w) => !currentIds.has(w.id),
     );
 
     // If we don't have enough different workflows, use all workflows
     if (availableWorkflows.length < 3) {
-      const newSuggestions = shuffleArray(allWorkflows).slice(0, 3);
+      const newSuggestions = shuffleArray(featuredWorkflows).slice(0, 3);
       setCurrentSuggestions(newSuggestions);
     } else {
       const newSuggestions = shuffleArray(availableWorkflows).slice(0, 3);
       setCurrentSuggestions(newSuggestions);
     }
-  }, [currentSuggestions, allWorkflows]);
+  }, [currentSuggestions, featuredWorkflows]);
 
   return (
     <div className="w-full max-w-4xl mt-10">

@@ -29,9 +29,7 @@ export const useWorkflows = (autoFetch: boolean = true): UseWorkflowsReturn => {
   // Auto-fetch on mount if enabled
   // fetchWorkflows is stable (defined in Zustand store, not recreated)
   useEffect(() => {
-    if (autoFetch) {
-      fetchWorkflows();
-    }
+    if (autoFetch) fetchWorkflows();
   }, [autoFetch, fetchWorkflows]);
 
   return {
