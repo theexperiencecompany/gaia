@@ -60,6 +60,7 @@ RUN adduser --disabled-password --gecos '' appuser \
 
 # Copy API application code with proper ownership
 COPY --chown=appuser:appuser apps/api/app ./apps/api/app
+COPY --chown=appuser:appuser apps/api/scripts ./apps/api/scripts
 
 WORKDIR /app/apps/api
 
