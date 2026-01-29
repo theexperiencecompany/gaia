@@ -294,7 +294,7 @@ export default function UseCaseSection({
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
               {filteredUseCases
-                .slice(0, 8)
+                // .slice(0, 8)
                 .map((useCase: UseCase, index: number) => (
                   <motion.div
                     key={useCase.published_id || index}
@@ -342,7 +342,7 @@ export default function UseCaseSection({
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
               {workflows
-                .slice(0, 8)
+                // .slice(0, 8)
                 .map((workflow: Workflow, index: number) => (
                   <motion.div
                     key={workflow.id}
