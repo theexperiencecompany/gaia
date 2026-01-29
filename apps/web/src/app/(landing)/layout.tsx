@@ -33,7 +33,9 @@ export default function LandingLayout({ children }: { children: ReactNode }) {
       />
 
       {!isDesktopLogin && <Navbar />}
-      {children}
+
+      <div className="min-h-screen">{children}</div>
+
       {!isDesktopLogin && <Footer />}
     </div>
   );
