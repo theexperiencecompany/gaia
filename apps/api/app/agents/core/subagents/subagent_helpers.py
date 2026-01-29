@@ -119,11 +119,9 @@ async def create_subagent_system_message(
 
 
 async def create_agent_context_message(
-    agent_name: str,
     configurable: dict,
     user_id: Optional[str] = None,
     query: Optional[str] = None,
-    thread_id: Optional[str] = None,
     subagent_id: Optional[str] = None,
 ) -> SystemMessage:
     """
@@ -137,11 +135,9 @@ async def create_agent_context_message(
     - Relevant learned skills (for subagents)
 
     Args:
-        agent_name: The agent name for visibility metadata
         configurable: The config["configurable"] dict from RunnableConfig
         user_id: Optional user ID (extracted from configurable if not provided)
         query: Optional search query for memory retrieval
-        thread_id: Optional thread ID for memory session management (use conversation_id)
         subagent_id: Optional subagent ID for skill retrieval (e.g., "twitter", "github")
 
     Returns:

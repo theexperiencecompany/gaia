@@ -6,11 +6,11 @@ Two types of skills are supported:
 2. Reflections - Self-documented experiences written by the executing LLM
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, field_serializer
 
 
 class SkillType(str, Enum):
@@ -26,6 +26,8 @@ class Skill(BaseModel):
     Skills are isolated per agent_id (e.g., twitter_agent, github_agent).
     They capture reusable procedures that can help with similar future tasks.
     """
+
+    model_config = ConfigDict()
 
     id: Optional[str] = Field(default=None, description="MongoDB document ID")
 
@@ -71,7 +73,7 @@ class Skill(BaseModel):
     session_id: Optional[str] = Field(
         default=None, description="Session where this was learned"
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     usage_count: int = Field(
         default=0, description="How many times this skill was retrieved"
     )
@@ -80,8 +82,9 @@ class Skill(BaseModel):
     # Embedding for semantic search (optional - can be added later)
     embedding: Optional[List[float]] = Field(default=None, exclude=True)
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    @field_serializer("created_at", "last_used_at")
+    def serialize_datetime(self, value: datetime | None) -> str | None:
+        return value.isoformat() if value else None
 
 
 class SkillExtractionResult(BaseModel):

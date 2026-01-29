@@ -109,7 +109,6 @@ async def build_initial_messages(
         List of [system_message, context_message, human_message]
     """
     context_message = await create_agent_context_message(
-        agent_name=agent_name,
         configurable=configurable,
         user_id=user_id,
         query=task,

@@ -11,11 +11,10 @@ from datetime import datetime
 from typing import Any, List, Optional
 from uuid import uuid4
 
-from langchain_core.documents import Document
-
 from app.agents.memory.skill_learning.models import Skill, SkillSearchResult, SkillType
 from app.config.loggers import llm_logger as logger
 from app.db.chroma.chromadb import ChromaClient
+from langchain_core.documents import Document
 
 # Collection name for skills in ChromaDB
 SKILLS_COLLECTION = "agent_skills"
@@ -106,6 +105,7 @@ async def _get_skills_collection():
     )
 
 
+# TODO: Store skills in the mongo collection as well for durability
 async def store_skill(skill: Skill) -> Optional[str]:
     """Store a skill in ChromaDB.
 
@@ -121,6 +121,9 @@ async def store_skill(skill: Skill) -> Optional[str]:
 
         # Generate a unique ID
         skill_id = str(uuid4())
+
+        # Persist the ID in document metadata for later retrieval
+        doc.metadata["id"] = skill_id
 
         # Add to ChromaDB
         await collection.aadd_documents(
@@ -157,6 +160,8 @@ async def store_skills_batch(skills: List[Skill]) -> int:
         for skill in skills:
             doc = _skill_to_document(skill)
             skill_id = str(uuid4())
+            # Persist the ID in document metadata for later retrieval
+            doc.metadata["id"] = skill_id
             documents.append(doc)
             ids.append(skill_id)
 
@@ -220,7 +225,7 @@ async def search_skills(
         skills = []
         for doc, score in results:
             # Extract ID from metadata or generate one
-            doc_id = doc.metadata.get("id", str(uuid4()))
+            doc_id = str(doc.metadata.get("id", str(uuid4())))
             skill = _document_to_skill(doc, doc_id)
             skills.append(skill)
 
@@ -243,8 +248,8 @@ async def get_skills_by_agent(
 ) -> List[Skill]:
     """Get all skills for an agent.
 
-    Note: This uses a broad search query to retrieve skills.
-    For large collections, consider pagination.
+    Uses deterministic collection.get() instead of similarity search
+    to fetch all matching documents reliably.
 
     Args:
         agent_id: Agent to get skills for
@@ -257,7 +262,7 @@ async def get_skills_by_agent(
     try:
         collection = await _get_skills_collection()
 
-        # Build filter
+        # Build where filter for deterministic fetch
         where_filter: dict[str, Any] = {"agent_id": agent_id}
         if skill_type:
             where_filter = {
@@ -267,18 +272,33 @@ async def get_skills_by_agent(
                 ]
             }
 
-        # Use a generic query to get all skills for this agent
-        results = await collection.asimilarity_search_with_score(
-            query="skill procedure workflow",  # Generic query
-            k=limit,
-            filter=where_filter,
+        # Use deterministic get() with where filter instead of similarity search
+        # Access underlying ChromaDB collection via _collection
+        results = collection._collection.get(
+            where=where_filter,
+            limit=limit,
+            include=["documents", "metadatas"],
         )
 
         skills = []
-        for doc, score in results:
-            doc_id = doc.metadata.get("id", str(uuid4()))
-            skill = _document_to_skill(doc, doc_id)
-            skills.append(skill)
+        if results and results.get("ids"):
+            ids = results["ids"]
+            documents = results.get("documents", [])
+            metadatas = results.get("metadatas", [])
+
+            for i, doc_id in enumerate(ids):
+                # Reconstruct Document from raw results
+                page_content = documents[i] if documents and i < len(documents) else ""
+                metadata = metadatas[i] if metadatas and i < len(metadatas) else {}
+
+                doc = Document(page_content=page_content, metadata=metadata)
+
+                # Use stored ID from metadata, falling back to doc_id from results
+                # Explicit str() conversion to satisfy type checker
+                raw_id = metadata.get("id", doc_id) if metadata else doc_id
+                skill_id: str = str(raw_id) if raw_id is not None else str(doc_id)
+                skill = _document_to_skill(doc, skill_id)
+                skills.append(skill)
 
         return skills
 

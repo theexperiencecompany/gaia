@@ -361,10 +361,15 @@ export const useChatStream = () => {
       await db.persistMessagePair(userIMessage, botIMessage);
     } catch (error) {
       console.error("Failed to persist message pair:", error);
+      // On persistence failure, clear optimistic UI and abort
+      // Do NOT add messages to store to prevent UI/IndexedDB divergence
+      useChatStore.getState().clearOptimisticMessage();
+      return;
     }
 
     // CRITICAL: Direct store update BEFORE clearing optimistic message
     // This ensures messages are visible immediately without waiting for event propagation
+    // Only reached if persistence succeeded
     if (userIMessage) {
       useChatStore.getState().addOrUpdateMessage(userIMessage);
     }
@@ -373,6 +378,7 @@ export const useChatStream = () => {
     }
 
     // Now safe to clear optimistic - messages are already in the store
+    // Only performed when persistence succeeds
     useChatStore.getState().clearOptimisticMessage();
     window.history.replaceState({}, "", `/c/${conversation_id}`);
     useChatStore.getState().setActiveConversationId(conversation_id);

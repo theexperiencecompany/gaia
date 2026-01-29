@@ -35,6 +35,15 @@ from app.services.memory_service import memory_service
 
 MAX_TOOL_OUTPUT_SIZE = 500
 
+# Module-level set to hold references to background tasks, preventing GC
+# Tasks are automatically removed from the set when they complete via done callback
+_background_tasks: set[asyncio.Task] = set()
+
+
+def _task_done_callback(task: asyncio.Task) -> None:
+    """Callback to remove completed tasks from the background tasks set."""
+    _background_tasks.discard(task)
+
 
 def _get_user_id(config: RunnableConfig) -> Optional[str]:
     """Extract user_id from config for user memory namespace."""
@@ -249,36 +258,44 @@ async def memory_learning_node(
         logger.debug(f"Memory learning skipped: {reason}")
         return state
 
-    # Track what we're spawning for logging
-    tasks_spawned = []
+    # Track spawned Task objects to prevent GC and allow later awaiting/gathering
+    tasks_spawned: list[asyncio.Task] = []
 
     # 1. SKILL MEMORY (requires subagent_id and feature flag enabled)
     if subagent_id and settings.SKILL_LEARNING_ENABLED:
-        asyncio.create_task(
+        task = asyncio.create_task(
             _store_skill_background(
                 messages=messages,
                 subagent_id=subagent_id,
                 session_id=session_id,
-            )
+            ),
+            name="skill_memory",
         )
-        tasks_spawned.append("skill")
+        tasks_spawned.append(task)
 
     # 2. USER MEMORY (requires user_id for namespace)
     if user_id:
-        asyncio.create_task(
+        task = asyncio.create_task(
             _store_user_memory_background(
                 messages=messages,
                 user_id=user_id,
                 session_id=session_id,
                 extraction_prompt=extraction_prompt,
                 subagent_id=subagent_id,
-            )
+            ),
+            name="user_memory",
         )
-        tasks_spawned.append("user")
+        tasks_spawned.append(task)
 
     if tasks_spawned:
+        # Register tasks in module-level set to prevent GC
+        for task in tasks_spawned:
+            _background_tasks.add(task)
+            task.add_done_callback(_task_done_callback)
+
+        task_names = [t.get_name() for t in tasks_spawned]
         logger.debug(
-            f"[{subagent_id or 'agent'}] Memory learning spawned: {', '.join(tasks_spawned)}"
+            f"[{subagent_id or 'agent'}] Memory learning spawned: {', '.join(task_names)}"
         )
 
     return state
