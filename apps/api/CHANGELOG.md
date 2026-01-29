@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.13.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.1...api-v0.13.0) (2026-01-29)
+
+
+### Features
+
+* enhance background task management and fix bot configuration keys to be optional ([#441](https://github.com/theexperiencecompany/gaia/issues/441)) ([5de0c96](https://github.com/theexperiencecompany/gaia/commit/5de0c960740d813e45e46ef3c8074d40ce1fd6d6))
+* enhance background task management and improve message persistence handling ([16a28f2](https://github.com/theexperiencecompany/gaia/commit/16a28f22ad9c441817a1fef8c6a535781bc654aa))
+* make bot configuration keys optional in ProductionSettings ([6e243ea](https://github.com/theexperiencecompany/gaia/commit/6e243ea534aa26045f81b2e7948c0b2d7d9bece4))
+
 ## [0.12.1](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.0...api-v0.12.1) (2026-01-28)
 
 
