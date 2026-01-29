@@ -50,6 +50,9 @@
     },
     "clean": {
       "cache": false
+    },
+    "next:start": {
+      "dependsOn": []
     }
   },
   "parallel": 3,
