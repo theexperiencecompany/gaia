@@ -86,6 +86,7 @@ def get_allowed_origins() -> list[str]:
         allowed_origins.extend(
             [
                 "https://heygaia.io",
+                "https://www.heygaia.io",
                 "https://heygaia.app",
             ]
         )
