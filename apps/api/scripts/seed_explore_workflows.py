@@ -17,9 +17,9 @@ Each workflow uses REAL tools from:
 
 Usage:
   cd backend
-  python scripts/seed_explore_workflows_fixed.py
-  python scripts/seed_explore_workflows_fixed.py --dry-run
-  python scripts/seed_explore_workflows_fixed.py --force --clear-existing
+  python scripts/seed_explore_workflows.py
+  python scripts/seed_explore_workflows.py --dry-run
+  python scripts/seed_explore_workflows.py --force --clear-existing
 """
 
 import argparse
