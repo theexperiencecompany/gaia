@@ -2,7 +2,7 @@
 
 <img alt="logo" src="apps/web/public/images/logos/macos.png" width=150 height=150 /> <br/>
 
-[![GAIA](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/theexperiencecompany/gaia/refs/heads/master/apps/web/public/badge.json)](https://heygaia.io) [![Documentation](https://img.shields.io/badge/Docs-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Latest Release](https://img.shields.io/github/v/release/theexperiencecompany/gaia?color=00bbff)](https://github.com/theexperiencecompany/gaia/releases)
+[![GAIA](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/theexperiencecompany/gaia/refs/heads/master/apps/web/public/badge.json)](https://heygaia.io) [![Documentation](https://img.shields.io/badge/Documentation-00bbff?style=flat&logo=gitbook&logoColor=white)](https://docs.heygaia.io) [![Latest Release](https://img.shields.io/github/v/release/theexperiencecompany/gaia?color=00bbff)](https://github.com/theexperiencecompany/gaia/releases)
 
 [![Better Stack Badge](https://uptime.betterstack.com/status-badges/v3/monitor/1zjmp.svg)](https://uptime.betterstack.com/?utm_source=status_badge) [![Quality Checks](https://github.com/theexperiencecompany/gaia/actions/workflows/main.yml/badge.svg)](https://github.com/theexperiencecompany/gaia/actions/workflows/main.yml) ![GitHub deployments](https://img.shields.io/github/deployments/theexperiencecompany/gaia/production?logo=github&label=Production%20Deployment)
 
@@ -18,14 +18,25 @@
 
 It's designed to help users manage their digital lives by automating tasks, handling communication, and increasing productivity - going beyond traditional assistants like Siri, Google Assistant and ChatGPT.
 
+
+# The Problem
+
+We all drown in tools. Gmail, Calendar, Todos, Docs, Slack, Linear, WhatsApp, and the list keeps growing. Every person has a different stack, but the problem is the same. Our days are filled with small repetitive actions. Every calendar event we create is a few minutes gone. Every mail you draft, every todo you try to complete, every email you read that is not useful and just bullshit adds up. Every little task and chore you do in the tools you use every day, just to maintain your digital life and keep everything structured and clean, is a burden. Most of this is not real work. It is maintenance. Each task feels small in isolation, but together they are mentally tolling. They pile up day after day, quietly draining focus and motivation.
+
+Over time, inboxes get cluttered, todo lists rot, messages pile up, and important things slip through. This slow accumulation is what pushes people into jobs they hate, doing things they do not enjoy, not because the work itself is meaningless, but because their mental bandwidth is constantly consumed by noise. That is exactly how this started for us. We missed a time sensitive email because everything looked equally urgent and we were already mentally exhausted.
+
+Automation should fix this, but it does not. Most tools are rigid, technical, and built for power users. Even with LLMs, the burden is still on the user. You have to explain context, explain your style, explain your preferences, again and again, even for simple tasks like sending an email. That is wasted effort. A personal assistant should already know you. It should understand how you write, what you care about, what you usually ignore, and how your day actually flows.
+
+Our goal with Gaia is to remove this mental load entirely. One assistant that understands your entire digital life, remembers everything, and quietly handles the boring, repetitive work for you. Not reactive, but proactive. The real problem we are solving is time, energy, and cognitive overload. People should open one dashboard and instantly understand their day without thinking. Everything else should just happen.
+
 ## Features
 
 - **Truly Proactive AI**: Doesn't wait for commands - acts ahead of time on your upcoming deadlines, important emails, and tasks
 - **Automated Workflows**: Create multi-step workflows to eliminate repetitive tasks - from email triage to research to document creation
 - **Smart Todo Management**: Your todos become mini-workflows - GAIA researches, drafts, and handles the work automatically
-- **Unified Productivity Hub**: All your tasks, emails, calendar, and goals in one place with intelligent context
+- **Unified Productivity Hub**: All your tasks, emails, calendar, and goals in one dashboard at a glance
 - **Graph-Based Memory**: Builds a living knowledge graph of your work - tasks link to projects, meetings link to documents, everything connects
-- **200+ App Integrations**: Connects with your favorite tools (Gmail, Slack, Calendar, Google Docs, Notion, Linear, GitHub, and more)
+- **Integration Marketplace**: Choose from hundreds of integrations, built by us and the community, to connect GAIA with your favorite tools like Gmail, Slack, Notion, Linear, GitHub, and more!
 - **Multi-Platform**: Web | Desktop - macOS, Windows, Linux  | Mobile
 - **Open Source & Self-Hostable**: Full transparency with the ability to self-host on your own infrastructure
 
@@ -91,15 +102,17 @@ Join our growing community of users and contributors:
 
 We welcome contributions of all kinds, from bug fixes and new features to documentation and testing.
 
+AI and vibe-coded PRs are welcome! Just say so in the PR description. 🤖
+
 Please read our [Contributing Guidelines](https://docs.heygaia.io/developers/contributing) to get started.
 
-## Supporters
+## Tools We Love
 
-We're grateful to the organizations that have supported GAIA
+GAIA is built on the shoulders of giants.
 
-<img src="https://11labs-nonprd-15f22c1d.s3.eu-west-3.amazonaws.com/0b9cd3e1-9fad-4a5b-b3a0-c96b0a1f1d2b/elevenlabs-logo-white.png" width="40%" /> <img src="https://upload.wikimedia.org/wikipedia/commons/5/51/Google_Cloud_logo.svg" width="40%" />
+We rely heavily on open-source software and world-class developer tools. This page exists to credit the projects that make building GAIA possible and to support the open-source culture that drives real progress.
 
-<img src="https://raw.githubusercontent.com/ComposioHQ/.github/master/profile/composio_logo_dark.svg#gh-dark-mode-only" width="40%" /> <img src="https://media.cleanshot.cloud/media/126270/ANVfWtg9T9tf0kQp5Nl2xDkEO8mDgKMQ1TPM4fGp.jpeg?Expires=1758396160&Signature=WY8WHJCKyiQzdcbeX~NgGaXsAGDTPTRfYaD~NnbsXqszpfZefvxn2ga6K8RNXRuL0hZWbMhHCF6TM5~-3wxa2wyko5oS3PsRWi1SDLQTPz8J5A0esLKjdjb6~If2aYPhHkKHFqfk2KcsElR3FBmJ-7DQP8hGDx76eMEaHBLyt4njUyboqX8JjBMnBUbysyVtnCYUL8ECKnMkLgOhRUyoZ~mVC7ZHJG9yiHKt7E234OTPDsOGhfEilq4mT0BQrNecO~lpa57HFMzxduynFp8IlFiWfgj3kxe7Smlm~ROMpTobon5~sVd43ze-5N8hIsSguxX1jiuhV0Yrg3r0RQpITA__&Key-Pair-Id=K269JMAT9ZF4GZ" width="40%" />
+→ https://heygaia.io/thanks
 
 ## License
 

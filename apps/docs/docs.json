@@ -1,6 +1,6 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "almond",
+  "theme": "mint",
   "name": "GAIA",
   "colors": {
     "primary": "#00bbff",
@@ -12,12 +12,9 @@
     "metatags": {
       "og:type": "website",
       "og:site_name": "GAIA Documentation",
-      "og:image": "https://docs.heygaia.io/og-image.jpg",
       "og:url": "https://docs.heygaia.io",
       "canonical": "https://docs.heygaia.io",
-      "description": "GAIA is a proactive AI assistant that automates workflows, manages tasks, and integrates with 200+ apps. Open source, privacy-first, and available on web, desktop, mobile, and bots.",
-      "twitter:card": "summary_large_image",
-      "twitter:image": "https://docs.heygaia.io/og-image.jpg",
+      "description": "GAIA is a human-like, proactive personal assistant that works across your entire digital life, so that you don't have to. 🌎",
       "keywords": "AI assistant, productivity, automation, workflows, open source, self-hosted, task management, email automation, calendar integration, proactive AI"
     }
   },
@@ -35,38 +32,30 @@
             "group": "Get Started",
             "pages": ["introduction", "quick-start", "resources", "manifesto"]
           },
+            {
+            "group": "Self-Hosting",
+            "pages": ["self-hosting/overview", "self-hosting/docker-setup"]
+          },
           {
-            "group": "For Developers",
+            "group": "Developers",
             "pages": [
               "developers/introduction",
               "developers/development-setup",
               "developers/commands",
+              "developers/contributing",
               "developers/code-style",
               "developers/pull-requests",
-              "developers/contributing"
+              "developers/conventional-commits"
             ]
           },
-          {
-            "group": "Self-Hosting",
-            "pages": ["self-hosting/overview", "self-hosting/docker-setup"]
-          },
+        
           {
             "group": "Configuration",
             "pages": [
               "configuration/environment-variables",
               "configuration/docker",
               "configuration/profiling",
-              "configuration/logging",
-              "configuration/conventional-commits"
-            ]
-          },
-          {
-            "group": "Extra Developer Docs",
-            "pages": [
-              "developers/extra/add-tools",
-              "developers/extra/release-workflow",
-              "developers/extra/add-env-vars",
-              "developers/extra/lazy-loading"
+              "configuration/logging"
             ]
           }
         ]
@@ -348,11 +337,6 @@
         "label": "Discord",
         "href": "https://discord.heygaia.io",
         "icon": "discord"
-      },
-      {
-        "label": "WhatsApp",
-        "href": "https://whatsapp.heygaia.io",
-        "icon": "whatsapp"
       },
       {
         "label": "GitHub",
