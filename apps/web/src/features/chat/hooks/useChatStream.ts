@@ -261,7 +261,6 @@ export const useChatStream = () => {
   };
 
   const handleMainResponseComplete = () => {
-    console.log("[handleMainResponseComplete] Setting isLoading to false");
     setIsLoading(false);
     resetLoadingText();
     updateBotMessage({ loading: false });
@@ -499,18 +498,15 @@ export const useChatStream = () => {
 
     // Use existing createdAt, or derive from user message + 1ms offset for correct ordering
     let createdAt: Date;
-    if (existingMessage?.createdAt) {
-      createdAt = existingMessage.createdAt;
-    } else if (refs.current.userMessage?.date) {
+    if (existingMessage?.createdAt) createdAt = existingMessage.createdAt;
+    else if (refs.current.userMessage?.date)
       // Bot message should be after user message
       createdAt = new Date(
         new Date(refs.current.userMessage.date).getTime() + 1,
       );
-    } else if (refs.current.botMessage.date) {
+    else if (refs.current.botMessage.date)
       createdAt = new Date(refs.current.botMessage.date);
-    } else {
-      createdAt = new Date();
-    }
+    else createdAt = new Date();
 
     const updatedMessage: IMessage = {
       id: refs.current.botMessage.message_id,
@@ -552,7 +548,10 @@ export const useChatStream = () => {
     try {
       const data = event.data === "[DONE]" ? null : JSON.parse(event.data);
       if (event.data === "[DONE]") return;
-      if (data.error) return data.error;
+      if (data.error) {
+        toast.error(data.error);
+        return data.error;
+      }
 
       if (data.main_response_complete) {
         console.log("[handleStreamEvent] Received main_response_complete");

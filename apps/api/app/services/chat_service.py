@@ -210,6 +210,7 @@ async def run_chat_stream_background(
         await stream_manager.publish_chunk(
             stream_id, f"data: {json.dumps({'error': str(e)})}\n\n"
         )
+        await stream_manager.set_error(stream_id, str(e))
     finally:
         # On cancellation, complete_message may be empty because nostream: marker
         # never arrives. Recover from Redis progress which tracks accumulated text.
