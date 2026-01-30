@@ -77,38 +77,39 @@ export default function ToolCallsSection({
 
     return (
       <div className="flex min-h-8 items-center -space-x-2">
-        {displayIcons.map((call, index) => {
-          const IconComponent = getToolCategoryIcon(
-            call.tool_category || "general",
-            {
-              width: 21,
-              height: 21,
-            },
-            getIconUrl(call),
-          ) || (
-            <div className="p-1 bg-zinc-800 rounded-lg text-zinc-400 backdrop-blur">
-              <ToolsIcon width={21} height={21} />
-            </div>
-          );
+        {displayIcons.length > 1 &&
+          displayIcons.map((call, index) => {
+            const IconComponent = getToolCategoryIcon(
+              call.tool_category || "general",
+              {
+                width: 21,
+                height: 21,
+              },
+              getIconUrl(call),
+            ) || (
+              <div className="p-1 bg-zinc-800 rounded-lg text-zinc-400 backdrop-blur">
+                <ToolsIcon width={21} height={21} />
+              </div>
+            );
 
-          return IconComponent ? (
-            <div
-              key={`${call.tool_name}-${index}`}
-              className="relative flex min-w-8 items-center justify-center"
-              style={{
-                rotate:
-                  displayIcons.length > 1
-                    ? index % 2 === 0
-                      ? "8deg"
-                      : "-8deg"
-                    : "0deg",
-                zIndex: index,
-              }}
-            >
-              {IconComponent}
-            </div>
-          ) : null;
-        })}
+            return IconComponent ? (
+              <div
+                key={`${call.tool_name}-${index}`}
+                className="relative flex min-w-8 items-center justify-center"
+                style={{
+                  rotate:
+                    displayIcons.length > 1
+                      ? index % 2 === 0
+                        ? "8deg"
+                        : "-8deg"
+                      : "0deg",
+                  zIndex: index,
+                }}
+              >
+                {IconComponent}
+              </div>
+            ) : null;
+          })}
         {uniqueIcons.length > SHOWICONS && (
           <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500 font-normal">
             +{uniqueIcons.length - SHOWICONS}
@@ -132,7 +133,7 @@ export default function ToolCallsSection({
         }}
         style={{ padding: 0 }}
         itemClasses={{
-          trigger: "cursor-pointer ",
+          trigger: "cursor-pointer py-0 pb-5",
         }}
       >
         <AccordionItem
@@ -152,7 +153,7 @@ export default function ToolCallsSection({
             </div>
           }
         >
-          <div className="space-y-0">
+          <div className="space-y-0 pb-3">
             {tool_calls_data.map((call, index) => {
               const hasCategoryText =
                 call.show_category !== false &&

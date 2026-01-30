@@ -149,7 +149,7 @@ const ModelPickerButton: React.FC = () => {
                 key={model.model_id}
                 textValue={`${model.name}${model.is_default ? " (Default)" : ""}`}
                 classNames={{
-                  base: "py-2.5 px-2 data-[hover=true]:bg-zinc-700/50 gap-3 items-start",
+                  base: "py-2.5 px-2 data-[hover=true]:bg-zinc-700/50 gap-3 items-start rounded-xl",
                   title: "text-zinc-200",
                   description: "text-zinc-400 mt-1",
                 }}

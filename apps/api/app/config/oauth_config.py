@@ -1255,7 +1255,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="deepwiki",
         managed_by="mcp",
         mcp_config=MCPConfig(
-            server_url="https://mcp.deepwiki.com/sse",
+            server_url="https://mcp.deepwiki.com/mcp",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,

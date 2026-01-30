@@ -4,8 +4,13 @@
  */
 
 export function splitMessageByBreaks(content: string): string[] {
-  if (!content || !content.includes("<NEW_MESSAGE_BREAK>")) {
-    return [content]; // No breaks = single bubble
+  // Return empty array for empty/whitespace content
+  if (!content?.trim()) {
+    return [];
+  }
+
+  if (!content.includes("<NEW_MESSAGE_BREAK>")) {
+    return [content];
   }
 
   return content

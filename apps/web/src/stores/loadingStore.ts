@@ -17,6 +17,7 @@ interface ToolInfo {
 interface LoadingState {
   isLoading: boolean;
   loadingText: string;
+  loadingTextKey: number;
   toolInfo?: ToolInfo;
 }
 
@@ -41,6 +42,7 @@ const getInitialLoadingText = () => getRandomThinkingMessage();
 const initialState: LoadingState = {
   isLoading: false,
   loadingText: getInitialLoadingText(),
+  loadingTextKey: 0,
   toolInfo: undefined,
 };
 
@@ -51,9 +53,12 @@ export const useLoadingStore = create<LoadingStore>()(
 
       setIsLoading: (isLoading) => {
         if (isLoading) {
-          // Generate a new random message when starting to load
           set(
-            { isLoading, loadingText: getRandomThinkingMessage() },
+            (state) => ({
+              isLoading,
+              loadingText: getRandomThinkingMessage(),
+              loadingTextKey: state.loadingTextKey + 1,
+            }),
             false,
             "setIsLoading",
           );
@@ -63,59 +68,66 @@ export const useLoadingStore = create<LoadingStore>()(
       },
 
       setLoadingText: (payload) => {
-        if (typeof payload === "string") {
-          set(
-            { loadingText: payload, toolInfo: undefined },
-            false,
-            "setLoadingText",
-          );
-        } else {
-          set(
-            { loadingText: payload.text, toolInfo: payload.toolInfo },
-            false,
-            "setLoadingText",
-          );
-        }
+        set(
+          (state) => ({
+            loadingText: typeof payload === "string" ? payload : payload.text,
+            toolInfo:
+              typeof payload === "string" ? undefined : payload.toolInfo,
+            loadingTextKey: state.loadingTextKey + 1,
+          }),
+          false,
+          "setLoadingText",
+        );
       },
 
       resetLoadingText: () =>
         set(
-          {
+          (state) => ({
             loadingText: getRandomThinkingMessage(),
             toolInfo: undefined,
-          },
+            loadingTextKey: state.loadingTextKey + 1,
+          }),
           false,
           "resetLoadingText",
         ),
 
       setLoading: (isLoading, text) => {
-        const updates: Partial<LoadingState> = { isLoading };
-        if (text !== undefined) {
-          updates.loadingText = text;
-        } else if (isLoading) {
-          // Generate a new random message when starting to load if no specific text provided
-          updates.loadingText = getRandomThinkingMessage();
-        }
-        set(updates, false, "setLoading");
+        set(
+          (state) => {
+            const updates: Partial<LoadingState> & { loadingTextKey: number } =
+              {
+                isLoading,
+                loadingTextKey: state.loadingTextKey + 1,
+              };
+            if (text !== undefined) updates.loadingText = text;
+            else if (isLoading)
+              updates.loadingText = getRandomThinkingMessage();
+            return updates;
+          },
+          false,
+          "setLoading",
+        );
       },
 
       setLoadingWithContext: (isLoading, userMessage, text) => {
-        const updates: Partial<LoadingState> = { isLoading };
-
-        if (text !== undefined) {
-          // Explicit text provided, use it
-          updates.loadingText = text;
-        } else if (isLoading) {
-          // Generate contextually relevant message if user message provided
-          if (userMessage?.trim()) {
-            updates.loadingText = getRelevantThinkingMessage(userMessage);
-          } else {
-            // Fallback to random message
-            updates.loadingText = getRandomThinkingMessage();
-          }
-        }
-
-        set(updates, false, "setLoadingWithContext");
+        set(
+          (state) => {
+            const updates: Partial<LoadingState> & { loadingTextKey: number } =
+              {
+                isLoading,
+                loadingTextKey: state.loadingTextKey + 1,
+              };
+            if (text !== undefined) updates.loadingText = text;
+            else if (isLoading) {
+              updates.loadingText = userMessage?.trim()
+                ? getRelevantThinkingMessage(userMessage)
+                : getRandomThinkingMessage();
+            }
+            return updates;
+          },
+          false,
+          "setLoadingWithContext",
+        );
       },
     }),
     { name: "loading-store" },

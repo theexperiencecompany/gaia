@@ -71,7 +71,7 @@
   --border-radius-sm: calc(var(--radius) - 4px);
 
   /* Animations */
-  --animate-shine: shine 5s linear infinite;
+  --animate-shine: shine 1s linear infinite;
   --animate-orbit: orbit calc(var(--duration) * 1s) linear infinite;
   --animate-grid: grid 15s linear infinite;
   --animate-accordion-down: accordion-down 0.2s ease-out;

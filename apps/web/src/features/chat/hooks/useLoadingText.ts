@@ -12,6 +12,7 @@ interface ToolInfo {
 export const useLoadingText = () => {
   const {
     loadingText,
+    loadingTextKey,
     toolInfo,
     setLoadingText,
     resetLoadingText,
@@ -36,6 +37,7 @@ export const useLoadingText = () => {
 
   return {
     loadingText,
+    loadingTextKey,
     toolInfo,
     setLoadingText: updateLoadingText,
     setContextualLoading,

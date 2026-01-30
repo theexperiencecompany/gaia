@@ -206,7 +206,9 @@ async def run_chat_stream_background(
 
     except Exception as e:
         logger.error(f"Background stream error for {stream_id}: {e}")
-        await stream_manager.set_error(stream_id, str(e))
+        # IMPORTANT: Publish error chunk FIRST, before calling set_error()
+        # set_error() publishes STREAM_ERROR_SIGNAL which breaks the subscriber loop
+        # If we call set_error() first, the error message never reaches the client
         await stream_manager.publish_chunk(
             stream_id, f"data: {json.dumps({'error': str(e)})}\n\n"
         )

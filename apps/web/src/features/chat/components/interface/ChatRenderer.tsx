@@ -1,14 +1,15 @@
 "use client";
 
+import { AnimatePresence } from "framer-motion";
 import { useParams, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { WaveSpinnerSquare } from "@/components/shared/WaveSpinnerSquare";
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
+import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
@@ -20,7 +21,6 @@ import {
   isBotMessageEmpty,
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type {
   ChatBubbleBotProps,
   SetImageDataType,
@@ -42,7 +42,7 @@ export default function ChatRenderer({
   const searchParams = useSearchParams();
   const messageId = searchParams.get("messageId");
   const { isLoading } = useLoading();
-  const { loadingText, toolInfo } = useLoadingText();
+  const { loadingText, loadingTextKey, toolInfo } = useLoadingText();
   const { id: convoIdParam } = useParams<{ id: string }>();
   const scrolledToMessageRef = useRef<string | null>(null);
   const { retryMessage, isRetrying } = useRetryMessage();
@@ -130,10 +130,6 @@ export default function ChatRenderer({
     }, 700);
   };
 
-  const formatCategoryName = (category: string): string => {
-    return category.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-  };
-
   return (
     <>
       <title id="chat_title">
@@ -161,7 +157,7 @@ export default function ChatRenderer({
         else if (message.type === "user")
           messageProps = getMessageProps(message, "user", messagePropsOptions);
 
-        if (!messageProps) return null; // Skip rendering if messageProps is null
+        if (!messageProps) return null;
 
         if (
           message.type === "bot" &&
@@ -179,28 +175,13 @@ export default function ChatRenderer({
         );
       })}
       {isLoading && (
-        <div className="flex items-center gap-4 pl-12 text-sm font-medium">
-          {toolInfo?.toolCategory ? (
-            getToolCategoryIcon(
-              toolInfo.toolCategory,
-              {
-                size: 18,
-                width: 18,
-                height: 18,
-                iconOnly: true,
-              },
-              toolInfo.iconUrl,
-            )
-          ) : (
-            <WaveSpinnerSquare />
-          )}
-          <span>
-            {toolInfo?.showCategory !== false && toolInfo?.toolCategory
-              ? `${toolInfo.integrationName || formatCategoryName(toolInfo.toolCategory)}: `
-              : ""}
-            {loadingText || "GAIA is thinking..."}
-          </span>
-        </div>
+        <AnimatePresence>
+          <LoadingIndicator
+            loadingText={loadingText}
+            loadingTextKey={loadingTextKey}
+            toolInfo={toolInfo}
+          />
+        </AnimatePresence>
       )}
     </>
   );
