@@ -66,7 +66,7 @@ export default function TodosHeader() {
 
   return (
     <div className="flex w-full items-center justify-between">
-      <div className="flex items-center gap-2 pl-2 text-zinc-500">
+      <div className="flex items-center gap-2 pl-0 text-zinc-500">
         <Link href={"/todos"} className="flex items-center gap-2">
           <CheckmarkCircle02Icon width={20} height={20} />
           <span>Todos</span>

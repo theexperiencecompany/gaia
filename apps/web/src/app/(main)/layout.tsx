@@ -33,7 +33,7 @@ import { useUIStoreSidebar } from "@/stores/uiStore";
 
 const HeaderSidebarTrigger = () => {
   return (
-    <div className="pt-1">
+    <div className="">
       <CustomSidebarTrigger />
     </div>
   );

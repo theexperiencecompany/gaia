@@ -8,9 +8,8 @@ import {
 import Image from "next/image";
 import type React from "react";
 import { useMemo } from "react";
-
+import { BubbleChatSparkIcon } from "@/components/shared/icons";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
-
 import {
   useCurrentUserModel,
   useModels,
@@ -95,7 +94,6 @@ const ModelPickerButton: React.FC = () => {
       selectedKeys={selectedModelId ? new Set([selectedModelId]) : new Set()}
       onSelectionChange={handleSelectionChange}
       isDisabled={selectModelMutation.isPending}
-      size="sm"
       variant={"flat"}
       aria-label="Select AI Model"
       className="w-fit! max-w-none!"
@@ -106,25 +104,18 @@ const ModelPickerButton: React.FC = () => {
       }}
       classNames={{
         trigger:
-          "cursor-pointer bg-transparent transition hover:bg-zinc-800 !min-w-fit !w-auto !max-w-none whitespace-nowrap pl-3 pr-8",
+          "cursor-pointer bg-transparent transition hover:bg-zinc-800! !min-w-fit !w-auto !max-w-none whitespace-nowrap px-2 pr-9",
         value: "text-zinc-400! text-xs font-medium whitespace-nowrap !w-auto ",
         base: "!max-w-none !w-auto",
         innerWrapper: "!w-auto !max-w-none",
         mainWrapper: "!w-auto !max-w-none",
+        selectorIcon: "text-zinc-500 h-4 w-4",
       }}
       scrollShadowProps={{
         isEnabled: false,
       }}
       startContent={
-        currentModel?.logo_url && (
-          <Image
-            src={currentModel.logo_url}
-            alt={currentModel.name}
-            height={40}
-            width={40}
-            className={`h-4 w-4 object-contain`}
-          />
-        )
+        <BubbleChatSparkIcon className="text-zinc-500" width={20} height={20} />
       }
       renderValue={(items) => {
         if (!items.length) return "Model";

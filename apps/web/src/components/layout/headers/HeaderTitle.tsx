@@ -7,7 +7,7 @@ interface HeaderTitleProps {
 
 export function HeaderTitle({ icon, text }: HeaderTitleProps) {
   return (
-    <div className="flex items-center gap-2 pl-2 text-zinc-500">
+    <div className="flex items-center gap-2 pl-0 text-zinc-500">
       {icon}
       <span>{text}</span>
     </div>
