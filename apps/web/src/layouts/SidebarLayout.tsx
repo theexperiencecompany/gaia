@@ -59,7 +59,6 @@ export default function SidebarLayout({ children }: SidebarLayoutProps) {
       <SidebarHeader className="pb-0">
         <div className="flex items-center justify-between">
           <LogoWithContextMenu className="group ml-2 flex items-center gap-2 px-1" />
-          <CustomSidebarTrigger />
         </div>
       </SidebarHeader>
 

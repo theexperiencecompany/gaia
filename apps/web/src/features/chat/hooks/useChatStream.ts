@@ -621,15 +621,24 @@ export const useChatStream = () => {
         return;
       }
 
-      setIsLoading(false);
-      resetLoadingText();
-      streamController.clear();
-
+      // Update bot message with loading: false BEFORE hiding the loading indicator
+      // This ensures the message shows immediately when loading disappears
       updateBotMessage({ loading: false });
 
       const conversationId =
         refs.current.newConversation.id ||
         useChatStore.getState().activeConversationId;
+
+      // Update the store with final message state BEFORE hiding loading
+      // This prevents the gap where loading is hidden but message isn't updated
+      if (refs.current.botMessage?.message_id && conversationId) {
+        updateBotMessageInStore(conversationId);
+      }
+
+      // Now safe to hide loading - message is already visible in store
+      setIsLoading(false);
+      resetLoadingText();
+      streamController.clear();
 
       console.log("[handleStreamClose] Persisting bot message:", {
         hasConversationId: !!conversationId,
