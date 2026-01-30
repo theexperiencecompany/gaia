@@ -669,19 +669,22 @@ class MCPClient:
                 "MCP-Protocol-Version": MCP_PROTOCOL_VERSION,
             }
 
+            # Always include client_id in body for PKCE compatibility
+            # Some OAuth servers require client_id in body for PKCE validation
+            token_data["client_id"] = client_id
+
             if client_secret:
                 credentials = f"{client_id}:{client_secret}"
                 encoded = base64.b64encode(credentials.encode()).decode()
                 headers["Authorization"] = f"Basic {encoded}"
-            else:
-                token_data["client_id"] = client_id
 
             response = await http_client.post(
                 token_endpoint, data=token_data, headers=headers, timeout=30
             )
 
             # Handle error responses with structured parsing
-            if response.status_code != 200:
+            # Accept any 2xx status code as success (OAuth servers vary: 200, 201, etc.)
+            if not (200 <= response.status_code < 300):
                 error_info = parse_oauth_error_response(response)
                 logger.error(
                     f"Token exchange failed for {integration_id}: "

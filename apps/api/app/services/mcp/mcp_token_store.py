@@ -251,8 +251,10 @@ class MCPTokenStore:
         state = secrets.token_urlsafe(32)
 
         # Store state and code_verifier together in Redis
+        # IMPORTANT: Pass dict directly - set_cache handles serialization via TypeAdapter.
+        # Pre-serializing with json.dumps() causes double-encoding, breaking code_verifier retrieval.
         cache_key = f"{OAUTH_STATE_PREFIX}:{self.user_id}:{integration_id}"
-        state_data = json.dumps({"state": state, "code_verifier": code_verifier})
+        state_data = {"state": state, "code_verifier": code_verifier}
         await set_cache(cache_key, state_data, ttl=OAUTH_STATE_TTL)
 
         return state
@@ -414,18 +416,17 @@ class MCPTokenStore:
         TTL: 24 hours (OAuth metadata changes infrequently)
         """
         cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
-        await set_cache(cache_key, json.dumps(discovery), ttl=OAUTH_DISCOVERY_TTL)
+        # Pass dict directly - set_cache handles serialization
+        await set_cache(cache_key, discovery, ttl=OAUTH_DISCOVERY_TTL)
         logger.info(f"Cached OAuth discovery for {integration_id}")
 
     async def get_oauth_discovery(self, integration_id: str) -> Optional[dict]:
         """Get cached OAuth discovery data from Redis."""
         cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
+        # get_cache already deserializes via TypeAdapter, returning dict directly
         cached = await get_cache(cache_key)
-        if cached:
-            try:
-                return json.loads(cached)
-            except json.JSONDecodeError:
-                return None
+        if cached and isinstance(cached, dict):
+            return cached
         return None
 
     async def store_oauth_nonce(self, integration_id: str, nonce: str) -> None:
