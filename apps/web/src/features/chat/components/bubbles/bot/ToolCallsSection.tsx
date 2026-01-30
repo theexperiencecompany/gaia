@@ -133,7 +133,7 @@ export default function ToolCallsSection({
         }}
         style={{ padding: 0 }}
         itemClasses={{
-          trigger: "cursor-pointer py-0 pb-5",
+          trigger: "cursor-pointer py-0",
         }}
       >
         <AccordionItem
@@ -153,7 +153,7 @@ export default function ToolCallsSection({
             </div>
           }
         >
-          <div className="space-y-0 pb-3">
+          <div className="space-y-0 pb-3 pt-2">
             {tool_calls_data.map((call, index) => {
               const hasCategoryText =
                 call.show_category !== false &&

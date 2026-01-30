@@ -43,7 +43,7 @@ export function LoadingIndicator({
 
   return (
     <motion.div
-      className="flex items-center gap-4 pl-12 text-sm font-medium"
+      className="flex items-center gap-4 pl-11 text-sm font-medium"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
