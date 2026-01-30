@@ -1,8 +1,8 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Pagination } from "@heroui/pagination";
 import Image from "next/image";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
 import {
@@ -12,12 +12,14 @@ import {
 import type { CommunityIntegration } from "@/features/integrations/types";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 
+const ITEMS_PER_PAGE = 18;
+
 export function IntegrationsPageClient() {
   const [integrations, setIntegrations] = useState<CommunityIntegration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
-  const [hasMore, setHasMore] = useState(false);
   const [total, setTotal] = useState(0);
+  const [currentPage, setCurrentPage] = useState(1);
   const [filters, setFilters] = useState<{
     search: string;
     category: string;
@@ -29,8 +31,10 @@ export function IntegrationsPageClient() {
   });
   const isInitialMount = useRef(true);
 
+  const totalPages = useMemo(() => Math.ceil(total / ITEMS_PER_PAGE), [total]);
+
   const loadIntegrations = useCallback(
-    async (reset = false, showFilteringSkeleton = false) => {
+    async (page: number, showFilteringSkeleton = false) => {
       setIsLoading(true);
       if (showFilteringSkeleton) {
         setIsFiltering(true);
@@ -40,16 +44,11 @@ export function IntegrationsPageClient() {
           sort: filters.sort,
           category: filters.category === "all" ? undefined : filters.category,
           search: filters.search || undefined,
-          limit: 20,
-          offset: reset ? 0 : integrations.length,
+          limit: ITEMS_PER_PAGE,
+          offset: (page - 1) * ITEMS_PER_PAGE,
         });
 
-        if (reset) {
-          setIntegrations(response.integrations);
-        } else {
-          setIntegrations((prev) => [...prev, ...response.integrations]);
-        }
-        setHasMore(response.hasMore);
+        setIntegrations(response.integrations);
         setTotal(response.total);
       } catch (error) {
         console.error("Failed to load integrations:", error);
@@ -58,19 +57,28 @@ export function IntegrationsPageClient() {
         setIsFiltering(false);
       }
     },
-    [filters, integrations.length],
+    [filters],
   );
 
+  // Load when filters change - reset to page 1
   useEffect(() => {
-    // Skip showing filtering skeleton on initial mount
     if (isInitialMount.current) {
       isInitialMount.current = false;
-      loadIntegrations(true, false);
+      loadIntegrations(1, false);
     } else {
-      loadIntegrations(true, true);
+      setCurrentPage(1);
+      loadIntegrations(1, true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters.search, filters.category, filters.sort]);
+
+  // Handle page change
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    loadIntegrations(page, false);
+    // Scroll to top of grid
+    window.scrollTo({ top: 400, behavior: "smooth" });
+  };
 
   const handleFilterChange = (newFilters: {
     search?: string;
@@ -147,16 +155,19 @@ export function IntegrationsPageClient() {
               ))}
             </div>
 
-            {/* Load more */}
-            {hasMore && (
-              <div className="mt-8 flex justify-center">
-                <Button
-                  variant="flat"
-                  onPress={() => loadIntegrations(false)}
-                  isLoading={isLoading}
-                >
-                  Load More
-                </Button>
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="mt-12 flex justify-center">
+                <Pagination
+                  total={totalPages}
+                  page={currentPage}
+                  onChange={handlePageChange}
+                  showControls
+                  variant="faded"
+                  classNames={{
+                    base: "cursor-pointer!",
+                  }}
+                />
               </div>
             )}
           </>

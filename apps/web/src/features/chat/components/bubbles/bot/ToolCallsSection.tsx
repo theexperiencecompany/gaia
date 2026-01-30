@@ -153,7 +153,7 @@ export default function ToolCallsSection({
             </div>
           }
         >
-          <div className="space-y-0 pb-3 pt-2">
+          <div className="space-y-0 pb-3 pt-3">
             {tool_calls_data.map((call, index) => {
               const hasCategoryText =
                 call.show_category !== false &&
