@@ -81,8 +81,9 @@ class DBEventEmitter extends EventEmitter {
     this.setMaxListeners(1); // Enforce single listener per event
   }
 
-  // Note: messageAdded/messageUpdated are NOT emitted - store is updated directly
-  // by the streaming code for immediate UI updates.
+  emitMessageUpserted(message: IMessage) {
+    this.emit("messageUpserted", message);
+  }
 
   emitMessageDeleted(messageId: string, conversationId: string) {
     this.emit("messageDeleted", messageId, conversationId);
@@ -190,25 +191,21 @@ export class ChatDexie extends Dexie {
     const id = await messageQueue.enqueue(async () => {
       return await this.messages.put(message);
     });
-
-    // Note: We no longer emit messageAdded/messageUpdated events here.
-    // The store is updated directly by the caller for immediate UI updates.
-    // This avoids duplicate update paths and race conditions.
+    dbEventEmitter.emitMessageUpserted(message);
     return id;
   }
 
   public async putMessagesBulk(messages: IMessage[]): Promise<string[]> {
     await messageQueue.enqueue(async () => {
       await this.messages.bulkPut(messages);
-      // Note: No event emission - caller should update store directly if needed
     });
+    messages.forEach((message) => dbEventEmitter.emitMessageUpserted(message));
     return messages.map((message) => message.id);
   }
 
   /**
    * Atomically persist a user-bot message pair in a single transaction.
    * This ensures both messages are saved together or neither is saved.
-   * Returns the persisted messages for direct store update.
    */
   public async persistMessagePair(
     userMessage: IMessage | null,
@@ -225,8 +222,13 @@ export class ChatDexie extends Dexie {
       }),
     );
 
-    // Note: No event emission here - caller updates store directly for immediate UI.
-    // This avoids duplicate update paths and race conditions.
+    // Emit events after successful transaction
+    if (userMessage) {
+      dbEventEmitter.emitMessageUpserted(userMessage);
+    }
+    if (botMessage) {
+      dbEventEmitter.emitMessageUpserted(botMessage);
+    }
 
     return { userMessage, botMessage };
   }
@@ -239,9 +241,9 @@ export class ChatDexie extends Dexie {
       (this as Dexie).transaction("rw", this.messages, async () => {
         await this.messages.delete(temporaryId);
         await this.messages.put(message);
-        // Note: No event emission - caller should update store directly
       }),
     );
+    dbEventEmitter.emitMessageUpserted(message);
   }
 
   public async deleteConversationAndMessages(
@@ -299,24 +301,28 @@ export class ChatDexie extends Dexie {
     messageId: string,
     content: string,
   ): Promise<void> {
+    let updatedMessage: IMessage | undefined;
     await messageQueue.enqueue(async () => {
       const message = await this.messages.get(messageId);
       if (message) {
-        const updatedMessage = { ...message, content, updatedAt: new Date() };
+        updatedMessage = { ...message, content, updatedAt: new Date() };
         await this.messages.put(updatedMessage);
       }
     });
-    // Note: No event emission - caller should update store directly if needed
+    if (updatedMessage) {
+      dbEventEmitter.emitMessageUpserted(updatedMessage);
+    }
   }
 
   public async updateMessage(
     messageId: string,
     updates: Partial<IMessage>,
   ): Promise<void> {
+    let updatedMessage: IMessage | undefined;
     await messageQueue.enqueue(async () => {
       const message = await this.messages.get(messageId);
       if (message) {
-        const updatedMessage = {
+        updatedMessage = {
           ...message,
           ...updates,
           updatedAt: new Date(),
@@ -324,20 +330,26 @@ export class ChatDexie extends Dexie {
         await this.messages.put(updatedMessage);
       }
     });
-    // Note: No event emission - caller should update store directly if needed
+    if (updatedMessage) {
+      dbEventEmitter.emitMessageUpserted(updatedMessage);
+    }
   }
 
   public async updateMessageStatus(
     messageId: string,
     status: IMessage["status"],
   ): Promise<void> {
+    let updatedMessage: IMessage | undefined;
     await messageQueue.enqueue(async () => {
-      await this.messages.update(messageId, {
-        status,
-        updatedAt: new Date(),
-      });
+      const message = await this.messages.get(messageId);
+      if (message) {
+        updatedMessage = { ...message, status, updatedAt: new Date() };
+        await this.messages.put(updatedMessage);
+      }
     });
-    // Note: No event emission - caller should update store directly if needed
+    if (updatedMessage) {
+      dbEventEmitter.emitMessageUpserted(updatedMessage);
+    }
   }
 
   public async replaceOptimisticMessage(

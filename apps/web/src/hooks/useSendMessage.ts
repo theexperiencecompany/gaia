@@ -7,6 +7,7 @@ import { db, type IMessage } from "@/lib/db/chatDb";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
+import { useLoadingStore } from "@/stores/loadingStore";
 import {
   type ReplyToMessageData,
   useReplyToMessageStore,
@@ -102,6 +103,10 @@ export const useSendMessage = () => {
           workflowId: selectedWorkflow?.id ?? null,
         });
 
+        // Set loading state AFTER user message is in store
+        // This ensures the loading indicator appears AFTER the user message in the UI
+        useLoadingStore.getState().setLoadingWithContext(true, trimmedContent);
+
         await fetchChatStream(
           trimmedContent,
           [userMessage],
@@ -140,6 +145,9 @@ export const useSendMessage = () => {
       };
       try {
         await db.putMessage(optimisticMessage);
+
+        // Set loading state AFTER user message is persisted
+        useLoadingStore.getState().setLoadingWithContext(true, trimmedContent);
 
         const streamingUserMessage: MessageType = {
           ...userMessage,

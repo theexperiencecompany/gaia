@@ -44,6 +44,22 @@ const mergeMessageLists = (
     }
   });
 
+  // CRITICAL: Clean up orphaned optimistic messages
+  // These are optimistic messages whose backend counterparts have different IDs
+  // This happens when the stream was interrupted before replaceOptimisticMessage was called
+  if (remoteMessages.length > 0) {
+    for (const [id, msg] of messageMap) {
+      if (
+        msg.optimistic &&
+        !streamState.isStreamingConversation(msg.conversationId)
+      ) {
+        // This optimistic message wasn't replaced and we're not streaming
+        // It's orphaned - the backend has the real version with a different ID
+        messageMap.delete(id);
+      }
+    }
+  }
+
   // Convert back to array and sort by creation time
   return Array.from(messageMap.values()).sort(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),

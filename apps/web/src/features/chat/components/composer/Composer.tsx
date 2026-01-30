@@ -16,7 +16,6 @@ import FilePreview, {
 import FileUpload from "@/features/chat/components/files/FileUpload";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
-import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
@@ -103,7 +102,6 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   const sendMessage = useSendMessage();
   const { isLoading, setIsLoading } = useLoading();
-  const { setContextualLoading } = useLoadingText();
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
   const currentMode = useMemo(
     () => Array.from(selectedMode)[0],
@@ -227,8 +225,8 @@ const Composer: React.FC<MainSearchbarProps> = ({
     ) {
       return;
     }
-    // Use contextual loading with user's message for similarity-based loading text
-    setContextualLoading(true, inputText);
+    // Note: Loading state is now set in useSendMessage AFTER user message is persisted
+    // This ensures the loading indicator appears AFTER the user message in the UI
 
     // Track message send event with PostHog
     posthog.capture("chat:message_sent", {

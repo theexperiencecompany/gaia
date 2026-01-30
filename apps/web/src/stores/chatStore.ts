@@ -228,11 +228,13 @@ if (typeof window !== "undefined") {
 
 // Event-driven synchronization with IndexedDB
 // Hydration happens at module load (above), this just sets up event listeners
-// Note: messageAdded/messageUpdated events are NOT used - store is updated directly
-// by the streaming code for immediate UI updates. Only other events are subscribed.
 export const useChatStoreSync = () => {
   useEffect(() => {
     // Event handlers for real-time updates from IndexedDB
+
+    const handleMessageUpserted = (message: IMessage) => {
+      useChatStore.getState().addOrUpdateMessage(message);
+    };
 
     const handleMessageDeleted = (
       messageId: string,
@@ -254,9 +256,35 @@ export const useChatStoreSync = () => {
       const state = useChatStore.getState();
       const messages =
         state.messagesByConversation[newMessage.conversationId] ?? [];
-      const updatedMessages = messages.map((msg) =>
-        msg.id === oldId ? newMessage : msg,
+
+      // Check if the old message exists in the store
+      const oldIndex = messages.findIndex((msg) => msg.id === oldId);
+
+      let updatedMessages: IMessage[];
+      if (oldIndex !== -1) {
+        // Replace the old message with the new one
+        updatedMessages = messages.map((msg) =>
+          msg.id === oldId ? newMessage : msg,
+        );
+      } else {
+        // Old message not found - check if new message already exists (avoid duplicates)
+        const newIndex = messages.findIndex((msg) => msg.id === newMessage.id);
+        if (newIndex !== -1) {
+          // Update existing message with new ID
+          updatedMessages = messages.map((msg) =>
+            msg.id === newMessage.id ? newMessage : msg,
+          );
+        } else {
+          // Neither found - add the new message
+          updatedMessages = [...messages, newMessage];
+        }
+      }
+
+      // Sort by createdAt to ensure correct order
+      updatedMessages.sort(
+        (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
       );
+
       state.setMessagesForConversation(
         newMessage.conversationId,
         updatedMessages,
@@ -281,6 +309,7 @@ export const useChatStoreSync = () => {
       });
     };
 
+    dbEventEmitter.on("messageUpserted", handleMessageUpserted);
     dbEventEmitter.on("messageDeleted", handleMessageDeleted);
     dbEventEmitter.on("messagesSynced", handleMessagesSynced);
     dbEventEmitter.on("messageIdReplaced", handleMessageIdReplaced);
@@ -293,6 +322,7 @@ export const useChatStoreSync = () => {
     );
 
     return () => {
+      dbEventEmitter.off("messageUpserted", handleMessageUpserted);
       dbEventEmitter.off("messageDeleted", handleMessageDeleted);
       dbEventEmitter.off("messagesSynced", handleMessagesSynced);
       dbEventEmitter.off("messageIdReplaced", handleMessageIdReplaced);

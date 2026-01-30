@@ -45,14 +45,12 @@ export default function ChatRenderer({
   const { loadingText, toolInfo } = useLoadingText();
   const { id: convoIdParam } = useParams<{ id: string }>();
   const scrolledToMessageRef = useRef<string | null>(null);
+  const { retryMessage, isRetrying } = useRetryMessage();
   const [imageData, setImageData] = useState<SetImageDataType>({
     src: "",
     prompt: "",
     improvedPrompt: "",
   });
-
-  // Retry message hook
-  const { retryMessage, isRetrying } = useRetryMessage();
 
   const conversation = useMemo(() => {
     return conversations.find(
