@@ -136,27 +136,15 @@ export default function IntegrationsPage() {
     const oauthSuccess = searchParams.get("oauth_success");
     const oauthIntegration = searchParams.get("integration");
 
-    // Handle OAuth success callback
+    // Handle OAuth success callback - toast is handled globally by useOAuthSuccessToast
+    // Here we just handle opening the sidebar for the connected integration
     if (oauthSuccess === "true") {
-      router.replace("/integrations", { scroll: false });
-      const integration = oauthIntegration
-        ? integrations.find(
-            (i) => i.id.toLowerCase() === oauthIntegration.toLowerCase(),
-          )
-        : null;
-      const integrationName =
-        integration?.name || oauthIntegration || "Integration";
-
-      toast.success(`Connected to ${integrationName}`);
-
-      // Invalidate cache and set pending integration to open sidebar after data refresh
+      // Set pending integration to open sidebar after data refresh
       // Use integrationId (from redirect_path) or oauthIntegration as fallback
       const targetIntegrationId = integrationId || oauthIntegration;
       if (targetIntegrationId) {
         setPendingIntegrationId(targetIntegrationId);
       }
-      queryClient.invalidateQueries({ queryKey: ["integrations"] });
-      queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
       return;
     }
 
