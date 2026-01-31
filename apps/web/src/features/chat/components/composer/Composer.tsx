@@ -108,6 +108,13 @@ const Composer: React.FC<MainSearchbarProps> = ({
     [selectedMode],
   );
 
+  // Look up the icon URL for the selected tool's integration
+  const selectedToolIconUrl = useMemo(() => {
+    if (!selectedToolCategory) return null;
+    const integration = integrations.find((i) => i.id === selectedToolCategory);
+    return integration?.iconUrl ?? null;
+  }, [selectedToolCategory, integrations]);
+
   // Ref to prevent duplicate execution in StrictMode
   const autoSendExecutedRef = useRef(false);
 
@@ -476,6 +483,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
         <SelectedToolIndicator
           toolName={selectedTool}
           toolCategory={selectedToolCategory}
+          iconUrl={selectedToolIconUrl}
           onRemove={handleRemoveSelectedTool}
         />
         <SelectedWorkflowIndicator
