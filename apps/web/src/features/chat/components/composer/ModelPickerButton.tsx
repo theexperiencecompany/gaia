@@ -26,10 +26,22 @@ const ModelPickerButton: React.FC = () => {
   const handleSelectionChange = (keys: SharedSelection) => {
     const selectedKey = Array.from(keys)[0];
     if (selectedKey && typeof selectedKey === "string") {
-      selectModelMutation.mutate(selectedKey);
+      const previousModel = user.selected_model;
+
+      // Optimistically update the UI
       setUser({
         ...user,
         selected_model: selectedKey,
+      });
+
+      selectModelMutation.mutate(selectedKey, {
+        onError: () => {
+          // Revert to the previous model on failure
+          setUser({
+            ...user,
+            selected_model: previousModel,
+          });
+        },
       });
     }
   };

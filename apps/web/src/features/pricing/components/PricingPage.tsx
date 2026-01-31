@@ -34,7 +34,7 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
     <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[35vh]">
       <div className="fixed inset-0 top-0 z-0 h-[90vh] w-full">
         <Image
-          src={wallpapers.pricing.webp}
+          src={wallpapers.pricing.png}
           alt="GAIA Pricing page Wallpaper"
           sizes="100vw"
           priority

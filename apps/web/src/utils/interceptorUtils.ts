@@ -104,6 +104,16 @@ const handleForbiddenError = (
       ? (errorData as { detail: unknown }).detail
       : undefined;
 
+  // Skip if this is an UPGRADE_REQUIRED error (handled by model selection)
+  if (
+    typeof detail === "object" &&
+    detail !== null &&
+    "error_code" in detail &&
+    (detail as { error_code: string }).error_code === "UPGRADE_REQUIRED"
+  ) {
+    return;
+  }
+
   // Handle integration errors with redirect action
   if (
     typeof detail === "object" &&
