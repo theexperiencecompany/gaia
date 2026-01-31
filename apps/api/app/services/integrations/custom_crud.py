@@ -1,6 +1,5 @@
 """Custom integration CRUD operations."""
 
-import asyncio
 import uuid
 from datetime import UTC, datetime
 from typing import Any, Dict, Optional, Tuple
@@ -17,14 +16,18 @@ from app.db.mongodb.collections import (
 from app.db.postgresql import get_db_session
 from app.db.redis import delete_cache, delete_cache_by_pattern
 from app.helpers.mcp_helpers import get_api_base_url
+from app.models.db_oauth import MCPCredential
 from app.models.integration_models import (
     CreateCustomIntegrationRequest,
     Integration,
     UpdateCustomIntegrationRequest,
 )
-from app.models.db_oauth import MCPCredential
 from app.models.mcp_config import MCPConfig
+from app.services.integrations.user_integration_status import (
+    update_user_integration_status,
+)
 from app.services.integrations.user_integrations import add_user_integration
+from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.utils.favicon_utils import fetch_favicon_from_url
 from sqlalchemy import delete
 
@@ -237,46 +240,75 @@ async def create_and_connect_custom_integration(
     request: CreateCustomIntegrationRequest,
     mcp_client: Any,
 ) -> Tuple[Integration, dict]:
-    """Create a custom integration and attempt connection.
-
-    Returns tuple of (integration, connection_result) where connection_result is:
-    {"status": "connected", "tools_count": N} or
-    {"status": "requires_oauth", "oauth_url": "..."} or
-    {"status": "failed", "error": "..."}
-    """
-    # Parallel: Favicon fetch + MCP probe
-    results = await asyncio.gather(
-        fetch_favicon_from_url(request.server_url),
-        mcp_client.probe_connection(request.server_url),
-        return_exceptions=True,
-    )
-    favicon_result: str | BaseException | None = results[0]
-    probe_result: Dict[str, Any] | BaseException = results[1]
-
-    icon_url: str | None = None
-    if favicon_result and not isinstance(favicon_result, BaseException):
-        icon_url = favicon_result
-
+    """Create a custom integration and attempt connection."""
+    icon_url = await _fetch_icon_safely(request.server_url)
     integration = await create_custom_integration(user_id, request, icon_url)
+    integration_id = integration.integration_id
 
-    # Determine connection result based on probe
-    if isinstance(probe_result, BaseException):
-        return integration, {"status": "failed", "error": str(probe_result)}
+    # Bearer token flow - store and connect
+    if request.bearer_token:
+        return await _connect_with_bearer_token(
+            user_id, integration_id, request.bearer_token, mcp_client
+        )
 
+    # Probe for auth requirements
+    probe_result = await _probe_connection_safely(mcp_client, request.server_url)
     if probe_result.get("error"):
         return integration, {"status": "failed", "error": probe_result["error"]}
 
     if probe_result.get("requires_auth"):
         await mcp_client.update_integration_auth_status(
-            integration.integration_id,
+            integration_id,
             requires_auth=True,
             auth_type=probe_result.get("auth_type", "oauth"),
         )
-        return integration, await _build_oauth_result(
-            mcp_client, integration.integration_id
-        )
+        return integration, await _build_oauth_result(mcp_client, integration_id)
 
-    # No auth required - try to connect
+    # No auth required - try direct connection
+    return await _connect_without_auth(integration, mcp_client)
+
+
+async def _fetch_icon_safely(server_url: str) -> Optional[str]:
+    """Fetch favicon with error handling."""
+    try:
+        return await fetch_favicon_from_url(server_url)
+    except Exception:
+        return None
+
+
+async def _probe_connection_safely(mcp_client: Any, server_url: str) -> Dict[str, Any]:
+    """Probe connection with error handling."""
+    try:
+        return await mcp_client.probe_connection(server_url)
+    except Exception as e:
+        return {"error": str(e)}
+
+
+async def _connect_with_bearer_token(
+    user_id: str, integration_id: str, bearer_token: str, mcp_client: Any
+) -> Tuple[Any, dict]:
+    """Store bearer token and attempt connection."""
+    token_store = MCPTokenStore(user_id)
+    await token_store.store_bearer_token(integration_id, bearer_token)
+
+    try:
+        tools = await mcp_client.connect(integration_id)
+        await update_user_integration_status(user_id, integration_id, "connected")
+        return await _get_integration(integration_id), {
+            "status": "connected",
+            "tools_count": len(tools) if tools else 0,
+        }
+    except Exception as e:
+        return await _get_integration(integration_id), {
+            "status": "failed",
+            "error": str(e),
+        }
+
+
+async def _connect_without_auth(
+    integration: Integration, mcp_client: Any
+) -> Tuple[Integration, dict]:
+    """Attempt connection without authentication."""
     try:
         tools = await mcp_client.connect(integration.integration_id)
         return integration, {
@@ -292,6 +324,12 @@ async def create_and_connect_custom_integration(
         )
     except Exception as e:
         return integration, {"status": "failed", "error": str(e)}
+
+
+async def _get_integration(integration_id: str) -> Optional[Integration]:
+    """Fetch integration from database."""
+    doc = await integrations_collection.find_one({"integration_id": integration_id})
+    return Integration(**doc) if doc else None
 
 
 async def _build_oauth_result(mcp_client: Any, integration_id: str) -> dict:

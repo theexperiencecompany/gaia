@@ -4,7 +4,7 @@ import { Avatar } from "@heroui/avatar";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import { Spinner } from "@heroui/spinner";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -15,6 +15,7 @@ import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
 import {
@@ -33,8 +34,10 @@ export function IntegrationDetailClient({
   integration,
 }: IntegrationDetailClientProps) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isAdding, setIsAdding] = useState(false);
   const [isAdded, setIsAdded] = useState(false);
+  const [bearerModalOpen, setBearerModalOpen] = useState(false);
 
   // Auth check
   const { isAuthenticated, openLoginModal } = useAuth();
@@ -82,7 +85,14 @@ export function IntegrationDetailClient({
       // The browser will navigate away, so we don't dismiss
       if (result.status === "redirecting") {
         toast.loading("Redirecting to authorize...", { id: loadingToast });
-        // Don't setIsAdding(false) - keep button in loading state
+        return;
+      }
+
+      // Bearer token required - show modal
+      if (result.status === "bearer_required") {
+        toast.dismiss(loadingToast);
+        setBearerModalOpen(true);
+        setIsAdding(false);
         return;
       }
 
@@ -91,8 +101,6 @@ export function IntegrationDetailClient({
       toast.success(`Successfully added ${result.name}!`);
       setIsAdded(true);
 
-      // Redirect to integrations page with sidebar open
-      // Use refresh=true to signal fresh data is needed (avoid stale cache)
       setTimeout(() => {
         router.push(
           `/integrations?id=${integration.integrationId}&refresh=true`,
@@ -102,6 +110,38 @@ export function IntegrationDetailClient({
       toast.dismiss(loadingToast);
       toast.error("Failed to add integration.");
       setIsAdding(false);
+    }
+  };
+
+  const handleBearerSubmit = async (_id: string, token: string) => {
+    const loadingToast = toast.loading("Connecting...");
+    try {
+      const result = await integrationsApi.addIntegration(
+        integration.integrationId,
+        token,
+      );
+      if (result.status === "connected") {
+        toast.success(`Successfully added ${integration.name}!`, {
+          id: loadingToast,
+        });
+        setIsAdded(true);
+        queryClient.invalidateQueries({ queryKey: ["integrations"] });
+        setTimeout(() => {
+          router.push(
+            `/integrations?id=${integration.integrationId}&refresh=true`,
+          );
+        }, 1000);
+      } else {
+        toast.error(result.message || "Connection failed", {
+          id: loadingToast,
+        });
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Connection failed",
+        { id: loadingToast },
+      );
+      throw error;
     }
   };
 
@@ -307,6 +347,14 @@ export function IntegrationDetailClient({
           </Card>
         </div>
       </div>
+
+      <BearerTokenModal
+        isOpen={bearerModalOpen}
+        onClose={() => setBearerModalOpen(false)}
+        integrationId={integration.integrationId}
+        integrationName={integration.name}
+        onSubmit={handleBearerSubmit}
+      />
     </div>
   );
 }

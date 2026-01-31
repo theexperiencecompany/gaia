@@ -121,6 +121,7 @@ export interface CreateCustomIntegrationRequest {
   requires_auth?: boolean;
   auth_type?: "none" | "oauth" | "bearer";
   is_public?: boolean;
+  bearer_token?: string;
 }
 
 /**

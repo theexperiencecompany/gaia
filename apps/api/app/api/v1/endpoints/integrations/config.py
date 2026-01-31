@@ -102,6 +102,7 @@ async def connect_integration_endpoint(
                 if resolved.mcp_config
                 else None,
                 is_platform=resolved.source == "platform",
+                bearer_token=request.bearer_token,
             )
         elif resolved.managed_by == "composio":
             provider = (

@@ -25,7 +25,8 @@ class CreateCustomIntegrationRequest(BaseModel):
     server_url: str = Field(..., description="MCP server URL")
     requires_auth: bool = Field(False)
     auth_type: Optional[Literal["none", "oauth", "bearer"]] = Field(None)
-    is_public: bool = Field(False, description="Make visible in marketplace")
+    is_public: bool = Field(False)
+    bearer_token: Optional[str] = Field(None)
 
     @model_validator(mode="after")
     def validate_auth_type(self):
@@ -52,3 +53,4 @@ class ConnectIntegrationRequest(BaseModel):
         default="/integrations",
         description="Frontend path to redirect after OAuth completes",
     )
+    bearer_token: Optional[str] = Field(None)

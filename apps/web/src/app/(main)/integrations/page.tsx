@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
+import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
@@ -179,11 +180,26 @@ export default function IntegrationsPage() {
     }
   }, [searchParams, integrations, router, refetch, queryClient]);
 
-  const handleBearerSubmit = async (id: string, _token: string) => {
-    // Note: Bearer token handling is done via the BearerTokenModal component directly
-    await connectIntegration(id);
-    toast.success(`Connected to ${bearerIntegrationName}`);
-    refetch();
+  const handleBearerSubmit = async (id: string, token: string) => {
+    const toastId = toast.loading(`Connecting to ${bearerIntegrationName}...`);
+    try {
+      const result = await integrationsApi.addIntegration(id, token);
+      if (result.status === "connected") {
+        toast.success(`Connected to ${bearerIntegrationName}`, { id: toastId });
+        refetch();
+        queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+      } else if (result.status === "error") {
+        toast.error(result.message || "Connection failed", { id: toastId });
+      } else {
+        toast.dismiss(toastId);
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Connection failed",
+        { id: toastId },
+      );
+      throw error;
+    }
   };
 
   // Keyboard shortcut to focus search input

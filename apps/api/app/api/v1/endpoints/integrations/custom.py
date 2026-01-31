@@ -52,6 +52,7 @@ async def create_custom_mcp_integration(
                 requires_auth=request.requires_auth,
                 auth_type=request.auth_type,
                 is_public=request.is_public,
+                bearer_token=request.bearer_token,
             ),
             mcp_client,
         )

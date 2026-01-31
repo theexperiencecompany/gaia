@@ -95,6 +95,7 @@ export const integrationsApi = {
    */
   connectIntegration: async (
     integrationId: string,
+    bearerToken?: string,
   ): Promise<{ status: string; toolsCount?: number }> => {
     if (typeof window === "undefined") return { status: "error" };
 
@@ -104,6 +105,7 @@ export const integrationsApi = {
       `/integrations/connect/${integrationId}`,
       {
         redirect_path: redirectPath,
+        bearer_token: bearerToken,
       },
     )) as {
       status: "connected" | "redirect" | "error";
@@ -329,13 +331,20 @@ export const integrationsApi = {
    */
   addIntegration: async (
     integrationId: string,
+    bearerToken?: string,
   ): Promise<{
-    status: "connected" | "redirect" | "redirecting" | "error";
+    status:
+      | "connected"
+      | "redirect"
+      | "redirecting"
+      | "bearer_required"
+      | "error";
     integrationId: string;
     name: string;
     message: string;
     toolsCount?: number;
     redirectUrl?: string;
+    error?: string;
   }> => {
     if (typeof window === "undefined") {
       return {
@@ -346,13 +355,14 @@ export const integrationsApi = {
       };
     }
 
-    // After OAuth, redirect to integrations page with sidebar open
-    // Include refresh=true to signal fresh data is needed (avoid stale cache)
     const redirectPath = `/integrations?id=${integrationId}&refresh=true`;
 
     const response = (await apiService.post(
       `/integrations/public/${integrationId}/add`,
-      { redirect_path: redirectPath },
+      {
+        redirect_path: redirectPath,
+        bearer_token: bearerToken,
+      },
     )) as {
       status: "connected" | "redirect" | "error";
       integrationId: string;
@@ -363,7 +373,6 @@ export const integrationsApi = {
       error?: string;
     };
 
-    // Handle OAuth redirect
     if (response.status === "redirect" && response.redirectUrl) {
       const safeUrl = sanitizeRedirectUrl(response.redirectUrl);
       if (!safeUrl) {
@@ -371,6 +380,11 @@ export const integrationsApi = {
       }
       window.location.href = safeUrl;
       return { ...response, status: "redirecting" };
+    }
+
+    // Return bearer_required as a special status instead of throwing
+    if (response.status === "error" && response.error === "bearer_required") {
+      return { ...response, status: "bearer_required" };
     }
 
     if (response.status === "error") {

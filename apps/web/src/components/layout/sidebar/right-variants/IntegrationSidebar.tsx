@@ -4,6 +4,7 @@ import { Avatar } from "@heroui/avatar";
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +15,8 @@ import { SidebarContent } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import type { Integration } from "@/features/integrations/types";
 import {
   GlobalIcon,
@@ -49,10 +52,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const isConnected = integration.status === "connected";
   const showRetry = integration.status === "created";
   const { tools } = useToolsWithIntegrations();
+  const queryClient = useQueryClient();
 
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [showBearerModal, setShowBearerModal] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -105,6 +110,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;
+
+    // For bearer-auth integrations, show modal instead of direct connect
+    if (integration.authType === "bearer" && integration.requiresAuth) {
+      setShowBearerModal(true);
+      return;
+    }
+
     setIsConnecting(true);
     try {
       await onConnect(integration.id);
@@ -112,6 +124,33 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       // Error toast is handled in the hook
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const handleBearerSubmit = async (_id: string, token: string) => {
+    const toastId = toast.loading(`Connecting to ${integration.name}...`);
+    try {
+      const result = await integrationsApi.connectIntegration(
+        integration.id,
+        token,
+      );
+      if (result.status === "connected") {
+        toast.success(`Connected to ${integration.name}`, { id: toastId });
+        // Refetch all data to update sidebar
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["integrations"] }),
+          queryClient.invalidateQueries({ queryKey: ["tools", "available"] }),
+          queryClient.invalidateQueries({ queryKey: ["tools"] }),
+        ]);
+      } else {
+        toast.error(`Connection failed: ${result.status}`, { id: toastId });
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Connection failed",
+        { id: toastId },
+      );
+      throw error;
     }
   };
 
@@ -487,6 +526,14 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         isLoading={isPublishing}
         onConfirm={confirmPublish}
         onCancel={() => setShowPublishDialog(false)}
+      />
+
+      <BearerTokenModal
+        isOpen={showBearerModal}
+        onClose={() => setShowBearerModal(false)}
+        integrationId={integration.id}
+        integrationName={integration.name}
+        onSubmit={handleBearerSubmit}
       />
     </div>
   );

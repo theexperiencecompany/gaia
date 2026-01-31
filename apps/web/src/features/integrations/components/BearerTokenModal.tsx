@@ -1,5 +1,6 @@
 "use client";
 
+import { Kbd } from "@heroui/kbd";
 import {
   Button,
   Input,
@@ -9,7 +10,8 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { usePlatform } from "@/hooks/ui/usePlatform";
 import { KeyIcon } from "@/icons";
 
 interface BearerTokenModalProps {
@@ -27,12 +29,13 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
   integrationName,
   onSubmit,
 }) => {
+  const { isMac, modifierKeyName } = usePlatform();
   const [bearerToken, setBearerToken] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async () => {
-    if (!bearerToken.trim()) return;
+  const handleSubmit = useCallback(async () => {
+    if (!bearerToken.trim() || isLoading) return;
 
     setIsLoading(true);
     setError(null);
@@ -45,13 +48,35 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [bearerToken, isLoading, integrationId, onSubmit]);
 
   const handleClose = () => {
+    if (isLoading) return; // Prevent closing while loading
     setBearerToken("");
     setError(null);
     onClose();
   };
+
+  // Keyboard shortcut handler for Cmd/Ctrl + Enter to submit
+  const handleKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      if (!isOpen || isLoading) return;
+
+      const modifierKey = isMac ? e.metaKey : e.ctrlKey;
+      if (modifierKey && e.key === "Enter") {
+        e.preventDefault();
+        handleSubmit();
+      }
+    },
+    [isOpen, isLoading, isMac, handleSubmit],
+  );
+
+  useEffect(() => {
+    if (isOpen) {
+      document.addEventListener("keydown", handleKeyDown);
+      return () => document.removeEventListener("keydown", handleKeyDown);
+    }
+  }, [isOpen, handleKeyDown]);
 
   return (
     <Modal
@@ -61,12 +86,14 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
       size="md"
       className="shadow-none rounded-2xl"
       backdrop="blur"
+      isDismissable={!isLoading}
+      isKeyboardDismissDisabled={isLoading}
     >
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold">Connect {integrationName}</h2>
           <p className="text-sm font-normal text-zinc-400">
-            Enter your API key or bearer token to connect
+            Enter your API key / Bearer Token to connect
           </p>
         </ModalHeader>
 
@@ -78,6 +105,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
             onValueChange={setBearerToken}
             type="password"
             isRequired
+            autoFocus
             startContent={<KeyIcon width={16} height={16} />}
             errorMessage={error}
             isInvalid={!!error}
@@ -98,6 +126,7 @@ export const BearerTokenModal: React.FC<BearerTokenModalProps> = ({
             onPress={handleSubmit}
             isLoading={isLoading}
             isDisabled={!bearerToken.trim() || isLoading}
+            endContent={!isLoading && <Kbd keys={[modifierKeyName, "enter"]} />}
           >
             Connect
           </Button>

@@ -73,7 +73,7 @@ from app.utils.mcp_utils import (
 )
 from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
-from mcp_use.agents.adapters.langchain_adapter import LangChainAdapter
+from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 
 
 class DCRNotSupportedException(Exception):
@@ -191,9 +191,14 @@ class MCPClient:
         else:
             server_config["transport"] = "streamable-http"
 
-        # Check for stored OAuth token if auth is required
-        if mcp_config.requires_auth:
-            # Check if token is expiring soon and try to refresh
+        # Check for stored tokens: bearer first (user-provided), then OAuth
+        # Bearer tokens can be stored even when requires_auth=False
+        stored_token = await self.token_store.get_bearer_token(integration_id)
+        token_source = "bearer"  # nosec B105
+
+        # If no bearer token, try OAuth token (only if auth is required)
+        if not stored_token and mcp_config.requires_auth:
+            # Check if OAuth token is expiring soon and try to refresh
             if await self.token_store.is_token_expiring_soon(integration_id):
                 logger.info(
                     f"Token expiring soon for {integration_id}, attempting refresh"
@@ -201,29 +206,31 @@ class MCPClient:
                 await self._try_refresh_token(integration_id, mcp_config)
 
             stored_token = await self.token_store.get_oauth_token(integration_id)
-            if stored_token:
-                logger.info(
-                    f"[{integration_id}] Retrieved stored token (length={len(stored_token)})"
-                )
-                # Strip Bearer prefix if present - mcp-use adds it automatically
-                raw_token = stored_token
-                if stored_token.lower().startswith("bearer "):
-                    raw_token = stored_token[7:]
+            token_source = "oauth"  # nosec B105
 
-                # Primary: Pass token via auth config
-                server_config["auth"] = raw_token
+        if stored_token:
+            logger.info(
+                f"[{integration_id}] Retrieved stored {token_source} token (length={len(stored_token)})"
+            )
+            # Strip Bearer prefix if present - mcp-use adds it automatically
+            raw_token = stored_token
+            if stored_token.lower().startswith("bearer "):
+                raw_token = stored_token[7:]
 
-                # Fallback: Also pass via headers for servers where mcp-use OAuth
-                # discovery fails (e.g., Smithery servers that don't expose
-                # .well-known/oauth-authorization-server endpoints)
-                server_config["headers"] = {"Authorization": f"Bearer {raw_token}"}
-            else:
-                logger.warning(
-                    f"No valid OAuth token for {integration_id} - connection may fail. "
-                    "Token store returned None (check status='connected' requirement)"
-                )
+            # Primary: Pass token via auth config
+            server_config["auth"] = raw_token
+
+            # Fallback: Also pass via headers for servers where mcp-use OAuth
+            # discovery fails (e.g., Smithery servers that don't expose
+            # .well-known/oauth-authorization-server endpoints)
+            server_config["headers"] = {"Authorization": f"Bearer {raw_token}"}
+        elif mcp_config.requires_auth:
+            logger.warning(
+                f"No valid token for {integration_id} - connection may fail. "
+                "Token store returned None (check status='connected' requirement)"
+            )
         else:
-            # No auth required - explicitly set auth to None
+            # No auth required and no bearer token - set auth to None
             server_config["auth"] = None
 
         return {"mcpServers": {integration_id: server_config}}
@@ -250,7 +257,7 @@ class MCPClient:
             client = BaseMCPClient(config)
             await client.create_session(integration_id)
 
-            adapter = LangChainAdapter()
+            adapter = SanitizingLangChainAdapter()
             raw_tools = await adapter.create_tools(client)
 
             # CRITICAL: Wrap tools to filter None values before MCP invocation.

@@ -1,7 +1,7 @@
 """Integration connection service - handles connect/disconnect logic."""
 
 from functools import lru_cache
-from typing import Literal
+from typing import Any, Literal
 
 import pymongo.errors
 import redis
@@ -20,13 +20,14 @@ from app.schemas.integrations.responses import (
     IntegrationSuccessResponse,
 )
 from app.services.composio.composio_service import get_composio_service
-from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.custom_crud import delete_custom_integration
-from app.services.integrations.user_integrations import remove_user_integration
+from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
+from app.services.integrations.user_integrations import remove_user_integration
 from app.services.mcp.mcp_client import get_mcp_client
+from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import create_oauth_state
 from app.utils.oauth_utils import build_google_oauth_url
 
@@ -72,14 +73,16 @@ async def connect_mcp_integration(
     server_url: str | None = None,
     is_platform: bool = False,
     probe_result: dict | None = None,
+    bearer_token: str | None = None,
 ) -> ConnectIntegrationResponse:
-    """Handle MCP integration connection.
-
-    Args:
-        probe_result: Optional pre-fetched probe result to avoid redundant probing.
-                      If provided, skips internal probe_connection() call.
-    """
+    """Handle MCP integration connection."""
     mcp_client = await get_mcp_client(user_id=user_id)
+
+    # Bearer token flow - store and connect directly
+    if bearer_token:
+        return await _connect_with_bearer_token(
+            user_id, integration_id, bearer_token, mcp_client
+        )
 
     # Use provided probe_result or perform probe if needed
     if server_url and not requires_auth and probe_result is None:
@@ -87,14 +90,10 @@ async def connect_mcp_integration(
 
     # Check if probe detected auth requirement
     if probe_result and not requires_auth and probe_result.get("requires_auth"):
-        logger.info(f"Probe detected OAuth for {integration_id}")
-        # Update MongoDB FIRST before local state to ensure consistency
-        # If this fails, we don't want to proceed with requires_auth=True locally
         auth_type = probe_result.get("auth_type", "oauth")
         await mcp_client.update_integration_auth_status(
             integration_id, requires_auth=True, auth_type=auth_type
         )
-        # Only update local state after MongoDB update succeeds
         requires_auth = True
 
     if requires_auth:
@@ -105,7 +104,7 @@ async def connect_mcp_integration(
             integration_id=integration_id,
             redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
             redirect_path=redirect_path,
-            challenge_data=probe_result,  # Pass probe result to avoid re-discovery
+            challenge_data=probe_result,
         )
 
         return ConnectIntegrationResponse(
@@ -118,8 +117,6 @@ async def connect_mcp_integration(
     try:
         tools = await mcp_client.connect(integration_id)
     except OAuthAuthenticationError:
-        # Server requires OAuth - redirect to OAuth flow
-        logger.info(f"Connection got auth error, triggering OAuth for {integration_id}")
         if not is_platform:
             await update_user_integration_status(user_id, integration_id, "created")
 
@@ -136,7 +133,6 @@ async def connect_mcp_integration(
         )
 
     tools_count = len(tools) if tools else 0
-
     await invalidate_mcp_status_cache(user_id)
 
     return ConnectIntegrationResponse(
@@ -145,6 +141,32 @@ async def connect_mcp_integration(
         tools_count=tools_count,
         message="Integration connected successfully",
     )
+
+
+async def _connect_with_bearer_token(
+    user_id: str, integration_id: str, bearer_token: str, mcp_client: Any
+) -> ConnectIntegrationResponse:
+    """Store bearer token and attempt connection."""
+    token_store = MCPTokenStore(user_id)
+    await token_store.store_bearer_token(integration_id, bearer_token)
+
+    try:
+        tools = await mcp_client.connect(integration_id)
+        await update_user_integration_status(user_id, integration_id, "connected")
+        await invalidate_mcp_status_cache(user_id)
+        return ConnectIntegrationResponse(
+            status="connected",
+            integration_id=integration_id,
+            tools_count=len(tools) if tools else 0,
+            message="Integration connected successfully",
+        )
+    except Exception as e:
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            error=str(e),
+            message="Connection failed",
+        )
 
 
 async def connect_composio_integration(
