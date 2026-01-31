@@ -99,7 +99,7 @@ async def web_search_tool(
         answer = search_results.get("answer", "")
 
         elapsed_time = time.time() - start_time
-        formatted_text = f"Web search completed in {elapsed_time:.2f} seconds. Found {len(web_results)} web results, len(news_results) news results, {len(image_results)} images, and {len(video_results)} videos."
+        formatted_text = f"Web search completed in {elapsed_time:.2f} seconds. Found {len(web_results)} web results, {len(image_results)} images, and {len(video_results)} videos."
 
         logger.info(formatted_text)
         writer({"progress": formatted_text})
