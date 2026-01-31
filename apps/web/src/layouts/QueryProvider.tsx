@@ -61,8 +61,8 @@ export default function QueryProvider({ children }: { children: ReactNode }) {
             const queryKey = query.queryKey[0];
             return [
               "url-metadata",
-              // "tools",
-              // "integrations",
+              "tools",
+              "integrations",
               "unread-emails",
               "upcoming-events",
             ].includes(`${queryKey}`);
