@@ -386,7 +386,8 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
       return filtered.filter(
         (match) =>
           formatToolName(match.tool.name).toLowerCase().includes(query) ||
-          match.tool.category.toLowerCase().includes(query),
+          match.tool.category.toLowerCase().includes(query) ||
+          match.tool.display_name?.toLowerCase().includes(query),
       );
     }
 

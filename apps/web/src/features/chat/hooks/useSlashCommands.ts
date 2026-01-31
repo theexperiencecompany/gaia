@@ -48,6 +48,10 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
         // Create searchable strings
         nameSpaced: tool.name.replace(/_/g, " "),
         category: tool.category,
+        // Add display_name with spaces for better category searching
+        categoryDisplayName:
+          tool.display_name?.replace(/_/g, " ") ||
+          tool.category.replace(/_/g, " "),
       };
     });
 
@@ -62,8 +66,12 @@ export const useSlashCommands = (): UseSlashCommandsReturn => {
           weight: 2,
         },
         {
+          name: "categoryDisplayName",
+          weight: 1.5, // Category display name (e.g., "Google Calendar")
+        },
+        {
           name: "category",
-          weight: 1, // Lower priority for category matches
+          weight: 1, // Raw category ID (e.g., "google_calendar")
         },
       ],
       threshold: 0.35, // Lower = more strict, higher = more fuzzy (0-1)
