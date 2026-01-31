@@ -282,11 +282,26 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
   integration_connection_required: (data, index) => {
+    // Data can be a single item or an array (when grouped)
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as IntegrationConnectionData[];
+    // De-duplicate by integration_id
+    const seen = new Set<string>();
+    const uniqueItems = items.filter((item) => {
+      if (seen.has(item.integration_id)) return false;
+      seen.add(item.integration_id);
+      return true;
+    });
     return (
-      <IntegrationConnectionPrompt
-        key={`tool-integration-connection-${index}`}
-        integration_connection_required={data as IntegrationConnectionData}
-      />
+      <>
+        {uniqueItems.map((item) => (
+          <IntegrationConnectionPrompt
+            key={`tool-integration-connection-${index}-${item.integration_id}`}
+            integration_connection_required={item}
+          />
+        ))}
+      </>
     );
   },
 

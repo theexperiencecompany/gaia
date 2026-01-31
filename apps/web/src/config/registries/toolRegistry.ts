@@ -139,6 +139,7 @@ export const TOOLS_MESSAGE_KEYS = Object.keys(
 export const GROUPED_TOOLS = new Set<ToolName>([
   "reddit_data",
   "tool_calls_data",
+  "integration_connection_required",
   // "email_fetch_data",
   // "test_data",
   // Add any tool you want to group here
