@@ -8,11 +8,13 @@ This module defines Pydantic models for:
 """
 
 from datetime import datetime, timezone
-from typing import Dict, List, Literal, Optional, cast
+from typing import Dict, List, Literal, Optional, TypedDict, cast
 
 from app.models.mcp_config import MCPConfig
 from app.models.oauth_models import OAuthIntegration
-from pydantic import BaseModel, Field, field_validator
+from app.helpers.integration_helpers import generate_integration_slug
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic.alias_generators import to_camel
 
 # Type alias for auth_type
 AuthType = Literal["none", "oauth", "bearer"]
@@ -157,6 +159,8 @@ class UpdateCustomIntegrationRequest(BaseModel):
 class IntegrationResponse(BaseModel):
     """Integration details for API responses."""
 
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
+
     integration_id: str
     name: str
     description: str
@@ -183,6 +187,7 @@ class IntegrationResponse(BaseModel):
     # Publishing metadata (for public integrations)
     published_at: Optional[datetime] = None
     clone_count: int = 0
+    slug: Optional[str] = None
     # Creator info (populated via aggregation from users collection)
     creator: Optional[Dict[str, Optional[str]]] = None
 
@@ -204,6 +209,13 @@ class IntegrationResponse(BaseModel):
                 "oauth" if requires_auth else "none"
             )
 
+        # Compute slug at runtime (not stored in DB)
+        slug = generate_integration_slug(
+            name=integration.name,
+            category=integration.category,
+            integration_id=integration.integration_id,
+        )
+
         return cls(
             integration_id=integration.integration_id,
             name=integration.name,
@@ -219,9 +231,9 @@ class IntegrationResponse(BaseModel):
             icon_url=integration.icon_url,
             is_public=integration.is_public,
             created_by=integration.created_by,
-            # Publishing metadata
             published_at=integration.published_at,
             clone_count=integration.clone_count or 0,
+            slug=slug,
         )
 
     @classmethod
@@ -251,11 +263,14 @@ class IntegrationResponse(BaseModel):
             requires_auth=requires_auth,
             auth_type=cast(AuthType, auth_type) if auth_type else None,
             tools=[],  # Platform tools are loaded live, not stored
+            slug=oauth_int.id,  # Platform integrations use ID as slug
         )
 
 
 class UserIntegrationResponse(BaseModel):
     """User integration with hydrated integration details."""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
     integration_id: str
     status: Literal["created", "connected"]
@@ -313,3 +328,36 @@ class ConnectIntegrationResponse(BaseModel):
 
     # For status="error"
     error: Optional[str] = None
+
+
+# TypedDicts for integration tool LLM responses
+
+
+class IntegrationInfo(TypedDict):
+    """Integration information returned to LLM for context."""
+
+    id: str
+    name: str
+    description: str
+    category: str
+    connected: bool
+
+
+class SuggestedIntegration(TypedDict):
+    """Suggested public integration from marketplace search."""
+
+    id: str
+    name: str
+    description: str
+    category: str
+    icon_url: Optional[str]
+    auth_type: Optional[str]
+    relevance_score: float
+
+
+class ListIntegrationsResult(TypedDict):
+    """Result from list_integrations tool for LLM context."""
+
+    connected: List[IntegrationInfo]
+    available: List[IntegrationInfo]
+    suggested: List[SuggestedIntegration]

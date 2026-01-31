@@ -240,7 +240,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             integration.iconUrl,
           )}
         </div>
-
         <div className="mb-0 mt-2 flex flex-col items-start gap-1">
           <div className="flex items-center gap-2 flex-row mb-2">
             {isConnected && (
@@ -307,7 +306,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             {integration.description}
           </p>
         </div>
-
         {/* Connect/Disconnect buttons */}
         {!isConnected ? (
           <RaisedButton
@@ -355,7 +353,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   className="w-full"
                   isIconOnly={useIconOnly}
                   as={Link}
-                  href={`/marketplace/${integration.slug || integration.id}`}
+                  href={`/marketplace/${integration.slug}`}
                   color="primary"
                   aria-label="View on Marketplace"
                   startContent={
@@ -426,7 +424,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   onPress={async () => {
                     try {
                       await navigator.clipboard.writeText(
-                        `${window.location.origin}/marketplace/${integration.slug || integration.id}`,
+                        `${window.location.origin}/marketplace/${integration.slug}`,
                       );
                       toast.success("Link copied to clipboard!");
                     } catch {
@@ -442,7 +440,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             )}
           </ButtonGroup>
         )}
-
         {/* Delete/Remove button for non-connected custom integrations */}
         {showDeleteButton && (
           <Button
@@ -456,7 +453,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             {deleteButtonText}
           </Button>
         )}
-
         {integrationTools.length > 0 && (
           <h2 className="mb-1 mt-3 text-xs font-medium text-zinc-400 -ml-1">
             Available Tools ({integrationTools.length})

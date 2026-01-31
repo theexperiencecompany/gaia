@@ -4,11 +4,25 @@ Integration Management Tools
 Tools for listing, connecting, and managing user integrations.
 """
 
-from typing import Annotated, List, TypedDict
+from typing import Annotated, List, Optional
 
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.constants.integrations import (
+    MAX_AVAILABLE_FOR_LLM,
+    MAX_CONNECTED_FOR_LLM,
+    MAX_SUGGESTED_FOR_LLM,
+)
+from app.db.mongodb.collections import (
+    integrations_collection,
+    user_integrations_collection,
+)
 from app.decorators import with_doc
+from app.models.integration_models import (
+    IntegrationInfo,
+    ListIntegrationsResult,
+    SuggestedIntegration,
+)
 from app.services.oauth.oauth_service import (
     check_integration_status as check_single_integration_status,
     check_multiple_integrations_status,
@@ -23,25 +37,23 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
 
-class IntegrationInfo(TypedDict):
-    """Integration information structure."""
-
-    id: str
-    name: str
-    description: str
-    category: str
-    connected: bool
-
-
 @tool
 @with_doc(LIST_INTEGRATIONS)
 async def list_integrations(
     config: RunnableConfig,
-    connected_only: Annotated[
-        bool,
-        "If true, only list connected integrations. If false, list all available integrations.",
-    ] = False,
-) -> List[IntegrationInfo] | str:
+    search_public_query: Annotated[
+        Optional[str],
+        "Search query to discover public integrations from the marketplace. "
+        "Use natural language like 'API testing', 'email automation', 'project management'. "
+        "Leave empty to just show user's current integrations.",
+    ] = None,
+) -> ListIntegrationsResult | str:
+    """
+    List user integrations and optionally search for suggested public integrations.
+
+    Returns structured data for LLM context and streams suggested integrations
+    to the frontend for the 'Discover More' section.
+    """
     try:
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id") if configurable else None
@@ -50,48 +62,169 @@ async def list_integrations(
 
         writer = get_stream_writer()
 
-        # Get all integration IDs
-        integration_ids = [
-            integration.id
-            for integration in OAUTH_INTEGRATIONS
-            if integration.available
-        ]
+        # Fetch platform integrations with connection status
+        platform_ids = [i.id for i in OAUTH_INTEGRATIONS if i.available]
+        status_map = await check_multiple_integrations_status(platform_ids, user_id)
 
-        # Check connection status using unified service
-        status_map = await check_multiple_integrations_status(integration_ids, user_id)
-
-        # Build integrations list
-        integrations_list: List[IntegrationInfo] = []
+        connected_list: List[IntegrationInfo] = []
+        available_list: List[IntegrationInfo] = []
 
         for integration in OAUTH_INTEGRATIONS:
             if not integration.available:
                 continue
 
-            # Get connection status from unified service
             is_connected = status_map.get(integration.id, False)
+            info: IntegrationInfo = {
+                "id": integration.id,
+                "name": integration.name,
+                "description": integration.description,
+                "category": integration.category,
+                "connected": is_connected,
+            }
 
-            # Skip disconnected integrations if connected_only is True
-            if connected_only and not is_connected:
-                continue
+            if is_connected:
+                connected_list.append(info)
+            else:
+                available_list.append(info)
 
-            integrations_list.append(
+        # Fetch user's custom integrations
+        user_integration_ids = set()
+        cursor = user_integrations_collection.find({"user_id": user_id})
+        async for doc in cursor:
+            user_integration_ids.add(doc.get("integration_id"))
+
+        if user_integration_ids:
+            custom_cursor = integrations_collection.find(
                 {
-                    "id": integration.id,
-                    "name": integration.name,
-                    "description": integration.description,
-                    "category": integration.category,
-                    "connected": is_connected,
+                    "integration_id": {"$in": list(user_integration_ids)},
+                    "source": "custom",
                 }
             )
+            async for doc in custom_cursor:
+                integration_id = doc.get("integration_id")
+                user_doc = await user_integrations_collection.find_one(
+                    {"user_id": user_id, "integration_id": integration_id}
+                )
+                is_connected = (
+                    user_doc.get("status") == "connected" if user_doc else False
+                )
 
-        # Stream just the key to trigger UI
-        writer({"integration_list_data": {}})
+                custom_info: IntegrationInfo = {
+                    "id": integration_id,
+                    "name": doc.get("name", ""),
+                    "description": doc.get("description", ""),
+                    "category": doc.get("category", "custom"),
+                    "connected": is_connected,
+                }
 
-        return integrations_list
+                if is_connected:
+                    connected_list.append(custom_info)
+                else:
+                    available_list.append(custom_info)
+
+        # Search for suggested public integrations if query provided
+        suggested_list: List[SuggestedIntegration] = []
+
+        if search_public_query and search_public_query.strip():
+            try:
+                query = search_public_query.strip()
+                logger.info(f"Searching public integrations with query: {query}")
+
+                # Get IDs to exclude (user already has these)
+                existing_ids = {i["id"] for i in connected_list + available_list}
+                existing_ids.update(user_integration_ids)
+
+                # MongoDB text/regex search for public integrations
+                search_filter = {
+                    "is_public": True,
+                    "integration_id": {"$nin": list(existing_ids)},
+                    "$or": [
+                        {"name": {"$regex": query, "$options": "i"}},
+                        {"description": {"$regex": query, "$options": "i"}},
+                        {"category": {"$regex": query, "$options": "i"}},
+                    ],
+                }
+
+                docs_cursor = integrations_collection.find(search_filter).limit(
+                    MAX_SUGGESTED_FOR_LLM
+                )
+
+                async for doc in docs_cursor:
+                    iid = doc.get("integration_id")
+                    mcp_config = doc.get("mcp_config", {})
+                    logger.info(f"Found public integration: {iid} - {doc.get('name')}")
+
+                    suggested_list.append(
+                        {
+                            "id": iid,
+                            "name": doc.get("name", ""),
+                            "description": doc.get("description", ""),
+                            "category": doc.get("category", "custom"),
+                            "icon_url": doc.get("icon_url"),
+                            "auth_type": mcp_config.get("auth_type"),
+                            "relevance_score": 1.0,  # All matches are equal with regex
+                        }
+                    )
+
+                logger.info(f"Found {len(suggested_list)} public integrations")
+
+            except Exception as e:
+                logger.warning(f"Failed to search public integrations: {e}")
+
+        # Stream suggested integrations to frontend (camelCase)
+        suggested_for_stream = [
+            {
+                "id": s["id"],
+                "name": s["name"],
+                "description": s["description"],
+                "category": s["category"],
+                "iconUrl": s["icon_url"],
+                "authType": s["auth_type"],
+                "relevanceScore": s["relevance_score"],
+            }
+            for s in suggested_list[:MAX_SUGGESTED_FOR_LLM]
+        ]
+
+        writer(
+            {
+                "integration_list_data": {
+                    "hasSuggestions": len(suggested_list) > 0,
+                    "suggested": suggested_for_stream,
+                }
+            }
+        )
+
+        # Return structured data for LLM (with limits)
+        return {
+            "connected": connected_list[:MAX_CONNECTED_FOR_LLM],
+            "available": available_list[:MAX_AVAILABLE_FOR_LLM],
+            "suggested": suggested_list[:MAX_SUGGESTED_FOR_LLM],
+        }
 
     except Exception as e:
         logger.error(f"Error listing integrations: {e}")
         return f"Error listing integrations: {str(e)}"
+
+
+@tool
+async def suggest_integrations(
+    query: Annotated[
+        str,
+        "Search query to find relevant public integrations from the marketplace. "
+        "Examples: 'email tools', 'project management', 'social media', 'CRM', 'Slack alternatives'",
+    ],
+    config: RunnableConfig,
+) -> ListIntegrationsResult | str:
+    """
+    Search for and suggest public integrations from the marketplace based on a query.
+
+    Use this tool when the user wants to discover new integrations, find alternatives,
+    or explore what's available in a specific category.
+
+    This tool will search the marketplace and display suggested integrations
+    that the user can add with one click.
+    """
+    return await list_integrations(config=config, search_public_query=query)
 
 
 @tool
@@ -232,6 +365,7 @@ async def check_integrations_status(
 # Export all tools
 tools = [
     list_integrations,
+    suggest_integrations,
     connect_integration,
     check_integrations_status,
 ]

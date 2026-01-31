@@ -106,6 +106,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       isPublic: ui.integration.isPublic ?? undefined,
       createdBy: ui.integration.createdBy ?? undefined,
       creator: ui.integration.creator ?? undefined,
+      slug: ui.integration.slug, // Always provided by backend
     }));
 
     // Get IDs of integrations user already has

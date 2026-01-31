@@ -139,21 +139,21 @@ export default function ToolCallsSection({
         <AccordionItem
           key="tools"
           title={
-            <div className="flex items-center gap-2 hover:text-white text-zinc-500">
+            <div className="flex items-center hover:text-white text-zinc-500">
               {renderStackedIcons()}
               <span className="text-xs font-medium transition-all duration-200">
                 Used {tool_calls_data.length} tool
                 {tool_calls_data.length > 1 ? "s" : ""}
               </span>
               <ChevronDown
-                className={`${isExpanded ? "rotate-180" : ""} transition-all duration-200`}
+                className={`${isExpanded ? "rotate-180" : ""} ml-2 transition-all duration-200`}
                 width={18}
                 height={18}
               />
             </div>
           }
         >
-          <div className="space-y-0 pb-3 pt-3">
+          <div className="space-y-0 py-2">
             {tool_calls_data.map((call, index) => {
               const hasCategoryText =
                 call.show_category !== false &&

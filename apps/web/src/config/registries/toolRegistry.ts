@@ -1,4 +1,7 @@
-import type { IntegrationConnectionData } from "@/features/integrations/types";
+import type {
+  IntegrationConnectionData,
+  IntegrationListStreamData,
+} from "@/features/integrations/types";
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -98,7 +101,7 @@ export const TOOL_REGISTRY = {
   goal_data: null as unknown as GoalDataMessageType,
   notification_data: null as unknown as { notifications: NotificationRecord[] },
   integration_connection_required: null as unknown as IntegrationConnectionData,
-  integration_list_data: null as unknown as Record<string, never>,
+  integration_list_data: null as unknown as IntegrationListStreamData,
   tool_calls_data: null as unknown as ToolCallEntry[],
   twitter_search_data: null as unknown as TwitterSearchData,
   twitter_user_data: null as unknown as TwitterUserData[],

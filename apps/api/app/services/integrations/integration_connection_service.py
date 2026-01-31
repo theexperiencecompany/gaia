@@ -60,6 +60,7 @@ def build_integrations_config() -> IntegrationsConfigResponse:
                 is_featured=integration.is_featured,
                 managed_by=integration.managed_by,
                 auth_type=auth_type_literal,
+                slug=integration.id,  # Platform integrations use ID as slug
             )
         )
     return IntegrationsConfigResponse(integrations=integration_configs)

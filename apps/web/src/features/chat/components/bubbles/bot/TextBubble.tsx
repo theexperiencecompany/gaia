@@ -35,7 +35,10 @@ import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations";
-import type { IntegrationConnectionData } from "@/features/integrations/types";
+import type {
+  IntegrationConnectionData,
+  IntegrationListStreamData,
+} from "@/features/integrations/types";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import { Alert01Icon } from "@/icons";
@@ -287,8 +290,14 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     );
   },
 
-  integration_list_data: (_data, index) => {
-    return <IntegrationListSection key={`tool-integration-list-${index}`} />;
+  integration_list_data: (data, index) => {
+    const streamData = data as IntegrationListStreamData;
+    return (
+      <IntegrationListSection
+        key={`tool-integration-list-${index}`}
+        suggestedIntegrations={streamData.suggested}
+      />
+    );
   },
 
   // Twitter

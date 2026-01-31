@@ -41,6 +41,7 @@ class IntegrationConfigItem(CamelModel):
     managed_by: Literal["self", "composio", "mcp", "internal"]
     auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
     source: Literal["platform"] = "platform"
+    slug: str  # For platform integrations, this is the same as id
 
 
 class IntegrationsConfigResponse(BaseModel):
@@ -104,6 +105,7 @@ class IntegrationResponse(CamelModel, CloneCountMixin):
     # Publishing fields
     published_at: Optional[datetime] = None
     clone_count: int = 0
+    slug: Optional[str] = None  # Computed at runtime via generate_integration_slug
     # Creator info (populated via aggregation from users collection)
     creator: Optional["CommunityIntegrationCreator"] = None
 
