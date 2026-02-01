@@ -1,9 +1,15 @@
 "use client";
 
 import { useQueryClient } from "@tanstack/react-query";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
+
+import { useSendMessage } from "@/hooks/useSendMessage";
+
+// Module-level Set to track which OAuth callbacks we've already processed
+// This persists across React Strict Mode double-mounts
+const processedOAuthCallbacks = new Set<string>();
 
 /**
  * Global hook to handle OAuth success/error URL parameters and display toasts.
@@ -12,25 +18,35 @@ import { toast } from "sonner";
 export function useOAuthSuccessToast() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const pathname = usePathname();
   const queryClient = useQueryClient();
-  const processedRef = useRef<string | null>(null);
+  const sendMessage = useSendMessage();
+  // Use ref to hold stable reference to sendMessage
+  const sendMessageRef = useRef(sendMessage);
+  sendMessageRef.current = sendMessage;
 
   useEffect(() => {
     const oauthSuccess = searchParams.get("oauth_success");
     const oauthError = searchParams.get("oauth_error");
     const integrationName = searchParams.get("integration");
 
-    // Create a unique key for this set of params to prevent double-processing
-    const paramsKey = `${oauthSuccess}-${oauthError}-${integrationName}`;
+    // Skip if no OAuth params
+    if (!oauthSuccess && !oauthError) return;
 
-    // Skip if no OAuth params or already processed this exact set
-    if ((!oauthSuccess && !oauthError) || processedRef.current === paramsKey) {
+    // For success, use a simpler key without timestamp to dedupe properly
+    const dedupeKey = `${oauthSuccess}-${integrationName}`;
+
+    // Skip if we've already processed this exact OAuth callback
+    if (processedOAuthCallbacks.has(dedupeKey)) {
       return;
     }
 
     // Mark as processed
-    processedRef.current = paramsKey;
+    processedOAuthCallbacks.add(dedupeKey);
+
+    // Clean up after a delay to allow for future OAuth flows
+    setTimeout(() => {
+      processedOAuthCallbacks.delete(dedupeKey);
+    }, 5000);
 
     // Handle OAuth success
     if (oauthSuccess === "true") {
@@ -44,6 +60,9 @@ export function useOAuthSuccessToast() {
       // Invalidate integration-related queries so they refresh
       queryClient.invalidateQueries({ queryKey: ["integrations"] });
       queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
+
+      // Automatically send a message to continue the chat
+      sendMessageRef.current(`Hey I just connected ${displayName}`);
     }
 
     // Handle OAuth errors
@@ -75,5 +94,5 @@ export function useOAuthSuccessToast() {
 
     // Replace URL without the OAuth params, keeping other params intact
     router.replace(url.pathname + url.search, { scroll: false });
-  }, [searchParams, router, pathname, queryClient]);
+  }, [searchParams, router, queryClient]);
 }
