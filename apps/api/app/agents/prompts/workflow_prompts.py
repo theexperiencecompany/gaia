@@ -2,6 +2,88 @@
 Workflow generation prompts for GAIA workflow system.
 """
 
+# =============================================================================
+# WORKFLOW CREATION SUBAGENT TASK TEMPLATES
+# =============================================================================
+
+WORKFLOW_CREATION_NEW_TASK_TEMPLATE = """Create a workflow based on this request:
+
+"{workflow_request}"
+{hints_section}
+Process this request:
+1. If the request is clear and unambiguous, finalize immediately
+2. If anything is unclear (what it should do, when to run), ask ONE clarifying question
+3. For integration triggers, use search_triggers to find appropriate triggers
+4. For scheduled triggers, convert natural language to cron expression
+
+Always include a JSON block in your response (either clarifying or finalized type).
+"""
+
+WORKFLOW_CREATION_HINTS_TEMPLATE = """
+The executor provided these hints (use as suggestions, override based on user input):
+{hints}
+"""
+
+WORKFLOW_CREATION_FROM_CONVERSATION_TASK_TEMPLATE = """Create a workflow from this conversation context:
+
+Title suggestion: {suggested_title}
+Summary: {summary}
+
+Steps identified from conversation:
+{steps_text}
+
+Integrations used: {integrations_used}
+{user_request_section}
+{hints_section}
+Process this context:
+1. Summarize what was accomplished and confirm saving as workflow
+2. Determine trigger type - ask if not obvious from context
+3. For integration triggers, use search_triggers
+4. For scheduled triggers, convert natural language to cron
+5. Once confirmed, output finalized JSON
+
+Always include a JSON block in your response (either clarifying or finalized type).
+"""
+
+WORKFLOW_CREATION_USER_REQUEST_TEMPLATE = """
+User's additional request: "{workflow_request}"
+"""
+
+WORKFLOW_CREATION_RETRY_TEMPLATE = """Your previous response had an invalid JSON output. Error: {error}
+
+Please respond again with a VALID JSON block. Required format:
+
+For clarifying questions:
+```json
+{{"type": "clarifying", "message": "Your question here"}}
+```
+
+For finalized workflow:
+```json
+{{
+    "type": "finalized",
+    "title": "Workflow Title",
+    "description": "What this workflow does",
+    "trigger_type": "manual|scheduled|integration",
+    "cron_expression": "0 9 * * *",
+    "trigger_slug": "TRIGGER_SLUG_HERE",
+    "steps": ["Step 1", "Step 2"],
+    "direct_create": true
+}}
+```
+
+Note: cron_expression required for scheduled, trigger_slug required for integration.
+Set direct_create: true only for simple, unambiguous workflows.
+
+Original request:
+{original_task}
+"""
+
+
+# =============================================================================
+# WORKFLOW GENERATION PROMPTS (existing)
+# =============================================================================
+
 # Template for generating workflow descriptions from todo items
 TODO_WORKFLOW_DESCRIPTION_TEMPLATE = """This workflow was automatically generated from a todo item to help the user accomplish their task.
 

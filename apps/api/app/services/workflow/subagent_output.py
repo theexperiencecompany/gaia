@@ -1,31 +1,59 @@
 """
 Workflow subagent structured output schema and parser.
 
+Uses Pydantic models with LangChain's PydanticOutputParser for reliable parsing.
+
 The workflow subagent can respond in two modes:
 1. Clarifying questions - asks user for more information
 2. Finalized workflow - ready to create the workflow draft
-
-The subagent embeds JSON in its response which we parse to determine the mode.
 """
 
-import json
-import re
-from dataclasses import dataclass, field
-from typing import List, Literal, Optional
+from typing import List, Literal, Optional, Union
+
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
 
 from app.config.loggers import general_logger as logger
 
 
-@dataclass
-class WorkflowDraft:
-    """Finalized workflow draft ready for streaming to frontend."""
+# =============================================================================
+# PYDANTIC MODELS FOR STRUCTURED OUTPUT
+# =============================================================================
 
-    title: str
-    description: str
-    trigger_type: Literal["manual", "scheduled", "integration"]
-    trigger_slug: Optional[str] = None
-    cron_expression: Optional[str] = None
-    steps: List[str] = field(default_factory=list)
+
+class ClarifyingOutput(BaseModel):
+    """Output when subagent needs to ask clarifying questions."""
+
+    type: Literal["clarifying"] = Field(
+        description="Must be 'clarifying' when asking questions"
+    )
+    message: str = Field(description="The clarifying question to ask the user")
+
+
+class FinalizedOutput(BaseModel):
+    """Output when workflow is ready to be created."""
+
+    type: Literal["finalized"] = Field(
+        description="Must be 'finalized' when workflow is complete"
+    )
+    title: str = Field(description="Workflow title")
+    description: str = Field(description="What this workflow does")
+    trigger_type: Literal["manual", "scheduled", "integration"] = Field(
+        description="When the workflow runs"
+    )
+    cron_expression: Optional[str] = Field(
+        default=None, description="Cron expression for scheduled triggers"
+    )
+    trigger_slug: Optional[str] = Field(
+        default=None, description="Trigger slug for integration triggers"
+    )
+    steps: List[str] = Field(
+        default_factory=list, description="List of workflow step descriptions"
+    )
+    direct_create: bool = Field(
+        default=False,
+        description="True only for simple, unambiguous workflows where no user feedback is needed",
+    )
 
     def to_stream_payload(self) -> dict:
         """Convert to the format expected by frontend stream handler."""
@@ -37,81 +65,115 @@ class WorkflowDraft:
                 "trigger_slug": self.trigger_slug,
                 "cron_expression": self.cron_expression,
                 "steps": self.steps,
+                "direct_create": self.direct_create,
             }
         }
 
 
-@dataclass
-class WorkflowSubagentOutput:
-    """Parsed output from workflow subagent."""
+class WorkflowSubagentResponse(BaseModel):
+    """Union type for workflow subagent responses."""
 
-    mode: Literal["clarifying", "finalized", "parse_error"]
-    # For clarifying mode
-    message: Optional[str] = None
-    # For finalized mode
-    draft: Optional[WorkflowDraft] = None
-    # For parse_error mode - indicates JSON was found but invalid
-    parse_error: Optional[str] = None
-    # Original response for retry context
-    raw_response: Optional[str] = None
+    output: Union[ClarifyingOutput, FinalizedOutput] = Field(
+        description="Either a clarifying question or finalized workflow"
+    )
 
 
-# JSON block markers that the subagent should use
-JSON_START_MARKER = "```json"
-JSON_END_MARKER = "```"
-
-# Alternative: look for WORKFLOW_OUTPUT JSON block
-OUTPUT_PATTERN = re.compile(
-    r"```(?:json)?\s*\n?\s*(\{[^`]*\"type\"\s*:\s*\"(?:clarifying|finalized)\"[^`]*\})\s*\n?```",
-    re.DOTALL | re.IGNORECASE,
-)
+# =============================================================================
+# PARSER RESULT
+# =============================================================================
 
 
-def parse_subagent_response(response: str) -> WorkflowSubagentOutput:
+class ParseResult:
+    """Result of parsing subagent response."""
+
+    def __init__(
+        self,
+        mode: Literal["clarifying", "finalized", "parse_error"],
+        message: Optional[str] = None,
+        draft: Optional[FinalizedOutput] = None,
+        parse_error: Optional[str] = None,
+        raw_response: Optional[str] = None,
+    ):
+        self.mode = mode
+        self.message = message
+        self.draft = draft
+        self.parse_error = parse_error
+        self.raw_response = raw_response
+
+
+# =============================================================================
+# PARSER
+# =============================================================================
+
+# Create parsers for format instructions
+clarifying_parser = PydanticOutputParser(pydantic_object=ClarifyingOutput)
+finalized_parser = PydanticOutputParser(pydantic_object=FinalizedOutput)
+
+
+def get_format_instructions() -> str:
+    """Get format instructions for the subagent prompt."""
+    return """
+You MUST include a JSON block in your response. Two formats:
+
+For clarifying questions:
+```json
+{
+    "type": "clarifying",
+    "message": "Your question to the user"
+}
+```
+
+For finalized workflow:
+```json
+{
+    "type": "finalized",
+    "title": "Workflow Title",
+    "description": "What this workflow does",
+    "trigger_type": "manual|scheduled|integration",
+    "cron_expression": "0 9 * * *",
+    "trigger_slug": "GMAIL_NEW_MESSAGE",
+    "steps": ["Step 1", "Step 2"],
+    "direct_create": false
+}
+```
+
+Notes:
+- cron_expression: Required for scheduled, omit for others
+- trigger_slug: Required for integration, omit for others  
+- direct_create: Set true ONLY for simple, unambiguous workflows
+"""
+
+
+def parse_subagent_response(response: str) -> ParseResult:
     """
     Parse the workflow subagent's response to extract structured output.
 
-    The subagent should include a JSON block in its response:
-
-    For clarifying questions:
-    ```json
-    {
-        "type": "clarifying",
-        "message": "When should this workflow run?"
-    }
-    ```
-
-    For finalized workflow:
-    ```json
-    {
-        "type": "finalized",
-        "title": "Daily Email Summary",
-        "description": "Summarize emails every morning",
-        "trigger_type": "scheduled",
-        "cron_expression": "0 9 * * *",
-        "steps": ["Get unread emails", "Summarize content", "Send to Slack"]
-    }
-    ```
+    Uses regex to find JSON blocks, then Pydantic for validation.
 
     Args:
         response: The full text response from the subagent
 
     Returns:
-        WorkflowSubagentOutput with parsed data. Mode can be:
-        - "clarifying": Subagent is asking user questions
-        - "finalized": Workflow is ready to stream
-        - "parse_error": JSON was found but invalid (should trigger retry)
+        ParseResult with mode, data, and any errors
     """
-    # Try to find JSON block in response
-    match = OUTPUT_PATTERN.search(response)
+    import json
+    import re
+
+    # Pattern to find JSON blocks in the response
+    json_pattern = re.compile(
+        r"```(?:json)?\\s*\\n?\\s*(\\{[^`]*\"type\"\\s*:\\s*\"(?:clarifying|finalized)\"[^`]*\\})\\s*\\n?```",
+        re.DOTALL | re.IGNORECASE,
+    )
+
+    match = json_pattern.search(response)
 
     if not match:
-        # No structured output found - treat as clarifying question
-        # This is NOT an error - subagent may be having a conversation
+        # No structured output found - treat as conversational message
+        # This is valid - subagent may be having a natural conversation
         logger.debug(
             "No structured JSON found in subagent response, treating as message"
         )
-        return WorkflowSubagentOutput(
+        return ParseResult(
             mode="clarifying",
             message=response,
             raw_response=response,
@@ -124,48 +186,32 @@ def parse_subagent_response(response: str) -> WorkflowSubagentOutput:
         output_type = data.get("type", "clarifying")
 
         if output_type == "finalized":
-            # Validate required fields
-            if not data.get("title") or not data.get("description"):
-                logger.warning("Finalized output missing title/description")
-                return WorkflowSubagentOutput(
+            # Validate with Pydantic
+            try:
+                draft = FinalizedOutput(**data)
+            except Exception as e:
+                return ParseResult(
                     mode="parse_error",
-                    parse_error="Finalized workflow must include 'title' and 'description' fields",
+                    parse_error=f"Invalid finalized output: {str(e)}",
                     raw_response=response,
                 )
 
-            trigger_type = data.get("trigger_type", "manual")
-            if trigger_type not in ("manual", "scheduled", "integration"):
-                return WorkflowSubagentOutput(
-                    mode="parse_error",
-                    parse_error=f"Invalid trigger_type '{trigger_type}'. Must be 'manual', 'scheduled', or 'integration'",
-                    raw_response=response,
-                )
-
-            # Validate trigger-specific fields
-            if trigger_type == "scheduled" and not data.get("cron_expression"):
-                return WorkflowSubagentOutput(
+            # Additional validation
+            if draft.trigger_type == "scheduled" and not draft.cron_expression:
+                return ParseResult(
                     mode="parse_error",
                     parse_error="Scheduled trigger requires 'cron_expression' field",
                     raw_response=response,
                 )
 
-            if trigger_type == "integration" and not data.get("trigger_slug"):
-                return WorkflowSubagentOutput(
+            if draft.trigger_type == "integration" and not draft.trigger_slug:
+                return ParseResult(
                     mode="parse_error",
                     parse_error="Integration trigger requires 'trigger_slug' field from search_triggers",
                     raw_response=response,
                 )
 
-            draft = WorkflowDraft(
-                title=data["title"],
-                description=data["description"],
-                trigger_type=trigger_type,
-                trigger_slug=data.get("trigger_slug"),
-                cron_expression=data.get("cron_expression"),
-                steps=data.get("steps", []),
-            )
-
-            return WorkflowSubagentOutput(
+            return ParseResult(
                 mode="finalized",
                 draft=draft,
                 raw_response=response,
@@ -173,16 +219,30 @@ def parse_subagent_response(response: str) -> WorkflowSubagentOutput:
 
         else:
             # Clarifying mode
-            return WorkflowSubagentOutput(
-                mode="clarifying",
-                message=data.get("message", response),
-                raw_response=response,
-            )
+            try:
+                clarifying = ClarifyingOutput(**data)
+                return ParseResult(
+                    mode="clarifying",
+                    message=clarifying.message,
+                    raw_response=response,
+                )
+            except Exception:
+                # Fall back to raw message
+                return ParseResult(
+                    mode="clarifying",
+                    message=data.get("message", response),
+                    raw_response=response,
+                )
 
     except json.JSONDecodeError as e:
         logger.warning(f"Failed to parse JSON from subagent response: {e}")
-        return WorkflowSubagentOutput(
+        return ParseResult(
             mode="parse_error",
             parse_error=f"Invalid JSON syntax: {str(e)}",
             raw_response=response,
         )
+
+
+# Legacy aliases for backwards compatibility
+WorkflowDraft = FinalizedOutput
+WorkflowSubagentOutput = ParseResult
