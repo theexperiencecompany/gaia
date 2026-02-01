@@ -11,7 +11,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { AttachmentIcon, PlusSignIcon, Tick02Icon, ToolsIcon } from "@/icons";
-import { posthog } from "@/lib/posthog";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type { SearchMode } from "@/types/shared";
 
@@ -131,7 +131,7 @@ export default function ComposerLeft({
               <DropdownMenuItem
                 key={item.id}
                 onClick={() => {
-                  posthog.capture("chat:composer_plus_menu_clicked", {
+                  trackEvent(ANALYTICS_EVENTS.CHAT_COMPOSER_PLUS_MENU_CLICKED, {
                     item_id: item.id,
                     item_label: item.label,
                     is_mode: item.isMode,
@@ -188,7 +188,7 @@ export default function ComposerLeft({
             )}
             disabled={isLoading}
             onClick={() => {
-              posthog.capture("chat:tools_button_clicked", {
+              trackEvent(ANALYTICS_EVENTS.CHAT_TOOLS_BUTTON_CLICKED, {
                 is_open: isSlashCommandDropdownOpen,
               });
               onOpenSlashCommandDropdown?.();

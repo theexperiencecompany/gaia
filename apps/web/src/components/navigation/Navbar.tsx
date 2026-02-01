@@ -16,7 +16,8 @@ import {
   MessageMultiple02Icon,
   StarFilledIcon,
 } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+
 import { Github } from "../shared";
 import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
 import { Button } from "../ui";
@@ -156,7 +157,7 @@ export default function Navbar() {
                       toggleBackdrop(false);
                     }}
                     onClick={() => {
-                      posthog.capture("navigation:navbar_link_clicked", {
+                      trackEvent(ANALYTICS_EVENTS.NAVIGATION_NAVBAR_LINK_CLICKED, {
                         label: item.label,
                         href: item.href,
                       });
@@ -171,7 +172,7 @@ export default function Navbar() {
                     className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-200 capitalize transition-colors hover:text-zinc-100"
                     onMouseEnter={() => {
                       handleMouseEnter(item.menu);
-                      posthog.capture("navigation:navbar_dropdown_opened", {
+                      trackEvent(ANALYTICS_EVENTS.NAVIGATION_NAVBAR_DROPDOWN_OPENED, {
                         menu: item.menu,
                       });
                     }}
@@ -208,7 +209,7 @@ export default function Navbar() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => {
-                  posthog.capture("navigation:github_clicked", {
+                  trackEvent(ANALYTICS_EVENTS.NAVIGATION_GITHUB_CLICKED, {
                     source: "navbar",
                   });
                 }}
@@ -238,7 +239,7 @@ export default function Navbar() {
                   className="rounded-xl text-black!"
                   color="#00bbff"
                   onClick={() => {
-                    posthog.capture("navigation:cta_clicked", {
+                    trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
                       is_logged_in: !!user.email,
                       destination: user.email ? "/c" : "/signup",
                     });

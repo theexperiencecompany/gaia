@@ -8,6 +8,8 @@ import * as Sentry from "@sentry/nextjs";
 import NextError from "next/error";
 import { useEffect } from "react";
 
+import { trackError } from "@/lib/analytics";
+
 export default function GlobalError({
   error,
 }: {
@@ -15,6 +17,9 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     Sentry.captureException(error);
+    trackError("global_error", error, {
+      digest: error.digest,
+    });
   }, [error]);
 
   return (

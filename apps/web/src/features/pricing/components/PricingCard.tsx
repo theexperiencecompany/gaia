@@ -3,12 +3,13 @@
 import { Chip } from "@heroui/chip";
 import { useRouter } from "next/navigation";
 import type React from "react";
+import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { Tick02Icon } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 // Removed currency import - using USD only
 import { useDodoPayments } from "../hooks/useDodoPayments";
@@ -56,21 +57,23 @@ export function PricingCard({
   };
 
   const finalPriceFormatted = formatUSDPrice(price);
-  const originalPriceFormatted = originalPrice
-    ? formatUSDPrice(originalPrice)
-    : null;
+  const originalPriceFormatted = originalPrice ? formatUSDPrice(originalPrice) : null;
 
-  const {
-    createSubscriptionAndRedirect,
-    isLoading: isCreatingSubscription,
-    error: paymentError,
-  } = useDodoPayments();
+  const { createSubscriptionAndRedirect, isLoading: isCreatingSubscription, error: paymentError } = useDodoPayments();
   const user = useUser();
   const router = useRouter();
 
+  useEffect(() => {
+    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_PLAN_VIEWED, {
+      plan_title: title,
+      plan_id: planId,
+      price,
+      is_monthly: durationIsMonth,
+    });
+  }, [title, planId, price, durationIsMonth]);
+
   const handleGetStarted = async () => {
-    // Track pricing card interaction
-    posthog.capture("pricing:plan_selected", {
+    trackEvent(ANALYTICS_EVENTS.PRICING_PLAN_SELECTED, {
       plan_title: title,
       plan_id: planId,
       price: price,
@@ -99,9 +102,7 @@ export function PricingCard({
     }
 
     if (hasActiveSubscription && !isCurrentPlan) {
-      toast.info(
-        "Please cancel your current subscription before subscribing to a different plan",
-      );
+      toast.info("Please cancel your current subscription before subscribing to a different plan");
       return;
     }
 
@@ -126,20 +127,14 @@ export function PricingCard({
   };
 
   return (
-    <div
-      className={`relative w-full overflow-hidden rounded-3xl bg-white/10 backdrop-blur-sm ${className}`}
-    >
+    <div className={`relative w-full overflow-hidden rounded-3xl bg-white/10 backdrop-blur-sm ${className}`}>
       {/* Outer Card - Title Section (z-index: 1) */}
       <div className="relative z-[1] flex flex-col gap-2 border-none! p-6 pb-4">
         <div className="flex flex-row items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl font-semibold">{title}</span>
             {isCurrentPlan && hasActiveSubscription && (
-              <Chip
-                className="flex items-center gap-[2px] text-xs"
-                color="success"
-                variant="flat"
-              >
+              <Chip className="flex items-center gap-[2px] text-xs" color="success" variant="flat">
                 <span>Current Plan</span>
               </Chip>
             )}
@@ -150,24 +145,16 @@ export function PricingCard({
       {/* Inner Nested Card - Price & Button (z-index: -1) */}
       <div className="relative z-[-1] mx-4 mb-4 flex flex-col gap-4 overflow-hidden rounded-3xl bg-black/70 p-6 shadow-xl backdrop-blur-2xl">
         {/* Description/Subtitle */}
-        {description && (
-          <p className="font-sm text-sm leading-relaxed text-zinc-200">
-            {description}
-          </p>
-        )}
+        {description && <p className="font-sm text-sm leading-relaxed text-zinc-200">{description}</p>}
 
         {/* Price Section */}
         <div className="relative z-[1] m-0! flex flex-col gap-0 border-none!">
           <div className="flex items-baseline gap-2 border-none!">
             {originalPriceFormatted && !durationIsMonth && (
-              <span className="text-3xl font-normal text-red-500 line-through">
-                {originalPriceFormatted.formatted}
-              </span>
+              <span className="text-3xl font-normal text-red-500 line-through">{originalPriceFormatted.formatted}</span>
             )}
             <span className="text-5xl">{finalPriceFormatted.formatted}</span>
-            {finalPriceFormatted.currency && (
-              <span className="text-2xl">{finalPriceFormatted.currency}</span>
-            )}
+            {finalPriceFormatted.currency && <span className="text-2xl">{finalPriceFormatted.currency}</span>}
           </div>
 
           <span className="text-opacity-70 min-h-5 text-sm font-normal text-zinc-400">
@@ -187,10 +174,7 @@ export function PricingCard({
             className={`w-full ${price === 0 ? "text-zinc-400!" : "text-black!"} `}
             color={price === 0 ? "#3b3b3b" : "#00bbff"}
             onClick={handleGetStarted}
-            disabled={
-              isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
-            }
-          >
+            disabled={isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)}>
             {getButtonText()}
           </RaisedButton>
         </div>
@@ -203,23 +187,12 @@ export function PricingCard({
         {!!features &&
           features.map((feature) => {
             // Handle both string and Feature object formats
-            const featureText =
-              typeof feature === "string" ? feature : feature.text;
-            const FeatureIcon =
-              typeof feature === "object" && feature.icon
-                ? feature.icon
-                : Tick02Icon;
+            const featureText = typeof feature === "string" ? feature : feature.text;
+            const FeatureIcon = typeof feature === "object" && feature.icon ? feature.icon : Tick02Icon;
 
             return (
-              <div
-                key={featureText}
-                className="flex items-center gap-3 border-none! text-sm font-light"
-              >
-                <FeatureIcon
-                  height="16"
-                  width="16"
-                  className="min-h-[20px] min-w-[22px] text-white"
-                />
+              <div key={featureText} className="flex items-center gap-3 border-none! text-sm font-light">
+                <FeatureIcon height="16" width="16" className="min-h-[20px] min-w-[22px] text-white" />
                 {featureText}
               </div>
             );

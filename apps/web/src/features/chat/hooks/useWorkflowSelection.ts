@@ -1,6 +1,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback } from "react";
 
+import { trackFeatureDiscovery } from "@/lib/analytics";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import {
   type SelectedWorkflowData,
@@ -27,6 +28,9 @@ export const useWorkflowSelection = () => {
     ) => {
       // Use store to persist the workflow selection
       storeSelectWorkflow(workflow, options);
+
+      // Track first workflow use as feature discovery
+      trackFeatureDiscovery("workflows", { workflow_title: workflow.title });
 
       // Navigate to chat page if not already there
       if (pathname !== "/c") router.push("/c");

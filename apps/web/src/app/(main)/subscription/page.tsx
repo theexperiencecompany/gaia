@@ -2,11 +2,17 @@
 
 import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
+import { useEffect } from "react";
 
 import { PaymentSummary } from "@/features/pricing/components/PaymentSummary";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 export default function SubscriptionPage() {
+  useEffect(() => {
+    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_PAGE_VIEWED);
+  }, []);
+
   return (
     <div className="container mx-auto space-y-8 px-4 py-8">
       <div className="space-y-4 text-center">

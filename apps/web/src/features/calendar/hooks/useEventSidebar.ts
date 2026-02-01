@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { calendarApi } from "@/features/calendar/api/calendarApi";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   useAddEvent,
   useRemoveEvent,
@@ -507,7 +507,7 @@ export const useEventSidebar = ({
       const createdEvent = await calendarApi.createEventDefault(payload);
 
       // Track calendar event creation
-      posthog.capture("calendar:event_created", {
+      trackEvent(ANALYTICS_EVENTS.CALENDAR_EVENT_CREATED, {
         is_all_day: isAllDay,
         has_description: !!description,
         has_recurrence: !!recurrence,
@@ -552,7 +552,7 @@ export const useEventSidebar = ({
       });
 
       // Track calendar event deletion
-      posthog.capture("calendar:event_deleted", {
+      trackEvent(ANALYTICS_EVENTS.CALENDAR_EVENT_DELETED, {
         event_id: selectedEvent.id,
         calendar_id: selectedEvent.calendarId || selectedCalendarId,
       });

@@ -11,7 +11,7 @@ import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { PlayIcon, ZapIcon } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useAppendToInput } from "@/stores/composerStore";
 
 import type {
@@ -196,7 +196,7 @@ export default function UnifiedWorkflowCard({
 
   const handleInsertPrompt = () => {
     if (prompt) {
-      posthog.capture("use_cases:prompt_inserted", { title });
+      trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED, { title });
       appendToInput(prompt);
       router.push("/c");
       onActionComplete?.();
@@ -206,7 +206,7 @@ export default function UnifiedWorkflowCard({
   const handleNavigate = () => {
     const targetSlug = slug || communityWorkflow?.id || workflow?.id;
     if (targetSlug) {
-      posthog.capture("workflow_card:navigate", { slug: targetSlug, variant });
+      trackEvent(ANALYTICS_EVENTS.WORKFLOW_CARD_NAVIGATE, { slug: targetSlug, variant });
       router.push(`/use-cases/${targetSlug}`);
     }
   };

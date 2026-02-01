@@ -12,7 +12,7 @@ import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
 import { Cancel01Icon, GridIcon, SearchIcon } from "@/icons";
-import { posthog } from "@/lib/posthog";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
 import { CategoryIntegrationStatus } from "./CategoryIntegrationStatus";
@@ -98,7 +98,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
             isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
           }`}
           onClick={() => {
-            posthog.capture("chat:slash_command_selected", {
+            trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_SELECTED, {
               tool_name: match.tool.name,
               tool_category: match.tool.category,
               opened_via_button: openedViaButton,
@@ -251,7 +251,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   }, [searchQuery, isIntegrationsExpanded, setIntegrationsExpanded]);
 
   const handleCategoryChange = (category: string) => {
-    posthog.capture("chat:slash_command_category_changed", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_CATEGORY_CHANGED, {
       category,
       previous_category: selectedCategory,
     });

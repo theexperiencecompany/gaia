@@ -3,6 +3,7 @@ import { del } from "idb-keyval";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { db } from "@/lib";
+import { ANALYTICS_EVENTS, resetUser, trackEvent } from "@/lib/analytics";
 import { authApi } from "../api/authApi";
 
 export const useLogout = () => {
@@ -51,10 +52,7 @@ export const useLogout = () => {
               const request = indexedDB.deleteDatabase(dbInfo.name!);
 
               request.onerror = () => {
-                console.error(
-                  `Error deleting database: ${dbInfo.name}`,
-                  request.error,
-                );
+                console.error(`Error deleting database: ${dbInfo.name}`, request.error);
                 reject(request.error);
               };
 
@@ -77,7 +75,13 @@ export const useLogout = () => {
   }, [queryClient]);
 
   const logout = useCallback(async () => {
+    // Track logout event before clearing storage (so we still have user context)
+    trackEvent(ANALYTICS_EVENTS.USER_LOGGED_OUT);
+
     await clearAllStorage();
+
+    // Reset PostHog user identity
+    resetUser();
 
     try {
       await authApi.logout();

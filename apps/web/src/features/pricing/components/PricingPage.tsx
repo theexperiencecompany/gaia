@@ -3,11 +3,13 @@
 import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 import Image from "next/image";
+import { useEffect } from "react";
 
 import { wallpapers } from "@/config/wallpapers";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { ComparisonTable } from "@/features/pricing/components/ComparisonTable";
 import { PricingCards } from "@/features/pricing/components/PricingCards";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import type { Plan } from "../api/pricingApi";
 import { FAQAccordion } from "./FAQAccordion";
@@ -30,6 +32,12 @@ const integrations = [
 ];
 
 export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
+  useEffect(() => {
+    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_PAGE_VIEWED, {
+      source: "landing_pricing",
+    });
+  }, []);
+
   return (
     <div className="flex min-h-screen w-screen flex-col items-center justify-center pt-[35vh]">
       <div className="fixed inset-0 top-0 z-0 h-[90vh] w-full">

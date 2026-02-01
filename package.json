@@ -9,7 +9,7 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
-  "packageManager": "pnpm@10.17.1",
+  "packageManager": "pnpm@10.28.1",
   "devDependencies": {
     "@nx/docker": "^22.2.3",
     "@nx/next": "22.2.3",

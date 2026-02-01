@@ -35,7 +35,7 @@ import {
   PlayIcon,
   RedoIcon,
 } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import { type Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflowCreation } from "../hooks";
@@ -328,8 +328,7 @@ export default function WorkflowModal({
       const result = await createWorkflow(createRequest);
 
       if (result.success && result.workflow) {
-        // Track workflow creation
-        posthog.capture("workflows:created", {
+        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_CREATED, {
           workflow_id: result.workflow.id,
           workflow_title: result.workflow.title,
           step_count: result.workflow.steps?.length || 0,
@@ -405,8 +404,7 @@ export default function WorkflowModal({
   const handleDelete = async () => {
     if (mode === "edit" && existingWorkflow) {
       try {
-        // Track workflow deletion
-        posthog.capture("workflows:deleted", {
+        trackEvent(ANALYTICS_EVENTS.WORKFLOWS_DELETED, {
           workflow_id: existingWorkflow.id,
           workflow_title: existingWorkflow.title,
           step_count: existingWorkflow.steps?.length || 0,
@@ -463,8 +461,7 @@ export default function WorkflowModal({
   ) => {
     if (mode !== "edit" || !currentWorkflow) return;
 
-    // Track workflow regeneration
-    posthog.capture("workflows:steps_regenerated", {
+    trackEvent(ANALYTICS_EVENTS.WORKFLOWS_STEPS_REGENERATED, {
       workflow_id: currentWorkflow.id,
       workflow_title: currentWorkflow.title,
       instruction,
@@ -532,8 +529,7 @@ export default function WorkflowModal({
     }
 
     try {
-      // Track workflow run
-      posthog.capture("workflows:executed", {
+      trackEvent(ANALYTICS_EVENTS.WORKFLOWS_EXECUTED, {
         workflow_id: existingWorkflow.id,
         workflow_title: existingWorkflow.title,
         step_count: currentWorkflow.steps.length,
@@ -656,7 +652,7 @@ export default function WorkflowModal({
 
                               try {
                                 if (currentWorkflow.is_public) {
-                                  posthog.capture("workflows:unpublished", {
+                                  trackEvent(ANALYTICS_EVENTS.WORKFLOWS_UNPUBLISHED, {
                                     workflow_id: currentWorkflow.id,
                                     workflow_title: currentWorkflow.title,
                                   });
@@ -667,7 +663,7 @@ export default function WorkflowModal({
                                     prev ? { ...prev, is_public: false } : null,
                                   );
                                 } else {
-                                  posthog.capture("workflows:published", {
+                                  trackEvent(ANALYTICS_EVENTS.WORKFLOWS_PUBLISHED, {
                                     workflow_id: currentWorkflow.id,
                                     workflow_title: currentWorkflow.title,
                                     step_count:

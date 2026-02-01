@@ -16,6 +16,7 @@ from app.db.mongodb.collections import user_integrations_collection, users_colle
 from app.db.redis import delete_cache
 from app.decorators.caching import Cacheable
 from app.models.user_models import BioStatus
+from app.services.analytics_service import track_signup
 from app.services.composio.composio_service import get_composio_service
 from app.services.provider_metadata_service import (
     fetch_and_store_provider_metadata,
@@ -77,6 +78,18 @@ async def store_user_info(name: str, email: str, picture_url: Optional[str]):
         }
 
         result = await users_collection.insert_one(user_data)
+
+        # Track signup event in PostHog (using email as distinct_id for consistency with frontend)
+        try:
+            track_signup(
+                user_id=email,  # PostHog distinct_id - use email for cross-platform consistency
+                email=email,
+                name=name,
+                signup_method="workos",
+            )
+            logger.info(f"Signup tracked in PostHog for new user: {email}")
+        except Exception as e:
+            logger.error(f"Failed to track signup in PostHog for {email}: {str(e)}")
 
         # Send welcome email to new user
         try:

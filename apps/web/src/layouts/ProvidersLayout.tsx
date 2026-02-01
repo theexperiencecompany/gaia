@@ -4,6 +4,7 @@ import { type ReactNode, Suspense } from "react";
 
 import { ElectronRouteGuard } from "@/components/electron";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
+import PostHogPageView from "@/components/providers/PostHogPageView";
 import { Toaster } from "@/components/ui/sonner";
 import LoginModal from "@/features/auth/components/LoginModal";
 import { GlobalIntegrationModal } from "@/features/integrations/components/GlobalIntegrationModal";
@@ -35,6 +36,7 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
         {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
         <Suspense fallback={<></>}>
           <GlobalAuth />
+          <PostHogPageView />
         </Suspense>
         <GlobalInterceptor />
         {/* <HydrationManager /> */}

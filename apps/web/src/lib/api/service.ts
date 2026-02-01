@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 
 import { apiauth } from "./client";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 interface ApiOptions {
   successMessage?: string;
@@ -39,8 +40,16 @@ async function request<T = unknown>(
   } catch (error: unknown) {
     console.error(`${method} ${url} failed:`, error);
 
-    const err = error as { response?: { status?: number } };
+    const err = error as { response?: { status?: number; data?: unknown }; message?: string };
     const isUnauthorized = err.response?.status === 401;
+
+    // Track API errors in PostHog
+    trackEvent(ANALYTICS_EVENTS.API_ERROR, {
+      method,
+      url,
+      status: err.response?.status,
+      error_message: err.message,
+    });
 
     if (!options.silent && !isUnauthorized) {
       const defaultMessages = {

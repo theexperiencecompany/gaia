@@ -3,6 +3,8 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
+import { trackSubscription } from "@/lib/analytics";
+
 import { pricingApi } from "../api/pricingApi";
 
 export const useDodoPayments = () => {
@@ -15,6 +17,11 @@ export const useDodoPayments = () => {
       setError(null);
 
       try {
+        // Track checkout started
+        trackSubscription("started", {
+          planId: productId,
+        });
+
         // Create subscription via API - backend handles user authentication via JWT
         const result = await pricingApi.createSubscription({
           product_id: productId,
@@ -31,6 +38,12 @@ export const useDodoPayments = () => {
           err instanceof Error ? err.message : "Failed to create subscription";
         setError(errorMessage);
         toast.error(errorMessage);
+
+        // Track checkout failure
+        trackSubscription("failed", {
+          planId: productId,
+          reason: errorMessage,
+        });
       } finally {
         setIsLoading(false);
       }

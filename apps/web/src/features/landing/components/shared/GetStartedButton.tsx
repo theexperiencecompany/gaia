@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { ChevronRight } from "@/components";
 import { RaisedButton } from "@/components/ui/raised-button";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 export default function GetStartedButton({
   small_text = false,
@@ -19,7 +19,7 @@ export default function GetStartedButton({
           className="rounded-xl px-1 text-black! before:rounded-xl hover:pl-2 duration-400 ease-out group shadow-black"
           color="#00bbff"
           onClick={() => {
-            posthog.capture("cta:get_started_clicked", {
+            trackEvent(ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED, {
               button_text: text,
               has_small_text: small_text,
             });

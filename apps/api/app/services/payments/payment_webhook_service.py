@@ -17,6 +17,11 @@ from app.models.webhook_models import (
     DodoWebhookEventType,
     DodoWebhookProcessingResult,
 )
+from app.services.analytics_service import (
+    AnalyticsEvents,
+    track_payment_event,
+    track_subscription_event,
+)
 from app.utils.email_utils import send_pro_subscription_email
 from bson import ObjectId
 from standardwebhooks.webhooks import Webhook
@@ -123,6 +128,17 @@ class PaymentWebhookService:
                 message=f"Processing error: {str(e)}",
             )
 
+    async def _get_user_email_from_metadata(
+        self, metadata: Dict[str, Any]
+    ) -> str | None:
+        """Get user email from metadata or database lookup."""
+        user_id = metadata.get("user_id")
+        if user_id:
+            user = await users_collection.find_one({"_id": ObjectId(user_id)})
+            if user:
+                return user.get("email")
+        return None
+
     # Payment event handlers
     async def _handle_payment_succeeded(
         self, event: DodoWebhookEvent
@@ -133,6 +149,17 @@ class PaymentWebhookService:
             raise ValueError("Invalid payment data")
 
         logger.info(f"Payment succeeded: {payment_data.payment_id}")
+
+        # Track payment success in PostHog
+        user_email = await self._get_user_email_from_metadata(payment_data.metadata)
+        if user_email:
+            track_payment_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.PAYMENT_SUCCEEDED,
+                payment_id=payment_data.payment_id,
+                amount=payment_data.total_amount / 100 if payment_data.total_amount else None,
+                currency=payment_data.currency,
+            )
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -151,6 +178,17 @@ class PaymentWebhookService:
             raise ValueError("Invalid payment data")
 
         logger.warning(f"Payment failed: {payment_data.payment_id}")
+
+        # Track payment failure in PostHog
+        user_email = await self._get_user_email_from_metadata(payment_data.metadata)
+        if user_email:
+            track_payment_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.PAYMENT_FAILED,
+                payment_id=payment_data.payment_id,
+                amount=payment_data.total_amount / 100 if payment_data.total_amount else None,
+                currency=payment_data.currency,
+            )
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -217,8 +255,9 @@ class PaymentWebhookService:
 
         # Find user by email or metadata
         user_id = sub_data.metadata.get("user_id")
+        user_email = sub_data.customer.email
         if not user_id:
-            user = await users_collection.find_one({"email": sub_data.customer.email})
+            user = await users_collection.find_one({"email": user_email})
             if not user:
                 logger.error(
                     f"User not found for subscription: {sub_data.subscription_id}"
@@ -254,6 +293,17 @@ class PaymentWebhookService:
         result = await subscriptions_collection.insert_one(subscription_doc)
         if not result.inserted_id:
             raise Exception("Failed to create subscription record")
+
+        # Track subscription activation in PostHog
+        if user_email:
+            track_subscription_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
+                subscription_id=sub_data.subscription_id,
+                plan_name="Pro",
+                amount=sub_data.recurring_pre_tax_amount / 100 if sub_data.recurring_pre_tax_amount else None,
+                currency=sub_data.currency,
+            )
 
         # Send welcome email
         await self._send_welcome_email(user_id)
@@ -291,6 +341,16 @@ class PaymentWebhookService:
             logger.warning(
                 f"Subscription not found for renewal: {sub_data.subscription_id}"
             )
+        else:
+            # Track subscription renewal in PostHog
+            user_email = sub_data.customer.email if sub_data.customer else None
+            if user_email:
+                track_subscription_event(
+                    user_id=user_email,
+                    event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
+                    subscription_id=sub_data.subscription_id,
+                    currency=sub_data.currency,
+                )
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -320,6 +380,15 @@ class PaymentWebhookService:
             {"$set": update_data},
         )
 
+        # Track subscription cancellation in PostHog
+        user_email = sub_data.customer.email if sub_data.customer else None
+        if user_email:
+            track_subscription_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.SUBSCRIPTION_CANCELLED,
+                subscription_id=sub_data.subscription_id,
+            )
+
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
             status="processed",
@@ -344,6 +413,15 @@ class PaymentWebhookService:
                 }
             },
         )
+
+        # Track subscription expiration in PostHog
+        user_email = sub_data.customer.email if sub_data.customer else None
+        if user_email:
+            track_subscription_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.SUBSCRIPTION_EXPIRED,
+                subscription_id=sub_data.subscription_id,
+            )
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
