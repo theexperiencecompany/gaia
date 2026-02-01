@@ -1,8 +1,8 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useRef } from "react";
 import { posthog } from "posthog-js";
+import { useEffect, useRef } from "react";
 
 /**
  * PostHog analytics provider component.
@@ -17,14 +17,17 @@ export default function PostHogPageView() {
     if (!pathname) return;
 
     // Build the full URL for tracking
-    const url = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
+    const url = searchParams.toString()
+      ? `${pathname}?${searchParams.toString()}`
+      : pathname;
 
     // Only track if the path actually changed (avoid duplicate tracking)
     if (previousPath.current !== url) {
       posthog.capture("$pageview", {
         $current_url: url,
         path: pathname,
-        referrer: typeof document !== "undefined" ? document.referrer : undefined,
+        referrer:
+          typeof document !== "undefined" ? document.referrer : undefined,
       });
       previousPath.current = url;
     }

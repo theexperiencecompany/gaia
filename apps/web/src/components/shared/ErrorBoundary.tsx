@@ -31,7 +31,7 @@ class ErrorBoundary extends React.Component<
   componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
     // Log error details for debugging or reporting
     console.error("Error caught in Error Boundary:", error, errorInfo);
-    
+
     // Track error in PostHog
     trackError("react_error_boundary", error, {
       component_stack: errorInfo.componentStack,

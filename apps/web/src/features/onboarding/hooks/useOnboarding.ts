@@ -6,10 +6,10 @@ import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import {
-  trackEvent,
-  trackOnboardingStep,
-  trackOnboardingComplete,
   ANALYTICS_EVENTS,
+  trackEvent,
+  trackOnboardingComplete,
+  trackOnboardingStep,
 } from "@/lib/analytics";
 import { batchSyncConversations } from "@/services/syncService";
 

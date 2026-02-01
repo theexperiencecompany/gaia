@@ -652,10 +652,13 @@ export default function WorkflowModal({
 
                               try {
                                 if (currentWorkflow.is_public) {
-                                  trackEvent(ANALYTICS_EVENTS.WORKFLOWS_UNPUBLISHED, {
-                                    workflow_id: currentWorkflow.id,
-                                    workflow_title: currentWorkflow.title,
-                                  });
+                                  trackEvent(
+                                    ANALYTICS_EVENTS.WORKFLOWS_UNPUBLISHED,
+                                    {
+                                      workflow_id: currentWorkflow.id,
+                                      workflow_title: currentWorkflow.title,
+                                    },
+                                  );
                                   await workflowApi.unpublishWorkflow(
                                     currentWorkflow.id,
                                   );
@@ -663,12 +666,15 @@ export default function WorkflowModal({
                                     prev ? { ...prev, is_public: false } : null,
                                   );
                                 } else {
-                                  trackEvent(ANALYTICS_EVENTS.WORKFLOWS_PUBLISHED, {
-                                    workflow_id: currentWorkflow.id,
-                                    workflow_title: currentWorkflow.title,
-                                    step_count:
-                                      currentWorkflow.steps?.length || 0,
-                                  });
+                                  trackEvent(
+                                    ANALYTICS_EVENTS.WORKFLOWS_PUBLISHED,
+                                    {
+                                      workflow_id: currentWorkflow.id,
+                                      workflow_title: currentWorkflow.title,
+                                      step_count:
+                                        currentWorkflow.steps?.length || 0,
+                                    },
+                                  );
                                   await workflowApi.publishWorkflow(
                                     currentWorkflow.id,
                                   );

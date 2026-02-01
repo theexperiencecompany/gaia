@@ -5,7 +5,12 @@ import { useCallback, useEffect, useRef } from "react";
 
 import { authApi } from "@/features/auth/api/authApi";
 import { useUserActions } from "@/features/auth/hooks/useUser";
-import { identifyUser, resetUser, trackEvent, ANALYTICS_EVENTS } from "@/lib/analytics";
+import {
+  ANALYTICS_EVENTS,
+  identifyUser,
+  resetUser,
+  trackEvent,
+} from "@/lib/analytics";
 
 export const authPages = ["/login", "/signup"];
 export const publicPages = [...authPages, "/terms", "/privacy", "/contact"];
@@ -59,7 +64,10 @@ const useFetchUser = () => {
 
         if (needsOnboarding && currentPath !== "/onboarding") {
           router.push("/onboarding");
-        } else if (!needsOnboarding && (currentPath === "/onboarding" || publicPages.includes(currentPath))) {
+        } else if (
+          !needsOnboarding &&
+          (currentPath === "/onboarding" || publicPages.includes(currentPath))
+        ) {
           router.push("/c");
         }
       }

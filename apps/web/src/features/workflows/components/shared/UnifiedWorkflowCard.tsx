@@ -206,7 +206,10 @@ export default function UnifiedWorkflowCard({
   const handleNavigate = () => {
     const targetSlug = slug || communityWorkflow?.id || workflow?.id;
     if (targetSlug) {
-      trackEvent(ANALYTICS_EVENTS.WORKFLOW_CARD_NAVIGATE, { slug: targetSlug, variant });
+      trackEvent(ANALYTICS_EVENTS.WORKFLOW_CARD_NAVIGATE, {
+        slug: targetSlug,
+        variant,
+      });
       router.push(`/use-cases/${targetSlug}`);
     }
   };

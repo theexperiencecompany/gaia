@@ -52,7 +52,10 @@ export const useLogout = () => {
               const request = indexedDB.deleteDatabase(dbInfo.name!);
 
               request.onerror = () => {
-                console.error(`Error deleting database: ${dbInfo.name}`, request.error);
+                console.error(
+                  `Error deleting database: ${dbInfo.name}`,
+                  request.error,
+                );
                 reject(request.error);
               };
 

@@ -38,7 +38,8 @@ export const ANALYTICS_EVENTS = {
   CHAT_SLASH_COMMAND_CATEGORY_CHANGED: "chat:slash_command_category_changed",
   CHAT_COMPOSER_PLUS_MENU_CLICKED: "chat:composer_plus_menu_clicked",
   CHAT_TOOLS_BUTTON_CLICKED: "chat:tools_button_clicked",
-  CHAT_GRID_INTEGRATION_CONNECT_CLICKED: "chat:grid_integration_connect_clicked",
+  CHAT_GRID_INTEGRATION_CONNECT_CLICKED:
+    "chat:grid_integration_connect_clicked",
   CHAT_MESSAGE_FEEDBACK: "chat:message_feedback",
 
   // Integration events
@@ -93,7 +94,8 @@ export const ANALYTICS_EVENTS = {
   API_ERROR: "api:error",
 } as const;
 
-export type AnalyticsEvent = (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
+export type AnalyticsEvent =
+  (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
 
 interface UserProperties {
   email?: string;
@@ -113,7 +115,10 @@ interface EventProperties {
  * Identify a user in PostHog.
  * Call this when a user logs in or signs up.
  */
-export function identifyUser(userId: string, properties?: UserProperties): void {
+export function identifyUser(
+  userId: string,
+  properties?: UserProperties,
+): void {
   if (!userId) return;
 
   posthog.identify(userId, {
@@ -134,7 +139,10 @@ export function resetUser(): void {
 /**
  * Track an analytics event.
  */
-export function trackEvent(event: AnalyticsEvent | string, properties?: EventProperties): void {
+export function trackEvent(
+  event: AnalyticsEvent | string,
+  properties?: EventProperties,
+): void {
   posthog.capture(event, {
     ...properties,
     timestamp: new Date().toISOString(),
@@ -161,7 +169,9 @@ function getAnalyticsState(): AnalyticsState {
   }
   try {
     const stored = localStorage.getItem(ANALYTICS_STORAGE_KEY);
-    return stored ? JSON.parse(stored) : { hassentFirstMessage: false, discoveredFeatures: [] };
+    return stored
+      ? JSON.parse(stored)
+      : { hassentFirstMessage: false, discoveredFeatures: [] };
   } catch {
     return { hassentFirstMessage: false, discoveredFeatures: [] };
   }
@@ -171,7 +181,10 @@ function updateAnalyticsState(updates: Partial<AnalyticsState>): void {
   if (typeof window === "undefined") return;
   try {
     const current = getAnalyticsState();
-    localStorage.setItem(ANALYTICS_STORAGE_KEY, JSON.stringify({ ...current, ...updates }));
+    localStorage.setItem(
+      ANALYTICS_STORAGE_KEY,
+      JSON.stringify({ ...current, ...updates }),
+    );
   } catch {
     // Silently fail if localStorage is unavailable
   }
@@ -196,7 +209,10 @@ export function trackFirstMessageIfNeeded(): boolean {
 /**
  * Track when user creates a new conversation.
  */
-export function trackConversationCreated(properties?: { conversationId?: string; source?: string }): void {
+export function trackConversationCreated(properties?: {
+  conversationId?: string;
+  source?: string;
+}): void {
   trackEvent(ANALYTICS_EVENTS.CHAT_CONVERSATION_CREATED, properties);
 }
 
@@ -204,7 +220,10 @@ export function trackConversationCreated(properties?: { conversationId?: string;
  * Track when user discovers/uses a feature for the first time.
  * Only fires once per feature per user.
  */
-export function trackFeatureDiscovery(featureName: string, properties?: EventProperties): boolean {
+export function trackFeatureDiscovery(
+  featureName: string,
+  properties?: EventProperties,
+): boolean {
   const state = getAnalyticsState();
   if (state.discoveredFeatures.includes(featureName)) return false;
 
@@ -222,7 +241,11 @@ export function trackFeatureDiscovery(featureName: string, properties?: EventPro
 /**
  * Track onboarding progress.
  */
-export function trackOnboardingStep(step: number, stepName: string, properties?: EventProperties): void {
+export function trackOnboardingStep(
+  step: number,
+  stepName: string,
+  properties?: EventProperties,
+): void {
   trackEvent(ANALYTICS_EVENTS.ONBOARDING_STEP_COMPLETED, {
     step_number: step,
     step_name: stepName,
@@ -278,7 +301,11 @@ export function trackSubscription(
 /**
  * Track integration connection events.
  */
-export function trackIntegration(action: "connected" | "disconnected" | "error", integrationName: string, properties?: EventProperties): void {
+export function trackIntegration(
+  action: "connected" | "disconnected" | "error",
+  integrationName: string,
+  properties?: EventProperties,
+): void {
   const eventMap = {
     connected: ANALYTICS_EVENTS.INTEGRATION_CONNECTED,
     disconnected: ANALYTICS_EVENTS.INTEGRATION_DISCONNECTED,
@@ -292,14 +319,20 @@ export function trackIntegration(action: "connected" | "disconnected" | "error",
 
   // Track first-time integration connection as feature discovery
   if (action === "connected") {
-    trackFeatureDiscovery(`integration_${integrationName}`, { integration: integrationName });
+    trackFeatureDiscovery(`integration_${integrationName}`, {
+      integration: integrationName,
+    });
   }
 }
 
 /**
  * Track errors for debugging and monitoring.
  */
-export function trackError(errorType: string, error: Error | string, properties?: EventProperties): void {
+export function trackError(
+  errorType: string,
+  error: Error | string,
+  properties?: EventProperties,
+): void {
   trackEvent(ANALYTICS_EVENTS.ERROR_OCCURRED, {
     error_type: errorType,
     error_message: error instanceof Error ? error.message : error,
@@ -311,7 +344,11 @@ export function trackError(errorType: string, error: Error | string, properties?
 /**
  * Create a group (for team/organization tracking).
  */
-export function setGroup(groupType: string, groupKey: string, properties?: Record<string, unknown>): void {
+export function setGroup(
+  groupType: string,
+  groupKey: string,
+  properties?: Record<string, unknown>,
+): void {
   posthog.group(groupType, groupKey, properties);
 }
 

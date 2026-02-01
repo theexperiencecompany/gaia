@@ -6,7 +6,12 @@ import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
-import { trackConversationCreated, trackFirstMessageIfNeeded, trackEvent, ANALYTICS_EVENTS } from "@/lib/analytics";
+import {
+  ANALYTICS_EVENTS,
+  trackConversationCreated,
+  trackEvent,
+  trackFirstMessageIfNeeded,
+} from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";

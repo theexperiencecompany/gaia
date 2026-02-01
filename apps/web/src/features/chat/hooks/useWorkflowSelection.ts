@@ -1,8 +1,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback } from "react";
-
-import { trackFeatureDiscovery } from "@/lib/analytics";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
+import { trackFeatureDiscovery } from "@/lib/analytics";
 import {
   type SelectedWorkflowData,
   useWorkflowSelectionStore,

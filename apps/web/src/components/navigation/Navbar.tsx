@@ -157,10 +157,13 @@ export default function Navbar() {
                       toggleBackdrop(false);
                     }}
                     onClick={() => {
-                      trackEvent(ANALYTICS_EVENTS.NAVIGATION_NAVBAR_LINK_CLICKED, {
-                        label: item.label,
-                        href: item.href,
-                      });
+                      trackEvent(
+                        ANALYTICS_EVENTS.NAVIGATION_NAVBAR_LINK_CLICKED,
+                        {
+                          label: item.label,
+                          href: item.href,
+                        },
+                      );
                     }}
                   >
                     <span className="relative z-10">{item.label}</span>
@@ -172,9 +175,12 @@ export default function Navbar() {
                     className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-200 capitalize transition-colors hover:text-zinc-100"
                     onMouseEnter={() => {
                       handleMouseEnter(item.menu);
-                      trackEvent(ANALYTICS_EVENTS.NAVIGATION_NAVBAR_DROPDOWN_OPENED, {
-                        menu: item.menu,
-                      });
+                      trackEvent(
+                        ANALYTICS_EVENTS.NAVIGATION_NAVBAR_DROPDOWN_OPENED,
+                        {
+                          menu: item.menu,
+                        },
+                      );
                     }}
                   >
                     {hoveredItem === item.menu && (
