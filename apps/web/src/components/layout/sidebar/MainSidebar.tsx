@@ -16,6 +16,7 @@ import SettingsSidebar from "@/components/layout/sidebar/variants/SettingsSideba
 import TodoSidebar from "@/components/layout/sidebar/variants/TodoSidebar";
 import WorkflowsSidebar from "@/components/layout/sidebar/variants/WorkflowsSidebar";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
+import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { BubbleChatAddIcon } from "@/icons";
 
 export default function Sidebar() {
@@ -63,6 +64,7 @@ export default function Sidebar() {
             fullWidth
             as={Link}
             href="/c"
+            onClick={prepareNewChat}
             className="mb-4 flex justify-start text-sm font-medium text-primary"
             variant="flat"
             data-keyboard-shortcut="create-chat"
