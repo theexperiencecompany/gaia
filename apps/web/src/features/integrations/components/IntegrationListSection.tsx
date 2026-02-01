@@ -1,3 +1,4 @@
+import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Link } from "@heroui/link";
@@ -20,6 +21,36 @@ interface IntegrationListSectionProps {
   suggestedIntegrations?: SuggestedIntegration[];
 }
 
+interface AccordionTitleProps {
+  title: string;
+  count: number;
+  tooltip: string;
+}
+
+function AccordionTitle({ title, count, tooltip }: AccordionTitleProps) {
+  return (
+    <div className="flex items-center gap-2">
+      <span>{title}</span>
+      <Chip
+        size="sm"
+        variant="flat"
+        className="text-xs aspect-square flex items-center justify-center text-zinc-400"
+      >
+        {count}
+      </Chip>
+      <Tooltip content={tooltip} placement="top" className="ml-auto">
+        <InformationCircleIcon
+          width={18}
+          height={18}
+          className="text-zinc-500 cursor-help"
+        >
+          <title>Information</title>
+        </InformationCircleIcon>
+      </Tooltip>
+    </div>
+  );
+}
+
 function IntegrationListSection({
   suggestedIntegrations = [],
 }: IntegrationListSectionProps) {
@@ -34,8 +65,6 @@ function IntegrationListSection({
   const notConnectedIntegrations = integrations
     .filter((i) => i.status !== "connected")
     .sort((a, b) => a.name.localeCompare(b.name));
-
-  const total_count = integrations.length;
 
   const handleConnect = async (integrationId: string, e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent card click
@@ -86,8 +115,8 @@ function IntegrationListSection({
     router.push(`/integrations?id=${encodeURIComponent(integrationId)}`);
   };
 
-  const handleSuggestedClick = (suggestionId: string) => {
-    router.push(`/marketplace?id=${encodeURIComponent(suggestionId)}`);
+  const handleSuggestedClick = (suggestion: SuggestedIntegration) => {
+    router.push(`/marketplace/${encodeURIComponent(suggestion.slug)}`);
   };
 
   const renderIntegration = (integration: (typeof integrations)[0]) => {
@@ -156,7 +185,7 @@ function IntegrationListSection({
       <div
         key={suggestion.id}
         className="group flex items-start gap-3 p-3 transition-colors hover:bg-zinc-700 cursor-pointer"
-        onClick={() => handleSuggestedClick(suggestion.id)}
+        onClick={() => handleSuggestedClick(suggestion)}
       >
         <div className="shrink-0 pt-0.5">
           {getToolCategoryIcon(
@@ -201,87 +230,96 @@ function IntegrationListSection({
     );
   };
 
-  const SectionHeader = ({
-    title,
-    count,
-    tooltip,
-  }: {
-    title: string;
-    count: number;
-    tooltip: string;
-  }) => (
-    <div className="mb-2 flex items-center justify-between">
-      <div className="flex items-center gap-2">
-        <h3 className="text-xs font-semibold text-zinc-400 uppercase">
-          {title}
-        </h3>
-        <Tooltip content={tooltip} placement="top">
-          <InformationCircleIcon className="h-3.5 w-3.5 text-zinc-500 cursor-help">
-            <title>Information</title>
-          </InformationCircleIcon>
-        </Tooltip>
-      </div>
-      <Chip size="sm" variant="flat" className="text-xs">
-        {count}
-      </Chip>
-    </div>
-  );
+  const total_count = integrations.length;
+
+  // Build accordion keys for sections that have items
+  const defaultExpandedKeys = new Set<string>();
+  if (connectedIntegrations.length > 0) defaultExpandedKeys.add("connected");
+  if (suggestedIntegrations.length > 0) defaultExpandedKeys.add("suggested");
+  if (notConnectedIntegrations.length > 0) defaultExpandedKeys.add("available");
+
+  // Build accordion items array
+  const accordionItems = [
+    connectedIntegrations.length > 0 ? (
+      <AccordionItem
+        key="connected"
+        aria-label="Connected"
+        title={
+          <AccordionTitle
+            title="Connected"
+            count={connectedIntegrations.length}
+            tooltip="Your active integrations"
+          />
+        }
+      >
+        <ScrollShadow className="max-h-[150px]">
+          {connectedIntegrations.map(renderIntegration)}
+        </ScrollShadow>
+      </AccordionItem>
+    ) : null,
+    suggestedIntegrations.length > 0 ? (
+      <AccordionItem
+        key="suggested"
+        aria-label="Discover More"
+        title={
+          <AccordionTitle
+            title="Discover More"
+            count={suggestedIntegrations.length}
+            tooltip="Public integrations from the community marketplace"
+          />
+        }
+      >
+        <ScrollShadow className="max-h-[200px] divide-y divide-zinc-700">
+          {suggestedIntegrations.map(renderSuggested)}
+        </ScrollShadow>
+        <div className="mt-3 flex justify-center">
+          <Link
+            href="/marketplace"
+            className="text-xs text-primary hover:underline gap-1"
+          >
+            <span>Go to Marketplace</span>
+            <ArrowRight02Icon width={16} height={16} />
+          </Link>
+        </div>
+      </AccordionItem>
+    ) : null,
+    notConnectedIntegrations.length > 0 ? (
+      <AccordionItem
+        key="available"
+        aria-label="Available"
+        title={
+          <AccordionTitle
+            title="Available"
+            count={notConnectedIntegrations.length}
+            tooltip="Integrations provided natively by GAIA"
+          />
+        }
+      >
+        <ScrollShadow className="max-h-[200px]">
+          {notConnectedIntegrations.map(renderIntegration)}
+        </ScrollShadow>
+      </AccordionItem>
+    ) : null,
+  ].filter(Boolean);
 
   const content = (
     <div className="w-full max-w-2xl rounded-3xl bg-zinc-800 p-4 text-white">
-      <div className="space-y-6">
-        {/* Connected Section */}
-        {connectedIntegrations.length > 0 && (
-          <div>
-            <SectionHeader
-              title="Connected"
-              count={connectedIntegrations.length}
-              tooltip="Your active integrations"
-            />
-            <ScrollShadow className="max-h-[200px] divide-y divide-zinc-700">
-              {connectedIntegrations.map(renderIntegration)}
-            </ScrollShadow>
-          </div>
-        )}
-
-        {/* Discover More Section - Moved above Available */}
-        {suggestedIntegrations.length > 0 && (
-          <div>
-            <SectionHeader
-              title="Discover More"
-              count={suggestedIntegrations.length}
-              tooltip="Public integrations from the community marketplace"
-            />
-            <ScrollShadow className="max-h-[250px] divide-y divide-zinc-700">
-              {suggestedIntegrations.map(renderSuggested)}
-            </ScrollShadow>
-            <div className="mt-3 flex justify-center">
-              <Link
-                href="/marketplace"
-                className="text-xs text-primary hover:underline gap-1"
-              >
-                <span>Go to Marketplace</span>
-
-                <ArrowRight02Icon width={16} height={16} />
-              </Link>
-            </div>
-          </div>
-        )}
-
-        {/* Available Section */}
-        {notConnectedIntegrations.length > 0 && (
-          <div>
-            <SectionHeader
-              title="Available"
-              count={notConnectedIntegrations.length}
-              tooltip="Integrations provided natively by GAIA"
-            />
-            <ScrollShadow className="max-h-[200px] divide-y divide-zinc-700">
-              {notConnectedIntegrations.map(renderIntegration)}
-            </ScrollShadow>
-          </div>
-        )}
-      </div>
+      <Accordion
+        selectionMode="multiple"
+        // showDivider={false}
+        defaultExpandedKeys={defaultExpandedKeys}
+        className="px-0"
+        variant="light"
+        isCompact
+        itemClasses={{
+          base: "py-0",
+          title: "text-xs font-semibold text-zinc-400",
+          trigger: "py-2 cursor-pointer",
+          content: "pt-0 pb-4",
+        }}
+      >
+        {accordionItems}
+      </Accordion>
     </div>
   );
 

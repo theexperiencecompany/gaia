@@ -353,6 +353,7 @@ class SuggestedIntegration(TypedDict):
     icon_url: Optional[str]
     auth_type: Optional[str]
     relevance_score: float
+    slug: str
 
 
 class ListIntegrationsResult(TypedDict):

@@ -4,6 +4,7 @@ Integration Management Tools
 Tools for listing, connecting, and managing user integrations.
 """
 
+import re
 from typing import Annotated, List, Optional
 
 from app.config.loggers import common_logger as logger
@@ -13,6 +14,7 @@ from app.constants.integrations import (
     MAX_CONNECTED_FOR_LLM,
     MAX_SUGGESTED_FOR_LLM,
 )
+from app.helpers.integration_helpers import generate_integration_slug
 from app.db.mongodb.collections import (
     integrations_collection,
     user_integrations_collection,
@@ -35,6 +37,34 @@ from app.templates.docstrings.integration_tool_docs import (
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
+
+
+# Stopwords to filter out from search queries
+SEARCH_STOPWORDS = {
+    "a",
+    "an",
+    "the",
+    "to",
+    "for",
+    "with",
+    "and",
+    "or",
+    "in",
+    "on",
+    "my",
+}
+
+
+def build_search_patterns(query: str) -> list[str]:
+    """Extract individual words from query for flexible matching.
+
+    E.g., "Render deployment" -> ["render", "deployment"]
+    This allows matching "Render" when query is "Render deployment"
+    """
+    # Split on whitespace and common separators
+    words = re.split(r"[\s,;]+", query.lower())
+    # Filter out short/common words that don't help matching
+    return [w for w in words if len(w) >= 2 and w not in SEARCH_STOPWORDS]
 
 
 @tool
@@ -134,15 +164,36 @@ async def list_integrations(
                 existing_ids = {i["id"] for i in connected_list + available_list}
                 existing_ids.update(user_integration_ids)
 
-                # MongoDB text/regex search for public integrations
+                # Build flexible word-based search
+                words = build_search_patterns(query)
+
+                # Create conditions that match any word in name/description/category
+                word_conditions = []
+                for word in words:
+                    escaped_word = re.escape(word)
+                    word_conditions.extend(
+                        [
+                            {"name": {"$regex": escaped_word, "$options": "i"}},
+                            {"description": {"$regex": escaped_word, "$options": "i"}},
+                            {"category": {"$regex": escaped_word, "$options": "i"}},
+                        ]
+                    )
+
+                # Also try the full query as a fallback
+                escaped_query = re.escape(query)
+                word_conditions.extend(
+                    [
+                        {"name": {"$regex": escaped_query, "$options": "i"}},
+                        {"description": {"$regex": escaped_query, "$options": "i"}},
+                    ]
+                )
+
                 search_filter = {
                     "is_public": True,
                     "integration_id": {"$nin": list(existing_ids)},
-                    "$or": [
-                        {"name": {"$regex": query, "$options": "i"}},
-                        {"description": {"$regex": query, "$options": "i"}},
-                        {"category": {"$regex": query, "$options": "i"}},
-                    ],
+                    "$or": word_conditions
+                    if word_conditions
+                    else [{"name": {"$regex": escaped_query, "$options": "i"}}],
                 }
 
                 docs_cursor = integrations_collection.find(search_filter).limit(
@@ -154,17 +205,22 @@ async def list_integrations(
                     mcp_config = doc.get("mcp_config", {})
                     logger.info(f"Found public integration: {iid} - {doc.get('name')}")
 
-                    suggested_list.append(
-                        {
-                            "id": iid,
-                            "name": doc.get("name", ""),
-                            "description": doc.get("description", ""),
-                            "category": doc.get("category", "custom"),
-                            "icon_url": doc.get("icon_url"),
-                            "auth_type": mcp_config.get("auth_type"),
-                            "relevance_score": 1.0,  # All matches are equal with regex
-                        }
-                    )
+                suggested_list.append(
+                    {
+                        "id": iid,
+                        "name": doc.get("name", ""),
+                        "description": doc.get("description", ""),
+                        "category": doc.get("category", "custom"),
+                        "icon_url": doc.get("icon_url"),
+                        "auth_type": mcp_config.get("auth_type"),
+                        "relevance_score": 1.0,  # All matches are equal with regex
+                        "slug": generate_integration_slug(
+                            name=doc.get("name", ""),
+                            category=doc.get("category", "custom"),
+                            integration_id=iid,
+                        ),
+                    }
+                )
 
                 logger.info(f"Found {len(suggested_list)} public integrations")
 
@@ -181,6 +237,7 @@ async def list_integrations(
                 "iconUrl": s["icon_url"],
                 "authType": s["auth_type"],
                 "relevanceScore": s["relevance_score"],
+                "slug": s["slug"],
             }
             for s in suggested_list[:MAX_SUGGESTED_FOR_LLM]
         ]
@@ -224,7 +281,9 @@ async def suggest_integrations(
     This tool will search the marketplace and display suggested integrations
     that the user can add with one click.
     """
-    return await list_integrations(config=config, search_public_query=query)
+    return await list_integrations.ainvoke(
+        {"search_public_query": query}, config=config
+    )
 
 
 @tool

@@ -306,11 +306,25 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   },
 
   integration_list_data: (data, index) => {
-    const streamData = data as IntegrationListStreamData;
+    // Handle grouped data (array of IntegrationListStreamData)
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as IntegrationListStreamData[];
+
+    // Merge all suggested integrations and de-duplicate by id
+    const seen = new Set<string>();
+    const mergedSuggested = items
+      .flatMap((item) => item.suggested || [])
+      .filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      });
+
     return (
       <IntegrationListSection
         key={`tool-integration-list-${index}`}
-        suggestedIntegrations={streamData.suggested}
+        suggestedIntegrations={mergedSuggested}
       />
     );
   },

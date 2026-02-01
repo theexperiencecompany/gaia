@@ -184,6 +184,7 @@ export interface SuggestedIntegration {
   iconUrl?: string | null;
   authType?: string | null;
   relevanceScore: number;
+  slug: string;
 }
 
 /**
