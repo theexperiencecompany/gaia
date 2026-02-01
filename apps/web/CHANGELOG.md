@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.14.1](https://github.com/theexperiencecompany/gaia/compare/web-v0.14.0...web-v0.14.1) (2026-02-01)
+
+
+### Bug Fixes
+
+* update user reference ([aee11f4](https://github.com/theexperiencecompany/gaia/commit/aee11f4fbcfad5d435dbda1b6f07d7885d74bd74))
+* update user reference ([#454](https://github.com/theexperiencecompany/gaia/issues/454)) ([4b84855](https://github.com/theexperiencecompany/gaia/commit/4b84855467f7e8d6d2e8e42b2164d4b597484551))
+
 ## [0.14.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.13.0...web-v0.14.0) (2026-01-30)
 
 

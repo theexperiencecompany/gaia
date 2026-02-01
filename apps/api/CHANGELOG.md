@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.13.1](https://github.com/theexperiencecompany/gaia/compare/api-v0.13.0...api-v0.13.1) (2026-02-01)
+
+
+### Bug Fixes
+
+* Make scheduled tasks timezone-aware and reschedule past tasks to prevent Redis PSETEX errors. ([5241b85](https://github.com/theexperiencecompany/gaia/commit/5241b8538c819963c59e6de18287eb04210e3e3d))
+
 ## [0.13.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.1...api-v0.13.0) (2026-01-30)
 
 
