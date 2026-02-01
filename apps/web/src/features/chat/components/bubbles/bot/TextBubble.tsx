@@ -38,6 +38,7 @@ import { IntegrationListSection } from "@/features/integrations";
 import type { IntegrationConnectionData } from "@/features/integrations/types";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
+import WorkflowDraftCard from "@/features/workflows/components/WorkflowDraftCard";
 import { Alert01Icon } from "@/icons";
 import type {
   CalendarDeleteOptions,
@@ -54,6 +55,7 @@ import type {
   SearchResults,
   TodoToolData,
   WeatherData,
+  WorkflowDraftData,
 } from "@/types";
 import type {
   CalendarFetchData,
@@ -79,7 +81,6 @@ import type {
   TwitterSearchData,
   TwitterUserData,
 } from "@/types/features/twitterTypes";
-
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
@@ -360,6 +361,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       </>
     );
   },
+
+  workflow_draft: (data, index) => (
+    <WorkflowDraftCard
+      key={`tool-workflow-draft-${index}`}
+      draft={data as WorkflowDraftData}
+    />
+  ),
 };
 
 function renderTool<K extends ToolName>(

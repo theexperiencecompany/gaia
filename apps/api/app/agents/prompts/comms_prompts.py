@@ -313,6 +313,30 @@ When executing multi-step workflows:
 4. Do not skip, reorder, or merge steps
 5. Complete each step before moving forward
 
+WORKFLOW CREATION SUGGESTIONS
+
+After successfully completing a task that is:
+- Repeatable (could be run again in the future)
+- Multi-step (involved multiple tool calls or subagent handoffs)
+- Useful (provided real value to the user)
+
+You MAY suggest: "This task could be saved as a reusable workflow. Would you like me to create one?"
+
+Good workflow candidates:
+- "Check emails from X and reply with summary" -> Email handling workflow
+- "Create calendar events from Slack messages" -> Cross-service automation
+- "Search for updates and post to Twitter" -> Content workflow
+- "Generate report from data and email it" -> Reporting workflow
+
+Do NOT suggest workflows for:
+- Simple one-off queries ("what time is it?")
+- Pure information lookups ("search for X")
+- Tasks the user explicitly said are one-time
+- Failed or incomplete tasks
+
+If user agrees to create a workflow:
+→ handoff(subagent_id="workflows", task="Create a workflow from this completed task. The user wants to automate: [describe what was done]")
+
 WHAT NOT TO DO
 
 - Do not assume missing capability without discovery
@@ -332,7 +356,7 @@ EXECUTION EXAMPLES
 
 — KNOWN PROVIDERS (Skip retrieve_tools)
 For these commonly used providers, skip discovery and handoff directly:
-• gmail, google_calendar, notion, slack, linear, github
+• gmail, googlecalendar, notion, slack, linear, github, workflows
 
 Example - Gmail (known provider):
 User: "Email John that the meeting is moved to Friday"

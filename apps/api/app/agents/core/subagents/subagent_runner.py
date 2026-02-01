@@ -144,7 +144,7 @@ async def prepare_subagent_execution(
     This is the shared setup logic used by both handoff tool and call_subagent.
 
     Args:
-        subagent_id: The subagent ID (e.g., "google_calendar", "gmail")
+        subagent_id: The subagent ID (e.g., "googlecalendar", "gmail")
         task: The task/query to execute
         user: User dict with user_id, email, name
         user_time: User's local time
@@ -423,7 +423,7 @@ async def call_subagent(
     Primarily used for testing subagents directly without going through the main agent.
 
     Args:
-        subagent_id: e.g., "google_calendar", "gmail", "github"
+        subagent_id: e.g., "googlecalendar", "gmail", "github"
         query: The user's message/query
         user: User dict with user_id, email, name
         conversation_id: Conversation thread ID
@@ -436,7 +436,7 @@ async def call_subagent(
 
     Usage:
         async for chunk in call_subagent(
-            subagent_id="google_calendar",
+            subagent_id="googlecalendar",
             query="What's on my calendar today?",
             user=user,
             conversation_id=conversation_id,

@@ -8,18 +8,19 @@ permissions and stream connection prompts to the frontend when needed.
 from typing import Optional
 
 import httpx
+from langgraph.config import get_stream_writer
+
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import get_integration_by_id, get_integration_scopes
 from app.config.token_repository import token_repository
-from langgraph.config import get_stream_writer
 
 http_async_client = httpx.AsyncClient(timeout=10.0)
 
 # Mapping of tool categories to required integrations
 TOOL_INTEGRATION_MAPPING = {
     "gmail": "gmail",
-    "calendar": "google_calendar",
-    "google_docs": "google_docs",
+    "calendar": "googlecalendar",
+    "googledocs": "googledocs",
     "google_drive": "google_drive",
     # Add more mappings as needed
 }
@@ -31,7 +32,7 @@ async def check_user_has_integration(access_token: str, integration_id: str) -> 
 
     Args:
         access_token: User's OAuth access token
-        integration_id: The integration ID to check (e.g., 'gmail', 'google_calendar')
+        integration_id: The integration ID to check (e.g., 'gmail', 'googlecalendar')
 
     Returns:
         bool: True if user has required permissions, False otherwise

@@ -36,7 +36,7 @@ import {
   RedoIcon,
 } from "@/icons";
 import { posthog } from "@/lib";
-
+import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 import { type Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflowCreation } from "../hooks";
 import {
@@ -60,6 +60,8 @@ interface WorkflowModalProps {
   onWorkflowDeleted?: (workflowId: string) => void;
   mode: "create" | "edit";
   existingWorkflow?: Workflow | null;
+  /** Pre-fill form from AI-generated draft data */
+  draftData?: WorkflowDraftData | null;
 }
 
 export default function WorkflowModal({
@@ -69,6 +71,7 @@ export default function WorkflowModal({
   onWorkflowDeleted,
   mode,
   existingWorkflow,
+  draftData,
 }: WorkflowModalProps) {
   const router = useRouter();
   const {
@@ -255,6 +258,47 @@ export default function WorkflowModal({
       setCreationPhase("form");
       return;
     }
+
+    // Handle draft data from AI-generated workflow
+    if (mode === "create" && draftData) {
+      const activeTab =
+        draftData.trigger_type === "scheduled"
+          ? "schedule"
+          : draftData.trigger_type === "integration"
+            ? "trigger"
+            : "manual";
+
+      const triggerConfig =
+        draftData.trigger_type === "scheduled"
+          ? {
+              type: "schedule" as const,
+              enabled: true,
+              cron_expression: draftData.cron_expression || "0 9 * * *",
+              timezone: "UTC",
+            }
+          : draftData.trigger_type === "integration"
+            ? {
+                type: draftData.trigger_slug || "integration",
+                enabled: true,
+                trigger_name: draftData.trigger_slug || "",
+              }
+            : {
+                type: "manual" as const,
+                enabled: true,
+              };
+
+      resetFormValues({
+        title: draftData.suggested_title,
+        description: draftData.suggested_description,
+        activeTab,
+        selectedTrigger: draftData.trigger_slug || "",
+        trigger_config: triggerConfig,
+      });
+      setIsActivated(true);
+      setCreationPhase("form");
+      return;
+    }
+
     // Reset to default for create mode
     resetFormValues(getDefaultFormValues());
     // Reset activation state for create mode
@@ -264,6 +308,7 @@ export default function WorkflowModal({
   }, [
     mode,
     currentWorkflow,
+    draftData,
     resetFormValues,
     setIsActivated,
     setCreationPhase,

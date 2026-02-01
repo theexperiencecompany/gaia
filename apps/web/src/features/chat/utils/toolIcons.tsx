@@ -141,7 +141,7 @@ export const getToolCategoryIcon = (
   // Normalize the input category name
   const normalizedCategory = normalizeCategoryName(category);
 
-  // Resolve aliases first (e.g., 'calendar' -> 'google_calendar')
+  // Resolve aliases first (e.g., 'calendar' -> 'googlecalendar')
   const aliasedCategory =
     iconAliases[normalizedCategory] ||
     iconAliases[category] ||

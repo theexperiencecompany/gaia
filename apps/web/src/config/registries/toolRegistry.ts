@@ -13,6 +13,7 @@ import type {
   SearchResults,
   TodoToolData,
   WeatherData,
+  WorkflowDraftData,
 } from "@/types";
 import type {
   CalendarFetchData,
@@ -102,6 +103,7 @@ export const TOOL_REGISTRY = {
   tool_calls_data: null as unknown as ToolCallEntry[],
   twitter_search_data: null as unknown as TwitterSearchData,
   twitter_user_data: null as unknown as TwitterUserData[],
+  workflow_draft: null as unknown as WorkflowDraftData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;

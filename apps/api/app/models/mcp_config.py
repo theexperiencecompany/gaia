@@ -49,6 +49,7 @@ class SubAgentConfig(BaseModel):
     use_direct_tools: bool = False
     disable_retrieve_tools: bool = False
     specific_tools: Optional[List[str]] = None
+    memory_prompt: Optional[str] = None
 
 
 class ProviderMetadataConfig(BaseModel):

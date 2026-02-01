@@ -14,11 +14,11 @@ export const dummyIntegrations: DummyIntegration[] = [
     name: "Gmail",
   },
   {
-    id: "google_calendar",
+    id: "googlecalendar",
     name: "Google Calendar",
   },
   {
-    id: "google_docs",
+    id: "googledocs",
     name: "Google Docs",
   },
   {

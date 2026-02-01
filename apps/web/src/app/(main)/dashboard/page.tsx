@@ -29,7 +29,7 @@ export default function HomePage() {
   const { getIntegrationStatus } = useIntegrations();
 
   // Check integrations
-  const calendarStatus = getIntegrationStatus("google_calendar");
+  const calendarStatus = getIntegrationStatus("googlecalendar");
   const isCalendarConnected = calendarStatus?.connected || false;
   const gmailStatus = getIntegrationStatus("gmail");
   const isGmailConnected = gmailStatus?.connected || false;

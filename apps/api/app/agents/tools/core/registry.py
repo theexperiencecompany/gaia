@@ -20,6 +20,7 @@ from app.agents.tools import (
     todo_tool,
     weather_tool,
     webpage_tool,
+    workflow_tool,
 )
 from app.config.loggers import langchain_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -226,6 +227,13 @@ class ToolRegistry:
             is_delegated=True,
             integration_name="goals",
             space="goals",
+        )
+        self._add_category(
+            "workflows",
+            tools=workflow_tool.tools,
+            is_delegated=True,
+            integration_name="workflows",
+            space="workflows",
         )
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)

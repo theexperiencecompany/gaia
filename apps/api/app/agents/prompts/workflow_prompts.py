@@ -90,10 +90,10 @@ A workflow is an automated sequence of 1-5 HIGHLY OPTIMIZED steps that accomplis
 
 CRITICAL REQUIREMENTS:
 1. Use ONLY the exact category names from the AVAILABLE TOOL CATEGORIES above
-2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "google_calendar", "todos", "reminders")
+2. Each step must specify 'category' using the EXACT category name (e.g., "gmail", "googlecalendar", "todos", "reminders")
 3. Create 3-5 HIGHLY OPTIMIZED steps that accomplish the goal with maximum efficiency
 4. The execution agent will use `handoff` to delegate to subagents based on category
-5. Categories like gmail, notion, github, slack, google_calendar route to specialized subagents
+5. Categories like gmail, notion, github, slack, googlecalendar route to specialized subagents
 6. Categories like todos, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
 
@@ -233,7 +233,7 @@ For specialized provider services, use the `handoff` tool to delegate to expert 
 • Notion operations → `handoff(subagent_id="notion", task="...")`
 • Twitter operations → `handoff(subagent_id="twitter", task="...")`
 • LinkedIn operations → `handoff(subagent_id="linkedin", task="...")`
-• Calendar operations → `handoff(subagent_id="google_calendar", task="...")`
+• Calendar operations → `handoff(subagent_id="googlecalendar", task="...")`
 
 **TOOL DISCOVERY:**
 1. `retrieve_tools(query="...")` - Discover tools matching your intent
@@ -306,7 +306,7 @@ For specialized provider services, use the `handoff` tool to delegate to expert 
 • Notion operations → `handoff(subagent_id="notion", task="...")`
 • Twitter operations → `handoff(subagent_id="twitter", task="...")`
 • LinkedIn operations → `handoff(subagent_id="linkedin", task="...")`
-• Calendar operations → `handoff(subagent_id="google_calendar", task="...")`
+• Calendar operations → `handoff(subagent_id="googlecalendar", task="...")`
 
 **TOOL DISCOVERY:**
 1. `retrieve_tools(query="...")` - Discover tools matching your intent
@@ -326,7 +326,7 @@ For each workflow step:
 - If step involves Notion → `handoff(subagent_id="notion", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
 - If step involves Twitter → `handoff(subagent_id="twitter", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
 - If step involves LinkedIn → `handoff(subagent_id="linkedin", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
-- If step involves Calendar → `handoff(subagent_id="google_calendar", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
+- If step involves Calendar → `handoff(subagent_id="googlecalendar", task="Execute step: [step title]. Use tool: [exact tool_name]. Description: [step description]. Email context: From {email_sender}, Subject: {email_subject}")`
 - For general tools (todos, web search, etc.) → Execute directly
 
 **Execution Guidelines:**
