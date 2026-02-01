@@ -21,7 +21,7 @@ const ModelPickerButton: React.FC = () => {
   const selectModelMutation = useSelectModel();
   const currentModel = useCurrentUserModel();
   const user = useUser();
-  const { setUser } = useUserActions();
+  const { updateUser } = useUserActions();
 
   const handleSelectionChange = (keys: SharedSelection) => {
     const selectedKey = Array.from(keys)[0];
