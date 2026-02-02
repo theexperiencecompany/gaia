@@ -346,7 +346,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   ),
 
   tool_calls_data: (data, index) => {
-    const calls = (Array.isArray(data) ? data : [data]) as ToolCallEntry[];
+    // When grouped, data is ToolCallEntry[][] (array of arrays)
+    // Flatten to ToolCallEntry[] using flat(1)
+    // Deduplication is handled at the ChatRenderer level
+    const calls = (
+      Array.isArray(data) ? data.flat(1) : [data]
+    ) as ToolCallEntry[];
+
     return (
       <ToolCallsSection key={`tool-calls-${index}`} tool_calls_data={calls} />
     );

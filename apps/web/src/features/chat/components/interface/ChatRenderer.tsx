@@ -100,16 +100,65 @@ export default function ChatRenderer({
     conversation?.system_purpose,
   ]);
 
+  // Deduplicate tool calls across all messages in the conversation
+  const messagesWithDeduplicatedToolCalls = useMemo(() => {
+    const seenToolCallIds = new Set<string>();
+
+    return filteredMessages.map((message) => {
+      // Only process bot messages with tool_data
+      if (message.type !== "bot" || !message.tool_data) {
+        return message;
+      }
+
+      // Filter out tool calls that have already been shown in previous messages
+      const deduplicatedToolData = message.tool_data
+        .map((entry) => {
+          // Only deduplicate tool_calls_data entries
+          if (entry.tool_name !== "tool_calls_data") {
+            return entry;
+          }
+
+          // Filter the tool calls array within this entry
+          // Cast to unknown[] since we know tool_calls_data contains objects with tool_call_id
+          const toolCallsArray = (
+            Array.isArray(entry.data) ? entry.data : [entry.data]
+          ) as Array<{ tool_call_id?: string }>;
+          const filteredCalls = toolCallsArray.filter((call) => {
+            const toolCallId = call?.tool_call_id;
+            if (!toolCallId) return true; // Keep calls without IDs
+            if (seenToolCallIds.has(toolCallId)) return false; // Skip duplicates
+            seenToolCallIds.add(toolCallId);
+            return true;
+          });
+
+          // If all calls were filtered out, return null to remove this entry
+          if (filteredCalls.length === 0) return null;
+
+          // Return the entry with filtered calls
+          return {
+            ...entry,
+            data: filteredCalls,
+          };
+        })
+        .filter((entry) => entry !== null);
+
+      return {
+        ...message,
+        tool_data: deduplicatedToolData,
+      } as MessageType;
+    });
+  }, [filteredMessages]);
+
   useEffect(() => {
     if (
       messageId &&
-      filteredMessages.length > 0 &&
+      messagesWithDeduplicatedToolCalls.length > 0 &&
       scrolledToMessageRef.current !== messageId
     ) {
       scrollToMessage(messageId);
       scrolledToMessageRef.current = messageId;
     }
-  }, [messageId, filteredMessages]);
+  }, [messageId, messagesWithDeduplicatedToolCalls]);
 
   const scrollToMessage = (messageId: string) => {
     if (!messageId) return;
@@ -149,31 +198,40 @@ export default function ChatRenderer({
       />
       <SearchedImageDialog />
       <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
-      {filteredMessages?.map((message: MessageType, index: number) => {
-        let messageProps = null;
+      {messagesWithDeduplicatedToolCalls?.map(
+        (message: MessageType, index: number) => {
+          let messageProps = null;
 
-        if (message.type === "bot")
-          messageProps = getMessageProps(message, "bot", messagePropsOptions);
-        else if (message.type === "user")
-          messageProps = getMessageProps(message, "user", messagePropsOptions);
+          if (message.type === "bot")
+            messageProps = getMessageProps(message, "bot", messagePropsOptions);
+          else if (message.type === "user")
+            messageProps = getMessageProps(
+              message,
+              "user",
+              messagePropsOptions,
+            );
 
-        if (!messageProps) return null;
+          if (!messageProps) return null;
 
-        if (
-          message.type === "bot" &&
-          !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
-        )
+          if (
+            message.type === "bot" &&
+            !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
+          )
+            return (
+              <ChatBubbleBot
+                key={message.message_id || index}
+                {...getMessageProps(message, "bot", messagePropsOptions)}
+              />
+            );
+
           return (
-            <ChatBubbleBot
+            <ChatBubbleUser
               key={message.message_id || index}
-              {...getMessageProps(message, "bot", messagePropsOptions)}
+              {...messageProps}
             />
           );
-
-        return (
-          <ChatBubbleUser key={message.message_id || index} {...messageProps} />
-        );
-      })}
+        },
+      )}
       {isLoading && (
         <AnimatePresence>
           <LoadingIndicator

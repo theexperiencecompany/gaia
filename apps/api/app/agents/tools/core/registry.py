@@ -472,6 +472,23 @@ class ToolRegistry:
             core_tools.extend(category.get_core_tools())
         return core_tools
 
+    def get_core_categories(self) -> List[ToolCategory]:
+        """
+        Get all core categories (those that don't require integration).
+
+        Core categories are the built-in tool categories that are always
+        available, as opposed to integration-specific categories that
+        require user authentication.
+
+        Returns:
+            List of core ToolCategory objects.
+        """
+        return [
+            category
+            for category in self._categories.values()
+            if not category.require_integration
+        ]
+
     def _get_tool_dict_internal(self) -> Dict[str, BaseTool]:
         """Internal method to get current tool dict (used by DynamicToolDict)."""
         all_tools = self.get_all_tools_for_search()

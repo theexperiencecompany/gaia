@@ -1,6 +1,5 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { isCategoricalAxis } from "recharts/types/util/ChartUtils";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations";
