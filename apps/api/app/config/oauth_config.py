@@ -445,7 +445,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_vloH3fnhIeUa",
             toolkit="TWITTER",
-            toolkit_version="20260107_00",
+            toolkit_version="20260130_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -686,7 +686,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ),
         metadata_config=ProviderMetadataConfig(
             user_info_tool="GITHUB_GET_THE_AUTHENTICATED_USER",
-            username_field="data.login",
+            username_field="login",
         ),
     ),
     OAuthIntegration(

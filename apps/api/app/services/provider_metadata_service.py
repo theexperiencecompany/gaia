@@ -80,7 +80,7 @@ async def fetch_provider_user_info(
 
         # Execute the tool to get user info
         result = await tool.ainvoke({})
-        data = result.data
+        data = result.get("data")
 
         logger.info(f"Fetched user info for {integration_id}: {type(data)}")
 
@@ -125,6 +125,7 @@ def extract_metadata_from_response(
 
     # Extract username (required)
     username = _extract_nested_field(response, config.username_field)
+    logger.info(response)
     if username:
         metadata["username"] = username
     else:
