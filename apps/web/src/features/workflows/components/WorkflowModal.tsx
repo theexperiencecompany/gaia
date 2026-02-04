@@ -47,6 +47,7 @@ import {
 } from "../schemas/workflowFormSchema";
 import { useWorkflowModalStore } from "../stores/workflowModalStore";
 import { useWorkflowsStore } from "../stores/workflowsStore";
+import { createDefaultTriggerConfig } from "../triggers";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
 import { ScheduleBuilder } from "./ScheduleBuilder";
@@ -268,30 +269,53 @@ export default function WorkflowModal({
             ? "trigger"
             : "manual";
 
-      const triggerConfig =
-        draftData.trigger_type === "scheduled"
-          ? {
-              type: "schedule" as const,
-              enabled: true,
-              cron_expression: draftData.cron_expression || "0 9 * * *",
-              timezone: "UTC",
-            }
-          : draftData.trigger_type === "integration"
-            ? {
-                type: draftData.trigger_slug || "integration",
-                enabled: true,
-                trigger_name: draftData.trigger_slug || "",
-              }
-            : {
-                type: "manual" as const,
-                enabled: true,
-              };
+      // Build trigger config based on trigger type
+      let triggerConfig: WorkflowFormData["trigger_config"];
+      let selectedTriggerValue = "";
+
+      if (draftData.trigger_type === "scheduled") {
+        triggerConfig = {
+          type: "schedule" as const,
+          enabled: true,
+          cron_expression: draftData.cron_expression || "0 9 * * *",
+          timezone: "UTC",
+        };
+      } else if (
+        draftData.trigger_type === "integration" &&
+        draftData.trigger_slug
+      ) {
+        // Use the trigger registry to create proper config for integration triggers
+        const defaultConfig = createDefaultTriggerConfig(
+          draftData.trigger_slug,
+        );
+        if (defaultConfig) {
+          triggerConfig = {
+            ...defaultConfig,
+            trigger_slug: draftData.trigger_slug,
+          };
+        } else {
+          // Fallback for triggers not in registry - extract base type from slug
+          triggerConfig = {
+            type: draftData.trigger_slug,
+            enabled: true,
+            trigger_name: draftData.trigger_slug,
+          };
+        }
+        selectedTriggerValue = draftData.trigger_slug;
+      } else {
+        triggerConfig = {
+          type: "manual" as const,
+          enabled: true,
+        };
+      }
 
       resetFormValues({
         title: draftData.suggested_title,
-        description: draftData.suggested_description,
+        // Use prompt for the workflow description (detailed instructions)
+        // Fall back to suggested_description for backwards compatibility
+        description: draftData.prompt || draftData.suggested_description,
         activeTab,
-        selectedTrigger: draftData.trigger_slug || "",
+        selectedTrigger: selectedTriggerValue,
         trigger_config: triggerConfig,
       });
       setIsActivated(true);

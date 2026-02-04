@@ -49,6 +49,7 @@ tool_fields = [
     "reddit_data",
     "twitter_user_data",
     "twitter_search_data",
+    "workflow_draft",
 ]
 
 

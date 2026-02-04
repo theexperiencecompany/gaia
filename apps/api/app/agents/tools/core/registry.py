@@ -228,13 +228,9 @@ class ToolRegistry:
             integration_name="goals",
             space="goals",
         )
-        self._add_category(
-            "workflows",
-            tools=workflow_tool.tools,
-            is_delegated=True,
-            integration_name="workflows",
-            space="workflows",
-        )
+
+        # General tools - directly accessible by executor
+        self._add_category("workflows", tools=workflow_tool.tools)
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)
         self._add_category("integrations", tools=integration_tool.tools)

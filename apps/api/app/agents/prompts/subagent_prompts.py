@@ -2782,7 +2782,8 @@ You MUST include a JSON block in EVERY response. Two types:
 {
     "type": "finalized",
     "title": "Workflow Title",
-    "description": "What this workflow does",
+    "description": "Short 1-2 sentence summary for UI display",
+    "prompt": "Detailed comprehensive instructions for the workflow execution...",
     "trigger_type": "manual|scheduled|integration",
     "cron_expression": "0 9 * * *",
     "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
@@ -2792,6 +2793,15 @@ You MUST include a JSON block in EVERY response. Two types:
 ```
 
 Fields:
+- description: SHORT (1-2 sentences) - displayed in cards/UI only
+- prompt: DETAILED and COMPREHENSIVE - this is what the AI uses to execute the workflow. Include:
+  • What data to gather and from where
+  • Specific actions to perform step by step
+  • Which integrations/tools to use
+  • Expected format of outputs
+  • Any conditions or edge cases to handle
+  • Context about the user's intent
+- steps: High-level step descriptions for preview
 - cron_expression: Required for scheduled, omit for others
 - trigger_slug: Required for integration, omit for others
 - direct_create: See below for when to use
@@ -2888,10 +2898,11 @@ I'll create that workflow for you.
 {
     "type": "finalized",
     "title": "Morning Email Summary",
-    "description": "Check Gmail every morning at 9am and summarize unread emails",
+    "description": "Daily Gmail summary at 9am",
+    "prompt": "Every morning at 9am, check my Gmail inbox for unread emails. For each unread email, extract the sender, subject, and a brief preview of the content. Group emails by importance (urgent, normal, low priority) based on sender and subject keywords. Create a concise summary with the total count of unread emails, list the most important ones first with sender and subject, and provide a brief overview of what needs attention. Format the output as a readable digest that I can quickly scan.",
     "trigger_type": "scheduled",
     "cron_expression": "0 9 * * *",
-    "steps": ["Get unread emails from Gmail", "Summarize email content", "Display summary"],
+    "steps": ["Get unread emails from Gmail", "Analyze and categorize by importance", "Generate formatted summary digest"],
     "direct_create": true
 }
 ```
@@ -2920,10 +2931,11 @@ I'll save this as a workflow that runs every morning.
 {
     "type": "finalized",
     "title": "Check and Reply to Emails",
-    "description": "Get unread emails, analyze content, and draft replies automatically",
+    "description": "Auto-analyze emails and draft replies daily",
+    "prompt": "Every morning, access my Gmail inbox and retrieve all unread emails. For each email: 1) Analyze the content to understand the sender's intent and any questions asked, 2) Determine if a reply is needed based on the content, 3) For emails requiring a response, draft a professional reply that addresses all points raised by the sender. Match my usual writing tone and style. Flag any emails that need my personal attention before sending. Organize drafts by priority.",
     "trigger_type": "scheduled",
     "cron_expression": "0 9 * * *",
-    "steps": ["Get unread emails", "Analyze content", "Draft replies"],
+    "steps": ["Get unread emails", "Analyze content and intent", "Draft appropriate replies"],
     "direct_create": true
 }
 ```
@@ -2956,10 +2968,11 @@ I found "New Email" from Gmail [Connected]. You can configure filters in the edi
 {
     "type": "finalized",
     "title": "Calendar Summary to Slack",
-    "description": "Summarize calendar events and post to Slack when a new email arrives",
+    "description": "Post calendar summary to Slack on new emails",
+    "prompt": "When a new email arrives in Gmail, retrieve my calendar events for today. Create a summary that includes: meeting times, attendees, and locations. Format this as a Slack message with clear sections for morning and afternoon events. Post the summary to my designated Slack channel. Include any conflicts or back-to-back meetings that need attention.",
     "trigger_type": "integration",
     "trigger_slug": "GMAIL_NEW_GMAIL_MESSAGE",
-    "steps": ["Get today's events", "Create summary", "Post to Slack"],
+    "steps": ["Get today's calendar events", "Create formatted summary", "Post to Slack channel"],
     "direct_create": true
 }
 ```

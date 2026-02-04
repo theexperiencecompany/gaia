@@ -14,6 +14,7 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.llm.client import init_llm
+from app.agents.tools import memory_tools
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
@@ -95,7 +96,11 @@ async def build_comms_graph(
     if chat_llm is None:
         chat_llm = init_llm()
 
-    tool_registry = {"call_executor": call_executor}
+    tool_registry = {
+        "call_executor": call_executor,
+        "add_memory": memory_tools.add_memory,
+        "search_memory": memory_tools.search_memory,
+    }
     store = await get_tools_store()
 
     builder = create_agent(
@@ -103,7 +108,7 @@ async def build_comms_graph(
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
-        initial_tool_ids=["call_executor"],
+        initial_tool_ids=["call_executor", "add_memory", "search_memory"],
         pre_model_hooks=[
             filter_messages_node,
             manage_system_prompts_node,

@@ -6,23 +6,16 @@ Provides tools for:
 - Creating workflows (new or from_conversation mode)
 - Managing workflows (list, get, execute)
 
-The workflow subagent uses structured JSON output which is parsed and streamed to frontend.
+The create_workflow tool invokes WorkflowSubagentRunner which handles
+the subagent execution and returns structured JSON for streaming.
 """
 
+from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from app.agents.prompts.workflow_prompts import (
-    WORKFLOW_CREATION_FROM_CONVERSATION_TASK_TEMPLATE,
-    WORKFLOW_CREATION_HINTS_TEMPLATE,
-    WORKFLOW_CREATION_NEW_TASK_TEMPLATE,
-    WORKFLOW_CREATION_RETRY_TEMPLATE,
-    WORKFLOW_CREATION_USER_REQUEST_TEMPLATE,
-)
 from app.config.loggers import general_logger as logger
 from app.decorators import with_rate_limiting
-from app.models.workflow_models import (
-    WorkflowExecutionRequest,
-)
+from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow import WorkflowService
 from app.services.workflow.context_extractor import WorkflowContextExtractor
 from app.services.workflow.subagent_output import parse_subagent_response
@@ -30,6 +23,8 @@ from app.services.workflow.trigger_search import TriggerSearchService
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
+
+# RESPONSE HELPERS
 
 
 def error_response(error_code: str, message: str) -> dict:
@@ -45,6 +40,9 @@ def success_response(data: Any, message: str | None = None) -> dict:
     return response
 
 
+# CONFIG HELPERS
+
+
 def get_user_id(config: RunnableConfig) -> str:
     """Extract user_id from config. Raises error if missing."""
     user_id = config.get("configurable", {}).get("user_id")
@@ -56,6 +54,20 @@ def get_user_id(config: RunnableConfig) -> str:
 def get_thread_id(config: RunnableConfig) -> str | None:
     """Extract thread_id from config."""
     return config.get("configurable", {}).get("thread_id")
+
+
+def get_user_time(config: RunnableConfig) -> datetime:
+    """Extract user_time from config or return current time."""
+    user_time_str = config.get("configurable", {}).get("user_time")
+    if user_time_str:
+        try:
+            return datetime.fromisoformat(user_time_str.replace("Z", "+00:00"))
+        except (ValueError, AttributeError):
+            pass
+    return datetime.now()
+
+
+# TRIGGER SEARCH TOOL
 
 
 @tool
@@ -81,7 +93,7 @@ async def search_triggers(
     - trigger_name: Human-readable name
     - description: What the trigger does
     - is_connected: Whether user has this integration connected
-    - config_fields: Configuration options for this trigger (IDs, filters, etc.)
+    - config_fields: Configuration options for this trigger
     """
     try:
         user_id = get_user_id(config)
@@ -92,7 +104,6 @@ async def search_triggers(
             limit=limit,
         )
 
-        # Format for display
         connected = [t for t in results if t.get("is_connected")]
         not_connected = [t for t in results if not t.get("is_connected")]
 
@@ -109,102 +120,84 @@ async def search_triggers(
         return error_response("search_failed", str(e))
 
 
+# WORKFLOW CREATION TOOL
+
+
 @tool
 @with_rate_limiting("workflow_operations")
 async def create_workflow(
     config: RunnableConfig,
-    workflow_request: Annotated[
-        str | None,
-        "Natural language description of the workflow. Required for type='new'.",
-    ] = None,
-    type: Annotated[
+    user_request: Annotated[
+        str,
+        "The user's exact words describing what workflow they want. Pass verbatim.",
+    ],
+    mode: Annotated[
         Literal["new", "from_conversation"],
-        "Type of workflow creation",
+        "Mode: 'new' for creating from description, 'from_conversation' to save current session as workflow",
     ] = "new",
-    # Optional hints - passed to subagent as suggestions
-    title: Annotated[str | None, "Suggested workflow title"] = None,
-    description: Annotated[str | None, "Suggested workflow description"] = None,
-    trigger_type: Annotated[
-        Literal["manual", "scheduled", "integration"] | None,
-        "Suggested trigger type",
-    ] = None,
-    trigger_slug: Annotated[str | None, "For integration triggers"] = None,
-    cron_expression: Annotated[str | None, "For scheduled triggers"] = None,
-    steps: Annotated[list[str] | None, "Suggested step descriptions"] = None,
 ) -> dict:
     """
-    Create a workflow. Delegates to the specialized workflow subagent for refinement.
+    Start workflow creation. Delegates to the workflow assistant.
 
-    WHEN TO USE:
-    - User wants to create a new workflow: type="new" with workflow_request
-    - User wants to save current conversation as workflow: type="from_conversation"
+    IMPORTANT: Pass the user's request EXACTLY as stated. Do not interpret,
+    parse schedules, extract steps, or determine trigger types yourself.
 
-    PARAMETERS:
+    MODES:
+    - mode="new": User wants to create a workflow from a description
+    - mode="from_conversation": User wants to save current session as a reusable workflow
 
-    type="new" (create from description):
-      - workflow_request: REQUIRED - describe what workflow to create
-        Example: "Check my emails every morning and summarize them"
-      - Other parameters are optional hints
-
-    type="from_conversation" (save session as workflow):
-      - workflow_request: Optional - additional context from user
-      - Extracts steps from current conversation automatically
-      - Other parameters are optional hints
-
-    Optional hint parameters (title, trigger_type, etc.) are passed to the workflow
-    subagent as suggestions. The subagent may refine or override them based on user input.
+    The workflow assistant will handle everything:
+    - Understanding user intent
+    - Searching for triggers (scheduled, integration-based)
+    - Asking clarifying questions when needed
+    - Creating the workflow draft for user confirmation
 
     EXAMPLES:
 
-    Create a scheduled workflow:
-      create_workflow(
-        type="new",
-        workflow_request="Check my Gmail every morning at 9am and summarize unread emails"
-      )
+    User: "Create a workflow that checks my email every morning"
+    -> create_workflow(user_request="checks my email every morning", mode="new")
 
-    Create with hints:
-      create_workflow(
-        type="new",
-        workflow_request="Post to Slack when I get important emails",
-        trigger_type="integration"
-      )
+    User: "I want a workflow that notifies me on Slack when I get a GitHub PR"
+    -> create_workflow(user_request="notifies me on Slack when I get a GitHub PR", mode="new")
 
-    Save conversation as workflow:
-      create_workflow(type="from_conversation")
+    User: "Save this as a workflow"
+    -> create_workflow(user_request="save this as a workflow", mode="from_conversation")
 
-    Save with user's trigger preference:
-      create_workflow(
-        type="from_conversation",
-        workflow_request="make it run every Monday"
-      )
+    User: "Turn what we just did into an automation that runs every Monday"
+    -> create_workflow(user_request="runs every Monday", mode="from_conversation")
+
+    DO NOT:
+    - Parse cron expressions
+    - Extract or guess step descriptions
+    - Determine trigger types (manual/scheduled/integration)
+    - Generate titles or descriptions
+    - Fill in any other parameters
+
+    Just pass user_request and mode. The workflow assistant handles everything else.
     """
-    from pydantic import ValidationError
+    from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
 
     writer = get_stream_writer()
-    user_id = get_user_id(config)
 
-    # Validate parameters
-    if type == "new":
-        if not workflow_request or not workflow_request.strip():
-            return error_response(
-                "missing_request",
-                "workflow_request is required for type='new'. Describe what workflow to create.",
-            )
-        task_description = _build_new_workflow_task(
-            workflow_request=workflow_request.strip(),
-            title=title,
-            description=description,
-            trigger_type=trigger_type,
-            trigger_slug=trigger_slug,
-            cron_expression=cron_expression,
-            steps=steps,
-        )
-    elif type == "from_conversation":
-        thread_id = get_thread_id(config)
-        if not thread_id:
-            return error_response("no_context", "No conversation context available")
+    try:
+        user_id = get_user_id(config)
+        thread_id = get_thread_id(config) or ""
+        user_name = config.get("configurable", {}).get("user_name")
+        user_time = get_user_time(config)
 
-        try:
+        # Build task description based on mode
+        if mode == "new":
+            if not user_request or not user_request.strip():
+                return error_response(
+                    "missing_request",
+                    "user_request is required. Pass the user's words describing what workflow they want.",
+                )
+            task_description = _build_new_workflow_task(user_request.strip())
+
+        elif mode == "from_conversation":
+            if not thread_id:
+                return error_response("no_context", "No conversation context available")
+
             context = await WorkflowContextExtractor.extract_from_thread(
                 thread_id, user_id
             )
@@ -212,300 +205,131 @@ async def create_workflow(
             if not context or not context.workflow_steps:
                 return error_response(
                     "extraction_failed",
-                    "Could not extract workflow steps from conversation",
+                    "Could not extract workflow steps from conversation. Try describing what you want instead.",
                 )
 
-            task_description = _build_from_conversation_task(
-                context=context,
-                workflow_request=workflow_request,
-                title=title,
-                description=description,
-                trigger_type=trigger_type,
-                trigger_slug=trigger_slug,
-                cron_expression=cron_expression,
-                steps=steps,
+            task_description = _build_from_conversation_task(context, user_request)
+        else:
+            return error_response(
+                "invalid_mode",
+                f"Unknown mode: {mode}. Use 'new' or 'from_conversation'.",
             )
 
-        except ValidationError as e:
-            logger.error(f"Validation error: {e}")
-            return error_response("validation_failed", str(e))
-        except Exception as e:
-            logger.error(f"Error extracting context: {e}")
-            return error_response("extraction_failed", str(e))
-    else:
-        return error_response("invalid_type", f"Unknown type: {type}")
+        logger.info(f"[create_workflow] Executing with mode={mode}")
 
-    # Hand off to workflow subagent with retry logic
-    try:
-        from app.agents.core.subagents.handoff_tools import handoff
-
-        max_retries = 2
-        last_error = None
-
-        for attempt in range(max_retries + 1):
-            if attempt == 0:
-                current_task = task_description
-            else:
-                # Retry with error correction message from template
-                current_task = WORKFLOW_CREATION_RETRY_TEMPLATE.format(
-                    error=last_error,
-                    original_task=task_description,
-                )
-
-            handoff_result = await handoff.ainvoke(
-                {
-                    "subagent_id": "workflows",
-                    "task": current_task,
-                },
-                config,
-            )
-
-            # Parse the subagent response
-            parsed_output = parse_subagent_response(handoff_result)
-
-            if parsed_output.mode == "parse_error":
-                last_error = parsed_output.parse_error
-                logger.warning(
-                    f"Workflow subagent JSON parse error (attempt {attempt + 1}): {last_error}"
-                )
-                if attempt < max_retries:
-                    continue
-                else:
-                    # Max retries reached
-                    return success_response(
-                        {
-                            "status": "clarifying",
-                            "type": type,
-                            "parse_error": last_error,
-                        },
-                        "Workflow assistant encountered a formatting issue. Please try again.",
-                    )
-
-            elif parsed_output.mode == "finalized" and parsed_output.draft:
-                # Subagent finalized the workflow - stream the draft
-                writer(parsed_output.draft.to_stream_payload())
-
-                return success_response(
-                    {
-                        "status": "draft_sent",
-                        "type": type,
-                        "finalized": True,
-                        "title": parsed_output.draft.title,
-                        "direct_create": parsed_output.draft.direct_create,
-                    },
-                    "Workflow draft sent to user for confirmation in the editor.",
-                )
-
-            else:
-                # Subagent is asking clarifying questions
-                # The handoff already streamed the response to the user
-                return success_response(
-                    {
-                        "status": "clarifying",
-                        "type": type,
-                    },
-                    "Workflow assistant is helping the user refine the workflow.",
-                )
-
-        # Should not reach here
-        return success_response(
-            {"status": "clarifying", "type": type},
-            "Workflow assistant is helping the user refine the workflow.",
+        # Execute workflow subagent
+        subagent_response = await WorkflowSubagentRunner.execute(
+            task=task_description,
+            user_id=user_id,
+            thread_id=thread_id,
+            user_name=user_name,
+            user_time=user_time,
+            stream_writer=writer,
         )
 
+        # Parse the response
+        result = parse_subagent_response(subagent_response)
+        logger.info(f"[create_workflow] Parsed mode={result.mode}")
+
+        if result.mode == "finalized" and result.draft:
+            # Stream workflow draft to frontend
+            writer(result.draft.to_stream_payload())
+            logger.info(f"[create_workflow] Streamed draft: {result.draft.title}")
+
+            return success_response(
+                {"status": "draft_sent", "mode": mode},
+                "Workflow draft sent to user for confirmation.",
+            )
+
+        elif result.mode == "clarifying":
+            # Subagent asked a question - response already streamed
+            return success_response(
+                {"status": "clarifying", "mode": mode},
+                "Workflow assistant is gathering more information.",
+            )
+
+        elif result.mode == "parse_error":
+            logger.warning(f"[create_workflow] Parse error: {result.parse_error}")
+            return success_response(
+                {"status": "conversation", "mode": mode},
+                "Workflow assistant responded.",
+            )
+
+        else:
+            return success_response(
+                {"status": "completed", "mode": mode},
+                "Workflow creation completed.",
+            )
+
     except Exception as e:
-        logger.error(f"Error in create_workflow: {e}")
-        return error_response("handoff_failed", str(e))
+        logger.error(f"[create_workflow] Exception: {e}", exc_info=True)
+        return error_response("subagent_failed", str(e))
 
 
-def _build_new_workflow_task(
-    workflow_request: str,
-    title: str | None = None,
-    description: str | None = None,
-    trigger_type: str | None = None,
-    trigger_slug: str | None = None,
-    cron_expression: str | None = None,
-    steps: list[str] | None = None,
-) -> str:
+# TASK BUILDERS
+
+
+def _build_new_workflow_task(user_request: str) -> str:
     """Build task description for a new workflow from natural language request."""
-    # Build hints section if any hints provided
-    hints = _build_hints_list(
-        title=title,
-        description=description,
-        trigger_type=trigger_type,
-        trigger_slug=trigger_slug,
-        cron_expression=cron_expression,
-        steps=steps,
-    )
+    return f"""Create a workflow based on this user request:
 
-    hints_section = ""
-    if hints:
-        hints_section = WORKFLOW_CREATION_HINTS_TEMPLATE.format(hints="\n".join(hints))
+"{user_request}"
 
-    return WORKFLOW_CREATION_NEW_TASK_TEMPLATE.format(
-        workflow_request=workflow_request,
-        hints_section=hints_section,
-    )
+Your job:
+1. Understand what the user wants
+2. If the trigger is event-based (new email, PR created, etc.), call search_triggers to find the right trigger_slug
+3. If anything is unclear, ask ONE clarifying question
+4. When you have everything, output the finalized workflow JSON
+
+Remember to include a JSON block in your response."""
 
 
-def _build_from_conversation_task(
-    context,
-    workflow_request: str | None = None,
-    title: str | None = None,
-    description: str | None = None,
-    trigger_type: str | None = None,
-    trigger_slug: str | None = None,
-    cron_expression: str | None = None,
-    steps: list[str] | None = None,
-) -> str:
+def _build_from_conversation_task(context, user_request: str | None = None) -> str:
     """Build task description for workflow extracted from conversation."""
-    # Format steps from context
     steps_text = "\n".join(
         f"- {step.get('title', step)}" if isinstance(step, dict) else f"- {step}"
         for step in context.workflow_steps
     )
 
-    # Build user request section
-    user_request_section = ""
-    if workflow_request:
-        user_request_section = WORKFLOW_CREATION_USER_REQUEST_TEMPLATE.format(
-            workflow_request=workflow_request
-        )
-
-    # Build hints section
-    hints = _build_hints_list(
-        title=title,
-        description=description,
-        trigger_type=trigger_type,
-        trigger_slug=trigger_slug,
-        cron_expression=cron_expression,
-        steps=steps,
-        is_override=True,
+    integrations = (
+        ", ".join(context.integrations_used) if context.integrations_used else "None"
     )
 
-    hints_section = ""
-    if hints:
-        hints_section = WORKFLOW_CREATION_HINTS_TEMPLATE.format(hints="\n".join(hints))
+    user_instruction = ""
+    if user_request and user_request.strip():
+        user_instruction = f'\n\nUser also said: "{user_request.strip()}"'
 
-    return WORKFLOW_CREATION_FROM_CONVERSATION_TASK_TEMPLATE.format(
-        suggested_title=context.suggested_title,
-        summary=context.summary,
-        steps_text=steps_text,
-        integrations_used=", ".join(context.integrations_used)
-        if context.integrations_used
-        else "None",
-        user_request_section=user_request_section,
-        hints_section=hints_section,
-    )
+    return f"""Save this conversation as a workflow.
 
+Suggested title: {context.suggested_title}
+Summary: {context.summary}
+Integrations used: {integrations}
 
-def _build_hints_list(
-    title: str | None = None,
-    description: str | None = None,
-    trigger_type: str | None = None,
-    trigger_slug: str | None = None,
-    cron_expression: str | None = None,
-    steps: list[str] | None = None,
-    is_override: bool = False,
-) -> list[str]:
-    """Build list of hint strings from optional parameters."""
-    hints = []
-    prefix = " override" if is_override else ""
+Steps performed:
+{steps_text}
+{user_instruction}
 
-    if title:
-        hints.append(f"- Suggested title{prefix}: {title}")
-    if description:
-        hints.append(f"- Suggested description: {description}")
-    if trigger_type:
-        hints.append(f"- Suggested trigger type: {trigger_type}")
-    if trigger_slug:
-        hints.append(f"- Suggested trigger slug: {trigger_slug}")
-    if cron_expression:
-        hints.append(f"- Suggested schedule: {cron_expression}")
-    if steps:
-        hints.append(f"- Suggested steps{prefix}: {', '.join(steps)}")
+Your job:
+1. Use the extracted steps as the workflow steps
+2. If the trigger is event-based, call search_triggers to find the right trigger_slug
+3. If the user mentioned a schedule (e.g., "every Monday"), use scheduled trigger
+4. If nothing is specified about when to run, ask the user
+5. Output the finalized workflow JSON
 
-    return hints
+Remember to include a JSON block in your response."""
 
 
-@tool
-async def finalize_workflow(
-    config: RunnableConfig,
-    title: Annotated[str, "Workflow title"],
-    description: Annotated[str, "Workflow description"],
-    trigger_type: Annotated[
-        Literal["manual", "scheduled", "integration"],
-        "Trigger type: manual, scheduled, or integration",
-    ] = "manual",
-    trigger_slug: Annotated[
-        str | None,
-        "For integration triggers: the trigger_slug",
-    ] = None,
-    cron_expression: Annotated[
-        str | None,
-        "For scheduled triggers: cron expression",
-    ] = None,
-    steps: Annotated[
-        list[str] | None,
-        "List of step descriptions in natural language",
-    ] = None,
-) -> dict:
-    """
-    Finalize workflow draft and send to user for confirmation.
-
-    Use this after discussing the workflow details with the user.
-    This writes the draft to the stream, which opens the workflow editor
-    in the frontend for final confirmation.
-
-    The user will be able to:
-    - Review and edit the title/description
-    - Fill in trigger configuration IDs (calendar IDs, channel IDs, etc.)
-    - Confirm to create the workflow
-    """
-    writer = get_stream_writer()
-    _ = get_user_id(config)
-
-    # Validate
-    if trigger_type == "scheduled" and not cron_expression:
-        return error_response(
-            "missing_cron", "cron_expression required for scheduled trigger"
-        )
-    if trigger_type == "integration" and not trigger_slug:
-        return error_response(
-            "missing_trigger", "trigger_slug required for integration trigger"
-        )
-
-    # Write draft to stream
-    writer(
-        {
-            "workflow_draft": {
-                "suggested_title": title,
-                "suggested_description": description,
-                "trigger_type": trigger_type,
-                "trigger_slug": trigger_slug,
-                "cron_expression": cron_expression,
-                "steps": steps or [],
-            }
-        }
-    )
-
-    return success_response(
-        {"status": "draft_sent"},
-        "Workflow draft sent to user. They can now review and confirm in the editor.",
-    )
+# WORKFLOW MANAGEMENT TOOLS
 
 
 @tool
 @with_rate_limiting("workflow_operations")
-async def list_workflows(
-    config: RunnableConfig,
-) -> dict:
+async def list_workflows(config: RunnableConfig) -> dict:
     """List all workflows for the current user."""
     try:
         user_id = get_user_id(config)
         workflows = await WorkflowService.list_workflows(user_id)
 
-        # Return summarized view
         workflow_summaries = [
             {
                 "id": w.id,
@@ -533,10 +357,7 @@ async def list_workflows(
         )
 
         return success_response(
-            {
-                "workflows": workflow_summaries,
-                "total": len(workflows),
-            }
+            {"workflows": workflow_summaries, "total": len(workflows)}
         )
 
     except Exception as e:
@@ -596,7 +417,9 @@ async def execute_workflow(
         return error_response("execution_failed", str(e))
 
 
-# Tools for the executor (main agent)
+# TOOL EXPORTS
+
+# Tools for the executor (main agent) - directly accessible
 EXECUTOR_WORKFLOW_TOOLS = [
     search_triggers,
     create_workflow,
@@ -605,13 +428,11 @@ EXECUTOR_WORKFLOW_TOOLS = [
     execute_workflow,
 ]
 
-# Tools for the workflow subagent
-# Note: finalize_workflow removed - subagent now uses structured JSON output
-# which is parsed by create_workflow and streamed to frontend
+# Tools for the workflow subagent - used by WorkflowSubagentRunner
 SUBAGENT_WORKFLOW_TOOLS = [
     search_triggers,
     list_workflows,
 ]
 
-# Legacy export for backwards compatibility
+# Default export for registry
 tools = EXECUTOR_WORKFLOW_TOOLS

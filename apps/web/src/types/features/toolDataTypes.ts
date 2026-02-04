@@ -174,8 +174,10 @@ export type GoogleDocsData = {
 export type WorkflowDraftData = {
   /** Suggested title for the workflow */
   suggested_title: string;
-  /** Suggested description for the workflow */
+  /** Short description for display in cards/UI (1-2 sentences) */
   suggested_description: string;
+  /** Detailed prompt/instructions for the workflow execution */
+  prompt: string;
   /** Trigger type: manual, scheduled, or integration */
   trigger_type: "manual" | "scheduled" | "integration";
   /** Trigger slug for integration triggers (e.g., GMAIL_NEW_GMAIL_MESSAGE) */

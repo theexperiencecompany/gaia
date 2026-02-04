@@ -12,6 +12,7 @@ from app.agents.templates.agent_template import (
     COMMS_PROMPT_TEMPLATE,
     EXECUTOR_PROMPT_TEMPLATE,
 )
+from app.config.constants import GAIA_MEM0_AGENT_ID
 from app.config.loggers import llm_logger as logger
 from app.models.message_models import (
     FileData,
@@ -116,8 +117,26 @@ async def get_memory_message(
         except Exception as e:
             logger.warning(f"Error retrieving memories: {e}")
 
+        # Search for agent memories (Gaia's self-knowledge)
+        agent_memories_section = ""
+        try:
+            if GAIA_MEM0_AGENT_ID:
+                if agent_results := await memory_service.search_agent_memories(
+                    query=query, agent_id=GAIA_MEM0_AGENT_ID, limit=5
+                ):
+                    if agent_memories := getattr(agent_results, "memories", None):
+                        agent_memories_section = (
+                            "\n\nAbout Gaia (your identity and capabilities):\n"
+                            + "\n".join(f"- {mem.content}" for mem in agent_memories)
+                        )
+                        logger.info(
+                            f"Added {len(agent_memories)} agent memories to context"
+                        )
+        except Exception as e:
+            logger.warning(f"Error retrieving agent memories: {e}")
+
         # Combine all sections
-        content = "\n".join(context_parts) + memories_section
+        content = "\n".join(context_parts) + memories_section + agent_memories_section
         return SystemMessage(content=content, memory_message=True)
 
     except Exception as e:

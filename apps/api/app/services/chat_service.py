@@ -242,7 +242,7 @@ async def run_chat_stream_background(
         # Cleanup Redis
         await stream_manager.cleanup(stream_id)
 
-        logger.info(f"Background stream {stream_id} completed and saved")
+        logger.debug(f"Background stream {stream_id} completed and saved")
 
 
 async def _initialize_new_conversation(

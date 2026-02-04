@@ -73,7 +73,6 @@ from app.agents.prompts.subagent_prompts import (
     TODOIST_AGENT_SYSTEM_PROMPT,
     TRELLO_AGENT_SYSTEM_PROMPT,
     TWITTER_AGENT_SYSTEM_PROMPT,
-    WORKFLOW_AGENT_SYSTEM_PROMPT,
 )
 from app.constants.mcp import INSTACART_MCP_SERVER_URL, YELP_MCP_SERVER_URL
 from app.langchain.core.subgraphs.github_subgraph import GITHUB_TOOLS
@@ -345,31 +344,6 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_direct_tools=True,
             disable_retrieve_tools=True,
             memory_prompt=GOALS_MEMORY_PROMPT,
-        ),
-    ),
-    # Internal Workflows System (no OAuth required)
-    OAuthIntegration(
-        id="workflows",
-        name="Workflows",
-        description="Create and manage automated workflows from completed tasks",
-        category="productivity",
-        provider="workflows",
-        scopes=[],
-        available=True,
-        is_featured=False,
-        short_name="workflows",
-        managed_by="internal",
-        subagent_config=SubAgentConfig(
-            has_subagent=True,
-            agent_name="workflow_agent",
-            tool_space="workflows",
-            handoff_tool_name="call_workflow_agent",
-            domain="workflow creation and automation management",
-            capabilities="creating workflows from completed tasks or descriptions, configuring triggers (manual, schedule, integration-based), searching for triggers, and managing automations",
-            use_cases="saving completed tasks as reusable workflows, creating scheduled automations, setting up event-triggered workflows, or managing existing automations",
-            system_prompt=WORKFLOW_AGENT_SYSTEM_PROMPT,
-            use_direct_tools=True,
-            disable_retrieve_tools=True,
         ),
     ),
     OAuthIntegration(
