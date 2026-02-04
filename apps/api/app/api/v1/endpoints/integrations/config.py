@@ -61,7 +61,15 @@ async def disconnect_integration_endpoint(
     try:
         return await disconnect_integration(user_id, integration_id)
     except ValueError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+        error_message = str(e)
+        # Only return 404 if the integration itself doesn't exist
+        if (
+            "not found" in error_message.lower()
+            and "account" not in error_message.lower()
+        ):
+            raise HTTPException(status_code=404, detail=error_message)
+        # For "no active connected account" or other cases, return 400
+        raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
         logger.error(f"Error disconnecting {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to disconnect integration")

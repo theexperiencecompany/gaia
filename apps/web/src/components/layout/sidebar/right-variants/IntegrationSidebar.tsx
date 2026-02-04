@@ -491,6 +491,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         confirmText="Disconnect"
         cancelText="Cancel"
         variant="destructive"
+        isLoading={isDisconnecting}
         onConfirm={confirmDisconnect}
         onCancel={() => setShowDisconnectDialog(false)}
       />
@@ -502,6 +503,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         confirmText={deleteDialogConfirmText}
         cancelText="Cancel"
         variant="destructive"
+        isLoading={isDeleting}
         onConfirm={confirmDelete}
         onCancel={() => setShowDeleteDialog(false)}
       />

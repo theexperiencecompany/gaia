@@ -312,9 +312,14 @@ class ComposioService:
             ]
 
             if not active_accounts:
-                raise ValueError(
-                    f"No active connected account found for provider '{provider}' and user '{user_id}'"
+                # No active account to delete - treat as success (idempotent disconnect)
+                logger.info(
+                    f"No active connected account found for {provider} and user {user_id}, nothing to delete"
                 )
+                return {
+                    "status": "success",
+                    "message": f"No active account found for {provider} - already disconnected",
+                }
 
             delete_tasks = []
             for account in active_accounts:

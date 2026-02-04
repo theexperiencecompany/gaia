@@ -314,9 +314,10 @@ async def _invalidate_caches(
         # MCP integrations: record already deleted in main disconnect logic
         logger.info(f"MCP integration {integration_id} record removed")
     else:
-        # Check if it's a platform integration
+        # Check if it's a platform integration (defined in oauth_config.py)
+        # If get_integration_by_id returns a value, it's a platform integration
         platform_integration = get_integration_by_id(integration_id)
-        if platform_integration and platform_integration.source == "platform":
+        if platform_integration:
             # Platform integrations: delete the record entirely
             try:
                 await remove_user_integration(user_id, integration_id)
