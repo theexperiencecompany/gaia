@@ -70,7 +70,12 @@ class MCPTokenStore:
     async def get_bearer_token(self, integration_id: str) -> Optional[str]:
         """Get decrypted bearer token."""
         cred = await self.get_credential(integration_id)
-        if cred and cred.access_token and cred.status == MCPCredentialStatus.CONNECTED:
+        if (
+            cred
+            and cred.access_token
+            and cred.status == MCPCredentialStatus.CONNECTED
+            and cred.auth_type == MCPAuthType.BEARER
+        ):
             return self._decrypt(cred.access_token)
         return None
 

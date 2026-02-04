@@ -8,7 +8,11 @@ import redis
 from mcp_use.exceptions import OAuthAuthenticationError
 
 from app.config.loggers import auth_logger as logger
-from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_scopes
+from app.config.oauth_config import (
+    OAUTH_INTEGRATIONS,
+    get_integration_by_id,
+    get_integration_scopes,
+)
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
@@ -305,9 +309,26 @@ async def _invalidate_caches(
     except redis.RedisError as e:
         logger.warning(f"Failed to invalidate OAuth status cache: {e}")
 
-    if managed_by != "mcp":
-        try:
-            await update_user_integration_status(user_id, integration_id, "created")
-            logger.info(f"Updated status to 'created' for {integration_id}")
-        except pymongo.errors.PyMongoError as e:
-            logger.warning(f"Failed to update status: {e}")
+    # Determine whether to delete record or set status to "created"
+    if managed_by == "mcp":
+        # MCP integrations: record already deleted in main disconnect logic
+        logger.info(f"MCP integration {integration_id} record removed")
+    else:
+        # Check if it's a platform integration
+        platform_integration = get_integration_by_id(integration_id)
+        if platform_integration and platform_integration.source == "platform":
+            # Platform integrations: delete the record entirely
+            try:
+                await remove_user_integration(user_id, integration_id)
+                logger.info(f"Removed platform integration {integration_id} record")
+            except pymongo.errors.PyMongoError as e:
+                logger.warning(f"Failed to remove integration record: {e}")
+        else:
+            # Custom integrations: preserve in workspace by setting status to "created"
+            try:
+                await update_user_integration_status(user_id, integration_id, "created")
+                logger.info(
+                    f"Updated status to 'created' for custom integration {integration_id}"
+                )
+            except pymongo.errors.PyMongoError as e:
+                logger.warning(f"Failed to update status: {e}")

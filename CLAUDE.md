@@ -276,6 +276,10 @@ nx docker:build api
 nx docker:build voice-agent
 ```
 
+## Implementation Plans
+
+When creating implementation plans, store them in `.agents/plans/` directory. This folder is gitignored and used for planning documents before execution.
+
 ## Common Issues
 
 - If Python dependencies are not resolving, run `nx run api:sync` or `nx run voice-agent:sync`

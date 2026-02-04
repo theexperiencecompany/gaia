@@ -22,6 +22,7 @@ import base64
 import re
 import secrets
 import time
+import traceback
 import urllib.parse
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -73,7 +74,7 @@ from app.utils.mcp_utils import (
 )
 from langchain_core.tools import BaseTool
 from mcp_use import MCPClient as BaseMCPClient
-from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
+from app.services.mcp.resilient_adapter import ResilientLangChainAdapter
 
 
 class DCRNotSupportedException(Exception):
@@ -114,6 +115,20 @@ class MCPClient:
         self.token_store = MCPTokenStore(user_id)
         self._clients: dict[str, BaseMCPClient] = {}
         self._tools: dict[str, list[BaseTool]] = {}
+
+    def _sanitize_config(self, config: dict) -> dict:
+        """Sanitize config for logging by removing sensitive data."""
+        sanitized = {}
+        for server_id, server_config in config.get("mcpServers", {}).items():
+            sanitized_server = {
+                "url": server_config.get("url"),
+                "transport": server_config.get("transport"),
+                "has_auth": "auth" in server_config
+                and server_config["auth"] is not None,
+                "has_headers": "headers" in server_config,
+            }
+            sanitized[server_id] = sanitized_server
+        return {"mcpServers": sanitized}
 
     async def probe_connection(self, server_url: str) -> dict:
         """Probe an MCP server to determine auth requirements."""
@@ -254,11 +269,27 @@ class MCPClient:
         config = await self._build_config(integration_id, mcp_config)
 
         try:
-            client = BaseMCPClient(config)
-            await client.create_session(integration_id)
+            logger.info(
+                f"[{integration_id}] Starting connection to MCP server. Config: {self._sanitize_config(config)}"
+            )
 
-            adapter = SanitizingLangChainAdapter()
+            logger.info(f"[{integration_id}] Creating BaseMCPClient instance")
+            client = BaseMCPClient(config)
+
+            logger.info(
+                f"[{integration_id}] Creating session with integration_id={integration_id}"
+            )
+            await client.create_session(integration_id)
+            logger.info(f"[{integration_id}] Session created successfully")
+
+            # Use resilient adapter that handles invalid schemas gracefully
+            # It will skip tools with bad schemas and return the ones that work
+            adapter = ResilientLangChainAdapter()
+            logger.info(f"[{integration_id}] Converting MCP tools to LangChain format")
             raw_tools = await adapter.create_tools(client)
+            logger.info(
+                f"[{integration_id}] Successfully converted {len(raw_tools)} tools to LangChain format"
+            )
 
             # CRITICAL: Wrap tools to filter None values before MCP invocation.
             # MCP servers expect optional params to be OMITTED, not sent as null.
@@ -326,6 +357,15 @@ class MCPClient:
 
         except Exception as e:
             error_str = str(e).lower()
+
+            # Log comprehensive error details for debugging
+            logger.error(
+                f"[{integration_id}] Connection failed with exception:\n"
+                f"  Error type: {type(e).__name__}\n"
+                f"  Error message: {str(e)}\n"
+                f"  Error repr: {repr(e)}\n"
+                f"  Traceback:\n{traceback.format_exc()}"
+            )
 
             # Check for 403 insufficient_scope per MCP spec
             # This indicates step-up authorization is needed
@@ -562,7 +602,7 @@ class MCPClient:
                 response = await http_client.post(
                     registration_endpoint,
                     json={
-                        "client_name": "GAIA AI Assistant",
+                        "client_name": "GAIA",
                         "redirect_uris": [redirect_uri],
                         "grant_types": ["authorization_code", "refresh_token"],
                         "response_types": ["code"],
@@ -725,25 +765,45 @@ class MCPClient:
         # Handle refresh token rotation (new refresh_token may be issued)
         new_refresh_token = tokens.get("refresh_token")
 
+        logger.info(
+            f"[{integration_id}] OAuth callback - token exchange successful. "
+            f"access_token length={len(access_token)}, "
+            f"has_refresh_token={new_refresh_token is not None}, "
+            f"expires_at={expires_at}"
+        )
+
         # Store tokens
+        logger.info(f"[{integration_id}] Storing OAuth tokens to PostgreSQL")
         await self.token_store.store_oauth_tokens(
             integration_id=integration_id,
             access_token=access_token,
             refresh_token=new_refresh_token,
             expires_at=expires_at,
         )
+        logger.info(
+            f"[{integration_id}] Tokens stored successfully with status=connected"
+        )
 
         # Connect using the newly obtained tokens
         # If connection fails, clean up stored tokens to prevent stuck state
+        logger.info(f"[{integration_id}] Attempting connection with stored tokens")
         try:
-            return await self.connect(integration_id)
+            tools = await self.connect(integration_id)
+            logger.info(
+                f"[{integration_id}] Connection succeeded after OAuth callback, got {len(tools)} tools"
+            )
+            return tools
         except Exception as e:
             is_auth_error = "401" in str(e) or "authentication" in str(e).lower()
             logger.error(
-                f"Connection failed after token storage for {integration_id}: {e}. "
-                f"Auth error: {is_auth_error}. "
-                f"This may indicate mcp-use is ignoring our stored token. "
-                "Rolling back tokens to prevent stuck state."
+                f"[{integration_id}] Connection failed after token storage:\n"
+                f"  Error type: {type(e).__name__}\n"
+                f"  Error message: {str(e)}\n"
+                f"  Error repr: {repr(e)}\n"
+                f"  Is auth error: {is_auth_error}\n"
+                f"  This may indicate mcp-use is ignoring our stored token.\n"
+                f"  Rolling back tokens to prevent stuck state.\n"
+                f"  Traceback:\n{traceback.format_exc()}"
             )
             # Delete the tokens we just stored since connection failed
             await self.token_store.delete_credentials(integration_id)
