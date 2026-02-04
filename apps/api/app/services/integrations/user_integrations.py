@@ -10,6 +10,7 @@ from app.db.mongodb.collections import user_integrations_collection
 from app.db.utils import serialize_document
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
+    IntegrationTool,
     UserIntegration,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
@@ -183,10 +184,14 @@ async def get_user_integration_capabilities(user_id: str) -> Dict[str, Any]:
 
         # Extract tool names and descriptions
         tools_info = []
-        for tool in integration.tools:
-            tool_names_set.add(tool.name)
+        integration_tool: IntegrationTool
+        for integration_tool in integration.tools:
+            tool_names_set.add(integration_tool.name)
             tools_info.append(
-                {"name": tool.name, "description": tool.description or ""}
+                {
+                    "name": integration_tool.name,
+                    "description": integration_tool.description or "",
+                }
             )
 
         if tools_info:
