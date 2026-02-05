@@ -285,6 +285,11 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           id: toastId,
         });
         await queryClient.refetchQueries({ queryKey: ["integrations"] });
+
+        if (typeof window !== "undefined") {
+          // Navigate to marketplace with refresh parameter to show published integration
+          window.location.href = "/marketplace?refresh=true";
+        }
       } catch (error) {
         toast.error(
           `Failed to publish: ${error instanceof Error ? error.message : "Unknown error"}`,

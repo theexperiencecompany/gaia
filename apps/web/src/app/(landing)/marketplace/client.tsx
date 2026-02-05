@@ -30,6 +30,7 @@ export function IntegrationsPageClient() {
     sort: "popular",
   });
   const isInitialMount = useRef(true);
+  const hasRefreshed = useRef(false);
 
   const totalPages = useMemo(() => Math.ceil(total / ITEMS_PER_PAGE), [total]);
 
@@ -59,6 +60,20 @@ export function IntegrationsPageClient() {
     },
     [filters],
   );
+
+  // Check for refresh query parameter and force reload if present
+  useEffect(() => {
+    if (typeof window !== "undefined" && !hasRefreshed.current) {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("refresh") === "true") {
+        hasRefreshed.current = true;
+        // Force a fresh load to show newly published integration
+        loadIntegrations(1, false);
+        // Clean up the URL
+        window.history.replaceState({}, "", "/marketplace");
+      }
+    }
+  }, [loadIntegrations]);
 
   // Load when filters change - reset to page 1
   useEffect(() => {
