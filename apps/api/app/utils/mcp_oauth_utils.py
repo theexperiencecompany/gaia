@@ -677,12 +677,19 @@ def validate_jwt_issuer(
 
         token_issuer = payload.get("iss")
 
-        if token_issuer and token_issuer != expected_issuer:
-            logger.warning(
-                f"JWT issuer mismatch for {integration_id}: "
-                f"expected '{expected_issuer}', got '{token_issuer}'"
-            )
-            return False
+        # Normalize URLs by removing trailing slashes for comparison
+        # Per OAuth 2.0 spec, issuer URLs should be compared case-sensitively
+        # but trailing slashes should be normalized
+        if token_issuer:
+            normalized_token = token_issuer.rstrip("/")
+            normalized_expected = expected_issuer.rstrip("/")
+
+            if normalized_token != normalized_expected:
+                logger.warning(
+                    f"JWT issuer mismatch for {integration_id}: "
+                    f"expected '{expected_issuer}', got '{token_issuer}'"
+                )
+                return False
 
         return True
 
