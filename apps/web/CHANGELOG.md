@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.15.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.14.0...web-v0.15.0) (2026-02-05)
+
+
+### Features
+
+* Add unified PostHog analytics tracking across frontend and backend ([#456](https://github.com/theexperiencecompany/gaia/issues/456)) ([744902e](https://github.com/theexperiencecompany/gaia/commit/744902ed37a2096f0b3c5e0dad016a5af9868c6d))
+* Comprehensive Posthog setup, fix: MCP related issues ([#458](https://github.com/theexperiencecompany/gaia/issues/458)) ([2e25e0b](https://github.com/theexperiencecompany/gaia/commit/2e25e0b9defac009d74c938e11f0f31bee0c2bae))
+
+
+### Bug Fixes
+
+* Posthog MCP not being connected, schema breaking. Updated twitter toolkit, and other mcp fixes ([#457](https://github.com/theexperiencecompany/gaia/issues/457)) ([8772df6](https://github.com/theexperiencecompany/gaia/commit/8772df6c54dfbeb49ed2df7b6d0b3726bebb199b))
+* update user reference ([aee11f4](https://github.com/theexperiencecompany/gaia/commit/aee11f4fbcfad5d435dbda1b6f07d7885d74bd74))
+* update user reference ([#454](https://github.com/theexperiencecompany/gaia/issues/454)) ([4b84855](https://github.com/theexperiencecompany/gaia/commit/4b84855467f7e8d6d2e8e42b2164d4b597484551))
+
 ## [0.14.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.13.0...web-v0.14.0) (2026-01-30)
 
 

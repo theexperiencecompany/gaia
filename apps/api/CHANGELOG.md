@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.14.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.13.0...api-v0.14.0) (2026-02-05)
+
+
+### Features
+
+* Add unified PostHog analytics tracking across frontend and backend ([#456](https://github.com/theexperiencecompany/gaia/issues/456)) ([744902e](https://github.com/theexperiencecompany/gaia/commit/744902ed37a2096f0b3c5e0dad016a5af9868c6d))
+* Comprehensive Posthog setup, fix: MCP related issues ([#458](https://github.com/theexperiencecompany/gaia/issues/458)) ([2e25e0b](https://github.com/theexperiencecompany/gaia/commit/2e25e0b9defac009d74c938e11f0f31bee0c2bae))
+
+
+### Bug Fixes
+
+* Make scheduled tasks timezone-aware and reschedule past tasks to prevent Redis PSETEX errors. ([5241b85](https://github.com/theexperiencecompany/gaia/commit/5241b8538c819963c59e6de18287eb04210e3e3d))
+* Posthog MCP not being connected, schema breaking. Updated twitter toolkit, and other mcp fixes ([#457](https://github.com/theexperiencecompany/gaia/issues/457)) ([8772df6](https://github.com/theexperiencecompany/gaia/commit/8772df6c54dfbeb49ed2df7b6d0b3726bebb199b))
+
 ## [0.13.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.1...api-v0.13.0) (2026-01-30)
 
 
