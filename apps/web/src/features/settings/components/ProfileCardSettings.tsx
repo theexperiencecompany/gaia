@@ -10,6 +10,7 @@ import {
   type HoloCardDisplayData,
   HoloCardEditor,
 } from "@/components/ui/holo-card";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import {
   type HoloCardData,
   holoCardApi,
@@ -19,6 +20,7 @@ import { Copy01Icon, LinkSquare02Icon } from "@/icons";
 export default function ProfileCardSettings() {
   const [holoCardData, setHoloCardData] = useState<HoloCardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { connectIntegration, getIntegrationStatus } = useIntegrations();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -48,10 +50,16 @@ export default function ProfileCardSettings() {
     window.open(url, "_blank");
   };
 
-  const handleConnectGmail = () => {
-    // TODO: Implement Gmail OAuth flow or redirect to integrations page
-    toast("Redirecting to Gmail connection...");
-    window.location.href = "/integrations?connect=gmail";
+  const handleConnectGmail = async () => {
+    try {
+      await connectIntegration("gmail");
+      // Refetch HoloCard data after successful connection
+      const data = await holoCardApi.getMyHoloCard();
+      setHoloCardData(data);
+    } catch (error) {
+      // Error handling is done in the hook
+      console.error("Failed to connect Gmail:", error);
+    }
   };
 
   const displayData: HoloCardDisplayData | null = holoCardData
@@ -111,7 +119,9 @@ export default function ProfileCardSettings() {
             />
             {displayData.user_bio &&
               (displayData.user_bio.startsWith("Connect your Gmail") ||
-                displayData.user_bio.startsWith("Processing")) && (
+                displayData.user_bio.startsWith("Processing")) &&
+              // Only show button if Gmail is not connected
+              getIntegrationStatus("gmail")?.connected !== true && (
                 <Button color="primary" onPress={handleConnectGmail}>
                   Connect Gmail for a more personalized bio
                 </Button>

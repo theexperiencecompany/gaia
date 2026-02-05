@@ -38,10 +38,11 @@ export default function HeroSection() {
           </Link>
         </div>
         <SplitTextBlur
-          text="Meet the personal assistant you've always wanted"
+          text="You shouldn't be doing this manually."
+          // text="Meet the personal assistant you've always wanted"
           delay={0}
           staggerDelay={0.15}
-          className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[5.8rem] font-normal tracking-tight"
+          className="max-w-(--breakpoint-md) text-center text-[2.8rem] leading-none sm:text-8xl font-normal tracking-tight"
           gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), #000000)"
           disableIntersectionObserver
           as="h1"

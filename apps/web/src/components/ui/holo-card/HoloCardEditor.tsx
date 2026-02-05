@@ -302,7 +302,7 @@ export const HoloCardEditor = ({
       </div>
 
       <ButtonGroup className="mt-2">
-        <Tooltip content="Download your card" placement="top">
+        {/* <Tooltip content="Download your card" placement="top">
           <Button
             isIconOnly
             variant="flat"
@@ -311,7 +311,7 @@ export const HoloCardEditor = ({
           >
             <Download01Icon size={20} />
           </Button>
-        </Tooltip>
+        </Tooltip> */}
 
         <Tooltip content="Share your card" placement="top">
           <Dropdown placement="top">

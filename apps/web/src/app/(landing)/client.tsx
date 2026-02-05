@@ -63,7 +63,7 @@ export default function LandingPageClient() {
       </div> */}
 
       <div>
-        <div className="relative">
+        {/* <div className="relative">
           <TiredBoringAssistants />
 
           <div
@@ -75,11 +75,11 @@ export default function LandingPageClient() {
               opacity: 0.6,
             }}
           />
-        </div>
+        </div> */}
 
         <ProductivityOS />
         <ToolsShowcaseSection />
-        <WorkflowSection />
+        {/* <WorkflowSection /> */}
         <Productivity />
         <Personalised />
         <TestimonialsSection />

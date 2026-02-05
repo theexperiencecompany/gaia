@@ -1,4 +1,3 @@
-import Image from "next/image";
 import type React from "react";
 import { useRef, useState } from "react";
 import Tilt from "react-parallax-tilt";
@@ -6,7 +5,14 @@ import Tilt from "react-parallax-tilt";
 import { StyledHoloCard } from "@/app/styles/holo-card.styles";
 import { getHouseImage } from "@/features/onboarding/constants/houses";
 
+import { BackCardContent, BackCardFooter } from "./BackCardContent";
+import { CardOverlay } from "./CardOverlay";
+import { CARD_CLASSES } from "./constants";
+import { DitherEffect } from "./DitherEffect";
+import { FrontCardContent } from "./FrontCardContent";
+import { LogoHeader } from "./LogoHeader";
 import type { HoloCardProps } from "./types";
+import { calculateBackgroundPosition } from "./utils";
 
 export const HoloCard = ({
   data,
@@ -53,19 +59,19 @@ export const HoloCard = ({
     setHover(true);
 
     const card = ref.current;
-    const l = event.nativeEvent.offsetX;
-    const t = event.nativeEvent.offsetY;
+    if (!card) return;
 
-    const h = card ? card.clientHeight : 0;
-    const w = card ? card.clientWidth : 0;
+    const offsetX = event.nativeEvent.offsetX;
+    const offsetY = event.nativeEvent.offsetY;
+    const { clientWidth, clientHeight } = card;
 
-    const px = Math.abs(Math.floor((100 / w) * l) - 100);
-    const py = Math.abs(Math.floor((100 / h) * t) - 100);
-
-    const lp = 50 + (px - 50) / 1.5;
-    const tp = 50 + (py - 50) / 1.5;
-
-    setActiveBackgroundPosition({ lp, tp });
+    const position = calculateBackgroundPosition(
+      offsetX,
+      offsetY,
+      clientWidth,
+      clientHeight,
+    );
+    setActiveBackgroundPosition(position);
   };
 
   const handleOnTouchMove = (event: React.TouchEvent<HTMLDivElement>) => {
@@ -77,19 +83,17 @@ export const HoloCard = ({
 
     const touch = event.touches[0];
     const rect = card.getBoundingClientRect();
-    const l = touch.clientX - rect.left;
-    const t = touch.clientY - rect.top;
+    const offsetX = touch.clientX - rect.left;
+    const offsetY = touch.clientY - rect.top;
+    const { clientWidth, clientHeight } = card;
 
-    const h = card.clientHeight;
-    const w = card.clientWidth;
-
-    const px = Math.abs(Math.floor((100 / w) * l) - 100);
-    const py = Math.abs(Math.floor((100 / h) * t) - 100);
-
-    const lp = 50 + (px - 50) / 1.5;
-    const tp = 50 + (py - 50) / 1.5;
-
-    setActiveBackgroundPosition({ lp, tp });
+    const position = calculateBackgroundPosition(
+      offsetX,
+      offsetY,
+      clientWidth,
+      clientHeight,
+    );
+    setActiveBackgroundPosition(position);
   };
 
   const handleOnMouseOut = () => {
@@ -169,168 +173,73 @@ export const HoloCard = ({
         <div style={frontStyle}>
           {forceSide ? (
             <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-xl">
-              {overlay_color && (
-                <div
-                  className="pointer-events-none absolute inset-0 z-[3]"
-                  style={{
-                    background: overlay_color,
-                    mixBlendMode: "overlay",
-                    opacity: overlay_opacity / 100,
-                  }}
+              <CardOverlay
+                overlayColor={overlay_color}
+                overlayOpacity={overlay_opacity}
+              />
+
+              <div className={CARD_CLASSES.CONTENT_WRAPPER}>
+                <LogoHeader house={house} variant="front" />
+                <FrontCardContent
+                  name={name}
+                  personalityPhrase={personality_phrase}
+                  accountNumber={account_number}
+                  memberSince={member_since}
+                  isStatic
                 />
-              )}
-
-              <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-end p-3 text-white transition">
-                <div className="absolute top-4 left-0 flex w-full justify-between px-3">
-                  <div className="rounded-full bg-white/30 p-1 px-2 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                    <Image
-                      src="/images/logos/text_w_logo_white.webp"
-                      alt="GAIA Logo"
-                      width={100}
-                      height={30}
-                      className="object-contain"
-                    />
-                  </div>
-                  {house && (
-                    <div className="rounded-full bg-white/20 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                      {house}
-                    </div>
-                  )}
-                </div>
-                <Image
-                  src="/images/logos/experience_logo.svg"
-                  alt="Experience Logo"
-                  className="scale-125 opacity-10"
-                  fill
-                />
-
-                <div className="relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-black/20 p-3 backdrop-blur-md">
-                  <div className="font-serif text-4xl font-bold text-white">
-                    {name}
-                  </div>
-                  <div className="mb-10 font-light text-white italic">
-                    {personality_phrase}
-                  </div>
-
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex flex-col items-start gap-1">
-                      <span className="text-sm text-white/80">
-                        User {account_number}
-                      </span>
-                      <span className="text-xs text-white/50">
-                        {member_since}
-                      </span>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Image
-                        src="/images/logos/experience_logo.svg"
-                        alt="Experience Logo"
-                        width={30}
-                        height={30}
-                      />
-                    </div>
-                  </div>
-                </div>
               </div>
 
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={false}
-                $animated={false}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
+              <DitherEffect intensity={1}>
+                <StyledHoloCard
+                  $url={houseImage}
+                  ref={ref}
+                  $active={false}
+                  $animated={false}
+                  $activeRotation={activeRotation}
+                  $activeBackgroundPosition={activeBackgroundPosition}
+                  $height={height}
+                  $width={width}
+                  $showSparkles={showSparkles}
+                >
+                  {children}
+                </StyledHoloCard>
+              </DitherEffect>
             </div>
           ) : (
             <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
-              {overlay_color && (
-                <div
-                  className="pointer-events-none absolute inset-0 z-[3]"
-                  style={{
-                    background: overlay_color,
-                    mixBlendMode: "overlay",
-                    opacity: overlay_opacity / 100,
-                  }}
+              <CardOverlay
+                overlayColor={overlay_color}
+                overlayOpacity={overlay_opacity}
+              />
+
+              <div className={CARD_CLASSES.CONTENT_WRAPPER}>
+                <LogoHeader house={house} variant="front" />
+                <FrontCardContent
+                  name={name}
+                  personalityPhrase={personality_phrase}
+                  accountNumber={account_number}
+                  memberSince={member_since}
                 />
-              )}
-
-              <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-end p-3 text-white transition">
-                <div className="absolute top-4 left-0 flex w-full justify-between px-3">
-                  <div className="rounded-full bg-white/30 p-1 px-2 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                    <Image
-                      src="/images/logos/text_w_logo_white.webp"
-                      alt="GAIA Logo"
-                      width={100}
-                      height={30}
-                      className="object-contain"
-                    />
-                  </div>
-                  {house && (
-                    <div className="rounded-full bg-white/20 p-1 px-4 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                      {house}
-                    </div>
-                  )}
-                </div>
-                <Image
-                  src="/images/logos/experience_logo.svg"
-                  alt="Experience Logo"
-                  className="scale-125 opacity-10"
-                  fill
-                />
-
-                <div className="relative flex w-full flex-col gap-1 overflow-hidden rounded-2xl bg-black/20 p-3 backdrop-blur-md">
-                  <div className="font-serif text-4xl font-bold text-white">
-                    {name}
-                  </div>
-                  <div className="mb-10 font-light text-white italic">
-                    {personality_phrase}
-                  </div>
-
-                  <div className="flex w-full items-center justify-between">
-                    <div className="flex flex-col items-start gap-1">
-                      <span className="text-sm text-white/80">
-                        User {account_number}
-                      </span>
-                      <span className="text-xs text-white/50">
-                        {member_since}
-                      </span>
-                    </div>
-
-                    <div className="flex gap-2">
-                      <Image
-                        src="/images/logos/experience_logo.svg"
-                        alt="Experience Logo"
-                        width={30}
-                        height={30}
-                      />
-                    </div>
-                  </div>
-                </div>
               </div>
 
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={hover}
-                $animated={animated}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                onMouseMove={handleOnMouseMove}
-                onTouchMove={handleOnTouchMove}
-                onMouseOut={handleOnMouseOut}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
+              <DitherEffect intensity={1}>
+                <StyledHoloCard
+                  $url={houseImage}
+                  ref={ref}
+                  $active={hover}
+                  $animated={animated}
+                  $activeRotation={activeRotation}
+                  $activeBackgroundPosition={activeBackgroundPosition}
+                  onMouseMove={handleOnMouseMove}
+                  onTouchMove={handleOnTouchMove}
+                  onMouseOut={handleOnMouseOut}
+                  $height={height}
+                  $width={width}
+                  $showSparkles={showSparkles}
+                >
+                  {children}
+                </StyledHoloCard>
+              </DitherEffect>
             </Tilt>
           )}
         </div>
@@ -339,152 +248,90 @@ export const HoloCard = ({
         <div style={backStyle}>
           {forceSide ? (
             <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-xl">
-              {overlay_color && (
-                <div
-                  className="pointer-events-none absolute inset-0 z-[3]"
-                  style={{
-                    background: overlay_color,
-                    mixBlendMode: "overlay",
-                    opacity: overlay_opacity / 100,
-                  }}
-                />
-              )}
+              <CardOverlay
+                overlayColor={overlay_color}
+                overlayOpacity={overlay_opacity}
+              />
 
-              <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-between p-3 text-white">
+              <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
                 <div className="flex w-full flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <div className="rounded-full bg-white/30 p-1 px-2 backdrop-blur-md">
-                      <Image
-                        src="/images/logos/text_w_logo_white.webp"
-                        alt="GAIA Logo"
-                        width={80}
-                        height={24}
-                        className="object-contain"
-                      />
-                    </div>
-                    {house && (
-                      <div className="rounded-full bg-white/20 p-1 px-3 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                        {house}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="relative overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md">
-                    <div className="mb-2 font-serif text-2xl font-bold text-white">
-                      {name}
-                    </div>
-                    <div className="mb-4 text-sm font-light text-white/80 italic">
-                      {personality_phrase}
-                    </div>
-                    <p className="text-sm text-white/80">{user_bio}</p>
-                  </div>
+                  <LogoHeader house={house} variant="back" />
+                  <BackCardContent
+                    name={name}
+                    personalityPhrase={personality_phrase}
+                    userBio={user_bio}
+                    accountNumber={account_number}
+                    memberSince={member_since}
+                    isStatic
+                  />
                 </div>
 
-                <div className="flex w-full items-center justify-between rounded-xl bg-black/20 p-3 backdrop-blur-md">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs text-white/50">Member Since</span>
-                    <span className="text-sm font-medium text-white/80">
-                      {member_since}
-                    </span>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-xs text-white/50">User ID</span>
-                    <span className="text-sm font-medium text-white/80">
-                      {account_number}
-                    </span>
-                  </div>
-                </div>
+                <BackCardFooter
+                  accountNumber={account_number}
+                  memberSince={member_since}
+                  isStatic
+                />
               </div>
 
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={false}
-                $animated={false}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
+              <DitherEffect intensity={1}>
+                <StyledHoloCard
+                  $url={houseImage}
+                  ref={ref}
+                  $active={false}
+                  $animated={false}
+                  $activeRotation={activeRotation}
+                  $activeBackgroundPosition={activeBackgroundPosition}
+                  $height={height}
+                  $width={width}
+                  $showSparkles={showSparkles}
+                >
+                  {children}
+                </StyledHoloCard>
+              </DitherEffect>
             </div>
           ) : (
             <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
-              {overlay_color && (
-                <div
-                  className="pointer-events-none absolute inset-0 z-[3]"
-                  style={{
-                    background: overlay_color,
-                    mixBlendMode: "overlay",
-                    opacity: overlay_opacity / 100,
-                  }}
-                />
-              )}
+              <CardOverlay
+                overlayColor={overlay_color}
+                overlayOpacity={overlay_opacity}
+              />
 
-              <div className="pointer-events-none absolute z-[2] flex h-full w-full flex-col items-start justify-between p-3 text-white">
+              <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
                 <div className="flex w-full flex-col gap-4">
-                  <div className="flex items-center justify-between">
-                    <div className="rounded-full bg-white/30 p-1 px-2 backdrop-blur-md">
-                      <Image
-                        src="/images/logos/text_w_logo_white.webp"
-                        alt="GAIA Logo"
-                        width={80}
-                        height={24}
-                        className="object-contain"
-                      />
-                    </div>
-                    {house && (
-                      <div className="rounded-full bg-white/20 p-1 px-3 font-serif text-xl font-light text-white/70 backdrop-blur-md">
-                        {house}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="relative overflow-hidden rounded-2xl bg-black/20 p-4 backdrop-blur-md">
-                    <div className="mb-2 font-serif text-2xl font-bold text-white">
-                      {name}
-                    </div>
-                    <div className="mb-4 text-sm font-light text-white/80 italic">
-                      {personality_phrase}
-                    </div>
-                    <p className="text-sm text-white/80">{user_bio}</p>
-                  </div>
+                  <LogoHeader house={house} variant="back" />
+                  <BackCardContent
+                    name={name}
+                    personalityPhrase={personality_phrase}
+                    userBio={user_bio}
+                    accountNumber={account_number}
+                    memberSince={member_since}
+                  />
                 </div>
 
-                <div className="flex w-full items-center justify-between rounded-xl bg-black/20 p-3 backdrop-blur-md">
-                  <div className="flex flex-col gap-1">
-                    <span className="text-xs text-white/50">Member Since</span>
-                    <span className="text-sm font-medium text-white/80">
-                      {member_since}
-                    </span>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <span className="text-xs text-white/50">User ID</span>
-                    <span className="text-sm font-medium text-white/80">
-                      {account_number}
-                    </span>
-                  </div>
-                </div>
+                <BackCardFooter
+                  accountNumber={account_number}
+                  memberSince={member_since}
+                />
               </div>
 
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={hover}
-                $animated={animated}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                onMouseMove={handleOnMouseMove}
-                onTouchMove={handleOnTouchMove}
-                onMouseOut={handleOnMouseOut}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
+              <DitherEffect intensity={1}>
+                <StyledHoloCard
+                  $url={houseImage}
+                  ref={ref}
+                  $active={hover}
+                  $animated={animated}
+                  $activeRotation={activeRotation}
+                  $activeBackgroundPosition={activeBackgroundPosition}
+                  onMouseMove={handleOnMouseMove}
+                  onTouchMove={handleOnTouchMove}
+                  onMouseOut={handleOnMouseOut}
+                  $height={height}
+                  $width={width}
+                  $showSparkles={showSparkles}
+                >
+                  {children}
+                </StyledHoloCard>
+              </DitherEffect>
             </Tilt>
           )}
         </div>

@@ -249,7 +249,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                   {/* Click to Reveal Text */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
                     <div className="rounded-full bg-white/20 p-4 px-8 backdrop-blur-md animate-pulse">
-                      <p className="font-serif text-2xl font-bold text-white">
+                      <p className="font-serif text-2xl text-white">
                         Click to Reveal
                       </p>
                     </div>
