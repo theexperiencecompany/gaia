@@ -57,7 +57,7 @@ export const workflowFormSchema = z.object({
   description: z
     .string()
     .min(1, "Description is required")
-    .max(500, "Description too long"),
+    .max(2000, "Description too long"),
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
