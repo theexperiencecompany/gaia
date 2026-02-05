@@ -536,14 +536,17 @@ export default function WorkflowModal({
         trigger_type: existingWorkflow.trigger_config.type,
       });
 
-      selectWorkflow(existingWorkflow, { autoSend: true });
-
-      // Close the modal after navigation starts
+      // Close modal first to ensure clean state
       onOpenChange(false);
 
-      console.log(
-        "Workflow selected for manual execution in chat with auto-send",
-      );
+      // Then navigate after modal starts closing
+      // Small delay ensures modal close animation begins and component cleanup doesn't interfere
+      setTimeout(() => {
+        selectWorkflow(existingWorkflow, { autoSend: true });
+        console.log(
+          "Workflow selected for manual execution in chat with auto-send",
+        );
+      }, 50);
     } catch (error) {
       console.error("Failed to select workflow for execution:", error);
     }
@@ -681,8 +684,12 @@ export default function WorkflowModal({
                                   setCurrentWorkflow((prev) =>
                                     prev ? { ...prev, is_public: true } : null,
                                   );
-                                  // Navigate to marketplace after publishing
-                                  router.push("/use-cases#community-section");
+                                  if (currentWorkflow.id) {
+                                    // Navigate to the published workflow page
+                                    router.push(
+                                      `/use-cases/${currentWorkflow.id}`,
+                                    );
+                                  }
                                 }
                               } catch (error) {
                                 console.error(
@@ -692,7 +699,9 @@ export default function WorkflowModal({
                               }
                               await fetchWorkflows();
                             } else if (key === "marketplace") {
-                              router.push("/use-cases#community-section");
+                              if (currentWorkflow?.id) {
+                                router.push(`/use-cases/${currentWorkflow.id}`);
+                              }
                             } else if (key === "delete") {
                               await handleDelete();
                             }

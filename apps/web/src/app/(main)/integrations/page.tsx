@@ -313,7 +313,7 @@ export default function IntegrationsPage() {
 
   return (
     <div className="flex h-screen w-full flex-col">
-      <div className="absolute right-4 bottom-4">
+      <div className="absolute right-4 bottom-4 z-1">
         <Button
           color="primary"
           endContent={<MessageFavourite02Icon width={17} height={17} />}
