@@ -1,20 +1,12 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { memo, useCallback, useMemo } from "react";
+import { memo, useCallback } from "react";
 
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { WorkflowSquare05Icon } from "@/icons";
 import type { Workflow } from "@/types/features/workflowTypes";
-
-// Get unique tool categories from workflow steps (max 4)
-const getWorkflowIcons = (workflow: Workflow): string[] => {
-  return Array.from(new Set(workflow.steps.map((step) => step.category))).slice(
-    0,
-    4,
-  );
-};
+import WorkflowIcons from "./shared/WorkflowIcons";
 
 // Memoized workflow row component
 const WorkflowRow = memo(
@@ -25,11 +17,6 @@ const WorkflowRow = memo(
     workflow: Workflow;
     onClick: (id: string) => void;
   }) => {
-    const iconCategories = useMemo(
-      () => getWorkflowIcons(workflow),
-      [workflow],
-    );
-
     const handleClick = useCallback(() => {
       onClick(workflow.id);
     }, [onClick, workflow.id]);
@@ -40,35 +27,8 @@ const WorkflowRow = memo(
         onClick={handleClick}
       >
         {/* Stacked Icons matching workflow cards */}
-        <div className="relative flex h-10 flex-shrink-0 items-center justify-center">
-          {iconCategories.length === 1 ? (
-            // Single icon - centered
-            getToolCategoryIcon(iconCategories[0], {
-              width: 24,
-              height: 24,
-              showBackground: true,
-            })
-          ) : (
-            // Multiple icons - stacked in a row with rotation
-            <div className="flex -space-x-1.5">
-              {iconCategories.map((category, index) => (
-                <div
-                  key={category}
-                  className="relative"
-                  style={{
-                    rotate: index % 2 === 0 ? "8deg" : "-8deg",
-                    zIndex: iconCategories.length - index,
-                  }}
-                >
-                  {getToolCategoryIcon(category, {
-                    width: 24,
-                    height: 24,
-                    showBackground: true,
-                  })}
-                </div>
-              ))}
-            </div>
-          )}
+        <div className="relative flex h-10 shrink-0 items-center justify-center">
+          <WorkflowIcons steps={workflow.steps} iconSize={24} maxIcons={4} />
         </div>
 
         {/* Workflow Title */}
@@ -103,8 +63,8 @@ const WorkflowListView = memo(({ workflows = [] }: WorkflowListViewProps) => {
     [router],
   );
 
-  // Memoize first 5 workflows
-  const displayWorkflows = useMemo(() => workflows.slice(0, 5), [workflows]);
+  // Show first 5 workflows
+  const displayWorkflows = workflows.slice(0, 5);
 
   const isEmpty = workflows.length === 0;
 
