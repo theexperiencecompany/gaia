@@ -61,7 +61,7 @@ def replace_timezone_info(
     target_timezone_info: Optional[tzinfo] = None
 
     if new_timezone is not None:
-        target_timezone_info = _parse_timezone(new_timezone)
+        target_timezone_info = parse_timezone(new_timezone)
     else:
         # Extract timezone from timezone_source
         if isinstance(timezone_source, str):
@@ -84,7 +84,7 @@ def replace_timezone_info(
     return result_datetime
 
 
-def _parse_timezone(
+def parse_timezone(
     timezone_input: Union[str, builtin_timezone],
 ) -> Union[builtin_timezone, pytz.BaseTzInfo]:
     """
@@ -158,7 +158,7 @@ def convert_datetime_to_timezone(
         )
 
     # Parse target timezone
-    target_tz = _parse_timezone(target_timezone)
+    target_tz = parse_timezone(target_timezone)
 
     # Perform the actual timezone conversion
     converted_datetime = source_datetime.astimezone(target_tz)
@@ -209,7 +209,7 @@ def add_timezone_info(
         target_datetime = datetime.fromisoformat(target_datetime)
 
     # Parse the target timezone
-    target_timezone_info = _parse_timezone(timezone_name)
+    target_timezone_info = parse_timezone(timezone_name)
 
     # If the datetime already has timezone info, just return it
     if target_datetime.tzinfo is not None:

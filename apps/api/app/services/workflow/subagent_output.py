@@ -10,7 +10,7 @@ The workflow subagent can respond in two modes:
 
 import json
 import re
-from typing import Literal, Optional, Union
+from typing import Literal, Optional
 
 from app.config.loggers import general_logger as logger
 from langchain_core.output_parsers import PydanticOutputParser
@@ -71,14 +71,6 @@ class FinalizedOutput(BaseModel):
                 "direct_create": self.direct_create,
             }
         }
-
-
-class WorkflowSubagentResponse(BaseModel):
-    """Union type for workflow subagent responses."""
-
-    output: Union[ClarifyingOutput, FinalizedOutput] = Field(
-        description="Either a clarifying question or finalized workflow"
-    )
 
 
 # =============================================================================

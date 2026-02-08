@@ -20,11 +20,6 @@ interface WorkflowDraftCardProps {
   draft: WorkflowDraftData;
 }
 
-/**
- * Card component that displays a workflow draft preview from AI.
- * Renders its own modal inline - no global modal needed.
- * Styled to match the UnifiedWorkflowCard design patterns.
- */
 export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -38,7 +33,6 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           bgColor: "bg-zinc-700/50",
         };
       case "scheduled": {
-        // Use human-readable format from cronUtils
         const cronLabel = draft.cron_expression
           ? getScheduleDescription(draft.cron_expression)
           : "Scheduled";
@@ -76,10 +70,21 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
   return (
     <>
       <div
-        className="group relative z-1 flex w-full max-w-md cursor-pointer flex-col gap-3 rounded-3xl bg-zinc-800/40 p-4 outline-1 outline-zinc-800/50 backdrop-blur-lg transition-all hover:bg-zinc-700/50"
+        className="group relative z-1 flex w-full max-w-md cursor-pointer flex-col gap-3 rounded-3xl border border-dashed border-warning/40 bg-zinc-800/40 p-4 backdrop-blur-lg transition-all hover:bg-zinc-700/50"
         onClick={() => setIsModalOpen(true)}
       >
-        {/* Header with icon, title, and trigger badge */}
+        <Chip
+          size="sm"
+          variant="flat"
+          color="warning"
+          classNames={{
+            base: "absolute -top-2 -right-2 bg-warning/20",
+            content: "text-xs font-semibold text-warning",
+          }}
+        >
+          Draft
+        </Chip>
+
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-primary/15">
@@ -89,7 +94,9 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
               <span className="line-clamp-2 text-base font-medium leading-tight">
                 {draft.suggested_title}
               </span>
-              <span className="text-xs text-zinc-500">Workflow Draft</span>
+              <span className="text-xs text-warning/80">
+                Review to create workflow
+              </span>
             </div>
           </div>
           <Chip
@@ -106,12 +113,16 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           </Chip>
         </div>
 
-        {/* Description */}
         <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">
           {draft.suggested_description}
         </p>
 
-        {/* Action button */}
+        {draft.trigger_type === "integration" && (
+          <p className="text-xs text-zinc-500">
+            Configure trigger settings to complete setup
+          </p>
+        )}
+
         <Button
           size="sm"
           color="primary"
@@ -120,11 +131,10 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           onPress={() => setIsModalOpen(true)}
           className="mt-1 w-full rounded-xl font-medium"
         >
-          Open in Editor
+          Review & Create
         </Button>
       </div>
 
-      {/* Inline modal - no global modal needed */}
       {isModalOpen && (
         <WorkflowModal
           isOpen={isModalOpen}

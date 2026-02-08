@@ -14,7 +14,7 @@ we can create them directly without user confirmation. Integration triggers
 always require confirmation due to config_fields (calendar_ids, channel_ids, etc).
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Annotated, Any, Literal, Optional
 
 from app.config.loggers import general_logger as logger
@@ -174,14 +174,19 @@ def get_thread_id(config: RunnableConfig) -> str | None:
 
 
 def get_user_time(config: RunnableConfig) -> datetime:
-    """Extract user_time from config or return current time."""
+    """Extract user_time from config or return current time (always timezone-aware UTC)."""
     user_time_str = config.get("configurable", {}).get("user_time")
     if user_time_str:
         try:
-            return datetime.fromisoformat(user_time_str.replace("Z", "+00:00"))
+            parsed = datetime.fromisoformat(user_time_str.replace("Z", "+00:00"))
+            # Normalize to UTC: if aware, convert to UTC; if naive, attach UTC
+            if parsed.tzinfo is not None:
+                return parsed.astimezone(timezone.utc)
+            else:
+                return parsed.replace(tzinfo=timezone.utc)
         except (ValueError, AttributeError):
             pass
-    return datetime.now()
+    return datetime.now(timezone.utc)
 
 
 def get_user_timezone(config: RunnableConfig) -> str:
@@ -316,9 +321,7 @@ async def create_workflow(
             if not thread_id:
                 return error_response("no_context", "No conversation context available")
 
-            context = await WorkflowContextExtractor.extract_from_thread(
-                thread_id, user_id
-            )
+            context = await WorkflowContextExtractor.extract_from_thread(thread_id)
 
             if not context or not context.workflow_steps:
                 return error_response(

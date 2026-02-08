@@ -124,16 +124,20 @@ class TriggerSearchService:
                         trigger.workflow_trigger_schema
                         and trigger.workflow_trigger_schema.config_schema
                     ):
+                        # Use sentinel to distinguish missing default from explicit None
+                        _sentinel = object()
                         for (
                             field_name,
                             field_config,
                         ) in trigger.workflow_trigger_schema.config_schema.items():
+                            default_val = getattr(field_config, "default", _sentinel)
                             schema["config_fields"][field_name] = {
                                 "type": getattr(field_config, "type", "string"),
                                 "description": getattr(field_config, "description", ""),
-                                "default": getattr(field_config, "default", None),
-                                "required": getattr(field_config, "default", None)
-                                is None,
+                                "default": None
+                                if default_val is _sentinel
+                                else default_val,
+                                "required": default_val is _sentinel,
                             }
 
                     return schema

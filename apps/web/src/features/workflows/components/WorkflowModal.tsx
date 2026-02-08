@@ -49,8 +49,11 @@ import {
 } from "../schemas/workflowFormSchema";
 import { useWorkflowModalStore } from "../stores/workflowModalStore";
 import { useWorkflowsStore } from "../stores/workflowsStore";
-import { createDefaultTriggerConfig } from "../triggers";
-import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
+import {
+  createDefaultTriggerConfig,
+  findTriggerSchema,
+  useTriggerSchemas,
+} from "../triggers";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
 import { ScheduleBuilder } from "./ScheduleBuilder";
 import WorkflowSteps from "./shared/WorkflowSteps";
@@ -113,8 +116,8 @@ export default function WorkflowModal({
   // Single source of truth for workflow data
   const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(null);
 
-  // Prefetch trigger schemas so they are ready when the user switches to the Trigger tab
-  useTriggerSchemas();
+  // Fetch trigger schemas for slug normalization
+  const { data: triggerSchemas } = useTriggerSchemas();
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -271,7 +274,6 @@ export default function WorkflowModal({
             ? "trigger"
             : "manual";
 
-      // Build trigger config based on trigger type
       let triggerConfig: WorkflowFormData["trigger_config"];
       let selectedTriggerValue = "";
 
@@ -286,24 +288,27 @@ export default function WorkflowModal({
         draftData.trigger_type === "integration" &&
         draftData.trigger_slug
       ) {
-        // Use the trigger registry to create proper config for integration triggers
-        const defaultConfig = createDefaultTriggerConfig(
+        // Normalize trigger_slug: backend may return composio_slug, frontend needs slug
+        const schema = findTriggerSchema(
+          triggerSchemas,
           draftData.trigger_slug,
         );
+        const normalizedSlug = schema?.slug ?? draftData.trigger_slug;
+
+        const defaultConfig = createDefaultTriggerConfig(normalizedSlug);
         if (defaultConfig) {
           triggerConfig = {
             ...defaultConfig,
-            trigger_slug: draftData.trigger_slug,
+            trigger_slug: normalizedSlug,
           };
         } else {
-          // Fallback for triggers not in registry - extract base type from slug
           triggerConfig = {
-            type: draftData.trigger_slug,
+            type: normalizedSlug,
             enabled: true,
-            trigger_name: draftData.trigger_slug,
+            trigger_name: normalizedSlug,
           };
         }
-        selectedTriggerValue = draftData.trigger_slug;
+        selectedTriggerValue = normalizedSlug;
       } else {
         triggerConfig = {
           type: "manual" as const,
@@ -313,8 +318,6 @@ export default function WorkflowModal({
 
       resetFormValues({
         title: draftData.suggested_title,
-        // Use prompt for the workflow description (detailed instructions)
-        // Fall back to suggested_description for backwards compatibility
         description: draftData.prompt || draftData.suggested_description,
         activeTab,
         selectedTrigger: selectedTriggerValue,
@@ -327,14 +330,13 @@ export default function WorkflowModal({
 
     // Reset to default for create mode
     resetFormValues(getDefaultFormValues());
-    // Reset activation state for create mode
     setIsActivated(true);
-    // Reset to form phase for create mode
     setCreationPhase("form");
   }, [
     mode,
     currentWorkflow,
     draftData,
+    triggerSchemas,
     resetFormValues,
     setIsActivated,
     setCreationPhase,

@@ -51,7 +51,6 @@ class WorkflowContextExtractor:
     async def extract_from_thread(
         cls,
         thread_id: str,
-        user_id: str,
         max_output_chars: Optional[int] = None,
     ) -> Optional[ExtractedContext]:
         """
@@ -62,7 +61,6 @@ class WorkflowContextExtractor:
 
         Args:
             thread_id: The thread ID to extract from
-            user_id: The user ID (for validation)
             max_output_chars: Override for max output truncation
 
         Returns:
@@ -256,7 +254,16 @@ class WorkflowContextExtractor:
         args: Dict[str, Any],
         output: str,
     ) -> str:
-        """Build step description from tool details."""
+        """Build step description from tool details.
+
+        Args:
+            tool_name: Name of the tool that was executed
+            args: Arguments passed to the tool
+            output: Result returned by the tool (truncated if too long)
+
+        Returns:
+            Human-readable description of what the tool did
+        """
         parts = [f"Execute {tool_name}"]
 
         # Add key args (truncated)
@@ -269,5 +276,12 @@ class WorkflowContextExtractor:
                 arg_strs.append(f"{k}={v_str}")
             if arg_strs:
                 parts.append(f"with {', '.join(arg_strs)}")
+
+        # Add output if available (truncated to ~100 chars)
+        if output and output.strip():
+            output_truncated = output.strip()
+            if len(output_truncated) > 100:
+                output_truncated = output_truncated[:100] + "..."
+            parts.append(f"and returned '{output_truncated}'")
 
         return " ".join(parts)

@@ -2767,19 +2767,20 @@ Your job is to create a complete workflow draft, asking clarifying questions onl
 • list_workflows: Show user's existing workflows
 
 — WRITING WORKFLOW PROMPTS
-When writing the 'prompt' field for a workflow, be descriptive and include clear instructions.
-The executor agent will discover and use the appropriate tools based on your description.
 
-BEST PRACTICES:
-• Be specific about what actions to perform: "Fetch my unread emails from Gmail"
-• Include numbered steps for clarity: "1. Get emails, 2. Summarize them, 3. Send summary to Slack"
-• Mention integrations by name when relevant: "Use Gmail", "Post to Slack channel"
-• Describe expected outputs: "Create a formatted summary with sender, subject, and preview"
+CRITICAL - TRIGGERS vs STEPS:
+• TRIGGERS start the workflow (email arrives, PR created, schedule fires) - happen BEFORE execution
+• STEPS are what the workflow DOES after being triggered - the actual actions to perform
+• NEVER include the trigger as a step - it has already happened when the workflow runs
 
-EXAMPLES:
-"Fetch unread emails from my Gmail inbox, summarize the top 5 by importance, and post the summary to Slack"
-"Get today's calendar events, filter for meetings with external attendees, and send me a digest"
-"Check my emails" (too vague - be more specific about what to do with them)
+WRONG: "1. Use GITHUB_PR_EVENT to trigger workflow  2. Analyze PR  3. Post comment"
+RIGHT: "1. Analyze the PR changes from trigger data  2. Generate review  3. Post comment"
+
+PROMPT BEST PRACTICES:
+• Be specific with numbered steps: "1. Fetch emails, 2. Summarize, 3. Send to Slack"
+• Name integrations explicitly: "Use Gmail", "Post to Slack #general"
+• Describe expected outputs: "Create summary with sender, subject, preview"
+• Reference trigger data when relevant: "Using the email data from the trigger..."
 
 — STRUCTURED OUTPUT FORMAT
 You MUST include a JSON block in EVERY response. Two types:

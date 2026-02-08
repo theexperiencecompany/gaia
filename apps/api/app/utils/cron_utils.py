@@ -3,7 +3,7 @@ Cron utilities for reminder scheduling.
 """
 
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, tzinfo
 from typing import Optional
 
 import pytz
@@ -18,7 +18,7 @@ class CronError(Exception):
     pass
 
 
-def _parse_timezone(user_timezone: str):
+def parse_timezone(user_timezone: str) -> tzinfo:
     """
     Parse a timezone string and return a timezone object.
 
@@ -51,8 +51,8 @@ def _parse_timezone(user_timezone: str):
     # Try IANA timezone name with pytz
     try:
         return pytz.timezone(user_timezone)
-    except Exception:
-        raise ValueError(f"Unknown timezone format: {user_timezone}")
+    except Exception as e:
+        raise ValueError(f"Unknown timezone format: {user_timezone}") from e
 
 
 def validate_cron_expression(cron_expr: str) -> bool:
@@ -97,7 +97,7 @@ def get_next_run_time(
     # Handle timezone-aware calculation
     if user_timezone and user_timezone != "UTC":
         try:
-            tz = _parse_timezone(user_timezone)
+            tz = parse_timezone(user_timezone)
 
             # Get base time in user's timezone
             if base_time is None:

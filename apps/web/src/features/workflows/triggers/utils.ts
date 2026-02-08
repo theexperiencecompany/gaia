@@ -11,10 +11,6 @@ import { getScheduleDescription } from "../utils/cronUtils";
 import { getTriggerHandler, type TriggerDisplayInfo } from "./registry";
 import type { TriggerConfig, TriggerSchema } from "./types";
 
-// =============================================================================
-// DISPLAY INFO FUNCTIONS
-// =============================================================================
-
 /**
  * Find integration by ID from list.
  */
@@ -29,11 +25,35 @@ const findIntegration = (
 };
 
 /**
+ * Find a trigger schema by slug or composio_slug.
+ * Backend may return composio_slug (e.g., "GITHUB_PULL_REQUEST_EVENT")
+ * but frontend uses slug (e.g., "github_pr_event").
+ */
+export function findTriggerSchema(
+  schemas: TriggerSchema[] | undefined,
+  slugOrComposioSlug: string,
+): TriggerSchema | undefined {
+  if (!schemas || !slugOrComposioSlug) return undefined;
+  return schemas.find(
+    (s) =>
+      s.slug === slugOrComposioSlug || s.composio_slug === slugOrComposioSlug,
+  );
+}
+
+/**
+ * Normalize a trigger identifier to the frontend slug.
+ * Converts composio_slug to slug if needed.
+ */
+export function normalizeTriggerSlug(
+  schemas: TriggerSchema[] | undefined,
+  slugOrComposioSlug: string,
+): string {
+  const schema = findTriggerSchema(schemas, slugOrComposioSlug);
+  return schema?.slug ?? slugOrComposioSlug;
+}
+
+/**
  * Get trigger display information using backend schemas and handler registry.
- *
- * @param workflow - The workflow to get display info for
- * @param integrations - List of available integrations
- * @param schemas - Optional trigger schemas from backend (for enhanced display)
  */
 export function getTriggerDisplayInfo(
   workflow: Workflow,
@@ -46,14 +66,12 @@ export function getTriggerDisplayInfo(
 } {
   const { trigger_config } = workflow;
 
-  // Try to get handler using trigger_name (specific slug) first, then fallback to type (generic)
   const triggerSlug = (trigger_config.trigger_name ||
     trigger_config.trigger_slug ||
     trigger_config.type) as string;
 
   const handler = getTriggerHandler(triggerSlug);
 
-  // Get display info from handler
   let displayInfo: TriggerDisplayInfo;
   if (handler) {
     const schema = schemas?.find((s) => handler.triggerSlugs.includes(s.slug));
@@ -62,14 +80,12 @@ export function getTriggerDisplayInfo(
       schema,
     );
   } else {
-    // Fallback for unknown triggers
     displayInfo = {
       label: "unknown trigger",
       integrationId: null,
     };
   }
 
-  // Special handling for schedule triggers - use cron description
   if (
     trigger_config.type === "schedule" &&
     "cron_expression" in trigger_config
@@ -94,10 +110,6 @@ export function getTriggerDisplayInfo(
 
 /**
  * Get trigger-enabled integrations for WorkflowModal dropdown.
- * Uses backend schemas as source of truth.
- *
- * @param integrations - Connected integrations
- * @param schemas - Trigger schemas from backend
  */
 export function getTriggerEnabledIntegrations(
   integrations: Integration[],
@@ -115,5 +127,5 @@ export function getTriggerEnabledIntegrations(
         triggerType: schema.slug,
       };
     })
-    .filter((t) => t.integration); // Only show triggers with connected integrations
+    .filter((t) => t.integration);
 }

@@ -13,7 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.config.loggers import general_logger as logger
 from app.models.scheduler_models import BaseScheduledTask
 from app.models.trigger_configs import TriggerConfigData
-from app.utils.cron_utils import get_next_run_time, _parse_timezone
+from app.utils.cron_utils import get_next_run_time, parse_timezone
 
 
 class TriggerType(str, Enum):
@@ -123,7 +123,7 @@ class TriggerConfig(BaseModel):
             tz_name = user_timezone or self.timezone or "UTC"
 
             # Convert timezone name/offset to timezone object using the unified parser
-            tz = _parse_timezone(tz_name)
+            tz = parse_timezone(tz_name)
 
             # If base_time is provided, convert it to the user's timezone for cron calculation
             if base_time:

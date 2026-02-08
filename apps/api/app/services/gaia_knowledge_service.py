@@ -10,6 +10,24 @@ from typing import List, Optional
 
 from app.config.loggers import general_logger as logger
 from app.db.chroma.chromadb import ChromaClient
+from pydantic import BaseModel, Field, field_validator
+
+
+class KnowledgeItem(BaseModel):
+    """Schema for a single knowledge item."""
+
+    content: str = Field(..., min_length=1, description="Knowledge content to store")
+    metadata: Optional[dict] = Field(
+        default_factory=dict, description="Optional metadata"
+    )
+
+    @field_validator("content")
+    @classmethod
+    def validate_content_not_empty(cls, v: str) -> str:
+        """Ensure content is not just whitespace."""
+        if not v.strip():
+            raise ValueError("Content cannot be empty or whitespace only")
+        return v.strip()
 
 
 @dataclass
@@ -96,24 +114,28 @@ class GaiaKnowledgeService:
             logger.error(f"Error adding knowledge: {e}")
             return False
 
-    async def add_knowledge_batch(self, items: List[dict]) -> int:
+    async def add_knowledge_batch(self, items: List[KnowledgeItem]) -> int:
         """
         Add multiple knowledge items in batch.
 
         Args:
-            items: List of dicts with 'content' and optional 'metadata' keys
+            items: List of KnowledgeItem objects (validated via Pydantic)
 
         Returns:
             Number of items successfully added
         """
+        if not items:
+            logger.warning("add_knowledge_batch called with empty items list")
+            return 0
+
         try:
             client = await ChromaClient.get_langchain_client(
                 collection_name=self.collection_name, create_if_not_exists=True
             )
 
-            # Extract texts and metadatas
-            texts = [item["content"] for item in items]
-            metadatas = [item.get("metadata", {}) for item in items]
+            # Extract texts and metadatas from validated Pydantic models
+            texts = [item.content for item in items]
+            metadatas = [item.metadata or {} for item in items]
 
             # Add documents in batch
             await client.aadd_texts(texts=texts, metadatas=metadatas)
@@ -122,7 +144,7 @@ class GaiaKnowledgeService:
             return len(items)
 
         except Exception as e:
-            logger.error(f"Error adding knowledge batch: {e}")
+            logger.error(f"Error adding knowledge batch: {e}", exc_info=True)
             return 0
 
     async def clear_knowledge(self) -> bool:

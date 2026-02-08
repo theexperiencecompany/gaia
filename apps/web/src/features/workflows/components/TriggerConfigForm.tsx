@@ -6,6 +6,7 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { TriggerAutocomplete } from "@/features/workflows/components/TriggerAutocomplete";
 import {
   createDefaultTriggerConfig,
+  findTriggerSchema,
   getTriggerHandler,
   type TriggerConfig,
   useTriggerSchemas,
@@ -28,7 +29,6 @@ export function TriggerConfigForm({
     useTriggerSchemas();
   const { integrations, connectIntegration } = useIntegrations();
 
-  // Get integration statuses
   const integrationStatusMap = useMemo(() => {
     const map = new Map<string, boolean>();
     integrations.forEach((integration) => {
@@ -36,6 +36,9 @@ export function TriggerConfigForm({
     });
     return map;
   }, [integrations]);
+
+  const selectedSchema = findTriggerSchema(triggerSchemas, selectedTrigger);
+  const normalizedSlug = selectedSchema?.slug ?? selectedTrigger;
 
   const handleTriggerSelect = (trigger: string | null) => {
     if (!trigger) {
@@ -45,19 +48,15 @@ export function TriggerConfigForm({
 
     onTriggerChange(trigger);
 
-    // Find schema here if needed for sync (though usually done in effect, but safer here)
     const schema = triggerSchemas?.find((s) => s.slug === trigger);
-
     const defaultConfig = createDefaultTriggerConfig(trigger);
 
     if (defaultConfig) {
-      // Add integration_id and trigger_slug to config
-      const finalConfig = {
+      onConfigChange({
         ...defaultConfig,
         integration_id: schema?.integration_id,
         trigger_slug: schema?.slug,
-      };
-      onConfigChange(finalConfig);
+      });
     } else {
       onConfigChange({
         type: "manual",
@@ -66,47 +65,37 @@ export function TriggerConfigForm({
     }
   };
 
-  // Sync config when selectedTrigger changes (redundant if handleTriggerSelect does it,
-  // but good for initial load or external changes)
-  // However, handleTriggerSelect handles the user interaction.
-  // This effect handles "if selectedTrigger is passed but config doesn't match".
   useEffect(() => {
-    if (!selectedTrigger || schemasLoading) return;
+    if (!normalizedSlug || schemasLoading) return;
 
-    const handler = getTriggerHandler(selectedTrigger);
+    const handler = getTriggerHandler(normalizedSlug);
     if (!handler) return;
 
     const isValidTriggerConfig =
       triggerConfig.type !== "schedule" && triggerConfig.type !== "manual";
 
     if (!isValidTriggerConfig) {
-      const defaultConfig = createDefaultTriggerConfig(selectedTrigger);
+      const defaultConfig = createDefaultTriggerConfig(normalizedSlug);
       if (defaultConfig) {
         onConfigChange(defaultConfig);
       }
     }
-  }, [selectedTrigger, triggerConfig.type, schemasLoading, onConfigChange]);
+  }, [normalizedSlug, triggerConfig.type, schemasLoading, onConfigChange]);
 
-  const handleConnectIntegration = async (integrationId: string) => {
-    await connectIntegration(integrationId);
-  };
-
-  const handler = getTriggerHandler(selectedTrigger);
+  const handler = getTriggerHandler(normalizedSlug);
   const SettingsComponent = handler?.SettingsComponent;
 
   return (
     <div className="w-full space-y-4">
-      {/* Searchable trigger autocomplete */}
       <TriggerAutocomplete
         selectedTrigger={selectedTrigger}
         onTriggerChange={handleTriggerSelect}
         triggerSchemas={triggerSchemas}
         isLoading={schemasLoading}
         integrationStatusMap={integrationStatusMap}
-        onConnectIntegration={handleConnectIntegration}
+        onConnectIntegration={connectIntegration}
       />
 
-      {/* Render handler-specific settings */}
       {SettingsComponent && (
         <SettingsComponent
           triggerConfig={triggerConfig}

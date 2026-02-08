@@ -12,7 +12,7 @@ The subagent has access to:
 - search_memory: Access user memories
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 from app.agents.core.subagents.base_subagent import SubAgentFactory
@@ -110,7 +110,7 @@ class WorkflowSubagentRunner:
         subagent_graph = await get_workflow_subagent()
 
         # Build config
-        user_time = user_time or datetime.now()
+        user_time = user_time or datetime.now(timezone.utc)
         subagent_thread_id = f"workflow_{thread_id}"
 
         user = {
