@@ -184,6 +184,23 @@ export type WorkflowDraftData = {
   trigger_slug?: string | null;
   /** Cron expression for scheduled triggers */
   cron_expression?: string | null;
-  /** List of workflow steps */
-  steps: string[];
+};
+
+// Define workflow created data for when a workflow is automatically created
+export type WorkflowCreatedData = {
+  /** Workflow ID for navigation/editing */
+  id: string;
+  /** Workflow title */
+  title: string;
+  /** Workflow description */
+  description: string;
+  /** Trigger configuration */
+  trigger_config: {
+    type: "manual" | "scheduled" | "integration";
+    cron_expression?: string | null;
+    trigger_name?: string | null;
+    enabled?: boolean;
+  };
+  /** Whether workflow is activated */
+  activated: boolean;
 };

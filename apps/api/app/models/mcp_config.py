@@ -52,9 +52,39 @@ class SubAgentConfig(BaseModel):
     memory_prompt: Optional[str] = None
 
 
-class ProviderMetadataConfig(BaseModel):
-    """Configuration for fetching provider-specific user metadata."""
+class VariableExtraction(BaseModel):
+    """Configuration for a single variable to extract from a tool response."""
 
-    user_info_tool: str
-    username_field: str
-    extract_fields: Optional[Dict[str, str]] = None
+    name: str  # Variable name (e.g., "username", "user_id", "email")
+    field_path: str  # Dot-notation path to extract (e.g., "data.username")
+
+
+class ToolMetadataConfig(BaseModel):
+    """Configuration for one tool and its variables to extract."""
+
+    tool: str  # Tool to call (e.g., "TWITTER_USER_LOOKUP_ME")
+    variables: List[
+        VariableExtraction
+    ]  # Variables to extract from this tool's response
+
+
+class ProviderMetadataConfig(BaseModel):
+    """Configuration for fetching provider-specific user metadata.
+
+    Supports multiple tools, each with multiple variables to extract.
+
+    Example:
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="TWITTER_USER_LOOKUP_ME",
+                    variables=[
+                        VariableExtraction(name="username", field_path="data.username"),
+                        VariableExtraction(name="user_id", field_path="data.id"),
+                    ],
+                ),
+            ],
+        )
+    """
+
+    tools: List[ToolMetadataConfig]  # List of tools to call and variables to extract

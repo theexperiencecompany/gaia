@@ -67,7 +67,6 @@ For finalized workflow:
     "trigger_type": "manual|scheduled|integration",
     "cron_expression": "0 9 * * *",
     "trigger_slug": "TRIGGER_SLUG_HERE",
-    "steps": ["Step 1", "Step 2"],
     "direct_create": true
 }}
 ```

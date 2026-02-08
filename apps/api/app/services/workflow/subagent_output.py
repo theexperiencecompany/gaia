@@ -8,13 +8,13 @@ The workflow subagent can respond in two modes:
 2. Finalized workflow - ready to create the workflow draft
 """
 
-from typing import List, Literal, Optional, Union
-
-from langchain_core.output_parsers import PydanticOutputParser
-from pydantic import BaseModel, Field
+import json
+import re
+from typing import Literal, Optional, Union
 
 from app.config.loggers import general_logger as logger
-
+from langchain_core.output_parsers import PydanticOutputParser
+from pydantic import BaseModel, Field
 
 # =============================================================================
 # PYDANTIC MODELS FOR STRUCTURED OUTPUT
@@ -47,13 +47,11 @@ class FinalizedOutput(BaseModel):
         description="When the workflow runs"
     )
     cron_expression: Optional[str] = Field(
-        default=None, description="Cron expression for scheduled triggers"
+        default=None,
+        description="Cron expression for scheduled triggers (in user's local time)",
     )
     trigger_slug: Optional[str] = Field(
         default=None, description="Trigger slug for integration triggers"
-    )
-    steps: List[str] = Field(
-        default_factory=list, description="List of workflow step descriptions"
     )
     direct_create: bool = Field(
         default=False,
@@ -70,7 +68,6 @@ class FinalizedOutput(BaseModel):
                 "trigger_type": self.trigger_type,
                 "trigger_slug": self.trigger_slug,
                 "cron_expression": self.cron_expression,
-                "steps": self.steps,
                 "direct_create": self.direct_create,
             }
         }
@@ -135,22 +132,24 @@ For finalized workflow:
     "type": "finalized",
     "title": "Workflow Title",
     "description": "Short 1-2 sentence summary for display in UI cards",
-    "prompt": "Detailed instructions for the workflow. This should be comprehensive and include: what data to gather, what actions to take, what integrations to use, expected outcomes, and any specific formatting or requirements. Be thorough - this is what the AI will use to execute the workflow.",
+    "prompt": "Detailed step-by-step instructions for the workflow. Include numbered steps (1, 2, 3...), specific integrations to use, what data to gather, actions to take, and expected outputs.",
     "trigger_type": "manual|scheduled|integration",
     "cron_expression": "0 9 * * *",
     "trigger_slug": "GMAIL_NEW_MESSAGE",
-    "steps": ["Step 1 description", "Step 2 description"],
     "direct_create": false
 }
 ```
 
 IMPORTANT:
-- description: Keep SHORT (1-2 sentences) - this is just for UI display
-- prompt: Be DETAILED and COMPREHENSIVE - include all context, specific actions, data sources, and expected outcomes
-- steps: List the high-level steps the workflow will perform
-- cron_expression: Required for scheduled, omit for others
+- description: Keep SHORT (1-2 sentences) - just for UI display
+- prompt: Be DETAILED and COMPREHENSIVE - this is what the AI uses to execute the workflow
+  • Include numbered steps (1, 2, 3...)
+  • Mention integrations by name (Gmail, Slack, Calendar, etc.)
+  • What data to gather and from where
+  • Expected format of outputs
+- cron_expression: Required for scheduled, omit for others (use USER'S LOCAL TIME, not UTC)
 - trigger_slug: Required for integration, omit for others  
-- direct_create: Set true ONLY for simple, unambiguous workflows
+- direct_create: Set true ONLY for simple, unambiguous manual/scheduled workflows
 """
 
 
@@ -166,9 +165,6 @@ def parse_subagent_response(response: str) -> ParseResult:
     Returns:
         ParseResult with mode, data, and any errors
     """
-    import json
-    import re
-
     # Simple approach: find content between ```json and ``` (or just ``` and ```)
     # Use raw string to avoid escaping issues
     json_block_pattern = re.compile(r"```(?:json)?\s*\n?(.*?)\n?```", re.DOTALL)

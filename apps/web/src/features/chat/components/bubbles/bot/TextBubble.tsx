@@ -38,6 +38,7 @@ import { IntegrationListSection } from "@/features/integrations";
 import type { IntegrationConnectionData } from "@/features/integrations/types";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
+import WorkflowCreatedCard from "@/features/workflows/components/WorkflowCreatedCard";
 import WorkflowDraftCard from "@/features/workflows/components/WorkflowDraftCard";
 import { Alert01Icon } from "@/icons";
 import type {
@@ -55,6 +56,7 @@ import type {
   SearchResults,
   TodoToolData,
   WeatherData,
+  WorkflowCreatedData,
   WorkflowDraftData,
 } from "@/types";
 import type {
@@ -366,6 +368,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     <WorkflowDraftCard
       key={`tool-workflow-draft-${index}`}
       draft={data as WorkflowDraftData}
+    />
+  ),
+
+  workflow_created: (data, index) => (
+    <WorkflowCreatedCard
+      key={`tool-workflow-created-${index}`}
+      workflow={data as WorkflowCreatedData}
     />
   ),
 };

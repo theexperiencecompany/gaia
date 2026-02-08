@@ -111,43 +111,6 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
           {draft.suggested_description}
         </p>
 
-        {/* Steps preview */}
-        {draft.steps && draft.steps.length > 0 && (
-          <div className="space-y-2">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-zinc-500">Steps</span>
-              <Chip
-                size="sm"
-                variant="flat"
-                classNames={{
-                  base: "h-5 min-w-5 bg-zinc-700/60",
-                  content: "text-[10px] font-medium text-zinc-400 px-1",
-                }}
-              >
-                {draft.steps.length}
-              </Chip>
-            </div>
-            <div className="space-y-1.5">
-              {draft.steps.slice(0, 3).map((step, index) => (
-                <div
-                  key={`step-${step.substring(0, 20)}-${index}`}
-                  className="flex items-start gap-2.5 text-xs text-zinc-400"
-                >
-                  <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-zinc-700/80 text-[10px] font-semibold text-zinc-300">
-                    {index + 1}
-                  </span>
-                  <span className="line-clamp-1 pt-0.5">{step}</span>
-                </div>
-              ))}
-              {draft.steps.length > 3 && (
-                <span className="ml-7 text-[11px] text-zinc-500">
-                  +{draft.steps.length - 3} more steps
-                </span>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Action button */}
         <Button
           size="sm"

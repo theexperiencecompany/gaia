@@ -40,6 +40,7 @@ import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 import { type Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflowCreation } from "../hooks";
 import {
+  getBrowserTimezone,
   getDefaultFormValues,
   type WorkflowFormData,
   workflowFormSchema,
@@ -278,7 +279,7 @@ export default function WorkflowModal({
           type: "schedule" as const,
           enabled: true,
           cron_expression: draftData.cron_expression || "0 9 * * *",
-          timezone: "UTC",
+          timezone: getBrowserTimezone(),
         };
       } else if (
         draftData.trigger_type === "integration" &&
@@ -880,7 +881,7 @@ export default function WorkflowModal({
                                   type: "schedule",
                                   enabled: true,
                                   cron_expression: "0 9 * * *",
-                                  timezone: "UTC",
+                                  timezone: getBrowserTimezone(),
                                 });
                               }
                             } else if (tabKey === "trigger") {

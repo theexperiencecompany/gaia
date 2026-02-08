@@ -8,23 +8,143 @@ Provides tools for:
 
 The create_workflow tool invokes WorkflowSubagentRunner which handles
 the subagent execution and returns structured JSON for streaming.
+
+Direct creation: For simple, unambiguous workflows (manual/scheduled triggers),
+we can create them directly without user confirmation. Integration triggers
+always require confirmation due to config_fields (calendar_ids, channel_ids, etc).
 """
 
 from datetime import datetime
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Optional
 
 from app.config.loggers import general_logger as logger
 from app.decorators import with_rate_limiting
-from app.models.workflow_models import WorkflowExecutionRequest
+from app.models.workflow_models import (
+    CreateWorkflowRequest,
+    TriggerConfig,
+    TriggerType,
+    WorkflowExecutionRequest,
+)
 from app.services.workflow import WorkflowService
 from app.services.workflow.context_extractor import WorkflowContextExtractor
-from app.services.workflow.subagent_output import parse_subagent_response
+from app.services.workflow.subagent_output import (
+    FinalizedOutput,
+    parse_subagent_response,
+)
 from app.services.workflow.trigger_search import TriggerSearchService
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-# RESPONSE HELPERS
+
+def can_create_directly(draft: FinalizedOutput) -> bool:
+    """
+    Check if workflow can be created directly without user confirmation.
+
+    Returns True if:
+    - direct_create flag is True
+    - Trigger type is manual or scheduled (no config_fields needed)
+
+    Returns False if:
+    - direct_create is False
+    - Trigger type is integration (requires user to specify config like calendar_ids)
+    """
+    if not draft.direct_create:
+        return False
+
+    # Integration triggers ALWAYS need confirmation (have config_fields like calendar_ids, channel_ids)
+    if draft.trigger_type == "integration":
+        return False
+
+    return True
+
+
+async def create_workflow_directly(
+    draft: FinalizedOutput,
+    user_id: str,
+    writer,
+    user_timezone: str = "UTC",
+) -> Optional[dict]:
+    """
+    Create a workflow directly from a finalized draft.
+
+    Returns success_response on success, or None if creation fails
+    (caller should fall back to streaming draft).
+    """
+    try:
+        # Map frontend trigger_type to backend TriggerType enum
+        # Frontend uses "scheduled", backend uses TriggerType.SCHEDULE
+        trigger_type_map = {
+            "manual": TriggerType.MANUAL,
+            "scheduled": TriggerType.SCHEDULE,
+            "integration": TriggerType.INTEGRATION,
+        }
+        backend_trigger_type = trigger_type_map.get(
+            draft.trigger_type, TriggerType.MANUAL
+        )
+
+        # Build trigger config with timezone
+        trigger_config = TriggerConfig(
+            type=backend_trigger_type,
+            enabled=True,
+            cron_expression=draft.cron_expression,
+            trigger_name=draft.trigger_slug,
+            timezone=user_timezone,
+        )
+
+        workflow_description = draft.prompt if draft.prompt else draft.description
+
+        request = CreateWorkflowRequest(
+            title=draft.title,
+            description=workflow_description,
+            trigger_config=trigger_config,
+            steps=None,  # Steps are embedded in the prompt
+            generate_immediately=True,
+        )
+
+        # Create the workflow
+        workflow = await WorkflowService.create_workflow(
+            request=request,
+            user_id=user_id,
+            user_timezone=user_timezone,
+        )
+
+        # Stream workflow_created event with full workflow data
+        # Map backend trigger type back to frontend format
+        frontend_trigger_type_map = {
+            "manual": "manual",
+            "schedule": "scheduled",
+            "integration": "integration",
+        }
+
+        workflow_data = {
+            "id": workflow.id,
+            "title": workflow.title,
+            "description": workflow.description,
+            "trigger_config": {
+                "type": frontend_trigger_type_map.get(
+                    workflow.trigger_config.type, workflow.trigger_config.type
+                ),
+                "cron_expression": workflow.trigger_config.cron_expression,
+                "trigger_name": workflow.trigger_config.trigger_name,
+                "enabled": workflow.trigger_config.enabled,
+                "timezone": workflow.trigger_config.timezone,
+            },
+            "activated": workflow.activated,
+        }
+
+        writer({"workflow_created": workflow_data})
+
+        logger.info(f"[create_workflow] Created workflow directly: {workflow.id}")
+
+        return success_response(
+            {"status": "created", "workflow_id": workflow.id},
+            f"Workflow '{workflow.title}' created and activated.",
+        )
+
+    except Exception as e:
+        logger.warning(f"[create_workflow] Direct creation failed: {e}")
+        return None  # Signal to caller to fall back to draft
 
 
 def error_response(error_code: str, message: str) -> dict:
@@ -38,9 +158,6 @@ def success_response(data: Any, message: str | None = None) -> dict:
     if message:
         response["message"] = message
     return response
-
-
-# CONFIG HELPERS
 
 
 def get_user_id(config: RunnableConfig) -> str:
@@ -67,7 +184,9 @@ def get_user_time(config: RunnableConfig) -> datetime:
     return datetime.now()
 
 
-# TRIGGER SEARCH TOOL
+def get_user_timezone(config: RunnableConfig) -> str:
+    """Extract user_timezone from config. Falls back to +00:00 (UTC)."""
+    return config.get("configurable", {}).get("user_timezone", "+00:00")
 
 
 @tool
@@ -118,9 +237,6 @@ async def search_triggers(
     except Exception as e:
         logger.error(f"Error searching triggers: {e}")
         return error_response("search_failed", str(e))
-
-
-# WORKFLOW CREATION TOOL
 
 
 @tool
@@ -184,6 +300,8 @@ async def create_workflow(
         thread_id = get_thread_id(config) or ""
         user_name = config.get("configurable", {}).get("user_name")
         user_time = get_user_time(config)
+        # Get user's timezone offset from configurable (e.g., +05:30)
+        user_timezone = get_user_timezone(config)
 
         # Build task description based on mode
         if mode == "new":
@@ -232,7 +350,32 @@ async def create_workflow(
         logger.info(f"[create_workflow] Parsed mode={result.mode}")
 
         if result.mode == "finalized" and result.draft:
-            # Stream workflow draft to frontend
+            draft = result.draft
+
+            # Check if we can create directly (simple, unambiguous workflows)
+            if can_create_directly(draft):
+                logger.info(
+                    f"[create_workflow] Attempting direct creation for: {draft.title}"
+                )
+
+                # Try to create the workflow directly
+                direct_result = await create_workflow_directly(
+                    draft=draft,
+                    user_id=user_id,
+                    writer=writer,
+                    user_timezone=user_timezone,
+                )
+
+                if direct_result is not None:
+                    # Success - workflow was created directly
+                    return direct_result
+
+                # Fall through to draft card if direct creation failed
+                logger.info(
+                    "[create_workflow] Direct creation failed, falling back to draft"
+                )
+
+            # Stream workflow draft to frontend for user confirmation
             writer(result.draft.to_stream_payload())
             logger.info(f"[create_workflow] Streamed draft: {result.draft.title}")
 
@@ -266,13 +409,9 @@ async def create_workflow(
         return error_response("subagent_failed", str(e))
 
 
-# TASK BUILDERS
-
-
 def _build_new_workflow_task(user_request: str) -> str:
     """Build task description for a new workflow from natural language request."""
     return f"""Create a workflow based on this user request:
-
 "{user_request}"
 
 Your job:
@@ -317,9 +456,6 @@ Your job:
 5. Output the finalized workflow JSON
 
 Remember to include a JSON block in your response."""
-
-
-# WORKFLOW MANAGEMENT TOOLS
 
 
 @tool

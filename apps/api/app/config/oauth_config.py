@@ -83,6 +83,8 @@ from app.models.mcp_config import (
     OAuthScope,
     ProviderMetadataConfig,
     SubAgentConfig,
+    ToolMetadataConfig,
+    VariableExtraction,
 )
 from app.models.oauth_models import OAuthIntegration
 from app.models.trigger_config import (
@@ -393,6 +395,16 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=GMAIL_AGENT_SYSTEM_PROMPT,
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="GMAIL_GET_PROFILE",
+                    variables=[
+                        VariableExtraction(name="email", field_path="emailAddress"),
+                    ],
+                ),
+            ],
+        ),
     ),
     OAuthIntegration(
         id="notion",
@@ -502,8 +514,15 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             memory_prompt=TWITTER_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(
-            user_info_tool="TWITTER_USER_LOOKUP_ME",
-            username_field="data.username",
+            tools=[
+                ToolMetadataConfig(
+                    tool="TWITTER_USER_LOOKUP_ME",
+                    variables=[
+                        VariableExtraction(name="username", field_path="data.username"),
+                        VariableExtraction(name="user_id", field_path="data.id"),
+                    ],
+                ),
+            ],
         ),
     ),
     OAuthIntegration(
@@ -732,8 +751,14 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             memory_prompt=GITHUB_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(
-            user_info_tool="GITHUB_GET_THE_AUTHENTICATED_USER",
-            username_field="data.login",
+            tools=[
+                ToolMetadataConfig(
+                    tool="GITHUB_GET_THE_AUTHENTICATED_USER",
+                    variables=[
+                        VariableExtraction(name="username", field_path="login"),
+                    ],
+                ),
+            ],
         ),
     ),
     OAuthIntegration(
