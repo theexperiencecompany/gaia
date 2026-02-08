@@ -154,7 +154,13 @@ def _process_public_integration_result(
     for item in result:
         integration_id = item.get("integration_id")
         if integration_id:
-            subagent_key = f"subagent:{integration_id}"
+            # Include name for LLM readability
+            name = item.get("name")
+            subagent_key = (
+                f"subagent:{integration_id} ({name})"
+                if name
+                else f"subagent:{integration_id}"
+            )
             processed.append(
                 {
                     "id": subagent_key,
@@ -181,9 +187,19 @@ def _process_chroma_search_result(
 
         # Handle subagent results from subagents namespace
         if hasattr(item, "namespace") and item.namespace == ("subagents",):
-            subagent_key = (
-                tool_key if tool_key.startswith("subagent:") else f"subagent:{tool_key}"
-            )
+            # Get display name from item.value if available (stored during indexing)
+            name = None
+            if hasattr(item, "value") and isinstance(item.value, dict):
+                name = item.value.get("name")
+
+            # Build subagent key with display name for LLM readability
+            if tool_key.startswith("subagent:"):
+                subagent_key = f"{tool_key} ({name})" if name else tool_key
+            else:
+                subagent_key = (
+                    f"subagent:{tool_key} ({name})" if name else f"subagent:{tool_key}"
+                )
+
             processed.append({"id": subagent_key, "score": item.score})
             continue
 
@@ -286,14 +302,28 @@ def _inject_available_subagents(
 
     # Add internal subagents (always available)
     for integration_id in internal_subagents:
-        subagent_key = f"subagent:{integration_id}"
+        # Get display name for LLM readability
+        integ = get_integration_by_id(integration_id)
+        name = integ.name if integ else None
+        subagent_key = (
+            f"subagent:{integration_id} ({name})"
+            if name
+            else f"subagent:{integration_id}"
+        )
         if subagent_key not in seen:
             result.append(subagent_key)
             seen.add(subagent_key)
 
     # Add connected integration subagents
     for integration_id in connected_integrations:
-        subagent_key = f"subagent:{integration_id}"
+        # Get display name for LLM readability
+        integ = get_integration_by_id(integration_id)
+        name = integ.name if integ else None
+        subagent_key = (
+            f"subagent:{integration_id} ({name})"
+            if name
+            else f"subagent:{integration_id}"
+        )
         if subagent_key not in seen:
             result.append(subagent_key)
             seen.add(subagent_key)

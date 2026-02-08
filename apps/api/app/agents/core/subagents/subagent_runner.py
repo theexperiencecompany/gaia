@@ -280,18 +280,23 @@ async def execute_subagent_stream(
 
             # Accumulate AI response content
             if chunk and isinstance(chunk, AIMessageChunk):
-                content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
+                content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
                 if content:
                     complete_message += content
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
+                output = (
+                    chunk.content[:3000]
+                    if isinstance(chunk.content, str)
+                    else str(chunk.content)[:3000]
+                )
                 if stream_writer:
                     stream_writer(
                         {
                             "tool_output": {
                                 "tool_call_id": chunk.tool_call_id,
-                                "output": chunk.text()[:3000],
+                                "output": output,
                             }
                         }
                     )
@@ -512,14 +517,19 @@ async def call_subagent(
 
             # Stream AI response content
             if chunk and isinstance(chunk, AIMessageChunk):
-                content = chunk.text() if hasattr(chunk, "text") else str(chunk.content)
+                content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
                 if content:
                     complete_message += content
                     yield f"data: {json.dumps({'response': content})}\n\n"
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
-                yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': chunk.text()[:3000]}})}\n\n"
+                output = (
+                    chunk.content[:3000]
+                    if isinstance(chunk.content, str)
+                    else str(chunk.content)[:3000]
+                )
+                yield f"data: {json.dumps({'tool_output': {'tool_call_id': chunk.tool_call_id, 'output': output}})}\n\n"
             continue
 
         if stream_mode == "custom":

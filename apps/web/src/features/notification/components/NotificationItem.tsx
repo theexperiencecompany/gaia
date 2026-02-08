@@ -1,11 +1,10 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
 import { formatDistanceToNow } from "date-fns";
-import { useState } from "react";
-import { toast } from "sonner";
 
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { useConfirmation } from "@/hooks/useConfirmation";
+import { useNotificationActions } from "@/hooks/useNotificationActions";
+
 import { CheckmarkBadge01Icon } from "@/icons";
 
 import {
@@ -23,10 +22,8 @@ export const NotificationItem = ({
   notification,
   onMarkAsRead,
 }: NotificationItemProps) => {
-  const { confirm, confirmationProps } = useConfirmation();
-  const [executingActionId, setExecutingActionId] = useState<string | null>(
-    null,
-  );
+  const { executeAction, loading, confirmationProps } =
+    useNotificationActions();
 
   // Access content directly from notification
   const content = notification.content || {
@@ -88,7 +85,7 @@ export const NotificationItem = ({
           <div className="mt-3 flex gap-2">
             {content.actions.map((action: NotificationAction) => {
               const isExecuted = action.executed || false;
-              const isCurrentlyExecuting = executingActionId === action.id;
+              const isCurrentlyExecuting = loading === action.id;
               const isDisabled =
                 action.disabled || isExecuted || isCurrentlyExecuting;
 
@@ -101,54 +98,7 @@ export const NotificationItem = ({
                     isExecuted ? "cursor-not-allowed opacity-50" : ""
                   }`}
                   disabled={isDisabled}
-                  onPress={async () => {
-                    if (isDisabled) return;
-
-                    try {
-                      if (
-                        action.requires_confirmation &&
-                        action.confirmation_message
-                      ) {
-                        const confirmed = await confirm({
-                          title: "Confirm Action",
-                          message: action.confirmation_message,
-                          confirmText: "Continue",
-                          cancelText: "Cancel",
-                          variant:
-                            action.style === "danger"
-                              ? "destructive"
-                              : "default",
-                        });
-                        if (!confirmed) return;
-                      }
-
-                      setExecutingActionId(action.id);
-
-                      const { NotificationsAPI } = await import(
-                        "@/services/api/notifications"
-                      );
-                      const result = await NotificationsAPI.executeAction(
-                        notification.id,
-                        action.id,
-                      );
-
-                      if (result.success) {
-                        toast.success(
-                          result.message || "Action executed successfully",
-                        );
-                        // Optionally trigger a refresh here if needed
-                      } else {
-                        toast.error(
-                          result.message || "Failed to execute action",
-                        );
-                      }
-                    } catch (error) {
-                      console.error("Action execution failed:", error);
-                      toast.error("Failed to execute action");
-                    } finally {
-                      setExecutingActionId(null);
-                    }
-                  }}
+                  onPress={() => executeAction(notification.id, action)}
                 >
                   {isCurrentlyExecuting ? (
                     <div className="flex items-center gap-1">

@@ -18,10 +18,18 @@ from app.schemas.integrations.responses import (
 )
 from app.services.oauth.oauth_service import get_all_integrations_status
 from app.helpers.integration_helpers import generate_integration_slug
+from app.helpers.namespace_utils import derive_integration_namespace
+from app.config.oauth_config import get_integration_by_id
+from app.services.integrations.integration_resolver import IntegrationResolver
 
 
 async def get_user_available_tool_namespaces(user_id: str) -> Set[str]:
-    """Get the set of integration namespaces (tool spaces) that user has connected."""
+    """Get the set of integration namespaces (tool spaces) that user has connected.
+
+    For platform integrations, uses the configured tool_space.
+    For custom integrations, resolves to URL domain (matches indexing logic).
+    """
+
     namespaces: Set[str] = set()
 
     # Add core namespaces that are always available
@@ -38,12 +46,23 @@ async def get_user_available_tool_namespaces(user_id: str) -> Set[str]:
 
     # Get connected integrations from unified status
     status = await get_all_integrations_status(user_id)
-    connected = {
-        integration_id
-        for integration_id, is_connected in status.items()
-        if is_connected
-    }
-    namespaces.update(connected)
+
+    for integration_id, is_connected in status.items():
+        if not is_connected:
+            continue
+
+        # Platform integration: use tool_space from subagent config
+        integration = get_integration_by_id(integration_id)
+        if integration and integration.subagent_config:
+            namespaces.add(integration.subagent_config.tool_space)
+        else:
+            # Custom integration: resolve to URL (domain + path) for consistency
+            # Includes path to differentiate /v1 vs /v2 endpoints
+            server_url = await IntegrationResolver.get_server_url(integration_id)
+            namespace = derive_integration_namespace(
+                integration_id, server_url, is_custom=True
+            )
+            namespaces.add(namespace)
 
     return namespaces
 

@@ -9,27 +9,23 @@ from app.config.loggers import chroma_logger as logger
 from app.config.oauth_config import get_subagent_integrations
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
+from app.db.redis import delete_cache, get_cache, set_cache
 from langgraph.store.base import PutOp
 
 from .chroma_store import ChromaStore
 
 
 async def _compute_tool_hash(tool: Any) -> str:
-    """Compute hash for a tool based on description and source code.
-
-    Args:
-        tool: Tool object with name and description attributes
-
-    Returns:
-        SHA256 hash string
-    """
+    """Compute hash for a tool based on description and source code."""
     try:
         code_source = inspect.getsource(tool)
         code_source = code_source.strip()
         code_source = "\n".join(line.rstrip() for line in code_source.split("\n"))
         content = f"{tool.description}::{code_source}"
     except (OSError, TypeError, AttributeError):
-        # Fallback to description-only hash if source unavailable
+        logger.debug(
+            f"Source unavailable for {getattr(tool, 'name', 'unknown')}, using description hash"
+        )
         content = f"{tool.name}::{tool.description}"
 
     return hashlib.sha256(content.encode()).hexdigest()
@@ -42,7 +38,8 @@ async def _get_current_tools_with_hashes(tool_registry) -> dict[str, dict]:
         tool_registry: Tool registry instance
 
     Returns:
-        Dictionary mapping tool names to their hash and namespace info
+        Dictionary mapping composite keys (namespace::tool_name) to their hash and namespace info.
+        Composite keys prevent collisions when different namespaces have same-named tools.
     """
     current_tools = {}
     tool_dict = tool_registry.get_tool_dict()
@@ -55,7 +52,8 @@ async def _get_current_tools_with_hashes(tool_registry) -> dict[str, dict]:
             name=tool_registry.get_category_of_tool(tool.name)
         )
         if tool_category:
-            current_tools[tool_name] = {
+            composite_key = f"{tool_category.space}::{tool_name}"
+            current_tools[composite_key] = {
                 "hash": tool_hash,
                 "namespace": tool_category.space,
                 "tool": tool,
@@ -96,7 +94,7 @@ async def _get_subagent_tools() -> dict[str, dict]:
         # Compute hash based on description only
         subagent_hash = hashlib.sha256(description.encode()).hexdigest()
 
-        subagent_tools[f"subagent:{integration.id}"] = {
+        subagent_tools[f"subagents::subagent:{integration.id}"] = {
             "hash": subagent_hash,
             "namespace": "subagents",
             "description": description,
@@ -115,12 +113,29 @@ async def _get_existing_tools_from_chroma(
         namespaces: Optional set of namespaces to filter by. If None, returns all.
 
     Returns:
-        Dictionary mapping tool names to their hash and namespace info
+        Dictionary mapping composite keys (namespace::tool_name) to their hash
+        and namespace info. Composite keys prevent collisions when different
+        namespaces have same-named tools.
     """
-    existing_tools = {}
+    existing_tools: dict[str, dict] = {}
 
     try:
-        existing_data = await collection.get(include=["metadatas"])
+        # Use ChromaDB where filter for efficient namespace filtering
+        where_filter: dict[str, Any] | None = None
+        if namespaces is not None:
+            ns_list = list(namespaces)
+            if len(ns_list) == 1:
+                where_filter = {"namespace": {"$eq": ns_list[0]}}
+            elif len(ns_list) > 1:
+                where_filter = {"$or": [{"namespace": {"$eq": ns}} for ns in ns_list]}
+            else:
+                return existing_tools
+
+        get_kwargs: dict[str, Any] = {"include": ["metadatas"]}
+        if where_filter:
+            get_kwargs["where"] = where_filter
+
+        existing_data = await collection.get(**get_kwargs)
         if (
             existing_data
             and existing_data.get("ids")
@@ -132,12 +147,9 @@ async def _get_existing_tools_from_chroma(
                 if metadata and "::" in doc_id:
                     parts = doc_id.split("::")
                     namespace = parts[0] if len(parts) > 1 else "default"
-                    tool_name = parts[-1]
 
-                    if namespaces is not None and namespace not in namespaces:
-                        continue
-
-                    existing_tools[tool_name] = {
+                    # Use full doc_id as composite key to prevent collisions
+                    existing_tools[doc_id] = {
                         "hash": metadata.get("tool_hash", ""),
                         "namespace": namespace,
                     }
@@ -184,8 +196,10 @@ def _build_put_operations(
     """Build PutOp operations for upserting and deleting tools.
 
     Args:
-        tools_to_upsert: List of (tool_name, tool_data) tuples to upsert
-        tools_to_delete: List of (tool_name, namespace) tuples to delete
+        tools_to_upsert: List of (composite_key, tool_data) tuples to upsert.
+            composite_key format: "namespace::tool_name"
+        tools_to_delete: List of (composite_key, namespace) tuples to delete.
+            composite_key format: "namespace::tool_name"
 
     Returns:
         List of PutOp operations
@@ -193,7 +207,12 @@ def _build_put_operations(
     put_ops = []
 
     # Add upsert operations
-    for tool_name, tool_data in tools_to_upsert:
+    for composite_key, tool_data in tools_to_upsert:
+        # Extract actual tool name from composite key (namespace::tool_name)
+        tool_name = (
+            composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
+        )
+
         # Handle regular tools vs subagent tools
         if "tool" in tool_data:
             tool = tool_data["tool"]
@@ -215,7 +234,10 @@ def _build_put_operations(
         )
 
     # Add delete operations
-    for tool_name, namespace in tools_to_delete:
+    for composite_key, namespace in tools_to_delete:
+        tool_name = (
+            composite_key.split("::", 1)[-1] if "::" in composite_key else composite_key
+        )
         put_ops.append(
             PutOp(
                 namespace=(namespace,),
@@ -255,16 +277,38 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     """Index tools into ChromaDB store on-demand with full diff logic.
 
     This function manages tools for a specific namespace:
-    1. Fetches existing tools from ChromaDB for the namespace
-    2. Compares with new tools to determine upsert/delete operations
-    3. Removes stale tools, adds/updates new tools
+    1. Checks Redis cache to skip if tools haven't changed
+    2. Fetches existing tools from ChromaDB for the namespace
+    3. Compares with new tools to determine upsert/delete operations
+    4. Removes stale tools, adds/updates new tools
 
     Args:
         tools_with_space: List of (tool, space_name) tuples to index
     """
-    from app.core.lazy_loader import providers
 
     if not tools_with_space:
+        return
+
+    namespace = tools_with_space[0][1]
+
+    if not namespace or len(namespace) > 512 or "::" in namespace:
+        logger.error(
+            f"Invalid namespace: '{namespace}' (empty, too long, or contains ::)"
+        )
+        return
+
+    # Compute hash of incoming tools for cache check
+    tools_signature = "|".join(
+        f"{t.name}:{getattr(t, 'description', '')[:200]}" for t, _ in tools_with_space
+    )
+    tools_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
+
+    # Check Redis cache BEFORE expensive ChromaDB operations
+    # Single source of truth for cache keys: always namespace-based
+    cache_key = f"chroma:indexed:{namespace}"
+    cached_hash = await get_cache(cache_key)
+    if cached_hash == tools_hash:
+        logger.debug(f"Namespace '{namespace}' unchanged (Redis cache hit)")
         return
 
     store = await providers.aget("chroma_tools_store")
@@ -272,13 +316,13 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
         logger.warning("ChromaDB store not available, skipping tool indexing")
         return
 
-    namespace = tools_with_space[0][1]
     collection = await store._get_collection()
 
     current_tools = {}
     for tool, space in tools_with_space:
         tool_hash = await _compute_tool_hash(tool)
-        current_tools[tool.name] = {
+        composite_key = f"{space}::{tool.name}"
+        current_tools[composite_key] = {
             "hash": tool_hash,
             "namespace": space,
             "tool": tool,
@@ -290,6 +334,8 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
 
     if not tools_to_upsert and not tools_to_delete:
         logger.info(f"Namespace '{namespace}' is up-to-date, no changes needed")
+        # Cache the hash even if no changes (first time seeing this namespace)
+        await set_cache(cache_key, tools_hash, ttl=86400)
         return
 
     logger.info(
@@ -300,12 +346,51 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     put_ops = _build_put_operations(tools_to_upsert, tools_to_delete)
     await _execute_batch_operations(store, put_ops)
 
+    # Cache the hash after successful indexing (24 hour TTL)
+    await set_cache(cache_key, tools_hash, ttl=86400)
+
+
+async def delete_tools_by_namespace(namespace: str) -> int:
+    """Delete all tools indexed under a specific namespace.
+
+    Used when a custom integration is deleted to clean up its tools from ChromaDB.
+
+    Args:
+        namespace: The namespace to delete tools from (e.g., URL domain)
+
+    Returns:
+        Number of tools deleted
+    """
+
+    store = await providers.aget("chroma_tools_store")
+    if not store:
+        logger.warning("ChromaDB store not available for cleanup")
+        return 0
+
+    collection = await store._get_collection()
+
+    # Use ChromaDB metadata filter to avoid a full collection scan
+    results = await collection.get(
+        where={"namespace": {"$eq": namespace}},
+        include=[],
+    )
+    ids_to_delete = results.get("ids", [])
+
+    if ids_to_delete:
+        await collection.delete(ids=ids_to_delete)
+        logger.info(f"Deleted {len(ids_to_delete)} tools from namespace '{namespace}'")
+
+    # Invalidate Redis cache for this namespace (unified format)
+    await delete_cache(f"chroma:indexed:{namespace}")
+
+    return len(ids_to_delete)
+
 
 @lazy_provider(
     name="chroma_tools_store",
     required_keys=[],
     strategy=MissingKeyStrategy.ERROR,
-    auto_initialize=True,
+    auto_initialize=False,  # Lazy-load only when first accessed (avoids duplicate indexing)
 )
 async def initialize_chroma_tools_store():
     """Initialize and return the ChromaDB-backed tools store with incremental updates.

@@ -42,7 +42,6 @@ from app.utils.agent_utils import (
     format_tool_call_entry,
     parse_subagent_id,
     process_custom_event_for_tools,
-    store_agent_progress,
 )
 
 
@@ -383,19 +382,61 @@ async def execute_graph_silent(
         - tool_data: Dictionary of extracted tool execution data and results
     """
     complete_message = ""
-    tool_data = {}
+    tool_data: dict = {"tool_data": []}
 
-    # Get storage context from config
-    conversation_id = config.get("configurable", {}).get("thread_id")
+    # Track tool calls to avoid duplicate emissions (same as streaming)
+    emitted_tool_calls: set[str] = set()
+
+    # Get user_id for metadata lookup (not for storage - caller handles that)
     user_id = config.get("configurable", {}).get("user_id")
 
     async for event in graph.astream(
         initial_state,
-        stream_mode=["messages", "custom"],
+        stream_mode=["messages", "custom", "updates"],
         config=config,
         subgraphs=True,
     ):
         ns, stream_mode, payload = event
+
+        # Process "updates" events - same logic as execute_graph_streaming
+        if stream_mode == "updates":
+            for node_name, state_update in payload.items():
+                if isinstance(state_update, dict) and "messages" in state_update:
+                    for msg in state_update["messages"]:
+                        if not hasattr(msg, "tool_calls") or not msg.tool_calls:
+                            continue
+                        for tc in msg.tool_calls:
+                            tc_id = tc.get("id")
+                            if not tc_id or tc_id in emitted_tool_calls:
+                                continue
+
+                            # Look up metadata based on tool type
+                            tool_name = tc.get("name")
+                            tool_metadata = {}
+
+                            if tool_name == "handoff":
+                                args = tc.get("args", {})
+                                subagent_id = args.get("subagent_id", "")
+                                if subagent_id:
+                                    tool_metadata = await get_handoff_metadata(
+                                        subagent_id
+                                    )
+                            elif tool_name and user_id:
+                                tool_metadata = await get_custom_integration_metadata(
+                                    tool_name, user_id
+                                )
+
+                            # Format tool_data entry (same as streaming)
+                            tool_entry = await format_tool_call_entry(
+                                tc,
+                                icon_url=tool_metadata.get("icon_url"),
+                                integration_id=tool_metadata.get("integration_id"),
+                                integration_name=tool_metadata.get("integration_name"),
+                            )
+                            if tool_entry:
+                                tool_data["tool_data"].append(tool_entry)
+                                emitted_tool_calls.add(tc_id)
+            continue
 
         if stream_mode == "messages":
             chunk, metadata = payload
@@ -404,20 +445,22 @@ async def execute_graph_silent(
                 continue  # Skip silent chunks (e.g. follow-up actions generation)
 
             if chunk and isinstance(chunk, AIMessageChunk):
-                content = str(chunk.content)
+                content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
                 if content:
                     complete_message += content
 
         elif stream_mode == "custom":
             new_data = process_custom_event_for_tools(payload)
             if new_data:
-                tool_data.update(new_data)
-
-                # Store progress immediately when tool completes (same pattern as chat)
-                if conversation_id and user_id:
-                    await store_agent_progress(
-                        conversation_id, user_id, complete_message, tool_data
-                    )
+                # Merge custom event tool_data into our array
+                if "tool_data" in new_data:
+                    for entry in new_data["tool_data"]:
+                        tool_data["tool_data"].append(entry)
+                else:
+                    # For other custom data, merge at top level
+                    for key, value in new_data.items():
+                        if key != "tool_data":
+                            tool_data[key] = value
 
     return complete_message, tool_data
 

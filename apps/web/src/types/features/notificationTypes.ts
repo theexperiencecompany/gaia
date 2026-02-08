@@ -540,9 +540,3 @@ export interface UseNotificationsOptions {
   offset?: number;
   channel_type?: string;
 }
-
-export interface UseNotificationWebSocketOptions {
-  onNotification?: (notification: NotificationRecord) => void;
-  onUpdate?: (notification: NotificationRecord) => void;
-  onError?: (error: Error) => void;
-}

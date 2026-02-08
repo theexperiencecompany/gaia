@@ -1,12 +1,39 @@
+import "katex/dist/katex.min.css";
+
 import Image from "next/image";
 import type React from "react";
 import ReactMarkdown from "react-markdown";
+import rehypeKatex from "rehype-katex";
+import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
+import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
+import remarkMath from "remark-math";
+import remarkSmartypants from "remark-smartypants";
+import remarkSupersub from "remark-supersub";
 
 import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
 import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import { cn } from "@/lib";
 import { useImageDialog } from "@/stores/uiStore";
+
+const sanitizeSchema = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    div: [
+      ...(defaultSchema.attributes?.div || []),
+      ["className", "math", "math-display"],
+    ],
+    span: [
+      ...(defaultSchema.attributes?.span || []),
+      ["className", "math", "math-inline"],
+    ],
+    code: [
+      ...(defaultSchema.attributes?.code || []),
+      ["className", /^language-/],
+    ],
+  },
+};
 
 export interface MarkdownRendererProps {
   content: string;
@@ -64,6 +91,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
           hr: ({ ...props }) => (
             <hr className="my-8 border-t border-zinc-700" {...props} />
           ),
+          p: ({ ...props }) => <p className="mb-4 last:mb-0" {...props} />,
           li: ({ ...props }) => <li className="mb-2" {...props} />,
           img: ({ ...props }) => (
             <Image
@@ -106,7 +134,14 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             <td className="border border-zinc-700 px-4 py-2" {...props} />
           ),
         }}
-        remarkPlugins={[remarkGfm]}
+        remarkPlugins={[
+          remarkGfm,
+          remarkBreaks,
+          remarkMath,
+          remarkSmartypants,
+          remarkSupersub,
+        ]}
+        rehypePlugins={[[rehypeSanitize, sanitizeSchema], rehypeKatex]}
       >
         {content}
       </ReactMarkdown>

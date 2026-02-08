@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { NotificationsAPI } from "@/services/api/notifications";
+import { useNotificationStore } from "@/stores/notificationStore";
 import {
   type NotificationRecord,
   NotificationStatus,
@@ -27,70 +28,78 @@ interface UseNotificationsReturn {
 export function useNotifications(
   options: UseNotificationsOptions = {},
 ): UseNotificationsReturn {
-  const [notifications, setNotifications] = useState<NotificationRecord[]>([]);
-  const [loading, setLoading] = useState(true);
+  const {
+    notifications: allNotifications,
+    isLoaded,
+    setNotifications,
+    addNotification,
+    updateNotification,
+  } = useNotificationStore();
+
+  const [loading, setLoading] = useState(!isLoaded);
   const [error, setError] = useState<string | null>(null);
 
-  const { status, limit, offset, channel_type } = options;
+  const { limit, offset, channel_type } = options;
+  // setFetching accessed via store.getState() inside fetchNotifications
 
-  const fetchNotifications = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await NotificationsAPI.getNotifications({
-        status,
-        limit,
-        offset,
-        channel_type,
-      });
-      setNotifications(response.notifications);
-    } catch (err) {
-      const errorMessage =
-        err instanceof Error ? err.message : "Failed to fetch notifications";
-      setError(errorMessage);
-      console.error("Error fetching notifications:", err);
-    } finally {
-      setLoading(false);
-    }
-  }, [status, limit, offset, channel_type]);
+  // Always fetch without status filter so the store has the full dataset.
+  // Status filtering is applied client-side via the memoized `notifications` below.
+  const fetchNotifications = useCallback(
+    async (force = false) => {
+      const state = useNotificationStore.getState();
+      if (!force && (state.isLoaded || state.isFetching)) {
+        setLoading(false);
+        return;
+      }
+      state.setFetching(true);
+      try {
+        setLoading(true);
+        setError(null);
+        const response = await NotificationsAPI.getNotifications({
+          limit: Math.max(limit ?? 0, 100),
+          offset,
+          channel_type,
+        });
+        setNotifications(response.notifications);
+      } catch (err) {
+        const errorMessage =
+          err instanceof Error ? err.message : "Failed to fetch notifications";
+        setError(errorMessage);
+        console.error("Error fetching notifications:", err);
+      } finally {
+        useNotificationStore.getState().setFetching(false);
+        setLoading(false);
+      }
+    },
+    [limit, offset, channel_type, setNotifications],
+  );
 
   const markAsRead = useCallback(
     async (id: string) => {
       try {
-        // Optimistically update local state first for immediate UI feedback
-        setNotifications((prev) =>
-          prev.map((notification) =>
-            notification.id === id
-              ? {
-                  ...notification,
-                  status: NotificationStatus.READ,
-                  read_at: new Date().toISOString(),
-                }
-              : notification,
-          ),
-        );
+        updateNotification({
+          ...allNotifications.find((n) => n.id === id)!,
+          status: NotificationStatus.READ,
+          read_at: new Date().toISOString(),
+        });
 
-        // Make API call
         await NotificationsAPI.markAsRead(id);
-
-        // Refetch to ensure consistency with backend
-        await fetchNotifications();
+        await fetchNotifications(true);
         toast.success("Notification marked as read");
       } catch (error) {
-        // Revert optimistic update on error
-        await fetchNotifications();
+        await fetchNotifications(true);
         toast.error("Failed to mark notification as read");
         console.error("Error marking notification as read:", error);
       }
     },
-    [fetchNotifications],
+    [allNotifications, updateNotification, fetchNotifications],
   );
 
   const archiveNotification = useCallback(
     async (id: string) => {
       try {
         await NotificationsAPI.archiveNotification(id);
-        await fetchNotifications();
+        await fetchNotifications(true);
         toast.success("Notification archived");
       } catch (error) {
         toast.error("Failed to archive notification");
@@ -104,7 +113,7 @@ export function useNotifications(
     async (id: string, until: Date) => {
       try {
         await NotificationsAPI.snoozeNotification(id, until);
-        await fetchNotifications();
+        await fetchNotifications(true);
         toast.success("Notification snoozed");
       } catch (error) {
         toast.error("Failed to snooze notification");
@@ -118,7 +127,7 @@ export function useNotifications(
     async (ids: string[]) => {
       try {
         await NotificationsAPI.bulkMarkAsRead(ids);
-        await fetchNotifications();
+        await fetchNotifications(true);
         toast.success(`Marked ${ids.length} notifications as read`);
       } catch (error) {
         toast.error("Failed to mark notifications as read");
@@ -132,7 +141,7 @@ export function useNotifications(
     async (ids: string[]) => {
       try {
         await NotificationsAPI.bulkArchive(ids);
-        await fetchNotifications();
+        await fetchNotifications(true);
         toast.success(`${ids.length} notifications archived`);
       } catch (error) {
         toast.error("Failed to archive notifications");
@@ -146,7 +155,7 @@ export function useNotifications(
     async (ids: string[]) => {
       try {
         await NotificationsAPI.bulkDelete(ids);
-        await fetchNotifications();
+        await fetchNotifications(true);
         toast.success(`${ids.length} notifications deleted`);
       } catch (error) {
         toast.error("Failed to delete notifications");
@@ -156,29 +165,27 @@ export function useNotifications(
     [fetchNotifications],
   );
 
-  const addNotification = useCallback((notification: NotificationRecord) => {
-    setNotifications((prev) => [notification, ...prev]);
-  }, []);
+  // Apply client-side status filtering; the store holds all statuses
+  const notifications = useMemo(() => {
+    let result = allNotifications;
+    if (options.status) {
+      result = result.filter((n) => n.status === options.status);
+    }
+    if (limit) {
+      result = result.slice(0, limit);
+    }
+    return result;
+  }, [allNotifications, options.status, limit]);
 
-  const updateNotification = useCallback(
-    (updatedNotification: NotificationRecord) => {
-      setNotifications((prev) =>
-        prev.map((notification) =>
-          notification.id === updatedNotification.id
-            ? updatedNotification
-            : notification,
-        ),
-      );
-    },
-    [],
+  const unreadCount = useMemo(
+    () =>
+      notifications.filter(
+        (notification) => notification.status === NotificationStatus.DELIVERED,
+      ).length,
+    [notifications],
   );
 
-  // Calculate unread count
-  const unreadCount = notifications.filter(
-    (notification) => notification.status === NotificationStatus.DELIVERED,
-  ).length;
-
-  // Initial fetch
+  // Initial fetch — skipped if store is already populated
   useEffect(() => {
     fetchNotifications();
   }, [fetchNotifications]);
@@ -187,7 +194,7 @@ export function useNotifications(
     notifications,
     loading,
     error,
-    refetch: fetchNotifications,
+    refetch: () => fetchNotifications(true),
     markAsRead,
     archiveNotification,
     snoozeNotification,

@@ -17,6 +17,8 @@ from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.core.lazy_loader import providers
+from app.db.mongodb.collections import integrations_collection
+from app.helpers.namespace_utils import derive_integration_namespace
 
 from .base_subagent import SubAgentFactory
 
@@ -216,8 +218,6 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
     Returns:
         Compiled subagent graph, or None if creation fails
     """
-    from app.db.mongodb.collections import integrations_collection
-
     # Fetch custom integration from MongoDB
     custom_doc = await integrations_collection.find_one(
         {"integration_id": integration_id}
@@ -261,15 +261,23 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
             logger.error(f"No tools available for {integration_id}")
             return None
 
-        # Use integration_id as both space and category for custom MCPs
+        # Get URL domain namespace from mcp_config to match indexing in mcp_client.py
+        mcp_config = custom_doc.get("mcp_config", {})
+        server_url = mcp_config.get("server_url", "")
+        tool_namespace = derive_integration_namespace(
+            integration_id, server_url, is_custom=True
+        )
+
         tool_registry._add_category(
             name=category_name,
             tools=tools,
-            space=integration_id,
+            space=tool_namespace,  # Use URL domain to match mcp_client.py indexing
             integration_name=integration_id,
         )
         await tool_registry._index_category_tools(category_name)
-        logger.info(f"Registered {len(tools)} custom MCP tools for {integration_id}")
+        logger.info(
+            f"Registered {len(tools)} custom MCP tools for {integration_id} in namespace '{tool_namespace}'"
+        )
     else:
         # Category exists - get tool count from registry
         category = tool_registry.get_category(category_name)
@@ -295,7 +303,7 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
     graph = await SubAgentFactory.create_provider_subagent(
         provider=integration_id,
         llm=llm,
-        tool_space=integration_id,
+        tool_space=tool_namespace,
         name=agent_name,
         use_direct_tools=use_direct,
         disable_retrieve_tools=use_direct,  # Only disable if using direct binding

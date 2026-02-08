@@ -25,7 +25,6 @@ import {
   ZapIcon,
 } from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
-import { useRefreshTrigger } from "@/stores/notificationStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
 import { SidebarPromo } from "./SidebarPromo";
 
@@ -33,9 +32,8 @@ export default function SidebarTopButtons() {
   const pathname = usePathname();
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
   const { plans } = usePricing();
-  const refreshTrigger = useRefreshTrigger();
   const [unreadCount, setUnreadCount] = useState(0);
-  const { notifications, refetch } = useNotifications({
+  const { notifications } = useNotifications({
     status: NotificationStatus.DELIVERED,
     limit: 50,
   });
@@ -44,10 +42,6 @@ export default function SidebarTopButtons() {
     (p) => p.name === "Pro" && p.duration === "monthly",
   );
   const price = monthlyPlan ? monthlyPlan.amount / 100 : 15;
-
-  useEffect(() => {
-    refetch();
-  }, [refreshTrigger, refetch]);
 
   useEffect(() => {
     setUnreadCount(

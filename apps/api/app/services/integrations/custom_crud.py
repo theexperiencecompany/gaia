@@ -7,7 +7,7 @@ from typing import Any, Dict, Optional, Tuple
 from mcp_use.client.exceptions import OAuthAuthenticationError
 
 from app.config.loggers import app_logger as logger
-from app.core.lazy_loader import providers
+from app.db.chroma.chroma_cleanup import cleanup_integration_chroma_data
 from app.db.chroma.public_integrations_store import remove_public_integration
 from app.db.mongodb.collections import (
     integrations_collection,
@@ -38,16 +38,8 @@ async def create_custom_integration(
     icon_url: str | None = None,
 ) -> Integration:
     """Create a custom MCP integration."""
+    # uuid4 collision probability is negligible (~10^-36); no orphan check needed.
     integration_id = str(uuid.uuid4())
-
-    orphaned = await user_integrations_collection.find_one(
-        {"integration_id": integration_id, "user_id": user_id}
-    )
-    if orphaned:
-        await user_integrations_collection.delete_one(
-            {"integration_id": integration_id, "user_id": user_id}
-        )
-        await delete_cache_by_pattern(f"tools:user:{user_id}:*")
 
     integration = Integration(
         integration_id=integration_id,
@@ -111,7 +103,20 @@ async def update_custom_integration(
     if any([request.server_url, request.requires_auth, request.auth_type]):
         current_config = doc.get("mcp_config", {})
         if request.server_url is not None:
+            old_server_url = current_config.get("server_url", "")
             current_config["server_url"] = request.server_url
+
+            # Clean up old ChromaDB namespace when server_url changes
+            if old_server_url and old_server_url != request.server_url:
+                try:
+                    await cleanup_integration_chroma_data(
+                        integration_id, old_server_url
+                    )
+                except Exception as e:
+                    logger.warning(
+                        f"Failed to clean old namespace for {integration_id}: {e}"
+                    )
+
         if request.requires_auth is not None:
             current_config["requires_auth"] = request.requires_auth
         if request.auth_type is not None:
@@ -201,9 +206,9 @@ async def delete_custom_integration(user_id: str, integration_id: str) -> bool:
                 logger.debug(f"Cache deletion for mcp:tools:all failed: {e}")
 
             try:
-                store = await providers.aget("chroma_tools_store")
-                if store:
-                    await store.adelete(namespace=("subagents",), key=integration_id)
+                mcp_config = doc.get("mcp_config", {})
+                server_url = mcp_config.get("server_url", "")
+                await cleanup_integration_chroma_data(integration_id, server_url)
             except Exception as e:
                 logger.debug(f"Chroma store deletion failed for {integration_id}: {e}")
 

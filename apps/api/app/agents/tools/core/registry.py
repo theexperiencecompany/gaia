@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 from collections import defaultdict
 from collections.abc import KeysView, Mapping
 from functools import cache
@@ -23,8 +22,9 @@ from app.agents.tools import (
 )
 from app.config.loggers import langchain_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from app.db.redis import get_cache, set_cache
 from langchain_core.tools import BaseTool
+from app.helpers.namespace_utils import derive_integration_namespace
+from app.services.integrations.integration_resolver import IntegrationResolver
 
 
 class DynamicToolDict(Mapping[str, BaseTool]):
@@ -322,9 +322,14 @@ class ToolRegistry:
     async def _index_category_tools(self, category_name: str):
         """Index tools from a category into ChromaDB store.
 
-        Uses Redis-based change detection to skip indexing if tools haven't changed.
-        This avoids expensive ChromaDB queries on every startup.
+        Delegates all caching and diff logic to index_tools_to_store(),
+        which uses namespace-based cache keys for consistency.
+
+        All tools in a category share the same `space` (namespace) by design —
+        _add_category assigns a single space to the entire category, so
+        index_tools_to_store always receives a homogeneous list.
         """
+        # Import here to avoid circular import
         from app.db.chroma.chroma_tools_store import index_tools_to_store
 
         category = self._categories.get(category_name)
@@ -332,27 +337,7 @@ class ToolRegistry:
             return
 
         tools_with_space = [(tool.tool, category.space) for tool in category.tools]
-
-        # Compute a hash of all tool names + descriptions for change detection
-        tools_signature = "|".join(
-            f"{t.tool.name}:{getattr(t.tool, 'description', '')[:100]}"
-            for t in category.tools
-        )
-        tools_hash = hashlib.sha256(tools_signature.encode()).hexdigest()[:16]
-
-        # Check if tools have changed since last indexing
-        cache_key = f"chroma:indexed:{category_name}"
-        cached_hash = await get_cache(cache_key)
-
-        if cached_hash == tools_hash:
-            logger.debug(f"Skipping ChromaDB indexing for {category_name} - unchanged")
-            return
-
-        # Tools changed or first time - perform indexing
         await index_tools_to_store(tools_with_space)
-
-        # Cache the hash for 24 hours
-        await set_cache(cache_key, tools_hash, ttl=86400)
 
     def get_category(self, name: str) -> Optional[ToolCategory]:
         """Get a specific category by name."""
@@ -416,11 +401,16 @@ class ToolRegistry:
 
             # Get space from integration config
             integration = get_integration_by_id(integration_id)
-            space = "mcp"
+            space = integration_id  # Default: unique namespace per integration
             has_subagent = False
             if integration and integration.subagent_config:
                 space = integration.subagent_config.tool_space
                 has_subagent = integration.subagent_config.has_subagent
+            else:
+                server_url = await IntegrationResolver.get_server_url(integration_id)
+                space = derive_integration_namespace(
+                    integration_id, server_url, is_custom=True
+                )
 
             self._add_category(
                 name=category_name,

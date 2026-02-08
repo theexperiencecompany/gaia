@@ -29,7 +29,7 @@ class WorkerSettings:
 
     # Performance settings
     max_jobs = 10
-    job_timeout = 300  # 5 minutes
+    job_timeout = 1800  # 30 minutes
     keep_result = 0  # Don't keep results in Redis
     log_results = True
     health_check_interval = 30  # seconds

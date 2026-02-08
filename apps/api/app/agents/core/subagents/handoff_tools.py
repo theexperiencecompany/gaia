@@ -33,6 +33,7 @@ from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
 from app.helpers.agent_helpers import build_agent_config
+from app.helpers.namespace_utils import derive_integration_namespace
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_service import (
@@ -167,6 +168,7 @@ async def index_custom_mcp_as_subagent(
     integration_id: str,
     name: str,
     description: str,
+    server_url: str | None = None,
 ) -> None:
     """
     Index a custom MCP as a subagent for handoff discovery.
@@ -179,11 +181,8 @@ async def index_custom_mcp_as_subagent(
         integration_id: Unique ID of the custom integration (12-char hex)
         name: Display name of the integration
         description: Description of what the integration does
-
-    Note: With the new short UUID format for integration_id (e.g., a1b2c3d4e5f6),
-    the subagent key is now clean: subagent:a1b2c3d4e5f6
+        server_url: MCP server URL for namespace derivation
     """
-    # Create rich description for semantic matching
     rich_description = (
         f"{name}. Custom MCP integration. "
         f"{description}. "
@@ -191,14 +190,19 @@ async def index_custom_mcp_as_subagent(
         f"Examples: fetch data, scrape, query, automate"
     )
 
+    tool_namespace = derive_integration_namespace(
+        integration_id, server_url, is_custom=True
+    )
+
     put_op = PutOp(
         namespace=SUBAGENTS_NAMESPACE,
-        key=integration_id,  # Now a clean 12-char hex UUID
+        key=integration_id,
         value={
             "id": integration_id,
             "name": name,
             "description": rich_description,
-            "source": "custom",  # Mark as custom for filtering
+            "source": "custom",
+            "tool_namespace": tool_namespace,
         },
         index=["description"],
     )

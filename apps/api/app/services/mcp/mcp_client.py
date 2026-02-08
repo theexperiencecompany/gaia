@@ -38,6 +38,7 @@ from app.db.mongodb.collections import (
 )
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import get_api_base_url
+from app.helpers.namespace_utils import derive_integration_namespace
 from app.models.mcp_config import MCPConfig
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.integrations.user_integrations import (
@@ -395,14 +396,18 @@ class MCPClient:
         description: str | None = None,
     ) -> None:
         """Handle custom integration: index tools and register as subagent."""
-        # Index tools in ChromaDB for semantic discovery
+        namespace = derive_integration_namespace(
+            integration_id, server_url, is_custom=True
+        )
+
+        # Index tools in ChromaDB for semantic discovery.
+        # index_tools_to_store() manages its own Redis cache (chroma:indexed:{namespace})
+        # with a 24h TTL and hash-based change detection — no need to duplicate here.
         try:
-            tools_with_space = [(tool, integration_id) for tool in tools]
+            tools_with_space = [(tool, namespace) for tool in tools]
             await index_tools_to_store(tools_with_space)
         except Exception as e:
-            logger.warning(
-                f"Failed to index tools in ChromaDB for {integration_id}: {e}"
-            )
+            logger.error(f"Failed to index tools in ChromaDB for {integration_id}: {e}")
 
         # Index as subagent for discovery via retrieve_tools
         try:
@@ -430,6 +435,7 @@ class MCPClient:
                         integration_id=integration_id,
                         name=resolved_name,
                         description=resolved_description or "",
+                        server_url=server_url,
                     )
                     logger.info(f"Indexed custom MCP {integration_id} as subagent")
         except Exception as e:
@@ -839,6 +845,18 @@ class MCPClient:
         except Exception as e:
             logger.warning(f"Failed to clear OAuth discovery cache: {e}")
 
+        # Invalidate ChromaDB namespace cache so tools are re-indexed on reconnect
+        try:
+            resolved = await IntegrationResolver.resolve(integration_id)
+            if resolved and resolved.mcp_config:
+                server_url = resolved.mcp_config.server_url or ""
+                namespace = derive_integration_namespace(
+                    integration_id, server_url, is_custom=True
+                )
+                await delete_cache(f"chroma:indexed:{namespace}")
+        except Exception as e:
+            logger.warning(f"Failed to invalidate ChromaDB cache: {e}")
+
         # Delete credentials from PostgreSQL (for both authenticated and unauthenticated MCPs)
         await self.token_store.delete_credentials(integration_id)
 
@@ -945,6 +963,12 @@ class MCPClient:
                 # Check if already connected in memory (live tools with schemas)
                 if integration_id in self._tools:
                     all_tools[integration_id] = self._tools[integration_id]
+                    continue
+
+                # Skip non-MCP integrations (Composio-managed, internal, etc.)
+                # They don't have mcp_config and will fail connect()
+                resolved = await IntegrationResolver.resolve(integration_id)
+                if not resolved or not resolved.mcp_config:
                     continue
 
                 # Connect to get real tools with proper schemas
