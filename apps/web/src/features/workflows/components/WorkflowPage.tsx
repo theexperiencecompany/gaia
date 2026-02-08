@@ -241,88 +241,74 @@ export default function WorkflowPage() {
     </div>
   );
 
-  const showAnySkeleton = isLoading || isLoadingExplore || isLoadingCommunity;
-
   return (
     <div className="space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8" ref={pageRef}>
-      {showAnySkeleton ? (
-        <>
+      <div className="mb-6">
+        <CommunityBanner onCreateWorkflow={onCreateOpen} />
+      </div>
+
+      <div className="flex flex-col gap-6">
+        {renderGrid(
+          workflows,
+          isLoading,
+          error ? "Failed to load workflows" : null,
+          "No workflows yet",
+          "Create your first workflow to get started",
+          refetch,
+          (workflow) => (
+            <UnifiedWorkflowCard
+              key={workflow.id}
+              workflow={workflow}
+              variant="user"
+              showActivationStatus={true}
+              primaryAction="none"
+              onCardClick={() => handleWorkflowClick(workflow.id)}
+            />
+          ),
+        )}
+      </div>
+
+      {renderSection(
+        "Explore & Discover",
+        "See what's possible with real examples that actually work!",
+        isLoadingExplore ? (
           <WorkflowListSkeleton />
-          {renderSection(
-            "Explore & Discover",
-            "See what's possible with real examples that actually work!",
-            <WorkflowListSkeleton />,
-          )}
-          {renderSection(
-            "Community Workflows",
-            "Check out what others have built and grab anything that looks useful!",
-            <WorkflowListSkeleton />,
-          )}
-        </>
-      ) : (
-        <>
-          {/* Community Banner */}
-          <div className="mb-6">
-            <CommunityBanner onCreateWorkflow={onCreateOpen} />
-          </div>
+        ) : exploreWorkflows.length > 0 ? (
+          <UseCaseSection
+            centered={false}
+            dummySectionRef={pageRef}
+            hideUserWorkflows={true}
+            exploreWorkflows={exploreWorkflows}
+          />
+        ) : null,
+        undefined,
+        exploreWorkflowsTotal,
+      )}
 
-          <div className="flex flex-col gap-6">
-            {renderGrid(
-              workflows,
-              false,
-              error ? "Failed to load workflows" : null,
-              "No workflows yet",
-              "Create your first workflow to get started",
-              refetch,
-              (workflow) => (
-                <UnifiedWorkflowCard
-                  key={workflow.id}
-                  workflow={workflow}
-                  variant="user"
-                  showActivationStatus={true}
-                  primaryAction="none"
-                  onCardClick={() => handleWorkflowClick(workflow.id)}
-                />
-              ),
-            )}
-          </div>
-
-          {exploreWorkflows.length > 0 &&
-            renderSection(
-              "Explore & Discover",
-              "See what's possible with real examples that actually work!",
-              <UseCaseSection
-                centered={false}
-                dummySectionRef={pageRef}
-                hideUserWorkflows={true}
-                exploreWorkflows={exploreWorkflows}
-              />,
-              undefined,
-              exploreWorkflowsTotal,
-            )}
-
-          {renderSection(
-            "Community Workflows",
-            "Check out what others have built and grab anything that looks useful!",
-            renderGrid(
-              communityWorkflows,
-              false,
-              communityError,
-              "No community workflows yet",
-              "Be the first to publish a workflow to the community",
-              () => window.location.reload(),
-              (workflow) => (
-                <UnifiedWorkflowCard
-                  key={workflow.id}
-                  communityWorkflow={workflow}
-                  variant="community"
-                  showCreator={true}
-                  onCardClick={() => handleCommunityWorkflowClick(workflow.id)}
-                />
-              ),
+      {renderSection(
+        "Community Workflows",
+        "Check out what others have built and grab anything that looks useful!",
+        isLoadingCommunity ? (
+          <WorkflowListSkeleton />
+        ) : (
+          renderGrid(
+            communityWorkflows,
+            false,
+            communityError,
+            "No community workflows yet",
+            "Be the first to publish a workflow to the community",
+            () => window.location.reload(),
+            (workflow) => (
+              <UnifiedWorkflowCard
+                key={workflow.id}
+                communityWorkflow={workflow}
+                variant="community"
+                showCreator={true}
+                onCardClick={() => handleCommunityWorkflowClick(workflow.id)}
+              />
             ),
-          )}
-        </>
+          )
+        ),
       )}
 
       <EditWorkflowModal

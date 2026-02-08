@@ -44,8 +44,10 @@ export default function UseCaseSection({
     !hideUserWorkflows,
   );
 
-  // Fetch explore workflows from centralized store
-  const { workflows: storeExploreWorkflows } = useExploreWorkflows();
+  // Fetch explore workflows from centralized store (skip if provided via props)
+  const { workflows: storeExploreWorkflows } = useExploreWorkflows(
+    !propExploreWorkflows || propExploreWorkflows.length === 0,
+  );
 
   // Convert store workflows to UseCase format
   const convertedExploreWorkflows: UseCase[] = storeExploreWorkflows.map(
