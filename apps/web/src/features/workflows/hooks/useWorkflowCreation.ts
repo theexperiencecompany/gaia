@@ -5,14 +5,11 @@ import {
   type Workflow,
   workflowApi,
 } from "../api/workflowApi";
-import { useWorkflowsStore } from "../stores/workflowsStore";
 
 export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [createdWorkflow, setCreatedWorkflow] = useState<Workflow | null>(null);
-
-  const { fetchWorkflows, addWorkflow } = useWorkflowsStore();
 
   const createWorkflow = async (
     request: CreateWorkflowRequest,
@@ -29,7 +26,8 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
       console.log("useWorkflowCreation: API response:", response);
 
       setCreatedWorkflow(response.workflow);
-      addWorkflow(response.workflow);
+      // Note: Store updates are handled by the caller (WorkflowModal)
+      // to avoid duplicate additions
 
       return { success: true, workflow: response.workflow };
     } catch (err) {
@@ -55,10 +53,7 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
           "Workflow was created despite error status, treating as success",
         );
         setCreatedWorkflow(responseData.workflow);
-
-        // Add to store and refetch even on error if workflow exists
-        addWorkflow(responseData.workflow);
-        await fetchWorkflows();
+        // Note: Store updates are handled by the caller (WorkflowModal)
 
         return { success: true, workflow: responseData.workflow };
       }
