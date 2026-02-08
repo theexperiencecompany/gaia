@@ -26,6 +26,7 @@ export default function UseCaseSection({
   setShowUseCases,
   showDescriptionAsTooltip,
   useBlurEffect,
+  disableCentering = false,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
@@ -34,6 +35,7 @@ export default function UseCaseSection({
   setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
   showDescriptionAsTooltip?: boolean;
   useBlurEffect?: boolean;
+  disableCentering?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -267,7 +269,7 @@ export default function UseCaseSection({
           selectedCategory !== "workflows" && (
             <motion.div
               key={selectedCategory}
-              className={`mx-auto grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -315,7 +317,7 @@ export default function UseCaseSection({
           workflows.length > 0 && (
             <motion.div
               key="workflows"
-              className={`mx-auto grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}

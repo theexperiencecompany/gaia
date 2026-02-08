@@ -279,6 +279,7 @@ export default function WorkflowPage() {
             dummySectionRef={pageRef}
             hideUserWorkflows={true}
             exploreWorkflows={exploreWorkflows}
+            disableCentering={true}
           />
         ) : null,
         undefined,
