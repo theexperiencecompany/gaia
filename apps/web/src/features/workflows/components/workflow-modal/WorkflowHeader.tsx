@@ -140,7 +140,7 @@ export default function WorkflowHeader({
                 : "Publish Workflow"}
             </DropdownItem>
 
-            {currentWorkflow?.is_public && (
+            {currentWorkflow?.is_public ? (
               <DropdownItem
                 key="marketplace"
                 startContent={<LinkSquare02Icon className="h-4 w-4" />}
@@ -152,7 +152,7 @@ export default function WorkflowHeader({
               >
                 View on Marketplace
               </DropdownItem>
-            )}
+            ) : null}
 
             <DropdownItem
               key="delete"
