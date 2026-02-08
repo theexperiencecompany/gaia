@@ -181,6 +181,13 @@ async def execute_workflow_by_id(
     scheduler = WorkflowScheduler()
     workflow = None
     execution_messages = []
+    execution_id = None
+
+    # Import execution service
+    from app.services.workflow.execution_service import (
+        complete_execution,
+        create_execution,
+    )
 
     try:
         await scheduler.initialize()
@@ -188,6 +195,17 @@ async def execute_workflow_by_id(
 
         if not workflow:
             return f"Workflow {workflow_id} not found"
+
+        # Determine trigger type from context
+        trigger_type = context.get("trigger_type", "manual") if context else "manual"
+
+        # Create execution record at start
+        execution = await create_execution(
+            workflow_id=workflow_id,
+            user_id=workflow.user_id,
+            trigger_type=trigger_type,
+        )
+        execution_id = execution.execution_id
 
         # Execute the workflow
         execution_messages = await execute_workflow_as_chat(
@@ -200,14 +218,35 @@ async def execute_workflow_by_id(
         )
 
         # Store messages and send notification
-        await create_workflow_completion_notification(
+        conversation = await create_workflow_completion_notification(
             workflow, execution_messages, workflow.user_id
+        )
+
+        # Complete execution record with success
+        summary = f"Executed {len(execution_messages)} steps successfully"
+        conversation_id = conversation.get("conversation_id") if conversation else None
+        await complete_execution(
+            execution_id=execution_id,
+            status="success",
+            summary=summary,
+            conversation_id=conversation_id,
         )
 
         return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
 
     except Exception as e:
         logger.error(f"Error executing workflow {workflow_id}: {str(e)}", exc_info=True)
+
+        # Complete execution record with failure
+        if execution_id:
+            try:
+                await complete_execution(
+                    execution_id=execution_id,
+                    status="failed",
+                    error_message=str(e),
+                )
+            except Exception as e2:
+                logger.debug(f"Failed to complete execution record: {e2}")
 
         # Track failed execution
         if workflow:
@@ -551,3 +590,5 @@ async def create_workflow_completion_notification(
         logger.info(f"Notification sent for workflow {workflow.id}")
     except Exception as e:
         logger.error(f"Failed to send notification for workflow {workflow.id}: {e}")
+
+    return conversation

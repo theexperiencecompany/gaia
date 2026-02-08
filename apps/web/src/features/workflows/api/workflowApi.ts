@@ -16,6 +16,7 @@ import type {
   WorkflowResponse,
   WorkflowStatusResponse,
 } from "@/types/features/workflowTypes";
+import type { WorkflowExecutionsResponse } from "../types/workflowExecutionTypes";
 
 // Re-export types for convenience
 export type { CommunityWorkflow, CreateWorkflowRequest, Workflow };
@@ -149,7 +150,21 @@ export const workflowApi = {
     return apiService.get<WorkflowStatusResponse>(
       `/workflows/${workflowId}/status`,
       {
-        silent: true, // Don't show success/error toasts for polling
+        silent: true,
+      },
+    );
+  },
+
+  // Get workflow execution history
+  getWorkflowExecutions: async (
+    workflowId: string,
+    limit: number = 10,
+    offset: number = 0,
+  ): Promise<WorkflowExecutionsResponse> => {
+    return apiService.get<WorkflowExecutionsResponse>(
+      `/workflows/${workflowId}/executions?limit=${limit}&offset=${offset}`,
+      {
+        silent: true,
       },
     );
   },
