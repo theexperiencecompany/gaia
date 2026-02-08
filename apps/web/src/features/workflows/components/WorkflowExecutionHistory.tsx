@@ -22,10 +22,31 @@ interface WorkflowExecutionHistoryProps {
 }
 
 function formatDuration(seconds: number | undefined): string {
-  if (!seconds) return "-";
-  if (seconds < 60) return `${Math.round(seconds)}s`;
-  if (seconds < 3600) return `${Math.round(seconds / 60)}m`;
-  return `${Math.round(seconds / 3600)}h`;
+  if (!seconds) return "";
+  if (seconds < 60) return `Ran for ${Math.round(seconds)}s`;
+  if (seconds < 3600) return `Ran for ${Math.round(seconds / 60)}m`;
+  return `Ran for ${Math.round(seconds / 3600)}h`;
+}
+
+function formatRelativeDate(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffSecs < 60) return "Just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+
+  return date.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+  });
 }
 
 function ExecutionStatusBadge({
@@ -40,6 +61,7 @@ function ExecutionStatusBadge({
           size="sm"
           color="success"
           variant="flat"
+          radius="sm"
           startContent={<CheckmarkCircle02Icon className="h-3 w-3" />}
         >
           Success
@@ -51,6 +73,7 @@ function ExecutionStatusBadge({
           size="sm"
           color="danger"
           variant="flat"
+          radius="sm"
           startContent={<AlertCircleIcon className="h-3 w-3" />}
         >
           Failed
@@ -61,6 +84,7 @@ function ExecutionStatusBadge({
         <Chip
           size="sm"
           color="primary"
+          radius="sm"
           variant="flat"
           startContent={<Loading03Icon className="h-3 w-3 animate-spin" />}
         >
@@ -115,7 +139,12 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
           </p>
         )}
       </div>
-      {isClickable && <ChevronRight className="h-4 w-4 text-zinc-500" />}
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-zinc-500">
+          {formatRelativeDate(execution.started_at)}
+        </span>
+        {isClickable && <ChevronRight className="h-4 w-4 text-zinc-500" />}
+      </div>
     </div>
   );
 }
@@ -128,9 +157,11 @@ export default function WorkflowExecutionHistory({
 
   if (isLoading && executions.length === 0) {
     return (
-      <div className="space-y-2">
-        <Skeleton className="h-12 w-full rounded-lg" />
-        <Skeleton className="h-12 w-full rounded-lg" />
+      <div className="space-y-2 mt-7">
+        <Skeleton className="h-12 w-full rounded-2xl" />
+        <Skeleton className="h-12 w-full rounded-2xl" />
+        <Skeleton className="h-12 w-full rounded-2xl" />
+        <Skeleton className="h-12 w-full rounded-2xl" />
       </div>
     );
   }
@@ -152,7 +183,7 @@ export default function WorkflowExecutionHistory({
   return (
     <div className="space-y-2">
       <PanelHeader badge={`${total} runs`} />
-      <div className="max-h-64 space-y-2 overflow-y-auto">
+      <div className="space-y-2 overflow-y-auto">
         {executions.map((execution) => (
           <ExecutionItem key={execution.execution_id} execution={execution} />
         ))}
