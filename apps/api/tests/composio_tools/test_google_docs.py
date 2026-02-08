@@ -45,7 +45,7 @@ def test_document(composio_client, user_id) -> Generator[Dict[str, Any], None, N
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     title = f"[PYTEST] Test Document {timestamp}"
 
-    config = get_integration_config("google_docs")
+    config = get_integration_config("googledocs")
     share_email = config.get("share_email")
 
     # Create a new Google Doc with initial content

@@ -40,9 +40,13 @@ async function request<T = unknown>(
     console.error(`${method} ${url} failed:`, error);
 
     const err = error as {
-      response?: { status?: number; data?: unknown };
+      response?: {
+        status?: number;
+        data?: unknown;
+      };
       message?: string;
     };
+
     const isUnauthorized = err.response?.status === 401;
 
     // Track API errors in PostHog
@@ -54,14 +58,65 @@ async function request<T = unknown>(
     });
 
     if (!options.silent && !isUnauthorized) {
-      const defaultMessages = {
-        GET: "Failed to fetch data",
-        POST: "Failed to create data",
-        PUT: "Failed to update data",
-        PATCH: "Failed to update data",
-        DELETE: "Failed to delete data",
-      };
-      toast?.error?.(options.errorMessage || defaultMessages[method]);
+      let errorMessage = options.errorMessage;
+
+      // Try to extract error message from various response formats
+      if (!errorMessage && err.response?.data) {
+        const data = err.response.data;
+
+        // Type guard: check if data is an object
+        if (typeof data === "object" && data !== null) {
+          const errorData = data as Record<string, unknown>;
+
+          // Format 1: { detail: { message: "..." } }
+          if (
+            errorData.detail &&
+            typeof errorData.detail === "object" &&
+            errorData.detail !== null
+          ) {
+            const detail = errorData.detail as Record<string, unknown>;
+            if (typeof detail.message === "string") {
+              errorMessage = detail.message;
+            }
+          }
+          // Format 2: { detail: "..." }
+          else if (typeof errorData.detail === "string") {
+            errorMessage = errorData.detail;
+          }
+          // Format 3: { message: "..." }
+          else if (typeof errorData.message === "string") {
+            errorMessage = errorData.message;
+          }
+          // Format 4: { error: "..." } or { error: { message: "..." } }
+          else if (errorData.error) {
+            if (typeof errorData.error === "string") {
+              errorMessage = errorData.error;
+            } else if (
+              typeof errorData.error === "object" &&
+              errorData.error !== null
+            ) {
+              const errorObj = errorData.error as Record<string, unknown>;
+              if (typeof errorObj.message === "string") {
+                errorMessage = errorObj.message;
+              }
+            }
+          }
+        }
+      }
+
+      // Fallback to default messages
+      if (!errorMessage) {
+        const defaultMessages = {
+          GET: "Failed to fetch data",
+          POST: "Failed to create data",
+          PUT: "Failed to update data",
+          PATCH: "Failed to update data",
+          DELETE: "Failed to delete data",
+        };
+        errorMessage = defaultMessages[method];
+      }
+
+      toast?.error?.(errorMessage);
     }
 
     throw error;

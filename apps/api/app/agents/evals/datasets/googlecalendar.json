@@ -2,7 +2,7 @@
   "name": "Google Calendar Capabilities",
   "description": "Evaluation dataset for Google Calendar subagent capabilities including event management, calendar operations, free/busy queries, and scheduling. Includes lazy queries, intentional mistakes, and ambiguous items.",
   "version": "1.0.0",
-  "subagent": "google_calendar_agent",
+  "subagent": "googlecalendar_agent",
   "integration_id": "googlecalendar",
   "items": [
     {

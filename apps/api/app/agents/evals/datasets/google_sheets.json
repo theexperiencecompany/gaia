@@ -2,7 +2,7 @@
   "name": "Google Sheets Capabilities",
   "description": "Evaluation dataset for Google Sheets subagent capabilities including spreadsheet management, cell operations, formulas, and data retrieval. Includes lazy queries, intentional mistakes, and ambiguous items.",
   "version": "1.0.0",
-  "subagent": "google_sheets_agent",
+  "subagent": "googlesheets_agent",
   "integration_id": "googlesheets",
   "items": [
     {

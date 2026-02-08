@@ -66,7 +66,7 @@ SUBAGENT_CONFIGS: list[SubagentEvalConfig] = [
     SubagentEvalConfig(
         id="calendar",
         name="Google Calendar",
-        agent_name="google_calendar_agent",
+        agent_name="googlecalendar_agent",
         integration_id="googlecalendar",
         dataset_name="Google Calendar Capabilities",
         dataset_file="datasets/googlecalendar.json",
@@ -175,9 +175,9 @@ SUBAGENT_CONFIGS: list[SubagentEvalConfig] = [
         prompt_name="hubspot_subagent_prompt",
     ),
     SubagentEvalConfig(
-        id="google_sheets",
+        id="googlesheets",
         name="Google Sheets",
-        agent_name="google_sheets_agent",
+        agent_name="googlesheets_agent",
         integration_id="googlesheets",
         dataset_name="Google Sheets Capabilities",
         dataset_file="datasets/google_sheets.json",

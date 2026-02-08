@@ -67,15 +67,23 @@ async def build_subagent_system_prompt(
     if user_id and integration.provider:
         try:
             metadata = await get_provider_metadata(user_id, integration.provider)
-            if metadata and metadata.get("username"):
-                provider_context = (
-                    f"\n\nUSER CONTEXT FOR {integration.name.upper()}:\n"
-                    f"- Username: {metadata['username']}\n"
-                )
-                system_prompt = system_prompt + provider_context
-                logger.debug(
-                    f"Injected {integration.provider} metadata into system prompt"
-                )
+            if metadata:
+                # Build context lines for all extracted variables
+                context_lines = []
+                for key, value in metadata.items():
+                    context_lines.append(f"- {key}: {value}")
+
+                if context_lines:
+                    provider_context = (
+                        f"\n\nUSER CONTEXT FOR {integration.name.upper()}:\n"
+                        + "\n".join(context_lines)
+                        + "\n"
+                    )
+                    system_prompt = system_prompt + provider_context
+                    logger.debug(
+                        f"Injected {integration.provider} metadata into system prompt: "
+                        f"{list(metadata.keys())}"
+                    )
         except Exception as e:
             logger.warning(f"Failed to inject provider metadata: {e}")
 

@@ -19,6 +19,7 @@ from app.agents.tools import (
     todo_tool,
     weather_tool,
     webpage_tool,
+    workflow_tool,
 )
 from app.config.loggers import langchain_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
@@ -227,6 +228,9 @@ class ToolRegistry:
             integration_name="goals",
             space="goals",
         )
+
+        # General tools - directly accessible by executor
+        self._add_category("workflows", tools=workflow_tool.tools)
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)
         self._add_category("integrations", tools=integration_tool.tools)

@@ -137,7 +137,7 @@ def get_productivity_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Check Calendar Events",
-                    "google_calendar",
+                    "googlecalendar",
                     "Review today's calendar events",
                 ),
                 create_step(
@@ -491,7 +491,7 @@ def get_founders_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Review Today's Calendar",
-                    "google_calendar",
+                    "googlecalendar",
                     "Fetch all meetings and events scheduled for today",
                 ),
                 create_step(
@@ -729,7 +729,7 @@ def get_marketing_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Check Upcoming Events",
-                    "google_calendar",
+                    "googlecalendar",
                     "Review company events, launches, and marketing milestones",
                 ),
                 create_step(
@@ -956,7 +956,7 @@ def get_knowledge_worker_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Get Today's Meetings",
-                    "google_calendar",
+                    "googlecalendar",
                     "Fetch all meetings scheduled for today with attendee information",
                 ),
                 create_step(
@@ -1083,7 +1083,7 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Check Today's Classes",
-                    "google_calendar",
+                    "googlecalendar",
                     "Get all classes and study sessions scheduled for today",
                 ),
                 create_step(
@@ -1146,7 +1146,7 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Check Assignment Deadlines",
-                    "google_calendar",
+                    "googlecalendar",
                     "Get all assignment deadlines for the next two weeks",
                 ),
                 create_step(
@@ -1215,7 +1215,7 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Add to Calendar",
-                    "google_calendar",
+                    "googlecalendar",
                     "Schedule study blocks and deadline reminders",
                 ),
             ],
@@ -1278,7 +1278,7 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Schedule Review Session",
-                    "google_calendar",
+                    "googlecalendar",
                     "Block time for reviewing the revision pack",
                 ),
             ],

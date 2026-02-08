@@ -19,6 +19,7 @@ from app.models.message_models import (
     SelectedCalendarEventData,
     SelectedWorkflowData,
 )
+from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.memory_service import memory_service
 from app.services.workflow import WorkflowService
 from app.utils.user_preferences_utils import (
@@ -44,6 +45,55 @@ def create_system_message(
     }.get(agent_type, COMMS_PROMPT_TEMPLATE)
 
     return SystemMessage(content=template.format(user_name=user_name or "there"))
+
+
+async def _get_user_memories_section(query: str, user_id: str) -> str:
+    """
+    Search for user's conversation memories and format them.
+
+    Args:
+        query: The search query
+        user_id: The user's ID
+
+    Returns:
+        Formatted memories section or empty string
+    """
+    try:
+        results = await memory_service.search_memories(
+            query=query, user_id=user_id, limit=5
+        )
+        if results and (memories := getattr(results, "memories", None)):
+            logger.info(f"Added {len(memories)} memories to context")
+            return "\n\nBased on our previous conversations:\n" + "\n".join(
+                f"- {mem.content}" for mem in memories
+            )
+    except Exception as e:
+        logger.warning(f"Error retrieving memories: {e}")
+
+    return ""
+
+
+async def _get_gaia_knowledge_section(query: str) -> str:
+    """
+    Search GAIA knowledge base (ChromaDB) and format results.
+
+    Args:
+        query: The search query
+
+    Returns:
+        Formatted knowledge section or empty string
+    """
+    try:
+        results = await gaia_knowledge_service.search_knowledge(query=query, limit=5)
+        if results:
+            logger.info(f"Added {len(results)} knowledge items to context")
+            return "\n\nAbout Gaia (your identity and capabilities):\n" + "\n".join(
+                f"- {result.content}" for result in results
+            )
+    except Exception as e:
+        logger.warning(f"Error retrieving GAIA knowledge: {e}")
+
+    return ""
 
 
 async def get_memory_message(
@@ -102,22 +152,13 @@ async def get_memory_message(
                 logger.warning(f"Error formatting user local time: {e}")
 
         # Search for conversation memories
-        memories_section = ""
-        try:
-            if results := await memory_service.search_memories(
-                query=query, user_id=user_id, limit=5
-            ):
-                if memories := getattr(results, "memories", None):
-                    memories_section = (
-                        "\n\nBased on our previous conversations:\n"
-                        + "\n".join(f"- {mem.content}" for mem in memories)
-                    )
-                    logger.info(f"Added {len(memories)} memories to context")
-        except Exception as e:
-            logger.warning(f"Error retrieving memories: {e}")
+        memories_section = await _get_user_memories_section(query, user_id)
+
+        # Search for GAIA knowledge
+        gaia_knowledge_section = await _get_gaia_knowledge_section(query)
 
         # Combine all sections
-        content = "\n".join(context_parts) + memories_section
+        content = "\n".join(context_parts) + memories_section + gaia_knowledge_section
         return SystemMessage(content=content, memory_message=True)
 
     except Exception as e:

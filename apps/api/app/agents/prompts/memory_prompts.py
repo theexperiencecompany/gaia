@@ -12,7 +12,6 @@ Memory Categories:
 4. Context Patterns - Frequently accessed resources, common operations
 """
 
-from typing import Dict, Optional
 
 # =============================================================================
 # BASE MEMORY EXTRACTION PROMPT
@@ -1676,65 +1675,3 @@ FEATURE FLAG USAGE:
 - Rollout patterns
 """,
 )
-
-
-# =============================================================================
-# MEMORY PROMPT REGISTRY
-# =============================================================================
-
-# Mapping of integration IDs to their memory extraction prompts
-MEMORY_PROMPT_REGISTRY: Dict[str, str] = {
-    # Communication
-    "gmail": GMAIL_MEMORY_PROMPT,
-    "slack": SLACK_MEMORY_PROMPT,
-    "microsoft_teams": MICROSOFT_TEAMS_MEMORY_PROMPT,
-    "googlemeet": GOOGLE_MEET_MEMORY_PROMPT,
-    # Productivity
-    "google_calendar": CALENDAR_MEMORY_PROMPT,
-    "google_docs": GOOGLE_DOCS_MEMORY_PROMPT,
-    "googlesheets": GOOGLE_SHEETS_MEMORY_PROMPT,
-    "googletasks": GOOGLE_TASKS_MEMORY_PROMPT,
-    "google_maps": GOOGLE_MAPS_MEMORY_PROMPT,
-    "notion": NOTION_MEMORY_PROMPT,
-    "todoist": TODOIST_MEMORY_PROMPT,
-    "trello": TRELLO_MEMORY_PROMPT,
-    "clickup": CLICKUP_MEMORY_PROMPT,
-    # Social Media
-    "twitter": TWITTER_MEMORY_PROMPT,
-    "linkedin": LINKEDIN_MEMORY_PROMPT,
-    "reddit": REDDIT_MEMORY_PROMPT,
-    "instagram": INSTAGRAM_MEMORY_PROMPT,
-    # Developer
-    "github": GITHUB_MEMORY_PROMPT,
-    "linear": LINEAR_MEMORY_PROMPT,
-    # Business
-    "airtable": AIRTABLE_MEMORY_PROMPT,
-    "hubspot": HUBSPOT_MEMORY_PROMPT,
-    "asana": ASANA_MEMORY_PROMPT,
-    # Internal
-    "todos": TODO_MEMORY_PROMPT,
-    "reminders": REMINDER_MEMORY_PROMPT,
-    "goals": GOALS_MEMORY_PROMPT,
-    # MCP Integrations
-    "perplexity": PERPLEXITY_MEMORY_PROMPT,
-    "deepwiki": DEEPWIKI_MEMORY_PROMPT,
-    "context7": CONTEXT7_MEMORY_PROMPT,
-    "hackernews": HACKERNEWS_MEMORY_PROMPT,
-    "instacart": INSTACART_MEMORY_PROMPT,
-    "yelp": YELP_MEMORY_PROMPT,
-    "agentmail": AGENTMAIL_MEMORY_PROMPT,
-    "browserbase": BROWSERBASE_MEMORY_PROMPT,
-    "posthog": POSTHOG_MEMORY_PROMPT,
-}
-
-
-def get_memory_extraction_prompt(integration_id: str) -> Optional[str]:
-    """Get the memory extraction prompt for a specific integration.
-
-    Args:
-        integration_id: The integration ID (e.g., 'slack', 'github')
-
-    Returns:
-        The memory extraction prompt for this integration, or None if not found
-    """
-    return MEMORY_PROMPT_REGISTRY.get(integration_id)

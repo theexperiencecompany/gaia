@@ -38,7 +38,7 @@ def test_spreadsheet(composio_client, user_id) -> Generator[Dict[str, Any], None
     title = f"[PYTEST] Test Spreadsheet {timestamp}"
 
     # Get share email from config if available
-    config = get_integration_config("google_sheets")
+    config = get_integration_config("googlesheets")
     share_email = config.get("share_email")
 
     # Try to create a spreadsheet using GOOGLESHEETS_CREATE_SPREADSHEET

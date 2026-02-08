@@ -21,17 +21,15 @@ Both tasks use fire-and-forget pattern - node returns immediately with zero late
 import asyncio
 from typing import Dict, List, Optional
 
+from app.agents.memory.skill_learning.service import learn_skills
+from app.config.loggers import llm_logger as logger
+from app.config.oauth_config import get_memory_extraction_prompt
+from app.config.settings import settings
+from app.services.memory_service import memory_service
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
 from langgraph_bigtool.graph import State
-
-from app.agents.memory.skill_learning.service import learn_skills
-from app.agents.prompts.memory_prompts import get_memory_extraction_prompt
-from app.config.loggers import llm_logger as logger
-from app.config.settings import settings
-from app.services.memory_service import memory_service
-
 
 MAX_TOOL_OUTPUT_SIZE = 500
 

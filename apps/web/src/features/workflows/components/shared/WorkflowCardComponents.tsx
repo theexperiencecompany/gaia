@@ -16,6 +16,78 @@ import {
 import { formatRunCount } from "@/utils/formatters";
 
 import type { Workflow } from "../../api/workflowApi";
+import { getBrowserTimezone } from "../../schemas/workflowFormSchema";
+
+/**
+ * Format a UTC date to a localized time string in the specified timezone.
+ *
+ * @param utcDate - Date object in UTC
+ * @param timezone - IANA timezone name (e.g., "America/New_York") or offset string (e.g., "+05:30")
+ * @returns Formatted time string like "9:00 AM" or "9:00 AM IST"
+ */
+function formatTimeInTimezone(utcDate: Date, timezone: string): string {
+  try {
+    // Check if timezone is an offset string like "+05:30" or "-08:00"
+    const offsetMatch = timezone.match(/^([+-])(\d{2}):(\d{2})$/);
+
+    if (offsetMatch) {
+      // For offset strings, we can't use Intl directly with the offset
+      // We need to manually calculate the time
+      const sign = offsetMatch[1] === "+" ? 1 : -1;
+      const hours = parseInt(offsetMatch[2], 10);
+      const minutes = parseInt(offsetMatch[3], 10);
+      const offsetMs = sign * (hours * 60 + minutes) * 60 * 1000;
+
+      // Create a new date adjusted by the offset
+      const localDate = new Date(utcDate.getTime() + offsetMs);
+
+      // Format without timezone name since we only have an offset
+      return localDate.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+        timeZone: "UTC", // Use UTC since we already applied the offset
+      });
+    }
+
+    // For IANA timezone names, use Intl.DateTimeFormat
+    return utcDate.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZone: timezone,
+      timeZoneName: "short",
+    });
+  } catch {
+    // Fallback to browser timezone if the timezone is invalid
+    return utcDate.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+      timeZoneName: "short",
+    });
+  }
+}
+
+/**
+ * Get relative time display (e.g., "in 2h", "in 3d")
+ */
+function getRelativeTime(nextRun: Date, now: Date): string {
+  const diffMs = nextRun.getTime() - now.getTime();
+  const diffMinutes = Math.floor(diffMs / (1000 * 60));
+  const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+  const diffDays = Math.floor(diffHours / 24);
+
+  if (diffDays > 0) {
+    return `in ${diffDays}d`;
+  } else if (diffHours > 0) {
+    return `in ${diffHours}h`;
+  } else if (diffMinutes > 0) {
+    return `in ${diffMinutes}m`;
+  } else {
+    return "soon";
+  }
+}
 
 // Utility function for calculating next run display
 export function getNextRunDisplay(workflow: Workflow): string | null {
@@ -28,17 +100,15 @@ export function getNextRunDisplay(workflow: Workflow): string | null {
 
     // Check if next run is in the future
     if (nextRun > now) {
-      const diffMs = nextRun.getTime() - now.getTime();
-      const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
-      const diffDays = Math.floor(diffHours / 24);
+      // Get the workflow's stored timezone, fallback to browser timezone
+      const workflowTimezone =
+        (trigger_config.timezone as string) || getBrowserTimezone();
 
-      if (diffDays > 0) {
-        return `Next run in ${diffDays}d`;
-      } else if (diffHours > 0) {
-        return `Next run in ${diffHours}h`;
-      } else {
-        return "Running soon";
-      }
+      // Format: "9:00 AM IST (in 2h)"
+      const formattedTime = formatTimeInTimezone(nextRun, workflowTimezone);
+      const relativeTime = getRelativeTime(nextRun, now);
+
+      return `${formattedTime} (${relativeTime})`;
     }
   }
 

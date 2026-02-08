@@ -19,6 +19,7 @@ from app.config.loggers import app_logger as logger
 from app.config.posthog import init_posthog
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import initialize_chroma_tools_store
+from app.db.chroma.chroma_triggers_store import initialize_chroma_triggers_store
 from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
 from app.services.composio.composio_service import init_composio_service
@@ -50,6 +51,7 @@ async def init_eval_providers(subagent_ids: Optional[list[str]] = None) -> None:
     init_embeddings()
     init_posthog()
     initialize_chroma_tools_store()
+    initialize_chroma_triggers_store()
 
     # Register subagents - either specific ones or all
     register_subagent_providers(subagent_ids)

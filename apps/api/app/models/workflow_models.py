@@ -6,15 +6,14 @@ import uuid
 from datetime import datetime
 from datetime import timezone as dt_timezone
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional
 
-import pytz
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from app.config.loggers import general_logger as logger
 from app.models.scheduler_models import BaseScheduledTask
 from app.models.trigger_configs import TriggerConfigData
-from app.utils.cron_utils import get_next_run_time
+from app.utils.cron_utils import get_next_run_time, parse_timezone
 
 
 class TriggerType(str, Enum):
@@ -111,6 +110,7 @@ class TriggerConfig(BaseModel):
         Args:
             base_time: Base time for calculation (defaults to current UTC)
             user_timezone: User's timezone for cron calculation (defaults to trigger config timezone)
+                          Supports both IANA names (e.g., "America/New_York") and offset strings (e.g., "+05:30")
 
         Returns:
             Next run time in UTC
@@ -122,12 +122,8 @@ class TriggerConfig(BaseModel):
             # Use user_timezone parameter, fallback to trigger config timezone, then UTC
             tz_name = user_timezone or self.timezone or "UTC"
 
-            # Convert timezone name to timezone object
-            tz: Union[dt_timezone, pytz.BaseTzInfo]
-            if tz_name == "UTC":
-                tz = dt_timezone.utc
-            else:
-                tz = pytz.timezone(tz_name)
+            # Convert timezone name/offset to timezone object using the unified parser
+            tz = parse_timezone(tz_name)
 
             # If base_time is provided, convert it to the user's timezone for cron calculation
             if base_time:
@@ -138,10 +134,7 @@ class TriggerConfig(BaseModel):
                     base_time = base_time.astimezone(tz)
             else:
                 # Current time in user's timezone
-                if tz_name == "UTC":
-                    base_time = datetime.now(dt_timezone.utc)
-                else:
-                    base_time = datetime.now(tz)
+                base_time = datetime.now(tz)
 
             # Calculate next run time using timezone-aware base_time
             next_run = get_next_run_time(self.cron_expression, base_time, tz_name)

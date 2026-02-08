@@ -13,18 +13,18 @@ common:
 # Integration-specific settings
 # Tests create their own temporary resources and cleanup after.
 
-google_calendar:
+googlecalendar:
   # Creates events via CUSTOM_CREATE_EVENT, deletes after test
 
 gmail:
   # Creates drafts for testing (no emails sent)
 
-google_docs:
+googledocs:
   # Creates temp doc via GOOGLEDOCS_CREATE_DOCUMENT, deletes via Google Drive
   share_email: ${TEST_SHARE_EMAIL}  # Email to share docs/sheets with for testing
 
 
-google_sheets:
+googlesheets:
   # Creates temp spreadsheet via GOOGLESHEETS_CREATE_FILE_FROM_TEXT, deletes after
   share_email: ${TEST_SHARE_EMAIL}  # Email to share docs/sheets with for testing
 

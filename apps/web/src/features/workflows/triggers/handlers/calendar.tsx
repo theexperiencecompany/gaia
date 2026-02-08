@@ -232,7 +232,7 @@ export const calendarTriggerHandler: RegisteredHandler = {
         triggerName === "calendar_event_starting_soon"
           ? "event starting soon"
           : "on new calendar event",
-      integrationId: "google_calendar",
+      integrationId: "googlecalendar",
     };
   },
 };

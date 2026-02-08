@@ -53,7 +53,7 @@ def get_integration_for_trigger(trigger_name: str) -> Optional[str]:
 
     Example:
         >>> get_integration_for_trigger("calendar_event_created")
-        'google_calendar'
+        'googlecalendar'
         >>> get_integration_for_trigger("github_commit_event")
         'github'
     """

@@ -32,6 +32,7 @@ from app.config.opik import init_opik
 from app.config.posthog import init_posthog
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import initialize_chroma_tools_store
+from app.db.chroma.chroma_triggers_store import initialize_chroma_triggers_store
 from app.db.chroma.chromadb import init_chroma
 from app.db.postgresql import init_postgresql_engine
 from app.db.rabbitmq import init_rabbitmq_publisher
@@ -98,6 +99,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     init_mcp_client_pool()
     init_embeddings()
     initialize_chroma_tools_store()
+    initialize_chroma_triggers_store()
     init_cloudinary()
     validate_startup_requirements()
     # setup_event_loop_policy()

@@ -11,9 +11,9 @@ import type {
 WebBrowser.maybeCompleteAuthSession();
 
 const INTEGRATION_LOGOS: Record<string, string> = {
-  google_calendar:
+  googlecalendar:
     "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a5/Google_Calendar_icon_%282020%29.svg/512px-Google_Calendar_icon_%282020%29.svg.png",
-  google_docs:
+  googledocs:
     "https://upload.wikimedia.org/wikipedia/commons/thumb/0/01/Google_Docs_logo_%282020%29.svg/512px-Google_Docs_logo_%282020%29.svg.png",
   gmail:
     "https://upload.wikimedia.org/wikipedia/commons/thumb/7/7e/Gmail_icon_%282020%29.svg/512px-Gmail_icon_%282020%29.svg.png",

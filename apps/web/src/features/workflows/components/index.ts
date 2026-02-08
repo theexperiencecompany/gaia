@@ -8,5 +8,6 @@ export {
 export * from "./shared/WorkflowCardComponents";
 export { default as WorkflowStep } from "./shared/WorkflowStep";
 export { default as WorkflowSteps } from "./shared/WorkflowSteps";
+export { default as WorkflowDraftCard } from "./WorkflowDraftCard";
 export { default as WorkflowModal } from "./WorkflowModal";
 export { default as WorkflowPage } from "./WorkflowPage";

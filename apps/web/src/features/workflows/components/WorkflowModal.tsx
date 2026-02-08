@@ -36,10 +36,12 @@ import {
   RedoIcon,
 } from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 
 import { type Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflowCreation } from "../hooks";
 import {
+  getBrowserTimezone,
   getDefaultFormValues,
   type WorkflowFormData,
   workflowFormSchema,
@@ -47,7 +49,11 @@ import {
 } from "../schemas/workflowFormSchema";
 import { useWorkflowModalStore } from "../stores/workflowModalStore";
 import { useWorkflowsStore } from "../stores/workflowsStore";
-import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
+import {
+  createDefaultTriggerConfig,
+  findTriggerSchema,
+  useTriggerSchemas,
+} from "../triggers";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
 import { ScheduleBuilder } from "./ScheduleBuilder";
 import WorkflowSteps from "./shared/WorkflowSteps";
@@ -60,6 +66,8 @@ interface WorkflowModalProps {
   onWorkflowDeleted?: (workflowId: string) => void;
   mode: "create" | "edit";
   existingWorkflow?: Workflow | null;
+  /** Pre-fill form from AI-generated draft data */
+  draftData?: WorkflowDraftData | null;
 }
 
 export default function WorkflowModal({
@@ -69,6 +77,7 @@ export default function WorkflowModal({
   onWorkflowDeleted,
   mode,
   existingWorkflow,
+  draftData,
 }: WorkflowModalProps) {
   const router = useRouter();
   const {
@@ -107,8 +116,8 @@ export default function WorkflowModal({
   // Single source of truth for workflow data
   const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(null);
 
-  // Prefetch trigger schemas so they are ready when the user switches to the Trigger tab
-  useTriggerSchemas();
+  // Fetch trigger schemas for slug normalization
+  const { data: triggerSchemas } = useTriggerSchemas();
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -255,15 +264,79 @@ export default function WorkflowModal({
       setCreationPhase("form");
       return;
     }
+
+    // Handle draft data from AI-generated workflow
+    if (mode === "create" && draftData) {
+      const activeTab =
+        draftData.trigger_type === "scheduled"
+          ? "schedule"
+          : draftData.trigger_type === "integration"
+            ? "trigger"
+            : "manual";
+
+      let triggerConfig: WorkflowFormData["trigger_config"];
+      let selectedTriggerValue = "";
+
+      if (draftData.trigger_type === "scheduled") {
+        triggerConfig = {
+          type: "schedule" as const,
+          enabled: true,
+          cron_expression: draftData.cron_expression || "0 9 * * *",
+          timezone: getBrowserTimezone(),
+        };
+      } else if (
+        draftData.trigger_type === "integration" &&
+        draftData.trigger_slug
+      ) {
+        // Normalize trigger_slug: backend may return composio_slug, frontend needs slug
+        const schema = findTriggerSchema(
+          triggerSchemas,
+          draftData.trigger_slug,
+        );
+        const normalizedSlug = schema?.slug ?? draftData.trigger_slug;
+
+        const defaultConfig = createDefaultTriggerConfig(normalizedSlug);
+        if (defaultConfig) {
+          triggerConfig = {
+            ...defaultConfig,
+            trigger_slug: normalizedSlug,
+          };
+        } else {
+          triggerConfig = {
+            type: normalizedSlug,
+            enabled: true,
+            trigger_name: normalizedSlug,
+          };
+        }
+        selectedTriggerValue = normalizedSlug;
+      } else {
+        triggerConfig = {
+          type: "manual" as const,
+          enabled: true,
+        };
+      }
+
+      resetFormValues({
+        title: draftData.suggested_title,
+        description: draftData.prompt || draftData.suggested_description,
+        activeTab,
+        selectedTrigger: selectedTriggerValue,
+        trigger_config: triggerConfig,
+      });
+      setIsActivated(true);
+      setCreationPhase("form");
+      return;
+    }
+
     // Reset to default for create mode
     resetFormValues(getDefaultFormValues());
-    // Reset activation state for create mode
     setIsActivated(true);
-    // Reset to form phase for create mode
     setCreationPhase("form");
   }, [
     mode,
     currentWorkflow,
+    draftData,
+    triggerSchemas,
     resetFormValues,
     setIsActivated,
     setCreationPhase,
@@ -822,7 +895,7 @@ export default function WorkflowModal({
                                   type: "schedule",
                                   enabled: true,
                                   cron_expression: "0 9 * * *",
-                                  timezone: "UTC",
+                                  timezone: getBrowserTimezone(),
                                 });
                               }
                             } else if (tabKey === "trigger") {

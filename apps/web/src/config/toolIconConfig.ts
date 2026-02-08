@@ -60,7 +60,7 @@ export function normalizeCategoryName(name: string): string {
 
 /** Alias mapping for backwards compatibility and category-to-integration mapping */
 export const iconAliases: Record<string, string> = {
-  calendar: "google_calendar",
+  calendar: "googlecalendar",
 };
 
 /** Tool icon configurations - single source of truth */
@@ -74,8 +74,8 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#e4e4e7",
     isImage: true,
   },
-  google_docs: {
-    icon: "/images/icons/google_docs.webp",
+  googledocs: {
+    icon: "/images/icons/googledocs.webp",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",
     bgColorRaw: "#3f3f46",
@@ -130,7 +130,7 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#e4e4e7",
     isImage: true,
   },
-  google_calendar: {
+  googlecalendar: {
     icon: "/images/icons/googlecalendar.webp",
     bgColor: "bg-zinc-700",
     iconColor: "text-zinc-200",

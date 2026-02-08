@@ -32,7 +32,7 @@ const GoogleDocsSection: React.FC<GoogleDocsSectionProps> = ({
             variant="flat"
             startContent={
               <Image
-                src={"/images/icons/google_docs.webp"}
+                src={"/images/icons/googledocs.webp"}
                 alt="Google docs logo"
                 width={25}
                 height={25}
