@@ -26,7 +26,7 @@ export const workflowApi = {
     request: CreateWorkflowRequest,
   ): Promise<WorkflowResponse> => {
     return apiService.post<WorkflowResponse>("/workflows", request, {
-      errorMessage: "Failed to create workflow",
+      silent: true, // useWorkflowCreation hook handles error display
     });
   },
 

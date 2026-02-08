@@ -63,10 +63,22 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
         return { success: true, workflow: responseData.workflow };
       }
 
-      // Extract error detail from API response (FastAPI returns {detail: "..."})
-      const errorMessage =
-        responseData?.detail ||
-        (error instanceof Error ? error.message : "Failed to create workflow");
+      // Extract error detail from API response
+      // FastAPI returns {detail: "..."} or {detail: {message: "..."}} for 429 errors
+      let errorMessage = "Failed to create workflow";
+      if (responseData?.detail) {
+        if (typeof responseData.detail === "string") {
+          errorMessage = responseData.detail;
+        } else if (
+          typeof responseData.detail === "object" &&
+          responseData.detail !== null
+        ) {
+          const detail = responseData.detail as { message?: string };
+          errorMessage = detail.message || errorMessage;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
       setError(errorMessage);
       return { success: false };
     } finally {

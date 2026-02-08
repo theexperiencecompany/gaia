@@ -98,7 +98,12 @@ export function TriggerConfigForm({
 
       {SettingsComponent && (
         <SettingsComponent
-          triggerConfig={triggerConfig}
+          triggerConfig={{
+            ...triggerConfig,
+            trigger_name:
+              normalizedSlug ||
+              (triggerConfig as { trigger_name?: string }).trigger_name,
+          }}
           onConfigChange={onConfigChange}
         />
       )}
