@@ -36,7 +36,7 @@ Our goal with Gaia is to remove this mental load entirely. One assistant that un
 - **Unified Productivity Hub**: All your tasks, emails, calendar, and goals in one dashboard at a glance
 - **Graph-Based Memory**: Builds a living knowledge graph of your work - tasks link to projects, meetings link to documents, everything connects
 - **Integration Marketplace**: Choose from hundreds of integrations, built by us and the community, to connect GAIA with your favorite tools like Gmail, Slack, Notion, Linear, GitHub, and more!
-- **Multi-Platform**: Web | Desktop - macOS, Windows, Linux | Mobile
+- **Multi-Platform**: Web | Desktop - macOS, Windows, Linux  | Mobile
 - **Open Source & Self-Hostable**: Full transparency with the ability to self-host on your own infrastructure
 
 <div align="center">
