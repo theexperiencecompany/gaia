@@ -86,7 +86,7 @@ export async function generateStaticParams() {
   const integrations = await getAllIntegrations();
   console.log(`[SSG Marketplace] Generating ${integrations.length} pages`);
   return integrations.map((i: { slug: string }) => ({
-    slug: i.slug,
+    slug: i.slug, // Always provided by backend
   }));
 }
 

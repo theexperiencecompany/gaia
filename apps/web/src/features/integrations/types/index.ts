@@ -41,7 +41,7 @@ export interface Integration {
     name: string | null;
     picture: string | null;
   } | null;
-  slug?: string;
+  slug: string;
 }
 
 export interface IntegrationStatus {
@@ -89,6 +89,7 @@ export interface MarketplaceIntegration {
   // Publishing metadata
   publishedAt?: string;
   cloneCount?: number;
+  slug: string; // Always provided by backend
   // Creator info (populated from users collection)
   creator?: {
     name: string | null;
@@ -121,6 +122,7 @@ export interface CreateCustomIntegrationRequest {
   requires_auth?: boolean;
   auth_type?: "none" | "oauth" | "bearer";
   is_public?: boolean;
+  bearer_token?: string;
 }
 
 /**
@@ -161,12 +163,36 @@ export interface IntegrationInfo {
   description: string;
   category: string;
   connected: boolean;
+  iconUrl?: string | null;
+  source?: string;
 }
 
 export interface IntegrationListData {
   integrations: IntegrationInfo[];
   total_count: number;
   connected_count: number;
+}
+
+/**
+ * Suggested public integration from search
+ */
+export interface SuggestedIntegration {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  iconUrl?: string | null;
+  authType?: string | null;
+  relevanceScore: number;
+  slug: string;
+}
+
+/**
+ * Data streamed from integration_list_data tool
+ */
+export interface IntegrationListStreamData {
+  hasSuggestions?: boolean;
+  suggested?: SuggestedIntegration[];
 }
 
 /**

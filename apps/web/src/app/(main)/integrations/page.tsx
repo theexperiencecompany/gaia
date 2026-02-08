@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
+import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import { IntegrationsList } from "@/features/integrations/components/IntegrationsList";
 import { IntegrationsSearchInput } from "@/features/integrations/components/IntegrationsSearchInput";
@@ -135,27 +136,15 @@ export default function IntegrationsPage() {
     const oauthSuccess = searchParams.get("oauth_success");
     const oauthIntegration = searchParams.get("integration");
 
-    // Handle OAuth success callback
+    // Handle OAuth success callback - toast is handled globally by useOAuthSuccessToast
+    // Here we just handle opening the sidebar for the connected integration
     if (oauthSuccess === "true") {
-      router.replace("/integrations", { scroll: false });
-      const integration = oauthIntegration
-        ? integrations.find(
-            (i) => i.id.toLowerCase() === oauthIntegration.toLowerCase(),
-          )
-        : null;
-      const integrationName =
-        integration?.name || oauthIntegration || "Integration";
-
-      toast.success(`Connected to ${integrationName}`);
-
-      // Invalidate cache and set pending integration to open sidebar after data refresh
+      // Set pending integration to open sidebar after data refresh
       // Use integrationId (from redirect_path) or oauthIntegration as fallback
       const targetIntegrationId = integrationId || oauthIntegration;
       if (targetIntegrationId) {
         setPendingIntegrationId(targetIntegrationId);
       }
-      queryClient.invalidateQueries({ queryKey: ["integrations"] });
-      queryClient.invalidateQueries({ queryKey: ["tools", "available"] });
       return;
     }
 
@@ -179,11 +168,26 @@ export default function IntegrationsPage() {
     }
   }, [searchParams, integrations, router, refetch, queryClient]);
 
-  const handleBearerSubmit = async (id: string, _token: string) => {
-    // Note: Bearer token handling is done via the BearerTokenModal component directly
-    await connectIntegration(id);
-    toast.success(`Connected to ${bearerIntegrationName}`);
-    refetch();
+  const handleBearerSubmit = async (id: string, token: string) => {
+    const toastId = toast.loading(`Connecting to ${bearerIntegrationName}...`);
+    try {
+      const result = await integrationsApi.addIntegration(id, token);
+      if (result.status === "connected") {
+        toast.success(`Connected to ${bearerIntegrationName}`, { id: toastId });
+        refetch();
+        queryClient.refetchQueries({ queryKey: ["tools", "available"] });
+      } else if (result.status === "error") {
+        toast.error(result.message || "Connection failed", { id: toastId });
+      } else {
+        toast.dismiss(toastId);
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Connection failed",
+        { id: toastId },
+      );
+      throw error;
+    }
   };
 
   // Keyboard shortcut to focus search input

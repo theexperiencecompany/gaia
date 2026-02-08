@@ -33,7 +33,7 @@ async def get_all_integrations(
 
         custom_integrations = []
         query = {"source": "custom", "is_public": True}
-        if category:
+        if category and category != "all":
             query["category"] = category
 
         cursor = integrations_collection.find(query).sort("created_at", -1)
@@ -57,7 +57,7 @@ async def get_all_integrations(
     for oauth_int in OAUTH_INTEGRATIONS:
         if not oauth_int.available:
             continue
-        if category and oauth_int.category != category:
+        if category and category != "all" and oauth_int.category != category:
             continue
 
         response = IntegrationResponse.from_oauth_integration(oauth_int)

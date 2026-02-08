@@ -9,6 +9,7 @@ import { toast } from "sonner";
 
 import { SubscriptionSuccessModal } from "@/features/pricing/components/SubscriptionSuccessModal";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
+import { trackSubscription } from "@/lib/analytics";
 
 export default function PaymentSuccessPage() {
   const router = useRouter();
@@ -27,6 +28,7 @@ export default function PaymentSuccessPage() {
         const result = await verifyPayment();
 
         if (result.payment_completed) {
+          trackSubscription("completed", {});
           setShowSuccessModal(true);
           toast.success("Payment completed successfully!");
         } else {

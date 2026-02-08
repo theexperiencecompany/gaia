@@ -30,7 +30,33 @@ export const useSelectModel = () => {
       queryClient.invalidateQueries({ queryKey: ["user"] });
     },
     onError: (error) => {
-      toast.error("Failed to select model");
+      // Check if this is an upgrade required error (403 with UPGRADE_REQUIRED code)
+      const axiosError = error as {
+        response?: {
+          status?: number;
+          data?: {
+            detail?: { error_code?: string; message?: string } | string;
+          };
+        };
+      };
+
+      const isUpgradeRequired =
+        axiosError.response?.status === 403 &&
+        typeof axiosError.response?.data?.detail === "object" &&
+        axiosError.response?.data?.detail?.error_code === "UPGRADE_REQUIRED";
+
+      if (isUpgradeRequired) {
+        toast.error("This model requires a Pro subscription", {
+          action: {
+            label: "Upgrade",
+            onClick: () => {
+              window.location.href = "/pricing";
+            },
+          },
+        });
+      } else {
+        toast.error("Failed to select model");
+      }
       console.error("Model selection error:", error);
     },
   });

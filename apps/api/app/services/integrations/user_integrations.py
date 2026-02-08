@@ -3,12 +3,14 @@
 from datetime import UTC, datetime
 from typing import Any, Dict, List, Literal, Optional
 
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import app_logger as logger
 from app.constants.cache import ONE_DAY_TTL
 from app.db.mongodb.collections import user_integrations_collection
 from app.db.utils import serialize_document
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.models.integration_models import (
+    IntegrationTool,
     UserIntegration,
     UserIntegrationResponse,
     UserIntegrationsListResponse,
@@ -133,3 +135,73 @@ async def check_user_has_integration(user_id: str, integration_id: str) -> bool:
         }
     )
     return doc is not None
+
+
+@Cacheable(key_pattern="tools:user:{user_id}:integration_capabilities", ttl=ONE_DAY_TTL)
+async def get_user_integration_capabilities(user_id: str) -> Dict[str, Any]:
+    """
+    Get capabilities (tools) for user's connected integrations + core tools.
+
+    This is optimized for follow-up action generation to avoid passing
+    all tools to the LLM. Instead, only tools from user's connected
+    integrations plus core built-in tools are included.
+
+    Returns:
+        Dict with:
+        - integration_names: List of connected integration names
+        - tool_names: List of available tool names (core + integrations)
+        - capabilities: Dict mapping integration_id -> list of tool info
+    """
+
+    # Get core tools that are always available (categories that don't require integration)
+    tool_registry = await get_tool_registry()
+    core_categories = tool_registry.get_core_categories()
+
+    tool_names_set = set()
+
+    # Add core tool names
+    for category in core_categories:
+        for tool in category.tools:
+            tool_names_set.add(tool.name)
+
+    # Get user's connected integrations
+    connected_integrations = await get_user_connected_integrations(user_id)
+
+    integration_names = []
+    capabilities = {}
+
+    for user_int_doc in connected_integrations:
+        integration_id = user_int_doc.get("integration_id")
+        if not integration_id:
+            continue
+
+        # Get integration details with tools
+        integration = await get_integration_details(integration_id)
+        if not integration:
+            continue
+
+        integration_names.append(integration.name)
+
+        # Extract tool names and descriptions
+        tools_info = []
+        integration_tool: IntegrationTool
+        for integration_tool in integration.tools:
+            tool_names_set.add(integration_tool.name)
+            tools_info.append(
+                {
+                    "name": integration_tool.name,
+                    "description": integration_tool.description or "",
+                }
+            )
+
+        if tools_info:
+            capabilities[integration_id] = {
+                "name": integration.name,
+                "tools": tools_info,
+            }
+
+    return {
+        "integration_names": integration_names,
+        "tool_names": list(tool_names_set),
+        "capabilities": capabilities,
+    }

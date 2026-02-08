@@ -26,6 +26,7 @@ const Toaster = ({ ...props }: ToasterProps) => {
       }}
       toastOptions={{
         classNames: {
+          actionButton: "p-4! rounded-lg! text-sm!",
           toast:
             "rounded-2xl! border-2! backdrop-blur-sm! shadow-black/10! shadow-lg! gap-1.5!",
           loading: "border-2! border-zinc-800! bg-zinc-900!",

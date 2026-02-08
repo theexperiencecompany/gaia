@@ -11,7 +11,7 @@ import {
   Folder02Icon,
   Tag01Icon,
 } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   Priority,
   type Project,
@@ -64,8 +64,7 @@ export default function TodoItem({
     e.stopPropagation();
     const newCompletedState = !todo.completed;
 
-    // Track todo completion toggle
-    posthog.capture("todos:toggled", {
+    trackEvent(ANALYTICS_EVENTS.TODOS_TOGGLED, {
       todo_id: todo.id,
       completed: newCompletedState,
       priority: todo.priority,

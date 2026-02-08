@@ -41,7 +41,7 @@ async def get_client_metadata():
         content={
             # MUST match this document's URL exactly per spec Section 4.1
             "client_id": metadata_url,
-            "client_name": "GAIA AI Assistant",
+            "client_name": "GAIA",
             "client_uri": "https://heygaia.com",
             "logo_uri": f"{base_url}/static/logo.png",
             "redirect_uris": [f"{base_url}/api/v1/mcp/oauth/callback"],

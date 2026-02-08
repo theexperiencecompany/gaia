@@ -13,7 +13,7 @@ import {
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 
 interface ChatBubbleActionsProps {
@@ -93,8 +93,7 @@ export default function ChatBubble_Actions({
   };
 
   const handleThumbsUp = () => {
-    // Track message feedback with full message content
-    posthog.capture("chat:message_feedback", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_FEEDBACK, {
       message_id,
       message_role: messageRole,
       message_content: text,
@@ -106,8 +105,7 @@ export default function ChatBubble_Actions({
   };
 
   const handleThumbsDown = () => {
-    // Track message feedback with full message content
-    posthog.capture("chat:message_feedback", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_FEEDBACK, {
       message_id,
       message_role: messageRole,
       message_content: text,

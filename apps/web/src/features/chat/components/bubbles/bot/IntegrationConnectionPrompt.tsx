@@ -34,7 +34,7 @@ export default function IntegrationConnectionPrompt({
   };
 
   const content = (
-    <div className="w-full max-w-lg rounded-3xl bg-zinc-800/50 p-4 text-white">
+    <div className="w-fit max-w-lg rounded-3xl bg-zinc-800/50 p-4 text-white">
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <div className="shrink-0 pt-0.5">

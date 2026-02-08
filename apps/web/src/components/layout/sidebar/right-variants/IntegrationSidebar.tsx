@@ -4,6 +4,7 @@ import { Avatar } from "@heroui/avatar";
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import React, { useState } from "react";
 import { toast } from "sonner";
@@ -14,6 +15,8 @@ import { SidebarContent } from "@/components/ui/sidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { integrationsApi } from "@/features/integrations/api/integrationsApi";
+import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import type { Integration } from "@/features/integrations/types";
 import {
   GlobalIcon,
@@ -49,10 +52,12 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
   const isConnected = integration.status === "connected";
   const showRetry = integration.status === "created";
   const { tools } = useToolsWithIntegrations();
+  const queryClient = useQueryClient();
 
   const [showDisconnectDialog, setShowDisconnectDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [showBearerModal, setShowBearerModal] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
@@ -105,6 +110,13 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;
+
+    // For bearer-auth integrations, show modal instead of direct connect
+    if (integration.authType === "bearer" && integration.requiresAuth) {
+      setShowBearerModal(true);
+      return;
+    }
+
     setIsConnecting(true);
     try {
       await onConnect(integration.id);
@@ -112,6 +124,33 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       // Error toast is handled in the hook
     } finally {
       setIsConnecting(false);
+    }
+  };
+
+  const handleBearerSubmit = async (_id: string, token: string) => {
+    const toastId = toast.loading(`Connecting to ${integration.name}...`);
+    try {
+      const result = await integrationsApi.connectIntegration(
+        integration.id,
+        token,
+      );
+      if (result.status === "connected") {
+        toast.success(`Connected to ${integration.name}`, { id: toastId });
+        // Refetch all data to update sidebar
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ["integrations"] }),
+          queryClient.invalidateQueries({ queryKey: ["tools", "available"] }),
+          queryClient.invalidateQueries({ queryKey: ["tools"] }),
+        ]);
+      } else {
+        toast.error(`Connection failed: ${result.status}`, { id: toastId });
+      }
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Connection failed",
+        { id: toastId },
+      );
+      throw error;
     }
   };
 
@@ -201,7 +240,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             integration.iconUrl,
           )}
         </div>
-
         <div className="mb-0 mt-2 flex flex-col items-start gap-1">
           <div className="flex items-center gap-2 flex-row mb-2">
             {isConnected && (
@@ -268,7 +306,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             {integration.description}
           </p>
         </div>
-
         {/* Connect/Disconnect buttons */}
         {!isConnected ? (
           <RaisedButton
@@ -316,7 +353,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   className="w-full"
                   isIconOnly={useIconOnly}
                   as={Link}
-                  href={`/marketplace/${integration.slug || integration.id}`}
+                  href={`/marketplace/${integration.slug}`}
                   color="primary"
                   aria-label="View on Marketplace"
                   startContent={
@@ -387,7 +424,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
                   onPress={async () => {
                     try {
                       await navigator.clipboard.writeText(
-                        `${window.location.origin}/marketplace/${integration.slug || integration.id}`,
+                        `${window.location.origin}/marketplace/${integration.slug}`,
                       );
                       toast.success("Link copied to clipboard!");
                     } catch {
@@ -403,7 +440,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             )}
           </ButtonGroup>
         )}
-
         {/* Delete/Remove button for non-connected custom integrations */}
         {showDeleteButton && (
           <Button
@@ -417,7 +453,6 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
             {deleteButtonText}
           </Button>
         )}
-
         {integrationTools.length > 0 && (
           <h2 className="mb-1 mt-3 text-xs font-medium text-zinc-400 -ml-1">
             Available Tools ({integrationTools.length})
@@ -456,6 +491,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         confirmText="Disconnect"
         cancelText="Cancel"
         variant="destructive"
+        isLoading={isDisconnecting}
         onConfirm={confirmDisconnect}
         onCancel={() => setShowDisconnectDialog(false)}
       />
@@ -467,6 +503,7 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         confirmText={deleteDialogConfirmText}
         cancelText="Cancel"
         variant="destructive"
+        isLoading={isDeleting}
         onConfirm={confirmDelete}
         onCancel={() => setShowDeleteDialog(false)}
       />
@@ -487,6 +524,14 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
         isLoading={isPublishing}
         onConfirm={confirmPublish}
         onCancel={() => setShowPublishDialog(false)}
+      />
+
+      <BearerTokenModal
+        isOpen={showBearerModal}
+        onClose={() => setShowBearerModal(false)}
+        integrationId={integration.id}
+        integrationName={integration.name}
+        onSubmit={handleBearerSubmit}
       />
     </div>
   );

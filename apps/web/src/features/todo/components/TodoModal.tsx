@@ -18,7 +18,7 @@ import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { PlusSignIcon } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   Priority,
   type Todo,
@@ -114,8 +114,7 @@ export default function TodoModal({
           const updates = getChangedFields(todo, data);
 
           if (Object.keys(updates).length > 0) {
-            // Track todo update
-            posthog.capture("todos:updated", {
+            trackEvent(ANALYTICS_EVENTS.TODOS_UPDATED, {
               todo_id: todo.id,
               fields_changed: Object.keys(updates),
               has_due_date: !!data.due_date,
@@ -127,8 +126,7 @@ export default function TodoModal({
           return;
         }
 
-        // Track todo creation
-        posthog.capture("todos:created", {
+        trackEvent(ANALYTICS_EVENTS.TODOS_CREATED, {
           has_description: !!data.description,
           has_due_date: !!data.due_date,
           priority: data.priority,

@@ -9,6 +9,7 @@
  * For icon configuration: src/config/toolIconConfig.ts
  */
 
+import { motion } from "framer-motion";
 import Image from "next/image";
 import {
   iconAliases,
@@ -40,6 +41,7 @@ interface IconProps {
   className?: string;
   showBackground?: boolean;
   iconOnly?: boolean; // When true, renders just the icon without background wrapper
+  pulsating?: boolean; // When true, animates the background with a pulsating effect
 }
 
 interface IconConfig {
@@ -128,7 +130,12 @@ export const getToolCategoryIcon = (
   iconProps: IconProps = {},
   iconUrl?: string | null,
 ) => {
-  const { showBackground = true, iconOnly = false, ...restProps } = iconProps;
+  const {
+    showBackground = true,
+    iconOnly = false,
+    pulsating = false,
+    ...restProps
+  } = iconProps;
 
   const defaultProps = {
     size: restProps.size || 16,
@@ -178,7 +185,22 @@ export const getToolCategoryIcon = (
         />
       );
       return showBackground ? (
-        <div className="rounded-lg p-1 bg-zinc-700">{iconElement}</div>
+        <div className="relative rounded-lg p-1">
+          <motion.div
+            className="absolute inset-0 rounded-lg bg-zinc-700"
+            animate={pulsating ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 1 }}
+            transition={
+              pulsating
+                ? {
+                    duration: 2,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                  }
+                : undefined
+            }
+          />
+          <div className="relative">{iconElement}</div>
+        </div>
       ) : (
         iconElement
       );
@@ -211,7 +233,22 @@ export const getToolCategoryIcon = (
   // iconOnly: when true, image icons skip background for minimal display (e.g., loading messages)
   const shouldShowBackground = showBackground && !(iconOnly && config.isImage);
   return shouldShowBackground ? (
-    <div className={`rounded-lg p-1 ${config.bgColor}`}>{iconElement}</div>
+    <div className="relative rounded-lg p-1">
+      <motion.div
+        className={`absolute inset-0 rounded-lg ${config.bgColor}`}
+        animate={pulsating ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 1 }}
+        transition={
+          pulsating
+            ? {
+                duration: 2,
+                repeat: Number.POSITIVE_INFINITY,
+                ease: "easeInOut",
+              }
+            : undefined
+        }
+      />
+      <div className="relative">{iconElement}</div>
+    </div>
   ) : (
     iconElement
   );

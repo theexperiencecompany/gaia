@@ -19,7 +19,7 @@ import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   useComposerFiles,
   useComposerModeSelection,
@@ -107,6 +107,13 @@ const Composer: React.FC<MainSearchbarProps> = ({
     () => Array.from(selectedMode)[0],
     [selectedMode],
   );
+
+  // Look up the icon URL for the selected tool's integration
+  const selectedToolIconUrl = useMemo(() => {
+    if (!selectedToolCategory) return null;
+    const integration = integrations.find((i) => i.id === selectedToolCategory);
+    return integration?.iconUrl ?? null;
+  }, [selectedToolCategory, integrations]);
 
   // Ref to prevent duplicate execution in StrictMode
   const autoSendExecutedRef = useRef(false);
@@ -228,8 +235,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
     // Note: Loading state is now set in useSendMessage AFTER user message is persisted
     // This ensures the loading indicator appears AFTER the user message in the UI
 
-    // Track message send event with PostHog
-    posthog.capture("chat:message_sent", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
       has_text: !!inputText,
       has_files: uploadedFiles.length > 0,
       file_count: uploadedFiles.length,
@@ -476,6 +482,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
         <SelectedToolIndicator
           toolName={selectedTool}
           toolCategory={selectedToolCategory}
+          iconUrl={selectedToolIconUrl}
           onRemove={handleRemoveSelectedTool}
         />
         <SelectedWorkflowIndicator

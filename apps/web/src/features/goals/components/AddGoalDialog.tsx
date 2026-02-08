@@ -11,7 +11,7 @@ import type React from "react";
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
 
 import { SentIcon } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 export default function AddGoalDialog({
   openDialog,
@@ -41,8 +41,7 @@ export default function AddGoalDialog({
       return;
     }
 
-    // Track goal creation
-    posthog.capture("goals:created", {
+    trackEvent(ANALYTICS_EVENTS.GOALS_CREATED, {
       title_length: goalTitle.length,
       has_previous_title: !!prevGoalTitle,
     });

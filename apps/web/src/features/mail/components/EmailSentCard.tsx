@@ -26,7 +26,7 @@ export default function EmailSentCard({ emailSentData }: EmailSentCardProps) {
   };
 
   return (
-    <div className="w-full max-w-2xl rounded-2xl border border-green-700/30 bg-green-900/20 p-4 text-white">
+    <div className="w-full min-w-fit max-w-xs rounded-2xl bg-green-900/20 p-4 text-white">
       {/* Header */}
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">

@@ -47,7 +47,7 @@ export const selectModel = async (
       model_id: modelId,
     },
     {
-      errorMessage: "Failed to select model",
+      silent: true, // We handle errors in useSelectModel hook
     },
   );
 };

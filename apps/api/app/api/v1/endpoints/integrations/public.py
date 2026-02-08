@@ -109,6 +109,17 @@ async def add_public_integration(
         mcp_config = original_doc.get("mcp_config", {})
         server_url = mcp_config.get("server_url")
         requires_auth = mcp_config.get("requires_auth", False)
+        auth_type = mcp_config.get("auth_type")
+
+        # For bearer auth without token provided, return bearer_required status
+        if auth_type == "bearer" and requires_auth and not request.bearer_token:
+            return AddIntegrationResponse(
+                integration_id=integration_id,
+                name=integration_name,
+                status="error",
+                error="bearer_required",
+                message="Bearer token required for this integration",
+            )
 
         connect_result = await connect_mcp_integration(
             user_id=user_id,
@@ -117,6 +128,7 @@ async def add_public_integration(
             redirect_path=request.redirect_path,
             server_url=server_url,
             is_platform=False,
+            bearer_token=request.bearer_token,
         )
 
         return AddIntegrationResponse(

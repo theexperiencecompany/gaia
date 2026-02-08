@@ -103,7 +103,13 @@ export function TriggerAutocomplete({
     // Handle connection items
     if (trigger.startsWith("connect-")) {
       const integrationId = trigger.replace("connect-", "");
-      onConnectIntegration(integrationId);
+      // Only allow connection for real integration IDs (not fallback like "other")
+      if (
+        integrationStatusMap.has(integrationId) &&
+        integrationStatusMap.get(integrationId) === false
+      ) {
+        onConnectIntegration(integrationId);
+      }
       // Reset filter/selection logic if needed, but since we're opening a popup/redirect,
       // creating a seamless flow is better. We just don't select it as a trigger.
       return;
@@ -144,14 +150,18 @@ export function TriggerAutocomplete({
         aria-label="Choose a trigger"
         label="Trigger"
         placeholder="Search or select a trigger..."
-        fullWidth
-        className="w-full max-w-xl"
+        className="w-full max-w-sm"
         selectedKey={selectedTrigger}
         onSelectionChange={handleSelectionChange}
         onInputChange={handleInputChange}
         inputValue={filterValue}
         items={filteredSchemas}
         defaultFilter={() => true}
+        classNames={{
+          listboxWrapper: `${
+            Object.keys(groupedTriggers).length > 2 ? "min-h-[300px]" : "h-fit"
+          } p-1`,
+        }}
         startContent={
           selectedSchema &&
           getToolCategoryIcon(selectedSchema.integration_id, {
@@ -169,56 +179,69 @@ export function TriggerAutocomplete({
           emptyContent: "No matching triggers found.",
         }}
       >
-        {Object.entries(groupedTriggers).map(([integrationId, schemas]) => {
-          const isConnected = integrationStatusMap.get(integrationId) ?? false;
-          // Ensure schemas exists before mapping
-          const schemaList = schemas || [];
+        {Object.entries(groupedTriggers)
+          .sort(([aId], [bId]) => {
+            const aConnected = integrationStatusMap.get(aId) ?? false;
+            const bConnected = integrationStatusMap.get(bId) ?? false;
+            // Connected integrations first
+            if (aConnected && !bConnected) return -1;
+            if (!aConnected && bConnected) return 1;
+            return 0;
+          })
+          .map(([integrationId, schemas]) => {
+            // Ensure schemas exists before mapping
+            const schemaList = schemas || [];
 
-          const triggerItems = schemaList.map((schema) => (
-            <AutocompleteItem
-              key={schema.slug}
-              textValue={schema.name}
-              startContent={getToolCategoryIcon(schema.integration_id, {
-                width: 20,
-                height: 20,
-                showBackground: false,
-              })}
-              className="group"
-            >
-              <div className="flex flex-col">
-                <span className="text-small">{schema.name}</span>
-                <span className="text-tiny text-zinc-500 group-data-[hover=true]:text-zinc-300">
-                  {schema.description}
-                </span>
-              </div>
-            </AutocompleteItem>
-          ));
+            const triggerItems = schemaList.map((schema) => (
+              <AutocompleteItem
+                key={schema.slug}
+                textValue={schema.name}
+                startContent={getToolCategoryIcon(schema.integration_id, {
+                  width: 20,
+                  height: 20,
+                  showBackground: false,
+                })}
+                className="group"
+              >
+                <div className="flex flex-col">
+                  <span className="text-small">{schema.name}</span>
+                  <span className="text-tiny text-zinc-500 group-data-[hover=true]:text-zinc-300">
+                    {schema.description}
+                  </span>
+                </div>
+              </AutocompleteItem>
+            ));
 
-          const connectionItem = !isConnected ? (
-            <AutocompleteItem
-              key={`connect-${integrationId}`}
-              textValue={`Connect ${formatIntegrationName(integrationId)}`}
-              className="bg-primary text-primary-foreground font-medium data-[hover=true]:bg-primary/90 data-[hover=true]:text-primary-foreground/90 text-center"
-            >
-              <div className="text-center">
-                Connect {formatIntegrationName(integrationId)}
-              </div>
-            </AutocompleteItem>
-          ) : null;
+            // Only show connectionItem for real integration IDs (not fallback like "other")
+            // that are explicitly disconnected (false)
+            const connectionItem =
+              integrationStatusMap.has(integrationId) &&
+              integrationStatusMap.get(integrationId) === false ? (
+                <AutocompleteItem
+                  key={`connect-${integrationId}`}
+                  textValue={`Connect ${formatIntegrationName(integrationId)}`}
+                  className="my-2 bg-primary text-primary-foreground font-medium data-[hover=true]:bg-primary/90 data-[hover=true]:text-primary-foreground/90 text-center"
+                >
+                  <div className="text-center">
+                    Connect {formatIntegrationName(integrationId)}
+                  </div>
+                </AutocompleteItem>
+              ) : null;
 
-          if (connectionItem) {
-            triggerItems.unshift(connectionItem);
-          }
+            if (connectionItem) {
+              triggerItems.unshift(connectionItem);
+            }
 
-          return (
-            <AutocompleteSection
-              key={integrationId}
-              title={formatIntegrationName(integrationId)}
-            >
-              {triggerItems}
-            </AutocompleteSection>
-          );
-        })}
+            return (
+              <AutocompleteSection
+                key={integrationId}
+                className="border-b-1 pb-4 mb-4 border-zinc-800"
+                title={formatIntegrationName(integrationId)}
+              >
+                {triggerItems}
+              </AutocompleteSection>
+            );
+          })}
       </Autocomplete>
 
       {/* Trigger description helper text */}

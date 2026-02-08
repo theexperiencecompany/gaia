@@ -104,10 +104,7 @@ export function ConfirmationDialog({
               <Button
                 ref={confirmButtonRef}
                 color={variant === "destructive" ? "danger" : "primary"}
-                onPress={() => {
-                  handleConfirmPress();
-                  onClose();
-                }}
+                onPress={handleConfirmPress}
                 endContent={!isLoading && <Kbd keys={["enter"]} />}
                 isLoading={isLoading}
                 isDisabled={isLoading}

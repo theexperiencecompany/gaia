@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 def get_api_base_url() -> str:
     """Get the backend API base URL for callbacks."""
-    return getattr(settings, "API_BASE_URL", "http://localhost:8000")
+    return settings.HOST
 
 
 def get_frontend_url() -> str:

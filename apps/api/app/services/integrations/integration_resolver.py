@@ -106,13 +106,27 @@ class IntegrationResolver:
                     "oauth" if mcp_requires_auth else "none"
                 )
 
-                # Warn about inconsistencies - helps identify data integrity issues
+                # Warn about inconsistencies and fix them
                 if doc_requires_auth != mcp_requires_auth:
-                    logger.warning(
-                        f"Integration {integration_id}: mcp_config.requires_auth "
-                        f"({mcp_requires_auth}) differs from document requires_auth "
-                        f"({doc_requires_auth}). Using mcp_config value."
+                    logger.info(
+                        f"Integration {integration_id}: syncing requires_auth "
+                        f"from {doc_requires_auth} to {mcp_requires_auth} (mcp_config is authoritative)"
                     )
+                    # Sync MongoDB document to match authoritative mcp_config
+                    try:
+                        await integrations_collection.update_one(
+                            {"integration_id": integration_id},
+                            {
+                                "$set": {
+                                    "requires_auth": mcp_requires_auth,
+                                    "auth_type": mcp_auth_type,
+                                }
+                            },
+                        )
+                    except Exception as sync_err:
+                        logger.warning(
+                            f"Failed to sync requires_auth for {integration_id}: {sync_err}"
+                        )
 
                 requires_auth = mcp_requires_auth
                 auth_type = mcp_auth_type

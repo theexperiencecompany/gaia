@@ -7,6 +7,7 @@ import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
 import { getLinkByLabel } from "@/config/appConfig";
+import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { MessageMultiple02Icon, SearchIcon } from "@/icons";
@@ -103,6 +104,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
 
   // Action handlers
   const handleNewChat = useCallback(() => {
+    prepareNewChat();
     router.push("/c");
     onOpenChange(false);
   }, [router, onOpenChange]);

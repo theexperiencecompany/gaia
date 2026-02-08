@@ -24,7 +24,7 @@ import {
   Target02Icon,
   ZapIcon,
 } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useRefreshTrigger } from "@/stores/notificationStore";
 import { NotificationStatus } from "@/types/features/notificationTypes";
 import { SidebarPromo } from "./SidebarPromo";
@@ -153,7 +153,7 @@ export default function SidebarTopButtons() {
                   as={Link}
                   href={route}
                   onPress={() => {
-                    posthog.capture("navigation:sidebar_clicked", {
+                    trackEvent(ANALYTICS_EVENTS.NAVIGATION_SIDEBAR_CLICKED, {
                       destination: route,
                       label,
                     });

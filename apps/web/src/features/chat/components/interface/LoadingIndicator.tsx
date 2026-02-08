@@ -43,7 +43,7 @@ export function LoadingIndicator({
 
   return (
     <motion.div
-      className="flex items-center gap-4 pl-11 text-sm font-medium"
+      className="flex items-center gap-4 pl-11.5 text-sm font-medium pt-2"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -8 }}
@@ -52,7 +52,7 @@ export function LoadingIndicator({
       {(toolInfo?.toolCategory &&
         getToolCategoryIcon(
           toolInfo.toolCategory,
-          { size: 20, width: 20, height: 20, iconOnly: true },
+          { size: 20, width: 20, height: 20, iconOnly: true, pulsating: true },
           toolInfo.iconUrl,
         )) || <WaveSpinnerSquare />}
       <AnimatePresence mode="wait">

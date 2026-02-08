@@ -58,6 +58,7 @@ async def run_chat_stream_background(
     """
     complete_message = ""
     tool_data: Dict[str, Any] = {"tool_data": []}
+    tool_outputs: Dict[str, str] = {}  # Track tool_call_id -> output for merging
     user_message_id = str(uuid4())
     bot_message_id = str(uuid4())
     is_new_conversation = body.conversation_id is None
@@ -167,6 +168,20 @@ async def run_chat_stream_background(
                                     stream_id,
                                     f"data: {json.dumps({'tool_data': tool_entry})}\n\n",
                                 )
+
+                        # Capture tool_output events for merging before save
+                        # AND stream to frontend for real-time UI updates
+                        if "tool_output" in new_data:
+                            output_data = new_data["tool_output"]
+                            tool_call_id = output_data.get("tool_call_id")
+                            output = output_data.get("output")
+                            if tool_call_id and output:
+                                tool_outputs[tool_call_id] = output
+                            # Stream tool_output to frontend
+                            await stream_manager.publish_chunk(
+                                stream_id,
+                                f"data: {json.dumps({'tool_output': output_data})}\n\n",
+                            )
                     else:
                         await stream_manager.publish_chunk(stream_id, chunk)
 
@@ -226,6 +241,16 @@ async def run_chat_stream_background(
                 logger.debug(
                     f"Recovered {len(complete_message)} chars from Redis progress"
                 )
+
+        # Merge tool outputs into tool_data entries before saving
+        # This ensures outputs are persisted and available on reload
+        for entry in tool_data.get("tool_data", []):
+            if entry.get("tool_name") == "tool_calls_data":
+                data = entry.get("data", {})
+                if isinstance(data, dict):
+                    tool_call_id = data.get("tool_call_id")
+                    if tool_call_id and tool_call_id in tool_outputs:
+                        data["output"] = tool_outputs[tool_call_id]
 
         # Always save conversation to MongoDB
         await _save_conversation_async(
@@ -418,6 +443,10 @@ def extract_tool_data(json_str: str) -> Dict[str, Any]:
             result["tool_data"] = tool_data_entries
         if other_data:
             result["other_data"] = other_data
+
+        # Step 4: Extract tool_output events (for merging into tool_data before save)
+        if "tool_output" in data:
+            result["tool_output"] = data["tool_output"]
 
         return result
 

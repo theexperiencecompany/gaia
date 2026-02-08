@@ -3,12 +3,13 @@
 import { Chip } from "@heroui/chip";
 import { useRouter } from "next/navigation";
 import type React from "react";
+import { useEffect } from "react";
 import { toast } from "sonner";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { Tick02Icon } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 // Removed currency import - using USD only
 import { useDodoPayments } from "../hooks/useDodoPayments";
@@ -68,9 +69,17 @@ export function PricingCard({
   const user = useUser();
   const router = useRouter();
 
+  useEffect(() => {
+    trackEvent(ANALYTICS_EVENTS.SUBSCRIPTION_PLAN_VIEWED, {
+      plan_title: title,
+      plan_id: planId,
+      price,
+      is_monthly: durationIsMonth,
+    });
+  }, [title, planId, price, durationIsMonth]);
+
   const handleGetStarted = async () => {
-    // Track pricing card interaction
-    posthog.capture("pricing:plan_selected", {
+    trackEvent(ANALYTICS_EVENTS.PRICING_PLAN_SELECTED, {
       plan_title: title,
       plan_id: planId,
       price: price,

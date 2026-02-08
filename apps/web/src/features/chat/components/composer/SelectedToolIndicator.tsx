@@ -9,6 +9,7 @@ import { useComposerUI } from "@/stores/composerStore";
 interface SelectedToolIndicatorProps {
   toolName: string | null;
   toolCategory?: string | null;
+  iconUrl?: string | null;
   onRemove?: () => void;
 }
 
@@ -25,6 +26,7 @@ const formatToolName = (toolName: string): string => {
 const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   toolName,
   toolCategory,
+  iconUrl,
   onRemove,
 }) => {
   const { isSlashCommandDropdownOpen } = useComposerUI();
@@ -61,9 +63,13 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
           className="mx-3 mt-2 mb-1 flex w-fit items-center gap-2 rounded-xl bg-zinc-700 px-2 py-1"
         >
           <div>
-            {getToolCategoryIcon(toolCategory || "general", {
-              size: 17,
-            })}
+            {getToolCategoryIcon(
+              toolCategory || "general",
+              {
+                size: 17,
+              },
+              iconUrl,
+            )}
           </div>
           <span className="text-sm font-light text-zinc-200">
             {formatToolName(toolName)}

@@ -5,6 +5,12 @@ import { toast } from "sonner";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { useFetchIntegrationStatus } from "@/features/integrations";
+import {
+  ANALYTICS_EVENTS,
+  trackEvent,
+  trackOnboardingComplete,
+  trackOnboardingStep,
+} from "@/lib/analytics";
 import { batchSyncConversations } from "@/services/syncService";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
@@ -18,6 +24,7 @@ export const useOnboarding = () => {
   const user = useUser();
   const { setUser } = useUserActions();
   const [isInitialized, setIsInitialized] = useState(false);
+  const onboardingStartTracked = useRef(false);
 
   // Force integration status refresh on this page to show connected state immediately
   const { refetch: refetchIntegrationStatus } = useFetchIntegrationStatus({
@@ -64,6 +71,16 @@ export const useOnboarding = () => {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  // Track onboarding start (only once per session)
+  useEffect(() => {
+    if (!onboardingStartTracked.current) {
+      trackEvent(ANALYTICS_EVENTS.ONBOARDING_STARTED, {
+        has_saved_state: onboardingState.messages.length > 0,
+      });
+      onboardingStartTracked.current = true;
+    }
+  }, []);
 
   // Persist state to sessionStorage whenever it changes
   useEffect(() => {
@@ -153,6 +170,16 @@ export const useOnboarding = () => {
         return;
 
       const currentQuestion = questions[onboardingState.currentQuestionIndex];
+
+      // Track step completion
+      trackOnboardingStep(
+        onboardingState.currentQuestionIndex + 1,
+        currentQuestion.fieldName,
+        {
+          response_value: rawValue ?? responseText,
+          question_id: currentQuestion.id,
+        },
+      );
 
       // First, add user message and update state
       setOnboardingState((prev) => {
@@ -256,6 +283,10 @@ export const useOnboarding = () => {
       );
       if (selectedChip) {
         if (chipValue === "skip") {
+          trackEvent(ANALYTICS_EVENTS.ONBOARDING_SKIPPED, {
+            step: onboardingState.currentQuestionIndex,
+            question_id: questionId,
+          });
           submitResponse("Skipped", "");
         } else if (chipValue === "none") {
           submitResponse("No special instructions", "");
@@ -391,6 +422,12 @@ export const useOnboarding = () => {
       }
 
       if (response?.success) {
+        // Track onboarding completion
+        trackOnboardingComplete({
+          profession: onboardingState.userResponses.profession,
+          totalSteps: questions.length + 1, // questions + connections step
+        });
+
         // Clear saved onboarding state since we're done
         if (typeof window !== "undefined") {
           sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);

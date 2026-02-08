@@ -6,7 +6,7 @@ import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useExploreWorkflows } from "@/features/workflows/hooks";
 import { UndoIcon } from "@/icons";
-import { posthog } from "@/lib/posthog";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useComposerTextActions } from "@/stores/composerStore";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
 
@@ -49,7 +49,7 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
   }, [featuredWorkflows, currentSuggestions.length]);
 
   const handleShuffle = useCallback(() => {
-    posthog.capture("chat:suggestion_shuffled", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_SUGGESTION_SHUFFLED, {
       current_suggestion_ids: currentSuggestions.map((w) => w.id),
     });
 
