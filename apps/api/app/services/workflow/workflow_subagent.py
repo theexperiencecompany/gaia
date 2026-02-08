@@ -119,7 +119,7 @@ class WorkflowSubagentRunner:
             "name": user_name,
         }
 
-        config: RunnableConfig = build_agent_config(
+        config: RunnableConfig = build_agent_config(  # type: ignore[assignment]
             conversation_id=thread_id,
             user=user,
             user_time=user_time,

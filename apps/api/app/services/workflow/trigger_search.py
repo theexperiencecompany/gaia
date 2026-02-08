@@ -77,8 +77,11 @@ class TriggerSearchService:
                     checked_integrations[integration_id] = False
 
             # Get config schema for this trigger (embedded in results)
-            schema = await cls.get_schema(trigger_slug)
-            config_fields = schema.get("config_fields", {}) if schema else {}
+            config_fields: dict[str, Any] = {}
+            if isinstance(trigger_slug, str):
+                schema = await cls.get_schema(trigger_slug)
+                if schema:
+                    config_fields = schema.get("config_fields", {})
 
             enriched.append(
                 {

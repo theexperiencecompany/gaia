@@ -486,6 +486,22 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=NOTION_AGENT_SYSTEM_PROMPT,
             memory_prompt=NOTION_MEMORY_PROMPT,
         ),
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="NOTION_GET_ABOUT_ME",
+                    variables=[
+                        VariableExtraction(name="user_id", field_path="id"),
+                        VariableExtraction(
+                            name="workspace_id", field_path="bot.workspace_id"
+                        ),
+                        VariableExtraction(
+                            name="workspace_name", field_path="bot.workspace_name"
+                        ),
+                    ],
+                ),
+            ],
+        ),
     ),
     OAuthIntegration(
         id="twitter",
@@ -900,6 +916,20 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=LINEAR_AGENT_SYSTEM_PROMPT,
             memory_prompt=LINEAR_MEMORY_PROMPT,
         ),
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="LINEAR_GET_CURRENT_USER",
+                    variables=[
+                        VariableExtraction(name="user_id", field_path="user.id"),
+                        VariableExtraction(
+                            name="username", field_path="user.displayName"
+                        ),
+                        VariableExtraction(name="email", field_path="user.email"),
+                    ],
+                ),
+            ],
+        ),
     ),
     OAuthIntegration(
         id="slack",
@@ -915,7 +945,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_acm0K6K_kWxY",
             toolkit="SLACK",
-            toolkit_version="20260107_00",
+            toolkit_version="20260204_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -987,6 +1017,19 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=SLACK_AGENT_SYSTEM_PROMPT,
             specific_tools=SLACK_TOOLS,
             memory_prompt=SLACK_MEMORY_PROMPT,
+        ),
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="SLACK_TEST_AUTH",
+                    variables=[
+                        VariableExtraction(name="user_id", field_path="user_id"),
+                        VariableExtraction(name="username", field_path="user"),
+                        VariableExtraction(name="team_id", field_path="team_id"),
+                        VariableExtraction(name="team_name", field_path="team"),
+                    ],
+                ),
+            ],
         ),
     ),
     OAuthIntegration(
