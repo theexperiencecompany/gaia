@@ -1,40 +1,13 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { Chip } from "@heroui/chip";
-import {
-  Dropdown,
-  DropdownItem,
-  DropdownMenu,
-  DropdownTrigger,
-} from "@heroui/dropdown";
-import { Input, Textarea } from "@heroui/input";
-import { Kbd } from "@heroui/kbd";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
-import { Skeleton } from "@heroui/skeleton";
-import { Switch } from "@heroui/switch";
-import { Tab, Tabs } from "@heroui/tabs";
-import { Tooltip } from "@heroui/tooltip";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Controller, useForm } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
 import { toast } from "sonner";
-import CustomSpinner from "@/components/ui/spinner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import {
-  AlertCircleIcon,
-  ArrowDown01Icon,
-  CheckmarkCircle02Icon,
-  Delete02Icon,
-  InformationCircleIcon,
-  LinkSquare02Icon,
-  MoreVerticalIcon,
-  PlayIcon,
-  RedoIcon,
-} from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import { type Workflow, workflowApi } from "../api/workflowApi";
@@ -49,9 +22,14 @@ import { useWorkflowModalStore } from "../stores/workflowModalStore";
 import { useWorkflowsStore } from "../stores/workflowsStore";
 import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
-import { ScheduleBuilder } from "./ScheduleBuilder";
-import WorkflowSteps from "./shared/WorkflowSteps";
-import { TriggerConfigForm } from "./TriggerConfigForm";
+import {
+  WorkflowDescriptionField,
+  WorkflowFooter,
+  WorkflowHeader,
+  WorkflowLoadingState,
+  WorkflowRightPanel,
+  WorkflowTriggerSection,
+} from "./workflow-modal";
 
 interface WorkflowModalProps {
   isOpen: boolean;
@@ -70,7 +48,6 @@ export default function WorkflowModal({
   mode,
   existingWorkflow,
 }: WorkflowModalProps) {
-  const router = useRouter();
   const {
     isCreating,
     error: creationError,
@@ -209,40 +186,6 @@ export default function WorkflowModal({
   const handleInitialGeneration = () => {
     handleRegenerateSteps("Generate workflow steps", false); // Don't force different tools for initial generation
   };
-
-  // Regeneration reason options (only for existing workflows)
-  const regenerationReasons = [
-    {
-      key: "alternative",
-      label: "Generate alternative approach",
-      description: "Create a different way to achieve the same goal",
-    },
-    {
-      key: "efficient",
-      label: "Make more efficient",
-      description: "Optimize steps for better performance",
-    },
-    {
-      key: "detailed",
-      label: "Add more detail",
-      description: "Include more comprehensive steps",
-    },
-    {
-      key: "simplified",
-      label: "Simplify workflow",
-      description: "Reduce complexity and number of steps",
-    },
-    {
-      key: "tools",
-      label: "Use different tools",
-      description: "Try different tools for the same tasks",
-    },
-    {
-      key: "reorder",
-      label: "Reorder steps",
-      description: "Change the sequence of operations",
-    },
-  ];
 
   // Initialize form data based on mode and currentWorkflow
   useEffect(() => {
@@ -507,7 +450,30 @@ export default function WorkflowModal({
   };
 
   // Handle regeneration with specific instruction
+  // Keys must match WorkflowStepsPanel regenerationReasons
   const handleRegenerateWithReason = (instructionKey: string) => {
+    const regenerationReasons = [
+      {
+        key: "too_complex",
+        label: "Simplify workflow",
+        description: "Simplify with fewer steps",
+      },
+      {
+        key: "missing_functionality",
+        label: "Add missing functionality",
+        description: "Add specific features",
+      },
+      {
+        key: "wrong_tools",
+        label: "Use different tools",
+        description: "Use different integrations",
+      },
+      {
+        key: "alternative_approach",
+        label: "Generate alternative approach",
+        description: "Try a completely different strategy",
+      },
+    ];
     const reason = regenerationReasons.find((r) => r.key === instructionKey);
     if (reason) {
       handleRegenerateSteps(reason.label, true); // Always force different tools for regeneration
@@ -552,46 +518,47 @@ export default function WorkflowModal({
     }
   };
 
-  const renderTriggerTab = () => (
-    <TriggerConfigForm
-      selectedTrigger={formData.selectedTrigger}
-      triggerConfig={formData.trigger_config}
-      onTriggerChange={(trigger) => setValue("selectedTrigger", trigger)}
-      onConfigChange={(config) => setValue("trigger_config", config)}
-    />
-  );
-
-  const renderManualTab = () => (
-    <div className="w-full">
-      <p className="text-sm text-zinc-500">
-        This workflow will be triggered manually when you run it.
-      </p>
-    </div>
-  );
-
-  const renderScheduleTab = () => (
-    <div className="w-full">
-      <ScheduleBuilder
-        value={
-          formData.trigger_config.type === "schedule"
-            ? (formData.trigger_config.cron_expression as string) || ""
-            : ""
-        }
-        onChange={(cronExpression) => {
-          if (formData.trigger_config.type === "schedule") {
-            setValue("trigger_config", {
-              ...formData.trigger_config,
-              cron_expression: cronExpression,
-            });
-          }
-        }}
-      />
-    </div>
-  );
-
   const getButtonText = () => {
     if (mode === "edit") return isCreating ? "Saving..." : "Save Changes";
     return isCreating ? "Creating..." : "Create Workflow";
+  };
+
+  // Handle tab change for trigger section
+  const handleActiveTabChange = (tab: "manual" | "schedule" | "trigger") => {
+    setValue("activeTab", tab);
+
+    if (tab === "schedule") {
+      // Only reset if not already a schedule type
+      if (formData.trigger_config.type !== "schedule") {
+        setValue("trigger_config", {
+          type: "schedule",
+          enabled: true,
+          cron_expression: "0 9 * * *",
+          timezone: "UTC",
+        });
+      }
+    } else if (tab === "trigger") {
+      // Preserve existing trigger selection if it's a trigger type
+      const currentType = formData.trigger_config.type;
+      const isTriggerType =
+        currentType !== "schedule" && currentType !== "manual";
+
+      if (!isTriggerType && !formData.selectedTrigger) {
+        // No previous selection, set to email as default
+        setValue("trigger_config", {
+          type: "email",
+          enabled: true,
+        });
+      }
+    } else {
+      // Manual tab - only reset if not already manual
+      if (formData.trigger_config.type !== "manual") {
+        setValue("trigger_config", {
+          type: "manual",
+          enabled: true,
+        });
+      }
+    }
   };
 
   return (
@@ -611,602 +578,91 @@ export default function WorkflowModal({
       <ModalContent>
         <ModalBody className="max-h-full space-y-6 overflow-hidden pr-2">
           {creationPhase === "form" ? (
-            <div className="flex h-full min-h-0 gap-8">
+            <div className="flex h-full min-h-0 items-start gap-8">
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 space-y-6 overflow-y-auto">
-                  <div className="flex items-center gap-3 pt-5">
-                    <Controller
-                      name="title"
-                      control={control}
-                      render={({ field }) => (
-                        <Input
-                          {...field}
-                          autoFocus
-                          placeholder={
-                            mode === "edit"
-                              ? "Edit workflow name"
-                              : "Enter workflow name"
-                          }
-                          variant="underlined"
-                          classNames={{
-                            input: "font-medium! text-4xl",
-                            inputWrapper: "px-0",
-                          }}
-                          isRequired
-                          className="flex-1"
-                          isInvalid={!!errors.title}
-                          errorMessage={errors.title?.message}
-                        />
-                      )}
-                    />
+                  {/* Header with title and actions */}
+                  <WorkflowHeader
+                    mode={mode}
+                    control={control}
+                    errors={errors}
+                    currentWorkflow={currentWorkflow}
+                    onWorkflowChange={setCurrentWorkflow}
+                    onDelete={handleDelete}
+                    onRefetchWorkflows={fetchWorkflows}
+                  />
 
-                    {/* Action dropdown for edit mode */}
-                    {mode === "edit" && (
-                      <Dropdown placement="bottom-end" className="max-w-100">
-                        <DropdownTrigger>
-                          <Button variant="flat" size="sm" isIconOnly>
-                            <MoreVerticalIcon />
-                          </Button>
-                        </DropdownTrigger>
-                        <DropdownMenu
-                          onAction={async (key) => {
-                            if (key === "publish") {
-                              if (!currentWorkflow?.id) return;
-
-                              try {
-                                if (currentWorkflow.is_public) {
-                                  trackEvent(
-                                    ANALYTICS_EVENTS.WORKFLOWS_UNPUBLISHED,
-                                    {
-                                      workflow_id: currentWorkflow.id,
-                                      workflow_title: currentWorkflow.title,
-                                    },
-                                  );
-                                  await workflowApi.unpublishWorkflow(
-                                    currentWorkflow.id,
-                                  );
-                                  setCurrentWorkflow((prev) =>
-                                    prev ? { ...prev, is_public: false } : null,
-                                  );
-                                } else {
-                                  trackEvent(
-                                    ANALYTICS_EVENTS.WORKFLOWS_PUBLISHED,
-                                    {
-                                      workflow_id: currentWorkflow.id,
-                                      workflow_title: currentWorkflow.title,
-                                      step_count:
-                                        currentWorkflow.steps?.length || 0,
-                                    },
-                                  );
-                                  await workflowApi.publishWorkflow(
-                                    currentWorkflow.id,
-                                  );
-                                  setCurrentWorkflow((prev) =>
-                                    prev ? { ...prev, is_public: true } : null,
-                                  );
-                                  if (currentWorkflow.id) {
-                                    // Navigate to the published workflow page
-                                    router.push(
-                                      `/use-cases/${currentWorkflow.id}`,
-                                    );
-                                  }
-                                }
-                              } catch (error) {
-                                console.error(
-                                  "Error publishing/unpublishing workflow:",
-                                  error,
-                                );
-                              }
-                              await fetchWorkflows();
-                            } else if (key === "marketplace") {
-                              if (currentWorkflow?.id) {
-                                router.push(`/use-cases/${currentWorkflow.id}`);
-                              }
-                            } else if (key === "delete") {
-                              await handleDelete();
-                            }
-                          }}
-                        >
-                          <DropdownItem
-                            key="publish"
-                            startContent={
-                              <PlayIcon className="relative top-1 h-4 w-4" />
-                            }
-                            classNames={{
-                              description: "text-wrap",
-                              base: "items-start!",
-                            }}
-                            description={
-                              currentWorkflow?.is_public
-                                ? "Remove from community marketplace"
-                                : "Share to community marketplace"
-                            }
-                          >
-                            {currentWorkflow?.is_public
-                              ? "Unpublish Workflow"
-                              : "Publish Workflow"}
-                          </DropdownItem>
-
-                          {currentWorkflow?.is_public ? (
-                            <DropdownItem
-                              key="marketplace"
-                              startContent={
-                                <LinkSquare02Icon className="h-4 w-4" />
-                              }
-                              classNames={{
-                                description: "text-wrap",
-                                base: "items-start!",
-                              }}
-                              description="Open community marketplace"
-                            >
-                              View on Marketplace
-                            </DropdownItem>
-                          ) : null}
-
-                          <DropdownItem
-                            key="delete"
-                            color="danger"
-                            startContent={<Delete02Icon className="h-4 w-4" />}
-                            classNames={{
-                              description: "text-wrap",
-                              base: "items-start!",
-                            }}
-                            description="Permanently delete this workflow"
-                          >
-                            Delete Workflow
-                          </DropdownItem>
-                        </DropdownMenu>
-                      </Dropdown>
-                    )}
-                  </div>
                   {/* Trigger/Schedule Configuration */}
-                  <div className="space-y-3">
-                    <div className="flex items-start gap-3">
-                      <div className="mt-2.5 flex min-w-26 items-center justify-between gap-1.5 text-sm font-medium text-zinc-400">
-                        <span className="text-nowrap">When to Run</span>
-                        <Tooltip
-                          content={
-                            <div className="px-1 py-2">
-                              <p className="text-sm font-medium">When to Run</p>
-                              <p className="mt-1 text-xs text-zinc-400">
-                                Choose how your workflow will be activated:
-                              </p>
-                              <ul className="mt-2 space-y-1 text-xs text-zinc-400">
-                                <li>
-                                  • <span className="font-medium">Manual:</span>{" "}
-                                  Run the workflow manually when you need it
-                                </li>
-                                <li>
-                                  •{" "}
-                                  <span className="font-medium">Schedule:</span>{" "}
-                                  Run at specific times or intervals
-                                </li>
-                                <li>
-                                  •{" "}
-                                  <span className="font-medium">Trigger:</span>{" "}
-                                  Run when external events occur (coming soon)
-                                </li>
-                              </ul>
-                            </div>
-                          }
-                          placement="top"
-                          delay={500}
-                        >
-                          <InformationCircleIcon className="h-3.5 w-3.5 cursor-help text-zinc-500 hover:text-zinc-300" />
-                        </Tooltip>
-                      </div>
-                      <div className="w-full">
-                        <Tabs
-                          color="primary"
-                          classNames={{
-                            tabList: "flex flex-row",
-                            base: "flex items-start",
-                            tabWrapper: "w-full",
-                            panel: "min-w-full",
-                          }}
-                          className="w-full"
-                          selectedKey={formData.activeTab}
-                          onSelectionChange={(key) => {
-                            const tabKey = key as
-                              | "manual"
-                              | "schedule"
-                              | "trigger";
-                            setValue("activeTab", tabKey);
+                  <WorkflowTriggerSection
+                    activeTab={formData.activeTab}
+                    selectedTrigger={formData.selectedTrigger}
+                    triggerConfig={formData.trigger_config}
+                    onActiveTabChange={handleActiveTabChange}
+                    onSelectedTriggerChange={(trigger) =>
+                      setValue("selectedTrigger", trigger)
+                    }
+                    onTriggerConfigChange={(config) =>
+                      setValue("trigger_config", config)
+                    }
+                  />
 
-                            // Set appropriate trigger config based on tab
-                            // Only change trigger_config if the current config doesn't match the tab
-                            if (tabKey === "schedule") {
-                              // Only reset if not already a schedule type
-                              if (formData.trigger_config.type !== "schedule") {
-                                setValue("trigger_config", {
-                                  type: "schedule",
-                                  enabled: true,
-                                  cron_expression: "0 9 * * *",
-                                  timezone: "UTC",
-                                });
-                              }
-                            } else if (tabKey === "trigger") {
-                              // Preserve existing trigger selection if it's a trigger type
-                              // Only reset if current type is schedule or manual
-                              const currentType = formData.trigger_config.type;
-                              const isTriggerType =
-                                currentType !== "schedule" &&
-                                currentType !== "manual";
-
-                              if (!isTriggerType) {
-                                // Check if we have a previously selected trigger
-                                if (formData.selectedTrigger) {
-                                  // Don't change config - let TriggerConfigForm handle it
-                                  // The selectedTrigger is preserved in form state
-                                } else {
-                                  // No previous selection, set to email as default
-                                  setValue("trigger_config", {
-                                    type: "email",
-                                    enabled: true,
-                                  });
-                                }
-                              }
-                              // If already a trigger type, keep current config
-                            } else {
-                              // Manual tab - only reset if not already manual
-                              if (formData.trigger_config.type !== "manual") {
-                                setValue("trigger_config", {
-                                  type: "manual",
-                                  enabled: true,
-                                });
-                              }
-                            }
-                          }}
-                        >
-                          <Tab key="schedule" title="Schedule">
-                            {renderScheduleTab()}
-                          </Tab>
-                          <Tab key="trigger" title="Trigger">
-                            {renderTriggerTab()}
-                          </Tab>
-                          <Tab key="manual" title="Manual">
-                            {renderManualTab()}
-                          </Tab>
-                        </Tabs>
-                      </div>
-                    </div>
-                  </div>
                   {/* Separator */}
                   <div className="border-t border-zinc-800" />
+
                   {/* Description Section */}
                   <div className="space-y-4">
-                    <Controller
-                      name="description"
+                    <WorkflowDescriptionField
                       control={control}
-                      render={({ field }) => (
-                        <Textarea
-                          {...field}
-                          placeholder={
-                            mode === "edit"
-                              ? "Edit workflow description"
-                              : "Describe what this workflow should do when triggered"
-                          }
-                          minRows={4}
-                          variant="underlined"
-                          className="text-sm"
-                          isRequired
-                          isInvalid={!!errors.description}
-                          errorMessage={errors.description?.message}
-                        />
-                      )}
+                      errors={errors}
+                      mode={mode}
                     />
                   </div>
                 </div>
 
                 {/* Form Footer */}
-                <div className="mt-8 border-t border-zinc-800 pt-6 pb-3">
-                  {/* All controls in one row */}
-                  <div className="flex items-center justify-between">
-                    {/* Left side: Switch and Run Workflow */}
-                    <div className="flex items-center gap-4">
-                      {existingWorkflow && (
-                        <Tooltip
-                          content={
-                            !currentWorkflow?.steps ||
-                            currentWorkflow.steps.length === 0
-                              ? "Cannot run workflow without generated steps"
-                              : "Manually run workflow"
-                          }
-                          placement="top"
-                        >
-                          <Button
-                            color="success"
-                            variant="flat"
-                            startContent={<PlayIcon className="h-4 w-4" />}
-                            onPress={handleRunWorkflow}
-                            size="sm"
-                            isDisabled={
-                              !currentWorkflow?.steps ||
-                              currentWorkflow.steps.length === 0
-                            }
-                          >
-                            Run Manually
-                          </Button>
-                        </Tooltip>
-                      )}
-
-                      {mode === "edit" && (
-                        <div className="flex items-center gap-3">
-                          <Tooltip
-                            content={
-                              isActivated
-                                ? "Deactivate this workflow to prevent it from running"
-                                : "Activate this workflow to allow it to run"
-                            }
-                            placement="top"
-                          >
-                            <Switch
-                              isSelected={isActivated}
-                              onValueChange={handleActivationToggle}
-                              isDisabled={isTogglingActivation}
-                              size="sm"
-                            />
-                          </Tooltip>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Right side: Cancel and Save */}
-                    <div className="flex items-center gap-3">
-                      <Button
-                        variant="flat"
-                        onPress={handleClose}
-                        endContent={<Kbd keys={["escape"]} />}
-                      >
-                        Cancel
-                      </Button>
-                      <Button
-                        color="primary"
-                        onPress={() => handleSubmit(handleSave)()}
-                        isLoading={isCreating}
-                        isDisabled={isSaveDisabled()}
-                        endContent={
-                          !isCreating && (
-                            <Kbd keys={[modifierKeyName, "enter"]} />
-                          )
-                        }
-                      >
-                        {getButtonText()}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                <WorkflowFooter
+                  mode={mode}
+                  existingWorkflow={!!existingWorkflow}
+                  isActivated={isActivated}
+                  isTogglingActivation={isTogglingActivation}
+                  onToggleActivation={handleActivationToggle}
+                  hasSteps={
+                    !!currentWorkflow?.steps && currentWorkflow.steps.length > 0
+                  }
+                  onRunWorkflow={handleRunWorkflow}
+                  onCancel={handleClose}
+                  onSave={() => handleSubmit(handleSave)()}
+                  isSaveDisabled={isSaveDisabled()}
+                  isCreating={isCreating}
+                  modifierKeyName={modifierKeyName}
+                  buttonText={getButtonText()}
+                />
               </div>
 
-              {/* Right side - Workflow Steps */}
-              {mode === "edit" && (
-                <div className="flex min-h-0 w-96 flex-col space-y-4 rounded-2xl bg-zinc-950/30 p-6">
-                  {/* Show regeneration error state */}
-                  {regenerationError && (
-                    <div className="space-y-4">
-                      <div className="flex flex-col items-center justify-center py-8">
-                        <div className="text-center">
-                          <div className="mb-4">
-                            <AlertCircleIcon className="mx-auto h-12 w-12 text-danger" />
-                          </div>
-                          <h3 className="text-lg font-medium text-danger">
-                            Generation Failed
-                          </h3>
-                          <p className="mb-4 text-sm text-zinc-400">
-                            {regenerationError}
-                          </p>
-                          <Button
-                            variant="flat"
-                            size="sm"
-                            onPress={() => {
-                              setRegenerationError(null);
-                            }}
-                          >
-                            Try Again
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Show workflow steps - either existing or newly generated */}
-                  {existingWorkflow && !regenerationError && (
-                    <>
-                      {/* Show steps if they exist */}
-                      {currentWorkflow?.steps &&
-                      currentWorkflow.steps.length > 0 ? (
-                        <>
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                              <h4 className="font-medium text-zinc-200">
-                                Workflow Steps
-                              </h4>
-                              <Chip
-                                size="sm"
-                                color="primary"
-                                className="text-sm font-medium"
-                              >
-                                {currentWorkflow.steps.length}
-                              </Chip>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Dropdown placement="bottom-end">
-                                <DropdownTrigger>
-                                  <Button
-                                    variant="flat"
-                                    size="sm"
-                                    color="primary"
-                                    isLoading={isRegeneratingSteps}
-                                    isDisabled={isRegeneratingSteps}
-                                    endContent={
-                                      !isRegeneratingSteps && (
-                                        <ArrowDown01Icon className="h-3 w-3" />
-                                      )
-                                    }
-                                    startContent={
-                                      !isRegeneratingSteps && (
-                                        <RedoIcon className="h-4 w-4" />
-                                      )
-                                    }
-                                  >
-                                    {isRegeneratingSteps
-                                      ? "Regenerating..."
-                                      : "Regenerate"}
-                                  </Button>
-                                </DropdownTrigger>
-                                <DropdownMenu
-                                  aria-label="Regeneration reasons"
-                                  onAction={(key) =>
-                                    handleRegenerateWithReason(key as string)
-                                  }
-                                  disabledKeys={
-                                    isRegeneratingSteps ? ["all"] : []
-                                  }
-                                >
-                                  {regenerationReasons.map((reason) => (
-                                    <DropdownItem
-                                      key={reason.key}
-                                      textValue={reason.label}
-                                      description={reason.description}
-                                    >
-                                      {reason.label}
-                                    </DropdownItem>
-                                  ))}
-                                </DropdownMenu>
-                              </Dropdown>
-                            </div>
-                          </div>
-                          <div className="min-h-0 flex-1 overflow-y-auto">
-                            <Skeleton
-                              className="h-full rounded-2xl"
-                              isLoaded={
-                                !(isRegeneratingSteps || isGeneratingSteps)
-                              }
-                            >
-                              <WorkflowSteps
-                                steps={currentWorkflow.steps || []}
-                              />
-                            </Skeleton>
-                          </div>
-                        </>
-                      ) : (
-                        // Show empty state with generate button (when no steps in either source)
-                        <div className="space-y-4">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <h4 className="font-medium text-zinc-200">
-                                Workflow Steps
-                              </h4>
-                              <p className="text-xs text-zinc-500">
-                                No steps generated yet
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="flat"
-                                size="sm"
-                                color="primary"
-                                isLoading={isRegeneratingSteps}
-                                isDisabled={isRegeneratingSteps}
-                                startContent={<RedoIcon className="h-4 w-4" />}
-                                onPress={handleInitialGeneration}
-                              >
-                                Generate Steps
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="flex flex-col items-center justify-center py-8 text-center">
-                            <div className="mb-4 rounded-full bg-zinc-800/50 p-3">
-                              <RedoIcon className="h-6 w-6 text-zinc-500" />
-                            </div>
-                            <p className="text-sm text-zinc-400">
-                              Click "Generate Steps" to create your first
-                              workflow plan
-                            </p>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
-                </div>
+              {/* Right side - Workflow Steps & History */}
+              {mode === "edit" && existingWorkflow && (
+                <WorkflowRightPanel
+                  workflow={currentWorkflow}
+                  workflowId={existingWorkflow.id}
+                  isGenerating={isGeneratingSteps}
+                  isRegenerating={isRegeneratingSteps}
+                  regenerationError={regenerationError}
+                  onRegenerateWithReason={handleRegenerateWithReason}
+                  onInitialGeneration={handleInitialGeneration}
+                  onClearError={() => setRegenerationError(null)}
+                />
               )}
             </div>
-          ) : creationPhase === "error" ? (
-            <div className="flex flex-col items-center justify-center space-y-4 py-8">
-              <AlertCircleIcon className="h-12 w-12 text-danger" />
-              <div className="text-center">
-                <h3 className="text-lg font-medium text-danger">
-                  {mode === "create" ? "Creation" : "Update"} Failed
-                </h3>
-                <p className="text-sm text-zinc-400">
-                  {creationError ||
-                    `Something went wrong while ${mode === "create" ? "creating" : "updating"} the workflow`}
-                </p>
-              </div>
-              <div className="flex gap-3">
-                <Button variant="flat" onPress={handleClose}>
-                  Cancel
-                </Button>
-                <Button
-                  color="primary"
-                  onPress={() => setCreationPhase("form")}
-                >
-                  Try Again
-                </Button>
-              </div>
-            </div>
-          ) : creationPhase === "creating" ? (
-            <div className="flex flex-col items-center justify-center space-y-4 py-8">
-              <CustomSpinner variant="logo" />
-              <div className="text-center">
-                <h3 className="text-lg font-medium">Creating Workflow</h3>
-                <p className="text-sm text-zinc-400">
-                  Setting up your workflow and generating steps...
-                </p>
-              </div>
-            </div>
-          ) : creationPhase === "success" ? (
-            <div className="flex flex-col space-y-6 py-6">
-              <div className="flex flex-col items-center justify-center space-y-4">
-                <CheckmarkCircle02Icon className="h-16 w-16 text-success" />
-                <div className="text-center">
-                  <h3 className="text-lg font-medium text-success">
-                    Workflow {mode === "create" ? "Created" : "Updated"}!
-                  </h3>
-                  <p className="text-sm text-zinc-400">
-                    "{currentWorkflow?.title || "Untitled Workflow"}" is ready
-                    to use
-                  </p>
-                  {currentWorkflow && (
-                    <p className="mt-2 text-xs text-zinc-500">
-                      {currentWorkflow?.steps?.length || 0} steps generated
-                    </p>
-                  )}
-                </div>
-                {/* Close button */}
-                <Button
-                  color="primary"
-                  variant="flat"
-                  onPress={handleClose}
-                  className="mt-4"
-                >
-                  Close
-                </Button>
-              </div>
-
-              {/* Generated Steps Preview */}
-              {currentWorkflow?.steps && currentWorkflow.steps.length > 0 && (
-                <div className="space-y-3">
-                  <h4 className="text-sm font-medium text-zinc-300">
-                    Generated Steps:
-                  </h4>
-                  <div className="max-h-48 overflow-y-auto">
-                    <WorkflowSteps steps={currentWorkflow.steps} />
-                  </div>
-                </div>
-              )}
-            </div>
-          ) : null}
+          ) : (
+            <WorkflowLoadingState
+              phase={creationPhase}
+              mode={mode}
+              error={creationError}
+              workflow={currentWorkflow}
+              onClose={handleClose}
+              onRetry={() => setCreationPhase("form")}
+            />
+          )}
         </ModalBody>
       </ModalContent>
     </Modal>

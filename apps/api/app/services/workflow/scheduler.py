@@ -78,6 +78,10 @@ class WorkflowScheduler(BaseSchedulerService):
         This delegates to the existing workflow worker logic
         while providing the BaseSchedulerService interface.
 
+        Note: Workflows are executed via ARQ calling execute_workflow_by_id
+        directly, which handles execution tracking. This method is currently
+        not used for workflows but kept for BaseSchedulerService compatibility.
+
         Args:
             task: Workflow to execute (extending BaseScheduledTask)
 
@@ -85,26 +89,21 @@ class WorkflowScheduler(BaseSchedulerService):
             Task execution result
         """
         try:
-            # Cast to Workflow since we know it's a workflow
             workflow: Optional[Workflow] = task if isinstance(task, Workflow) else None
             if not workflow:
                 raise ValueError("Task must be a Workflow instance")
 
-            # Import here to avoid circular imports
             from app.workers.tasks import execute_workflow_as_chat
 
             logger.info(f"Executing workflow {workflow.id}")
 
-            # Ensure task.id is not None
             if not workflow.id:
                 raise ValueError("Workflow ID is required for execution")
 
-            # Execute the workflow using the chat execution function directly
             execution_messages = await execute_workflow_as_chat(
                 workflow, {"user_id": workflow.user_id}, {}
             )
 
-            # Import here to avoid circular imports
             from app.workers.tasks.workflow_tasks import (
                 create_workflow_completion_notification,
             )

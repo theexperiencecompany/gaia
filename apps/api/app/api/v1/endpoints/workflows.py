@@ -28,7 +28,11 @@ from app.models.workflow_models import (
     WorkflowResponse,
     WorkflowStatusResponse,
 )
+from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.services.workflow import WorkflowService
+from app.services.workflow.execution_service import (
+    get_workflow_executions as get_executions,
+)
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import transform_workflow_document
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -109,6 +113,35 @@ async def execute_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute workflow",
+        )
+
+
+@router.get(
+    "/workflows/{workflow_id}/executions", response_model=WorkflowExecutionsResponse
+)
+@limiter.limit("100/minute")
+async def get_workflow_executions(
+    request: Request,
+    workflow_id: str,
+    limit: int = 10,
+    offset: int = 0,
+    user: dict = Depends(get_current_user),
+):
+    """Get execution history for a workflow."""
+    try:
+        limit = min(limit, 100)
+        result = await get_executions(
+            workflow_id=workflow_id,
+            user_id=user["user_id"],
+            limit=limit,
+            offset=offset,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error getting executions for workflow {workflow_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get workflow executions",
         )
 
 

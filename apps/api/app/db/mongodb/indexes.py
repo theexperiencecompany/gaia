@@ -35,6 +35,7 @@ from app.db.mongodb.collections import (
     usage_snapshots_collection,
     user_integrations_collection,
     users_collection,
+    workflow_executions_collection,
     workflows_collection,
 )
 
@@ -74,6 +75,7 @@ async def create_all_indexes():
             create_integration_indexes(),
             create_user_integration_indexes(),
             create_device_token_indexes(),
+            create_workflow_execution_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -99,6 +101,7 @@ async def create_all_indexes():
             "integrations",
             "user_integrations",
             "device_tokens",
+            "workflow_executions",
         ]
 
         index_results = {}
@@ -482,6 +485,26 @@ async def create_workflow_indexes():
 
     except Exception as e:
         logger.error(f"Error creating workflow indexes: {str(e)}")
+        raise
+
+
+async def create_workflow_execution_indexes():
+    """Create indexes for workflow_executions collection."""
+    try:
+        await asyncio.gather(
+            workflow_executions_collection.create_index(
+                [("workflow_id", 1), ("user_id", 1), ("started_at", -1)]
+            ),
+            workflow_executions_collection.create_index(
+                [("user_id", 1), ("started_at", -1)]
+            ),
+            workflow_executions_collection.create_index("execution_id", unique=True),
+            workflow_executions_collection.create_index(
+                [("workflow_id", 1), ("status", 1)]
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Error creating workflow execution indexes: {str(e)}")
         raise
 
 
