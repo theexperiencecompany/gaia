@@ -1,0 +1,59 @@
+{
+  "name": "@heygaia/cli",
+  "version": "0.1.0",
+  "description": "CLI tool for setting up and managing GAIA",
+  "type": "module",
+  "bin": {
+    "gaia": "./dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "build": "bun build ./src/index.ts --outdir=dist --target=bun --minify && chmod +x dist/index.js",
+    "start": "NODE_ENV=production bun src/index.ts",
+    "prepublishOnly": "bun run build"
+  },
+  "engines": {
+    "node": ">=18",
+    "bun": ">=1.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/heygaia/gaia.git",
+    "directory": "packages/cli"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "gaia",
+    "cli",
+    "ai-assistant",
+    "setup"
+  ],
+  "license": "MIT",
+  "dependencies": {
+    "@inkjs/ui": "^2.0.0",
+    "commander": "^14.0.3",
+    "execa": "^9.6.1",
+    "ink": "^6.6.0",
+    "ink-big-text": "^2.0.0",
+    "ink-gradient": "^3.0.0",
+    "ink-image": "^2.0.0",
+    "ink-progress-bar": "^3.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^19",
+    "react-dom": "^19",
+    "remove": "^0.1.5",
+    "simple-git": "^3.30.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "^25.2.2",
+    "@types/react": "^19",
+    "@types/react-dom": "^19"
+  }
+}

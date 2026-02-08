@@ -33,8 +33,12 @@
             "pages": ["introduction", "quick-start", "resources", "manifesto"]
           },
           {
+            "group": "CLI",
+            "pages": ["cli/installation", "cli/commands"]
+          },
+          {
             "group": "Self-Hosting",
-            "pages": ["self-hosting/overview", "self-hosting/docker-setup"]
+            "pages": ["self-hosting/overview", "self-hosting/cli-setup", "self-hosting/docker-setup"]
           },
           {
             "group": "Developers",

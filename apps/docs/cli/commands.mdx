@@ -1,0 +1,206 @@
+---
+title: "Commands Reference"
+description: "Complete reference for all GAIA CLI commands"
+icon: "rectangle-terminal"
+---
+
+## Overview
+
+The GAIA CLI provides five commands for managing your GAIA instance. All commands are interactive and run in your terminal.
+
+| Command | Description |
+|---------|-------------|
+| `gaia init` | Full setup from scratch |
+| `gaia setup` | Configure an existing repository |
+| `gaia start` | Start all services |
+| `gaia stop` | Stop all services |
+| `gaia status` | Check service health |
+
+---
+
+## `gaia init`
+
+Complete first-time setup. Clones the repository, installs tools, configures environment variables, and optionally starts services.
+
+```bash
+gaia init
+```
+
+The interactive wizard walks through:
+
+1. **Prerequisites** - Checks Git, Docker, Mise (auto-installs Mise if missing)
+2. **Port check** - Detects conflicts and suggests alternatives
+3. **Repository clone** - Clones GAIA to your chosen directory
+4. **Tool installation** - Installs Node.js, Python, uv, Nx via Mise
+5. **Environment setup** - Choose setup mode and configure variables
+6. **Project setup** - Runs `mise setup` for dependencies and database seeding
+7. **Service startup** - Optionally starts services (skipped if already running)
+
+<Tip>
+Use `gaia init` on a fresh machine. If you've already cloned the repo, use `gaia setup` instead.
+</Tip>
+
+---
+
+## `gaia setup`
+
+Configure an existing GAIA repository. Use when you need to set up or reconfigure environment variables and dependencies.
+
+```bash
+cd /path/to/gaia
+gaia setup
+```
+
+The setup flow:
+
+1. **Detect repo** - Finds the GAIA repository root automatically
+2. **Prerequisites** - Checks Git, Docker, Mise
+3. **Port check** - Detects conflicts
+4. **Environment setup** - Interactive env var configuration
+5. **Project setup** - Installs dependencies via `mise setup`
+6. **Service startup** - Optionally starts services (skipped if already running)
+
+<Info>
+The `setup` command handles environment configuration automatically. For manual environment setup, see [Environment Variables](/configuration/environment-variables).
+</Info>
+
+### Setup Modes
+
+During environment setup, you choose a mode:
+
+<AccordionGroup>
+  <Accordion title="Self-Host (Docker)" icon="docker">
+    Everything runs in Docker containers. Best for deployment and non-developers.
+
+    - Backend, worker, and all databases run as Docker services
+    - Web frontend is built and served via Next.js standalone
+    - Uses container hostnames for service communication
+  </Accordion>
+
+  <Accordion title="Developer Mode (Local)" icon="laptop-code">
+    Database services run in Docker, API and web run locally. Best for contributing.
+
+    - Docker handles PostgreSQL, Redis, MongoDB, RabbitMQ, ChromaDB
+    - API server runs with hot reload on port 8000
+    - Web frontend runs with Turbopack on port 3000
+  </Accordion>
+</AccordionGroup>
+
+### Environment Variable Methods
+
+<AccordionGroup>
+  <Accordion title="Manual Setup" icon="keyboard">
+    Interactive prompts for each variable with descriptions, docs links, and defaults. Variables are auto-discovered from the codebase — no CLI updates needed when new variables are added.
+  </Accordion>
+
+  <Accordion title="Infisical" icon="key">
+    Enter your Infisical credentials (token, project ID, machine identity) for centralized secret management.
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## `gaia start`
+
+Start all GAIA services. Automatically detects selfhost vs developer mode from your `.env` configuration.
+
+```bash
+gaia start
+```
+
+**Self-Host mode:**
+- Runs `docker compose --profile all up -d` for the full backend stack
+- Builds and starts the web frontend
+
+**Developer mode:**
+- Runs `mise dev` to start API and web in development mode
+
+---
+
+## `gaia stop`
+
+Stop all running GAIA services.
+
+```bash
+gaia stop
+```
+
+Stops:
+- All Docker containers in the GAIA compose stack
+- Local processes on ports 8000 (API) and 3000 (Web)
+
+---
+
+## `gaia status`
+
+Check the health and latency of all GAIA services.
+
+```bash
+gaia status
+```
+
+Services checked:
+
+| Service | Port | Check |
+|---------|------|-------|
+| API | 8000 | HTTP `GET /health` |
+| Web | 3000 | HTTP `GET /` |
+| PostgreSQL | 5432 | TCP connection |
+| Redis | 6379 | TCP connection |
+| MongoDB | 27017 | TCP connection |
+| RabbitMQ | 5672 | TCP connection |
+| ChromaDB | 8080 | TCP connection |
+
+---
+
+## Port Conflict Handling
+
+If required ports are in use, the CLI:
+1. Detects which process is using the port
+2. Suggests an alternative port
+3. Automatically updates your `.env` files with the alternative
+
+---
+
+## Environment Variable Auto-Discovery
+
+The CLI discovers environment variables directly from the codebase at runtime:
+
+- **API variables** - Extracted from `apps/api/app/config/settings.py` and `settings_validator.py` using Python AST parsing
+- **Web variables** - Parsed from `apps/web/.env`
+
+When a developer adds a new variable to either location, the CLI picks it up automatically.
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="command not found: gaia">
+    Ensure the install directory is in your PATH:
+
+    ```bash
+    # Bun
+    export PATH="$HOME/.bun/bin:$PATH"
+
+    # npm
+    export PATH="$HOME/.npm-global/bin:$PATH"
+    ```
+
+    Or run without installing: `npx @heygaia/cli` or `bunx @heygaia/cli`
+  </Accordion>
+
+  <Accordion title="Raw mode is not supported">
+    The CLI requires an interactive terminal. Don't run it in the background, in a pipe, or in a non-TTY context.
+  </Accordion>
+
+  <Accordion title="Port conflicts not detected">
+    Port detection uses `lsof` which is available on macOS and most Linux distributions. Windows support requires WSL2.
+  </Accordion>
+
+  <Accordion title="Environment variables not discovered">
+    Verify these files exist in your repository:
+    - `apps/api/app/config/settings_validator.py`
+    - `apps/web/.env`
+  </Accordion>
+</AccordionGroup>

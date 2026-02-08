@@ -1,0 +1,75 @@
+---
+title: "Installation"
+description: "Install the GAIA CLI tool"
+icon: "download"
+---
+
+## Install the CLI
+
+The GAIA CLI (`@heygaia/cli`) is a terminal-based tool for setting up, configuring, and managing GAIA instances.
+
+<Tabs>
+  <Tab title="curl (Recommended)" icon="terminal">
+    The quickest way to install. Automatically installs Bun if not present.
+
+    ```bash
+    curl -fsSL https://heygaia.io/install.sh | sh
+    ```
+  </Tab>
+
+  <Tab title="bun">
+    ```bash
+    bun install -g @heygaia/cli
+    ```
+  </Tab>
+
+  <Tab title="npm" >
+    ```bash
+    npm install -g @heygaia/cli
+    ```
+  </Tab>
+
+  <Tab title="pnpm" >
+    ```bash
+    pnpm install -g @heygaia/cli
+    ```
+  </Tab>
+
+  <Tab title="No Install" icon="play">
+    Run directly without installing:
+
+    ```bash
+    # npx
+    npx @heygaia/cli init
+
+    # bunx
+    bunx @heygaia/cli init
+    ```
+  </Tab>
+</Tabs>
+
+## Verify Installation
+
+```bash
+gaia --version
+gaia --help
+```
+
+## Requirements
+
+- **macOS or Linux** (Windows via WSL2)
+- **Docker** installed and running
+- **Git** installed
+
+The CLI will check for these prerequisites and guide you through installing anything missing.
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Commands Reference" icon="terminal" href="/cli/commands">
+    See all available CLI commands
+  </Card>
+  <Card title="First-Time Setup" icon="rocket" href="/self-hosting/cli-setup">
+    Set up GAIA from scratch using the CLI wizard
+  </Card>
+</CardGroup>

@@ -6,16 +6,26 @@ icon: "terminal"
 
 ## Overview
 
-GAIA uses a **mise + Nx** architecture:
+GAIA has two layers of commands:
 
-- **[mise](https://mise.jdx.dev)** - Task runner and tool version manager
-- **[Nx](https://nx.dev)** - Build system with caching and project graph
+- **[GAIA CLI](/cli/commands)** (`gaia`) - Install, configure, and manage GAIA instances
+- **mise + Nx** - Development tooling for building, testing, and running individual services
 
-Run `mise tasks` to see all available commands.
+### GAIA CLI Commands
 
----
+For managing your GAIA instance. See [CLI Commands](/cli/commands) for full details.
 
-## Quick Start
+| Command | Description |
+|---------|-------------|
+| `gaia init` | Full setup from scratch |
+| `gaia setup` | Configure an existing repository |
+| `gaia start` | Start all services |
+| `gaia stop` | Stop all services |
+| `gaia status` | Check service health |
+
+### mise + Nx Commands
+
+For development workflows. Run `mise tasks` to see all available commands.
 
 ```bash
 mise setup        # First-time setup (deps, docker, seed)

@@ -21,3 +21,6 @@ apps/docs/.next
 apps/desktop/dist
 apps/desktop/out
 
+# CLI cloned repos (from gaia init testing)
+packages/cli/gaia
+

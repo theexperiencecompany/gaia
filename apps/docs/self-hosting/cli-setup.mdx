@@ -1,0 +1,90 @@
+---
+title: "CLI Setup"
+description: "Set up GAIA using the interactive CLI wizard"
+icon: "terminal"
+---
+
+## CLI-Based Setup
+
+The GAIA CLI provides the easiest way to set up a self-hosted GAIA instance. It handles repository cloning, tool installation, environment configuration, and service startup through an interactive wizard.
+
+<Info>
+For installation instructions, see [CLI Installation](/cli/installation). For the full command reference, see [CLI Commands](/cli/commands).
+</Info>
+
+## Quick Start
+
+```bash
+# Install the CLI
+curl -fsSL https://heygaia.io/install.sh | sh
+
+# Run the setup wizard
+gaia init
+```
+
+## What the Wizard Does
+
+The `gaia init` command walks you through:
+
+<Steps>
+  <Step title="Prerequisites Check">
+    Verifies Git, Docker, and Mise are installed. Installs Mise automatically if missing. Checks for port conflicts and suggests alternatives.
+  </Step>
+
+  <Step title="Repository Setup">
+    Clones the GAIA repository to your chosen directory with progress tracking.
+  </Step>
+
+  <Step title="Tool Installation">
+    Installs all required development tools (Node.js, Python, uv, Nx) via Mise.
+  </Step>
+
+  <Step title="Environment Configuration">
+    Choose between **Self-Host (Docker)** or **Developer Mode (Local)**, then configure environment variables either:
+    - **Manually**: Interactive prompts for each variable with descriptions and defaults
+    - **Via Infisical**: Enter your Infisical credentials for secret management
+  </Step>
+
+  <Step title="Project Setup">
+    Runs `mise setup` to install all dependencies, start Docker services, and seed the database.
+  </Step>
+
+  <Step title="Service Startup">
+    If services aren't already running, optionally starts all services immediately. If they're already running, the wizard detects this and skips to completion.
+  </Step>
+</Steps>
+
+## Already Have the Repo?
+
+If you've already cloned GAIA and just need to configure it, use `gaia setup` instead:
+
+```bash
+cd /path/to/gaia
+gaia setup
+```
+
+This skips cloning and tool installation, going straight to environment configuration and project setup.
+
+## Managing Services After Setup
+
+Once setup is complete, manage your GAIA instance with:
+
+```bash
+gaia start    # Start all services
+gaia stop     # Stop all services
+gaia status   # Check service health
+gaia setup    # Reconfigure environment
+```
+
+See [CLI Commands](/cli/commands) for full details on each command.
+
+## Environment Variable Auto-Discovery
+
+The CLI automatically discovers environment variables from the codebase at runtime. When a developer adds a new variable to the API settings or web `.env` file, the CLI picks it up automatically — no CLI updates needed.
+
+- **API variables**: Extracted from Python settings files using AST parsing
+- **Web variables**: Parsed from `apps/web/.env` at runtime
+
+## Port Conflict Handling
+
+If required ports are already in use, the CLI detects the conflict, shows which process is using the port, and suggests an alternative port. Infrastructure URLs in your `.env` files are automatically updated to use the alternative ports.

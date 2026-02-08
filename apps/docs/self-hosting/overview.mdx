@@ -22,27 +22,48 @@ Self-host GAIA with Docker Compose. Keep it simple: start with minimal env vars,
 
 ## Quick Start
 
-<Steps>
-  <Step title="Clone the repository">
+<Tabs>
+  <Tab title="CLI (Recommended)" icon="terminal">
+    The GAIA CLI handles everything automatically — cloning, tools, env vars, and startup.
+
     ```bash
-    git clone https://github.com/theexperiencecompany/gaia.git
-    cd gaia
+    curl -fsSL https://heygaia.io/install.sh | sh
+    gaia init
     ```
-  </Step>
-  <Step title="Set minimal env vars">
-    Add a minimal `apps/api/.env` (see the “Minimal .env to boot locally” section
-    in [Environment Variables](/configuration/environment-variables)).
-  </Step>
-  <Step title="Start services">```bash docker compose -f infra/docker/docker-compose.yml up -d ```</Step>
-  <Step title="Open GAIA">
-    - Web: http://localhost:3000 - Backend API: http://localhost:8000
-  </Step>
-</Steps>
+
+    See [CLI Installation](/cli/installation) and [CLI Commands](/cli/commands) for details.
+  </Tab>
+
+  <Tab title="Manual (Docker)" icon="docker">
+    <Steps>
+      <Step title="Clone the repository">
+        ```bash
+        git clone https://github.com/theexperiencecompany/gaia.git
+        cd gaia
+        ```
+      </Step>
+      <Step title="Set minimal env vars">
+        Add a minimal `apps/api/.env` (see the "Minimal .env to boot locally" section
+        in [Environment Variables](/configuration/environment-variables)).
+      </Step>
+      <Step title="Start services">
+        ```bash
+        docker compose -f infra/docker/docker-compose.yml up -d
+        ```
+      </Step>
+      <Step title="Open GAIA">
+        - Web: http://localhost:3000
+        - Backend API: http://localhost:8000
+      </Step>
+    </Steps>
+  </Tab>
+</Tabs>
 
 ## Next Steps
 
-- Configure additional features as you need them: see [Environment Variables](/configuration/environment-variables)
-- For advanced options: see [Docker Setup](/self-hosting/docker-setup)
+- [CLI Commands](/cli/commands) - Manage services with `gaia start`, `gaia stop`, `gaia status`
+- [Environment Variables](/configuration/environment-variables) - Configure additional features
+- [Docker Setup](/self-hosting/docker-setup) - Advanced Docker configuration
 
 <Warning>
   Self-hosting requires ongoing maintenance and security updates.

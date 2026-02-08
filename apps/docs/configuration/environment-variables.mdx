@@ -12,13 +12,16 @@ GAIA uses Pydantic settings to load environment variables with validation. Setti
 - **Production**: All integration keys required for full functionality
 
 <Note>
-  Variables are lazily loaded—the app starts even with missing keys. See [Lazy
-  Loading](/developers/extra/lazy-loading).
+  Variables are lazily loaded—the app starts even with missing keys.
 </Note>
+
+<Tip>
+  **Automated Setup**: The [GAIA CLI](/cli/installation) automatically discovers required environment variables from your codebase using Python AST parsing (for API) and source analysis (for Web). Run `gaia init` to skip manual configuration.
+</Tip>
 
 ---
 
-## Quick Setup
+## Manual Setup
 
 <Steps>
   <Step title="Copy environment files">
@@ -265,9 +268,30 @@ POSTHOG_API_KEY=phc_xxxx
 
 ---
 
+## CLI Auto-Discovery
+
+The GAIA CLI can automatically discover and configure environment variables:
+
+```bash
+# Interactive setup with auto-discovery
+gaia init
+
+# Or run setup separately
+gaia setup
+```
+
+The CLI auto-discovery process:
+
+- **Parses `settings.py`**: Uses Python AST parsing to extract all environment variable definitions
+- **Scans `.env.example`**: Identifies required variables from example files
+- **Prompts for missing values**: Interactive prompts for any undefined variables
+- **Validates configuration**: Ensures all critical variables are properly set
+
+This eliminates manual `.env` file editing and reduces configuration errors.
+
+---
+
 ## See Also
 
 - [Development Setup](/developers/development-setup)
-- [Lazy Loading](/developers/extra/lazy-loading) - How missing keys are handled
-- [Infisical Setup](/configuration/infisical-setup) - Secret management for production
 

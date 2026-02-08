@@ -8,6 +8,10 @@ icon: "docker"
 
 GAIA uses Docker Compose to orchestrate all the required services. This makes deployment simple and ensures consistency across different environments.
 
+<Note>
+**Looking for an easier setup?** The [GAIA CLI](/cli/installation) provides a guided wizard that handles Docker setup automatically, including prerequisite checks, environment variable discovery, and service management. This guide covers manual Docker setup for advanced users who prefer full control.
+</Note>
+
 ## Prerequisites
 
 <AccordionGroup>
@@ -300,6 +304,10 @@ docker network inspect gaia-dev_gaia_network
 # - gaia-backend → redis:6379
 # - gaia-backend → chromadb:8000
 ```
+
+## Alternative: CLI Setup
+
+For a simplified setup experience with automatic configuration, see the [CLI Setup Guide](/self-hosting/cli-setup). The CLI handles all the Docker commands, environment setup, and health checks automatically.
 
 ## Next Steps
 

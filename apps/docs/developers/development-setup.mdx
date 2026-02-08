@@ -119,52 +119,32 @@ mise doctor
 ## Setup
 
 <Tabs>
-  <Tab title="Automated (Recommended)" icon="rocket">
+  <Tab title="CLI Setup (Easiest)" icon="terminal">
+    The GAIA CLI handles everything automatically - cloning, installing tools, configuring environment variables, and starting services.
+
     <Steps>
-      <Step title="Clone the repository">
+      <Step title="Install and run the CLI">
         ```bash
-        git clone https://github.com/heygaia/gaia.git
-        cd gaia
+        # Option 1: Quick install
+        curl -fsSL https://heygaia.io/install.sh | sh
+        gaia init
+
+        # Option 2: Using npx (no install)
+        npx @heygaia/cli init
+
+        # Option 3: Using bun
+        bunx @heygaia/cli init
         ```
       </Step>
 
-      <Step title="Create environment files">
-        ```bash
-        cp apps/api/.env.example apps/api/.env
-        cp apps/web/.env.example apps/web/.env
-        cp apps/mobile/.env.example apps/mobile/.env
-        ```
-
-        Edit `apps/api/.env` with your secrets. See [Environment Variables](/configuration/environment-variables).
-      </Step>
-
-      <Step title="Run setup">
-        ```bash
-        mise setup
-        ```
-
-        This will:
-        - Check `.env` files exist
-        - Start Docker services
-        - Install Python 3.12 via mise
-        - Install API dependencies (uv sync)
-        - Install Node 22 via mise
-        - Install web dependencies (pnpm install)
-        - Install mobile dependencies (pnpm install)
-        - Install desktop dependencies (pnpm install)
-        - Install voice agent dependencies
-        - Seed AI models
-      </Step>
-
-      <Step title="Start development">
-        ```bash
-        mise dev
-        ```
-
-        This starts:
-        - Docker services (databases, Redis, etc.)
-        - API server on `http://localhost:8000`
-        - Web app on `http://localhost:3000`
+      <Step title="Follow the interactive wizard">
+        The CLI will guide you through:
+        1. Checking prerequisites (Git, Docker, Mise)
+        2. Cloning the repository
+        3. Installing tools (Node.js, Python, uv, Nx)
+        4. Configuring environment variables interactively
+        5. Running project setup
+        6. Starting services
       </Step>
     </Steps>
 
@@ -308,7 +288,8 @@ gaia/
 
 ## Next Steps
 
-- [Commands Reference](/developers/commands) - All available commands
+- [CLI Commands](/cli/commands) - Manage your GAIA instance (`gaia start`, `gaia stop`, `gaia status`)
+- [Development Commands](/developers/commands) - All mise and Nx commands
 - [Environment Variables](/configuration/environment-variables) - Configure your setup
 - [Contributing](/developers/contributing) - How to contribute
 - [Code Style](/developers/code-style) - Coding standards
