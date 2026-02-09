@@ -38,7 +38,7 @@ export const googleDocsTriggerHandler: RegisteredHandler = {
 
     return {
       label,
-      integrationId: "google_docs",
+      integrationId: "googledocs",
     };
   },
 };

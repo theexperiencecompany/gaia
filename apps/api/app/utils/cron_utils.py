@@ -2,10 +2,13 @@
 Cron utilities for reminder scheduling.
 """
 
-from datetime import datetime, timezone
+import re
+from datetime import datetime, timedelta, timezone, tzinfo
 from typing import Optional
 
+import pytz
 from croniter import croniter
+
 from app.config.loggers import app_logger
 
 
@@ -13,6 +16,43 @@ class CronError(Exception):
     """Exception raised for cron-related errors."""
 
     pass
+
+
+def parse_timezone(user_timezone: str) -> tzinfo:
+    """
+    Parse a timezone string and return a timezone object.
+
+    Supports:
+    - IANA timezone names (e.g., "America/New_York", "Asia/Kolkata")
+    - UTC offset strings (e.g., "+05:30", "-08:00", "+00:00")
+    - "UTC" literal
+
+    Args:
+        user_timezone: Timezone string in IANA or offset format
+
+    Returns:
+        A timezone object (pytz timezone or datetime.timezone)
+
+    Raises:
+        ValueError: If the timezone string cannot be parsed
+    """
+    if not user_timezone or user_timezone == "UTC":
+        return timezone.utc
+
+    # Check if it's an offset string like "+05:30" or "-08:00"
+    offset_match = re.match(r"^([+-])(\d{2}):(\d{2})$", user_timezone)
+    if offset_match:
+        sign = 1 if offset_match.group(1) == "+" else -1
+        hours = int(offset_match.group(2))
+        minutes = int(offset_match.group(3))
+        offset_delta = timedelta(hours=hours, minutes=minutes)
+        return timezone(sign * offset_delta)
+
+    # Try IANA timezone name with pytz
+    try:
+        return pytz.timezone(user_timezone)
+    except Exception as e:
+        raise ValueError(f"Unknown timezone format: {user_timezone}") from e
 
 
 def validate_cron_expression(cron_expr: str) -> bool:
@@ -57,9 +97,7 @@ def get_next_run_time(
     # Handle timezone-aware calculation
     if user_timezone and user_timezone != "UTC":
         try:
-            import pytz
-
-            tz = pytz.timezone(user_timezone)
+            tz = parse_timezone(user_timezone)
 
             # Get base time in user's timezone
             if base_time is None:

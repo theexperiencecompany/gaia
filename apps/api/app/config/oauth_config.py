@@ -8,6 +8,42 @@ Defines integrations, scopes, display properties, and subagent configurations.
 from functools import cache
 from typing import Dict, List, Optional
 
+from app.agents.prompts.memory_prompts import (
+    AGENTMAIL_MEMORY_PROMPT,
+    AIRTABLE_MEMORY_PROMPT,
+    ASANA_MEMORY_PROMPT,
+    BROWSERBASE_MEMORY_PROMPT,
+    CALENDAR_MEMORY_PROMPT,
+    CLICKUP_MEMORY_PROMPT,
+    CONTEXT7_MEMORY_PROMPT,
+    DEEPWIKI_MEMORY_PROMPT,
+    GITHUB_MEMORY_PROMPT,
+    GMAIL_MEMORY_PROMPT,
+    GOALS_MEMORY_PROMPT,
+    GOOGLE_DOCS_MEMORY_PROMPT,
+    GOOGLE_MAPS_MEMORY_PROMPT,
+    GOOGLE_MEET_MEMORY_PROMPT,
+    GOOGLE_SHEETS_MEMORY_PROMPT,
+    GOOGLE_TASKS_MEMORY_PROMPT,
+    HACKERNEWS_MEMORY_PROMPT,
+    HUBSPOT_MEMORY_PROMPT,
+    INSTACART_MEMORY_PROMPT,
+    INSTAGRAM_MEMORY_PROMPT,
+    LINEAR_MEMORY_PROMPT,
+    LINKEDIN_MEMORY_PROMPT,
+    MICROSOFT_TEAMS_MEMORY_PROMPT,
+    NOTION_MEMORY_PROMPT,
+    PERPLEXITY_MEMORY_PROMPT,
+    POSTHOG_MEMORY_PROMPT,
+    REDDIT_MEMORY_PROMPT,
+    REMINDER_MEMORY_PROMPT,
+    SLACK_MEMORY_PROMPT,
+    TODO_MEMORY_PROMPT,
+    TODOIST_MEMORY_PROMPT,
+    TRELLO_MEMORY_PROMPT,
+    TWITTER_MEMORY_PROMPT,
+    YELP_MEMORY_PROMPT,
+)
 from app.agents.prompts.subagent_prompts import (
     AIRTABLE_AGENT_SYSTEM_PROMPT,
     ASANA_AGENT_SYSTEM_PROMPT,
@@ -47,6 +83,8 @@ from app.models.mcp_config import (
     OAuthScope,
     ProviderMetadataConfig,
     SubAgentConfig,
+    ToolMetadataConfig,
+    VariableExtraction,
 )
 from app.models.oauth_models import OAuthIntegration
 from app.models.trigger_config import (
@@ -59,7 +97,7 @@ from app.models.trigger_config import (
 OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     # Individual Google integrations
     OAuthIntegration(
-        id="google_calendar",
+        id="googlecalendar",
         name="Google Calendar",
         description="Schedule meetings and manage your calendar events",
         category="productivity",
@@ -138,8 +176,8 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
-            agent_name="google_calendar_agent",
-            tool_space="google_calendar",
+            agent_name="googlecalendar_agent",
+            tool_space="googlecalendar",
             handoff_tool_name="call_calendar_agent",
             domain="calendar and event management",
             capabilities="creating events, scheduling meetings, managing availability, setting reminders, updating calendar entries, and organizing schedules",
@@ -164,10 +202,11 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 "GOOGLECALENDAR_CUSTOM_PATCH_EVENT",
                 "GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE",
             ],
+            memory_prompt=CALENDAR_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
-        id="google_docs",
+        id="googledocs",
         name="Google Docs",
         description="Create, edit, and share documents in your workspace",
         category="productivity",
@@ -177,7 +216,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         short_name="docs",
         managed_by="composio",
         composio_config=ComposioConfig(
-            auth_config_id="ac_coVAA1WRsbdK",  # TODO: Replace with actual auth_config_id
+            auth_config_id="ac_coVAA1WRsbdK",
             toolkit="GOOGLEDOCS",
             toolkit_version="20260107_00",
         ),
@@ -224,13 +263,14 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         ],
         subagent_config=SubAgentConfig(
             has_subagent=True,
-            agent_name="google_docs_agent",
+            agent_name="googledocs_agent",
             tool_space="googledocs",
-            handoff_tool_name="call_google_docs_agent",
+            handoff_tool_name="call_googledocs_agent",
             domain="document creation, editing, and collaboration",
             capabilities="creating documents, editing content, formatting text, sharing with collaborators, managing document structure, inserting tables and images, and using templates",
             use_cases="creating documents, editing docs, sharing with team members, formatting content, or any Google Docs operation",
             system_prompt=GOOGLE_DOCS_AGENT_SYSTEM_PROMPT,
+            memory_prompt=GOOGLE_DOCS_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -253,6 +293,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating todos, managing tasks, organizing projects, tracking priorities, setting due dates, using labels, bulk operations, searching tasks, and providing productivity insights",
             use_cases="managing personal todos, organizing tasks by project, tracking deadlines, bulk task operations, or any productivity-related task",
             system_prompt=TODO_AGENT_SYSTEM_PROMPT,
+            memory_prompt=TODO_MEMORY_PROMPT,
         ),
     ),
     # Internal Reminders System (no OAuth required)
@@ -278,6 +319,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=REMINDER_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
             disable_retrieve_tools=True,
+            memory_prompt=REMINDER_MEMORY_PROMPT,
         ),
     ),
     # Internal Goals System (no OAuth required)
@@ -303,6 +345,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=GOALS_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
             disable_retrieve_tools=True,
+            memory_prompt=GOALS_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -350,6 +393,17 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="composing emails, sending messages, reading inbox, organizing with labels, managing drafts, handling attachments, searching emails, and automating email workflows",
             use_cases="any email-related task including sending, reading, organizing, or automating email operations",
             system_prompt=GMAIL_AGENT_SYSTEM_PROMPT,
+            memory_prompt=GMAIL_MEMORY_PROMPT,
+        ),
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="GMAIL_GET_PROFILE",
+                    variables=[
+                        VariableExtraction(name="email", field_path="emailAddress"),
+                    ],
+                ),
+            ],
         ),
     ),
     OAuthIntegration(
@@ -430,6 +484,23 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating pages, building databases, updating content, organizing workspaces, managing properties, searching content, and structuring knowledge bases",
             use_cases="creating pages, managing databases, organizing knowledge, or any Notion workspace operation",
             system_prompt=NOTION_AGENT_SYSTEM_PROMPT,
+            memory_prompt=NOTION_MEMORY_PROMPT,
+        ),
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="NOTION_GET_ABOUT_ME",
+                    variables=[
+                        VariableExtraction(name="user_id", field_path="id"),
+                        VariableExtraction(
+                            name="workspace_id", field_path="bot.workspace_id"
+                        ),
+                        VariableExtraction(
+                            name="workspace_name", field_path="bot.workspace_name"
+                        ),
+                    ],
+                ),
+            ],
         ),
     ),
     OAuthIntegration(
@@ -456,10 +527,18 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="posting tweets, creating threads, replying to posts, liking content, retweeting, following users, analyzing engagement metrics, and managing Twitter presence",
             use_cases="posting tweets, engaging with content, managing followers, or analyzing Twitter activity",
             system_prompt=TWITTER_AGENT_SYSTEM_PROMPT,
+            memory_prompt=TWITTER_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(
-            user_info_tool="TWITTER_USER_LOOKUP_ME",
-            username_field="data.username",
+            tools=[
+                ToolMetadataConfig(
+                    tool="TWITTER_USER_LOOKUP_ME",
+                    variables=[
+                        VariableExtraction(name="username", field_path="data.username"),
+                        VariableExtraction(name="user_id", field_path="data.id"),
+                    ],
+                ),
+            ],
         ),
     ),
     OAuthIntegration(
@@ -531,6 +610,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating spreadsheets, updating data, managing formulas, organizing sheets, analyzing data, and building collaborative workbooks",
             use_cases="spreadsheet management, data analysis, formula creation, or any Google Sheets operation",
             system_prompt=GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
+            memory_prompt=GOOGLE_SHEETS_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -557,6 +637,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating professional posts with images/documents/articles, managing connections, engaging with content through comments and reactions, networking outreach, and building professional presence",
             use_cases="posting professional content with rich media, commenting on posts, reacting to content, sharing articles, or any LinkedIn career-related activity",
             system_prompt=LINKEDIN_AGENT_SYSTEM_PROMPT,
+            memory_prompt=LINKEDIN_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -683,10 +764,17 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="repository management, issue tracking, pull requests, code review, or any GitHub development task",
             system_prompt=GITHUB_AGENT_SYSTEM_PROMPT,
             specific_tools=GITHUB_TOOLS,
+            memory_prompt=GITHUB_MEMORY_PROMPT,
         ),
         metadata_config=ProviderMetadataConfig(
-            user_info_tool="GITHUB_GET_THE_AUTHENTICATED_USER",
-            username_field="login",
+            tools=[
+                ToolMetadataConfig(
+                    tool="GITHUB_GET_THE_AUTHENTICATED_USER",
+                    variables=[
+                        VariableExtraction(name="username", field_path="login"),
+                    ],
+                ),
+            ],
         ),
     ),
     OAuthIntegration(
@@ -713,6 +801,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="posting content, commenting on posts, managing subreddits, searching communities, voting on content, and engaging with Reddit communities",
             use_cases="posting to Reddit, engaging with communities, managing subreddit content, or analyzing Reddit activity",
             system_prompt=REDDIT_AGENT_SYSTEM_PROMPT,
+            memory_prompt=REDDIT_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -728,7 +817,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_QPtQsXnIYm4C",
             toolkit="AIRTABLE",
-            toolkit_version="20260107_00",
+            toolkit_version="20260130_00",
         ),
         subagent_config=SubAgentConfig(
             has_subagent=True,
@@ -739,6 +828,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating bases, managing tables, updating records, organizing data, building automations, and structuring collaborative databases",
             use_cases="managing Airtable bases, organizing data, creating records, or building database workflows",
             system_prompt=AIRTABLE_AGENT_SYSTEM_PROMPT,
+            memory_prompt=AIRTABLE_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -824,6 +914,21 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating issues, managing projects, tracking progress, assigning tasks, organizing sprints, and automating development workflows",
             use_cases="issue management, project tracking, sprint planning, or any Linear development workflow task",
             system_prompt=LINEAR_AGENT_SYSTEM_PROMPT,
+            memory_prompt=LINEAR_MEMORY_PROMPT,
+        ),
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="LINEAR_GET_CURRENT_USER",
+                    variables=[
+                        VariableExtraction(name="user_id", field_path="user.id"),
+                        VariableExtraction(
+                            name="username", field_path="user.displayName"
+                        ),
+                        VariableExtraction(name="email", field_path="user.email"),
+                    ],
+                ),
+            ],
         ),
     ),
     OAuthIntegration(
@@ -840,7 +945,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_acm0K6K_kWxY",
             toolkit="SLACK",
-            toolkit_version="20260107_00",
+            toolkit_version="20260204_00",
         ),
         associated_triggers=[
             TriggerConfig(
@@ -911,6 +1016,20 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="sending Slack messages, managing channels, team communication, or automating workspace workflows",
             system_prompt=SLACK_AGENT_SYSTEM_PROMPT,
             specific_tools=SLACK_TOOLS,
+            memory_prompt=SLACK_MEMORY_PROMPT,
+        ),
+        metadata_config=ProviderMetadataConfig(
+            tools=[
+                ToolMetadataConfig(
+                    tool="SLACK_TEST_AUTH",
+                    variables=[
+                        VariableExtraction(name="user_id", field_path="user_id"),
+                        VariableExtraction(name="username", field_path="user"),
+                        VariableExtraction(name="team_id", field_path="team_id"),
+                        VariableExtraction(name="team_name", field_path="team"),
+                    ],
+                ),
+            ],
         ),
     ),
     OAuthIntegration(
@@ -937,6 +1056,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="managing contacts, tracking deals, organizing pipelines, automating marketing, managing customer relationships, and analyzing sales data",
             use_cases="CRM management, sales tracking, contact organization, or marketing automation tasks",
             system_prompt=HUBSPOT_AGENT_SYSTEM_PROMPT,
+            memory_prompt=HUBSPOT_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -963,6 +1083,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating tasks, organizing to-do lists, managing task lists, setting due dates, marking tasks complete, and organizing personal productivity",
             use_cases="managing tasks, organizing to-do lists, tracking personal productivity, or any Google Tasks operation",
             system_prompt=GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
+            memory_prompt=GOOGLE_TASKS_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -1004,6 +1125,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating tasks, organizing projects, setting priorities, managing labels, tracking productivity, and building task workflows",
             use_cases="task management, project organization, productivity tracking, or any Todoist operation",
             system_prompt=TODOIST_AGENT_SYSTEM_PROMPT,
+            memory_prompt=TODOIST_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -1030,6 +1152,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="sending messages, managing channels, scheduling meetings, managing teams, file sharing, chat operations, call management, and automating team workflows",
             use_cases="team messaging, channel management, meeting coordination, file sharing, or any Microsoft Teams collaboration task",
             system_prompt=MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
+            memory_prompt=MICROSOFT_TEAMS_MEMORY_PROMPT,
         ),
     ),
     # OAuthIntegration(
@@ -1045,7 +1168,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
     #     composio_config=ComposioConfig(
     #         auth_config_id="ac_fABNBG17lf2A",
     #         toolkit="ZOOM",
-    #         toolkit_version="20260107_00",
+    #         toolkit_version="20260130_00",
     #     ),
     #     subagent_config=SubAgentConfig(
     #         has_subagent=True,
@@ -1082,6 +1205,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="scheduling meetings, managing video conferences, creating meeting links, and organizing virtual collaboration",
             use_cases="scheduling video meetings, managing Google Meet conferences, or virtual collaboration tasks",
             system_prompt=GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
+            memory_prompt=GOOGLE_MEET_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -1108,6 +1232,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="searching locations, getting directions, finding places, analyzing geographic data, and managing location information",
             use_cases="location search, getting directions, finding nearby places, or any Google Maps operation",
             system_prompt=GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
+            memory_prompt=GOOGLE_MAPS_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -1160,6 +1285,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating tasks, managing projects, organizing workflows, assigning work, tracking progress, and building team collaboration systems",
             use_cases="project management, task organization, team collaboration, or any Asana workflow operation",
             system_prompt=ASANA_AGENT_SYSTEM_PROMPT,
+            memory_prompt=ASANA_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -1186,6 +1312,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="creating boards, managing cards, organizing lists, tracking workflows, assigning tasks, and building visual project systems",
             use_cases="board management, card organization, visual task tracking, or any Trello operation",
             system_prompt=TRELLO_AGENT_SYSTEM_PROMPT,
+            memory_prompt=TRELLO_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -1212,6 +1339,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="posting content, managing stories, engaging with followers, analyzing insights, and building social media presence",
             use_cases="posting to Instagram, managing content, engaging with audience, or social media management tasks",
             system_prompt=INSTAGRAM_AGENT_SYSTEM_PROMPT,
+            memory_prompt=INSTAGRAM_MEMORY_PROMPT,
         ),
     ),
     OAuthIntegration(
@@ -1238,6 +1366,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="managing tasks, organizing projects, tracking time, building workflows, assigning work, and comprehensive productivity management",
             use_cases="task management, project organization, time tracking, or any ClickUp operation",
             system_prompt=CLICKUP_AGENT_SYSTEM_PROMPT,
+            memory_prompt=CLICKUP_MEMORY_PROMPT,
         ),
     ),
     # MCP Integrations (no authentication required)
@@ -1265,6 +1394,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=DEEPWIKI_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
             disable_retrieve_tools=True,
+            memory_prompt=DEEPWIKI_MEMORY_PROMPT,
         ),
     ),
     # HackerNews MCP (unauthenticated, Composio hosted)
@@ -1291,6 +1421,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="checking top stories, searching for tech news, reading discussions",
             system_prompt="You are a Hacker News assistant. Help users browse and search tech news, stories, and discussions.",
             use_direct_tools=True,
+            memory_prompt=HACKERNEWS_MEMORY_PROMPT,
         ),
     ),
     # Instacart MCP (unauthenticated, Composio hosted)
@@ -1317,6 +1448,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="finding groceries, searching recipes, planning meals",
             system_prompt="You are an Instacart assistant. Help users search for groceries, find recipes, and plan their shopping.",
             use_direct_tools=True,
+            memory_prompt=INSTACART_MEMORY_PROMPT,
         ),
     ),
     # Yelp MCP (unauthenticated, Composio hosted)
@@ -1343,6 +1475,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="finding restaurants, searching local services, reading reviews",
             system_prompt="You are a Yelp assistant. Help users find local businesses, restaurants, and services with reviews and ratings.",
             use_direct_tools=True,
+            memory_prompt=YELP_MEMORY_PROMPT,
         ),
     ),
     # Context7 MCP (Smithery-hosted, OAuth via MCP spec discovery)
@@ -1370,6 +1503,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             capabilities="resolving library identifiers, fetching up-to-date documentation, providing version-specific code examples, eliminating hallucinated APIs",
             use_cases="getting accurate documentation, finding code examples, checking API references, learning about libraries",
             system_prompt=CONTEXT7_AGENT_SYSTEM_PROMPT,
+            memory_prompt=CONTEXT7_MEMORY_PROMPT,
         ),
     ),
     # Perplexity MCP (Smithery-hosted, OAuth via MCP spec discovery)
@@ -1398,6 +1532,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="web searches, research, finding current information, fact-checking, getting cited answers",
             system_prompt=PERPLEXITY_AGENT_SYSTEM_PROMPT,
             use_direct_tools=True,
+            memory_prompt=PERPLEXITY_MEMORY_PROMPT,
         ),
     ),
     # AgentMail MCP (OAuth via MCP spec discovery)
@@ -1426,6 +1561,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="sending automated emails, managing email workflows, email integration, inbox management",
             system_prompt="You are an AgentMail assistant. Help users send, receive, and manage emails programmatically through the AgentMail API.",
             use_direct_tools=True,
+            memory_prompt=AGENTMAIL_MEMORY_PROMPT,
         ),
     ),
     # Browserbase MCP (OAuth via MCP spec discovery)
@@ -1454,6 +1590,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="web scraping, browser testing, form automation, data extraction, web interaction",
             system_prompt="You are a Browserbase assistant. Help users automate browser interactions, scrape web content, fill forms, and extract data from websites.",
             use_direct_tools=True,
+            memory_prompt=BROWSERBASE_MEMORY_PROMPT,
         ),
     ),
     # PostHog MCP (OAuth via MCP spec discovery)
@@ -1482,6 +1619,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="product analytics, user behavior analysis, A/B testing, feature flag management, session replay analysis",
             system_prompt="You are a PostHog assistant. Help users analyze product data, set up experiments, manage feature flags, and understand user behavior.",
             use_direct_tools=True,
+            memory_prompt=POSTHOG_MEMORY_PROMPT,
         ),
     ),
 ]
@@ -1543,3 +1681,44 @@ def get_subagent_integrations() -> List[OAuthIntegration]:
         for integration in OAUTH_INTEGRATIONS
         if integration.subagent_config and integration.subagent_config.has_subagent
     ]
+
+
+def get_memory_extraction_prompt(integration_id: str) -> Optional[str]:
+    """Get the memory extraction prompt for a specific integration.
+
+    This is the single source of truth for memory prompts.
+
+    Args:
+        integration_id: The integration ID (e.g., 'slack', 'github')
+
+    Returns:
+        The memory extraction prompt for this integration, or None if not found
+    """
+    integration = get_integration_by_id(integration_id)
+    if not integration or not integration.subagent_config:
+        return None
+    return integration.subagent_config.memory_prompt
+
+
+@cache
+def get_toolkit_to_integration_map() -> Dict[str, str]:
+    """Get mapping of Composio toolkit names to integration IDs.
+
+    This is the single source of truth for tool prefix -> integration category mapping.
+    Used by workflow context extractor to infer categories from tool names.
+
+    Returns:
+        Dict mapping toolkit name (e.g., 'GMAIL', 'GOOGLECALENDAR') to integration ID
+        (e.g., 'gmail', 'googlecalendar')
+    """
+    mapping = {}
+    for integration in OAUTH_INTEGRATIONS:
+        # From composio_config.toolkit (e.g., 'GMAIL' -> 'gmail')
+        if integration.composio_config and integration.composio_config.toolkit:
+            mapping[integration.composio_config.toolkit] = integration.id
+
+        # Also add uppercase ID for internal integrations (e.g., 'TODO' -> 'todos')
+        # and for agent name patterns
+        mapping[integration.id.upper()] = integration.id
+
+    return mapping

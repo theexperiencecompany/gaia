@@ -17,6 +17,7 @@ from app.models.scheduler_models import (
 from app.utils.cron_utils import get_next_run_time
 from arq import create_pool
 from arq.connections import RedisSettings
+from datetime import timedelta
 
 
 class BaseSchedulerService(ABC):
@@ -297,6 +298,20 @@ class BaseSchedulerService(ABC):
         if not self.arq_pool:
             logger.error("ARQ pool not initialized")
             return False
+
+        # Ensure scheduled_at is timezone-aware
+        if scheduled_at.tzinfo is None:
+            scheduled_at = scheduled_at.replace(tzinfo=timezone.utc)
+
+        # Check if scheduled time is in the past - if so, schedule for now + small buffer
+        # This prevents Redis PSETEX errors from negative expire times
+        now = datetime.now(timezone.utc)
+        if scheduled_at <= now:
+            logger.warning(
+                f"Task {task_id} scheduled_at ({scheduled_at}) is in the past, "
+                f"rescheduling to execute in 120 seconds"
+            )
+            scheduled_at = now + timedelta(seconds=120)
 
         job_name = self.get_job_name()
         job = await self.arq_pool.enqueue_job(

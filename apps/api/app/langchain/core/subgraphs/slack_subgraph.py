@@ -45,6 +45,7 @@ CHANNEL_MANAGEMENT_TOOLS = [
     "SLACK_SET_A_CONVERSATION_S_PURPOSE",
     "SLACK_SET_THE_TOPIC_OF_A_CONVERSATION",
     "SLACK_RENAME_A_CONVERSATION",
+    "SLACK_CONVERT_PUBLIC_CHANNEL_TO_PRIVATE",
 ]
 
 # ============================================================================
@@ -56,8 +57,9 @@ USER_DISCOVERY_TOOLS = [
     "SLACK_LIST_ALL_USERS",
     "SLACK_RETRIEVE_DETAILED_USER_INFORMATION",
     "SLACK_RETRIEVE_USER_PROFILE_INFORMATION",
-    "SLACK_RETRIEVE_A_USER_S_IDENTITY_DETAILS",
     "SLACK_GET_USER_PRESENCE_INFO",
+    "SLACK_TEST_AUTH",
+    "SLACK_REMOVE_USER_FROM_WORKSPACE",
 ]
 
 # ============================================================================
@@ -124,6 +126,7 @@ STATUS_PRESENCE_TOOLS = [
     "SLACK_RETRIEVE_CURRENT_USER_DND_STATUS",
     "SLACK_GET_TEAM_DND_STATUS",
     "SLACK_MANUALLY_SET_USER_PRESENCE",
+    "SLACK_USERS_SET_ACTIVE",
 ]
 
 # ============================================================================
@@ -161,6 +164,7 @@ WORKSPACE_TOOLS = [
     "SLACK_SET_SLACK_USER_PROFILE_INFORMATION",
     "SLACK_SET_PROFILE_PHOTO",
     "SLACK_DELETE_USER_PROFILE_PHOTO",
+    "SLACK_LIST_AUTH_TEAMS",
 ]
 
 # ============================================================================

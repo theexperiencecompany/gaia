@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.14.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.13.0...web-v0.14.0) (2026-01-30)
+
+
+### Features
+
+* enhance background task management and fix bot configuration keys to be optional ([#441](https://github.com/theexperiencecompany/gaia/issues/441)) ([5de0c96](https://github.com/theexperiencecompany/gaia/commit/5de0c960740d813e45e46ef3c8074d40ce1fd6d6))
+* enhance background task management and improve message persistence handling ([16a28f2](https://github.com/theexperiencecompany/gaia/commit/16a28f22ad9c441817a1fef8c6a535781bc654aa))
+
+
+### Bug Fixes
+
+* Minor patches (30th Jan) ([#448](https://github.com/theexperiencecompany/gaia/issues/448)) ([45f060a](https://github.com/theexperiencecompany/gaia/commit/45f060a660d580ec41d268e91f6f89d0f9d24664))
+* Minor patches 30 jan ([#447](https://github.com/theexperiencecompany/gaia/issues/447)) ([5a732d6](https://github.com/theexperiencecompany/gaia/commit/5a732d66ac374fe5602f77dccb7f9126ed74b659))
+
 ## [0.13.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.12.0...web-v0.13.0) (2026-01-28)
 
 

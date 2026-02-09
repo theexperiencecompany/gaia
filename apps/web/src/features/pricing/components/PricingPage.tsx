@@ -22,7 +22,7 @@ const integrations = [
   { id: "gmail", name: "Gmail" },
   { id: "slack", name: "Slack" },
   { id: "notion", name: "Notion" },
-  { id: "google_calendar", name: "Google Calendar" },
+  { id: "googlecalendar", name: "Google Calendar" },
   { id: "github", name: "GitHub" },
   { id: "googlesheets", name: "Google Sheets" },
   { id: "todoist", name: "Todoist" },

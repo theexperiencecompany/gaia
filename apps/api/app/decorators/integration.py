@@ -17,7 +17,7 @@ def require_integration(tool_category: str, tool_name: Optional[str] = None):
     Decorator to check if user has required integration before executing a tool.
 
     Args:
-        tool_category: The tool category (e.g., 'gmail', 'calendar', 'google_docs')
+        tool_category: The tool category (e.g., 'gmail', 'calendar', 'googledocs')
         tool_name: Optional tool name for better error messaging
 
     Usage:

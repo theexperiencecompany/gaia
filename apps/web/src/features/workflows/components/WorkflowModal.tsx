@@ -9,10 +9,12 @@ import { toast } from "sonner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 
 import { type Workflow, workflowApi } from "../api/workflowApi";
 import { useWorkflowCreation } from "../hooks";
 import {
+  getBrowserTimezone,
   getDefaultFormValues,
   type WorkflowFormData,
   workflowFormSchema,
@@ -20,7 +22,11 @@ import {
 } from "../schemas/workflowFormSchema";
 import { useWorkflowModalStore } from "../stores/workflowModalStore";
 import { useWorkflowsStore } from "../stores/workflowsStore";
-import { useTriggerSchemas } from "../triggers/hooks/useTriggerSchemas";
+import {
+  createDefaultTriggerConfig,
+  findTriggerSchema,
+  useTriggerSchemas,
+} from "../triggers";
 import { hasValidTriggerName, isIntegrationTrigger } from "../triggers/types";
 import {
   WorkflowDescriptionField,
@@ -38,6 +44,8 @@ interface WorkflowModalProps {
   onWorkflowDeleted?: (workflowId: string) => void;
   mode: "create" | "edit";
   existingWorkflow?: Workflow | null;
+  /** Pre-fill form from AI-generated draft data */
+  draftData?: WorkflowDraftData | null;
 }
 
 export default function WorkflowModal({
@@ -47,6 +55,7 @@ export default function WorkflowModal({
   onWorkflowDeleted,
   mode,
   existingWorkflow,
+  draftData,
 }: WorkflowModalProps) {
   const {
     isCreating,
@@ -84,8 +93,8 @@ export default function WorkflowModal({
   // Single source of truth for workflow data
   const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(null);
 
-  // Prefetch trigger schemas so they are ready when the user switches to the Trigger tab
-  useTriggerSchemas();
+  // Fetch trigger schemas for slug normalization
+  const { data: triggerSchemas } = useTriggerSchemas();
 
   // React Hook Form setup
   const form = useForm<WorkflowFormData>({
@@ -198,15 +207,79 @@ export default function WorkflowModal({
       setCreationPhase("form");
       return;
     }
+
+    // Handle draft data from AI-generated workflow
+    if (mode === "create" && draftData) {
+      const activeTab =
+        draftData.trigger_type === "scheduled"
+          ? "schedule"
+          : draftData.trigger_type === "integration"
+            ? "trigger"
+            : "manual";
+
+      let triggerConfig: WorkflowFormData["trigger_config"];
+      let selectedTriggerValue = "";
+
+      if (draftData.trigger_type === "scheduled") {
+        triggerConfig = {
+          type: "schedule" as const,
+          enabled: true,
+          cron_expression: draftData.cron_expression || "0 9 * * *",
+          timezone: getBrowserTimezone(),
+        };
+      } else if (
+        draftData.trigger_type === "integration" &&
+        draftData.trigger_slug
+      ) {
+        // Normalize trigger_slug: backend may return composio_slug, frontend needs slug
+        const schema = findTriggerSchema(
+          triggerSchemas,
+          draftData.trigger_slug,
+        );
+        const normalizedSlug = schema?.slug ?? draftData.trigger_slug;
+
+        const defaultConfig = createDefaultTriggerConfig(normalizedSlug);
+        if (defaultConfig) {
+          triggerConfig = {
+            ...defaultConfig,
+            trigger_slug: normalizedSlug,
+          };
+        } else {
+          triggerConfig = {
+            type: normalizedSlug,
+            enabled: true,
+            trigger_name: normalizedSlug,
+          };
+        }
+        selectedTriggerValue = normalizedSlug;
+      } else {
+        triggerConfig = {
+          type: "manual" as const,
+          enabled: true,
+        };
+      }
+
+      resetFormValues({
+        title: draftData.suggested_title,
+        description: draftData.prompt || draftData.suggested_description,
+        activeTab,
+        selectedTrigger: selectedTriggerValue,
+        trigger_config: triggerConfig,
+      });
+      setIsActivated(true);
+      setCreationPhase("form");
+      return;
+    }
+
     // Reset to default for create mode
     resetFormValues(getDefaultFormValues());
-    // Reset activation state for create mode
     setIsActivated(true);
-    // Reset to form phase for create mode
     setCreationPhase("form");
   }, [
     mode,
     currentWorkflow,
+    draftData,
+    triggerSchemas,
     resetFormValues,
     setIsActivated,
     setCreationPhase,
@@ -526,39 +599,6 @@ export default function WorkflowModal({
   // Handle tab change for trigger section
   const handleActiveTabChange = (tab: "manual" | "schedule" | "trigger") => {
     setValue("activeTab", tab);
-
-    if (tab === "schedule") {
-      // Only reset if not already a schedule type
-      if (formData.trigger_config.type !== "schedule") {
-        setValue("trigger_config", {
-          type: "schedule",
-          enabled: true,
-          cron_expression: "0 9 * * *",
-          timezone: "UTC",
-        });
-      }
-    } else if (tab === "trigger") {
-      // Preserve existing trigger selection if it's a trigger type
-      const currentType = formData.trigger_config.type;
-      const isTriggerType =
-        currentType !== "schedule" && currentType !== "manual";
-
-      if (!isTriggerType && !formData.selectedTrigger) {
-        // No previous selection, set to email as default
-        setValue("trigger_config", {
-          type: "email",
-          enabled: true,
-        });
-      }
-    } else {
-      // Manual tab - only reset if not already manual
-      if (formData.trigger_config.type !== "manual") {
-        setValue("trigger_config", {
-          type: "manual",
-          enabled: true,
-        });
-      }
-    }
   };
 
   return (
@@ -581,7 +621,6 @@ export default function WorkflowModal({
             <div className="flex h-full min-h-0 items-start gap-8">
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 space-y-6 overflow-y-auto">
-                  {/* Header with title and actions */}
                   <WorkflowHeader
                     mode={mode}
                     control={control}
@@ -592,7 +631,6 @@ export default function WorkflowModal({
                     onRefetchWorkflows={fetchWorkflows}
                   />
 
-                  {/* Trigger/Schedule Configuration */}
                   <WorkflowTriggerSection
                     activeTab={formData.activeTab}
                     selectedTrigger={formData.selectedTrigger}
@@ -606,10 +644,8 @@ export default function WorkflowModal({
                     }
                   />
 
-                  {/* Separator */}
                   <div className="border-t border-zinc-800" />
 
-                  {/* Description Section */}
                   <div className="space-y-4">
                     <WorkflowDescriptionField
                       control={control}
@@ -619,7 +655,6 @@ export default function WorkflowModal({
                   </div>
                 </div>
 
-                {/* Form Footer */}
                 <WorkflowFooter
                   mode={mode}
                   existingWorkflow={!!existingWorkflow}
@@ -639,7 +674,6 @@ export default function WorkflowModal({
                 />
               </div>
 
-              {/* Right side - Workflow Steps & History */}
               {mode === "edit" && existingWorkflow && (
                 <WorkflowRightPanel
                   workflow={currentWorkflow}

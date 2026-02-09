@@ -63,7 +63,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
 
   const { getIntegrationStatus, connectIntegration } = useIntegrations();
   const isCalendarConnected =
-    getIntegrationStatus("google_calendar")?.connected ?? false;
+    getIntegrationStatus("googlecalendar")?.connected ?? false;
 
   // Memoized values
   const hours = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
@@ -344,7 +344,7 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
             <Button
               color="primary"
               className="mt-4"
-              onPress={() => connectIntegration("google_calendar")}
+              onPress={() => connectIntegration("googlecalendar")}
             >
               Connect Calendar
             </Button>

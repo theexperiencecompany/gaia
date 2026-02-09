@@ -397,7 +397,7 @@ async def initialize_chroma_tools_store():
 
     This function:
     1. Creates a ChromaStore with embeddings
-    2. Gets namespaces available at init time (general, google_calendar, subagents)
+    2. Gets namespaces available at init time (general, googlecalendar, subagents)
     3. Only manages tools within those namespaces (doesn't touch provider-specific namespaces)
     4. Updates only changed/new/deleted tools within managed namespaces
 

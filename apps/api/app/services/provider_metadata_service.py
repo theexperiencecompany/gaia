@@ -42,27 +42,20 @@ def _extract_nested_field(data: Dict[str, Any], field_path: str) -> Optional[str
         return None
 
 
-async def fetch_provider_user_info(
-    user_id: str, integration_id: str
+async def fetch_tool_response(
+    user_id: str, tool_name: str, integration_id: str
 ) -> Optional[Dict[str, Any]]:
     """
-    Fetch user info from a provider using the configured tool.
+    Fetch response from a single tool.
 
     Args:
         user_id: The user ID to fetch info for
-        integration_id: The integration ID (e.g., "github", "twitter")
+        tool_name: The tool to call (e.g., "TWITTER_USER_LOOKUP_ME")
+        integration_id: The integration ID (for logging)
 
     Returns:
-        The raw response from the tool, or None if failed
+        The raw response from the tool as dict, or None if failed
     """
-    integration = get_integration_by_id(integration_id)
-
-    if not integration or not integration.metadata_config:
-        logger.debug(f"No metadata config for integration {integration_id}")
-        return None
-
-    tool_name = integration.metadata_config.user_info_tool
-
     try:
         composio_service = get_composio_service()
 
@@ -80,9 +73,9 @@ async def fetch_provider_user_info(
 
         # Execute the tool to get user info
         result = await tool.ainvoke({})
-        data = result.get("data")
+        data = result.get("data", {})
 
-        logger.info(f"Fetched user info for {integration_id}: {type(data)}")
+        logger.info(f"Fetched {tool_name} for {integration_id}: {type(data)}")
 
         # Handle different response types
         if isinstance(data, dict):
@@ -98,46 +91,56 @@ async def fetch_provider_user_info(
             return None
 
     except Exception as e:
-        logger.error(f"Error fetching user info for {integration_id}: {e}")
+        logger.error(f"Error fetching {tool_name} for {integration_id}: {e}")
         return None
 
 
-def extract_metadata_from_response(
-    response: Dict[str, Any], integration_id: str
+async def fetch_provider_user_info(
+    user_id: str, integration_id: str
 ) -> Optional[Dict[str, str]]:
     """
-    Extract metadata fields from tool response using integration config.
+    Fetch user info from a provider using configured tools and extract variables.
+
+    Iterates through all configured tools in metadata_config, calls each tool,
+    and extracts the configured variables from responses.
 
     Args:
-        response: The raw response from the user info tool
-        integration_id: The integration ID
+        user_id: The user ID to fetch info for
+        integration_id: The integration ID (e.g., "github", "twitter")
 
     Returns:
-        Dictionary of extracted metadata, or None if failed
+        Dictionary of extracted variables (name -> value), or None if failed
     """
     integration = get_integration_by_id(integration_id)
 
     if not integration or not integration.metadata_config:
+        logger.debug(f"No metadata config for integration {integration_id}")
         return None
 
-    config = integration.metadata_config
     metadata: Dict[str, str] = {}
 
-    # Extract username (required)
-    username = _extract_nested_field(response, config.username_field)
-    logger.info(response)
-    if username:
-        metadata["username"] = username
-    else:
-        logger.warning(
-            f"Could not extract username from {config.username_field} for {integration_id}"
-        )
+    # Iterate through each tool configuration
+    for tool_config in integration.metadata_config.tools:
+        # Fetch response from this tool
+        response = await fetch_tool_response(user_id, tool_config.tool, integration_id)
 
-    if config.extract_fields:
-        for field_name, field_path in config.extract_fields.items():
-            value = _extract_nested_field(response, field_path)
+        if not response:
+            logger.warning(
+                f"Failed to fetch {tool_config.tool} for {integration_id}, skipping"
+            )
+            continue
+
+        # Extract each configured variable from the response
+        for var in tool_config.variables:
+            value = _extract_nested_field(response, var.field_path)
             if value:
-                metadata[field_name] = value
+                metadata[var.name] = value
+                logger.debug(f"Extracted {var.name}={value} from {tool_config.tool}")
+            else:
+                logger.warning(
+                    f"Could not extract {var.name} from {var.field_path} "
+                    f"in {tool_config.tool} response"
+                )
 
     return metadata if metadata else None
 
@@ -238,10 +241,12 @@ async def fetch_and_store_provider_metadata(user_id: str, integration_id: str) -
     Fetch user info from provider and store metadata in database.
 
     This is the main entry point called after OAuth connection succeeds.
+    Uses the new multi-tool configuration to fetch from multiple tools
+    and extract configured variables.
 
     Args:
         user_id: The user ID
-        integration_id: The integration ID (e.g., "github", "twitter")
+        integration_id: The integration ID (e.g., "github", "twitter", "gmail")
 
     Returns:
         True if metadata was successfully fetched and stored, False otherwise
@@ -256,18 +261,11 @@ async def fetch_and_store_provider_metadata(user_id: str, integration_id: str) -
         logger.debug(f"No metadata config for integration {integration_id}")
         return False
 
-    # Fetch user info from provider
-    response = await fetch_provider_user_info(user_id, integration_id)
-
-    if not response:
-        logger.warning(f"Failed to fetch user info for {integration_id}")
-        return False
-
-    # Extract metadata from response
-    metadata = extract_metadata_from_response(response, integration_id)
+    # Fetch and extract metadata from all configured tools
+    metadata = await fetch_provider_user_info(user_id, integration_id)
 
     if not metadata:
-        logger.warning(f"Failed to extract metadata for {integration_id}")
+        logger.warning(f"Failed to fetch/extract metadata for {integration_id}")
         return False
 
     # Store metadata in database

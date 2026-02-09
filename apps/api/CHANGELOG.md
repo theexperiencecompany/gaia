@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.13.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.1...api-v0.13.0) (2026-01-30)
+
+
+### Features
+
+* enhance background task management and fix bot configuration keys to be optional ([#441](https://github.com/theexperiencecompany/gaia/issues/441)) ([5de0c96](https://github.com/theexperiencecompany/gaia/commit/5de0c960740d813e45e46ef3c8074d40ce1fd6d6))
+* enhance background task management and improve message persistence handling ([16a28f2](https://github.com/theexperiencecompany/gaia/commit/16a28f22ad9c441817a1fef8c6a535781bc654aa))
+* make bot configuration keys optional in ProductionSettings ([6e243ea](https://github.com/theexperiencecompany/gaia/commit/6e243ea534aa26045f81b2e7948c0b2d7d9bece4))
+
+
+### Bug Fixes
+
+* Bump `gaia` package version and correct `seed_explore_workflows` script usage instructions ([c75d88b](https://github.com/theexperiencecompany/gaia/commit/c75d88be2f1f511f1743ae3accdaa50b622f9287))
+* Minor patches (30th Jan) ([#448](https://github.com/theexperiencecompany/gaia/issues/448)) ([45f060a](https://github.com/theexperiencecompany/gaia/commit/45f060a660d580ec41d268e91f6f89d0f9d24664))
+* Minor patches 30 jan ([#447](https://github.com/theexperiencecompany/gaia/issues/447)) ([5a732d6](https://github.com/theexperiencecompany/gaia/commit/5a732d66ac374fe5602f77dccb7f9126ed74b659))
+* update affected projects check in build workflow and add projectType to api project configuration ([415b2bc](https://github.com/theexperiencecompany/gaia/commit/415b2bc77cf35efbb16d466f40bdd2a3a2ee5a70))
+* update affected projects check in build workflow and add projectType to api project configuration ([#446](https://github.com/theexperiencecompany/gaia/issues/446)) ([d57b5ac](https://github.com/theexperiencecompany/gaia/commit/d57b5ac01fd22e6713db1e038d5baf8858cc5ca2))
+
 ## [0.12.1](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.0...api-v0.12.1) (2026-01-28)
 
 

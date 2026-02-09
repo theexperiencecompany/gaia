@@ -8,7 +8,10 @@ import type React from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import type { TriggerSchema } from "@/features/workflows/triggers";
+import {
+  findTriggerSchema,
+  type TriggerSchema,
+} from "@/features/workflows/triggers";
 
 interface TriggerAutocompleteProps {
   selectedTrigger: string | null;
@@ -19,7 +22,6 @@ interface TriggerAutocompleteProps {
   onConnectIntegration: (integrationId: string) => void;
 }
 
-// Format integration ID to display name
 function formatIntegrationName(integrationId: string): string {
   return integrationId
     .split("_")
@@ -37,18 +39,20 @@ export function TriggerAutocomplete({
 }: TriggerAutocompleteProps) {
   const [filterValue, setFilterValue] = useState("");
 
-  const selectedSchema = triggerSchemas?.find(
-    (s) => s.slug === selectedTrigger,
+  const selectedSchema = findTriggerSchema(
+    triggerSchemas,
+    selectedTrigger ?? "",
   );
+  const normalizedSelectedKey = selectedSchema?.slug ?? selectedTrigger;
 
-  // Sync filterValue with selected trigger name when editing
   useEffect(() => {
-    if (selectedSchema && !filterValue) {
+    if (selectedSchema && selectedTrigger) {
       setFilterValue(selectedSchema.name);
+    } else if (!selectedTrigger) {
+      setFilterValue("");
     }
-  }, [selectedSchema, filterValue]);
+  }, [selectedTrigger, selectedSchema?.slug]);
 
-  // Create Fuse instance for fuzzy search
   const fuse = useMemo(() => {
     if (!triggerSchemas) return null;
     return new Fuse(triggerSchemas, {
@@ -63,22 +67,20 @@ export function TriggerAutocomplete({
     });
   }, [triggerSchemas]);
 
-  // Filter triggers based on search input
   const filteredSchemas = useMemo(() => {
     if (!triggerSchemas) return [];
     if (!filterValue) return triggerSchemas;
-
+    if (selectedSchema && filterValue === selectedSchema.name) {
+      return triggerSchemas;
+    }
     if (fuse) {
       return fuse.search(filterValue).map((result) => result.item);
     }
     return triggerSchemas;
-  }, [triggerSchemas, filterValue, fuse]);
+  }, [triggerSchemas, filterValue, fuse, selectedSchema]);
 
-  // Group filtered triggers by integration
   const groupedTriggers = useMemo(() => {
-    const schemasToGroup = filteredSchemas;
-
-    return schemasToGroup.reduce(
+    return filteredSchemas.reduce(
       (acc, schema) => {
         const integrationId = schema.integration_id || "other";
         if (!acc[integrationId]) {
@@ -100,30 +102,22 @@ export function TriggerAutocomplete({
 
     const trigger = String(key);
 
-    // Handle connection items
     if (trigger.startsWith("connect-")) {
       const integrationId = trigger.replace("connect-", "");
-      // Only allow connection for real integration IDs (not fallback like "other")
       if (
         integrationStatusMap.has(integrationId) &&
         integrationStatusMap.get(integrationId) === false
       ) {
         onConnectIntegration(integrationId);
       }
-      // Reset filter/selection logic if needed, but since we're opening a popup/redirect,
-      // creating a seamless flow is better. We just don't select it as a trigger.
       return;
     }
 
     const schema = triggerSchemas?.find((s) => s.slug === trigger);
 
-    // Check if integration is connected
     if (schema?.integration_id) {
       const isConnected = integrationStatusMap.get(schema.integration_id);
-      if (!isConnected) {
-        // Don't allow selection of disconnected integrations
-        return;
-      }
+      if (!isConnected) return;
     }
 
     onTriggerChange(trigger);
@@ -134,7 +128,6 @@ export function TriggerAutocomplete({
 
   const handleInputChange = (value: string) => {
     setFilterValue(value);
-    // If user clears input completely, clear the selection too
     if (value === "") {
       onTriggerChange(null);
     }
@@ -151,7 +144,7 @@ export function TriggerAutocomplete({
         label="Trigger"
         placeholder="Search or select a trigger..."
         className="w-full max-w-sm"
-        selectedKey={selectedTrigger}
+        selectedKey={normalizedSelectedKey}
         onSelectionChange={handleSelectionChange}
         onInputChange={handleInputChange}
         inputValue={filterValue}
@@ -183,13 +176,11 @@ export function TriggerAutocomplete({
           .sort(([aId], [bId]) => {
             const aConnected = integrationStatusMap.get(aId) ?? false;
             const bConnected = integrationStatusMap.get(bId) ?? false;
-            // Connected integrations first
             if (aConnected && !bConnected) return -1;
             if (!aConnected && bConnected) return 1;
             return 0;
           })
           .map(([integrationId, schemas]) => {
-            // Ensure schemas exists before mapping
             const schemaList = schemas || [];
 
             const triggerItems = schemaList.map((schema) => (
@@ -212,8 +203,6 @@ export function TriggerAutocomplete({
               </AutocompleteItem>
             ));
 
-            // Only show connectionItem for real integration IDs (not fallback like "other")
-            // that are explicitly disconnected (false)
             const connectionItem =
               integrationStatusMap.has(integrationId) &&
               integrationStatusMap.get(integrationId) === false ? (
@@ -244,7 +233,6 @@ export function TriggerAutocomplete({
           })}
       </Autocomplete>
 
-      {/* Trigger description helper text */}
       {selectedSchema && (
         <p className="px-1 text-xs text-zinc-500">
           {selectedSchema.description}

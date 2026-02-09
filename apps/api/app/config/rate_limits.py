@@ -182,13 +182,6 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=100, month=3000),
         info=FeatureInfo(title="Code Execution", description="Execute code snippets"),
     ),
-    "google_docs_operations": TieredRateLimits(
-        free=RateLimitConfig(day=2, month=5),
-        pro=RateLimitConfig(day=50, month=1500),
-        info=FeatureInfo(
-            title="Google Docs Operations", description="Create and manage Google Docs"
-        ),
-    ),
     "weather_checks": TieredRateLimits(
         free=RateLimitConfig(day=5, month=20),
         pro=RateLimitConfig(day=100, month=3000),

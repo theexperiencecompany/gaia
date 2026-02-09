@@ -1,7 +1,10 @@
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { InformationCircleIcon } from "@/icons";
-import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import {
+  getBrowserTimezone,
+  type WorkflowFormData,
+} from "../../schemas/workflowFormSchema";
 import { ScheduleBuilder } from "../ScheduleBuilder";
 import { TriggerConfigForm } from "../TriggerConfigForm";
 
@@ -24,6 +27,53 @@ export default function WorkflowTriggerSection({
   onSelectedTriggerChange,
   onTriggerConfigChange,
 }: WorkflowTriggerSectionProps) {
+  const handleTabChange = (tabKey: "manual" | "schedule" | "trigger") => {
+    onActiveTabChange(tabKey);
+
+    // Set appropriate trigger config based on tab
+    // Only change trigger_config if the current config doesn't match the tab
+    if (tabKey === "schedule") {
+      // Only reset if not already a schedule type
+      if (triggerConfig.type !== "schedule") {
+        onTriggerConfigChange({
+          type: "schedule",
+          enabled: true,
+          cron_expression: "0 9 * * *",
+          timezone: getBrowserTimezone(),
+        });
+      }
+    } else if (tabKey === "trigger") {
+      // Preserve existing trigger selection if it's a trigger type
+      // Only reset if current type is schedule or manual
+      const currentType = triggerConfig.type;
+      const isTriggerType =
+        currentType !== "schedule" && currentType !== "manual";
+
+      if (!isTriggerType) {
+        // Check if we have a previously selected trigger
+        if (selectedTrigger) {
+          // Don't change config - let TriggerConfigForm handle it
+          // The selectedTrigger is preserved in form state
+        } else {
+          // No previous selection, set to email as default
+          onTriggerConfigChange({
+            type: "email",
+            enabled: true,
+          });
+        }
+      }
+      // If already a trigger type, keep current config
+    } else {
+      // Manual tab - only reset if not already manual
+      if (triggerConfig.type !== "manual") {
+        onTriggerConfigChange({
+          type: "manual",
+          enabled: true,
+        });
+      }
+    }
+  };
+
   const renderTriggerTab = () => (
     <TriggerConfigForm
       selectedTrigger={selectedTrigger}
@@ -107,7 +157,7 @@ export default function WorkflowTriggerSection({
             className="w-full"
             selectedKey={activeTab}
             onSelectionChange={(key) => {
-              onActiveTabChange(key as "manual" | "schedule" | "trigger");
+              handleTabChange(key as "manual" | "schedule" | "trigger");
             }}
           >
             <Tab key="schedule" title="Schedule">

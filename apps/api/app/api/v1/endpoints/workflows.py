@@ -315,7 +315,6 @@ async def create_workflow_from_todo(
 
 
 @router.post("/workflows/{workflow_id}/publish", response_model=PublishWorkflowResponse)
-@tiered_rate_limit("workflow_operations")
 async def publish_workflow(
     workflow_id: str,
     user: dict = Depends(get_current_user),
@@ -362,7 +361,6 @@ async def publish_workflow(
 
 
 @router.post("/workflows/{workflow_id}/unpublish")
-@tiered_rate_limit("workflow_operations")
 async def unpublish_workflow(
     workflow_id: str,
     user: dict = Depends(get_current_user),

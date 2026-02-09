@@ -107,12 +107,12 @@ def get_integration_config(integration: str) -> Dict[str, Any]:
 # Integration name mapping to test file names
 INTEGRATION_MAP = {
     "calendar": "test_calendar",
-    "google_calendar": "test_calendar",
+    "googlecalendar": "test_calendar",
     "gmail": "test_gmail",
-    "google_docs": "test_google_docs",
-    "docs": "test_google_docs",
-    "google_sheets": "test_google_sheets",
-    "sheets": "test_google_sheets",
+    "googledocs": "test_googledocs",
+    "docs": "test_googledocs",
+    "googlesheets": "test_googlesheets",
+    "sheets": "test_googlesheets",
     "linear": "test_linear",
     "linkedin": "test_linkedin",
     "notion": "test_notion",
@@ -122,8 +122,8 @@ INTEGRATION_MAP = {
 ALL_INTEGRATIONS = [
     "calendar",
     "gmail",
-    "google_docs",
-    "google_sheets",
+    "googledocs",
+    "googlesheets",
     "linear",
     "linkedin",
     "notion",

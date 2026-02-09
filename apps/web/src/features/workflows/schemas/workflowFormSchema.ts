@@ -14,6 +14,25 @@ import { z } from "zod";
 import type { Workflow } from "@/types/features/workflowTypes";
 
 // =============================================================================
+// TIMEZONE HELPERS
+// =============================================================================
+
+/**
+ * Get the browser's IANA timezone (e.g., "America/New_York", "Asia/Kolkata").
+ * Falls back to "UTC" in non-browser environments.
+ */
+export const getBrowserTimezone = (): string => {
+  if (typeof window !== "undefined" && typeof Intl !== "undefined") {
+    try {
+      return Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      return "UTC";
+    }
+  }
+  return "UTC";
+};
+
+// =============================================================================
 // TRIGGER CONFIG SCHEMAS
 // =============================================================================
 
@@ -57,7 +76,7 @@ export const workflowFormSchema = z.object({
   description: z
     .string()
     .min(1, "Description is required")
-    .max(500, "Description too long"),
+    .max(2000, "Description too long"),
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
@@ -82,7 +101,7 @@ export const getDefaultFormValues = (): WorkflowFormData => ({
     type: "schedule",
     enabled: true,
     cron_expression: "0 9 * * *", // Daily at 9 AM
-    timezone: "UTC",
+    timezone: getBrowserTimezone(),
   },
 });
 
