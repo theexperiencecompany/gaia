@@ -183,7 +183,7 @@ export default function WorkflowExecutionHistory({
   return (
     <div className="space-y-2">
       <PanelHeader badge={`${total} runs`} />
-      <div className="space-y-2 overflow-y-auto">
+      <div className="space-y-2 overflow-y-auto max-h-84">
         {executions.map((execution) => (
           <ExecutionItem key={execution.execution_id} execution={execution} />
         ))}

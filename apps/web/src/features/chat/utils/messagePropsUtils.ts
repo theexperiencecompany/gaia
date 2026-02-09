@@ -70,7 +70,15 @@ export function getMessageProps(
     message_id:
       messageType === "user" ? message.message_id || "" : message.message_id, // User fallback to empty string
     isConvoSystemGenerated: conversation?.is_system_generated || false,
-    onRetry: onRetry ? () => onRetry(message.message_id || "") : undefined,
+    onRetry: onRetry
+      ? () => {
+          console.log(
+            "[messagePropsUtils] onRetry called for:",
+            message.message_id,
+          );
+          onRetry(message.message_id || "");
+        }
+      : undefined,
     isRetrying,
   };
 

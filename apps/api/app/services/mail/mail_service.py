@@ -488,13 +488,23 @@ async def search_messages(
 
         result = await invoke_gmail_tool(user_id, "GMAIL_FETCH_EMAILS", parameters)
 
+        # Debug: log the structure of the result
+        logger.debug(
+            f"GMAIL_FETCH_EMAILS result keys: {result.keys() if isinstance(result, dict) else type(result)}"
+        )
+        logger.debug(
+            f"GMAIL_FETCH_EMAILS result structure: successful={result.get('successful')}, has_data={bool(result.get('data'))}, has_messages={bool(result.get('messages'))}"
+        )
+
         if result.get("successful", True):
             # Transform messages if needed
+            # First check directly in result, then in data (backwards compatibility)
             data = result.get("data", {})
-            messages = data.get("messages", [])
+            messages = result.get("messages") or data.get("messages", [])
             return {
                 "messages": [transform_gmail_message(msg) for msg in messages],
-                "nextPageToken": data.get("nextPageToken"),
+                "nextPageToken": result.get("nextPageToken")
+                or data.get("nextPageToken"),
             }
         else:
             return {"messages": [], "nextPageToken": None}

@@ -18,6 +18,7 @@ export const useRetryMessage = () => {
 
   const retryMessage = useCallback(
     async (conversationId: string, messageId: string) => {
+      console.log("Retrying message:", messageId);
       if (isRetrying) return;
 
       const store = useChatStore.getState();
@@ -25,7 +26,10 @@ export const useRetryMessage = () => {
 
       // Find the message being retried
       const targetMessageIndex = messages.findIndex(
-        (msg) => msg.id === messageId || msg.messageId === messageId,
+        (msg) =>
+          msg.id === messageId ||
+          msg.messageId === messageId ||
+          (msg as { message_id?: string }).message_id === messageId,
       );
 
       if (targetMessageIndex === -1) {

@@ -21,6 +21,7 @@ import {
   isBotMessageEmpty,
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
+import { useChatStore } from "@/stores/chatStore";
 import type {
   ChatBubbleBotProps,
   SetImageDataType,
@@ -43,7 +44,12 @@ export default function ChatRenderer({
   const messageId = searchParams.get("messageId");
   const { isLoading } = useLoading();
   const { loadingText, loadingTextKey, toolInfo } = useLoadingText();
-  const { id: convoIdParam } = useParams<{ id: string }>();
+  const { id: urlConvoId } = useParams<{ id: string }>();
+  const activeConversationId = useChatStore(
+    (state) => state.activeConversationId,
+  );
+  // Use URL param first, fallback to store's activeConversationId (for new chats before URL updates)
+  const convoIdParam = urlConvoId || activeConversationId;
   const scrolledToMessageRef = useRef<string | null>(null);
   const { retryMessage, isRetrying } = useRetryMessage();
   const [imageData, setImageData] = useState<SetImageDataType>({
@@ -61,6 +67,10 @@ export default function ChatRenderer({
   // Handle retry callback
   const handleRetry = useCallback(
     (msgId: string) => {
+      console.log("[ChatRenderer] handleRetry called:", {
+        convoIdParam,
+        msgId,
+      });
       if (!convoIdParam) return;
       retryMessage(convoIdParam, msgId);
     },

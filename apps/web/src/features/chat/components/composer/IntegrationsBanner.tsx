@@ -36,7 +36,7 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
 
   return (
     <Button
-      className="absolute -top-9 z-0 flex h-fit w-full bg-transparent!"
+      className="absolute -top-9 -z-1 flex h-fit w-full bg-transparent! shadow-none"
       onClick={onToggleSlashCommand}
     >
       <div className="flex w-[90%] items-center justify-between rounded-full bg-zinc-800/40 pr-4 pl-6 py-2 pb-10 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition">

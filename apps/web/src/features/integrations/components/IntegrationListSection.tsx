@@ -121,6 +121,7 @@ function IntegrationListSection({
 
   const renderIntegration = (integration: (typeof integrations)[0]) => {
     const isConnected = integration.status === "connected";
+    const showRetry = integration.status === "created";
     // Use backend's 'available' field for platform integrations
     const isAvailable =
       integration.source === "custom" || integration.available;
@@ -154,14 +155,34 @@ function IntegrationListSection({
                 Connected
               </Chip>
             )}
+            {showRetry && (
+              <Chip size="sm" variant="flat" color="warning">
+                Failed
+              </Chip>
+            )}
           </div>
           <p className="mt-1 text-xs text-zinc-400">
             {integration.description}
           </p>
         </div>
 
-        {/* Show connect button for all available integrations */}
-        {!isConnected && isAvailable && (
+        {/* Show retry button for failed connections */}
+        {showRetry && (
+          <Button
+            size="sm"
+            variant="flat"
+            color="warning"
+            className="shrink-0 text-xs"
+            onPress={(e) =>
+              handleConnect(integration.id, e as unknown as React.MouseEvent)
+            }
+          >
+            Retry
+          </Button>
+        )}
+
+        {/* Show connect button for all available integrations that haven't failed */}
+        {!isConnected && !showRetry && isAvailable && (
           <Button
             size="sm"
             variant="flat"
