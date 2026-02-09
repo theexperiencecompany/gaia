@@ -22,6 +22,7 @@ const IntegrationItem: React.FC<{
   size?: "default" | "small";
 }> = ({ integration, onConnect, onClick, size }) => {
   const isConnected = integration.status === "connected";
+  const showRetry = integration.status === "created";
   // Custom integrations are always available, platform integrations use available field
   const isAvailable = integration.source === "custom" || integration.available;
 
@@ -72,12 +73,25 @@ const IntegrationItem: React.FC<{
             <span className="h-2 w-2 rounded-full bg-success mr-2" />
           )}
 
-          {integration.status === "created" && (
+          {showRetry && (
             <span className="h-2 w-2 rounded-full bg-warning mr-2" />
           )}
 
-          {/* Connect button */}
-          {isAvailable && !isConnected && integration.status !== "created" && (
+          {/* Retry button for failed connections */}
+          {showRetry && (
+            <Button
+              size="sm"
+              variant="flat"
+              color="warning"
+              className="text-xs"
+              onPress={handleConnectClick}
+            >
+              Retry
+            </Button>
+          )}
+
+          {/* Connect button for available integrations */}
+          {isAvailable && !isConnected && !showRetry && (
             <Button
               size="sm"
               variant="flat"

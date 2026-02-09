@@ -23,6 +23,7 @@ export default function IntegrationConnectionPrompt({
   }
 
   const isConnected = integration.status === "connected";
+  const showRetry = integration.status === "created";
   const isAvailable = integration.source === "custom" || integration.available;
 
   const handleConnect = async () => {
@@ -53,6 +54,10 @@ export default function IntegrationConnectionPrompt({
                 <Chip size="sm" variant="flat" color="success">
                   Connected
                 </Chip>
+              ) : showRetry ? (
+                <Chip size="sm" variant="flat" color="danger">
+                  Failed
+                </Chip>
               ) : (
                 <Chip size="sm" variant="flat" color="warning">
                   Not Connected
@@ -66,7 +71,8 @@ export default function IntegrationConnectionPrompt({
           </div>
         </div>
 
-        {!isConnected && isAvailable && (
+        {/* Always show action buttons for failed integrations, or when not connected and available */}
+        {(showRetry || (!isConnected && isAvailable)) && (
           <div className="flex gap-2 w-full">
             {!isConnected && (
               <div className="flex gap-2 rounded-xl items-center bg-warning-100/10 p-3">
@@ -80,7 +86,13 @@ export default function IntegrationConnectionPrompt({
               </div>
             )}
 
-            {isAvailable && !isConnected && (
+            {showRetry && (
+              <Button color="warning" onPress={handleConnect}>
+                Retry
+              </Button>
+            )}
+
+            {isAvailable && !isConnected && !showRetry && (
               <Button color="primary" onPress={handleConnect}>
                 Connect
               </Button>
