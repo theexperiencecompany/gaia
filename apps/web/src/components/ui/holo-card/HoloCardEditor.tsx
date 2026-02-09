@@ -21,7 +21,6 @@ import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
 import {
   Copy01Icon,
   Dices,
-  Download01Icon,
   LinkSquare02Icon,
   PaintBoardIcon,
   ReloadIcon,

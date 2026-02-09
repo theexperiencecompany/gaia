@@ -5,6 +5,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Overview
 
 GAIA is a proactive personal AI assistant built as a full-stack monorepo using Nx. The system consists of:
+
 - **Frontend**: Next.js web app, Electron desktop app, React Native mobile app
 - **Backend**: FastAPI Python API with LangGraph agents
 - **Bots**: Discord, Slack, and Telegram integrations
@@ -13,6 +14,7 @@ GAIA is a proactive personal AI assistant built as a full-stack monorepo using N
 ## Development Commands
 
 ### Setup
+
 ```bash
 # Install dependencies (uses pnpm)
 pnpm install
@@ -47,6 +49,7 @@ nx dev voice-agent
 ```
 
 ### Docker Development
+
 ```bash
 # Start all services
 cd infra/docker && docker compose up
@@ -141,6 +144,7 @@ libs/
 **Tech Stack**: Next.js 16, React 19, TypeScript, Zustand, TailwindCSS, Biome
 
 **Key Directories**:
+
 - `src/app/` - Next.js App Router pages (organized by route groups)
 - `src/features/` - Feature modules (chat, todo, calendar, workflows, integrations, etc.)
 - `src/stores/` - Zustand state management stores
@@ -159,6 +163,7 @@ libs/
 **Tech Stack**: FastAPI, LangGraph, Python 3.11+, PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ
 
 **Key Directories**:
+
 - `app/main.py` - Application entry point
 - `app/core/` - Core application logic (app factory, middleware, lifespan)
 - `app/api/v1/` - API routes and endpoints
@@ -224,6 +229,7 @@ Similar structure to web app with React Native components. Uses React Navigation
 ## Key Technologies
 
 ### Frontend
+
 - **Next.js 16**: App Router with React Server Components
 - **React 19**: Latest React features
 - **Zustand**: Lightweight state management
@@ -233,6 +239,7 @@ Similar structure to web app with React Native components. Uses React Navigation
 - **Electron**: Desktop app wrapper (electron-vite for build)
 
 ### Backend
+
 - **FastAPI**: Modern Python web framework
 - **LangGraph**: Agent orchestration framework
 - **PostgreSQL**: Primary relational database
@@ -246,6 +253,7 @@ Similar structure to web app with React Native components. Uses React Navigation
 ## Testing
 
 For Python tests, run pytest directly in the project directory:
+
 ```bash
 cd apps/api
 uv run pytest
@@ -254,6 +262,7 @@ uv run pytest
 ## Environment Variables
 
 Each app has its own `.env` file:
+
 - `apps/api/.env` - Backend configuration
 - `apps/web/.env.local` - Web app configuration
 
@@ -262,15 +271,18 @@ Refer to `.env.example` files in each directory for required variables.
 ## Docker
 
 Dockerfiles are located in each app directory. Docker Compose configuration is in `infra/docker/`:
+
 - `docker-compose.yml` - Development environment
 - `docker-compose.prod.yml` - Production environment
 
 ## Release Management
 
 The project uses Nx release with Docker support. Release groups are configured in `nx.json`:
+
 - **apps group**: `api`, `voice-agent` (published to ghcr.io)
 
 Build Docker images:
+
 ```bash
 nx docker:build api
 nx docker:build voice-agent

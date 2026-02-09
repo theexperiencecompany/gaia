@@ -2,80 +2,72 @@
 
 ## [0.14.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.13.0...web-v0.14.0) (2026-01-30)
 
-
 ### Features
 
-* enhance background task management and fix bot configuration keys to be optional ([#441](https://github.com/theexperiencecompany/gaia/issues/441)) ([5de0c96](https://github.com/theexperiencecompany/gaia/commit/5de0c960740d813e45e46ef3c8074d40ce1fd6d6))
-* enhance background task management and improve message persistence handling ([16a28f2](https://github.com/theexperiencecompany/gaia/commit/16a28f22ad9c441817a1fef8c6a535781bc654aa))
-
+- enhance background task management and fix bot configuration keys to be optional ([#441](https://github.com/theexperiencecompany/gaia/issues/441)) ([5de0c96](https://github.com/theexperiencecompany/gaia/commit/5de0c960740d813e45e46ef3c8074d40ce1fd6d6))
+- enhance background task management and improve message persistence handling ([16a28f2](https://github.com/theexperiencecompany/gaia/commit/16a28f22ad9c441817a1fef8c6a535781bc654aa))
 
 ### Bug Fixes
 
-* Minor patches (30th Jan) ([#448](https://github.com/theexperiencecompany/gaia/issues/448)) ([45f060a](https://github.com/theexperiencecompany/gaia/commit/45f060a660d580ec41d268e91f6f89d0f9d24664))
-* Minor patches 30 jan ([#447](https://github.com/theexperiencecompany/gaia/issues/447)) ([5a732d6](https://github.com/theexperiencecompany/gaia/commit/5a732d66ac374fe5602f77dccb7f9126ed74b659))
+- Minor patches (30th Jan) ([#448](https://github.com/theexperiencecompany/gaia/issues/448)) ([45f060a](https://github.com/theexperiencecompany/gaia/commit/45f060a660d580ec41d268e91f6f89d0f9d24664))
+- Minor patches 30 jan ([#447](https://github.com/theexperiencecompany/gaia/issues/447)) ([5a732d6](https://github.com/theexperiencecompany/gaia/commit/5a732d66ac374fe5602f77dccb7f9126ed74b659))
 
 ## [0.13.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.12.0...web-v0.13.0) (2026-01-28)
 
-
 ### Features
 
-* add chat description in sidebar when new conversation initiated in voice mode ([e4e3849](https://github.com/theexperiencecompany/gaia/commit/e4e384938af57b5e05d4e4235049d0c555f05423))
-* add NotificationProvider and UI updates ([#422](https://github.com/theexperiencecompany/gaia/issues/422)) ([8608485](https://github.com/theexperiencecompany/gaia/commit/8608485f6e4e3372af6919b1c22cd5cb38804642))
-* Add WaveSpinnerSquare component and wave animation styles ([9768068](https://github.com/theexperiencecompany/gaia/commit/9768068ea700f2044bdc2ec8affac8c4c0750113))
-* **notifications:** implement real-time notifications via WebSocket and add related hooks ([2756256](https://github.com/theexperiencecompany/gaia/commit/27562566d6ed826161decaadd5d146968106f76c))
-* prompt optimization for memory ([#436](https://github.com/theexperiencecompany/gaia/issues/436)) ([cfb7dc1](https://github.com/theexperiencecompany/gaia/commit/cfb7dc1399c132ceee3ddb55a2b2a940b1851422))
-* prompt optimization for memory ([#436](https://github.com/theexperiencecompany/gaia/issues/436)) ([#440](https://github.com/theexperiencecompany/gaia/issues/440)) ([b33125d](https://github.com/theexperiencecompany/gaia/commit/b33125d3d60402d019d10173d51b8861848cf76a))
-* Public Integrations and MCP with Marketplace page ([#430](https://github.com/theexperiencecompany/gaia/issues/430)) ([1ba6055](https://github.com/theexperiencecompany/gaia/commit/1ba6055f8d81c223d33ffc89d0ece1a6d28fa74b))
-* push notification for mobile app ([#421](https://github.com/theexperiencecompany/gaia/issues/421)) ([a00820f](https://github.com/theexperiencecompany/gaia/commit/a00820feafa8288488384d1f9ffdcfcaf4431cb7))
-* Retry message and minor landing page improvements ([#427](https://github.com/theexperiencecompany/gaia/issues/427)) ([eb17c6c](https://github.com/theexperiencecompany/gaia/commit/eb17c6ccdd6c55f54622e5e192641bdc153b7934))
-
+- add chat description in sidebar when new conversation initiated in voice mode ([e4e3849](https://github.com/theexperiencecompany/gaia/commit/e4e384938af57b5e05d4e4235049d0c555f05423))
+- add NotificationProvider and UI updates ([#422](https://github.com/theexperiencecompany/gaia/issues/422)) ([8608485](https://github.com/theexperiencecompany/gaia/commit/8608485f6e4e3372af6919b1c22cd5cb38804642))
+- Add WaveSpinnerSquare component and wave animation styles ([9768068](https://github.com/theexperiencecompany/gaia/commit/9768068ea700f2044bdc2ec8affac8c4c0750113))
+- **notifications:** implement real-time notifications via WebSocket and add related hooks ([2756256](https://github.com/theexperiencecompany/gaia/commit/27562566d6ed826161decaadd5d146968106f76c))
+- prompt optimization for memory ([#436](https://github.com/theexperiencecompany/gaia/issues/436)) ([cfb7dc1](https://github.com/theexperiencecompany/gaia/commit/cfb7dc1399c132ceee3ddb55a2b2a940b1851422))
+- prompt optimization for memory ([#436](https://github.com/theexperiencecompany/gaia/issues/436)) ([#440](https://github.com/theexperiencecompany/gaia/issues/440)) ([b33125d](https://github.com/theexperiencecompany/gaia/commit/b33125d3d60402d019d10173d51b8861848cf76a))
+- Public Integrations and MCP with Marketplace page ([#430](https://github.com/theexperiencecompany/gaia/issues/430)) ([1ba6055](https://github.com/theexperiencecompany/gaia/commit/1ba6055f8d81c223d33ffc89d0ece1a6d28fa74b))
+- push notification for mobile app ([#421](https://github.com/theexperiencecompany/gaia/issues/421)) ([a00820f](https://github.com/theexperiencecompany/gaia/commit/a00820feafa8288488384d1f9ffdcfcaf4431cb7))
+- Retry message and minor landing page improvements ([#427](https://github.com/theexperiencecompany/gaia/issues/427)) ([eb17c6c](https://github.com/theexperiencecompany/gaia/commit/eb17c6ccdd6c55f54622e5e192641bdc153b7934))
 
 ### Bug Fixes
 
-* prevent duplicate voice msg by manual sync on endCall ([8f5a9b8](https://github.com/theexperiencecompany/gaia/commit/8f5a9b88dc2452e10fff0be3ffde4467b5e7545d))
-* sensitive bar visualizer bug fixed ([9af70b2](https://github.com/theexperiencecompany/gaia/commit/9af70b2333f53be1b767360b34a6461bc4a1eccb))
-* streaming issues and minor bugs ([#429](https://github.com/theexperiencecompany/gaia/issues/429)) ([98bb4d7](https://github.com/theexperiencecompany/gaia/commit/98bb4d7ea1ca4f4827093b3062d638a240d689f7))
+- prevent duplicate voice msg by manual sync on endCall ([8f5a9b8](https://github.com/theexperiencecompany/gaia/commit/8f5a9b88dc2452e10fff0be3ffde4467b5e7545d))
+- sensitive bar visualizer bug fixed ([9af70b2](https://github.com/theexperiencecompany/gaia/commit/9af70b2333f53be1b767360b34a6461bc4a1eccb))
+- streaming issues and minor bugs ([#429](https://github.com/theexperiencecompany/gaia/issues/429)) ([98bb4d7](https://github.com/theexperiencecompany/gaia/commit/98bb4d7ea1ca4f4827093b3062d638a240d689f7))
 
 ## 0.12.0 (2025-12-21)
 
 ## What's Changed
-* feat: Add keyboard shortcuts in navigation, fixed workflow generation from todos by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/379
-* chore(release): configure independent versioning for all apps in monorepo by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/385
-* feat: Reply to message by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/386
-* fix: update Docker Compose production file path in deploy workflow by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/384
-* feat: Add support for Unread chats post onboarding and after running workflows by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/388
-* refactor: Workflows step generation should be abstract instead of specific tool names. Refactored frontend to use zustand for state management. by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/387
-* Revert "feat: Add support for Unread chats" by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/390
-* feat: Add support for Unread conversations by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/392
-* release: v0.12.0 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/393
-* feat: Add "Tools We Love" page and related components by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/394
-* feat: Add "Tools We Love" page and release please configuration changes (#394) by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/396
 
+- feat: Add keyboard shortcuts in navigation, fixed workflow generation from todos by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/379
+- chore(release): configure independent versioning for all apps in monorepo by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/385
+- feat: Reply to message by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/386
+- fix: update Docker Compose production file path in deploy workflow by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/384
+- feat: Add support for Unread chats post onboarding and after running workflows by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/388
+- refactor: Workflows step generation should be abstract instead of specific tool names. Refactored frontend to use zustand for state management. by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/387
+- Revert "feat: Add support for Unread chats" by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/390
+- feat: Add support for Unread conversations by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/392
+- release: v0.12.0 by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/393
+- feat: Add "Tools We Love" page and related components by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/394
+- feat: Add "Tools We Love" page and release please configuration changes (#394) by @aryanranderiya in https://github.com/theexperiencecompany/gaia/pull/396
 
 **Full Changelog**: https://github.com/theexperiencecompany/gaia/compare/web-v0.11.0...web-v0.12.0
 
 ## [0.11.0](https://github.com/theexperiencecompany/gaia/compare/v0.10.1...v0.11.0) (2025-12-19)
 
-
 ### release
 
-* v0.11.0 - New Monorepo setup using NX, Beta Desktop & Mobile app setup, Voice Mode etc ([#378](https://github.com/theexperiencecompany/gaia/issues/378)) ([8e72443](https://github.com/theexperiencecompany/gaia/commit/8e72443a1f56edf8e864cd0258ba26f03c81ddc1))
-
+- v0.11.0 - New Monorepo setup using NX, Beta Desktop & Mobile app setup, Voice Mode etc ([#378](https://github.com/theexperiencecompany/gaia/issues/378)) ([8e72443](https://github.com/theexperiencecompany/gaia/commit/8e72443a1f56edf8e864cd0258ba26f03c81ddc1))
 
 ### Features
 
-* **mobile:** Setup NativeWindCSS and reusable components ([#380](https://github.com/theexperiencecompany/gaia/issues/380)) ([80d995e](https://github.com/theexperiencecompany/gaia/commit/80d995ef423773e31530fa8fe6178a39db1fde78))
-* Setup a monorepo with apps/ directory structure using NX ([#369](https://github.com/theexperiencecompany/gaia/issues/369)) ([230ecb9](https://github.com/theexperiencecompany/gaia/commit/230ecb9611b4fbc16b676010aa831c1a38d0f71e))
-
+- **mobile:** Setup NativeWindCSS and reusable components ([#380](https://github.com/theexperiencecompany/gaia/issues/380)) ([80d995e](https://github.com/theexperiencecompany/gaia/commit/80d995ef423773e31530fa8fe6178a39db1fde78))
+- Setup a monorepo with apps/ directory structure using NX ([#369](https://github.com/theexperiencecompany/gaia/issues/369)) ([230ecb9](https://github.com/theexperiencecompany/gaia/commit/230ecb9611b4fbc16b676010aa831c1a38d0f71e))
 
 ### Bug Fixes
 
-* standardize quotes in pnpm-workspace.yaml for consistency and formatting ([fd10238](https://github.com/theexperiencecompany/gaia/commit/fd102387491d1747b55968d1648a0ae1a15f3dd9))
-
+- standardize quotes in pnpm-workspace.yaml for consistency and formatting ([fd10238](https://github.com/theexperiencecompany/gaia/commit/fd102387491d1747b55968d1648a0ae1a15f3dd9))
 
 ### Miscellaneous Chores
 
-* release 0.5.1 ([a011469](https://github.com/theexperiencecompany/gaia/commit/a011469403974c3e0dc3e19fb39a6c6e8e6e9647))
+- release 0.5.1 ([a011469](https://github.com/theexperiencecompany/gaia/commit/a011469403974c3e0dc3e19fb39a6c6e8e6e9647))
 
 ## 0.10.1 (2025-11-22)
 

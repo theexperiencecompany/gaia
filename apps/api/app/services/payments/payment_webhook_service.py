@@ -157,7 +157,9 @@ class PaymentWebhookService:
                 user_id=user_email,
                 event_type=AnalyticsEvents.PAYMENT_SUCCEEDED,
                 payment_id=payment_data.payment_id,
-                amount=payment_data.total_amount / 100 if payment_data.total_amount else None,
+                amount=payment_data.total_amount / 100
+                if payment_data.total_amount
+                else None,
                 currency=payment_data.currency,
             )
 
@@ -186,7 +188,9 @@ class PaymentWebhookService:
                 user_id=user_email,
                 event_type=AnalyticsEvents.PAYMENT_FAILED,
                 payment_id=payment_data.payment_id,
-                amount=payment_data.total_amount / 100 if payment_data.total_amount else None,
+                amount=payment_data.total_amount / 100
+                if payment_data.total_amount
+                else None,
                 currency=payment_data.currency,
             )
 
@@ -301,7 +305,9 @@ class PaymentWebhookService:
                 event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
                 subscription_id=sub_data.subscription_id,
                 plan_name="Pro",
-                amount=sub_data.recurring_pre_tax_amount / 100 if sub_data.recurring_pre_tax_amount else None,
+                amount=sub_data.recurring_pre_tax_amount / 100
+                if sub_data.recurring_pre_tax_amount
+                else None,
                 currency=sub_data.currency,
             )
 
