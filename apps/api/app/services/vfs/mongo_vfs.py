@@ -173,7 +173,7 @@ class MongoVFS:
                 try:
                     await bucket.delete(ObjectId(existing["gridfs_id"]))
                 except Exception:
-                    pass  # Ignore if already deleted  # nosec B110
+                    pass  # nosec B110
 
             gridfs_id = await bucket.upload_from_stream(
                 path, content_bytes, metadata={"path": path, "user_id": user_id}
@@ -194,7 +194,7 @@ class MongoVFS:
                     bucket = await self._get_gridfs()
                     await bucket.delete(ObjectId(existing["gridfs_id"]))
                 except Exception:
-                    pass  # Ignore if already deleted  # nosec B110
+                    pass  # nosec B110
 
         # Upsert the file node - MUST include user_id in query for security
         await vfs_nodes_collection.update_one(
@@ -606,7 +606,7 @@ class MongoVFS:
                     try:
                         await bucket.delete(ObjectId(child["gridfs_id"]))
                     except Exception:
-                        pass  # Ignore if already deleted  # nosec B110
+                        pass  # nosec B110
 
             await vfs_nodes_collection.delete_many(
                 {"path": {"$regex": f"^{path}/"}, "user_id": user_id}
@@ -618,7 +618,7 @@ class MongoVFS:
                 bucket = await self._get_gridfs()
                 await bucket.delete(ObjectId(node["gridfs_id"]))
             except Exception:
-                pass  # Ignore if already deleted  # nosec B110
+                pass  # nosec B110
 
         await vfs_nodes_collection.delete_one({"path": path, "user_id": user_id})
         logger.debug(f"VFS: Deleted {path} for user {user_id}")
