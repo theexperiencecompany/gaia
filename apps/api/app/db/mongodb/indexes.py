@@ -35,6 +35,7 @@ from app.db.mongodb.collections import (
     usage_snapshots_collection,
     user_integrations_collection,
     users_collection,
+    vfs_nodes_collection,
     workflows_collection,
 )
 
@@ -74,6 +75,7 @@ async def create_all_indexes():
             create_integration_indexes(),
             create_user_integration_indexes(),
             create_device_token_indexes(),
+            create_vfs_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -99,6 +101,7 @@ async def create_all_indexes():
             "integrations",
             "user_integrations",
             "device_tokens",
+            "vfs_nodes",
         ]
 
         index_results = {}
@@ -738,6 +741,78 @@ async def create_device_token_indexes():
         raise
 
 
+async def create_vfs_indexes():
+    """
+    Create indexes for vfs_nodes collection (Virtual Filesystem).
+
+    Query patterns:
+    - Primary path lookups (unique per user)
+    - Directory listing (parent_path queries)
+    - Session-based queries (conversation_id in metadata)
+    - Agent-specific queries (agent_name in metadata)
+    - Cleanup/retention queries (created_at)
+    """
+    try:
+        await asyncio.gather(
+            # Primary unique index: user + path combination
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("path", 1)],
+                unique=True,
+                name="user_path_unique",
+            ),
+            # Directory listing: find all children of a parent path
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("parent_path", 1)],
+                name="user_parent_path",
+            ),
+            # Session-based queries: find files in a conversation
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("metadata.conversation_id", 1)],
+                sparse=True,
+                name="user_conversation",
+            ),
+            # Agent-based queries: find files created by a specific agent
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("metadata.agent_name", 1)],
+                sparse=True,
+                name="user_agent",
+            ),
+            # Tool-based queries: find outputs from a specific tool
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("metadata.tool_name", 1)],
+                sparse=True,
+                name="user_tool",
+            ),
+            # Retention/cleanup queries: order by creation time
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("created_at", 1)],
+                name="user_created",
+            ),
+            # Recent access queries
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("accessed_at", -1)],
+                name="user_accessed",
+            ),
+            # Node type filtering (folders vs files)
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("node_type", 1), ("parent_path", 1)],
+                name="user_type_parent",
+            ),
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating VFS indexes: {str(e)}")
+        raise
+
+
 async def get_index_status() -> Dict[str, List[str]]:
     """
     Get the current index status for all collections.
@@ -761,6 +836,7 @@ async def get_index_status() -> Dict[str, List[str]]:
             "notifications": notifications_collection,
             "reminders": reminders_collection,
             "workflows": workflows_collection,
+            "vfs_nodes": vfs_nodes_collection,
         }
 
         # Get all collection indexes concurrently

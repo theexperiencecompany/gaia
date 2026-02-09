@@ -8,12 +8,12 @@ from app.agents.core.graph_builder.checkpointer_manager import (
 from app.agents.core.nodes import (
     follow_up_actions_node,
     manage_system_prompts_node,
-    trim_messages_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.llm.client import init_llm
+from app.agents.middleware import create_middleware_stack
 from app.agents.tools import memory_tools
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
@@ -43,16 +43,18 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({"handoff": handoff_tool})
 
+    middleware = create_middleware_stack()
+
     builder = create_agent(
         llm=chat_llm,
         agent_name="executor_agent",
         tool_registry=tool_dict,
         retrieve_tools_coroutine=get_retrieve_tools_function(),
         initial_tool_ids=["handoff"],
+        middleware=middleware,
         pre_model_hooks=[
             filter_messages_node,
             manage_system_prompts_node,
-            trim_messages_node,
         ],
     )
 
@@ -103,16 +105,18 @@ async def build_comms_graph(
     }
     store = await get_tools_store()
 
+    middleware = create_middleware_stack()
+
     builder = create_agent(
         llm=chat_llm,
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
         initial_tool_ids=["call_executor", "add_memory", "search_memory"],
+        middleware=middleware,
         pre_model_hooks=[
             filter_messages_node,
             manage_system_prompts_node,
-            trim_messages_node,
         ],
         end_graph_hooks=[
             follow_up_actions_node,

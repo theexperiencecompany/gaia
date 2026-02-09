@@ -17,6 +17,7 @@ from app.agents.tools import (
     reminder_tool,
     support_tool,
     todo_tool,
+    vfs_tools,
     weather_tool,
     webpage_tool,
     workflow_tool,
@@ -233,6 +234,7 @@ class ToolRegistry:
         self._add_category("workflows", tools=workflow_tool.tools)
         self._add_category("support", tools=[support_tool.create_support_ticket])
         self._add_category("memory", tools=memory_tools.tools)
+        self._add_category("filesystem", tools=vfs_tools.tools)
         self._add_category("integrations", tools=integration_tool.tools)
         self._add_category(
             "development",

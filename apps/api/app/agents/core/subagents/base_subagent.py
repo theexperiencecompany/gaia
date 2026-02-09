@@ -20,9 +20,9 @@ from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_
 from app.agents.core.nodes import (
     manage_system_prompts_node,
     memory_learning_node,
-    trim_messages_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
+from app.agents.middleware import create_middleware_stack
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.memory_tools import search_memory
@@ -81,20 +81,21 @@ class SubAgentFactory:
         # Add search_memory to scoped_tool_dict so subagents can access user memories
         scoped_tool_dict[search_memory.name] = search_memory
 
+        middleware = create_middleware_stack()
+
         common_kwargs = {
             "llm": llm,
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_name": name,
+            "middleware": middleware,
             "pre_model_hooks": [
                 filter_messages_node,
                 manage_system_prompts_node,
-                trim_messages_node,
             ],
-            "end_graph_hooks": [memory_learning_node],  # Always enabled
+            "end_graph_hooks": [memory_learning_node],
         }
 
         if use_direct_tools:
-            # Direct binding: tools are already extracted above
             common_kwargs.update(
                 {
                     "initial_tool_ids": initial_tool_ids,
