@@ -58,16 +58,16 @@ const DummyComposer: React.FC = () => {
 
   return (
     <div className="mx-auto flex w-full max-w-7xl flex-col items-center">
-      <div className="searchbar relative top-2 w-full">
-        <DummySlashCommandDropdown
-          isVisible={isSlashDropdownOpen}
-          onClose={() => setIsSlashDropdownOpen(false)}
-          openedViaButton={true}
-        />
-      </div>
-
       {/* Composer */}
       <div className="searchbar_container relative w-full pb-1">
+        {/* Slash dropdown — absolute, overlays upward into messages area */}
+        <div className="searchbar absolute bottom-full z-[200] mb-2 w-full">
+          <DummySlashCommandDropdown
+            isVisible={isSlashDropdownOpen}
+            onClose={() => setIsSlashDropdownOpen(false)}
+            openedViaButton={true}
+          />
+        </div>
         {/* Integration Banner - uses searchbar class to match composer width */}
         <Button
           className="searchbar absolute -top-4 z-0 flex h-fit rounded-full bg-zinc-800/40 px-4 py-2 pb-8 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400"

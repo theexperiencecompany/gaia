@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { LandingDownloadSection } from "@/features/download/components/DownloadPage";
+import ChatDemoSection from "@/features/landing/components/demo/ChatDemoSection";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import CommunitySection from "@/features/landing/components/sections/CommunitySection";
@@ -55,10 +56,10 @@ export default function LandingPageClient() {
       <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
         <HeroSection />
       </section>
-      {/* 
-      <div className="mx-auto max-w-6xl relative -top-25 z-20">
-        <ImageSelector images={imageOptions} defaultIndex={2} />
-      </div> */}
+
+      <section className="relative z-20 w-full py-16">
+        <ChatDemoSection />
+      </section>
 
       <div>
         {/* <div className="relative">

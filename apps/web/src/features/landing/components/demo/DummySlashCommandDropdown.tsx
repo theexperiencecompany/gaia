@@ -595,7 +595,8 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
             stiffness: 300,
             duration: 0.15,
           }}
-          className="relative z-[200] mx-auto flex h-[50vh] w-full flex-col overflow-hidden rounded-3xl border-1 border-zinc-700 bg-zinc-900/60 shadow-2xl backdrop-blur-2xl"
+          className="relative z-[200] mx-auto flex w-full flex-col overflow-hidden rounded-3xl border-1 border-zinc-700 bg-zinc-900/60 shadow-2xl backdrop-blur-2xl"
+          style={{ height: "min(50vh, 280px)" }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header section - Only show when opened via button */}
