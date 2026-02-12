@@ -12,6 +12,7 @@ import {
   Copy01Icon,
   LinkBackwardIcon,
   PinIcon,
+  RedoIcon,
   ReloadIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
@@ -24,6 +25,7 @@ import DemoToolCalls from "./DemoToolCalls";
 import { BASE_TIMINGS, ease, slideUp, tx, USE_CASES } from "./demoConstants";
 import MiniWaveSpinner from "./MiniWaveSpinner";
 import type { Phase } from "./types";
+import { Button } from "@heroui/button";
 
 export default function ChatDemoSection() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -175,7 +177,6 @@ export default function ChatDemoSection() {
         style={
           {
             "--color-primary-bg": "#111111",
-            boxShadow: "0 32px 80px rgba(0,0,0,0.7)",
           } as React.CSSProperties
         }
       >
@@ -466,30 +467,35 @@ export default function ChatDemoSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.4, delay: 0.2 }}
-        className="relative mt-6 flex w-full flex-wrap items-center justify-center gap-2"
+        className="relative mt-6 flex w-full flex-wrap items-center justify-between gap-2 max-w-7xl"
       >
-        {USE_CASES.map((useCase, i) => (
-          <Chip
-            key={useCase.id}
-            radius="sm"
-            size="lg"
-            // color={activeUseCase === i ? "primary" : "default"}
-            variant={activeUseCase === i ? "solid" : "flat"}
-            className={`cursor-pointer select-none `}
-            onClick={() => switchUseCase(i)}
-          >
-            {useCase.label}
-          </Chip>
-        ))}
-        <button
+        <div />
+        <div className="flex items-center justify-center gap-2">
+          {USE_CASES.map((useCase, i) => (
+            <Chip
+              key={useCase.id}
+              // radius="sm"
+              size="lg"
+              variant={activeUseCase === i ? "shadow" : "flat"}
+              className={`cursor-pointer select-none`}
+              onClick={() => switchUseCase(i)}
+            >
+              {useCase.label}
+            </Chip>
+          ))}
+        </div>
+
+        <Button
           type="button"
           aria-label="Retry"
           title="Replay demo"
-          onClick={() => switchUseCase(activeUseCase)}
-          className="absolute right-0 flex h-7 w-7 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+          onPress={() => switchUseCase(activeUseCase)}
+          isIconOnly
+          radius="full"
+          variant="flat"
         >
-          <ReloadIcon width={15} height={15} />
-        </button>
+          <RedoIcon width={20} height={20} />
+        </Button>
       </motion.div>
     </div>
   );

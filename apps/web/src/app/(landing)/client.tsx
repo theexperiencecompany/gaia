@@ -12,6 +12,8 @@ import Productivity from "@/features/landing/components/sections/Productivity";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
 import { FAQAccordion } from "@/features/pricing/components/FAQAccordion";
 import { useEffect } from "react";
+import Image from "next/image";
+
 export default function LandingPageClient() {
   useEffect(() => {
     document.documentElement.style.overflowY = "scroll";
@@ -55,13 +57,15 @@ export default function LandingPageClient() {
       </section>
 
       <section className="relative z-20 w-full py-20 mb-30">
-        {/* <Image
-          src="/images/wallpapers/mesh_gradient_1.png"
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
+
+        <Image
+          src="/images/wallpapers/bands_gradient_1.png"
           alt=""
           fill
-          className="object-cover absolute top-0 left-0 -z-10"
+          className="object-cover absolute top-0 left-0 -z-10 opacity-90"
           priority
-        /> */}
+        />
         <ChatDemoSection />
       </section>
 

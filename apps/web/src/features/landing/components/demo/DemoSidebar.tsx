@@ -29,7 +29,7 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
       animate={{ width: open ? 240 : 0, opacity: open ? 1 : 0 }}
       transition={{ duration: 0.22, ease }}
       className="relative flex shrink-0 flex-col overflow-hidden backdrop-blur-2xl"
-      style={{ backgroundColor: "#1a1a1add" }}
+      style={{ backgroundColor: "#1a1a1abb" }}
     >
       <div className="flex h-full w-60 flex-col">
         {/* Logo */}
@@ -62,7 +62,7 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
                     <div className="flex w-4.25 min-w-4.25 items-center justify-center">
                       <Icon width={18} height={18} />
                     </div>
-                    <span className="w-[calc(100%-45px)] max-w-[200px] truncate text-left">
+                    <span className="w-[calc(100%-45px)] max-w-50 truncate text-left">
                       {label}
                     </span>
                   </div>
@@ -123,7 +123,7 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
           <DemoSettingsDropdown onOpenChange={setSettingsOpen}>
             <button
               type="button"
-              className="flex w-full items-center justify-between gap-3 rounded-xl bg-transparent px-2 py-3 transition-colors hover:bg-zinc-800 cursor-pointer"
+              className="flex w-full items-center justify-between gap-3 rounded-2xl bg-transparent px-2 py-1 transition-colors hover:bg-zinc-800 cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
                 <Avatar className="size-7 shrink-0 rounded-full bg-black">
@@ -136,10 +136,10 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col items-start space-y-1">
-                  <span className="text-xs font-medium text-zinc-200">
+                  <span className="text-sm font-medium text-zinc-200">
                     Aryan Randeriya
                   </span>
-                  <span className="text-[10px] text-zinc-500">GAIA Pro</span>
+                  <span className="text-xs text-zinc-500">GAIA Pro</span>
                 </div>
               </div>
               {settingsOpen ? (
