@@ -6,6 +6,7 @@ import type {
   BreadcrumbList,
   ContactPage,
   ContactPoint,
+  DefinedTerm,
   FAQPage,
   HowTo,
   HowToStep,
@@ -260,6 +261,14 @@ export function generateWebSiteSchema(): WithContext<WebSite> {
     alternateName: siteConfig.name,
     url: siteConfig.url,
     description: siteConfig.description,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${siteConfig.url}/use-cases?q={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    } as unknown as WebSite["potentialAction"],
   };
 }
 
@@ -316,7 +325,7 @@ export function generateBreadcrumbSchema(
         "@type": "ListItem",
         position: index + 1,
         name: item.name,
-        item: getCanonicalUrl(item.url),
+        item: item.url.startsWith("http") ? item.url : `${siteConfig.url}${getCanonicalUrl(item.url)}`,
       }),
     ),
   };
@@ -513,5 +522,27 @@ export function generateAboutPageSchema(): WithContext<AboutPage> {
         }),
       ),
     } as Organization,
+  };
+}
+
+/**
+ * Generate DefinedTerm structured data for glossary entries (JSON-LD)
+ */
+export function generateDefinedTermSchema(
+  term: string,
+  definition: string,
+  url: string,
+): WithContext<DefinedTerm> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "DefinedTerm",
+    name: term,
+    description: definition,
+    url,
+    inDefinedTermSet: {
+      "@type": "DefinedTermSet",
+      name: "GAIA AI Glossary",
+      url: `${siteConfig.url}/learn`,
+    },
   };
 }

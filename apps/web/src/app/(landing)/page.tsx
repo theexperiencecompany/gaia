@@ -2,8 +2,10 @@ import type { Metadata } from "next";
 
 import LandingPageClient from "@/app/(landing)/client";
 import JsonLd from "@/components/seo/JsonLd";
+import { homepageFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
+  generateFAQSchema,
   generateOrganizationSchema,
   generatePageMetadata,
   generateWebPageSchema,
@@ -39,6 +41,7 @@ export default function LandingPage() {
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
   ]);
+  const faqSchema = generateFAQSchema(homepageFAQs);
 
   return (
     <>
@@ -48,6 +51,7 @@ export default function LandingPage() {
           websiteSchema,
           webPageSchema,
           breadcrumbSchema,
+          faqSchema,
         ]}
       />
       <LandingPageClient />

@@ -197,11 +197,10 @@ export function IntegrationDetailClient({
                   {integration.name}
                 </h1>
               </div>
-              {integration.description && (
-                <p className="text-lg leading-relaxed text-zinc-500 max-w-5xl mt-6">
-                  {integration.description}
-                </p>
-              )}
+              <p className="text-lg leading-relaxed text-zinc-500 max-w-5xl mt-6">
+                {integration.description ||
+                  `Connect ${integration.name} to your AI assistant and automate your ${integration.category} workflows.`}
+              </p>
             </div>
 
             <div className="flex items-center gap-3">
