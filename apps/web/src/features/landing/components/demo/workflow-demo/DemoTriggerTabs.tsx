@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { Tab, Tabs } from "@heroui/tabs";
+import { AnimatePresence, motion } from "framer-motion";
+import { useEffect, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 const wfEase = [0.32, 0.72, 0, 1] as const;

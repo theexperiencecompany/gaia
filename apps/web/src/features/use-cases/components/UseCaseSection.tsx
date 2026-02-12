@@ -29,6 +29,8 @@ export default function UseCaseSection({
   disableCentering = false,
   slicePerTab,
   hideAllCategory = false,
+  rows,
+  columns = 4,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
@@ -40,6 +42,8 @@ export default function UseCaseSection({
   disableCentering?: boolean;
   slicePerTab?: number;
   hideAllCategory?: boolean;
+  rows?: number;
+  columns?: number;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -273,14 +277,17 @@ export default function UseCaseSection({
           selectedCategory !== "workflows" && (
             <motion.div
               key={selectedCategory}
-              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
-              {(slicePerTab
-                ? filteredUseCases.slice(0, slicePerTab)
+              {(slicePerTab || rows
+                ? filteredUseCases.slice(
+                    0,
+                    slicePerTab || (rows ? rows * columns : undefined),
+                  )
                 : filteredUseCases
               ).map((useCase: UseCase, index: number) => (
                 <motion.div
@@ -322,7 +329,7 @@ export default function UseCaseSection({
           workflows.length > 0 && (
             <motion.div
               key="workflows"
-              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}

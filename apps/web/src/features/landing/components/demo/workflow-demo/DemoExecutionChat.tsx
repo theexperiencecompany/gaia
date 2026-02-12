@@ -134,7 +134,8 @@ export default function DemoExecutionChat({
 
           {/* Loading state - wave spinner + shimmering text (NO logo) */}
           <AnimatePresence>
-            {(phase === "tool_calls" || (showResponse && typedResponse === "")) && (
+            {(phase === "tool_calls" ||
+              (showResponse && typedResponse === "")) && (
               <motion.div
                 key="loading-spinner"
                 initial={{ opacity: 0, y: 6 }}
@@ -144,7 +145,9 @@ export default function DemoExecutionChat({
                 className="flex items-center gap-2 pl-1"
               >
                 <MiniWaveSpinner />
-                <span className={`animate-pulse text-sm ${light ? "text-zinc-500" : "text-zinc-300"}`}>
+                <span
+                  className={`animate-pulse text-sm ${light ? "text-zinc-500" : "text-zinc-300"}`}
+                >
                   GAIA is thinking...
                 </span>
               </motion.div>
@@ -166,24 +169,28 @@ export default function DemoExecutionChat({
                   width={28}
                   height={28}
                   alt="GAIA"
-                  className="shrink-0"
+                  className="shrink-0 z-3"
                 />
                 <div
-                  className={`imessage-bubble imessage-from-them text-sm leading-relaxed [&::before]:hidden [&::after]:hidden ${
+                  className={`imessage-bubble imessage-from-them text-sm leading-relaxed ${
                     light ? "text-zinc-800" : "text-white"
                   }`}
                   style={{
-                    background: light
-                      ? "rgba(255, 255, 255, 0.85)"
-                      : "rgba(63, 63, 70, 0.95)",
-                    backdropFilter: "blur(8px)",
+                    ...(light
+                      ? {
+                          background: "rgba(255, 255, 255, 0.85)",
+                          backdropFilter: "blur(8px)",
+                        }
+                      : {}),
                   }}
                 >
                   {typedResponse}
                   {isTyping && (
-                    <span className={`ml-0.5 inline-block h-3 w-0.5 animate-pulse align-middle ${
-                      light ? "bg-zinc-800/60" : "bg-white/60"
-                    }`} />
+                    <span
+                      className={`ml-0.5 inline-block h-3 w-0.5 animate-pulse align-middle ${
+                        light ? "bg-zinc-800/60" : "bg-white/60"
+                      }`}
+                    />
                   )}
                 </div>
               </motion.div>

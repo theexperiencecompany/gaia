@@ -1,5 +1,7 @@
 "use client";
 
+import Image from "next/image";
+import { useEffect } from "react";
 import { LandingDownloadSection } from "@/features/download/components/DownloadPage";
 import ChatDemoSection from "@/features/landing/components/demo/ChatDemoSection";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
@@ -9,11 +11,10 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import OpenSource from "@/features/landing/components/sections/OpenSource";
 import Personalised from "@/features/landing/components/sections/Personalised";
 import Productivity from "@/features/landing/components/sections/Productivity";
+import TestimonialsSection from "@/features/landing/components/sections/TestimonialsSection";
 import TiredBoringAssistants from "@/features/landing/components/sections/TiredBoringAssistants";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
 import { FAQAccordion } from "@/features/pricing/components/FAQAccordion";
-import { useEffect } from "react";
-import Image from "next/image";
 
 export default function LandingPageClient() {
   useEffect(() => {

@@ -1,37 +1,39 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { Button } from "@heroui/button";
+import { Kbd } from "@heroui/kbd";
 import { Input, Textarea } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
-import { Button } from "@heroui/button";
 import { Switch } from "@heroui/switch";
-import { Kbd } from "@heroui/kbd";
-
-import DemoTriggerTabs from "./DemoTriggerTabs";
+import { AnimatePresence, motion } from "framer-motion";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
+import DemoTriggerTabs from "./DemoTriggerTabs";
 import type { WorkflowDemoPhase } from "./workflowDemoConstants";
 
 const DEMO_WORKFLOW = {
-  title: "Daily Email Digest & Briefing",
+  title: "Daily Email Digest",
   description:
     "Every morning at 9 AM, scan my inbox for unread emails from the past 24 hours. Use AI to summarize the key points and extract action items. Create a formatted briefing document in Google Docs with sections for urgent items, meetings, and general updates. Finally, post the top 3-5 action items to our #daily-briefing Slack channel so the team stays aligned.",
   steps: [
     {
       id: "step_1",
       title: "Fetch unread emails",
-      description: "Read all unread emails from the last 24 hours via Gmail API.",
+      description:
+        "Read all unread emails from the last 24 hours via Gmail API.",
       category: "gmail",
     },
     {
       id: "step_2",
       title: "Summarize email contents",
-      description: "Use LLM to generate concise summaries and extract action items.",
+      description:
+        "Use LLM to generate concise summaries and extract action items.",
       category: "executor",
     },
     {
       id: "step_3",
       title: "Create briefing document",
-      description: "Write a formatted briefing in Google Docs with sections per priority.",
+      description:
+        "Write a formatted briefing in Google Docs with sections per priority.",
       category: "googledocs",
     },
     {
@@ -69,11 +71,15 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
     "steps_generating",
   ].includes(phase);
 
-  const showTriggerContent = ["schedule_set", "steps_generating"].includes(phase);
+  const showTriggerContent = ["schedule_set", "steps_generating"].includes(
+    phase,
+  );
   const showSteps = phase === "steps_generating";
 
-  const activeTab = phase === "steps_generating" ? "trigger" as const : "schedule" as const;
-  const triggerType = phase === "steps_generating" ? "trigger" as const : "schedule" as const;
+  const activeTab =
+    phase === "steps_generating" ? ("trigger" as const) : ("schedule" as const);
+  const triggerType =
+    phase === "steps_generating" ? ("trigger" as const) : ("schedule" as const);
   const stepsVisible = showSteps ? DEMO_WORKFLOW.steps.length : 0;
 
   return (
@@ -156,7 +162,11 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
                           key="step-count"
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ opacity: 1, scale: 1 }}
-                          transition={{ type: "spring", stiffness: 500, damping: 25 }}
+                          transition={{
+                            type: "spring",
+                            stiffness: 500,
+                            damping: 25,
+                          }}
                           className="rounded-full bg-primary/15 px-1.5 py-0.5 text-xs text-primary"
                         >
                           {DEMO_WORKFLOW.steps.length} steps
@@ -166,7 +176,9 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
                   </div>
 
                   {showSteps ? (
-                    <WorkflowSteps steps={DEMO_WORKFLOW.steps.slice(0, stepsVisible)} />
+                    <WorkflowSteps
+                      steps={DEMO_WORKFLOW.steps.slice(0, stepsVisible)}
+                    />
                   ) : showTrigger ? (
                     <div className="space-y-4">
                       <Skeleton className="h-16 rounded-xl" />

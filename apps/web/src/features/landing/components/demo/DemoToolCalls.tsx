@@ -44,7 +44,9 @@ export default function DemoToolCalls({
               style={{ rotate: i % 2 === 0 ? "8deg" : "-8deg", zIndex: i }}
             >
               {getToolCategoryIcon(t.category, { width: 21, height: 21 }) ?? (
-                <div className={`rounded-lg p-1 ${light ? "bg-zinc-200" : "bg-zinc-800"}`}>
+                <div
+                  className={`rounded-lg p-1 ${light ? "bg-zinc-200" : "bg-zinc-800"}`}
+                >
                   <Wrench01Icon width={14} height={14} />
                 </div>
               )}
@@ -81,20 +83,28 @@ export default function DemoToolCalls({
                         width: 20,
                         height: 20,
                       }) ?? (
-                        <div className={`rounded-lg p-1 ${light ? "bg-zinc-200" : "bg-zinc-800"}`}>
+                        <div
+                          className={`rounded-lg p-1 ${light ? "bg-zinc-200" : "bg-zinc-800"}`}
+                        >
                           <Wrench01Icon width={14} height={14} />
                         </div>
                       )}
                     </div>
                     {i < tools.length - 1 && (
-                      <div className={`min-h-3 w-px flex-1 ${light ? "bg-zinc-300" : "bg-zinc-700"}`} />
+                      <div
+                        className={`min-h-3 w-px flex-1 ${light ? "bg-zinc-300" : "bg-zinc-700"}`}
+                      />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className={`pt-1 text-xs font-medium ${light ? "text-zinc-700" : "text-zinc-400"}`}>
+                    <p
+                      className={`pt-1 text-xs font-medium ${light ? "text-zinc-700" : "text-zinc-400"}`}
+                    >
                       {t.message}
                     </p>
-                    <p className={`text-[11px] capitalize ${light ? "text-zinc-500" : "text-zinc-600"}`}>
+                    <p
+                      className={`text-[11px] capitalize ${light ? "text-zinc-500" : "text-zinc-600"}`}
+                    >
                       {t.category.replace(/_/g, " ")}
                     </p>
                   </div>

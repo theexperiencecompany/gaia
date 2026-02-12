@@ -1,10 +1,10 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { AnimatePresence, motion } from "framer-motion";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
-
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
@@ -25,7 +25,6 @@ import DemoToolCalls from "./DemoToolCalls";
 import { BASE_TIMINGS, ease, slideUp, tx, USE_CASES } from "./demoConstants";
 import MiniWaveSpinner from "./MiniWaveSpinner";
 import type { Phase } from "./types";
-import { Button } from "@heroui/button";
 
 export default function ChatDemoSection() {
   const [sidebarOpen, setSidebarOpen] = useState(true);

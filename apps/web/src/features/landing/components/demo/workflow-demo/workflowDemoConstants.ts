@@ -82,8 +82,7 @@ export const DEMO_WORKFLOW = {
     {
       id: "step_4",
       title: "Post action items to Slack",
-      description:
-        "Send extracted action items to #daily-briefing channel.",
+      description: "Send extracted action items to #daily-briefing channel.",
       category: "slack",
     },
   ],

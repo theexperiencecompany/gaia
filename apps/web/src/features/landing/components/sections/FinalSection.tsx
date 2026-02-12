@@ -70,13 +70,14 @@ export default function FinalSection({
 }) {
   return (
     <div className="relative z-1 m-0! flex min-h-[90vh] w-screen flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
+      <div className="pointer-events-none absolute inset-x-0 -top-5 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
       <div className="absolute inset-0 h-full w-full">
         <Image
           src="/images/wallpapers/landscape.webp"
           alt="Wallpaper"
           fill
           sizes="100vw"
-          className="noisy mask-[linear-gradient(to_bottom,transparent_0%,black_20%,black_80%,transparent_100%)] object-cover opacity-70"
           priority
         />
       </div>

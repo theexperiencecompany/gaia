@@ -13,11 +13,11 @@ const CONTENT_SECTIONS = [
     description:
       "Set it to run every morning at 9 AM, trigger it when you get an email, a Slack message pops up, or your next meeting's about to start.",
   },
-  {
-    title: "Powered by Your Todos",
-    description:
-      "Every todo you add becomes its own mini-workflow. GAIA doesn't just remind you — it actually does the work. Research, drafting, scheduling — done.",
-  },
+  // {
+  //   title: "Powered by Your Todos",
+  //   description:
+  //     "Every todo you add becomes its own mini-workflow. GAIA doesn't just remind you — it actually does the work. Research, drafting, scheduling — done.",
+  // },
   {
     title: "Seamless Orchestration",
     description:
@@ -27,7 +27,7 @@ const CONTENT_SECTIONS = [
 
 export default function WorkflowShowcaseSection() {
   return (
-    <div className="relative mx-auto mb-20 flex w-full flex-col justify-center px-40">
+    <div className="relative mx-auto mb-20 flex w-full flex-col justify-center px-[4em]">
       {/* Header */}
       <div className="mb-2 text-xl font-light text-primary sm:text-2xl">
         Your Daily Life, Automated
@@ -44,13 +44,13 @@ export default function WorkflowShowcaseSection() {
         </div>
 
         {/* Right: 30% — Text sidebar */}
-        <div className="flex w-full flex-col justify-center gap-7 lg:w-[30%]">
+        <div className="flex w-full flex-col justify-end gap-7 lg:w-[25%]">
           {CONTENT_SECTIONS.map((section) => (
             <div key={section.title}>
               <h3 className="mb-2 text-xl font-medium text-zinc-100">
                 {section.title}
               </h3>
-              <p className="text-base font-light leading-relaxed text-zinc-400">
+              <p className="text-base font-light leading-relaxed text-zinc-400 text-justify">
                 {section.description}
               </p>
             </div>

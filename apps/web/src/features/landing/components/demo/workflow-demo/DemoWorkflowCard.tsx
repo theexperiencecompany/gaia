@@ -46,14 +46,10 @@ export default function DemoWorkflowCard({
             damping: 25,
           }}
           style={{ willChange: "transform, opacity" }}
-          className={`max-w-sm rounded-3xl p-4 transition-shadow ${
+          className={`max-w-sm rounded-3xl p-4 ${
             light
               ? "bg-white/70 backdrop-blur-lg outline outline-1 outline-zinc-200/60"
               : "bg-zinc-800"
-          } ${
-            state === "executing"
-              ? "shadow-[0_0_24px_rgba(0,187,255,0.12)]"
-              : ""
           }`}
         >
           {/* Icons row */}
@@ -72,9 +68,13 @@ export default function DemoWorkflowCard({
                 </div>
               ))}
               {DEMO_WORKFLOW.categories.length > 3 && (
-                <div className={`flex h-6 w-6 items-center justify-center rounded-lg text-[9px] ${
-                  light ? "bg-zinc-200/60 text-zinc-500" : "bg-zinc-700/60 text-zinc-400"
-                }`}>
+                <div
+                  className={`flex h-6 w-6 items-center justify-center rounded-lg text-[9px] ${
+                    light
+                      ? "bg-zinc-200/60 text-zinc-500"
+                      : "bg-zinc-700/60 text-zinc-400"
+                  }`}
+                >
                   +{DEMO_WORKFLOW.categories.length - 3}
                 </div>
               )}
@@ -135,21 +135,31 @@ export default function DemoWorkflowCard({
           </div>
 
           {/* Title */}
-          <h4 className={`text-sm font-medium ${light ? "text-zinc-800" : "text-zinc-100"}`}>
+          <h4
+            className={`text-sm font-medium ${light ? "text-zinc-800" : "text-zinc-100"}`}
+          >
             {DEMO_WORKFLOW.title}
           </h4>
-          <p className={`mt-0.5 line-clamp-1 text-[10px] ${light ? "text-zinc-500" : "text-zinc-500"}`}>
+          <p
+            className={`mt-0.5 line-clamp-1 text-[10px] ${light ? "text-zinc-500" : "text-zinc-500"}`}
+          >
             {DEMO_WORKFLOW.description}
           </p>
 
           {/* Trigger + execution count */}
           <div className="mt-3 flex items-center justify-between">
-            <div className={`flex items-center gap-1.5 text-[10px] ${light ? "text-zinc-500" : "text-zinc-400"}`}>
+            <div
+              className={`flex items-center gap-1.5 text-[10px] ${light ? "text-zinc-500" : "text-zinc-400"}`}
+            >
               <TimeScheduleIcon width={12} height={12} />
               <span>{DEMO_WORKFLOW.cronHumanReadable}</span>
             </div>
             {state === "completed" && (
-              <span className={`text-[9px] ${light ? "text-zinc-500" : "text-zinc-600"}`}>Ran for 4s</span>
+              <span
+                className={`text-[9px] ${light ? "text-zinc-500" : "text-zinc-600"}`}
+              >
+                Ran for 4s
+              </span>
             )}
           </div>
         </motion.div>

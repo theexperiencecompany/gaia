@@ -68,7 +68,7 @@ const DummyComposer: React.FC<{ hideIntegrationBanner?: boolean }> = ({
       {/* Composer */}
       <div className="searchbar_container relative w-full pb-1">
         {/* Slash dropdown — absolute, overlays upward into messages area */}
-        <div className="searchbar absolute bottom-full z-[200] mb-1 w-full">
+        <div className="searchbar absolute bottom-full z-200 -mb-3 w-full">
           <DummySlashCommandDropdown
             isVisible={isSlashDropdownOpen}
             onClose={() => setIsSlashDropdownOpen(false)}

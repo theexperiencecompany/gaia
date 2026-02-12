@@ -1,11 +1,9 @@
 import Link from "next/link";
-
+import { ChevronRight } from "@/components";
 import ShinyText from "@/components/ui/shimmering-chip";
 import { MotionContainer } from "@/layouts/MotionContainer";
-
 import GetStartedButton from "../shared/GetStartedButton";
 import { SplitTextBlur } from "./SplitTextBlur";
-import { ChevronRight } from "@/components";
 
 export default function HeroSection() {
   // const { data: release, isLoading: isReleaseLoading } = useLatestRelease(
@@ -47,7 +45,7 @@ export default function HeroSection() {
           gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), #000000)"
           disableIntersectionObserver
           as="h1"
-          showGlowTextBg
+          // showGlowTextBg
         />
 
         <div className="relative">
@@ -55,9 +53,9 @@ export default function HeroSection() {
             Stop wasting your time on boring tasks. Let your personal assistant
             handle it.
           </div>
-          <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-bold tracking-tighter text-white z-[-1] sm:px-0 sm:text-2xl">
+          {/* <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-bold tracking-tighter text-white z-[-1] sm:px-0 sm:text-2xl">
             Stop wasting your time on boring tasks. Let GAIA handle it.
-          </div>
+          </div> */}
         </div>
         <div className="flex gap-4">
           <GetStartedButton
