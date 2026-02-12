@@ -9,6 +9,7 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import OpenSource from "@/features/landing/components/sections/OpenSource";
 import Personalised from "@/features/landing/components/sections/Personalised";
 import Productivity from "@/features/landing/components/sections/Productivity";
+import TiredBoringAssistants from "@/features/landing/components/sections/TiredBoringAssistants";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
 import { FAQAccordion } from "@/features/pricing/components/FAQAccordion";
 import { useEffect } from "react";
@@ -70,8 +71,8 @@ export default function LandingPageClient() {
       </section>
 
       <div>
+        <TiredBoringAssistants />
         {/* <div className="relative">
-          <TiredBoringAssistants />
 
           <div
             className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
