@@ -26,12 +26,12 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
 
   return (
     <motion.div
-      animate={{ width: open ? 220 : 0, opacity: open ? 1 : 0 }}
+      animate={{ width: open ? 240 : 0, opacity: open ? 1 : 0 }}
       transition={{ duration: 0.22, ease }}
-      className="relative flex shrink-0 flex-col overflow-hidden"
-      style={{ backgroundColor: "#1a1a1a" }}
+      className="relative flex shrink-0 flex-col overflow-hidden backdrop-blur-2xl"
+      style={{ backgroundColor: "#1a1a1add" }}
     >
-      <div className="flex h-full w-[220px] flex-col">
+      <div className="flex h-full w-60 flex-col">
         {/* Logo */}
         <div className="flex items-center px-2 py-2">
           <LogoWithContextMenu
@@ -42,7 +42,7 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
         </div>
 
         {/* SidebarContent — px-1 matches real SidebarContent className="flex-1 px-1" */}
-        <div className="flex flex-1 flex-col overflow-hidden px-1">
+        <div className="flex flex-1 flex-col overflow-hidden px-2">
           {/* Nav — mirrors SidebarTopButtons + SidebarGroupContent space-y-1 */}
           <div className="space-y-1 overflow-hidden">
             <div className="flex w-full flex-col gap-0.5">
@@ -59,7 +59,7 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
                   }`}
                 >
                   <div className="flex w-full items-center gap-2">
-                    <div className="flex w-[17px] min-w-[17px] items-center justify-center">
+                    <div className="flex w-4.25 min-w-4.25 items-center justify-center">
                       <Icon width={18} height={18} />
                     </div>
                     <span className="w-[calc(100%-45px)] max-w-[200px] truncate text-left">
@@ -123,7 +123,7 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
           <DemoSettingsDropdown onOpenChange={setSettingsOpen}>
             <button
               type="button"
-              className="flex w-full items-center justify-between gap-3 rounded-lg bg-transparent px-2 py-3 transition-colors hover:bg-zinc-800"
+              className="flex w-full items-center justify-between gap-3 rounded-xl bg-transparent px-2 py-3 transition-colors hover:bg-zinc-800 cursor-pointer"
             >
               <div className="flex items-center gap-2.5">
                 <Avatar className="size-7 shrink-0 rounded-full bg-black">
@@ -135,7 +135,7 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
                     AR
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex flex-col items-start -space-y-0.5">
+                <div className="flex flex-col items-start space-y-1">
                   <span className="text-xs font-medium text-zinc-200">
                     Aryan Randeriya
                   </span>

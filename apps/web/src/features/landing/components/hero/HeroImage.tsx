@@ -36,8 +36,10 @@ export default function HeroImage({
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 
         <ProgressiveImage
-          webpSrc="/images/wallpapers/g3.webp"
-          pngSrc="/images/wallpapers/g3.png"
+          // webpSrc="/images/wallpapers/g3.webp"
+          // pngSrc="/images/wallpapers/g3.png"
+          webpSrc="/images/wallpapers/swiss.png"
+          pngSrc="/images/wallpapers/swiss.png"
           alt="wallpaper"
           className="object-cover"
           shouldHaveInitialFade={shouldHaveInitialFade}

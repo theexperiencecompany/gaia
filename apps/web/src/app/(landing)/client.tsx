@@ -1,6 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
 import { LandingDownloadSection } from "@/features/download/components/DownloadPage";
 import ChatDemoSection from "@/features/landing/components/demo/ChatDemoSection";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
@@ -10,12 +9,9 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import OpenSource from "@/features/landing/components/sections/OpenSource";
 import Personalised from "@/features/landing/components/sections/Personalised";
 import Productivity from "@/features/landing/components/sections/Productivity";
-import ProductivityOS from "@/features/landing/components/sections/ProductivityOS";
-import TiredBoringAssistants from "@/features/landing/components/sections/TiredBoringAssistants";
-import ToolsShowcaseSection from "@/features/landing/components/sections/ToolsShowcaseSection";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
 import { FAQAccordion } from "@/features/pricing/components/FAQAccordion";
-
+import { useEffect } from "react";
 export default function LandingPageClient() {
   useEffect(() => {
     document.documentElement.style.overflowY = "scroll";
@@ -58,7 +54,14 @@ export default function LandingPageClient() {
         <HeroSection />
       </section>
 
-      <section className="relative z-20 w-full pt-16 pb-30">
+      <section className="relative z-20 w-full py-20 mb-30">
+        {/* <Image
+          src="/images/wallpapers/mesh_gradient_1.png"
+          alt=""
+          fill
+          className="object-cover absolute top-0 left-0 -z-10"
+          priority
+        /> */}
         <ChatDemoSection />
       </section>
 

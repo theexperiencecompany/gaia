@@ -149,7 +149,7 @@ export default function ChatDemoSection() {
   const showBotLogo = showTools || showResponse;
 
   return (
-    <div className="relative mx-auto flex w-full max-w-7xl flex-col items-center px-4">
+    <div className="relative flex w-full flex-col items-center">
       {/* <motion.div
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
@@ -171,17 +171,15 @@ export default function ChatDemoSection() {
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5, ease }}
-        className="w-full overflow-hidden rounded-2xl"
+        className="overflow-hidden rounded-3xl h-[80vh] w-[70vw]"
         style={
           {
             "--color-primary-bg": "#111111",
-            height: 720,
             boxShadow: "0 32px 80px rgba(0,0,0,0.7)",
           } as React.CSSProperties
         }
       >
-        {/* Traffic lights */}
-        <div
+        {/* <div
           className="flex h-9 shrink-0 items-center gap-1.5 px-4"
           style={{ backgroundColor: "#1a1a1a" }}
         >
@@ -191,13 +189,14 @@ export default function ChatDemoSection() {
           <div className="ml-4 flex-1 text-center text-[11px] text-zinc-500">
             GAIA — Personal AI Assistant
           </div>
-        </div>
-
+        </div> */}
         {/* Body */}
-        <div className="flex" style={{ height: "calc(100% - 36px)" }}>
+        <div
+          className="flex h-full"
+          // style={{ height: "calc(100% - 36px)" }}
+        >
           <DemoSidebar open={sidebarOpen} />
 
-          {/* Chat column */}
           <div
             className="relative flex min-w-0 flex-1 flex-col"
             style={{ backgroundColor: "#111111" }}
@@ -232,7 +231,7 @@ export default function ChatDemoSection() {
                         className="chat_bubble_container user group"
                         id={`user-${uc.id}`}
                       >
-                        <div className="imessage-bubble imessage-from-me text-sm">
+                        <div className="imessage-bubble imessage-from-me">
                           {uc.userMessage}
                         </div>
                         <div className="flex flex-col items-end justify-end gap-1 pb-3 opacity-0 transition-all group-hover:opacity-100">
@@ -407,7 +406,7 @@ export default function ChatDemoSection() {
                             transition={tx}
                             className="chat_bubble_container"
                           >
-                            <div className="imessage-bubble imessage-from-them text-sm text-white">
+                            <div className="imessage-bubble imessage-from-them text-white">
                               {typedResponse}
                               {phase === "responding" && (
                                 <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-white/60 align-middle" />
@@ -454,7 +453,7 @@ export default function ChatDemoSection() {
             </div>
 
             {/* Composer */}
-            <div className="relative shrink-0 px-4 pb-4 [&_.searchbar]:!w-[65%] [&_.searchbar_container]:!w-full">
+            <div className="relative shrink-0 px-4 pb-4 [&_.searchbar]:w-[65%]! [&_.searchbar_container]:w-full!">
               <DummyComposer hideIntegrationBanner />
             </div>
           </div>
@@ -472,13 +471,11 @@ export default function ChatDemoSection() {
         {USE_CASES.map((useCase, i) => (
           <Chip
             key={useCase.id}
-            variant="flat"
-            color={activeUseCase === i ? "primary" : "default"}
-            className={`cursor-pointer select-none transition-all ${
-              activeUseCase === i
-                ? "bg-primary/20 text-primary"
-                : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300"
-            }`}
+            radius="sm"
+            size="lg"
+            // color={activeUseCase === i ? "primary" : "default"}
+            variant={activeUseCase === i ? "solid" : "flat"}
+            className={`cursor-pointer select-none `}
             onClick={() => switchUseCase(i)}
           >
             {useCase.label}

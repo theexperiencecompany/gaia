@@ -9,13 +9,17 @@ interface DemoToolCallsProps {
   tools: ToolStep[];
   expanded: boolean;
   onToggle: () => void;
+  colorScheme?: "dark" | "light";
 }
 
 export default function DemoToolCalls({
   tools,
   expanded,
   onToggle,
+  colorScheme = "dark",
 }: DemoToolCallsProps) {
+  const light = colorScheme === "light";
+
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
@@ -26,7 +30,11 @@ export default function DemoToolCalls({
       <button
         type="button"
         onClick={onToggle}
-        className="flex cursor-pointer items-center gap-2 py-1 text-zinc-500 transition-colors hover:text-white"
+        className={`flex cursor-pointer items-center gap-2 py-1 transition-colors ${
+          light
+            ? "text-zinc-600 hover:text-zinc-900"
+            : "text-zinc-500 hover:text-white"
+        }`}
       >
         <div className="flex items-center -space-x-2">
           {tools.map((t, i) => (
@@ -36,7 +44,7 @@ export default function DemoToolCalls({
               style={{ rotate: i % 2 === 0 ? "8deg" : "-8deg", zIndex: i }}
             >
               {getToolCategoryIcon(t.category, { width: 21, height: 21 }) ?? (
-                <div className="rounded-lg bg-zinc-800 p-1">
+                <div className={`rounded-lg p-1 ${light ? "bg-zinc-200" : "bg-zinc-800"}`}>
                   <Wrench01Icon width={14} height={14} />
                 </div>
               )}
@@ -73,20 +81,20 @@ export default function DemoToolCalls({
                         width: 20,
                         height: 20,
                       }) ?? (
-                        <div className="rounded-lg bg-zinc-800 p-1">
+                        <div className={`rounded-lg p-1 ${light ? "bg-zinc-200" : "bg-zinc-800"}`}>
                           <Wrench01Icon width={14} height={14} />
                         </div>
                       )}
                     </div>
                     {i < tools.length - 1 && (
-                      <div className="min-h-3 w-px flex-1 bg-zinc-700" />
+                      <div className={`min-h-3 w-px flex-1 ${light ? "bg-zinc-300" : "bg-zinc-700"}`} />
                     )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="pt-1 text-xs font-medium text-zinc-400">
+                    <p className={`pt-1 text-xs font-medium ${light ? "text-zinc-700" : "text-zinc-400"}`}>
                       {t.message}
                     </p>
-                    <p className="text-[11px] capitalize text-zinc-600">
+                    <p className={`text-[11px] capitalize ${light ? "text-zinc-500" : "text-zinc-600"}`}>
                       {t.category.replace(/_/g, " ")}
                     </p>
                   </div>

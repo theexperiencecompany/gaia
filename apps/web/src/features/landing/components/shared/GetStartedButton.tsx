@@ -8,16 +8,23 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 export default function GetStartedButton({
   small_text = false,
   text = "Get Started",
+  btnColor = "#00bbff",
+  classname = "text-black!",
 }: {
   small_text?: boolean;
   text?: string;
+  btnColor?: string;
+  classname?: string;
 }) {
   return (
-    <div className="relative z-2 flex flex-col items-center gap-4 group">
+    <div
+      className="relative z-2 flex flex-col items-center gap-4 group"
+      style={{ willChange: "auto" }}
+    >
       <Link href={"/signup"}>
         <RaisedButton
-          className="rounded-xl px-1 text-black! before:rounded-xl hover:pl-2 duration-400 ease-out group shadow-black"
-          color="#00bbff"
+          className={`rounded-xl px-1 ${classname} before:rounded-xl hover:pl-2 duration-400 ease-out group shadow-black`}
+          color={btnColor}
           onClick={() => {
             trackEvent(ANALYTICS_EVENTS.CTA_GET_STARTED_CLICKED, {
               button_text: text,
