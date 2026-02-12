@@ -1,7 +1,7 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
@@ -29,7 +29,7 @@ export default function DemoWorkflowSteps({
     <div className="relative pb-2">
       {/* Timeline line */}
       {visible.length > 1 && (
-        <motion.div
+        <m.div
           className="absolute left-[11px] top-3 w-px bg-linear-to-b from-primary via-primary/80 to-transparent"
           initial={{ height: 0 }}
           animate={{ height: "calc(100% - 24px)" }}
@@ -40,7 +40,7 @@ export default function DemoWorkflowSteps({
       <div className="space-y-5">
         <AnimatePresence>
           {visible.map((step, index) => (
-            <motion.div
+            <m.div
               key={step.id}
               initial={{ opacity: 0, y: 10, scale: 0.95 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -89,7 +89,7 @@ export default function DemoWorkflowSteps({
                   {step.description}
                 </p>
               </div>
-            </motion.div>
+            </m.div>
           ))}
         </AnimatePresence>
       </div>

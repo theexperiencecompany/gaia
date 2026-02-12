@@ -40,7 +40,7 @@ export default function HeroSection() {
           text="You shouldn't be doing this manually."
           // text="Meet the personal assistant you've always wanted"
           delay={0}
-          staggerDelay={0.15}
+          staggerDelay={0.08}
           className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible"
           gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), #000000)"
           disableIntersectionObserver
@@ -51,7 +51,7 @@ export default function HeroSection() {
         <div className="relative">
           <div className="mb-6 max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-black sm:px-0 sm:text-xl">
             GAIA handles your emails, tasks, calendar, and workflows,
-            <br /> so you can focus on work that actually matters.
+            <br /> so you can focus on work that actually matters.{" "}
           </div>
           <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-white z-[-1] sm:px-0 sm:text-xl">
             GAIA handles your emails, tasks, calendar, and workflows,

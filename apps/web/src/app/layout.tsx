@@ -144,22 +144,25 @@ export default function RootLayout({
         <link
           rel="preload"
           as="image"
-          href="/images/wallpapers/g3.png"
+          href="/_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.webp&w=3840&q=75"
           fetchPriority="high"
+          type="image/webp"
+          imageSrcSet="/_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.webp&w=640&q=75 640w, /_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.webp&w=1080&q=75 1080w, /_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.webp&w=1920&q=75 1920w, /_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.webp&w=3840&q=75 3840w"
+          imageSizes="100vw"
         />
-
         <link
           rel="preload"
           as="image"
-          href="/images/wallpapers/g3.webp"
+          href="/_next/image?url=%2Fimages%2Flogos%2Ftext_w_logo_white.webp&w=256&q=75"
           fetchPriority="high"
+          type="image/webp"
         />
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}
       </head>
       <body className={`dark ${defaultFont.className}`}>
-        <main>
+        <div id="app-root">
           <ProvidersLayout>{children}</ProvidersLayout>
-        </main>
+        </div>
 
         {/* JSON-LD Schema - Organization */}
         <Script id="json-ld-organization" type="application/ld+json">

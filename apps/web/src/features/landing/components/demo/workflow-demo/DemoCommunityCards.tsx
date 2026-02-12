@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
@@ -48,7 +48,7 @@ export default function DemoCommunityCards({
     <div className="flex w-full flex-col items-center justify-center min-h-[200px]">
       <AnimatePresence>
         {showButton && (
-          <motion.div
+          <m.div
             key="publish-btn"
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -66,7 +66,7 @@ export default function DemoCommunityCards({
               </RaisedButton>
               <AnimatePresence>
                 {rippleActive && (
-                  <motion.div
+                  <m.div
                     key="ripple"
                     initial={{ scale: 0.3, opacity: 0.6 }}
                     animate={{ scale: 2, opacity: 0 }}
@@ -77,11 +77,11 @@ export default function DemoCommunityCards({
                 )}
               </AnimatePresence>
             </div>
-          </motion.div>
+          </m.div>
         )}
 
         {showCards && (
-          <motion.div
+          <m.div
             key="community-section"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -89,18 +89,18 @@ export default function DemoCommunityCards({
             transition={{ duration: 0.3, ease: wfEase }}
             className="w-full"
           >
-            <motion.p
+            <m.p
               initial={{ opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.3, ease: wfEase }}
               className={`mb-4 text-center font-medium ${light ? "text-zinc-600" : "text-zinc-800"}`}
             >
               Community Workflows
-            </motion.p>
+            </m.p>
 
             <div className="grid grid-cols-3 gap-2">
               {COMMUNITY_WORKFLOWS.map((wf, i) => (
-                <motion.div
+                <m.div
                   key={wf.title}
                   initial={{ opacity: 0, y: 20, scale: 0.9 }}
                   animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -176,6 +176,7 @@ export default function DemoCommunityCards({
                           alt={wf.creator.name}
                           width={27}
                           height={27}
+                          loading="lazy"
                           className="h-7 w-7 rounded-full"
                         />
                       </div>
@@ -191,10 +192,10 @@ export default function DemoCommunityCards({
                       </Button>
                     </div>
                   </div>
-                </motion.div>
+                </m.div>
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

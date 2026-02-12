@@ -2,7 +2,7 @@
 
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CalendarCheckOut01Icon,
@@ -27,7 +27,7 @@ export default function DemoTodoList({ phase }: DemoTodoListProps) {
   const isHighlighting = phase === "todo_highlighted";
 
   return (
-    <motion.div
+    <m.div
       key="todo-list"
       exit={{ opacity: 0 }}
       transition={{ duration: 0.25, ease: tdEase }}
@@ -50,7 +50,7 @@ export default function DemoTodoList({ phase }: DemoTodoListProps) {
             const dimmed = isHighlighting && !isTarget;
 
             return (
-              <motion.div
+              <m.div
                 key={todo.id}
                 initial={{ opacity: 0, x: 10 }}
                 animate={{ opacity: 1, x: 0 }}
@@ -196,18 +196,18 @@ export default function DemoTodoList({ phase }: DemoTodoListProps) {
 
                   {/* Highlight pulse ring */}
                   {highlight && (
-                    <motion.div
+                    <m.div
                       className="pointer-events-none absolute inset-0 rounded-none ring-1 ring-primary/50"
                       animate={{ opacity: [0.6, 1, 0.6] }}
                       transition={{ duration: 1.4, repeat: Infinity }}
                     />
                   )}
                 </div>
-              </motion.div>
+              </m.div>
             );
           })}
         </AnimatePresence>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

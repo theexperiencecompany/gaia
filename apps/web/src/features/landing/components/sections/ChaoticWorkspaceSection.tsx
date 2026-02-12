@@ -106,6 +106,7 @@ export default function ChaoticWorkspaceSection() {
             alt="Google Calendar"
             width={60}
             height={60}
+            loading="lazy"
             className="rounded-xl"
           />
           <div className="absolute -top-2 -right-2 rounded-full bg-red-500 px-2 py-1 text-sm font-bold text-white">
@@ -125,6 +126,7 @@ export default function ChaoticWorkspaceSection() {
             alt="Slack"
             width={55}
             height={55}
+            loading="lazy"
             className="rounded-xl"
           />
           <div className="absolute -top-2 -right-2 rounded-full bg-green-500 px-2 py-1 text-sm font-bold text-white">
@@ -144,6 +146,7 @@ export default function ChaoticWorkspaceSection() {
             alt="Notion"
             width={58}
             height={58}
+            loading="lazy"
             className="rounded-xl"
           />
           <div className="absolute -top-2 -right-2 rounded-full bg-blue-500 px-2 py-1 text-sm font-bold text-white">
@@ -163,6 +166,7 @@ export default function ChaoticWorkspaceSection() {
           alt="LinkedIn"
           width={50}
           height={50}
+          loading="lazy"
           className="rounded-xl"
         />
       </div>
@@ -178,6 +182,7 @@ export default function ChaoticWorkspaceSection() {
             alt="Gmail"
             width={65}
             height={65}
+            loading="lazy"
             className="rounded-xl"
           />
           <div className="absolute -top-2 -right-2 rounded-full bg-red-600 px-2 py-1 text-sm font-bold text-white">
@@ -197,6 +202,7 @@ export default function ChaoticWorkspaceSection() {
             alt="GitHub"
             width={58}
             height={58}
+            loading="lazy"
             className="rounded-xl"
           />
         </div>
@@ -212,6 +218,7 @@ export default function ChaoticWorkspaceSection() {
           alt="Figma"
           width={50}
           height={50}
+          loading="lazy"
           className="rounded-xl"
         />
       </div>
@@ -227,6 +234,7 @@ export default function ChaoticWorkspaceSection() {
           alt="Google Sheets"
           width={50}
           height={50}
+          loading="lazy"
           className="rounded-xl"
         />
       </div>
@@ -242,6 +250,7 @@ export default function ChaoticWorkspaceSection() {
             alt="Google Docs"
             width={55}
             height={55}
+            loading="lazy"
             className="rounded-xl"
           />
           <div className="absolute -right-2 -bottom-2 rounded-full bg-gray-700 px-2 py-1 text-xs font-bold text-white">
@@ -261,6 +270,7 @@ export default function ChaoticWorkspaceSection() {
             alt="Trello"
             width={55}
             height={55}
+            loading="lazy"
             className="rounded-xl"
           />
           <div className="absolute -top-2 -right-2 rounded-full bg-purple-500 px-2 py-1 text-sm font-bold text-white">
@@ -278,6 +288,7 @@ export default function ChaoticWorkspaceSection() {
             alt="WhatsApp"
             width={60}
             height={60}
+            loading="lazy"
             className="rounded-xl"
           />
           <div className="absolute -top-2 -right-2 rounded-full bg-red-500 px-2 py-1 text-sm font-bold text-white">
@@ -293,6 +304,7 @@ export default function ChaoticWorkspaceSection() {
           alt="Todoist"
           width={50}
           height={50}
+          loading="lazy"
           className="rounded-xl"
         />
       </div>

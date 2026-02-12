@@ -72,6 +72,7 @@ export function SimpleChatBubbleBot({
           src="/images/logos/logo.webp"
           width={50}
           height={50}
+          loading="lazy"
           alt="GAIA"
           className="rounded-full"
         />

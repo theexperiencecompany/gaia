@@ -1,33 +1,40 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 
 export default function HeroImage({
   shouldHaveInitialFade = false,
-  parallaxSpeed = 0.3, // 0.5 = moves at half speed (slower), 1 = normal speed, 0 = fixed
+  parallaxSpeed = 0.3,
 }: {
   shouldHaveInitialFade?: boolean;
   parallaxSpeed?: number;
 }) {
-  const [offsetY, setOffsetY] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const transformRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handleScroll = () => {
-      if (!containerRef.current) return;
-
-      setOffsetY(window.scrollY * parallaxSpeed);
+      if (rafRef.current !== null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        if (transformRef.current)
+          transformRef.current.style.transform = `translateY(${-(window.scrollY * parallaxSpeed)}px)`;
+        rafRef.current = null;
+      });
     };
 
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
   }, [parallaxSpeed]);
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <div
+        ref={transformRef}
         style={{
-          transform: `translateY(${-offsetY}px)`,
           willChange: "transform",
         }}
         className="absolute inset-0 h-full w-full"
@@ -36,9 +43,7 @@ export default function HeroImage({
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 
         <ProgressiveImage
-          // webpSrc="/images/wallpapers/g3.webp"
-          // pngSrc="/images/wallpapers/g3.png"
-          webpSrc="/images/wallpapers/swiss.png"
+          webpSrc="/images/wallpapers/swiss.webp"
           pngSrc="/images/wallpapers/swiss.png"
           alt="wallpaper"
           className="object-cover"

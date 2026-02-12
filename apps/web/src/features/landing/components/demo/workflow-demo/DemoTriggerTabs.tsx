@@ -1,7 +1,7 @@
 "use client";
 
 import { Tab, Tabs } from "@heroui/tabs";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { useEffect, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
@@ -66,6 +66,7 @@ export default function DemoTriggerTabs({
         </div>
 
         <Tabs
+          aria-label="Workflow trigger configuration"
           selectedKey={selectedTab}
           onSelectionChange={(key) => setSelectedTab(key as TriggerTab)}
           classNames={{
@@ -84,7 +85,7 @@ export default function DemoTriggerTabs({
       <AnimatePresence mode="wait">
         {/* Schedule content */}
         {showContent && selectedTab === "schedule" && (
-          <motion.div
+          <m.div
             key="schedule-content"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -105,12 +106,12 @@ export default function DemoTriggerTabs({
                 </p>
               </div>
             </div>
-          </motion.div>
+          </m.div>
         )}
 
         {/* Trigger content - staggered list */}
         {showContent && selectedTab === "trigger" && (
-          <motion.div
+          <m.div
             key="trigger-content"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -120,7 +121,7 @@ export default function DemoTriggerTabs({
           >
             <div className="space-y-1">
               {DEMO_TRIGGERS.map((trigger, i) => (
-                <motion.div
+                <m.div
                   key={trigger.slug}
                   initial={{ opacity: 0, x: -12 }}
                   animate={{ opacity: 1, x: 0 }}
@@ -146,15 +147,15 @@ export default function DemoTriggerTabs({
                       {trigger.description}
                     </span>
                   </div>
-                </motion.div>
+                </m.div>
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
 
         {/* Manual content */}
         {showContent && selectedTab === "manual" && (
-          <motion.div
+          <m.div
             key="manual-content"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -165,7 +166,7 @@ export default function DemoTriggerTabs({
             <p className="text-sm text-zinc-500">
               This workflow will be triggered manually when you run it.
             </p>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

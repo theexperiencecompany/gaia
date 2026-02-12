@@ -406,8 +406,8 @@ export default function Tired() {
 
       <LargeHeader
         chipText="Stop context-switching"
-        headingText="Your apps don't talk to each other.GAIA does."
-        subHeadingText="Connect Gmail, Slack, Notion, Calendar and 100+ tools — and let GAIA take action across all of them."
+        headingText="Every tool. One assistant."
+        subHeadingText="Plug in your stack once. GAIA takes action across Gmail, Slack, Notion, Calendar and 100+ more."
         centered
       />
 
@@ -427,6 +427,7 @@ export default function Tired() {
             alt="GAIA Logo"
             width={120}
             height={120}
+            loading="lazy"
             className="rounded-[31px]"
             style={{
               animation: hasAnimated
@@ -498,7 +499,8 @@ export default function Tired() {
                     alt={icon.alt}
                     width={icon.size}
                     height={icon.size}
-                    className="rounded-xl"
+                    loading="lazy"
+                    className="rounded-xl object-contain"
                     style={{
                       width: icon.size,
                       height: icon.size,

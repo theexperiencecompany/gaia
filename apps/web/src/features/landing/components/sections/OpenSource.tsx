@@ -92,8 +92,8 @@ export default function OpenSource() {
     >
       <div className="flex w-full max-w-7xl flex-col items-center justify-center rounded-2xl bg-gradient-to-b from-zinc-900 to-zinc-950 p-6 outline-1 outline-zinc-900 sm:rounded-3xl sm:p-8 lg:rounded-4xl lg:p-10">
         <LargeHeader
-          headingText="Open-Source & Self-Hostable"
-          subHeadingText="GAIA is fully open source. Self-host it on your own infrastructure, or explore the community-driven codebase on GitHub!"
+          headingText="Your data stays yours"
+          subHeadingText="GAIA is fully open source. Run it on your own server, audit every line of code, and never worry about your data being sold or misused."
           centered
         />
         <div className="flex -space-x-8 sm:-space-x-12 lg:-space-x-16">
@@ -102,21 +102,23 @@ export default function OpenSource() {
             alt="Docker Logo"
             width={200}
             height={200}
+            loading="lazy"
             className="relative z-[1] h-24 w-24 -rotate-10 sm:h-32 sm:w-32 lg:h-48 lg:w-48 xl:h-[200px] xl:w-[200px]"
           />
           <Image
             src={"/images/icons/github3d.webp"}
-            alt="Docker Logo"
+            alt="GitHub Logo"
             width={200}
-            className="relative z-[2] h-24 w-24 rotate-3 sm:h-32 sm:w-32 lg:h-48 lg:w-48 xl:h-[200px] xl:w-[200px]"
             height={200}
+            loading="lazy"
+            className="relative z-[2] h-24 w-24 rotate-3 sm:h-32 sm:w-32 lg:h-48 lg:w-48 xl:h-[200px] xl:w-[200px]"
           />
         </div>
 
         {/* Contributors Section */}
         <div className="flex flex-col items-center gap-3 pt-4 sm:gap-4 sm:pt-6">
           <h3 className="text-center text-base font-medium text-zinc-300 sm:text-lg">
-            Built by the community
+            Built by engineers who use it every day
           </h3>
           {isLoading ? (
             <div className="flex items-center gap-2">

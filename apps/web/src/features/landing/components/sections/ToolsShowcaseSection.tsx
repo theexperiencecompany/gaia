@@ -29,6 +29,7 @@ const FloatingIcon = ({
       alt={alt}
       width={size}
       height={size}
+      loading="lazy"
       className="object-contain"
       sizes={`${size}px`}
     />

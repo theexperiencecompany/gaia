@@ -2,7 +2,7 @@
 
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CalendarCheckOut01Icon,
@@ -27,7 +27,7 @@ export default function DemoTodoComplete({
   phase: _phase,
 }: DemoTodoCompleteProps) {
   return (
-    <motion.div
+    <m.div
       key="todo-complete"
       initial={{ opacity: 0, scale: 0.98 }}
       animate={{ opacity: 1, scale: 1 }}
@@ -46,7 +46,7 @@ export default function DemoTodoComplete({
           const isTarget = todo.id === TARGET_TODO.id;
 
           return (
-            <motion.div
+            <m.div
               key={todo.id}
               initial={{ opacity: 0 }}
               animate={{ opacity: isTarget ? 1 : 0.45 }}
@@ -57,7 +57,7 @@ export default function DemoTodoComplete({
             >
               {/* Checkbox — completed for target */}
               {isTarget ? (
-                <motion.div
+                <m.div
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={{
@@ -73,7 +73,7 @@ export default function DemoTodoComplete({
                     height={18}
                     className="text-success"
                   />
-                </motion.div>
+                </m.div>
               ) : (
                 <Checkbox
                   isSelected={false}
@@ -93,7 +93,7 @@ export default function DemoTodoComplete({
 
               {/* Content */}
               <div className="min-w-0 flex-1">
-                <motion.p
+                <m.p
                   animate={isTarget ? { opacity: 0.4 } : { opacity: 1 }}
                   transition={{ delay: 0.3, duration: 0.4 }}
                   className={`text-base font-medium ${
@@ -101,7 +101,7 @@ export default function DemoTodoComplete({
                   }`}
                 >
                   {todo.title}
-                </motion.p>
+                </m.p>
 
                 {todo.description && !isTarget && (
                   <p className="mt-0.5 text-xs text-zinc-500">
@@ -195,14 +195,14 @@ export default function DemoTodoComplete({
 
               {/* Done badge for target, ChevronRight for others */}
               {isTarget ? (
-                <motion.span
+                <m.span
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.4, type: "spring", stiffness: 400 }}
                   className="shrink-0 self-center rounded-full bg-success/15 px-2 py-0.5 text-xs text-success"
                 >
                   Done
-                </motion.span>
+                </m.span>
               ) : (
                 <div className="flex h-full items-center self-center">
                   <ChevronRight
@@ -215,17 +215,17 @@ export default function DemoTodoComplete({
 
               {/* Success glow on target */}
               {isTarget && (
-                <motion.div
+                <m.div
                   className="pointer-events-none absolute inset-0 rounded-none bg-success/5"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: [0, 1, 0] }}
                   transition={{ delay: 0.15, duration: 1.0 }}
                 />
               )}
-            </motion.div>
+            </m.div>
           );
         })}
       </div>
-    </motion.div>
+    </m.div>
   );
 }

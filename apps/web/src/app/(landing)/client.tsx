@@ -1,20 +1,47 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import { useEffect } from "react";
-import { LandingDownloadSection } from "@/features/download/components/DownloadPage";
-import ChatDemoSection from "@/features/landing/components/demo/ChatDemoSection";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
-import CommunitySection from "@/features/landing/components/sections/CommunitySection";
-import FinalSection from "@/features/landing/components/sections/FinalSection";
-import OpenSource from "@/features/landing/components/sections/OpenSource";
-import Personalised from "@/features/landing/components/sections/Personalised";
-import UseCasesSectionLanding from "@/features/landing/components/sections/Productivity";
-import TiredBoringAssistants from "@/features/landing/components/sections/TiredBoringAssistants";
-import TodoShowcaseSection from "@/features/landing/components/sections/TodoShowcaseSection";
-import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
-import { FAQAccordion } from "@/features/pricing/components/FAQAccordion";
+import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
+
+// Below-fold sections — dynamically imported to reduce initial bundle
+const ChatDemoSection = dynamic(
+  () => import("@/features/landing/components/demo/ChatDemoSection"),
+);
+const TiredBoringAssistants = dynamic(
+  () => import("@/features/landing/components/sections/TiredBoringAssistants"),
+);
+const WorkflowSection = dynamic(
+  () => import("@/features/landing/components/sections/WorkflowSection"),
+);
+const UseCasesSectionLanding = dynamic(
+  () => import("@/features/landing/components/sections/Productivity"),
+);
+const TodoShowcaseSection = dynamic(
+  () => import("@/features/landing/components/sections/TodoShowcaseSection"),
+);
+const OpenSource = dynamic(
+  () => import("@/features/landing/components/sections/OpenSource"),
+);
+const FAQAccordion = dynamic(() =>
+  import("@/features/pricing/components/FAQAccordion").then((mod) => ({
+    default: mod.FAQAccordion,
+  })),
+);
+const LandingDownloadSection = dynamic(() =>
+  import("@/features/download/components/DownloadPage").then((mod) => ({
+    default: mod.LandingDownloadSection,
+  })),
+);
+const CommunitySection = dynamic(
+  () => import("@/features/landing/components/sections/CommunitySection"),
+);
+const FinalSection = dynamic(
+  () => import("@/features/landing/components/sections/FinalSection"),
+);
 
 export default function LandingPageClient() {
   useEffect(() => {
@@ -25,80 +52,43 @@ export default function LandingPageClient() {
     };
   }, []);
 
-  // const imageOptions = [
-  //   {
-  //     name: "Calendar",
-  //     src: "/images/screenshots/calendar.webp",
-  //   },
-  //   {
-  //     name: "Chats",
-  //     src: "/images/screenshots/chats.png",
-  //   },
-  //   {
-  //     name: "Todos",
-  //     src: "/images/screenshots/todos.webp",
-  //   },
-  //   {
-  //     name: "Goals",
-  //     src: "/images/screenshots/goals.png",
-  //   },
-  //   {
-  //     name: "Mail",
-  //     src: "/images/screenshots/mail.webp",
-  //   },
-  // ];
-
   return (
-    <div className="relative overflow-hidden">
-      <div className="absolute inset-0 h-screen w-full opacity-100">
-        <HeroImage />
-      </div>
+    <LazyMotionProvider>
+      <div className="relative overflow-hidden">
+        <div className="absolute inset-0 h-screen w-full opacity-100">
+          <HeroImage />
+        </div>
 
-      <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
-        <HeroSection />
-      </section>
+        <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
+          <HeroSection />
+        </section>
 
-      <section className="relative z-20 w-full py-20 mb-30">
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
+        <section className="relative z-20 w-full py-20 mb-30">
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
 
-        <Image
-          src="/images/wallpapers/bands_gradient_1.png"
-          alt=""
-          fill
-          className="object-cover absolute top-0 left-0 -z-10 opacity-90"
-          priority
-        />
-        <ChatDemoSection />
-      </section>
-
-      <div>
-        <TiredBoringAssistants />
-        {/* <div className="relative">
-
-          <div
-            className="absolute top-140 z-0 h-[120vh] w-screen blur-lg"
-            style={{
-              backgroundImage: `
-              radial-gradient(circle at center, #00bbff80 0%, transparent 70%)
-              `,
-              opacity: 0.6,
-            }}
+          <Image
+            src="/images/wallpapers/bands_gradient_1.webp"
+            alt="Gradient background"
+            fill
+            sizes="100vw"
+            className="object-cover absolute top-0 left-0 -z-10 opacity-90"
+            loading="lazy"
           />
-        </div> */}
+          <ChatDemoSection />
+        </section>
 
-        {/* <ProductivityOS /> */}
-        {/* <ToolsShowcaseSection /> */}
-        <WorkflowSection />
-        <UseCasesSectionLanding />
-        <TodoShowcaseSection />
-        {/* <Personalised /> */}
-        {/* <TestimonialsSection /> */}
-        <OpenSource />
-        <FAQAccordion />
-        <LandingDownloadSection />
-        <CommunitySection />
-        <FinalSection showSocials={false} />
+        <div>
+          <TiredBoringAssistants />
+          <WorkflowSection />
+          <UseCasesSectionLanding />
+          <TodoShowcaseSection />
+          <OpenSource />
+          <FAQAccordion />
+          <LandingDownloadSection />
+          <CommunitySection />
+          <FinalSection showSocials={false} />
+        </div>
       </div>
-    </div>
+    </LazyMotionProvider>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { SparklesIcon } from "@/icons";
 import {
@@ -25,7 +25,7 @@ export default function DemoTodoRun({ phase }: DemoTodoRunProps) {
   const calls = DEMO_TODO_WORKFLOW.toolCalls.slice(0, visibleCount);
 
   return (
-    <motion.div
+    <m.div
       key="todo-run"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
@@ -36,12 +36,12 @@ export default function DemoTodoRun({ phase }: DemoTodoRunProps) {
       {/* Header */}
       <div className="border-b border-zinc-800 px-5 py-3.5">
         <div className="flex items-center gap-2">
-          <motion.div
+          <m.div
             animate={{ opacity: [0.4, 1, 0.4] }}
             transition={{ duration: 1.2, repeat: Infinity }}
           >
             <SparklesIcon className="h-4 w-4 text-primary" />
-          </motion.div>
+          </m.div>
           <span className="text-sm font-medium text-zinc-300">
             Running workflow…
           </span>
@@ -55,7 +55,7 @@ export default function DemoTodoRun({ phase }: DemoTodoRunProps) {
       <div className="space-y-3 px-5 py-4 min-h-[180px]">
         <AnimatePresence>
           {calls.map((call, index) => (
-            <motion.div
+            <m.div
               key={`${call.category}-${index}`}
               initial={{ opacity: 0, x: -10 }}
               animate={{ opacity: 1, x: 0 }}
@@ -78,17 +78,17 @@ export default function DemoTodoRun({ phase }: DemoTodoRunProps) {
               {/* Animated ellipsis for the last visible item */}
               {index === calls.length - 1 &&
                 visibleCount < DEMO_TODO_WORKFLOW.toolCalls.length && (
-                  <motion.span
+                  <m.span
                     animate={{ opacity: [0.3, 1, 0.3] }}
                     transition={{ duration: 0.9, repeat: Infinity }}
                     className="ml-auto text-xs text-zinc-600"
                   >
                     …
-                  </motion.span>
+                  </m.span>
                 )}
               {/* Checkmark for completed items */}
               {index < calls.length - 1 && (
-                <motion.span
+                <m.span
                   initial={{ scale: 0 }}
                   animate={{ scale: 1 }}
                   transition={{
@@ -100,12 +100,12 @@ export default function DemoTodoRun({ phase }: DemoTodoRunProps) {
                   className="ml-auto text-xs text-success"
                 >
                   ✓
-                </motion.span>
+                </m.span>
               )}
-            </motion.div>
+            </m.div>
           ))}
         </AnimatePresence>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

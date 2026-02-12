@@ -34,7 +34,9 @@ export default function DemoChatHeader({
             <SidebarRight01Icon className="h-5 w-5" />
           )}
         </button>
-        <DemoModelPicker />
+        <div aria-hidden="true">
+          <DemoModelPicker />
+        </div>
       </div>
       <div className="flex items-center">
         {[

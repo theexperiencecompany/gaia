@@ -19,7 +19,8 @@ export default function DemoModelPicker() {
         if (k && typeof k === "string") setSelected(k);
       }}
       variant="flat"
-      aria-label="Select AI Model"
+      aria-label={current?.name ?? "AI Model"}
+      disallowEmptySelection
       className="w-fit! max-w-none!"
       popoverProps={{
         classNames: { content: "min-w-[340px] max-w-none bg-zinc-800" },
@@ -63,6 +64,7 @@ export default function DemoModelPicker() {
                     alt={m.provider}
                     width={20}
                     height={20}
+                    loading="lazy"
                     className="h-5 w-5 rounded object-contain"
                   />
                 </div>

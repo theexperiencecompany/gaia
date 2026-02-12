@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { AnimatePresence, motion, useInView } from "framer-motion";
+import { AnimatePresence, m, useInView } from "motion/react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -138,7 +138,7 @@ export default function WorkflowDemoAnimation() {
 
   return (
     <div ref={containerRef} className="flex flex-col items-center gap-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20, scale: 0.97 }}
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
         viewport={{ once: true }}
@@ -146,7 +146,7 @@ export default function WorkflowDemoAnimation() {
         className="relative flex h-[70vh] w-full items-center justify-center overflow-hidden rounded-2xl"
       >
         {/* Background image with subtle Ken Burns effect */}
-        <motion.div
+        <m.div
           className="absolute inset-0"
           animate={{ scale: [1, 1.1, 1] }}
           transition={{
@@ -156,13 +156,14 @@ export default function WorkflowDemoAnimation() {
           }}
         >
           <Image
-            src="/images/wallpapers/mesh_gradient_1.png"
-            alt=""
+            src="/images/wallpapers/mesh_gradient_1.webp"
+            alt="Mesh gradient background"
             fill
+            sizes="100vw"
             className="object-cover"
             priority
           />
-        </motion.div>
+        </m.div>
 
         {/* Overlay for readability */}
         <div className="absolute inset-0 bg-black/10 backdrop-blur-sm" />
@@ -172,19 +173,19 @@ export default function WorkflowDemoAnimation() {
           <AnimatePresence mode="wait">
             {/* Modal phase */}
             {showModal && (
-              <motion.div
+              <m.div
                 key="modal"
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.25, ease: wfEase }}
                 style={{ willChange: "opacity" }}
               >
                 <DemoWorkflowModal phase={phase} />
-              </motion.div>
+              </m.div>
             )}
 
             {/* Card + execution phase — chat-screen layout */}
             {!showModal && showCard && (
-              <motion.div
+              <m.div
                 key="execution"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -192,7 +193,6 @@ export default function WorkflowDemoAnimation() {
                 transition={{ duration: 0.3, ease: wfEase }}
                 style={
                   {
-                    willChange: "opacity",
                     backgroundColor: "#111111",
                     "--color-primary-bg": "#111111",
                   } as React.CSSProperties
@@ -217,26 +217,25 @@ export default function WorkflowDemoAnimation() {
                     <DummyComposer hideIntegrationBanner />
                   </div>
                 )}
-              </motion.div>
+              </m.div>
             )}
 
             {/* Publish + community cards phase */}
             {showCommunity && (
-              <motion.div
+              <m.div
                 key="community"
                 initial={false}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
                 transition={{ duration: 0.2, ease: wfEase }}
-                style={{ willChange: "opacity" }}
                 className="w-full px-4"
               >
                 <DemoCommunityCards phase={phase} colorScheme="dark" />
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         </div>
-      </motion.div>
+      </m.div>
 
       {/* Navigation controls — below the demo container */}
       <div className="flex items-center justify-between w-full">

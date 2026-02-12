@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { AnimatePresence, motion, useInView } from "framer-motion";
+import { AnimatePresence, m, useInView } from "motion/react";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -160,7 +160,7 @@ export default function ChatDemoSection() {
       ref={containerRef}
       className="relative flex w-full flex-col items-center"
     >
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
@@ -173,10 +173,10 @@ export default function ChatDemoSection() {
         <h2 className="text-3xl font-semibold tracking-tight text-white">
           Your GAIA, actually working
         </h2>
-      </motion.div>
+      </m.div>
 
       {/* Demo window */}
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 24, scale: 0.97 }}
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
         viewport={{ once: true }}
@@ -230,7 +230,7 @@ export default function ChatDemoSection() {
                 {/* User bubble */}
                 <AnimatePresence>
                   {showUser && (
-                    <motion.div
+                    <m.div
                       key={`user-${uc.id}`}
                       variants={slideUp}
                       initial="initial"
@@ -280,14 +280,14 @@ export default function ChatDemoSection() {
                           </AvatarFallback>
                         </Avatar>
                       </div>
-                    </motion.div>
+                    </m.div>
                   )}
                 </AnimatePresence>
 
                 {/* Loading indicator */}
                 <AnimatePresence mode="wait">
                   {showLoading && (
-                    <motion.div
+                    <m.div
                       key={`loading-${uc.id}-${loadingKey}`}
                       initial={{ opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -307,7 +307,7 @@ export default function ChatDemoSection() {
                         <MiniWaveSpinner />
                       )}
                       <AnimatePresence mode="wait">
-                        <motion.span
+                        <m.span
                           key={loadingKey}
                           variants={slideUp}
                           initial="initial"
@@ -321,9 +321,9 @@ export default function ChatDemoSection() {
                           }}
                         >
                           {loadingText}
-                        </motion.span>
+                        </m.span>
                       </AnimatePresence>
-                    </motion.div>
+                    </m.div>
                   )}
                 </AnimatePresence>
 
@@ -368,7 +368,7 @@ export default function ChatDemoSection() {
                   {/* Final card — above the text bubble, below tool calls */}
                   <AnimatePresence>
                     {showFinalCard && (
-                      <motion.div
+                      <m.div
                         key={`card-${uc.id}`}
                         initial={{ opacity: 0, y: 10, scale: 0.97 }}
                         animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -379,7 +379,7 @@ export default function ChatDemoSection() {
                         className="ml-10.75 mb-3"
                       >
                         <DemoFinalCard type={uc.finalCard} />
-                      </motion.div>
+                      </m.div>
                     )}
                   </AnimatePresence>
 
@@ -389,7 +389,7 @@ export default function ChatDemoSection() {
                     <div className="relative bottom-0 min-w-10 shrink-0">
                       <AnimatePresence>
                         {showBotLogo && (
-                          <motion.div
+                          <m.div
                             key="bot-logo"
                             initial={{ opacity: 0, scale: 0.8 }}
                             animate={{ opacity: 1, scale: 1 }}
@@ -399,10 +399,11 @@ export default function ChatDemoSection() {
                               src="/images/logos/logo.webp"
                               width={28}
                               height={28}
+                              loading="lazy"
                               alt="GAIA"
                               className="relative z-10"
                             />
-                          </motion.div>
+                          </m.div>
                         )}
                       </AnimatePresence>
                     </div>
@@ -411,7 +412,7 @@ export default function ChatDemoSection() {
                       {/* Text response */}
                       <AnimatePresence>
                         {showResponse && (
-                          <motion.div
+                          <m.div
                             key={`response-${uc.id}`}
                             initial={{ opacity: 0, y: 6 }}
                             animate={{ opacity: 1, y: 0 }}
@@ -424,7 +425,7 @@ export default function ChatDemoSection() {
                                 <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-white/60 align-middle" />
                               )}
                             </div>
-                          </motion.div>
+                          </m.div>
                         )}
                       </AnimatePresence>
                     </div>
@@ -470,10 +471,10 @@ export default function ChatDemoSection() {
             </div>
           </div>
         </div>
-      </motion.div>
+      </m.div>
 
       {/* Use case chips + retry */}
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 12 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
@@ -507,7 +508,7 @@ export default function ChatDemoSection() {
         >
           <RedoIcon width={20} height={20} />
         </Button>
-      </motion.div>
+      </m.div>
     </div>
   );
 }

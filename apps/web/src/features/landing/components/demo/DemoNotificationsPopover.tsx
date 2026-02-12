@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { useState } from "react";
 
 import { CheckmarkBadge01Icon } from "@/icons";
@@ -34,7 +34,7 @@ export default function DemoNotificationsPopover({
             onKeyDown={(e) => e.key === "Escape" && onClose()}
           />
 
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: -8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -8, scale: 0.96 }}
@@ -119,7 +119,7 @@ export default function DemoNotificationsPopover({
                 View all notifications
               </Button>
             </div>
-          </motion.div>
+          </m.div>
         </>
       )}
     </AnimatePresence>

@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ChevronDown, Wrench01Icon } from "@/icons";
@@ -21,7 +21,7 @@ export default function DemoToolCalls({
   const light = colorScheme === "light";
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
       transition={tx}
@@ -63,7 +63,7 @@ export default function DemoToolCalls({
 
       <AnimatePresence>
         {expanded && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
@@ -111,9 +111,9 @@ export default function DemoToolCalls({
                 </div>
               ))}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </m.div>
   );
 }

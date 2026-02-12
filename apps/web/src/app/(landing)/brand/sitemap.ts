@@ -1,11 +1,13 @@
 import type { MetadataRoute } from "next";
 
+import { getSiteUrl } from "@/lib/seo";
+
 /**
  * Image sitemap for brand assets
  * This helps Google Images index our brand assets properly
  */
 export default function sitemap(): MetadataRoute.Sitemap {
-  const baseUrl = "https://heygaia.io";
+  const baseUrl = getSiteUrl();
 
   const brandImages = [
     "gaia-logo-blue.svg",

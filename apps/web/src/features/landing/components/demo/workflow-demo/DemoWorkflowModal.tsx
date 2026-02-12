@@ -5,7 +5,7 @@ import { Kbd } from "@heroui/kbd";
 import { Input, Textarea } from "@heroui/react";
 import { Skeleton } from "@heroui/skeleton";
 import { Switch } from "@heroui/switch";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import DemoTriggerTabs from "./DemoTriggerTabs";
 import type { WorkflowDemoPhase } from "./workflowDemoConstants";
@@ -85,7 +85,7 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
   return (
     <AnimatePresence>
       {showModal && (
-        <motion.div
+        <m.div
           key="wf-modal"
           initial={{ opacity: 0, scale: 0.92, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -101,7 +101,7 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
               <div className="flex min-h-0 flex-1 flex-col">
                 <div className="min-h-0 flex-1 space-y-6 overflow-y-auto pr-2">
                   {/* Title */}
-                  <motion.div
+                  <m.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.15, ...wfTx }}
@@ -116,10 +116,10 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
                         inputWrapper: "px-0",
                       }}
                     />
-                  </motion.div>
+                  </m.div>
 
                   {/* Description */}
-                  <motion.div
+                  <m.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ delay: 0.3, ...wfTx }}
@@ -135,7 +135,7 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
                         inputWrapper: "px-0",
                       }}
                     />
-                  </motion.div>
+                  </m.div>
 
                   {/* Divider */}
                   <div className="border-t border-zinc-800" />
@@ -158,7 +158,7 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
                     </span>
                     <AnimatePresence>
                       {showSteps && (
-                        <motion.span
+                        <m.span
                           key="step-count"
                           initial={{ opacity: 0, scale: 0.8 }}
                           animate={{ opacity: 1, scale: 1 }}
@@ -170,7 +170,7 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
                           className="rounded-full bg-primary/15 px-1.5 py-0.5 text-xs text-primary"
                         >
                           {DEMO_WORKFLOW.steps.length} steps
-                        </motion.span>
+                        </m.span>
                       )}
                     </AnimatePresence>
                   </div>
@@ -203,7 +203,11 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
             <div className="flex items-center justify-between">
               {/* Left side: Activation switch */}
               <div className="flex items-center gap-2">
-                <Switch size="sm" isSelected={true} isDisabled />
+                <Switch
+                  size="sm"
+                  isSelected={true}
+                  aria-label="Workflow active"
+                />
                 <span className="text-xs text-zinc-400">Active</span>
               </div>
 
@@ -222,7 +226,7 @@ export default function DemoWorkflowModal({ phase }: DemoWorkflowModalProps) {
               </div>
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

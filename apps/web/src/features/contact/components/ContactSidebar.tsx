@@ -51,7 +51,7 @@ const socialLinks = [
   },
   {
     ariaLabel: "YouTube",
-    href: "https://youtube.com/@heygaia_io",
+    href: "https://youtube.com/@theexperiencecompany",
     Icon: YoutubeIcon,
   },
   {

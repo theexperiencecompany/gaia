@@ -1,4 +1,4 @@
-import { type MotionProps, motion } from "framer-motion";
+import { type MotionProps, m } from "motion/react";
 import React, { Children, useMemo, useRef } from "react";
 
 import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver";
@@ -63,32 +63,30 @@ const AnimatedSectionComponent = ({
     disableAnimation || disableIntersectionObserver || isVisible;
 
   return (
-    <motion.div
+    <m.div
       ref={ref}
       initial={disableAnimation ? "visible" : "hidden"}
       animate={shouldAnimate ? "visible" : "hidden"}
       variants={containerVariants}
       className={cn(className)}
-      style={{ willChange: "transform, opacity, filter" }}
       {...restProps}
     >
       {Children.map(children, (child, index) => {
         const key =
           React.isValidElement(child) && child.key != null ? child.key : index;
         return (
-          <motion.span
+          <m.span
             key={key}
             variants={
               disableAnimation ? NO_ANIMATION_VARIANTS : STATIC_ITEM_VARIANTS
             }
-            style={{ willChange: "transform, opacity, filter" }}
             className={cn(childClassName)}
           >
             {child}
-          </motion.span>
+          </m.span>
         );
       })}
-    </motion.div>
+    </m.div>
   );
 };
 

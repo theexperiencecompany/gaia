@@ -1,12 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import {
-  AnimatePresence,
-  motion,
-  useInView,
-  useReducedMotion,
-} from "framer-motion";
+import { AnimatePresence, m, useInView, useReducedMotion } from "motion/react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight02Icon, RedoIcon } from "@/icons";
@@ -100,7 +95,7 @@ export default function TodoDemoAnimation() {
 
   return (
     <div ref={containerRef} className="flex flex-col items-center gap-4">
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20, scale: 0.97 }}
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
         viewport={{ once: true }}
@@ -108,56 +103,57 @@ export default function TodoDemoAnimation() {
         className="relative flex h-[70vh] w-full items-center justify-center overflow-hidden rounded-2xl"
       >
         {/* Background — same mesh gradient as workflow demo */}
-        <motion.div
+        <m.div
           className="absolute inset-0"
           animate={prefersReduced ? {} : { scale: [1, 1.1, 1] }}
           transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
         >
           <Image
-            src="/images/wallpapers/mesh_gradient_1.png"
-            alt=""
+            src="/images/wallpapers/mesh_gradient_1.webp"
+            alt="Mesh gradient background"
             fill
+            sizes="100vw"
             className="object-cover"
             priority
           />
-        </motion.div>
+        </m.div>
         <div className="absolute inset-0 bg-black/10 backdrop-blur-sm" />
 
         {/* Stage content */}
         <div className="relative z-10 flex h-full w-full items-center justify-center px-6">
           <AnimatePresence mode="wait">
             {showModal && (
-              <motion.div key="stage-modal" className="w-full max-w-lg">
+              <m.div key="stage-modal" className="w-full max-w-lg">
                 <DemoTodoModal phase={phase} />
-              </motion.div>
+              </m.div>
             )}
 
             {showList && (
-              <motion.div key="stage-list" className="w-full max-w-lg">
+              <m.div key="stage-list" className="w-full max-w-lg">
                 <DemoTodoList phase={phase} />
-              </motion.div>
+              </m.div>
             )}
 
             {showWorkflowOnly && (
-              <motion.div key="stage-workflow" className="w-full max-w-lg">
+              <m.div key="stage-workflow" className="w-full max-w-lg">
                 <DemoTodoWorkflow phase={phase} />
-              </motion.div>
+              </m.div>
             )}
 
             {showRun && (
-              <motion.div key="stage-run" className="w-full max-w-lg">
+              <m.div key="stage-run" className="w-full max-w-lg">
                 <DemoTodoRun phase={phase} />
-              </motion.div>
+              </m.div>
             )}
 
             {showComplete && (
-              <motion.div key="stage-complete" className="w-full max-w-lg">
+              <m.div key="stage-complete" className="w-full max-w-lg">
                 <DemoTodoComplete phase={phase} />
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
         </div>
-      </motion.div>
+      </m.div>
 
       {/* Nav controls */}
       <div className="flex w-full items-center justify-between">

@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { PlayIcon, ZapIcon } from "@/icons";
 import {
@@ -28,7 +28,7 @@ export default function DemoTodoWorkflow({ phase }: DemoTodoWorkflowProps) {
   const steps = DEMO_TODO_WORKFLOW.steps.slice(0, visibleCount);
 
   return (
-    <motion.div
+    <m.div
       key="todo-workflow"
       initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
@@ -52,7 +52,7 @@ export default function DemoTodoWorkflow({ phase }: DemoTodoWorkflowProps) {
       <div className="space-y-0 px-5 py-4">
         <AnimatePresence>
           {steps.map((step, index) => (
-            <motion.div
+            <m.div
               key={step.id}
               initial={{ opacity: 0, y: 10, scale: 0.97 }}
               animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -94,7 +94,7 @@ export default function DemoTodoWorkflow({ phase }: DemoTodoWorkflowProps) {
                   {step.description}
                 </p>
               </div>
-            </motion.div>
+            </m.div>
           ))}
         </AnimatePresence>
       </div>
@@ -102,14 +102,14 @@ export default function DemoTodoWorkflow({ phase }: DemoTodoWorkflowProps) {
       {/* Footer: Run button */}
       <AnimatePresence>
         {showRunButton && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.2, ease: tdEase }}
             className="border-t border-zinc-800 px-5 py-3"
           >
-            <motion.div
+            <m.div
               animate={isRunPressed ? { scale: 0.97 } : { scale: 1 }}
               transition={{ duration: 0.12 }}
             >
@@ -123,10 +123,10 @@ export default function DemoTodoWorkflow({ phase }: DemoTodoWorkflowProps) {
               >
                 Run Workflow
               </Button>
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </m.div>
         )}
       </AnimatePresence>
-    </motion.div>
+    </m.div>
   );
 }

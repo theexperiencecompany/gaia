@@ -66,6 +66,58 @@ const nextConfig = {
     NEXT_PUBLIC_API_BASE_URL: process.env.NEXT_PUBLIC_API_BASE_URL,
   },
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
+  async headers() {
+    return [
+      {
+        source: "/(.*)",
+        headers: [
+          {
+            key: "X-Frame-Options",
+            value: "SAMEORIGIN",
+          },
+          {
+            key: "Content-Security-Policy",
+            value: [
+              "default-src 'self'",
+              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.posthog.com https://*.sentry.io https://js.sentry-cdn.com https://browser.sentry-cdn.com",
+              "connect-src 'self' https://*.posthog.com https://*.sentry.io https://us.i.posthog.com https://us-assets.i.posthog.com wss://*.heygaia.io https://*.heygaia.io http://localhost:* ws://localhost:*",
+              "img-src 'self' data: blob: https: http:",
+              "style-src 'self' 'unsafe-inline'",
+              "font-src 'self' data:",
+              "frame-ancestors 'self'",
+              "worker-src 'self' blob:",
+            ].join("; "),
+          },
+          {
+            key: "X-Content-Type-Options",
+            value: "nosniff",
+          },
+          {
+            key: "Referrer-Policy",
+            value: "strict-origin-when-cross-origin",
+          },
+        ],
+      },
+      {
+        source: "/_next/static/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/images/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       {

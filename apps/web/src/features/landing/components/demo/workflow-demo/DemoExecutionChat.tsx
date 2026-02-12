@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 
@@ -112,7 +112,7 @@ export default function DemoExecutionChat({
   return (
     <AnimatePresence>
       {showSection && (
-        <motion.div
+        <m.div
           key="exec-chat"
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -136,7 +136,7 @@ export default function DemoExecutionChat({
           <AnimatePresence>
             {(phase === "tool_calls" ||
               (showResponse && typedResponse === "")) && (
-              <motion.div
+              <m.div
                 key="loading-spinner"
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -150,14 +150,14 @@ export default function DemoExecutionChat({
                 >
                   GAIA is thinking...
                 </span>
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
 
           {/* Bot response bubble - only show when typing has started */}
           <AnimatePresence>
             {showResponse && typedResponse !== "" && (
-              <motion.div
+              <m.div
                 key="bot-response"
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -168,6 +168,7 @@ export default function DemoExecutionChat({
                   src="/images/logos/logo.webp"
                   width={28}
                   height={28}
+                  loading="lazy"
                   alt="GAIA"
                   className="shrink-0 z-3"
                 />
@@ -193,10 +194,10 @@ export default function DemoExecutionChat({
                     />
                   )}
                 </div>
-              </motion.div>
+              </m.div>
             )}
           </AnimatePresence>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

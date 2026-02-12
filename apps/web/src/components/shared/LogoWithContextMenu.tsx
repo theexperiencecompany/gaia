@@ -216,6 +216,7 @@ export function LogoWithContextMenu({
               alt="GAIA Logo"
               width={width}
               height={height}
+              priority
               className={imageClassName}
             />
           </motion.div>

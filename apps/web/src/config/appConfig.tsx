@@ -206,7 +206,7 @@ export const appConfig = {
         description: "Join WhatsApp Community",
       },
       {
-        href: "https://youtube.com/@heygaia_io",
+        href: "https://youtube.com/@theexperiencecompany",
         label: "YouTube",
         icon: <YoutubeIcon width={25} height={25} color="#FF0000" />,
         external: true,

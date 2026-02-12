@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import { useId, useRef } from "react";
 
 import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver";
@@ -78,7 +78,7 @@ const SplitTextBlur = ({
   const shouldAnimate = disableIntersectionObserver || isVisible;
   const baseId = useId();
 
-  const MotionComponent = motion[as] as typeof motion.div;
+  const MotionComponent = m[as] as typeof m.div;
 
   return (
     <div className="relative">
@@ -89,7 +89,6 @@ const SplitTextBlur = ({
         variants={containerVariants}
         className={`${cn(className)} z-[10]`}
         style={{
-          willChange: "transform, opacity, filter",
           background: gradient,
           WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",
@@ -97,7 +96,7 @@ const SplitTextBlur = ({
         }}
       >
         {words.map((word, index) => (
-          <motion.span
+          <m.span
             // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
             key={baseId + word + index}
             variants={wordVariants}
@@ -114,11 +113,11 @@ const SplitTextBlur = ({
             className="font-serif p-[5px] pl-0"
           >
             {word}
-          </motion.span>
+          </m.span>
         ))}
       </MotionComponent>
       {showGlowTextBg && (
-        <motion.div
+        <m.div
           ref={ref}
           initial="hidden"
           animate={shouldAnimate ? "visible" : "hidden"}
@@ -126,7 +125,7 @@ const SplitTextBlur = ({
           className={`${cn(className)} text-white blur-md absolute top-0 z-[-1]`}
         >
           {words.map((word, index) => (
-            <motion.span
+            <m.span
               // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
               key={baseId + word + index}
               variants={wordVariants}
@@ -143,9 +142,9 @@ const SplitTextBlur = ({
               className="font-serif"
             >
               {word}
-            </motion.span>
+            </m.span>
           ))}
-        </motion.div>
+        </m.div>
       )}
     </div>
   );

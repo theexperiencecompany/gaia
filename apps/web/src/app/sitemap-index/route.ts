@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { siteConfig } from "@/lib/seo";
+import { getSiteUrl } from "@/lib/seo";
 
 /**
  * Sitemap IDs must match those in sitemap.ts
@@ -13,7 +13,7 @@ const SITEMAP_IDS = [0, 1, 2, 3, 4];
  * created by generateSitemaps() in sitemap.ts.
  */
 export async function GET() {
-  const baseUrl = siteConfig.url;
+  const baseUrl = getSiteUrl();
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">

@@ -22,6 +22,18 @@ import type {
   WithContext,
 } from "schema-dts";
 
+/**
+ * Resolve the site base URL based on environment.
+ * Priority: NEXT_PUBLIC_APP_URL > VERCEL_URL > dev/prod default
+ */
+export function getSiteUrl(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL)
+    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
+  if (process.env.NODE_ENV === "development") return "http://localhost:3000";
+  return "https://heygaia.io";
+}
+
 // Site-wide SEO Configuration
 export const siteConfig = {
   short_name: "GAIA",
@@ -29,14 +41,14 @@ export const siteConfig = {
   fullName: "GAIA - Your Personal AI Assistant from The Experience Company",
   description:
     "GAIA is your open-source personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools to boost productivity.",
-  url: "https://heygaia.io",
+  url: getSiteUrl(),
   ogImage: "/og-image.webp",
   links: {
     twitter: "https://x.com/trygaia",
     github: "https://github.com/theexperiencecompany",
     discord: "https://discord.heygaia.io",
     linkedin: "https://www.linkedin.com/company/heygaia",
-    youtube: "https://youtube.com/@heygaia_io",
+    youtube: "https://youtube.com/@theexperiencecompany",
     whatsapp: "https://whatsapp.heygaia.io",
   },
   founders: [

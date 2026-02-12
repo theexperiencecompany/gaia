@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import { useEffect, useState } from "react";
 import {
   CalendarCheckOut01Icon,
@@ -38,7 +38,7 @@ export default function DemoTodoModal({ phase }: DemoTodoModalProps) {
   const isSubmitting = phase === "modal_submit";
 
   return (
-    <motion.div
+    <m.div
       key="todo-modal"
       initial={{ opacity: 0, scale: 0.92, y: 20 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -48,7 +48,7 @@ export default function DemoTodoModal({ phase }: DemoTodoModalProps) {
       className="mx-auto w-full max-w-lg overflow-hidden rounded-2xl border border-zinc-700/50 bg-zinc-900 shadow-2xl"
     >
       <div className="flex flex-col gap-5 px-6 pt-6 pb-4">
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.15, ...tdTx }}
@@ -64,9 +64,9 @@ export default function DemoTodoModal({ phase }: DemoTodoModalProps) {
               inputWrapper: "border-0 bg-transparent shadow-none px-0",
             }}
           />
-        </motion.div>
+        </m.div>
 
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.3, ...tdTx }}
@@ -81,9 +81,9 @@ export default function DemoTodoModal({ phase }: DemoTodoModalProps) {
               inputWrapper: "border-0 bg-transparent shadow-none px-0",
             }}
           />
-        </motion.div>
+        </m.div>
 
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.45, ...tdTx }}
@@ -132,9 +132,9 @@ export default function DemoTodoModal({ phase }: DemoTodoModalProps) {
           >
             Work
           </Button>
-        </motion.div>
+        </m.div>
 
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.6, ...tdTx }}
@@ -169,14 +169,14 @@ export default function DemoTodoModal({ phase }: DemoTodoModalProps) {
             </span>
             <span className="text-sm text-zinc-600">Add subtask...</span>
           </div>
-        </motion.div>
+        </m.div>
       </div>
 
       <div className="flex items-center justify-end gap-3 border-t border-zinc-800 px-6 py-3">
         <Button variant="flat" size="md">
           Cancel
         </Button>
-        <motion.div
+        <m.div
           animate={isSubmitting ? { scale: [1, 0.96, 1] } : {}}
           transition={{ duration: 0.18 }}
         >
@@ -188,8 +188,8 @@ export default function DemoTodoModal({ phase }: DemoTodoModalProps) {
           >
             Add Task
           </Button>
-        </motion.div>
+        </m.div>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

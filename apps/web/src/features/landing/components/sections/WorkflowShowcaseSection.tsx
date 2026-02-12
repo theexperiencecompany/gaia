@@ -6,7 +6,7 @@ const CONTENT_SECTIONS = [
   {
     title: "Set it once, runs forever",
     description:
-      "Build a workflow once and GAIA runs it automatically — every day, every time. From forwarding receipts to your accountant, to researching every person you're meeting and sending you a briefing doc an hour before.",
+      "Describe what you want automated — GAIA builds the steps, sets the trigger, and runs it on repeat. Morning briefings, receipt forwarding, meeting prep — handled.",
   },
   {
     title: "Runs on your schedule, not a reminder",
@@ -19,9 +19,9 @@ const CONTENT_SECTIONS = [
   //     "Every todo you add becomes its own mini-workflow. GAIA doesn't just remind you — it actually does the work. Research, drafting, scheduling — done.",
   // },
   {
-    title: "One command moves everything",
+    title: "One workflow. Your whole stack.",
     description:
-      "Gmail, Google Docs, Slack, Calendar — they all talk to each other now. One workflow can pull info from your email, create a doc, schedule a meeting, and ping your team.",
+      "Gmail, Google Docs, Slack, Calendar — one workflow connects them all. Pull from your inbox, write a doc, schedule a meeting, ping your team. Done.",
   },
 ];
 

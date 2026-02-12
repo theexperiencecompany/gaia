@@ -33,7 +33,8 @@ export default function ProgressiveImage({
       <NextImage
         src={webpSrc}
         alt={`${alt} webp`}
-        fill
+        width={1920}
+        height={1080}
         priority={priority}
         sizes={sizes}
         onLoad={() => setInitialLoaded(true)}
@@ -44,8 +45,10 @@ export default function ProgressiveImage({
       <NextImage
         src={pngSrc}
         alt={`${alt} png`}
-        fill
+        width={1920}
+        height={1080}
         sizes={sizes}
+        loading={priority ? "eager" : "lazy"}
         onLoad={() => setLoaded(true)}
         className={`${className} transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
       />

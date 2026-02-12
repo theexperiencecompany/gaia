@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
@@ -35,7 +35,7 @@ export default function DemoWorkflowCard({
   return (
     <AnimatePresence>
       {visible && (
-        <motion.div
+        <m.div
           key="wf-card"
           initial={{ opacity: 0, y: 12, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -83,7 +83,7 @@ export default function DemoWorkflowCard({
             {/* Status */}
             <AnimatePresence mode="wait">
               {state === "executing" && (
-                <motion.div
+                <m.div
                   key="exec"
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -98,10 +98,10 @@ export default function DemoWorkflowCard({
                   <span className="text-[9px] font-medium text-primary">
                     Running
                   </span>
-                </motion.div>
+                </m.div>
               )}
               {state === "completed" && (
-                <motion.div
+                <m.div
                   key="done"
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
@@ -116,10 +116,10 @@ export default function DemoWorkflowCard({
                   <span className="text-[9px] font-medium text-green-400">
                     Completed
                   </span>
-                </motion.div>
+                </m.div>
               )}
               {state === "idle" && (
-                <motion.div
+                <m.div
                   key="active"
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
@@ -129,7 +129,7 @@ export default function DemoWorkflowCard({
                   <span className="text-[9px] font-medium text-green-400">
                     Active
                   </span>
-                </motion.div>
+                </m.div>
               )}
             </AnimatePresence>
           </div>
@@ -162,7 +162,7 @@ export default function DemoWorkflowCard({
               </span>
             )}
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

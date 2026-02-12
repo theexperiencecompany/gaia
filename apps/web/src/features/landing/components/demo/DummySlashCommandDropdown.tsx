@@ -3,7 +3,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import type React from "react";
 import { useMemo, useState } from "react";
 
@@ -585,7 +585,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
   return (
     <AnimatePresence>
       {isVisible && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: -8, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8, scale: 0.95 }}
@@ -628,7 +628,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
           )}
 
           {/* Category Tabs */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.1 }}
@@ -665,7 +665,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                 ))}
               </div>
             </ScrollShadow>
-          </motion.div>
+          </m.div>
 
           {/* Tool List */}
           <div className="flex-1 overflow-y-auto">
@@ -713,7 +713,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
               ))}
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

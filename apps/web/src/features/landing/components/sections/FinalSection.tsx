@@ -10,53 +10,53 @@ import GetStartedButton from "../shared/GetStartedButton";
 export const SOCIAL_LINKS = [
   {
     href: "https://twitter.com/trygaia",
-    ariaLabel: "Twitter Link",
+    ariaLabel: "Twitter",
     buttonProps: {
-      color: "#1DA1F2",
-      className: "rounded-xl text-black!",
+      color: "#1a8cd8",
+      className: "rounded-xl text-white!",
       "aria-label": "Twitter Link Button",
     },
     username: "@trygaia",
-    icon: <TwitterIcon width={20} height={20} />,
+    icon: <TwitterIcon width={20} height={20} aria-hidden="true" />,
     label: "Twitter",
     description: "Follow us for updates",
-    color: "#1DA1F2",
+    color: "#1a8cd8",
   },
   {
     href: "https://whatsapp.heygaia.io",
-    ariaLabel: "WhatsApp Link",
+    ariaLabel: "WhatsApp",
     buttonProps: {
-      color: "#25D366",
-      className: "rounded-xl text-black!",
+      color: "#1a9e4a",
+      className: "rounded-xl text-white!",
       "aria-label": "WhatsApp Link Button",
     },
-    icon: <WhatsappIcon width={20} height={20} />,
+    icon: <WhatsappIcon width={20} height={20} aria-hidden="true" />,
     label: "WhatsApp",
     description: "Chat with our community",
-    color: "#25D366",
+    color: "#1a9e4a",
   },
   {
     href: "https://discord.heygaia.io",
-    ariaLabel: "Discord Link",
+    ariaLabel: "Discord",
     buttonProps: {
       color: "#5865f2",
-      className: "rounded-xl text-black!",
+      className: "rounded-xl text-white!",
       "aria-label": "Discord Link Button",
     },
-    icon: <DiscordIcon width={20} height={20} />,
+    icon: <DiscordIcon width={20} height={20} aria-hidden="true" />,
     label: "Discord",
     description: "Join our community server",
     color: "#5865f2",
   },
   {
     href: "https://github.com/theexperiencecompany/gaia",
-    ariaLabel: "GitHub Link",
+    ariaLabel: "GitHub",
     buttonProps: {
       color: "#1c1c1c",
-      className: "rounded-xl text-black!",
+      className: "rounded-xl text-white!",
       "aria-label": "GitHub Link Button",
     },
-    icon: <Github width={20} height={20} />,
+    icon: <Github width={20} height={20} aria-hidden="true" />,
     label: "GitHub",
     description: "Star and contribute",
     color: "#000000",
@@ -77,6 +77,7 @@ export default function FinalSection({
           src="/images/wallpapers/landscape.webp"
           alt="Wallpaper"
           fill
+          className="object-cover"
           sizes="100vw"
           priority
         />
@@ -86,13 +87,14 @@ export default function FinalSection({
         className={`relative z-2 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
       >
         <SplitTextBlur
-          text="Your Life, Supercharged by GAIA"
+          text="Stop doing everything yourself."
           delay={0}
           className="z-10 text-center text-[2.2rem] font-medium sm:text-8xl tracking-tight leading-snug"
         />
 
         <div className="z-1 mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-foreground-600 sm:px-0 sm:text-xl sm:leading-7 md:text-2xl">
-          Join thousands already upgrading their productivity.
+          Join thousands who stopped doing manually what GAIA can handle for
+          them.
         </div>
         <GetStartedButton />
 

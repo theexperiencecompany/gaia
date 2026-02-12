@@ -4,19 +4,19 @@ import TodoDemoAnimation from "../demo/todo-demo/TodoDemoAnimation";
 
 const CONTENT_SECTIONS = [
   {
-    title: "Describe it once, skip the setup",
+    title: "Type it. GAIA figures out the rest.",
     description:
-      "Type a task and GAIA understands the full scope — priority, deadline, who to loop in. No forms, no menus, just describe what you need done.",
+      "Describe a task and GAIA understands the full scope — breaks it into steps, sets priority, knows who to loop in. No menus, no setup.",
   },
   {
-    title: "Every todo becomes a workflow",
+    title: "Reminders don't cut it. GAIA actually does it.",
     description:
-      "GAIA doesn't just remind you. It suggests a step-by-step workflow for each task — pulling data, creating docs, notifying teammates — and runs it when you say so.",
+      "For each task, GAIA generates a step-by-step workflow — researching, drafting docs, notifying teammates — and executes it on command.",
   },
   {
-    title: "Close the loop automatically",
+    title: "Done means actually done",
     description:
-      "When the workflow finishes, the todo is marked done. No chasing tabs, no copy-pasting — the task and the work are one thing.",
+      "When the workflow finishes, the todo closes. No tab-hopping, no copy-pasting — the task and the work are the same thing.",
   },
 ];
 
@@ -24,10 +24,10 @@ export default function TodoShowcaseSection() {
   return (
     <div className="relative mx-auto mb-20 flex w-full flex-col justify-center px-[4em]">
       <div className="mb-2 text-xl font-light text-primary sm:text-2xl">
-        Your Tasks, Actually Done
+        No more tasks that just sit there
       </div>
       <div className="mb-8 font-serif text-4xl font-normal sm:text-5xl">
-        Todos that work for you
+        Your to-do list that actually does the work
       </div>
 
       <div className="flex flex-col gap-6 lg:flex-row lg:gap-8 lg:items-end">

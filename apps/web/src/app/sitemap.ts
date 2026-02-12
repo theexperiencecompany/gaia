@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
-import { siteConfig } from "@/lib/seo";
+import { getSiteUrl } from "@/lib/seo";
 
 /**
  * Sitemap IDs for different content types.
@@ -32,8 +32,6 @@ export async function generateSitemaps() {
   ];
 }
 
-const BASE_URL = siteConfig.url;
-
 type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 const STATIC_PAGES: Array<{
   path: string;
@@ -61,9 +59,9 @@ const STATIC_PAGES: Array<{
   { path: "/thanks", freq: "monthly", priority: 0.4 },
 ];
 
-function getStaticPages(): MetadataRoute.Sitemap {
+function getStaticPages(baseUrl: string): MetadataRoute.Sitemap {
   return STATIC_PAGES.map((p) => ({
-    url: `${BASE_URL}${p.path}`,
+    url: `${baseUrl}${p.path}`,
     changeFrequency: p.freq,
     priority: p.priority,
   }));
@@ -72,11 +70,11 @@ function getStaticPages(): MetadataRoute.Sitemap {
 /**
  * Blog post pages from markdown files
  */
-async function getBlogPages(): Promise<MetadataRoute.Sitemap> {
+async function getBlogPages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
   try {
     const blogs = await getAllBlogPosts(false);
     return blogs.map((blog) => ({
-      url: `${BASE_URL}/blog/${blog.slug}`,
+      url: `${baseUrl}/blog/${blog.slug}`,
       lastModified: new Date(blog.date),
       changeFrequency: "monthly" as const,
       priority: 0.7,
@@ -90,12 +88,14 @@ async function getBlogPages(): Promise<MetadataRoute.Sitemap> {
 /**
  * Explore workflows (GAIA team curated)
  */
-async function getExploreWorkflowPages(): Promise<MetadataRoute.Sitemap> {
+async function getExploreWorkflowPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
   try {
     const limit = isDevelopment() ? 50 : 1000;
     const exploreResp = await workflowApi.getExploreWorkflows(limit, 0);
     return exploreResp.workflows.map((wc) => ({
-      url: `${BASE_URL}/use-cases/${wc.id}`,
+      url: `${baseUrl}/use-cases/${wc.id}`,
       lastModified: new Date(wc.created_at),
       changeFrequency: "weekly" as const,
       priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
@@ -109,12 +109,14 @@ async function getExploreWorkflowPages(): Promise<MetadataRoute.Sitemap> {
 /**
  * Community workflows
  */
-async function getCommunityWorkflowPages(): Promise<MetadataRoute.Sitemap> {
+async function getCommunityWorkflowPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
   try {
     if (isDevelopment()) {
       const communityResponse = await workflowApi.getCommunityWorkflows(50, 0);
       return communityResponse.workflows.map((workflow) => ({
-        url: `${BASE_URL}/use-cases/${workflow.id}`,
+        url: `${baseUrl}/use-cases/${workflow.id}`,
         lastModified: new Date(workflow.created_at),
         changeFrequency: "weekly" as const,
         priority: 0.6,
@@ -135,7 +137,7 @@ async function getCommunityWorkflowPages(): Promise<MetadataRoute.Sitemap> {
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${BASE_URL}/use-cases/${workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.id}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,
@@ -149,7 +151,9 @@ async function getCommunityWorkflowPages(): Promise<MetadataRoute.Sitemap> {
 /**
  * Marketplace integration pages
  */
-async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
+async function getIntegrationPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
   try {
     const apiUrl =
       process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
@@ -168,7 +172,7 @@ async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
             publishedAt?: string;
             createdAt?: string;
           }) => ({
-            url: `${BASE_URL}/marketplace/${integration.slug}`,
+            url: `${baseUrl}/marketplace/${integration.slug}`,
             lastModified: new Date(
               integration.publishedAt || integration.createdAt || Date.now(),
             ),
@@ -209,7 +213,7 @@ async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
         publishedAt?: string;
         createdAt?: string;
       }) => ({
-        url: `${BASE_URL}/marketplace/${integration.slug}`,
+        url: `${baseUrl}/marketplace/${integration.slug}`,
         lastModified: new Date(
           integration.publishedAt || integration.createdAt || Date.now(),
         ),
@@ -233,18 +237,19 @@ export default async function sitemap(props: {
 }): Promise<MetadataRoute.Sitemap> {
   const idString = await props.id;
   const id = Number(idString);
+  const baseUrl = getSiteUrl();
 
   switch (id) {
     case SITEMAP_IDS.STATIC:
-      return getStaticPages();
+      return getStaticPages(baseUrl);
     case SITEMAP_IDS.BLOG:
-      return getBlogPages();
+      return getBlogPages(baseUrl);
     case SITEMAP_IDS.EXPLORE:
-      return getExploreWorkflowPages();
+      return getExploreWorkflowPages(baseUrl);
     case SITEMAP_IDS.COMMUNITY:
-      return getCommunityWorkflowPages();
+      return getCommunityWorkflowPages(baseUrl);
     case SITEMAP_IDS.INTEGRATIONS:
-      return getIntegrationPages();
+      return getIntegrationPages(baseUrl);
     default:
       return [];
   }

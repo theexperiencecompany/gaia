@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import { useState } from "react";
 
 import { LogoWithContextMenu } from "@/components/shared/LogoWithContextMenu";
@@ -25,7 +25,7 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
-    <motion.div
+    <m.div
       animate={{ width: open ? 240 : 0, opacity: open ? 1 : 0 }}
       transition={{ duration: 0.22, ease }}
       className="relative flex shrink-0 flex-col overflow-hidden backdrop-blur-2xl"
@@ -159,6 +159,6 @@ export default function DemoSidebar({ open }: DemoSidebarProps) {
           </DemoSettingsDropdown>
         </div>
       </div>
-    </motion.div>
+    </m.div>
   );
 }

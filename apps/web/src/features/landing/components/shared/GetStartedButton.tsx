@@ -8,8 +8,8 @@ import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 export default function GetStartedButton({
   small_text = false,
   text = "Get Started",
-  btnColor = "#00bbff",
-  classname = "text-black!",
+  btnColor = "#0080b3",
+  classname = "text-white!",
 }: {
   small_text?: boolean;
   text?: string;

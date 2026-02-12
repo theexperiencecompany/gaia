@@ -51,6 +51,7 @@ export default function MobileSection() {
                   alt="Apple Icon"
                   width={30}
                   height={30}
+                  loading="lazy"
                 />
 
                 <div className="flex flex-col items-start pr-3">
@@ -74,6 +75,7 @@ export default function MobileSection() {
                   alt="Play Store Icon"
                   width={27}
                   height={27}
+                  loading="lazy"
                 />
                 <div className="flex flex-col items-start pr-3">
                   <div className="text-xs font-normal text-white/60 sm:text-sm">
