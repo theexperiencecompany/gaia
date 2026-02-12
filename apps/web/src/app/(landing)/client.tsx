@@ -69,9 +69,18 @@ export default function LandingPageClient() {
           <Image
             src="/images/wallpapers/bands_gradient_1.webp"
             alt="Gradient background"
-            fill
+            width={1920}
+            height={1080}
             sizes="100vw"
-            className="object-cover absolute top-0 left-0 -z-10 opacity-90"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              position: "absolute",
+              top: 0,
+              left: 0,
+            }}
+            className="-z-10 opacity-90"
             loading="lazy"
           />
           <ChatDemoSection />

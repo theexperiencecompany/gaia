@@ -36,6 +36,7 @@ export default function LandingPage() {
     siteConfig.description,
     siteConfig.url,
   );
+
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
   ]);

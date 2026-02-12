@@ -135,10 +135,16 @@ export const appConfig = {
 
     company: [
       {
+        href: "/about",
+        label: "About",
+        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
+        description: "Learn about GAIA and the team behind it",
+      },
+      {
         href: "/manifesto",
         label: "Manifesto",
         icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
-        description: "about our mission",
+        description: "Our mission and vision",
       },
       {
         href: "/brand",

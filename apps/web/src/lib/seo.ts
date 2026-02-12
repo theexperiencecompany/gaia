@@ -290,6 +290,13 @@ export function generateWebPageSchema(
     name: title,
     description,
     url,
+    author: {
+      "@type": "Organization",
+      name: "The Experience Company",
+      url: siteConfig.url,
+    },
+    datePublished: "2025-01-01",
+    dateModified: new Date().toISOString().split("T")[0],
     isPartOf: {
       "@type": "WebSite",
       url: siteConfig.url,

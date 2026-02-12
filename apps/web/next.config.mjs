@@ -69,36 +69,6 @@ const nextConfig = {
   async headers() {
     return [
       {
-        source: "/(.*)",
-        headers: [
-          {
-            key: "X-Frame-Options",
-            value: "SAMEORIGIN",
-          },
-          {
-            key: "Content-Security-Policy",
-            value: [
-              "default-src 'self'",
-              "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://*.posthog.com https://*.sentry.io https://js.sentry-cdn.com https://browser.sentry-cdn.com",
-              "connect-src 'self' https://*.posthog.com https://*.sentry.io https://us.i.posthog.com https://us-assets.i.posthog.com wss://*.heygaia.io https://*.heygaia.io http://localhost:* ws://localhost:*",
-              "img-src 'self' data: blob: https: http:",
-              "style-src 'self' 'unsafe-inline'",
-              "font-src 'self' data:",
-              "frame-ancestors 'self'",
-              "worker-src 'self' blob:",
-            ].join("; "),
-          },
-          {
-            key: "X-Content-Type-Options",
-            value: "nosniff",
-          },
-          {
-            key: "Referrer-Policy",
-            value: "strict-origin-when-cross-origin",
-          },
-        ],
-      },
-      {
         source: "/_next/static/(.*)",
         headers: [
           {

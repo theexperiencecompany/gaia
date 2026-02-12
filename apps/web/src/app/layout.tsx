@@ -157,6 +157,15 @@ export default function RootLayout({
           fetchPriority="high"
           type="image/webp"
         />
+        <link
+          rel="preload"
+          as="image"
+          href="/_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.png&w=3840&q=75"
+          fetchPriority="low"
+          type="image/png"
+          imageSrcSet="/_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.png&w=640&q=75 640w, /_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.png&w=1080&q=75 1080w, /_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.png&w=1920&q=75 1920w, /_next/image?url=%2Fimages%2Fwallpapers%2Fswiss.png&w=3840&q=75 3840w"
+          imageSizes="100vw"
+        />
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}
       </head>
       <body className={`dark ${defaultFont.className}`}>

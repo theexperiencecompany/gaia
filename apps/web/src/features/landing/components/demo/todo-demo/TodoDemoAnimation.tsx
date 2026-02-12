@@ -111,8 +111,16 @@ export default function TodoDemoAnimation() {
           <Image
             src="/images/wallpapers/mesh_gradient_1.webp"
             alt="Mesh gradient background"
-            fill
+            width={1920}
+            height={1080}
             sizes="100vw"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              position: "absolute",
+              inset: 0,
+            }}
             className="object-cover"
             priority
           />

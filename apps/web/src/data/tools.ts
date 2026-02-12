@@ -346,7 +346,7 @@ export const tools: Tool[] = [
   },
   {
     name: "Uvicorn",
-    url: "https://uvicorn.org",
+    url: "https://uvicorn.dev",
     description:
       "Lightning-fast ASGI server implementation using uvloop and httptools.",
     category: "Backend & Infrastructure",

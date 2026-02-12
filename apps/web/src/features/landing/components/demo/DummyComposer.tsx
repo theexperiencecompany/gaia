@@ -117,6 +117,8 @@ const DummyComposer: React.FC<{ hideIntegrationBanner?: boolean }> = ({
               e.preventDefault();
               handleSend();
             }}
+            aria-label="Demo chat input - not a real form submission"
+            data-demo="true"
           >
             <Textarea
               ref={textareaRef}
