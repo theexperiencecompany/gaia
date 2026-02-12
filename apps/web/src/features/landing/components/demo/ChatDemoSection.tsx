@@ -2,7 +2,7 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, motion, useInView } from "framer-motion";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -13,7 +13,6 @@ import {
   LinkBackwardIcon,
   PinIcon,
   RedoIcon,
-  ReloadIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "@/icons";
@@ -39,6 +38,9 @@ export default function ChatDemoSection() {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const messagesRef = useRef<HTMLDivElement>(null);
   const activeCaseRef = useRef(0);
+  const hasStarted = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isInView = useInView(containerRef, { once: true, amount: 0.2 });
 
   const clearAll = () => {
     for (const t of timers.current) clearTimeout(t);
@@ -128,9 +130,12 @@ export default function ChatDemoSection() {
   };
 
   useEffect(() => {
-    runAnimation(0);
+    if (isInView && !hasStarted.current) {
+      hasStarted.current = true;
+      runAnimation(0);
+    }
     return () => clearAll();
-  }, []);
+  }, [isInView]);
 
   const switchUseCase = (idx: number) => {
     activeCaseRef.current = idx;
@@ -150,7 +155,10 @@ export default function ChatDemoSection() {
   const showBotLogo = showTools || showResponse;
 
   return (
-    <div className="relative flex w-full flex-col items-center">
+    <div
+      ref={containerRef}
+      className="relative flex w-full flex-col items-center"
+    >
       {/* <motion.div
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}

@@ -1,7 +1,12 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import {
+  AnimatePresence,
+  motion,
+  useInView,
+  useReducedMotion,
+} from "framer-motion";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowRight02Icon, RedoIcon } from "@/icons";
@@ -29,7 +34,10 @@ const PHASE_ORDER: TodoDemoPhase[] = [
 export default function TodoDemoAnimation() {
   const [phase, setPhase] = useState<TodoDemoPhase>("idle");
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const hasStarted = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
   const prefersReduced = useReducedMotion();
+  const isInView = useInView(containerRef, { once: true, amount: 0.3 });
 
   const clearAll = () => {
     for (const t of timers.current) clearTimeout(t);
@@ -73,9 +81,12 @@ export default function TodoDemoAnimation() {
   }, [phase, goToPhase]);
 
   useEffect(() => {
-    runAnimation();
+    if (isInView && !hasStarted.current) {
+      hasStarted.current = true;
+      runAnimation();
+    }
     return () => clearAll();
-  }, [runAnimation]);
+  }, [isInView, runAnimation]);
 
   // Derive which stage group is active
   const showModal = ["modal_appear", "modal_submit"].includes(phase);
@@ -88,7 +99,7 @@ export default function TodoDemoAnimation() {
   const showComplete = ["todo_complete", "done"].includes(phase);
 
   return (
-    <div className="flex flex-col items-center gap-4">
+    <div ref={containerRef} className="flex flex-col items-center gap-4">
       <motion.div
         initial={{ opacity: 0, y: 20, scale: 0.97 }}
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
