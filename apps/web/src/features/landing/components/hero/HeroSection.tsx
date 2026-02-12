@@ -30,7 +30,7 @@ export default function HeroSection() {
           </Link> */}
 
           <Link href="/blog/public-beta">
-            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-1 rounded-full bg-white/40 text-zinc-700 p-1 px-2 text-sm outline-1 outline-white/50  transition mb-4 hover:scale-105 duration-300 backdrop-blur-xl">
+            <div className="relative z-10 flex w-fit cursor-pointer items-center gap-1 rounded-full bg-white/40 text-zinc-700 p-1 px-2 text-sm outline-1 outline-white/50  transition mb-2 hover:scale-105 duration-300 backdrop-blur-xl">
               <ShinyText text={`Currently in Public Beta`} speed={10} />
               <ChevronRight width={15} height={15} />
             </div>
@@ -41,7 +41,7 @@ export default function HeroSection() {
           // text="Meet the personal assistant you've always wanted"
           delay={0}
           staggerDelay={0.15}
-          className="max-w-(--breakpoint-lg) text-center text-[2.9rem] leading-none sm:text-[6.5rem] font-normal tracking-tight"
+          className="max-w-(--breakpoint-lg) text-center text-[2.8rem] leading-none sm:text-[6.5rem] font-normal tracking-tighter overflow-visible"
           gradient="linear-gradient(to bottom, oklch(55.2% 0.016 285.938), #000000)"
           disableIntersectionObserver
           as="h1"
@@ -49,19 +49,24 @@ export default function HeroSection() {
         />
 
         <div className="relative">
-          <div className="mb-6 max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-black sm:px-0 sm:text-2xl">
-            Stop wasting your time on boring tasks. Let your personal assistant
-            handle it.
+          <div className="mb-6 max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-black sm:px-0 sm:text-xl">
+            GAIA handles your emails, tasks, calendar, and workflows,
+            <br /> so you can focus on work that actually matters.
           </div>
-          {/* <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-bold tracking-tighter text-white z-[-1] sm:px-0 sm:text-2xl">
-            Stop wasting your time on boring tasks. Let GAIA handle it.
-          </div> */}
+          <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-white z-[-1] sm:px-0 sm:text-xl">
+            GAIA handles your emails, tasks, calendar, and workflows,
+            <br /> so you can focus on work that actually matters.
+          </div>
+          <div className="mb-6 absolute top-0 blur-lg max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-white z-[-1] sm:px-0 sm:text-xl">
+            GAIA handles your emails, tasks, calendar, and workflows,
+            <br /> so you can focus on work that actually matters.
+          </div>
         </div>
         <div className="flex gap-4">
           <GetStartedButton
             btnColor={"#000000"}
             classname="text-white! text-lg h-12 px-2 rounded-2xl"
-            text="Get Started"
+            text="Try GAIA Free"
           />
         </div>
       </MotionContainer>

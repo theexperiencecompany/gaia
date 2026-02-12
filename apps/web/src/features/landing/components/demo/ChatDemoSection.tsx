@@ -6,6 +6,7 @@ import { AnimatePresence, motion, useInView } from "framer-motion";
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { appConfig } from "@/config";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import {
@@ -159,20 +160,20 @@ export default function ChatDemoSection() {
       ref={containerRef}
       className="relative flex w-full flex-col items-center"
     >
-      {/* <motion.div
+      <motion.div
         initial={{ opacity: 0, y: 16 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.4 }}
         className="mb-8 text-center"
       >
-        <p className="mb-2 text-sm font-medium uppercase tracking-widest text-zinc-500">
+        <p className="mb-2 text-sm uppercase tracking-widest text-primary">
           See it in action
         </p>
         <h2 className="text-3xl font-semibold tracking-tight text-white">
-          Your assistant, actually working
+          Your GAIA, actually working
         </h2>
-      </motion.div> */}
+      </motion.div>
 
       {/* Demo window */}
       <motion.div
@@ -180,29 +181,32 @@ export default function ChatDemoSection() {
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5, ease }}
-        className="overflow-hidden rounded-3xl h-[80vh] w-[70vw]"
+        className="overflow-hidden rounded-3xl h-[85vh] w-[80vw]"
         style={
           {
             "--color-primary-bg": "#111111",
           } as React.CSSProperties
         }
       >
-        {/* <div
+        <div
           className="flex h-9 shrink-0 items-center gap-1.5 px-4"
           style={{ backgroundColor: "#1a1a1a" }}
         >
           <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-red-500" />
           <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-yellow-400" />
           <div className="h-3 w-3 cursor-pointer rounded-full bg-zinc-700 transition-colors hover:bg-green-500" />
-          <div className="ml-4 flex-1 text-center text-[11px] text-zinc-500">
-            GAIA — Personal AI Assistant
+          <div className="flex justify-center flex-1">
+            <a
+              className="ml-4 text-center text-[11px] text-zinc-500 hover:text-primary w-fit"
+              target="_blank"
+              rel="noopener noreferrer"
+              href={appConfig.site.domain}
+            >
+              {appConfig.site.name} — {appConfig.site.domain}
+            </a>
           </div>
-        </div> */}
-        {/* Body */}
-        <div
-          className="flex h-full"
-          // style={{ height: "calc(100% - 36px)" }}
-        >
+        </div>
+        <div className="flex h-full" style={{ height: "calc(100% - 36px)" }}>
           <DemoSidebar open={sidebarOpen} />
 
           <div

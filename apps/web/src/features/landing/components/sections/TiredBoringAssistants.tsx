@@ -405,9 +405,9 @@ export default function Tired() {
       `}</style>
 
       <LargeHeader
-        chipText="Your tools, unified"
-        headingText="One Assistant. All Your Tools."
-        subHeadingText="Connected to everything you use, so it can act on your behalf."
+        chipText="Stop context-switching"
+        headingText="Your apps don't talk to each other.GAIA does."
+        subHeadingText="Connect Gmail, Slack, Notion, Calendar and 100+ tools — and let GAIA take action across all of them."
         centered
       />
 
@@ -515,7 +515,7 @@ export default function Tired() {
       {/* CTA */}
       <Link href="/integrations" className="mt-8 sm:mt-12">
         <RaisedButton color="#00bbff" className="text-black!">
-          View Integration Marketplace
+          See All Integrations
           <ArrowRight02Icon width={20} height={20} />
         </RaisedButton>
       </Link>

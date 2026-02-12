@@ -4,7 +4,7 @@ import TodoDemoAnimation from "../demo/todo-demo/TodoDemoAnimation";
 
 const CONTENT_SECTIONS = [
   {
-    title: "Just tell GAIA what to do",
+    title: "Describe it once, skip the setup",
     description:
       "Type a task and GAIA understands the full scope — priority, deadline, who to loop in. No forms, no menus, just describe what you need done.",
   },
