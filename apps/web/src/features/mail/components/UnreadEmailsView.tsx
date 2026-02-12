@@ -50,7 +50,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       connectTitle="Connect Your Gmail"
       connectDescription="Access and manage your emails"
       connectIcon={<Gmail width={32} height={32} />}
-      path="/mail"
+      // path="/mail"
     >
       {isLoading ? (
         <div className="flex h-full items-center justify-center">

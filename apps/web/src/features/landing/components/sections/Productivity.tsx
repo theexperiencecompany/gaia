@@ -1,4 +1,5 @@
 // import { Tab, Tabs } from "@heroui/react";
+
 import Link from "next/link";
 import { useRef } from "react";
 import { ChevronRight } from "@/components";
@@ -8,9 +9,8 @@ import { RaisedButton } from "@/components/ui/raised-button";
 // import MailAnimationWrapper from "./MailAnimationWrapper";
 // import TodosBentoContent from "./TodosBentoContent";
 import UseCaseSection from "@/features/use-cases/components/UseCaseSection";
-import LargeHeader from "../shared/LargeHeader";
 
-export default function Productivity() {
+export default function UseCasesSectionLanding() {
   const contentRef = useRef(null);
 
   return (

@@ -44,7 +44,7 @@ export default function WorkflowShowcaseSection() {
         </div>
 
         {/* Right: 30% — Text sidebar */}
-        <div className="flex w-full flex-col justify-end gap-7 lg:w-[25%]">
+        <div className="flex w-full flex-col justify-end gap-7 lg:w-[25%] pb-[52px]">
           {CONTENT_SECTIONS.map((section) => (
             <div key={section.title}>
               <h3 className="mb-2 text-xl font-medium text-zinc-100">

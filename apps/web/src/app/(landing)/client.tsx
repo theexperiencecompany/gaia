@@ -10,9 +10,9 @@ import CommunitySection from "@/features/landing/components/sections/CommunitySe
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import OpenSource from "@/features/landing/components/sections/OpenSource";
 import Personalised from "@/features/landing/components/sections/Personalised";
-import Productivity from "@/features/landing/components/sections/Productivity";
-import TestimonialsSection from "@/features/landing/components/sections/TestimonialsSection";
+import UseCasesSectionLanding from "@/features/landing/components/sections/Productivity";
 import TiredBoringAssistants from "@/features/landing/components/sections/TiredBoringAssistants";
+import TodoShowcaseSection from "@/features/landing/components/sections/TodoShowcaseSection";
 import WorkflowSection from "@/features/landing/components/sections/WorkflowSection";
 import { FAQAccordion } from "@/features/pricing/components/FAQAccordion";
 
@@ -89,8 +89,9 @@ export default function LandingPageClient() {
         {/* <ProductivityOS /> */}
         {/* <ToolsShowcaseSection /> */}
         <WorkflowSection />
-        <Productivity />
-        <Personalised />
+        <UseCasesSectionLanding />
+        <TodoShowcaseSection />
+        {/* <Personalised /> */}
         {/* <TestimonialsSection /> */}
         <OpenSource />
         <FAQAccordion />

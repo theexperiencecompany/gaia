@@ -233,31 +233,33 @@ export default function WorkflowDemoAnimation() {
       </motion.div>
 
       {/* Navigation controls — below the demo container */}
-      <div className="flex items-center justify-end gap-1.5 w-full ">
-        <Button
-          isIconOnly
-          variant="flat"
-          size="sm"
-          aria-label="Previous phase"
-          title="Previous phase"
-          onPress={prevPhase}
-          isDisabled={PHASE_ORDER.indexOf(phase) <= 0}
-          className="rounded-full"
-        >
-          <ArrowRight02Icon width={18} height={18} className="rotate-180" />
-        </Button>
-        <Button
-          isIconOnly
-          variant="flat"
-          size="sm"
-          aria-label="Next phase"
-          title="Next phase"
-          onPress={nextPhase}
-          isDisabled={PHASE_ORDER.indexOf(phase) >= PHASE_ORDER.length - 1}
-          className="rounded-full"
-        >
-          <ArrowRight02Icon width={18} height={18} />
-        </Button>
+      <div className="flex items-center justify-between w-full">
+        <div className="flex items-center gap-1.5">
+          <Button
+            isIconOnly
+            variant="flat"
+            size="sm"
+            aria-label="Previous phase"
+            title="Previous phase"
+            onPress={prevPhase}
+            isDisabled={PHASE_ORDER.indexOf(phase) <= 0}
+            className="rounded-full"
+          >
+            <ArrowRight02Icon width={18} height={18} className="rotate-180" />
+          </Button>
+          <Button
+            isIconOnly
+            variant="flat"
+            size="sm"
+            aria-label="Next phase"
+            title="Next phase"
+            onPress={nextPhase}
+            isDisabled={PHASE_ORDER.indexOf(phase) >= PHASE_ORDER.length - 1}
+            className="rounded-full"
+          >
+            <ArrowRight02Icon width={18} height={18} />
+          </Button>
+        </div>
         <Button
           isIconOnly
           variant="flat"
