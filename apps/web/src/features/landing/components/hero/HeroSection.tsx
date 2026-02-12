@@ -50,12 +50,13 @@ export default function HeroSection() {
         />
 
         <div className="relative">
-          <div className="mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-white sm:px-0 sm:text-xl">
-            Tired of Siri, Google Assistant, and ChatGPT doing nothing useful?
+          <div className="mb-6 max-w-(--breakpoint-md) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-white sm:px-0 sm:text-xl">
+            Stop wasting your time on boring tasks. Let your personal assistant
+            handle it.
           </div>
-          <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-bold tracking-tighter text-black/60 z-[-1] sm:px-0 sm:text-xl">
-            Tired of Siri, Google Assistant, and ChatGPT doing nothing useful?
-          </div>
+          {/* <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-sm) px-4 py-0 text-center text-lg leading-7 font-bold tracking-tighter text-black/60 z-[-1] sm:px-0 sm:text-xl">
+            Stop wasting your time on boring tasks. Let GAIA handle it.
+          </div> */}
         </div>
         <div className="flex gap-4">
           <GetStartedButton />

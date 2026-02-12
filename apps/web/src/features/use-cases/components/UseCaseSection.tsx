@@ -27,6 +27,8 @@ export default function UseCaseSection({
   showDescriptionAsTooltip,
   useBlurEffect,
   disableCentering = false,
+  slicePerTab,
+  hideAllCategory = false,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
@@ -36,6 +38,8 @@ export default function UseCaseSection({
   showDescriptionAsTooltip?: boolean;
   useBlurEffect?: boolean;
   disableCentering?: boolean;
+  slicePerTab?: number;
+  hideAllCategory?: boolean;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -82,7 +86,7 @@ export default function UseCaseSection({
   ).sort();
 
   const allCategories = [
-    "all",
+    ...(hideAllCategory ? [] : ["all"]),
     "featured",
     ...(hideUserWorkflows ? [] : ["workflows"]),
     ...dynamicCategories.filter((cat) => cat !== "featured"),
@@ -275,39 +279,40 @@ export default function UseCaseSection({
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
-              {filteredUseCases
-                // .slice(0, 8)
-                .map((useCase: UseCase, index: number) => (
-                  <motion.div
-                    key={useCase.published_id || index}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                      duration: 0.3,
-                      delay: index * 0.05, // Stagger animation
-                      ease: "easeOut",
-                    }}
-                  >
-                    <UnifiedWorkflowCard
-                      showDescriptionAsTooltip={showDescriptionAsTooltip}
-                      title={useCase.title || ""}
-                      description={useCase.description || ""}
-                      actionType={useCase.action_type || "prompt"}
-                      prompt={useCase.prompt}
-                      slug={useCase.slug}
-                      steps={useCase.steps}
-                      totalExecutions={useCase.total_executions || 0}
-                      showExecutions={true}
-                      useBlurEffect={useBlurEffect}
-                      variant="explore"
-                      primaryAction={
-                        useCase.action_type === "prompt"
-                          ? "insert-prompt"
-                          : "create"
-                      }
-                    />
-                  </motion.div>
-                ))}
+              {(slicePerTab
+                ? filteredUseCases.slice(0, slicePerTab)
+                : filteredUseCases
+              ).map((useCase: UseCase, index: number) => (
+                <motion.div
+                  key={useCase.published_id || index}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.3,
+                    delay: index * 0.05, // Stagger animation
+                    ease: "easeOut",
+                  }}
+                >
+                  <UnifiedWorkflowCard
+                    showDescriptionAsTooltip={showDescriptionAsTooltip}
+                    title={useCase.title || ""}
+                    description={useCase.description || ""}
+                    actionType={useCase.action_type || "prompt"}
+                    prompt={useCase.prompt}
+                    slug={useCase.slug}
+                    steps={useCase.steps}
+                    totalExecutions={useCase.total_executions || 0}
+                    showExecutions={true}
+                    useBlurEffect={useBlurEffect}
+                    variant="explore"
+                    primaryAction={
+                      useCase.action_type === "prompt"
+                        ? "insert-prompt"
+                        : "create"
+                    }
+                  />
+                </motion.div>
+              ))}
             </motion.div>
           )}
 

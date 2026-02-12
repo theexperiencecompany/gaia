@@ -42,6 +42,8 @@ export default function Productivity() {
           dummySectionRef={contentRef}
           hideUserWorkflows={true}
           useBlurEffect={true}
+          slicePerTab={6}
+          hideAllCategory={true}
         />
 
         <Link href={"/use-cases"} className="mt-2">
