@@ -7,7 +7,7 @@ import {
   Target02Icon,
   ZapIcon,
 } from "@/icons";
-import type { UseCase } from "./types";
+import type { DemoPage, UseCase } from "./types";
 
 // ─── Animation helpers ────────────────────────────────────────────────────────
 export const ease = [0.32, 0.72, 0, 1] as const;
@@ -32,14 +32,18 @@ export const BASE_TIMINGS = {
 };
 
 // ─── Sidebar nav buttons ──────────────────────────────────────────────────────
-export const NAV_BUTTONS = [
-  { Icon: DashboardSquare02Icon, label: "Dashboard" },
-  { Icon: Calendar03Icon, label: "Calendar" },
+export const NAV_BUTTONS: {
+  Icon: React.ComponentType<{ width: number; height: number }>;
+  label: string;
+  page?: DemoPage;
+}[] = [
+  { Icon: DashboardSquare02Icon, label: "Dashboard", page: "dashboard" },
+  { Icon: Calendar03Icon, label: "Calendar", page: "calendar" },
   { Icon: Target02Icon, label: "Goals" },
   { Icon: CheckListIcon, label: "Todos" },
-  { Icon: ConnectIcon, label: "Integrations" },
-  { Icon: ZapIcon, label: "Workflows" },
-  { Icon: MessageMultiple02Icon, label: "Chats", active: true },
+  { Icon: ConnectIcon, label: "Integrations", page: "integrations" },
+  { Icon: ZapIcon, label: "Workflows", page: "workflows" },
+  { Icon: MessageMultiple02Icon, label: "Chats", page: "chats" },
 ];
 
 // ─── Demo chat groups ─────────────────────────────────────────────────────────
