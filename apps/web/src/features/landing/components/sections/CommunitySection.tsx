@@ -8,13 +8,13 @@ import { SOCIAL_LINKS } from "./FinalSection";
 export default function CommunitySection() {
   return (
     <section className="w-full px-4 py-16 sm:px-6">
-      <div className="mx-auto grid w-full max-w-4xl grid-cols-1 items-center gap-8 md:grid-cols-2">
+      <div className="mx-auto grid w-full max-w-4xl grid-cols-1 items-center gap-8 md:grid-cols-2 justify-center">
         {/* Left Column - Title & Description */}
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 items-center sm:items-start">
           <h2 className="text-3xl font-medium text-white sm:text-4xl">
             Join the Community
           </h2>
-          <p className="max-w-md text-zinc-400">
+          <p className="max-w-md text-zinc-400 sm:text-left text-center">
             Connect with thousands of users, get help, share feedback, and stay
             updated on the latest features.
           </p>

@@ -489,7 +489,7 @@ export function LandingDownloadSection() {
   };
 
   return (
-    <section className="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 py-16">
+    <section className="relative z-10 mx-auto w-full max-w-6xl px-4 sm:px-6 py-24 sm:py-16">
       <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
         <div className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900/50 backdrop-blur-sm">
           <div className="relative aspect-video w-full overflow-hidden">
