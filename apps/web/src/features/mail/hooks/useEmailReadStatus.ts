@@ -33,9 +33,9 @@ export const useEmailReadStatus = (tab: MailTab = "inbox") => {
                 }
                 return {
                   ...email,
-                  labelIds: [...(email.labelIds || []), "UNREAD"].filter(
-                    (value, index, self) => self.indexOf(value) === index,
-                  ),
+                  labelIds: [
+                    ...new Set([...(email.labelIds || []), "UNREAD"]),
+                  ],
                 };
               }
               return email;

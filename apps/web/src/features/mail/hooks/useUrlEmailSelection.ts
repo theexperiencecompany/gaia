@@ -54,10 +54,22 @@ export function useUrlEmailSelection() {
     updateEmailInUrl(null);
   }, [updateEmailInUrl]);
 
+  const clearEmailIdOnTabChange = useCallback(() => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (params.has("emailId")) {
+      params.delete("emailId");
+      const newUrl = params.toString()
+        ? `${pathname}?${params.toString()}`
+        : pathname;
+      router.replace(newUrl, { scroll: false });
+    }
+  }, [router, searchParams, pathname]);
+
   return {
     selectedEmailId,
     selectEmail,
     clearSelection,
+    clearEmailIdOnTabChange,
     isSelected: (emailId: string) => selectedEmailId === emailId,
   };
 }

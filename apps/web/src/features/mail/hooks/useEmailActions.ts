@@ -26,9 +26,9 @@ export const useEmailActions = (tab: MailTab = "inbox") => {
                 if (isStarred) {
                   return {
                     ...email,
-                    labelIds: [...(email.labelIds || []), "STARRED"].filter(
-                      (value, index, self) => self.indexOf(value) === index,
-                    ),
+                    labelIds: [
+                      ...new Set([...(email.labelIds || []), "STARRED"]),
+                    ],
                   };
                 }
                 return {

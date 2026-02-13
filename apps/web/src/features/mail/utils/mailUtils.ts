@@ -12,18 +12,17 @@ export function parseEmail(from: string | undefined): {
       email: "",
     };
 
-  const match = from.match(/^(.*?)\s*<(.+?)>$/) || from.match(/(.+)/);
-
-  if (match) {
+  const angleMatch = from.match(/^(.*?)\s*<(.+?)>$/);
+  if (angleMatch) {
     return {
-      name: match[1] ? match[1].trim().replace(/^"|"$/g, "") : "",
-      email: match[2] || "",
+      name: angleMatch[1] ? angleMatch[1].trim().replace(/^"|"$/g, "") : "",
+      email: angleMatch[2],
     };
   }
 
   return {
     name: "",
-    email: from,
+    email: from.trim(),
   };
 }
 
@@ -45,8 +44,6 @@ export function formatTime(timestamp: string): string {
   if (diffMinutes < 60) return `${diffMinutes}m ago`;
   if (diffHours < 24) return `${diffHours}h ago`;
   if (diffDays < 7) return `${diffDays}d ago`;
-  if (diffMonths < 1)
-    return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
   if (diffYears < 1)
     return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 

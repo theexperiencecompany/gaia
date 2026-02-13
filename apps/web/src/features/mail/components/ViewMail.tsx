@@ -6,7 +6,7 @@ import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
 import { User } from "@heroui/user";
 import { AnimatePresence, motion } from "framer-motion";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import Spinner from "@/components/ui/spinner";
@@ -20,7 +20,10 @@ import {
   ArrowLeftDoubleIcon,
   ArrowTurnBackwardIcon,
   Cancel01Icon,
+  ChevronDown,
+  ChevronUp,
   MagicWand05Icon,
+  Share08Icon,
   StarsIcon,
 } from "@/icons";
 import type {
@@ -57,7 +60,12 @@ function AISummary({
             variant="flat"
             color="primary"
           >
-            <StarsIcon width={17} height={17} fill="#00bbff" />
+            <StarsIcon
+              width={17}
+              height={17}
+              className="text-primary"
+              fill="currentColor"
+            />
             <span>Loading AI Analysis...</span>
           </Chip>
         </div>
@@ -81,7 +89,12 @@ function AISummary({
           variant="flat"
           color="primary"
         >
-          <StarsIcon width={17} height={17} fill="#00bbff" />
+          <StarsIcon
+            width={17}
+            height={17}
+            className="text-primary"
+            fill="currentColor"
+          />
           <span>GAIA AI Analysis</span>
         </Chip>
       </div>
@@ -120,7 +133,11 @@ function AISummary({
 
       {analysis.semantic_labels && analysis.semantic_labels.length > 0 && (
         <div className="px-2 pb-2">
-          <Accordion variant="light" selectionMode="multiple" className="px-0">
+          <Accordion
+            variant="light"
+            selectionMode="multiple"
+            className="px-0"
+          >
             <AccordionItem
               key="labels"
               aria-label="Semantic Labels"
@@ -161,6 +178,8 @@ const springTransition = {
   mass: 0.8,
 };
 
+type ReplyMode = "reply" | "replyAll" | "forward";
+
 export default function ViewEmail({
   mailId,
   onOpenChange,
@@ -168,26 +187,101 @@ export default function ViewEmail({
   isLoadingThread = false,
 }: ViewEmailProps) {
   const { mail } = useFetchEmailById(mailId);
-  const { name: nameFrom, email: emailFrom } = parseEmail(mail?.from || "");
+  const { name: nameFrom, email: emailFrom } = parseEmail(
+    mail?.from || "",
+  );
   const [showReplyEditor, setShowReplyEditor] = useState(false);
   const [replyTo, setReplyTo] = useState<EmailData | null>(null);
   const [isSending, setIsSending] = useState(false);
   const [replyInitialContent, setReplyInitialContent] = useState<
     string | undefined
   >(undefined);
+  const [replyMode, setReplyMode] = useState<ReplyMode>("reply");
+  const [expandedMessages, setExpandedMessages] = useState<
+    Set<string>
+  >(new Set());
+
+  const modalContentRef = useRef<HTMLDivElement>(null);
 
   const { data: aiAnalysisData, isLoading: isLoadingAnalysis } =
     useEmailSummary(mailId || "", !!mailId);
 
   const aiAnalysis = aiAnalysisData?.email || null;
 
-  const sortedThreadMessages = [...threadMessages].sort(
-    (a, b) => new Date(a.time).getTime() - new Date(b.time).getTime(),
+  // Task 10: Memoize sorted thread messages
+  const sortedThreadMessages = useMemo(
+    () =>
+      [...threadMessages].sort(
+        (a, b) =>
+          new Date(a.time).getTime() - new Date(b.time).getTime(),
+      ),
+    [threadMessages],
   );
+
+  // Task 12: Filter out current email from thread to avoid duplicate
+  const filteredThreadMessages = useMemo(() => {
+    if (sortedThreadMessages.length > 1) {
+      return sortedThreadMessages.filter(
+        (message) => message.id !== mailId,
+      );
+    }
+    return sortedThreadMessages;
+  }, [sortedThreadMessages, mailId]);
+
+  // Task 19: Initialize expanded state - only latest message expanded
+  useEffect(() => {
+    if (filteredThreadMessages.length > 0) {
+      const lastMessage =
+        filteredThreadMessages[filteredThreadMessages.length - 1];
+      setExpandedMessages(new Set([lastMessage.id]));
+    }
+  }, [filteredThreadMessages]);
+
+  // Task 11: Reset reply state when mailId changes
+  useEffect(() => {
+    setShowReplyEditor(false);
+    setReplyTo(null);
+    setReplyInitialContent(undefined);
+    setReplyMode("reply");
+  }, [mailId]);
+
+  // Task 36: Focus modal content when modal opens
+  useEffect(() => {
+    if (mailId && modalContentRef.current) {
+      modalContentRef.current.focus();
+    }
+  }, [mailId]);
 
   const handleReply = (email: EmailData) => {
     setReplyTo(email);
     setReplyInitialContent(undefined);
+    setReplyMode("reply");
+    setShowReplyEditor(true);
+  };
+
+  // Task 1: Separate handler for Reply All
+  const handleReplyAll = (email: EmailData) => {
+    setReplyTo(email);
+    setReplyInitialContent(undefined);
+    setReplyMode("replyAll");
+    setShowReplyEditor(true);
+  };
+
+  // Task 7: Forward handler
+  const handleForward = (email: EmailData) => {
+    const forwardContent = [
+      "<br/><br/>",
+      "---------- Forwarded message ----------",
+      `<br/><strong>From:</strong> ${email.from}`,
+      `<br/><strong>Subject:</strong> ${email.subject || "(no subject)"}`,
+      `<br/><strong>Date:</strong> ${new Date(email.time).toLocaleString()}`,
+      "<br/><br/>",
+      email.body || email.snippet || "",
+    ].join("");
+
+    setReplyTo(email);
+    setReplyInitialContent(forwardContent);
+    setReplyMode("forward");
     setShowReplyEditor(true);
   };
 
@@ -195,8 +289,22 @@ export default function ViewEmail({
     if (mail) {
       setReplyTo(mail);
       setReplyInitialContent(reply.body);
+      setReplyMode("reply");
       setShowReplyEditor(true);
     }
+  };
+
+  // Task 19: Toggle expand/collapse of thread messages
+  const toggleMessageExpanded = (messageId: string) => {
+    setExpandedMessages((prev) => {
+      const next = new Set(prev);
+      if (next.has(messageId)) {
+        next.delete(messageId);
+      } else {
+        next.add(messageId);
+      }
+      return next;
+    });
   };
 
   const handleSendReply = async (htmlContent: string) => {
@@ -210,17 +318,71 @@ export default function ViewEmail({
         return;
       }
 
-      if (!replyTo.threadId) {
-        toast.error("Cannot reply: Thread ID is missing");
-        return;
+      if (replyMode === "forward") {
+        // Forward: send as new email (no threadId constraint)
+        const formData = new FormData();
+        formData.append("to", recipient);
+        formData.append(
+          "subject",
+          `Fwd: ${replyTo.subject || ""}`,
+        );
+        formData.append("body", htmlContent);
+        formData.append("is_html", "true");
+
+        await mailApi.sendEmail(formData);
+      } else if (replyMode === "replyAll") {
+        // Reply All: include To and CC from original headers
+        if (!replyTo.threadId) {
+          toast.error("Cannot reply: Thread ID is missing");
+          return;
+        }
+
+        const toHeader = replyTo.headers?.To || replyTo.headers?.to || "";
+        const ccHeader = replyTo.headers?.Cc || replyTo.headers?.cc || "";
+
+        // Collect all recipients: original sender + To + CC
+        // but exclude the current user (we don't know their email,
+        // so the backend will handle deduplication)
+        const allTo = [
+          recipient,
+          ...toHeader
+            .split(",")
+            .map((e: string) => parseEmail(e.trim()).email)
+            .filter(Boolean),
+        ];
+        const uniqueTo = [...new Set(allTo)].join(",");
+
+        const formData = new FormData();
+        formData.append("to", uniqueTo);
+        formData.append(
+          "subject",
+          `Re: ${replyTo.subject || ""}`,
+        );
+        formData.append("body", htmlContent);
+        formData.append("thread_id", replyTo.threadId);
+        formData.append("is_html", "true");
+        if (ccHeader) {
+          formData.append("cc", ccHeader);
+        }
+
+        await mailApi.sendEmail(formData);
+      } else {
+        // Standard reply
+        if (!replyTo.threadId) {
+          toast.error("Cannot reply: Thread ID is missing");
+          return;
+        }
+
+        await mailApi.replyToEmail({
+          to: recipient,
+          subject: `Re: ${replyTo.subject || ""}`,
+          body: htmlContent,
+          threadId: replyTo.threadId,
+        });
       }
 
-      await mailApi.replyToEmail({
-        to: recipient,
-        subject: `Re: ${replyTo.subject || ""}`,
-        body: htmlContent,
-        threadId: replyTo.threadId,
-      });
+      // Task 27: Success toast for reply send
+      toast.success("Reply sent successfully");
 
       setShowReplyEditor(false);
       setReplyTo(null);
@@ -258,16 +420,29 @@ export default function ViewEmail({
   const handleEscapeKey = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === "Escape" && mailId) {
+        // Task 26: Prevent close during reply editing
+        if (showReplyEditor) {
+          return;
+        }
         onOpenChange();
       }
     },
-    [mailId, onOpenChange],
+    [mailId, onOpenChange, showReplyEditor],
   );
 
   useEffect(() => {
     document.addEventListener("keydown", handleEscapeKey);
-    return () => document.removeEventListener("keydown", handleEscapeKey);
+    return () =>
+      document.removeEventListener("keydown", handleEscapeKey);
   }, [handleEscapeKey]);
+
+  // Task 26: Handle backdrop click - prevent close during reply
+  const handleBackdropClick = useCallback(() => {
+    if (showReplyEditor) {
+      return;
+    }
+    onOpenChange();
+  }, [showReplyEditor, onOpenChange]);
 
   return (
     <AnimatePresence>
@@ -278,7 +453,7 @@ export default function ViewEmail({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onOpenChange}
+            onClick={handleBackdropClick}
           />
           <motion.div
             className="fixed top-2 right-0 bottom-2 z-50 flex w-screen outline-hidden sm:w-[50vw]"
@@ -287,11 +462,19 @@ export default function ViewEmail({
             exit={{ x: "100%", scale: 0.95 }}
             transition={springTransition}
           >
-            <div className="relative flex h-full w-full grow flex-col overflow-y-auto rounded-l-2xl bg-zinc-900 p-6 pt-4">
+            {/* Task 36: Focus management ref */}
+            <div
+              ref={modalContentRef}
+              tabIndex={-1}
+              className="relative flex h-full w-full grow flex-col overflow-y-auto rounded-l-2xl bg-zinc-900 p-6 pt-4 outline-none"
+            >
               <div className="mb-2 flex w-full justify-end">
                 <Tooltip content="Close" color="foreground">
                   <div className="cursor-pointer">
-                    <Cancel01Icon width={18} onClick={onOpenChange} />
+                    <Cancel01Icon
+                      width={18}
+                      onClick={onOpenChange}
+                    />
                   </div>
                 </Tooltip>
               </div>
@@ -314,83 +497,205 @@ export default function ViewEmail({
                   <Button
                     color="primary"
                     variant="flat"
-                    startContent={<ArrowTurnBackwardIcon size={16} />}
+                    startContent={
+                      <ArrowTurnBackwardIcon size={16} />
+                    }
                     onPress={() => mail && handleReply(mail)}
                   >
                     Reply
                   </Button>
+                  {/* Task 1: Reply All with separate handler */}
                   <Button
                     color="primary"
                     variant="flat"
-                    startContent={<ArrowLeftDoubleIcon size={16} />}
-                    onPress={() => mail && handleReply(mail)}
+                    startContent={
+                      <ArrowLeftDoubleIcon size={16} />
+                    }
+                    onPress={() =>
+                      mail && handleReplyAll(mail)
+                    }
                   >
                     Reply All
+                  </Button>
+                  {/* Task 7: Forward button */}
+                  <Button
+                    color="primary"
+                    variant="flat"
+                    startContent={<Share08Icon size={16} />}
+                    onPress={() =>
+                      mail && handleForward(mail)
+                    }
+                  >
+                    Forward
                   </Button>
                 </div>
               </header>
 
-              <AISummary analysis={aiAnalysis} isLoading={isLoadingAnalysis} />
+              <AISummary
+                analysis={aiAnalysis}
+                isLoading={isLoadingAnalysis}
+              />
 
               {mail?.subject && (
-                <h2 className="font-medium text-foreground">{mail.subject}</h2>
+                <h2 className="font-medium text-foreground">
+                  {mail.subject}
+                </h2>
               )}
 
               <div className="space-y-4 text-foreground-600">
                 {isLoadingThread && (
                   <div className="flex items-center justify-center py-4">
                     <Spinner />
-                    <span className="ml-2">Loading conversation...</span>
+                    <span className="ml-2">
+                      Loading conversation...
+                    </span>
                   </div>
                 )}
 
-                {sortedThreadMessages.length > 0 ? (
+                {filteredThreadMessages.length > 0 ? (
                   <div className="mt-4 space-y-6">
-                    {sortedThreadMessages.map((message) => {
+                    {filteredThreadMessages.map((message) => {
                       const {
                         name: messageSenderName,
                         email: messageSenderEmail,
                       } = parseEmail(message.from);
-                      const isCurrentEmail = mailId === message.id;
+                      const isExpanded = expandedMessages.has(
+                        message.id,
+                      );
 
                       return (
                         <div
                           key={message.id}
-                          className={`rounded-lg p-4 ${isCurrentEmail ? "bg-zinc-800" : "bg-zinc-900"} border-l-2 ${isCurrentEmail ? "border-primary" : "border-zinc-700"}`}
+                          className="rounded-lg border-l-2 border-zinc-700 bg-zinc-900 p-4"
                         >
-                          <div className="mb-2 flex items-start justify-between">
+                          {/* Task 19: Clickable header to toggle collapse */}
+                          <div
+                            className="mb-2 flex cursor-pointer items-start justify-between"
+                            onClick={() =>
+                              toggleMessageExpanded(
+                                message.id,
+                              )
+                            }
+                            onKeyDown={(e) => {
+                              if (
+                                e.key === "Enter" ||
+                                e.key === " "
+                              ) {
+                                toggleMessageExpanded(
+                                  message.id,
+                                );
+                              }
+                            }}
+                            role="button"
+                            tabIndex={0}
+                          >
                             <User
                               avatarProps={{
                                 src: "/images/avatars/default.webp",
                                 size: "sm",
                               }}
-                              description={messageSenderEmail}
+                              description={
+                                messageSenderEmail
+                              }
                               name={messageSenderName}
                               classNames={{
                                 name: "font-medium",
-                                description: "text-gray-400",
+                                description:
+                                  "text-gray-400",
                               }}
                             />
-                            <div className="text-xs text-gray-400">
-                              {new Date(message.time).toLocaleString()}
+                            <div className="flex items-center gap-2">
+                              <div className="text-xs text-gray-400">
+                                {new Date(
+                                  message.time,
+                                ).toLocaleString()}
+                              </div>
+                              {isExpanded ? (
+                                <ChevronUp
+                                  width={16}
+                                  height={16}
+                                  className="text-gray-400"
+                                />
+                              ) : (
+                                <ChevronDown
+                                  width={16}
+                                  height={16}
+                                  className="text-gray-400"
+                                />
+                              )}
                             </div>
                           </div>
 
-                          <div className="mt-2">
-                            <GmailBody email={message} />
-                          </div>
+                          {isExpanded && (
+                            <>
+                              <div className="mt-2">
+                                <GmailBody
+                                  email={message}
+                                />
+                              </div>
 
-                          <div className="mt-4 flex justify-end">
-                            <Button
-                              size="sm"
-                              color="primary"
-                              variant="flat"
-                              startContent={<ArrowTurnBackwardIcon size={14} />}
-                              onPress={() => handleReply(message)}
-                            >
-                              Reply
-                            </Button>
-                          </div>
+                              <div className="mt-4 flex justify-end gap-2">
+                                <Button
+                                  size="sm"
+                                  color="primary"
+                                  variant="flat"
+                                  startContent={
+                                    <ArrowTurnBackwardIcon
+                                      size={14}
+                                    />
+                                  }
+                                  onPress={() =>
+                                    handleReply(
+                                      message,
+                                    )
+                                  }
+                                >
+                                  Reply
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  color="primary"
+                                  variant="flat"
+                                  startContent={
+                                    <ArrowLeftDoubleIcon
+                                      size={14}
+                                    />
+                                  }
+                                  onPress={() =>
+                                    handleReplyAll(
+                                      message,
+                                    )
+                                  }
+                                >
+                                  Reply All
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  color="primary"
+                                  variant="flat"
+                                  startContent={
+                                    <Share08Icon
+                                      size={14}
+                                    />
+                                  }
+                                  onPress={() =>
+                                    handleForward(
+                                      message,
+                                    )
+                                  }
+                                >
+                                  Forward
+                                </Button>
+                              </div>
+                            </>
+                          )}
+
+                          {!isExpanded &&
+                            message.snippet && (
+                              <p className="mt-1 truncate text-sm text-gray-500">
+                                {message.snippet}
+                              </p>
+                            )}
                         </div>
                       );
                     })}

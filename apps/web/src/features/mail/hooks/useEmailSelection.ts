@@ -23,12 +23,20 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
     setSelectedKeys(keys);
   }, []);
 
-  const getSelectedIds = useCallback((): string[] => {
-    if (selectedKeys === "all") return [];
-    return Array.from(selectedKeys);
-  }, [selectedKeys]);
+  const getAllEmailIds = useCallback((): string[] => {
+    const data =
+      queryClient.getQueryData<InfiniteData<EmailsResponse>>(queryKey);
+    if (!data) return [];
+    return data.pages.flatMap((page) => page.emails.map((e) => e.id));
+  }, [queryClient, queryKey]);
 
-  const selectedCount = selectedKeys === "all" ? 0 : selectedKeys.size;
+  const getSelectedIds = useCallback((): string[] => {
+    if (selectedKeys === "all") return getAllEmailIds();
+    return Array.from(selectedKeys);
+  }, [selectedKeys, getAllEmailIds]);
+
+  const selectedCount =
+    selectedKeys === "all" ? getAllEmailIds().length : selectedKeys.size;
 
   const bulkMarkAsRead = async () => {
     const ids = getSelectedIds();
@@ -58,13 +66,14 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
       },
     );
 
-    toast.success(`${ids.length} emails marked as read`);
     clearSelections();
 
     try {
       await mailApi.bulkMarkAsRead(ids);
+      toast.success(`${ids.length} emails marked as read`);
     } catch (error) {
       console.error("Failed to mark emails as read:", error);
+      toast.error("Failed to mark emails as read");
       queryClient.invalidateQueries({ queryKey });
     }
   };
@@ -83,10 +92,9 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
             ...page,
             emails: page.emails.map((email) => {
               if (ids.includes(email.id)) {
-                const newLabelIds = [...(email.labelIds || [])];
-                if (!newLabelIds.includes("UNREAD")) {
-                  newLabelIds.push("UNREAD");
-                }
+                const newLabelIds = [
+                  ...new Set([...(email.labelIds || []), "UNREAD"]),
+                ];
                 return { ...email, labelIds: newLabelIds };
               }
               return email;
@@ -96,13 +104,14 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
       },
     );
 
-    toast.success(`${ids.length} emails marked as unread`);
     clearSelections();
 
     try {
       await mailApi.bulkMarkAsUnread(ids);
+      toast.success(`${ids.length} emails marked as unread`);
     } catch (error) {
       console.error("Failed to mark emails as unread:", error);
+      toast.error("Failed to mark emails as unread");
       queryClient.invalidateQueries({ queryKey });
     }
   };
@@ -121,10 +130,9 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
             ...page,
             emails: page.emails.map((email) => {
               if (ids.includes(email.id)) {
-                const newLabelIds = [...(email.labelIds || [])];
-                if (!newLabelIds.includes("STARRED")) {
-                  newLabelIds.push("STARRED");
-                }
+                const newLabelIds = [
+                  ...new Set([...(email.labelIds || []), "STARRED"]),
+                ];
                 return { ...email, labelIds: newLabelIds };
               }
               return email;
@@ -134,13 +142,54 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
       },
     );
 
-    toast.success(`${ids.length} emails starred`);
     clearSelections();
 
     try {
       await mailApi.bulkStarEmails(ids);
+      toast.success(`${ids.length} emails starred`);
     } catch (error) {
       console.error("Failed to star emails:", error);
+      toast.error("Failed to star emails");
+      queryClient.invalidateQueries({ queryKey });
+    }
+  };
+
+  const bulkUnstarEmails = async () => {
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
+
+    queryClient.setQueryData<InfiniteData<EmailsResponse>>(
+      queryKey,
+      (oldData) => {
+        if (!oldData) return oldData;
+        return {
+          ...oldData,
+          pages: oldData.pages.map((page) => ({
+            ...page,
+            emails: page.emails.map((email) => {
+              if (ids.includes(email.id)) {
+                return {
+                  ...email,
+                  labelIds: (email.labelIds || []).filter(
+                    (label) => label !== "STARRED",
+                  ),
+                };
+              }
+              return email;
+            }),
+          })),
+        };
+      },
+    );
+
+    clearSelections();
+
+    try {
+      await mailApi.bulkUnstarEmails(ids);
+      toast.success(`${ids.length} emails unstarred`);
+    } catch (error) {
+      console.error("Failed to unstar emails:", error);
+      toast.error("Failed to unstar emails");
       queryClient.invalidateQueries({ queryKey });
     }
   };
@@ -163,13 +212,14 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
       },
     );
 
-    toast.success(`${ids.length} emails archived`);
     clearSelections();
 
     try {
       await mailApi.bulkArchiveEmails(ids);
+      toast.success(`${ids.length} emails archived`);
     } catch (error) {
       console.error("Failed to archive emails:", error);
+      toast.error("Failed to archive emails");
       queryClient.invalidateQueries({ queryKey });
     }
   };
@@ -192,13 +242,14 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
       },
     );
 
-    toast.success(`${ids.length} emails moved to trash`);
     clearSelections();
 
     try {
       await mailApi.bulkTrashEmails(ids);
+      toast.success(`${ids.length} emails moved to trash`);
     } catch (error) {
       console.error("Failed to trash emails:", error);
+      toast.error("Failed to move emails to trash");
       queryClient.invalidateQueries({ queryKey });
     }
   };
@@ -211,6 +262,7 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
     bulkMarkAsRead,
     bulkMarkAsUnread,
     bulkStarEmails,
+    bulkUnstarEmails,
     bulkArchiveEmails,
     bulkTrashEmails,
   };

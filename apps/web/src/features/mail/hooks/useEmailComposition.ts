@@ -184,7 +184,14 @@ export function useEmailComposition(): UseEmailCompositionReturn {
         });
 
         if (response.content) {
-          const parsedContent = JSON.parse(response.content);
+          let parsedContent: { subject?: string; body?: string };
+          try {
+            parsedContent = JSON.parse(response.content);
+          } catch {
+            setError("Failed to parse AI response");
+            toast.error("Failed to parse AI response");
+            return;
+          }
           if (parsedContent.subject && parsedContent.body) {
             const formattedBody = marked(
               parsedContent.body.replace(/\n/g, "<br />"),

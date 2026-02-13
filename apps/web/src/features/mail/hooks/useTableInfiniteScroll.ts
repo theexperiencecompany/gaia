@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { MailTab } from "@/types/features/mailTypes";
 
@@ -10,7 +10,7 @@ export function useTableInfiniteScroll(tab: MailTab) {
     useInfiniteEmails(tab);
 
   const observerRef = useRef<IntersectionObserver | null>(null);
-  const isFetchingMore = useRef(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
 
   const bottomRef = useCallback(
     (node: HTMLDivElement | null) => {
@@ -25,11 +25,11 @@ export function useTableInfiniteScroll(tab: MailTab) {
           if (
             entries[0]?.isIntersecting &&
             hasNextPage &&
-            !isFetchingMore.current
+            !isLoadingMore
           ) {
-            isFetchingMore.current = true;
+            setIsLoadingMore(true);
             fetchNextPage().finally(() => {
-              isFetchingMore.current = false;
+              setIsLoadingMore(false);
             });
           }
         },
@@ -38,7 +38,7 @@ export function useTableInfiniteScroll(tab: MailTab) {
 
       observerRef.current.observe(node);
     },
-    [hasNextPage, fetchNextPage],
+    [hasNextPage, fetchNextPage, isLoadingMore],
   );
 
   useEffect(() => {
@@ -54,7 +54,7 @@ export function useTableInfiniteScroll(tab: MailTab) {
     isLoading,
     hasNextPage: hasNextPage ?? false,
     bottomRef,
-    isLoadingMore: isFetchingMore.current,
+    isLoadingMore,
     error,
   };
 }

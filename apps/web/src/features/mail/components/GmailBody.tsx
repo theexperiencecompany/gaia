@@ -7,7 +7,7 @@ import type { EmailData, EmailPart } from "@/types/features/mailTypes";
 export const decodeBase64 = (str: string): string => {
   try {
     const decoded = atob(str.replace(/-/g, "+").replace(/_/g, "/"));
-    return decodeURIComponent(escape(decoded)); // Ensures proper UTF-8 decoding
+    return decodeURIComponent(escape(decoded));
   } catch (error) {
     console.error("Error decoding Base64 string:", error);
     return "";
@@ -34,7 +34,6 @@ export default function GmailBody({ email }: { email: EmailData | null }) {
     return decodedHtml
       ? DOMPurify.sanitize(decodedHtml, {
           ADD_ATTR: ["target"],
-          ADD_TAGS: ["iframe"],
         })
       : null;
   }, [decodedHtml]);
@@ -45,16 +44,20 @@ export default function GmailBody({ email }: { email: EmailData | null }) {
       return;
     }
 
-    if (shadowHostRef.current) {
-      const shadowRoot =
-        shadowHostRef.current.shadowRoot ||
-        shadowHostRef.current.attachShadow({ mode: "open" });
+    const host = shadowHostRef.current;
+    if (!host) return;
+
+    const shadowRoot =
+      host.shadowRoot || host.attachShadow({ mode: "open" });
+    shadowRoot.innerHTML = "";
+    const contentWrapper = document.createElement("div");
+    contentWrapper.innerHTML = sanitizedHtml;
+    shadowRoot.appendChild(contentWrapper);
+    setLoading(false);
+
+    return () => {
       shadowRoot.innerHTML = "";
-      const contentWrapper = document.createElement("div");
-      contentWrapper.innerHTML = sanitizedHtml;
-      shadowRoot.appendChild(contentWrapper);
-      setLoading(false);
-    }
+    };
   }, [sanitizedHtml]);
 
   if (!email) return null;

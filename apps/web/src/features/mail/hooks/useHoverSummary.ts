@@ -10,13 +10,7 @@ export function useHoverSummary(emailId: string, enabled: boolean) {
     queryFn: async () => {
       const result = await mailApi.fetchEmailSummaryById(emailId);
       if (result?.email) return result.email;
-
-      try {
-        const analysis = await mailApi.analyzeEmail(emailId);
-        return analysis?.analysis ?? null;
-      } catch {
-        return null;
-      }
+      return null;
     },
     enabled: enabled && !!emailId,
     staleTime: 10 * 60 * 1000,

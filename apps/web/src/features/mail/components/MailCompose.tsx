@@ -1,8 +1,10 @@
 import { Button, ButtonGroup } from "@heroui/button";
 import { Input } from "@heroui/input";
+import { Tooltip } from "@heroui/tooltip";
 import { EditorContent } from "@tiptap/react";
 import { TagInput } from "emblor";
 import Image from "next/image";
+import { toast } from "sonner";
 import { Drawer } from "vaul";
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -13,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { mailApi } from "@/features/mail/api/mailApi";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
 import {
   AiSearch02Icon,
@@ -24,7 +27,6 @@ import {
   Tick02Icon,
 } from "@/icons";
 
-// import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { Button as ShadcnButton } from "../../../components/ui/button";
 import { AiSearchModal } from "./AiSearchModal";
 
@@ -38,7 +40,6 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
   const { formState, uiState, actions, editor, options } =
     useEmailComposition();
 
-  // Destructure state and actions for easier access
   const {
     toEmails,
     subject,
@@ -63,11 +64,45 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
     handleAiSelect,
     handleAskGaia,
     handleAskGaiaKeyPress,
+    resetForm,
   } = actions;
 
   const { writingStyles, contentLengthOptions, clarityOptions } = options;
 
-  // Remaining original logic that doesn't belong in the hook
+  const handleSendEmail = async () => {
+    if (toEmails.length === 0) {
+      toast.error("Please add at least one recipient");
+      return;
+    }
+
+    if (!subject.trim()) {
+      toast.error("Please add a subject");
+      return;
+    }
+
+    const htmlContent = editor?.getHTML() || "";
+    const textContent = editor?.getText().trim() || "";
+    if (!textContent) {
+      toast.error("Please write some content");
+      return;
+    }
+
+    try {
+      const formData = new FormData();
+      formData.append("to", toEmails.map((t) => t.text).join(", "));
+      formData.append("subject", subject);
+      formData.append("body", htmlContent);
+      formData.append("is_html", "true");
+
+      await mailApi.sendEmail(formData);
+      toast.success("Email sent successfully");
+      resetForm();
+      onOpenChange(false);
+    } catch (err) {
+      console.error("Error sending email:", err);
+      toast.error("Failed to send email");
+    }
+  };
 
   return (
     <>
@@ -146,7 +181,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <ShadcnButton
-                        className="border-none bg-[#00bbff40] text-sm font-normal text-[#00bbff] ring-0 outline-hidden hover:bg-[#00bbff20]"
+                        className="border-none bg-primary/20 text-sm font-normal text-primary ring-0 outline-hidden hover:bg-primary/10"
                         size="sm"
                       >
                         <div className="flex flex-row gap-1">
@@ -190,7 +225,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <ShadcnButton
-                        className="border-none bg-[#00bbff40] text-sm font-normal text-[#00bbff] ring-0 outline-hidden hover:bg-[#00bbff20]"
+                        className="border-none bg-primary/20 text-sm font-normal text-primary ring-0 outline-hidden hover:bg-primary/10"
                         size="sm"
                       >
                         <div className="flex flex-row gap-1">
@@ -232,7 +267,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild>
                       <ShadcnButton
-                        className="border-none bg-[#00bbff40] text-sm font-normal text-[#00bbff] ring-0 outline-hidden hover:bg-[#00bbff20]"
+                        className="border-none bg-primary/20 text-sm font-normal text-primary ring-0 outline-hidden hover:bg-primary/10"
                         size="sm"
                       >
                         <div className="flex flex-row gap-1">
@@ -272,7 +307,65 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
 
               {editor && (
                 <>
-                  {/* <MenuBar editor={editor} textLength={false} isEmail={true} /> */}
+                  <div className="flex gap-1 border-b border-zinc-700 bg-zinc-800 px-2 py-1">
+                    {[
+                      {
+                        label: "Bold",
+                        action: () =>
+                          editor.chain().focus().toggleBold().run(),
+                        active: editor.isActive("bold"),
+                        text: "B",
+                        className: "font-bold",
+                      },
+                      {
+                        label: "Italic",
+                        action: () =>
+                          editor.chain().focus().toggleItalic().run(),
+                        active: editor.isActive("italic"),
+                        text: "I",
+                        className: "italic",
+                      },
+                      {
+                        label: "Underline",
+                        action: () =>
+                          editor.chain().focus().toggleUnderline().run(),
+                        active: editor.isActive("underline"),
+                        text: "U",
+                        className: "underline",
+                      },
+                      {
+                        label: "Bullet List",
+                        action: () =>
+                          editor.chain().focus().toggleBulletList().run(),
+                        active: editor.isActive("bulletList"),
+                        text: "•",
+                        className: "",
+                      },
+                      {
+                        label: "Ordered List",
+                        action: () =>
+                          editor.chain().focus().toggleOrderedList().run(),
+                        active: editor.isActive("orderedList"),
+                        text: "1.",
+                        className: "",
+                      },
+                    ].map(({ label, action, active, text, className }) => (
+                      <Tooltip key={label} content={label}>
+                        <button
+                          type="button"
+                          onClick={action}
+                          className={`rounded px-2 py-1 text-sm ${className} ${
+                            active
+                              ? "bg-primary/30 text-primary"
+                              : "text-zinc-400 hover:bg-zinc-700 hover:text-white"
+                          }`}
+                          aria-label={label}
+                        >
+                          {text}
+                        </button>
+                      </Tooltip>
+                    ))}
+                  </div>
                   <EditorContent className="bg-zinc-800 p-2" editor={editor} />
                 </>
               )}
@@ -320,7 +413,10 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
 
               <div className="flex items-center gap-2">
                 <ButtonGroup color="primary">
-                  <Button className="text-medium">
+                  <Button
+                    className="text-medium"
+                    onPress={handleSendEmail}
+                  >
                     Send
                     <Sent02Icon width={23} height={23} />
                   </Button>

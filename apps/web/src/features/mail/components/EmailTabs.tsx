@@ -1,4 +1,5 @@
 "use client";
+import { Chip } from "@heroui/chip";
 import { Tab, Tabs } from "@heroui/tabs";
 
 import {
@@ -14,6 +15,7 @@ import type { MailTab } from "@/types/features/mailTypes";
 interface EmailTabsProps {
   activeTab: MailTab;
   onTabChange: (tab: MailTab) => void;
+  unreadCounts?: Partial<Record<MailTab, number>>;
 }
 
 const tabs: { key: MailTab; label: string; icon: typeof SentIcon }[] = [
@@ -25,7 +27,11 @@ const tabs: { key: MailTab; label: string; icon: typeof SentIcon }[] = [
   { key: "drafts", label: "Drafts", icon: MailEdit02Icon },
 ];
 
-export function EmailTabs({ activeTab, onTabChange }: EmailTabsProps) {
+export function EmailTabs({
+  activeTab,
+  onTabChange,
+  unreadCounts,
+}: EmailTabsProps) {
   return (
     <div className="border-b border-zinc-800 px-2">
       <Tabs
@@ -39,17 +45,29 @@ export function EmailTabs({ activeTab, onTabChange }: EmailTabsProps) {
           cursor: "bg-primary",
         }}
       >
-        {tabs.map(({ key, label, icon: Icon }) => (
-          <Tab
-            key={key}
-            title={
-              <div className="flex items-center gap-2">
-                <Icon size={16} />
-                <span>{label}</span>
-              </div>
-            }
-          />
-        ))}
+        {tabs.map(({ key, label, icon: Icon }) => {
+          const count = unreadCounts?.[key];
+          return (
+            <Tab
+              key={key}
+              title={
+                <div className="flex items-center gap-2">
+                  <Icon size={16} />
+                  <span>{label}</span>
+                  {count != null && count > 0 && (
+                    <Chip
+                      size="sm"
+                      color="primary"
+                      variant="flat"
+                    >
+                      {count > 99 ? "99+" : count}
+                    </Chip>
+                  )}
+                </div>
+              }
+            />
+          );
+        })}
       </Tabs>
     </div>
   );
