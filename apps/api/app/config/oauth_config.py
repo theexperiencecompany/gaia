@@ -93,8 +93,35 @@ from app.models.trigger_config import (
     WorkflowTriggerSchema,
 )
 
+# Google integration IDs for the super-connector
+GOOGLE_INTEGRATION_IDS = [
+    "googlecalendar",
+    "gmail",
+    "googledocs",
+    "googlesheets",
+    "googletasks",
+    "googlemeet",
+    "google_maps",
+]
+
 # Define all integrations dynamically
 OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
+    # Google Super-Connector (umbrella integration)
+    OAuthIntegration(
+        id="google",
+        name="Google",
+        description="Connect all Google services at once — Calendar, Gmail, Docs, Sheets, Tasks, Meet, and Maps",
+        category="productivity",
+        provider="google",
+        scopes=[],
+        available=True,
+        is_special=True,
+        is_featured=True,
+        display_priority=100,
+        included_integrations=GOOGLE_INTEGRATION_IDS,
+        short_name="google",
+        managed_by="composio",
+    ),
     # Individual Google integrations
     OAuthIntegration(
         id="googlecalendar",

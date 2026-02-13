@@ -147,6 +147,10 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
             result[integration.id] = False
             continue
 
+        # Skip super-connectors here — their status is derived in Step 3
+        if integration.is_special and integration.included_integrations:
+            continue
+
         # If user has this integration in MongoDB, use that status
         if integration.id in mongo_status:
             result[integration.id] = mongo_status[integration.id]
@@ -193,6 +197,14 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     for integration_id, is_connected in mongo_status.items():
         if integration_id not in result:
             result[integration_id] = is_connected
+
+    # Step 3: Derive super-connector status from child integrations
+    for integration in OAUTH_INTEGRATIONS:
+        if integration.is_special and integration.included_integrations:
+            result[integration.id] = all(
+                result.get(child_id, False)
+                for child_id in integration.included_integrations
+            )
 
     return result
 

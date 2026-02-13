@@ -177,6 +177,42 @@ async def _connect_with_bearer_token(
         )
 
 
+async def connect_super_connector(
+    user_id: str,
+    integration_id: str,
+    included_integrations: list[str],
+    redirect_path: str,
+) -> ConnectIntegrationResponse:
+    """Handle super-connector connection by connecting the next unconnected child."""
+    from app.services.oauth.oauth_service import check_multiple_integrations_status
+
+    statuses = await check_multiple_integrations_status(
+        included_integrations, user_id
+    )
+
+    # Find the first unconnected child integration
+    for child_id in included_integrations:
+        if not statuses.get(child_id, False):
+            child_integration = get_integration_by_id(child_id)
+            if not child_integration or not child_integration.available:
+                continue
+
+            return await connect_composio_integration(
+                user_id=user_id,
+                integration_id=child_id,
+                provider=child_integration.provider,
+                redirect_path=redirect_path,
+            )
+
+    # All child integrations are already connected
+    await update_user_integration_status(user_id, integration_id, "connected")
+    return ConnectIntegrationResponse(
+        status="connected",
+        integration_id=integration_id,
+        message="All Google services connected successfully",
+    )
+
+
 async def connect_composio_integration(
     user_id: str,
     integration_id: str,
@@ -241,6 +277,23 @@ async def connect_self_integration(
         integration_id=integration_id,
         redirect_url=auth_url,
         message="OAuth authentication required",
+    )
+
+
+async def disconnect_super_connector(
+    user_id: str, integration_id: str, included_integrations: list[str]
+) -> IntegrationSuccessResponse:
+    """Disconnect all child integrations of a super-connector."""
+    for child_id in included_integrations:
+        try:
+            await disconnect_integration(user_id, child_id)
+        except Exception as e:
+            logger.warning(f"Failed to disconnect child {child_id}: {e}")
+
+    await _invalidate_caches(user_id, integration_id, "composio")
+    return IntegrationSuccessResponse(
+        message="Successfully disconnected all Google services",
+        integration_id=integration_id,
     )
 
 

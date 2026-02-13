@@ -16,7 +16,9 @@ from app.services.integrations.integration_connection_service import (
     connect_composio_integration,
     connect_mcp_integration,
     connect_self_integration,
+    connect_super_connector,
     disconnect_integration,
+    disconnect_super_connector,
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
 from app.services.oauth.oauth_service import get_all_integrations_status
@@ -58,6 +60,19 @@ async def disconnect_integration_endpoint(
     integration_id: str,
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
+    # Handle super-connector disconnect
+    resolved = await IntegrationResolver.resolve(integration_id)
+    if (
+        resolved
+        and resolved.source == "platform"
+        and resolved.platform_integration
+        and resolved.platform_integration.is_special
+        and resolved.platform_integration.included_integrations
+    ):
+        return await disconnect_super_connector(
+            user_id, integration_id, resolved.platform_integration.included_integrations
+        )
+
     try:
         return await disconnect_integration(user_id, integration_id)
     except ValueError as e:
@@ -98,6 +113,20 @@ async def connect_integration_endpoint(
                 integration_id=integration_id,
                 error=f"Integration {integration_id} is not available yet",
             )
+
+    # Handle super-connector
+    if (
+        resolved.source == "platform"
+        and resolved.platform_integration
+        and resolved.platform_integration.is_special
+        and resolved.platform_integration.included_integrations
+    ):
+        return await connect_super_connector(
+            user_id=str(user_id),
+            integration_id=integration_id,
+            included_integrations=resolved.platform_integration.included_integrations,
+            redirect_path=request.redirect_path,
+        )
 
     try:
         if resolved.managed_by == "mcp":
