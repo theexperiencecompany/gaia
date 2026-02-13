@@ -433,7 +433,7 @@ export default function DemoSidebar({
               <div className="flex items-center gap-2.5">
                 <Avatar className="size-7 shrink-0 rounded-full bg-black">
                   <AvatarImage
-                    src="https://github.com/aryanranderiya.png"
+                    src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
                     alt="Aryan"
                   />
                   <AvatarFallback className="bg-zinc-700 text-xs text-zinc-300">

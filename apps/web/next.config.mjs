@@ -51,6 +51,7 @@ const nextConfig = {
   },
   images: {
     dangerouslyAllowSVG: true,
+    minimumCacheTTL: 2592000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
     remotePatterns: [
       {
         protocol: "https",
@@ -68,24 +69,33 @@ const nextConfig = {
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
   async headers() {
     return [
-      // {
-      //   source: "/_next/static/(.*)",
-      //   headers: [
-      //     {
-      //       key: "Cache-Control",
-      //       value: "public, max-age=31536000, immutable",
-      //     },
-      //   ],
-      // },
-      // {
-      //   source: "/images/(.*)",
-      //   headers: [
-      //     {
-      //       key: "Cache-Control",
-      //       value: "public, max-age=86400, stale-while-revalidate=604800",
-      //     },
-      //   ],
-      // },
+      {
+        source: "/_next/static/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/images/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=2592000, stale-while-revalidate=604800",
+          },
+        ],
+      },
+      {
+        source: "/site.webmanifest",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
     ];
   },
   async rewrites() {

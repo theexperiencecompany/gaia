@@ -325,7 +325,7 @@ export default function ChatDemoSection() {
                           <div className="min-w-10">
                             <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
                               <AvatarImage
-                                src="https://github.com/aryanranderiya.png"
+                                src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
                                 alt="Aryan"
                               />
                               <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">

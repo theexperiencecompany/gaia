@@ -52,10 +52,13 @@ export default function HeroSection({
             />
           )}
         </div>
+      </MotionContainer>
 
+      {/* Subtitle + CTA rendered outside MotionContainer to avoid stagger delay (LCP fix) */}
+      <div className="relative z-2 flex flex-col items-center gap-4 bg-transparent">
         <div className="relative">
           <div
-            className={`mb-3 max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl ${isDark ? "text-zinc-200" : "text-black"}`}
+            className={`mb-3 max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 tracking-tighter sm:px-0 sm:text-xl animate-[fadeIn_0.4s_ease-out_0.2s_both] ${isDark ? "text-zinc-200" : "text-black"}`}
           >
             GAIA handles your emails, tasks, calendar, and workflows,
             <br /> so you can focus on work that actually matters.{" "}
@@ -72,7 +75,7 @@ export default function HeroSection({
             text="Try GAIA Free"
           />
         </div>
-      </MotionContainer>
+      </div>
     </div>
   );
 }

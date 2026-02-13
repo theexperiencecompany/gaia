@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { AgentTile } from "./agent-tile";
 import { useAgentControlBar } from "./hooks/use-agent-control-bar";
 
-const MotionAgentTile = motion.create(AgentTile);
+const MotionAgentTile = m.create(AgentTile);
 
 interface MediaTilesProps {
   chatOpen: boolean;

@@ -40,6 +40,7 @@ export default function ProgressiveImage({
         width={width}
         height={height}
         priority={priority}
+        fetchPriority="high"
         sizes={sizes}
         onLoad={() => setInitialLoaded(true)}
         style={{ width: "100%", height: "100%", objectFit: "cover" }}

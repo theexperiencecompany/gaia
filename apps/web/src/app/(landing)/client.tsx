@@ -7,7 +7,6 @@ import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import {
-  getTimeOfDay,
   isDarkTimeOfDay,
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
@@ -50,22 +49,21 @@ const FinalSection = dynamic(
   () => import("@/features/landing/components/sections/FinalSection"),
 );
 
-export default function LandingPageClient() {
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null);
+export default function LandingPageClient({
+  initialTimeOfDay,
+}: {
+  initialTimeOfDay: TimeOfDay;
+}) {
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(initialTimeOfDay);
   const [clickCount, setClickCount] = useState(0);
-  const isDark = timeOfDay ? isDarkTimeOfDay(timeOfDay) : false;
-
-  useEffect(() => {
-    setTimeOfDay(getTimeOfDay());
-  }, []);
+  const isDark = isDarkTimeOfDay(timeOfDay);
 
   const handleTextClick = () => {
     const next = clickCount + 1;
     setClickCount(next);
     if (next % 5 === 0) {
       setTimeOfDay((prev) => {
-        const current = prev ?? getTimeOfDay();
-        const idx = TIME_OF_DAY_CYCLE.indexOf(current);
+        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
         return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
       });
     }

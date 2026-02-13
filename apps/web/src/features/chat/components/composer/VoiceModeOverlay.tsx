@@ -14,7 +14,7 @@ import { toast } from "sonner";
 import useConnectionDetails from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
 import { SessionView } from "@/features/chat/components/voice-agent/session-view";
 
-const MotionSessionView = motion.create(SessionView);
+const MotionSessionView = m.create(SessionView);
 
 interface AppProps {
   onEndCall: () => void;
