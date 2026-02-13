@@ -10,7 +10,6 @@ import {
   ANALYTICS_EVENTS,
   trackConversationCreated,
   trackEvent,
-  trackFirstMessageIfNeeded,
 } from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";

@@ -78,9 +78,7 @@ export default function DemoChatHeader({
             <span>{title}</span>
           </div>
         </div>
-        <div className="flex items-center">
-          {notificationsButton}
-        </div>
+        <div className="flex items-center">{notificationsButton}</div>
       </div>
     );
   }

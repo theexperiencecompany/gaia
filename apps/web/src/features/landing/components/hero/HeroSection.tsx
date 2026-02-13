@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { ChevronRight } from "@/components";
-import ShinyText from "@/components/ui/shimmering-chip";
 import { MotionContainer } from "@/layouts/MotionContainer";
 import GetStartedButton from "../shared/GetStartedButton";
 import { SplitTextBlur } from "./SplitTextBlur";

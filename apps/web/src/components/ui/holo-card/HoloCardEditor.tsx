@@ -109,22 +109,22 @@ export const HoloCardEditor = ({
 
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const handleDownload = useCallback(async () => {
-    if (cardRef.current === null) {
-      return;
-    }
+  // const handleDownload = useCallback(async () => {
+  //   if (cardRef.current === null) {
+  //     return;
+  //   }
 
-    try {
-      const dataUrl = await toPng(cardRef.current, { cacheBust: true });
-      const link = document.createElement("a");
-      link.download = `holo-card-${data.name || "user"}.png`;
-      link.href = dataUrl;
-      link.click();
-    } catch (err) {
-      console.error("Failed to download image", err);
-      toast.error("Failed to download image");
-    }
-  }, [data.name]);
+  //   try {
+  //     const dataUrl = await toPng(cardRef.current, { cacheBust: true });
+  //     const link = document.createElement("a");
+  //     link.download = `holo-card-${data.name || "user"}.png`;
+  //     link.href = dataUrl;
+  //     link.click();
+  //   } catch (err) {
+  //     console.error("Failed to download image", err);
+  //     toast.error("Failed to download image");
+  //   }
+  // }, [data.name]);
 
   const handleShare = (platform: "twitter" | "linkedin" | "copy") => {
     if (!data.holo_card_id && typeof window !== "undefined") {

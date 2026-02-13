@@ -147,22 +147,24 @@ export default function FinalSection({
       </div>
 
       <div
-        className={`relative z-2 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
+        className={`relative z-20 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
       >
         <div onClick={onTextClick} className="cursor-default select-none">
-          {isDark ? (
+          {isDark || timeOfDay === "morning" ? (
             <SplitTextBlur
               text="Stop doing everything yourself."
               delay={0}
               className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug text-white"
               gradient="linear-gradient(to bottom, #ffffff, #dbdbdb)"
+              disableIntersectionObserver
             />
           ) : (
             <SplitTextBlur
               text="Stop doing everything yourself."
               delay={0}
               className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug text-white"
-              gradient="linear-gradient(to bottom, #e8e8e8, #a8a8a8)"
+              gradient="linear-gradient(to bottom, #837e88, #000000)"
+              disableIntersectionObserver
             />
           )}
         </div>

@@ -27,8 +27,8 @@ import DemoDashboardView from "./dashboard-demo/DemoDashboardView";
 import { BASE_TIMINGS, ease, slideUp, tx, USE_CASES } from "./demoConstants";
 import DemoIntegrationsView from "./integrations-demo/DemoIntegrationsView";
 import MiniWaveSpinner from "./MiniWaveSpinner";
-import type { DemoPage, Phase } from "./types";
 import DemoTodosView from "./todos-demo/DemoTodosView";
+import type { DemoPage, Phase } from "./types";
 import DemoWorkflowsView from "./workflows-demo/DemoWorkflowsView";
 
 export default function ChatDemoSection() {

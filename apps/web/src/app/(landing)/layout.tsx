@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Footer from "@/components/navigation/Footer";
 import Navbar from "@/components/navigation/Navbar";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
+import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 
 export default function LandingLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -41,7 +42,7 @@ export default function LandingLayout({ children }: { children: ReactNode }) {
       {!isDesktopLogin && <Navbar />}
 
       <main id="main-content" className="min-h-screen">
-        {children}
+        <LazyMotionProvider>{children}</LazyMotionProvider>
       </main>
 
       {!isDesktopLogin && <Footer />}

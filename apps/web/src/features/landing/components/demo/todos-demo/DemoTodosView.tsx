@@ -12,11 +12,7 @@ import {
   Tag01Icon,
   ZapIcon,
 } from "@/icons";
-import {
-  DEMO_PROJECTS,
-  DEMO_TODOS,
-  type DemoTodo,
-} from "./todosDemoConstants";
+import { DEMO_PROJECTS, DEMO_TODOS, type DemoTodo } from "./todosDemoConstants";
 
 const priorityRingColors = {
   high: "border-red-500",
@@ -154,8 +150,7 @@ function DemoTodoItem({
                   <Flag02Icon width={15} height={15} className="mx-1" />
                 }
               >
-                {todo.priority.charAt(0).toUpperCase() +
-                  todo.priority.slice(1)}
+                {todo.priority.charAt(0).toUpperCase() + todo.priority.slice(1)}
               </Chip>
             )}
 
@@ -291,9 +286,7 @@ function DemoTodoSidebar({
           </div>
           <h2
             className={`text-2xl font-medium ${
-              todo.completed
-                ? "text-zinc-500 line-through"
-                : "text-zinc-100"
+              todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"
             }`}
           >
             {todo.title}
@@ -413,30 +406,29 @@ function DemoTodoSidebar({
         )}
 
         {/* Workflow section */}
-        {todo.workflow_categories &&
-          todo.workflow_categories.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <ZapIcon width={16} height={16} className="text-zinc-400" />
-                <span className="text-sm font-normal text-zinc-400">
-                  Suggested Workflow
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                {todo.workflow_categories.map((cat, i) => {
-                  const IconComponent = getToolCategoryIcon(cat, {
-                    width: 20,
-                    height: 20,
-                  });
-                  return IconComponent ? (
-                    <div key={cat} style={{ zIndex: i }}>
-                      {IconComponent}
-                    </div>
-                  ) : null;
-                })}
-              </div>
+        {todo.workflow_categories && todo.workflow_categories.length > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-1">
+              <ZapIcon width={16} height={16} className="text-zinc-400" />
+              <span className="text-sm font-normal text-zinc-400">
+                Suggested Workflow
+              </span>
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              {todo.workflow_categories.map((cat, i) => {
+                const IconComponent = getToolCategoryIcon(cat, {
+                  width: 20,
+                  height: 20,
+                });
+                return IconComponent ? (
+                  <div key={cat} style={{ zIndex: i }}>
+                    {IconComponent}
+                  </div>
+                ) : null;
+              })}
+            </div>
+          </div>
+        )}
 
         {/* Footer: created date */}
         <div className="mt-auto pt-4 text-xs text-zinc-600">
@@ -473,9 +465,7 @@ export default function DemoTodosView() {
                 todo={todo}
                 isSelected={selectedTodo?.id === todo.id}
                 onClick={() =>
-                  setSelectedTodo(
-                    selectedTodo?.id === todo.id ? null : todo,
-                  )
+                  setSelectedTodo(selectedTodo?.id === todo.id ? null : todo)
                 }
               />
             ))}
