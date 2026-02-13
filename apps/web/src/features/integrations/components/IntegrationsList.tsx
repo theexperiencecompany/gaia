@@ -31,8 +31,16 @@ const SuperConnectorRow: React.FC<{
 
   return (
     <div
+      role="button"
+      tabIndex={0}
       className="cursor-pointer rounded-2xl border border-zinc-700/50 bg-zinc-800/30 p-4 hover:bg-zinc-800/60 transition-all duration-200"
       onClick={() => onClick(integration.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick(integration.id);
+        }
+      }}
     >
       <div className="flex items-center gap-4">
         <div className="shrink-0">
