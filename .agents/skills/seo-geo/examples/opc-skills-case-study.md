@@ -13,14 +13,14 @@ Real-world example of applying SEO and GEO optimization to opc.dev.
 
 ### Initial Status
 
-| Metric | Status |
-|--------|--------|
-| Google Indexed | ❌ No |
-| Bing Indexed | ❌ No |
-| Schema Markup | ❌ None |
-| FAQ Section | ❌ None |
-| Meta Tags | ⚠️ Basic |
-| AI Bot Access | ⚠️ Not configured |
+| Metric         | Status            |
+| -------------- | ----------------- |
+| Google Indexed | ❌ No             |
+| Bing Indexed   | ❌ No             |
+| Schema Markup  | ❌ None           |
+| FAQ Section    | ❌ None           |
+| Meta Tags      | ⚠️ Basic          |
+| AI Bot Access  | ⚠️ Not configured |
 
 ---
 
@@ -30,13 +30,14 @@ Real-world example of applying SEO and GEO optimization to opc.dev.
 
 The term "OPC" has different meanings in different markets:
 
-| Market | "OPC" Meaning |
-|--------|--------------|
+| Market               | "OPC" Meaning                           |
+| -------------------- | --------------------------------------- |
 | English (Industrial) | OPC UA - Industrial automation protocol |
-| Chinese | 一人公司 (One Person Company) |
-| Solopreneur | One Person Company (intended meaning) |
+| Chinese              | 一人公司 (One Person Company)           |
+| Solopreneur          | One Person Company (intended meaning)   |
 
 **Decision:** Focus on long-tail keywords for English market:
+
 - "AI agent skills for solopreneurs"
 - "Claude Code skills"
 - "indie hacker tools"
@@ -44,6 +45,7 @@ The term "OPC" has different meanings in different markets:
 ### 2. Missing Schema Markup
 
 No structured data meant:
+
 - No rich results in Google
 - Poor AI visibility
 - No FAQ display
@@ -51,6 +53,7 @@ No structured data meant:
 ### 3. No GEO Optimization
 
 Content lacked:
+
 - Statistics and data points
 - Expert citations
 - FAQ format
@@ -63,18 +66,27 @@ Content lacked:
 ### Phase 1: Meta Tags Optimization
 
 **Before:**
+
 ```html
 <title>OPC Skills</title>
-<meta name="description" content="Skills for one person companies">
+<meta name="description" content="Skills for one person companies" />
 ```
 
 **After:**
+
 ```html
-<title>OPC Skills - AI Agent Skills for Solopreneurs & Indie Hackers | Claude Code, Cursor, Codex</title>
-<meta name="description" content="10+ AI agent skills for solopreneurs. Domain hunting, social media research, logo creation. Works with Claude Code, Cursor, Codex, Factory Droid. One-click install, 100% open source.">
+<title>
+  OPC Skills - AI Agent Skills for Solopreneurs & Indie Hackers | Claude Code,
+  Cursor, Codex
+</title>
+<meta
+  name="description"
+  content="10+ AI agent skills for solopreneurs. Domain hunting, social media research, logo creation. Works with Claude Code, Cursor, Codex, Factory Droid. One-click install, 100% open source."
+/>
 ```
 
 **Keywords targeted:**
+
 - solopreneur (high intent, low competition)
 - indie hacker (community term)
 - Claude Code skills (specific platform)
@@ -132,11 +144,13 @@ Added comprehensive JSON-LD:
 #### Statistics Addition (+37%)
 
 **Before:**
+
 ```
 "Skills for one person companies"
 ```
 
 **After:**
+
 ```
 "10+ Skills | 5 Platforms | One-Click Install | 100% Open Source"
 ```
@@ -161,19 +175,22 @@ Added 12 FAQ questions targeting high-search queries:
 #### Authoritative Tone (+25%)
 
 **Before:**
+
 ```
 "Some tools for solo workers"
 ```
 
 **After:**
+
 ```
-"AI Agent Skills for Solopreneurs - The definitive skill library for 
+"AI Agent Skills for Solopreneurs - The definitive skill library for
 one-person companies. Trusted by indie hackers worldwide."
 ```
 
 #### Citations (+40%)
 
 Added references to:
+
 - Anthropic (Claude Code official documentation)
 - Industry statistics on solopreneur growth
 - Sam Altman's "billion-dollar one-person company" prediction
@@ -197,16 +214,18 @@ Allow: /
 ### Phase 5: Hero Section Rewrite
 
 **Before:**
+
 ```
 OPC Skills
 Skills for OPCs
 ```
 
 **After:**
+
 ```
 AI Agent Skills for Solopreneurs
 
-The skill library for one-person companies. 
+The skill library for one-person companies.
 Install once, use everywhere.
 
 10+ Skills | 5 Platforms | One-Click Install | 100% Open Source
@@ -218,32 +237,32 @@ Install once, use everywhere.
 
 ### Technical Improvements
 
-| Metric | Before | After |
-|--------|--------|-------|
-| Meta Title | "OPC Skills" | Full keyword-rich title |
-| Meta Description | 20 chars | 155 chars |
-| Schema Types | 0 | 4 (WebPage, Software, FAQ, Org) |
-| FAQ Items | 0 | 12 |
-| Statistics | 0 | 4 key metrics |
+| Metric           | Before       | After                           |
+| ---------------- | ------------ | ------------------------------- |
+| Meta Title       | "OPC Skills" | Full keyword-rich title         |
+| Meta Description | 20 chars     | 155 chars                       |
+| Schema Types     | 0            | 4 (WebPage, Software, FAQ, Org) |
+| FAQ Items        | 0            | 12                              |
+| Statistics       | 0            | 4 key metrics                   |
 
 ### SEO Improvements
 
-| Factor | Before | After |
-|--------|--------|-------|
-| Title keyword match | ❌ | ✅ |
-| Description keyword match | ❌ | ✅ |
-| Structured data | ❌ | ✅ |
-| Rich results eligible | ❌ | ✅ |
+| Factor                    | Before | After |
+| ------------------------- | ------ | ----- |
+| Title keyword match       | ❌     | ✅    |
+| Description keyword match | ❌     | ✅    |
+| Structured data           | ❌     | ✅    |
+| Rich results eligible     | ❌     | ✅    |
 
 ### GEO Improvements
 
-| Princeton Method | Applied | Expected Boost |
-|-----------------|---------|----------------|
-| Cite Sources | ✅ | +40% |
-| Statistics | ✅ | +37% |
-| FAQ Schema | ✅ | +40% |
-| Authoritative Tone | ✅ | +25% |
-| Easy Language | ✅ | +20% |
+| Princeton Method   | Applied | Expected Boost |
+| ------------------ | ------- | -------------- |
+| Cite Sources       | ✅      | +40%           |
+| Statistics         | ✅      | +37%           |
+| FAQ Schema         | ✅      | +40%           |
+| Authoritative Tone | ✅      | +25%           |
+| Easy Language      | ✅      | +20%           |
 
 **Estimated total GEO visibility boost: 40-60%**
 
@@ -254,12 +273,14 @@ Install once, use everywhere.
 ### 1. Keyword Research is Critical
 
 The "OPC" keyword conflict could have hurt visibility. Long-tail keywords solved this:
+
 - "solopreneur tools" > "OPC tools"
 - "Claude Code skills" > "AI skills"
 
 ### 2. FAQPage Schema is High-Impact
 
 Adding 12 FAQ items with proper schema:
+
 - Enables rich results
 - Provides AI-extractable content
 - Targets specific search queries
@@ -269,6 +290,7 @@ Adding 12 FAQ items with proper schema:
 "10+ Skills | 5 Platforms | One-Click Install | 100% Open Source"
 
 These specific numbers are:
+
 - Easy for AI to extract
 - Memorable for users
 - Differentiated from competitors
@@ -276,6 +298,7 @@ These specific numbers are:
 ### 4. Answer-First Structure
 
 Each FAQ answer starts with a direct answer:
+
 - "OPC Skills is a collection of..." (not "Well, it depends...")
 - This matches AI response patterns
 
@@ -323,8 +346,8 @@ To replicate this optimization for your own site:
 
 ## Files Changed
 
-| File | Changes |
-|------|---------|
-| `website/worker.js` | Meta tags, Schema, Hero section, FAQ section, Stats bar |
-| `README.md` | Badges, navigation links, updated tagline |
-| `docs/MARKETING_SPEC.md` | Comprehensive marketing plan (new) |
+| File                     | Changes                                                 |
+| ------------------------ | ------------------------------------------------------- |
+| `website/worker.js`      | Meta tags, Schema, Hero section, FAQ section, Stats bar |
+| `README.md`              | Badges, navigation links, updated tagline               |
+| `docs/MARKETING_SPEC.md` | Comprehensive marketing plan (new)                      |

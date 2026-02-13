@@ -16,8 +16,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "ai-agent": {
     slug: "ai-agent",
     term: "AI Agent",
-    metaTitle:
-      "What Is an AI Agent? Definition and How They Work",
+    metaTitle: "What Is an AI Agent? Definition and How They Work",
     metaDescription:
       "An AI agent is autonomous software that perceives its environment, makes decisions, and takes actions to achieve goals. Learn how GAIA uses AI agents to manage your productivity.",
     definition:
@@ -58,8 +57,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "agentic-ai": {
     slug: "agentic-ai",
     term: "Agentic AI",
-    metaTitle:
-      "What Is Agentic AI? The Future of Autonomous Intelligence",
+    metaTitle: "What Is Agentic AI? The Future of Autonomous Intelligence",
     metaDescription:
       "Agentic AI refers to AI systems that act autonomously, make decisions, and execute multi-step tasks. Learn how GAIA uses agentic AI to manage your digital life.",
     definition:
@@ -89,8 +87,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "AI becomes agentic when it can autonomously plan, decide, and act across multiple steps without requiring human input at each stage. GAIA demonstrates this by monitoring your tools, identifying what needs to be done, and completing tasks across email, calendar, and workflow systems.",
       },
       {
-        question:
-          "Is agentic AI safe to use for personal productivity?",
+        question: "Is agentic AI safe to use for personal productivity?",
         answer:
           "Yes, when designed with proper guardrails. GAIA implements human-in-the-loop controls for sensitive actions, allowing you to review and approve decisions before execution while still benefiting from autonomous handling of routine tasks.",
       },
@@ -100,8 +97,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "proactive-ai": {
     slug: "proactive-ai",
     term: "Proactive AI",
-    metaTitle:
-      "Proactive vs Reactive AI: Why Proactive AI Matters",
+    metaTitle: "Proactive vs Reactive AI: Why Proactive AI Matters",
     metaDescription:
       "Proactive AI anticipates your needs and acts before you ask, unlike reactive AI that waits for prompts. Learn how GAIA uses proactive AI to boost your productivity.",
     definition:
@@ -126,8 +122,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "What is the difference between proactive and reactive AI?",
+        question: "What is the difference between proactive and reactive AI?",
         answer:
           "Reactive AI waits for your input and responds. Proactive AI monitors your environment and acts before you ask. ChatGPT is reactive because it responds to prompts. GAIA is proactive because it monitors your email, calendar, and tools and takes action autonomously.",
       },
@@ -142,8 +137,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "workflow-automation": {
     slug: "workflow-automation",
     term: "Workflow Automation",
-    metaTitle:
-      "What Is Workflow Automation? AI-Powered Workflows Explained",
+    metaTitle: "What Is Workflow Automation? AI-Powered Workflows Explained",
     metaDescription:
       "Workflow automation uses technology to execute repeatable business processes automatically. Learn how GAIA combines AI with workflow automation for intelligent task management.",
     definition:
@@ -174,8 +168,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Traditional automation follows exact rules. AI workflow automation understands context and makes intelligent decisions. GAIA can read an email, determine its urgency, decide who to notify, and create appropriate tasks without you defining explicit rules for every scenario.",
       },
       {
-        question:
-          "Do I need coding skills to create workflows in GAIA?",
+        question: "Do I need coding skills to create workflows in GAIA?",
         answer:
           "No. GAIA lets you create workflows using natural language. Describe what you want to automate, and GAIA configures the workflow across your connected tools. No coding or visual workflow building is required.",
       },
@@ -185,8 +178,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "model-context-protocol": {
     slug: "model-context-protocol",
     term: "Model Context Protocol (MCP)",
-    metaTitle:
-      "What Is MCP? Model Context Protocol Explained",
+    metaTitle: "What Is MCP? Model Context Protocol Explained",
     metaDescription:
       "Model Context Protocol (MCP) is an open standard for connecting AI models to external tools and data sources. Learn how GAIA uses MCP for 50+ integrations.",
     definition:
@@ -204,12 +196,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     category: "infrastructure",
     howGaiaUsesIt:
       "MCP is the backbone of GAIA's integration architecture. GAIA connects to 50+ tools including Gmail, Slack, Notion, GitHub, Linear, Todoist, and more through MCP servers. Each integration exposes its capabilities through the MCP standard, allowing GAIA's AI agents to discover and use tools dynamically. This means adding a new integration to GAIA does not require custom AI training. The agent simply discovers the new tool's capabilities through MCP and begins using it.",
-    relatedTerms: [
-      "api-integration",
-      "ai-orchestration",
-      "webhook",
-      "oauth",
-    ],
+    relatedTerms: ["api-integration", "ai-orchestration", "webhook", "oauth"],
     faqs: [
       {
         question: "Why does GAIA use MCP instead of direct APIs?",
@@ -227,8 +214,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   langgraph: {
     slug: "langgraph",
     term: "LangGraph",
-    metaTitle:
-      "What Is LangGraph? AI Agent Orchestration Framework",
+    metaTitle: "What Is LangGraph? AI Agent Orchestration Framework",
     metaDescription:
       "LangGraph is a framework for building stateful, multi-agent AI applications with cycles, branching, and persistence. Learn how GAIA uses LangGraph for agent orchestration.",
     definition:
@@ -246,12 +232,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     category: "infrastructure",
     howGaiaUsesIt:
       "GAIA's entire agent system is built on LangGraph. The core agent operates as a graph with nodes for reasoning, tool selection, action execution, and response generation. Subagents for email, calendar, task management, and workflow execution are orchestrated through LangGraph's graph-based architecture. This allows GAIA to handle complex multi-step tasks like reading an email, creating a task, scheduling a follow-up meeting, and notifying a team member, all as a single coordinated workflow with state persistence.",
-    relatedTerms: [
-      "ai-agent",
-      "ai-orchestration",
-      "graph-based-memory",
-      "llm",
-    ],
+    relatedTerms: ["ai-agent", "ai-orchestration", "graph-based-memory", "llm"],
     faqs: [
       {
         question: "Why does GAIA use LangGraph instead of simple chains?",
@@ -259,8 +240,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "LangGraph supports cycles, branching, and persistent state, which are essential for complex productivity workflows. Simple chains cannot handle the iterative reasoning and multi-tool orchestration that GAIA requires for tasks like managing email, scheduling, and cross-tool automation.",
       },
       {
-        question:
-          "Is LangGraph the same as LangChain?",
+        question: "Is LangGraph the same as LangChain?",
         answer:
           "LangGraph is built on top of LangChain but adds graph-based workflow orchestration with cycles, state management, and multi-agent coordination. LangChain provides the foundation for LLM interactions, while LangGraph adds the architecture for complex agent systems.",
       },
@@ -270,8 +250,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "graph-based-memory": {
     slug: "graph-based-memory",
     term: "Graph-Based Memory",
-    metaTitle:
-      "What Is Graph-Based AI Memory? Persistent Context for AI",
+    metaTitle: "What Is Graph-Based AI Memory? Persistent Context for AI",
     metaDescription:
       "Graph-based memory allows AI systems to store and connect information as nodes and relationships, enabling persistent context. Learn how GAIA uses graph memory.",
     definition:
@@ -296,14 +275,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does graph-based memory differ from vector memory?",
+        question: "How does graph-based memory differ from vector memory?",
         answer:
           "Vector memory stores information as numerical embeddings for similarity search. Graph-based memory stores information as connected entities and relationships. GAIA uses both: vector embeddings in ChromaDB for semantic search and graph structures for understanding relationships between your tasks, emails, meetings, and projects.",
       },
       {
-        question:
-          "Does GAIA's memory persist across sessions?",
+        question: "Does GAIA's memory persist across sessions?",
         answer:
           "Yes. GAIA's graph-based memory is persistent. It remembers your projects, preferences, communication patterns, and work context across all interactions, building a deeper understanding of your workflow over time.",
       },
@@ -313,8 +290,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "vector-embeddings": {
     slug: "vector-embeddings",
     term: "Vector Embeddings",
-    metaTitle:
-      "What Are Vector Embeddings? AI Search and Similarity",
+    metaTitle: "What Are Vector Embeddings? AI Search and Similarity",
     metaDescription:
       "Vector embeddings convert text into numerical representations that capture meaning, enabling semantic search and similarity matching. Learn how GAIA uses embeddings.",
     definition:
@@ -355,8 +331,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "task-automation": {
     slug: "task-automation",
     term: "Task Automation",
-    metaTitle:
-      "AI Task Automation: Automate Repetitive Work with AI",
+    metaTitle: "AI Task Automation: Automate Repetitive Work with AI",
     metaDescription:
       "AI task automation uses artificial intelligence to handle repetitive tasks automatically. Learn how GAIA automates task creation, management, and execution.",
     definition:
@@ -381,14 +356,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA create tasks from emails automatically?",
+        question: "Can GAIA create tasks from emails automatically?",
         answer:
           "Yes. GAIA reads your emails, identifies action items, and creates tasks with appropriate titles, descriptions, deadlines, and project assignments. It synchronizes these tasks across your connected tools like Todoist, Asana, or Linear.",
       },
       {
-        question:
-          "How does AI task automation differ from a simple to-do app?",
+        question: "How does AI task automation differ from a simple to-do app?",
         answer:
           "A to-do app requires you to manually create, organize, and complete tasks. AI task automation with GAIA identifies tasks from your communications, prioritizes them intelligently, and can even execute simple tasks autonomously.",
       },
@@ -398,8 +371,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "email-automation": {
     slug: "email-automation",
     term: "Email Automation",
-    metaTitle:
-      "AI Email Automation: Intelligent Inbox Management",
+    metaTitle: "AI Email Automation: Intelligent Inbox Management",
     metaDescription:
       "AI email automation uses intelligent systems to triage, categorize, draft replies, and manage your inbox. Learn how GAIA handles email management proactively.",
     definition:
@@ -425,14 +397,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA draft email replies for me?",
+        question: "Can GAIA draft email replies for me?",
         answer:
           "Yes. GAIA reads incoming emails, understands the context, and drafts appropriate replies. You can review and send them with a click or configure GAIA to send routine replies automatically.",
       },
       {
-        question:
-          "Does GAIA work with Gmail and Outlook?",
+        question: "Does GAIA work with Gmail and Outlook?",
         answer:
           "GAIA currently integrates deeply with Gmail through its MCP integration. It reads, triages, drafts, and manages your entire inbox proactively.",
       },
@@ -442,8 +412,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "calendar-automation": {
     slug: "calendar-automation",
     term: "Calendar Automation",
-    metaTitle:
-      "AI Calendar Management: Smart Scheduling and Automation",
+    metaTitle: "AI Calendar Management: Smart Scheduling and Automation",
     metaDescription:
       "AI calendar automation intelligently manages your schedule by finding optimal meeting times, preparing briefings, and coordinating across tools. Learn how GAIA automates calendars.",
     definition:
@@ -468,14 +437,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA schedule meetings automatically?",
+        question: "Can GAIA schedule meetings automatically?",
         answer:
           "Yes. GAIA can find optimal meeting times, check availability, and create calendar events. It can also prepare briefing documents before meetings by gathering relevant context from your emails and tasks.",
       },
       {
-        question:
-          "Does GAIA protect my focus time?",
+        question: "Does GAIA protect my focus time?",
         answer:
           "GAIA can block focus time on your calendar based on your productivity patterns and task priorities, ensuring you have uninterrupted time for deep work alongside scheduled meetings.",
       },
@@ -485,8 +452,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "knowledge-graph": {
     slug: "knowledge-graph",
     term: "Knowledge Graph",
-    metaTitle:
-      "What Is a Knowledge Graph? Structured Data for AI",
+    metaTitle: "What Is a Knowledge Graph? Structured Data for AI",
     metaDescription:
       "A knowledge graph organizes information as entities and relationships, enabling AI to understand connections between data. Learn how GAIA uses knowledge graphs.",
     definition:
@@ -511,14 +477,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does a knowledge graph differ from a database?",
+        question: "How does a knowledge graph differ from a database?",
         answer:
           "A traditional database stores data in tables with fixed schemas. A knowledge graph stores data as flexible entities and relationships, making it easy to connect information across different domains. GAIA uses this to link your emails, tasks, calendar events, and documents into a coherent understanding of your work.",
       },
       {
-        question:
-          "Is my data safe in GAIA's knowledge graph?",
+        question: "Is my data safe in GAIA's knowledge graph?",
         answer:
           "Yes. GAIA is open source and self-hostable, meaning you can run it on your own infrastructure with complete data control. Your knowledge graph is private to you and never used for training AI models.",
       },
@@ -528,8 +492,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "semantic-search": {
     slug: "semantic-search",
     term: "Semantic Search",
-    metaTitle:
-      "What Is Semantic Search? Search by Meaning, Not Keywords",
+    metaTitle: "What Is Semantic Search? Search by Meaning, Not Keywords",
     metaDescription:
       "Semantic search finds information based on meaning and intent rather than exact keywords. Learn how GAIA uses semantic search to find your emails, tasks, and documents.",
     definition:
@@ -554,14 +517,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How is semantic search different from regular search?",
+        question: "How is semantic search different from regular search?",
         answer:
           "Regular search matches exact keywords. Semantic search understands meaning. If you search for 'meeting notes from last week's design review,' GAIA's semantic search finds relevant documents even if they are titled differently, because it understands the conceptual relationship.",
       },
       {
-        question:
-          "What data sources does GAIA search across?",
+        question: "What data sources does GAIA search across?",
         answer:
           "GAIA performs semantic search across all your connected tools: emails, tasks, calendar events, documents, Slack messages, and more. It provides a unified search across your entire digital workspace.",
       },
@@ -571,8 +532,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   llm: {
     slug: "llm",
     term: "Large Language Model (LLM)",
-    metaTitle:
-      "What Is an LLM? Large Language Models Explained",
+    metaTitle: "What Is an LLM? Large Language Models Explained",
     metaDescription:
       "A Large Language Model is an AI trained on vast text data to understand and generate human language. Learn how GAIA uses LLMs to power its AI agent system.",
     definition:
@@ -598,14 +558,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "Which LLM does GAIA use?",
+        question: "Which LLM does GAIA use?",
         answer:
           "GAIA supports multiple LLM providers. You can choose the model that best fits your needs. The LLM serves as the reasoning engine, while GAIA's agent architecture, built on LangGraph, handles the structured workflow orchestration.",
       },
       {
-        question:
-          "Is an LLM the same as an AI agent?",
+        question: "Is an LLM the same as an AI agent?",
         answer:
           "No. An LLM is a language model that understands and generates text. An AI agent uses an LLM as its reasoning engine combined with tools, memory, and planning capabilities to take actions in the real world. GAIA is an AI agent that uses LLMs for reasoning.",
       },
@@ -615,8 +573,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "ai-assistant": {
     slug: "ai-assistant",
     term: "AI Assistant",
-    metaTitle:
-      "AI Assistant vs Chatbot: What Is the Difference?",
+    metaTitle: "AI Assistant vs Chatbot: What Is the Difference?",
     metaDescription:
       "An AI assistant uses artificial intelligence to help users complete tasks, going beyond simple chatbot responses. Learn how GAIA redefines the AI assistant category.",
     definition:
@@ -641,14 +598,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "What makes GAIA different from Siri or Alexa?",
+        question: "What makes GAIA different from Siri or Alexa?",
         answer:
           "Siri and Alexa handle simple commands like setting timers or playing music. GAIA manages complex productivity workflows: reading and triaging email, scheduling meetings with context, creating multi-step automated workflows, and proactively managing tasks across 50+ tools.",
       },
       {
-        question:
-          "Is an AI assistant better than a chatbot?",
+        question: "Is an AI assistant better than a chatbot?",
         answer:
           "An AI assistant goes beyond conversation to take actions on your behalf. GAIA does not just answer questions about your schedule. It actively manages your calendar, creates tasks from emails, drafts replies, and automates workflows across your connected tools.",
       },
@@ -658,8 +613,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "self-hosting": {
     slug: "self-hosting",
     term: "Self-Hosting",
-    metaTitle:
-      "Self-Hosting AI: Complete Data Control and Privacy",
+    metaTitle: "Self-Hosting AI: Complete Data Control and Privacy",
     metaDescription:
       "Self-hosting means running software on your own infrastructure for complete data control and privacy. Learn how to self-host GAIA for private AI assistance.",
     definition:
@@ -690,8 +644,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "No. GAIA provides Docker Compose configurations for easy deployment. You can have the entire stack running on your own server with a few commands. The infrastructure includes PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ, all containerized and preconfigured.",
       },
       {
-        question:
-          "What are the hardware requirements for self-hosting GAIA?",
+        question: "What are the hardware requirements for self-hosting GAIA?",
         answer:
           "GAIA can run on a standard server or cloud instance. The main requirement is sufficient memory for the databases and the AI model inference. Detailed requirements are provided in the GAIA documentation.",
       },
@@ -701,8 +654,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "open-source-ai": {
     slug: "open-source-ai",
     term: "Open Source AI",
-    metaTitle:
-      "Open Source AI: Transparency, Control, and Community",
+    metaTitle: "Open Source AI: Transparency, Control, and Community",
     metaDescription:
       "Open source AI provides transparency, community development, and data control. Learn why GAIA is built as open source and what it means for your privacy.",
     definition:
@@ -727,14 +679,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "Is GAIA really free and open source?",
+        question: "Is GAIA really free and open source?",
         answer:
           "Yes. GAIA's entire codebase is available on GitHub. You can self-host it for free with no feature limitations. The hosted version offers convenience with managed infrastructure, but the self-hosted version has full functionality.",
       },
       {
-        question:
-          "Can I contribute to GAIA?",
+        question: "Can I contribute to GAIA?",
         answer:
           "Absolutely. GAIA welcomes community contributions including new integrations, bug fixes, documentation, and feature development. You can also build and publish custom MCP integrations in the GAIA marketplace.",
       },
@@ -744,8 +694,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "cognitive-load": {
     slug: "cognitive-load",
     term: "Cognitive Load",
-    metaTitle:
-      "Cognitive Load Reduction: How AI Reduces Mental Overhead",
+    metaTitle: "Cognitive Load Reduction: How AI Reduces Mental Overhead",
     metaDescription:
       "Cognitive load is the mental effort required to manage information and tasks. Learn how GAIA reduces cognitive load by proactively managing your digital workflow.",
     definition:
@@ -771,14 +720,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA reduce cognitive load?",
+        question: "How does GAIA reduce cognitive load?",
         answer:
           "GAIA reduces cognitive load by proactively managing your inbox, calendar, and tasks across 50+ tools. Instead of manually checking multiple apps, triaging emails, and tracking follow-ups, GAIA handles these automatically, freeing your mental energy for important work.",
       },
       {
-        question:
-          "What is the impact of high cognitive load on productivity?",
+        question: "What is the impact of high cognitive load on productivity?",
         answer:
           "High cognitive load leads to decision fatigue, increased errors, slower processing, and burnout. By automating information management and task orchestration, GAIA helps maintain manageable cognitive load throughout the day.",
       },
@@ -788,8 +735,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "context-awareness": {
     slug: "context-awareness",
     term: "Context Awareness",
-    metaTitle:
-      "Context-Aware AI: Understanding Your Work Environment",
+    metaTitle: "Context-Aware AI: Understanding Your Work Environment",
     metaDescription:
       "Context-aware AI understands the full picture of your work: who is involved, what is urgent, and what happened before. Learn how GAIA uses context awareness.",
     definition:
@@ -814,14 +760,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA build context about my work?",
+        question: "How does GAIA build context about my work?",
         answer:
           "GAIA builds context by connecting information from all your integrated tools: emails, calendar events, tasks, Slack messages, documents, and more. It stores this information in a graph-based memory system that captures relationships between people, projects, and tasks.",
       },
       {
-        question:
-          "Does context awareness improve over time?",
+        question: "Does context awareness improve over time?",
         answer:
           "Yes. As GAIA processes more of your interactions and connected data, its understanding of your work patterns, preferences, and relationships deepens. The more you use GAIA, the more accurately it anticipates your needs.",
       },
@@ -831,8 +775,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   oauth: {
     slug: "oauth",
     term: "OAuth",
-    metaTitle:
-      "What Is OAuth? Secure Authorization for AI Integrations",
+    metaTitle: "What Is OAuth? Secure Authorization for AI Integrations",
     metaDescription:
       "OAuth is an authorization standard that lets AI tools securely access your accounts without sharing passwords. Learn how GAIA uses OAuth for secure integrations.",
     definition:
@@ -858,14 +801,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "Is it safe to connect my accounts to GAIA via OAuth?",
+        question: "Is it safe to connect my accounts to GAIA via OAuth?",
         answer:
           "Yes. OAuth is an industry-standard protocol used by Google, Microsoft, Slack, and thousands of other services. GAIA never sees your passwords. It receives limited-permission tokens that you can revoke at any time.",
       },
       {
-        question:
-          "What permissions does GAIA request?",
+        question: "What permissions does GAIA request?",
         answer:
           "GAIA requests only the permissions necessary for its features. For example, it needs read and compose access for email management, read and write access for calendar management, and message access for Slack integration. Each permission is explicitly listed during the OAuth authorization flow.",
       },
@@ -875,8 +816,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   webhook: {
     slug: "webhook",
     term: "Webhook",
-    metaTitle:
-      "What Is a Webhook? Real-Time Event Notifications Explained",
+    metaTitle: "What Is a Webhook? Real-Time Event Notifications Explained",
     metaDescription:
       "A webhook is a way for applications to send real-time notifications to other systems when events occur. Learn how GAIA uses webhooks for instant automation.",
     definition:
@@ -902,14 +842,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How do webhooks enable real-time automation?",
+        question: "How do webhooks enable real-time automation?",
         answer:
           "Webhooks send instant notifications when events occur. When someone emails you or mentions you in Slack, GAIA receives a webhook immediately and can take action in real time, like creating a task or drafting a reply, without waiting for a scheduled check.",
       },
       {
-        question:
-          "Do I need to configure webhooks manually?",
+        question: "Do I need to configure webhooks manually?",
         answer:
           "No. When you connect a tool to GAIA through OAuth or MCP, webhooks are configured automatically. GAIA handles the technical setup of receiving and processing webhook events from your connected services.",
       },
@@ -919,8 +857,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "api-integration": {
     slug: "api-integration",
     term: "API Integration",
-    metaTitle:
-      "API Integration for AI: Connecting Your Digital Tools",
+    metaTitle: "API Integration for AI: Connecting Your Digital Tools",
     metaDescription:
       "API integration connects different software applications, enabling AI to act across your digital tools. Learn how GAIA integrates with 50+ tools through APIs and MCP.",
     definition:
@@ -946,14 +883,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How many integrations does GAIA support?",
+        question: "How many integrations does GAIA support?",
         answer:
           "GAIA supports 50+ integrations including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello, and more. New integrations are regularly added by the team and community through the MCP standard.",
       },
       {
-        question:
-          "Can I build custom integrations for GAIA?",
+        question: "Can I build custom integrations for GAIA?",
         answer:
           "Yes. GAIA supports custom MCP server integrations, allowing you to connect any tool or service. You can also publish your integrations to the GAIA marketplace for others to use.",
       },
@@ -963,8 +898,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "ai-orchestration": {
     slug: "ai-orchestration",
     term: "AI Orchestration",
-    metaTitle:
-      "What Is AI Orchestration? Coordinating Multiple AI Agents",
+    metaTitle: "What Is AI Orchestration? Coordinating Multiple AI Agents",
     metaDescription:
       "AI orchestration coordinates multiple AI agents and tools to complete complex tasks. Learn how GAIA orchestrates agents across email, calendar, and 50+ tools.",
     definition:
@@ -981,12 +915,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     category: "ai-concepts",
     howGaiaUsesIt:
       "GAIA's architecture is built around AI orchestration using LangGraph. A core agent receives requests and orchestrates specialized subagents for email, calendar, task management, workflow execution, and tool interaction. When you ask GAIA to 'prepare for my meeting with Sarah tomorrow,' the orchestration layer coordinates checking your calendar for the meeting, searching emails for recent conversations with Sarah, reviewing related tasks and project status, compiling a briefing document, and sending it to you before the meeting starts.",
-    relatedTerms: [
-      "langgraph",
-      "ai-agent",
-      "workflow-automation",
-      "llm",
-    ],
+    relatedTerms: ["langgraph", "ai-agent", "workflow-automation", "llm"],
     faqs: [
       {
         question:
@@ -995,8 +924,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Automation executes predefined rules. AI orchestration coordinates multiple intelligent agents that can reason, adapt, and make decisions. GAIA's orchestration layer dynamically decides which agents and tools to use based on the specific task and context.",
       },
       {
-        question:
-          "How does GAIA coordinate multiple agents?",
+        question: "How does GAIA coordinate multiple agents?",
         answer:
           "GAIA uses LangGraph to model agent coordination as a directed graph. The core agent routes tasks to specialized subagents, manages shared state, handles tool interactions through MCP, and assembles results into coherent outcomes.",
       },
@@ -1006,8 +934,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "human-in-the-loop": {
     slug: "human-in-the-loop",
     term: "Human-in-the-Loop",
-    metaTitle:
-      "Human-in-the-Loop AI: Balancing Automation with Control",
+    metaTitle: "Human-in-the-Loop AI: Balancing Automation with Control",
     metaDescription:
       "Human-in-the-loop keeps humans in control of AI decisions for sensitive actions. Learn how GAIA balances autonomous automation with human oversight.",
     definition:
@@ -1033,14 +960,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "Can I control which actions GAIA takes automatically?",
+        question: "Can I control which actions GAIA takes automatically?",
         answer:
           "Yes. GAIA lets you configure approval requirements per action type. You can set routine tasks like inbox triage to run automatically while requiring approval for sensitive actions like sending emails on your behalf or modifying calendar events.",
       },
       {
-        question:
-          "Is human-in-the-loop important for AI assistants?",
+        question: "Is human-in-the-loop important for AI assistants?",
         answer:
           "Yes. Human-in-the-loop ensures that AI assistants handle sensitive actions responsibly. GAIA balances autonomous efficiency for routine work with human oversight for high-impact decisions, giving you control without sacrificing productivity.",
       },
@@ -1050,8 +975,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "digital-assistant": {
     slug: "digital-assistant",
     term: "Digital Assistant",
-    metaTitle:
-      "The Evolution of Digital Assistants: From Siri to AI Agents",
+    metaTitle: "The Evolution of Digital Assistants: From Siri to AI Agents",
     metaDescription:
       "Digital assistants have evolved from simple voice commands to AI agents that manage your entire workflow. Learn how GAIA represents the next generation.",
     definition:
@@ -1077,14 +1001,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How is GAIA different from Siri or Google Assistant?",
+        question: "How is GAIA different from Siri or Google Assistant?",
         answer:
           "Siri and Google Assistant handle simple commands and questions. GAIA manages complex productivity workflows: email triage, calendar orchestration, multi-step task automation, and workflow execution across 50+ integrated tools. GAIA works proactively, not just when you ask.",
       },
       {
-        question:
-          "Is GAIA replacing traditional digital assistants?",
+        question: "Is GAIA replacing traditional digital assistants?",
         answer:
           "GAIA complements traditional assistants by focusing on productivity workflow management. While Siri handles voice commands and smart home control, GAIA manages your email, calendar, tasks, and cross-tool workflows with AI-powered autonomy.",
       },
@@ -1094,8 +1016,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "ai-email-assistant": {
     slug: "ai-email-assistant",
     term: "AI Email Assistant",
-    metaTitle:
-      "What Is an AI Email Assistant? | GAIA",
+    metaTitle: "What Is an AI Email Assistant? | GAIA",
     metaDescription:
       "An AI email assistant reads, triages, drafts, and manages your inbox autonomously. Learn how GAIA acts as your AI email assistant across Gmail and beyond.",
     definition:
@@ -1126,14 +1047,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Email filters match simple rules like sender address or subject keywords. An AI email assistant understands the content and context of each message. GAIA can determine that an email about 'Q3 deliverables' is urgent because it relates to a project with a deadline next week, something no filter rule can do.",
       },
       {
-        question:
-          "Can an AI email assistant write replies for me?",
+        question: "Can an AI email assistant write replies for me?",
         answer:
           "Yes. GAIA drafts contextual replies based on the email content, your past communication style, and relevant project context. You can review and send with one click, or configure GAIA to auto-send routine responses like meeting confirmations.",
       },
       {
-        question:
-          "Will an AI email assistant miss important emails?",
+        question: "Will an AI email assistant miss important emails?",
         answer:
           "GAIA is designed to catch what humans miss. It reads every message and evaluates urgency based on sender relationships, content analysis, and project context. It surfaces high-priority emails and flags anything that needs your direct attention.",
       },
@@ -1143,8 +1062,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "ai-calendar-management": {
     slug: "ai-calendar-management",
     term: "AI Calendar Management",
-    metaTitle:
-      "What Is AI Calendar Management? | GAIA",
+    metaTitle: "What Is AI Calendar Management? | GAIA",
     metaDescription:
       "AI calendar management uses intelligent automation to schedule meetings, protect focus time, and prepare briefings. See how GAIA manages your calendar.",
     definition:
@@ -1176,8 +1094,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Calendly shares your availability for others to book. AI calendar management with GAIA actively organizes your entire schedule: finding meeting times, protecting focus blocks, preparing briefings, creating events from emails, and ensuring your calendar aligns with your task priorities. It manages your calendar rather than just exposing it.",
       },
       {
-        question:
-          "Can GAIA schedule meetings across time zones?",
+        question: "Can GAIA schedule meetings across time zones?",
         answer:
           "Yes. GAIA considers time zones when scheduling and finds times that work for all participants. It factors in your preferred meeting hours and avoids scheduling calls at inconvenient times for any attendee.",
       },
@@ -1187,8 +1104,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "ai-task-prioritization": {
     slug: "ai-task-prioritization",
     term: "AI Task Prioritization",
-    metaTitle:
-      "What Is AI Task Prioritization? | GAIA",
+    metaTitle: "What Is AI Task Prioritization? | GAIA",
     metaDescription:
       "AI task prioritization uses intelligence to rank your tasks by urgency, importance, and context. Learn how GAIA automatically prioritizes your work.",
     definition:
@@ -1214,14 +1130,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA decide which tasks are most important?",
+        question: "How does GAIA decide which tasks are most important?",
         answer:
           "GAIA analyzes multiple signals: hard deadlines, sender importance, project dependencies, email urgency cues, and your historical work patterns. It dynamically re-prioritizes as new information arrives rather than relying on a static priority you set once.",
       },
       {
-        question:
-          "Can I override GAIA's task prioritization?",
+        question: "Can I override GAIA's task prioritization?",
         answer:
           "Absolutely. GAIA's prioritization is a recommendation. You can pin tasks to the top, manually reorder items, or adjust the weight GAIA gives to different signals. Over time, GAIA learns from your overrides and adjusts its ranking model.",
       },
@@ -1231,8 +1145,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "workflow-orchestration": {
     slug: "workflow-orchestration",
     term: "Workflow Orchestration",
-    metaTitle:
-      "What Is Workflow Orchestration? | GAIA",
+    metaTitle: "What Is Workflow Orchestration? | GAIA",
     metaDescription:
       "Workflow orchestration coordinates multi-step processes across tools and teams. Learn how GAIA orchestrates workflows across 50+ integrations with AI.",
     definition:
@@ -1264,8 +1177,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Workflow automation executes individual automated tasks. Workflow orchestration coordinates multiple automated tasks into a reliable sequence, managing dependencies, data flow, and error handling between steps. GAIA's orchestration ensures that multi-step workflows across different tools complete reliably.",
       },
       {
-        question:
-          "Can GAIA handle workflows that span multiple tools?",
+        question: "Can GAIA handle workflows that span multiple tools?",
         answer:
           "Yes. GAIA's orchestration engine coordinates actions across 50+ tools. A single workflow can read from Gmail, create tasks in Linear, update a Notion database, post in Slack, and schedule a meeting in Google Calendar, all as a coordinated sequence.",
       },
@@ -1275,8 +1187,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "ai-meeting-assistant": {
     slug: "ai-meeting-assistant",
     term: "AI Meeting Assistant",
-    metaTitle:
-      "What Is an AI Meeting Assistant? | GAIA",
+    metaTitle: "What Is an AI Meeting Assistant? | GAIA",
     metaDescription:
       "An AI meeting assistant prepares agendas, gathers context, and handles follow-ups automatically. Learn how GAIA manages your meetings end to end.",
     definition:
@@ -1302,20 +1213,17 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA prepare for my meetings?",
+        question: "How does GAIA prepare for my meetings?",
         answer:
           "GAIA pulls relevant context from your connected tools before each meeting. It gathers recent emails with attendees, open tasks related to the meeting topic, relevant documents, and previous meeting notes. This briefing arrives before the meeting starts so you walk in fully prepared.",
       },
       {
-        question:
-          "Can GAIA create tasks from meeting outcomes?",
+        question: "Can GAIA create tasks from meeting outcomes?",
         answer:
           "Yes. After a meeting, tell GAIA the action items and it creates tasks in your connected tools with appropriate assignees, deadlines, and project associations. It also schedules any follow-up meetings and sends summary emails to attendees.",
       },
       {
-        question:
-          "Does GAIA join and record meetings?",
+        question: "Does GAIA join and record meetings?",
         answer:
           "GAIA focuses on meeting preparation and follow-up rather than in-meeting recording. It excels at gathering context before meetings and turning outcomes into actions afterward, integrating with your calendar, email, and task management tools.",
       },
@@ -1325,8 +1233,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "smart-notifications": {
     slug: "smart-notifications",
     term: "Smart Notifications",
-    metaTitle:
-      "What Are Smart Notifications? | GAIA",
+    metaTitle: "What Are Smart Notifications? | GAIA",
     metaDescription:
       "Smart notifications use AI to filter, prioritize, and batch alerts so only important items interrupt you. Learn how GAIA reduces notification overload.",
     definition:
@@ -1352,14 +1259,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA decide which notifications are important?",
+        question: "How does GAIA decide which notifications are important?",
         answer:
           "GAIA evaluates notifications based on sender importance, content urgency, your current calendar status, and historical patterns. A message from your manager about a deadline gets through immediately. A newsletter or low-priority update gets batched for later.",
       },
       {
-        question:
-          "Can I customize how GAIA handles my notifications?",
+        question: "Can I customize how GAIA handles my notifications?",
         answer:
           "Yes. You can configure priority rules for specific contacts, channels, and tools. You can set focus hours when only critical notifications come through, and choose how often you receive batched digests for non-urgent items.",
       },
@@ -1369,8 +1274,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "ai-personal-productivity": {
     slug: "ai-personal-productivity",
     term: "AI Personal Productivity",
-    metaTitle:
-      "What Is AI Personal Productivity? | GAIA",
+    metaTitle: "What Is AI Personal Productivity? | GAIA",
     metaDescription:
       "AI personal productivity uses artificial intelligence to manage your tasks, email, calendar, and workflows. Learn how GAIA boosts productivity with AI.",
     definition:
@@ -1396,14 +1300,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does AI improve personal productivity?",
+        question: "How does AI improve personal productivity?",
         answer:
           "AI improves personal productivity by automating the overhead of managing tasks, email, and calendars. GAIA captures tasks from your communications, prioritizes your work, schedules focus time, and handles routine actions. You spend less time organizing and more time on meaningful work.",
       },
       {
-        question:
-          "Does GAIA replace productivity apps like Todoist or Notion?",
+        question: "Does GAIA replace productivity apps like Todoist or Notion?",
         answer:
           "GAIA integrates with your existing productivity tools rather than replacing them. It connects to Todoist, Notion, Asana, Linear, and others, adding an AI layer that automates task creation, prioritization, and cross-tool coordination.",
       },
@@ -1413,8 +1315,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "inbox-zero": {
     slug: "inbox-zero",
     term: "Inbox Zero",
-    metaTitle:
-      "What Is Inbox Zero? Achieve It with AI | GAIA",
+    metaTitle: "What Is Inbox Zero? Achieve It with AI | GAIA",
     metaDescription:
       "Inbox Zero is the practice of keeping your email inbox empty or near-empty. Learn how GAIA helps you reach and maintain Inbox Zero with AI automation.",
     definition:
@@ -1445,14 +1346,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "With manual effort alone, most people find Inbox Zero unsustainable. With AI assistance from GAIA, it becomes practical. GAIA processes every email automatically: triaging, drafting replies, creating tasks, and archiving. You review and approve rather than doing everything manually.",
       },
       {
-        question:
-          "How does GAIA help achieve Inbox Zero?",
+        question: "How does GAIA help achieve Inbox Zero?",
         answer:
           "GAIA processes every incoming email by categorizing it, drafting a reply or flagging it for your attention, extracting action items into tasks, and archiving messages that need no response. This automated processing is what makes Inbox Zero achievable day after day.",
       },
       {
-        question:
-          "Does Inbox Zero mean I have to respond to every email?",
+        question: "Does Inbox Zero mean I have to respond to every email?",
         answer:
           "No. Inbox Zero means every email is processed, not necessarily replied to. Some emails need replies, some become tasks, some get archived. GAIA handles this triage automatically, deciding the right action for each message based on its content and context.",
       },
@@ -1462,8 +1361,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "deep-work": {
     slug: "deep-work",
     term: "Deep Work",
-    metaTitle:
-      "What Is Deep Work? Protect Focus Time with AI | GAIA",
+    metaTitle: "What Is Deep Work? Protect Focus Time with AI | GAIA",
     metaDescription:
       "Deep work is focused, distraction-free concentration on cognitively demanding tasks. Learn how GAIA protects your deep work time with AI calendar management.",
     definition:
@@ -1489,14 +1387,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA help me do more deep work?",
+        question: "How does GAIA help me do more deep work?",
         answer:
           "GAIA automatically blocks focus time on your calendar, holds non-urgent notifications during those blocks, prevents meeting scheduling over your deep work hours, and batches low-priority communications for review afterward. It protects your concentration so you can do your best work.",
       },
       {
-        question:
-          "Can GAIA schedule deep work blocks automatically?",
+        question: "Can GAIA schedule deep work blocks automatically?",
         answer:
           "Yes. GAIA analyzes your calendar, deadlines, and energy patterns to find optimal times for deep work. It blocks these periods on your calendar and defends them from meeting requests, rescheduling only when something genuinely urgent arises.",
       },
@@ -1506,8 +1402,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "time-blocking": {
     slug: "time-blocking",
     term: "Time Blocking",
-    metaTitle:
-      "What Is Time Blocking? AI-Powered Scheduling | GAIA",
+    metaTitle: "What Is Time Blocking? AI-Powered Scheduling | GAIA",
     metaDescription:
       "Time blocking assigns specific tasks to specific time slots on your calendar. Learn how GAIA automates time blocking with AI scheduling.",
     definition:
@@ -1533,14 +1428,12 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA automate time blocking?",
+        question: "How does GAIA automate time blocking?",
         answer:
           "GAIA reads your task list, calendar, and deadlines, then creates time blocks for each task at optimal times. It considers your energy patterns, groups similar work to reduce context switching, and adjusts the schedule dynamically when things change.",
       },
       {
-        question:
-          "Does GAIA adjust time blocks when my schedule changes?",
+        question: "Does GAIA adjust time blocks when my schedule changes?",
         answer:
           "Yes. When a meeting moves, a task takes longer than expected, or a new priority arrives, GAIA reshuffles your remaining time blocks to accommodate the change. Your schedule stays realistic throughout the day.",
       },
@@ -1550,8 +1443,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "no-code-automation": {
     slug: "no-code-automation",
     term: "No-Code Automation",
-    metaTitle:
-      "What Is No-Code Automation? | GAIA",
+    metaTitle: "What Is No-Code Automation? | GAIA",
     metaDescription:
       "No-code automation lets you build workflows without programming. Learn how GAIA uses natural language to create automations across 50+ tools.",
     definition:
@@ -1577,8 +1469,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "How is GAIA different from Zapier or Make?",
+        question: "How is GAIA different from Zapier or Make?",
         answer:
           "Zapier and Make use visual builders where you connect triggers and actions with drag-and-drop. GAIA lets you describe workflows in natural language. You do not need to understand triggers, actions, or data mapping. GAIA's AI figures out the implementation from your description.",
       },
@@ -1600,8 +1491,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   "digital-executive-assistant": {
     slug: "digital-executive-assistant",
     term: "Digital Executive Assistant",
-    metaTitle:
-      "What Is a Digital Executive Assistant? | GAIA",
+    metaTitle: "What Is a Digital Executive Assistant? | GAIA",
     metaDescription:
       "A digital executive assistant is AI that handles executive-level tasks like inbox management, scheduling, and briefings. See how GAIA works as your AI EA.",
     definition:
@@ -1627,20 +1517,17 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA really replace a human executive assistant?",
+        question: "Can GAIA really replace a human executive assistant?",
         answer:
           "GAIA handles the operational and administrative tasks that consume most of an EA's time: inbox management, scheduling, meeting prep, follow-ups, and task coordination. For relationship-heavy tasks that require human judgment and personal touch, human EAs remain valuable. Many users pair GAIA with their EA for the best of both.",
       },
       {
-        question:
-          "What executive tasks can GAIA handle?",
+        question: "What executive tasks can GAIA handle?",
         answer:
           "GAIA manages inbox triage, calendar scheduling, meeting preparation and follow-up, task creation and prioritization, cross-tool workflow coordination, and stakeholder communication drafting. It works across 50+ integrated tools to handle the full scope of executive administrative support.",
       },
       {
-        question:
-          "Is a digital executive assistant only for executives?",
+        question: "Is a digital executive assistant only for executives?",
         answer:
           "No. Anyone who manages a busy inbox, attends multiple meetings, and coordinates across tools benefits from a digital EA. GAIA is designed for knowledge workers at every level who want to offload administrative overhead and focus on their most impactful work.",
       },
@@ -1648,9 +1535,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
   },
 };
 
-export function getGlossaryTerm(
-  slug: string,
-): GlossaryTerm | undefined {
+export function getGlossaryTerm(slug: string): GlossaryTerm | undefined {
   return glossaryTerms[slug];
 }
 
@@ -1662,9 +1547,7 @@ export function getAllGlossaryTerms(): GlossaryTerm[] {
   return Object.values(glossaryTerms);
 }
 
-export function getGlossaryTermsByCategory(
-  category: string,
-): GlossaryTerm[] {
+export function getGlossaryTermsByCategory(category: string): GlossaryTerm[] {
   return Object.values(glossaryTerms).filter(
     (term) => term.category === category,
   );

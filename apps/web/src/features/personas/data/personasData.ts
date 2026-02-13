@@ -149,14 +149,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA replace my project management tool?",
+        question: "Can GAIA replace my project management tool?",
         answer:
           "GAIA complements your existing tools like Linear, Asana, or Notion rather than replacing them. It acts as an intelligent layer that connects these tools, automates data flow between them, and surfaces insights so you spend less time managing tools and more time on product strategy.",
       },
       {
-        question:
-          "How does GAIA help with stakeholder communication?",
+        question: "How does GAIA help with stakeholder communication?",
         answer:
           "GAIA automatically compiles progress data from your engineering tools, drafts status updates in your preferred format, and can send them via email or Slack on a schedule. It ensures stakeholders stay informed without you manually building reports.",
       },
@@ -167,8 +165,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "designers",
     title: "AI Assistant for Designers",
     role: "Designers",
-    metaTitle:
-      "AI Assistant for Designers - Streamline Design Operations",
+    metaTitle: "AI Assistant for Designers - Streamline Design Operations",
     metaDescription:
       "GAIA helps designers manage feedback loops, track design requests, automate handoff documentation, and keep stakeholders aligned across Slack, Notion, and email.",
     keywords: [
@@ -216,8 +213,7 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA help manage design systems documentation?",
+        question: "Can GAIA help manage design systems documentation?",
         answer:
           "GAIA helps keep your Notion or Google Docs documentation in sync with project updates. It can flag when documentation needs updating based on Linear ticket changes and draft update summaries for your review.",
       },
@@ -234,8 +230,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "startup-founders",
     title: "AI Assistant for Startup Founders",
     role: "Startup Founders",
-    metaTitle:
-      "AI Assistant for Startup Founders - Scale Yourself with AI",
+    metaTitle: "AI Assistant for Startup Founders - Scale Yourself with AI",
     metaDescription:
       "GAIA helps startup founders manage investor updates, automate hiring pipelines, track metrics across tools, and handle the operational chaos of building a company.",
     keywords: [
@@ -300,8 +295,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA is fully open source and self-hostable. You can deploy it on your own infrastructure, ensuring complete data sovereignty. No data is ever shared with third parties or used for model training.",
       },
       {
-        question:
-          "Can GAIA manage my calendar as a founder?",
+        question: "Can GAIA manage my calendar as a founder?",
         answer:
           "Yes. GAIA integrates with Google Calendar to optimize your schedule, block focus time, prepare meeting briefs, and coordinate across multiple calendars. It proactively suggests schedule adjustments when conflicts arise.",
       },
@@ -312,8 +306,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "students",
     title: "AI Assistant for Students",
     role: "Students",
-    metaTitle:
-      "AI Assistant for Students - Organize Academics and Boost Focus",
+    metaTitle: "AI Assistant for Students - Organize Academics and Boost Focus",
     metaDescription:
       "GAIA helps students manage assignments, organize research, schedule study sessions, and stay on top of deadlines across all their academic tools.",
     keywords: [
@@ -365,8 +358,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA offers a free tier with core features that covers most student needs. You can also self-host GAIA entirely free for complete control over your data.",
       },
       {
-        question:
-          "Can GAIA help with research papers?",
+        question: "Can GAIA help with research papers?",
         answer:
           "GAIA integrates with Perplexity for AI-powered research, organizes findings in Notion or Google Docs, and helps structure your work. It manages the logistics of research so you can focus on analysis and writing.",
       },
@@ -377,8 +369,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "remote-workers",
     title: "AI Assistant for Remote Workers",
     role: "Remote Workers",
-    metaTitle:
-      "AI Assistant for Remote Workers - Master Async Communication",
+    metaTitle: "AI Assistant for Remote Workers - Master Async Communication",
     metaDescription:
       "GAIA helps remote workers manage async communication, organize scattered tools, automate status updates, and maintain work-life boundaries with intelligent automation.",
     keywords: [
@@ -427,14 +418,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA help with async communication?",
+        question: "How does GAIA help with async communication?",
         answer:
           "GAIA monitors your Slack channels, email, and other communication tools continuously. It summarizes conversations you missed, highlights items that need your response, and can draft replies for routine messages so you stay current without constant monitoring.",
       },
       {
-        question:
-          "Can GAIA work across different time zones?",
+        question: "Can GAIA work across different time zones?",
         answer:
           "Yes. GAIA operates 24/7 and understands time zone contexts. It schedules meetings considering all participants' availability, batches notifications appropriately, and delivers morning briefings tailored to your local time.",
       },
@@ -445,8 +434,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "freelancers",
     title: "AI Assistant for Freelancers",
     role: "Freelancers",
-    metaTitle:
-      "AI Assistant for Freelancers - Automate the Business Side",
+    metaTitle: "AI Assistant for Freelancers - Automate the Business Side",
     metaDescription:
       "GAIA helps freelancers manage client communication, track projects, automate invoicing follow-ups, and handle the administrative overhead of running a solo business.",
     keywords: [
@@ -500,14 +488,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA manage multiple client projects simultaneously?",
+        question: "Can GAIA manage multiple client projects simultaneously?",
         answer:
           "Yes. GAIA organizes work by client and project, tracks deadlines across all engagements, and ensures nothing falls through the cracks. It provides a unified view of all your active projects regardless of which tools each client uses.",
       },
       {
-        question:
-          "How does GAIA help freelancers get paid faster?",
+        question: "How does GAIA help freelancers get paid faster?",
         answer:
           "GAIA tracks invoice status through Gmail, identifies overdue payments, and drafts professional follow-up emails for your review. It automates the tedious payment tracking process so you can focus on client work.",
       },
@@ -568,14 +554,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "How is GAIA different from a virtual assistant?",
+        question: "How is GAIA different from a virtual assistant?",
         answer:
           "Unlike human virtual assistants, GAIA operates 24/7 with zero wait time, integrates directly with your tools, and learns your preferences over time through graph-based memory. It handles tasks instantly and scales without hiring overhead.",
       },
       {
-        question:
-          "Can GAIA help manage customer relationships?",
+        question: "Can GAIA help manage customer relationships?",
         answer:
           "Yes. GAIA integrates with HubSpot and Gmail to track customer communications, ensure timely follow-ups, and flag important customer interactions. It helps you maintain strong relationships even as your customer base grows.",
       },
@@ -586,8 +570,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "marketers",
     title: "AI Assistant for Marketers",
     role: "Marketers",
-    metaTitle:
-      "AI Assistant for Marketers - Automate Marketing Operations",
+    metaTitle: "AI Assistant for Marketers - Automate Marketing Operations",
     metaDescription:
       "GAIA helps marketers automate campaign tracking, manage social media workflows, coordinate content calendars, and streamline cross-channel reporting.",
     keywords: [
@@ -643,20 +626,17 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA replace my marketing automation platform?",
+        question: "Can GAIA replace my marketing automation platform?",
         answer:
           "GAIA complements your existing marketing stack rather than replacing it. It acts as an intelligent orchestration layer that connects your tools, automates data flow, and handles the operational overhead of managing multiple marketing channels.",
       },
       {
-        question:
-          "How does GAIA help with social media management?",
+        question: "How does GAIA help with social media management?",
         answer:
           "GAIA monitors your social channels for mentions and trends, surfaces engagement opportunities, and drafts responses. It integrates with Twitter, LinkedIn, Instagram, and Reddit to give you a unified view of your social presence.",
       },
       {
-        question:
-          "Does GAIA support analytics tracking?",
+        question: "Does GAIA support analytics tracking?",
         answer:
           "Yes. GAIA integrates with PostHog for product analytics and can pull data from connected tools to compile marketing reports. It automates the reporting process so you spend more time on strategy and less on data gathering.",
       },
@@ -718,14 +698,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA help me create content faster?",
+        question: "Can GAIA help me create content faster?",
         answer:
           "GAIA accelerates the content creation process by automating research, organizing ideas, and managing the operational overhead around publishing. It handles the logistics so you can focus on the creative work that only you can do.",
       },
       {
-        question:
-          "How does GAIA track engagement across platforms?",
+        question: "How does GAIA track engagement across platforms?",
         answer:
           "GAIA integrates with Twitter, LinkedIn, Instagram, and Reddit to monitor mentions, comments, and engagement metrics. It consolidates cross-platform data into unified summaries and surfaces the interactions that matter most.",
       },
@@ -792,8 +770,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA focuses on the operational layer around data science work: communication, documentation, reporting, and coordination. It integrates with GitHub for code management and Notion for documentation. Custom MCP integrations can extend GAIA to connect with specialized data science tools.",
       },
       {
-        question:
-          "How does GAIA help with research organization?",
+        question: "How does GAIA help with research organization?",
         answer:
           "GAIA uses Perplexity for AI-powered research and DeepWiki for documentation discovery. It organizes findings in Notion, creates structured reading lists, and alerts you to new relevant publications in your research areas.",
       },
@@ -860,20 +837,17 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Does GAIA replace Asana, Linear, or ClickUp?",
+        question: "Does GAIA replace Asana, Linear, or ClickUp?",
         answer:
           "No. GAIA works alongside your existing project management tools as an intelligent automation layer. It pulls data from these tools, automates reporting, monitors for risks, and handles communication so you can focus on strategic project decisions.",
       },
       {
-        question:
-          "How does GAIA handle projects across multiple tools?",
+        question: "How does GAIA handle projects across multiple tools?",
         answer:
           "GAIA integrates with Asana, Linear, ClickUp, Trello, and other project tools simultaneously. It provides a unified view of project health across tools and automates cross-tool workflows like creating tasks from email or Slack messages.",
       },
       {
-        question:
-          "Can GAIA help with distributed team coordination?",
+        question: "Can GAIA help with distributed team coordination?",
         answer:
           "Yes. GAIA understands time zones, monitors async communication channels, ensures handoffs between team members are smooth, and compiles updates that keep distributed teams aligned regardless of geography.",
       },
@@ -884,8 +858,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "engineering-managers",
     title: "AI Assistant for Engineering Managers",
     role: "Engineering Managers",
-    metaTitle:
-      "AI Assistant for Engineering Managers - Scale Your Leadership",
+    metaTitle: "AI Assistant for Engineering Managers - Scale Your Leadership",
     metaDescription:
       "GAIA helps engineering managers automate sprint reporting, track team velocity, manage 1:1 prep, and stay connected to technical work without micromanaging.",
     keywords: [
@@ -933,14 +906,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA help with engineering team metrics?",
+        question: "How does GAIA help with engineering team metrics?",
         answer:
           "GAIA integrates with GitHub and Linear to track PR cycle times, sprint velocity, ticket completion rates, and deployment frequency. It compiles these metrics into regular reports and highlights trends that need attention.",
       },
       {
-        question:
-          "Can GAIA help me stay technical while managing?",
+        question: "Can GAIA help me stay technical while managing?",
         answer:
           "Yes. GAIA summarizes key technical discussions from Slack and GitHub, surfaces important architectural decisions, and helps you maintain technical context without reading every thread. It keeps you informed without requiring constant channel monitoring.",
       },
@@ -1006,20 +977,17 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Does GAIA integrate with my CRM?",
+        question: "Does GAIA integrate with my CRM?",
         answer:
           "GAIA integrates with HubSpot for CRM management, including logging interactions, updating deal stages, and tracking pipeline metrics. It also connects with Gmail and Google Calendar to capture sales activity automatically.",
       },
       {
-        question:
-          "How does GAIA help with follow-up management?",
+        question: "How does GAIA help with follow-up management?",
         answer:
           "GAIA tracks all prospect communications, identifies when follow-ups are due based on your sales cadence, drafts personalized emails, and sends you reminders. It ensures consistent outreach without manual tracking.",
       },
       {
-        question:
-          "Can GAIA prepare me for sales calls?",
+        question: "Can GAIA prepare me for sales calls?",
         answer:
           "Yes. Before every meeting, GAIA compiles a briefing document with prospect background research, recent interaction history, deal stage context, and suggested talking points. You walk into every call prepared and confident.",
       },
@@ -1079,14 +1047,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA identify at-risk accounts?",
+        question: "How does GAIA identify at-risk accounts?",
         answer:
           "GAIA monitors email sentiment, response times, support ticket patterns, and engagement frequency across your connected tools. It flags accounts showing early warning signs like decreased communication, negative sentiment, or missed check-ins so you can intervene before churn risks grow.",
       },
       {
-        question:
-          "Can GAIA help with QBR preparation?",
+        question: "Can GAIA help with QBR preparation?",
         answer:
           "Yes. GAIA compiles usage metrics, support history, communication logs, and success milestones from your connected tools into structured QBR documents. It reduces prep time from hours to minutes.",
       },
@@ -1097,8 +1063,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "researchers",
     title: "AI Assistant for Researchers",
     role: "Researchers",
-    metaTitle:
-      "AI Assistant for Researchers - Accelerate Academic Workflows",
+    metaTitle: "AI Assistant for Researchers - Accelerate Academic Workflows",
     metaDescription:
       "GAIA helps researchers organize literature, manage citations, coordinate collaborations, and automate the administrative burden of academic research.",
     keywords: [
@@ -1147,14 +1112,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA help with literature reviews?",
+        question: "Can GAIA help with literature reviews?",
         answer:
           "GAIA uses Perplexity for AI-powered research and DeepWiki for technical documentation. It tracks new publications in your field, organizes papers in Notion, creates structured summaries, and helps you maintain a comprehensive and current understanding of your research landscape.",
       },
       {
-        question:
-          "How does GAIA handle academic collaboration?",
+        question: "How does GAIA handle academic collaboration?",
         answer:
           "GAIA coordinates multi-institution collaborations by managing email communications, scheduling meetings across time zones, maintaining shared documents, and tracking action items from research meetings. It ensures smooth collaboration without constant manual coordination.",
       },
@@ -1165,8 +1128,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "consultants",
     title: "AI Assistant for Consultants",
     role: "Consultants",
-    metaTitle:
-      "AI Assistant for Consultants - Maximize Billable Utilization",
+    metaTitle: "AI Assistant for Consultants - Maximize Billable Utilization",
     metaDescription:
       "GAIA helps consultants manage client engagements, automate deliverable tracking, prepare for meetings, and reduce non-billable administrative overhead.",
     keywords: [
@@ -1215,14 +1177,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA help consultants manage multiple clients?",
+        question: "How does GAIA help consultants manage multiple clients?",
         answer:
           "GAIA organizes all communications and tasks by client engagement, provides per-client dashboards of activity and deliverable status, and ensures you maintain high responsiveness across all engagements without dropping any balls.",
       },
       {
-        question:
-          "Can GAIA track billable vs non-billable time?",
+        question: "Can GAIA track billable vs non-billable time?",
         answer:
           "GAIA monitors your calendar and task completions to help categorize time spent. While it is not a time-tracking tool, it automates the administrative tasks that typically consume non-billable hours, effectively increasing your utilization rate.",
       },
@@ -1233,8 +1193,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "agency-owners",
     title: "AI Assistant for Agency Owners",
     role: "Agency Owners",
-    metaTitle:
-      "AI Assistant for Agency Owners - Scale Operations Efficiently",
+    metaTitle: "AI Assistant for Agency Owners - Scale Operations Efficiently",
     metaDescription:
       "GAIA helps agency owners manage client portfolios, automate project reporting, coordinate distributed teams, and streamline new business development.",
     keywords: [
@@ -1290,14 +1249,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA handle reporting for multiple clients?",
+        question: "Can GAIA handle reporting for multiple clients?",
         answer:
           "Yes. GAIA organizes projects by client and generates individual client reports pulling data from your project management tools. It scales to any number of client accounts and maintains separate context for each engagement.",
       },
       {
-        question:
-          "How does GAIA help with new business development?",
+        question: "How does GAIA help with new business development?",
         answer:
           "GAIA triages inbound leads, researches prospects, drafts initial outreach emails, and tracks the sales pipeline via HubSpot. It ensures business development activities continue consistently even during heavy delivery periods.",
       },
@@ -1359,14 +1316,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Is GAIA affordable for bootstrapped indie hackers?",
+        question: "Is GAIA affordable for bootstrapped indie hackers?",
         answer:
           "GAIA offers a free tier with core features, and you can self-host GAIA entirely free on your own infrastructure. For bootstrapped builders, the self-hosting option provides full functionality at zero cost beyond hosting.",
       },
       {
-        question:
-          "How does GAIA help with build-in-public workflows?",
+        question: "How does GAIA help with build-in-public workflows?",
         answer:
           "GAIA monitors your GitHub activity, product metrics, and social channels. It can help you compile weekly progress updates, track public milestones, and engage with your community across Twitter, HackerNews, and Reddit.",
       },
@@ -1377,8 +1332,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "solopreneurs",
     title: "AI Assistant for Solopreneurs",
     role: "Solopreneurs",
-    metaTitle:
-      "AI Assistant for Solopreneurs - Run Your Business on Autopilot",
+    metaTitle: "AI Assistant for Solopreneurs - Run Your Business on Autopilot",
     metaDescription:
       "GAIA helps solopreneurs manage email, automate client workflows, handle scheduling, and run business operations with AI-powered efficiency as a team of one.",
     keywords: [
@@ -1427,14 +1381,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA really replace a virtual assistant?",
+        question: "Can GAIA really replace a virtual assistant?",
         answer:
           "For many operational tasks, yes. GAIA handles email triage, scheduling, task management, and follow-ups 24/7 without breaks. It learns your preferences through graph-based memory and improves over time. For tasks requiring human judgment or creativity, GAIA drafts and you approve.",
       },
       {
-        question:
-          "How quickly can a solopreneur set up GAIA?",
+        question: "How quickly can a solopreneur set up GAIA?",
         answer:
           "GAIA can be set up in minutes. Connect your Gmail, Google Calendar, and task management tools, and GAIA begins learning your patterns immediately. Most solopreneurs see productivity gains within the first week.",
       },
@@ -1495,14 +1447,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA integrate with existing operational systems?",
+        question: "How does GAIA integrate with existing operational systems?",
         answer:
           "GAIA connects to your operational tools through MCP integrations, including Google Sheets, Airtable, Slack, and email. It acts as an intelligent automation layer on top of your existing systems without requiring you to replace anything.",
       },
       {
-        question:
-          "Can GAIA help with vendor management?",
+        question: "Can GAIA help with vendor management?",
         answer:
           "Yes. GAIA organizes vendor communications, tracks response timelines, drafts follow-up messages, and maintains vendor interaction history. It ensures consistent vendor management without the manual overhead of tracking dozens of email threads.",
       },
@@ -1513,8 +1463,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "team-leads",
     title: "AI Assistant for Team Leads",
     role: "Team Leads",
-    metaTitle:
-      "AI Assistant for Team Leads - Empower Your Team with AI",
+    metaTitle: "AI Assistant for Team Leads - Empower Your Team with AI",
     metaDescription:
       "GAIA helps team leads manage team communication, automate standup collection, track deliverables, and maintain alignment across distributed teams.",
     keywords: [
@@ -1563,14 +1512,12 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA collect standups from my team?",
+        question: "How does GAIA collect standups from my team?",
         answer:
           "GAIA monitors your team's Slack activity and project tool updates (Linear, GitHub) to compile daily progress summaries. It can also prompt team members directly in Slack for updates and compile the responses into a formatted standup report.",
       },
       {
-        question:
-          "Can GAIA help me identify team blockers early?",
+        question: "Can GAIA help me identify team blockers early?",
         answer:
           "Yes. GAIA monitors project boards for stalled tickets, tracks PR review times on GitHub, and surfaces Slack conversations about blockers. It proactively alerts you to issues before they impact team velocity.",
       },
@@ -1631,8 +1578,7 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "How does GAIA handle confidential executive communications?",
+        question: "How does GAIA handle confidential executive communications?",
         answer:
           "GAIA is fully open source and self-hostable. Executives can deploy GAIA on dedicated infrastructure with enterprise-grade security controls, ensuring complete confidentiality. No data is shared with third parties or used for model training.",
       },
@@ -1643,8 +1589,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA complements human executive assistants by handling high-volume tasks like email triage, meeting prep compilation, and information synthesis. Your EA can focus on relationship management and high-touch coordination while GAIA handles data-intensive operational tasks.",
       },
       {
-        question:
-          "How does GAIA prioritize information for executives?",
+        question: "How does GAIA prioritize information for executives?",
         answer:
           "GAIA uses AI to assess urgency, strategic relevance, and sender importance. It learns your priorities over time through graph-based memory, ensuring the information hierarchy it presents aligns with your actual decision-making needs.",
       },
@@ -1655,8 +1600,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "real-estate-agents",
     title: "AI Assistant for Real Estate Agents",
     role: "Real Estate Agents",
-    metaTitle:
-      "AI Assistant for Real Estate Agents - Close More Deals with AI",
+    metaTitle: "AI Assistant for Real Estate Agents - Close More Deals with AI",
     metaDescription:
       "GAIA helps real estate agents manage leads, automate follow-ups, schedule showings, and keep clients informed with proactive AI-powered communication management.",
     keywords: [
@@ -1711,14 +1655,12 @@ export const personas: Record<string, PersonaData> = {
           "GAIA monitors your email inbox 24/7 for new lead inquiries and drafts personalized responses immediately. While you are at a showing, GAIA ensures every new lead receives a professional, timely response that keeps them engaged until you can follow up personally.",
       },
       {
-        question:
-          "Can GAIA help with property research?",
+        question: "Can GAIA help with property research?",
         answer:
           "Yes. GAIA integrates with Google Maps and Yelp to compile neighborhood information, nearby amenities, and area insights. It can prepare property briefings and area comparisons to share with buyers.",
       },
       {
-        question:
-          "Does GAIA integrate with real estate CRMs?",
+        question: "Does GAIA integrate with real estate CRMs?",
         answer:
           "GAIA integrates with HubSpot for CRM management and can track client relationships through Gmail. Custom MCP integrations can connect GAIA to specialized real estate platforms.",
       },
@@ -1729,8 +1671,7 @@ export const personas: Record<string, PersonaData> = {
     slug: "lawyers",
     title: "AI Assistant for Lawyers",
     role: "Lawyers",
-    metaTitle:
-      "AI Assistant for Lawyers - Maximize Billable Hours with AI",
+    metaTitle: "AI Assistant for Lawyers - Maximize Billable Hours with AI",
     metaDescription:
       "GAIA helps lawyers manage client communications, track deadlines, automate document workflows, and reduce the administrative burden of legal practice.",
     keywords: [
@@ -1784,20 +1725,17 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Is GAIA secure enough for attorney-client communications?",
+        question: "Is GAIA secure enough for attorney-client communications?",
         answer:
           "GAIA is fully open source and self-hostable. Law firms can deploy GAIA on their own infrastructure with full data sovereignty, ensuring attorney-client privilege is maintained. No data is ever shared with third parties or used for training.",
       },
       {
-        question:
-          "How does GAIA help lawyers track deadlines?",
+        question: "How does GAIA help lawyers track deadlines?",
         answer:
           "GAIA monitors your email for deadline-related communications, creates tasks with due dates in Todoist or Google Tasks, and sends proactive reminders with configurable lead times. It ensures critical legal deadlines like filing dates and statute of limitations are tracked reliably.",
       },
       {
-        question:
-          "Can GAIA help with legal research?",
+        question: "Can GAIA help with legal research?",
         answer:
           "GAIA integrates with Perplexity for AI-powered research and organizes findings in Notion. While it does not replace specialized legal research platforms, it accelerates the research process and helps organize findings by case matter for easy reference.",
       },

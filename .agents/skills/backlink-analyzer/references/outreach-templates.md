@@ -8,16 +8,16 @@ Copy-ready outreach email templates for each link building strategy. Includes su
 
 Before using any template, follow these rules:
 
-| Principle | Why It Matters |
-|-----------|---------------|
-| **Personalize every email** | Generic emails get deleted. Reference specific content. |
-| **Lead with value** | Explain what is in it for them before making your ask. |
-| **Keep it short** | 100-150 words maximum for initial outreach. |
-| **One clear ask** | Do not combine multiple requests in one email. |
-| **Professional sender address** | Use name@yourdomain.com, not a free email provider. |
-| **No attachments on first email** | Attachments trigger spam filters and reduce trust. |
-| **Follow up (once or twice)** | Most responses come from follow-ups, not initial emails. |
-| **Track everything** | Log outreach in a spreadsheet or CRM for accountability. |
+| Principle                         | Why It Matters                                           |
+| --------------------------------- | -------------------------------------------------------- |
+| **Personalize every email**       | Generic emails get deleted. Reference specific content.  |
+| **Lead with value**               | Explain what is in it for them before making your ask.   |
+| **Keep it short**                 | 100-150 words maximum for initial outreach.              |
+| **One clear ask**                 | Do not combine multiple requests in one email.           |
+| **Professional sender address**   | Use name@yourdomain.com, not a free email provider.      |
+| **No attachments on first email** | Attachments trigger spam filters and reduce trust.       |
+| **Follow up (once or twice)**     | Most responses come from follow-ups, not initial emails. |
+| **Track everything**              | Log outreach in a spreadsheet or CRM for accountability. |
 
 ---
 
@@ -55,6 +55,7 @@ Hi [Name],
 Your [topic] resource page is one of my go-to references — really well curated.
 
 I noticed [X] links on the page are no longer working:
+
 - [Broken URL 1] — returns 404
 - [Broken URL 2] — domain expired
 
@@ -102,6 +103,7 @@ I would love to contribute a guest post on [proposed topic]. Here is what I have
 **Why your readers would care:** [1 sentence on value to their audience]
 
 I have written for [1-2 relevant publications] previously. Here are a couple of samples:
+
 - [Sample URL 1]
 - [Sample URL 2]
 
@@ -268,6 +270,7 @@ Hi [Name],
 We just published [study/survey/analysis] that found [most surprising or newsworthy finding].
 
 Key findings:
+
 - [Finding 1 — the headline stat]
 - [Finding 2 — supporting data]
 - [Finding 3 — counterintuitive insight]
@@ -294,6 +297,7 @@ I saw you are covering [topic/trend] and thought I could be a useful source.
 I am [Your Name], [your credentials — brief]. I have [specific experience relevant to their coverage].
 
 A couple of angles I could provide commentary on:
+
 - [Angle 1]
 - [Angle 2]
 
@@ -373,6 +377,7 @@ I noticed you linked to [competitor's article title] in your post on [their arti
 We just published an updated version of that topic: [Your URL]
 
 It includes [specific improvements over the original]:
+
 - [Improvement 1 — e.g., "2025 data instead of 2022"]
 - [Improvement 2 — e.g., "interactive calculator included"]
 - [Improvement 3 — e.g., "covers 3 additional sub-topics"]
@@ -427,12 +432,12 @@ Best,
 
 ### Standard Follow-Up Timeline
 
-| Email | Timing | Purpose | Tone |
-|-------|--------|---------|------|
-| Initial outreach | Day 0 | Make the ask | Professional, value-forward |
-| Follow-up 1 | Day 5-7 | Gentle reminder | Casual, brief |
-| Follow-up 2 | Day 14 | Final attempt | Short, no-pressure close |
-| Stop | After follow-up 2 | Do not send more | Move on |
+| Email            | Timing            | Purpose          | Tone                        |
+| ---------------- | ----------------- | ---------------- | --------------------------- |
+| Initial outreach | Day 0             | Make the ask     | Professional, value-forward |
+| Follow-up 1      | Day 5-7           | Gentle reminder  | Casual, brief               |
+| Follow-up 2      | Day 14            | Final attempt    | Short, no-pressure close    |
+| Stop             | After follow-up 2 | Do not send more | Move on                     |
 
 ### Follow-Up 2 Template (Final Attempt)
 
@@ -479,6 +484,7 @@ Wonderful, I would love to contribute. Here is what I am thinking:
 
 **Title:** [Proposed title]
 **Outline:**
+
 1. [Section 1]
 2. [Section 2]
 3. [Section 3]
@@ -533,23 +539,23 @@ Do not send further emails. Add to a "re-engage in 3-6 months" list. When you re
 
 ### Research Checklist Before Sending
 
-| Check | Where to Find | How to Use |
-|-------|-------------|-----------|
-| Their name (correct spelling) | About page, LinkedIn, byline | Use in greeting and body |
-| Recent article they wrote | Their blog, Google "[name] + [site]" | Reference in opening line |
-| Their social media | Twitter/X, LinkedIn | Mention a recent post or shared interest |
-| Their publication's audience | About page, media kit | Tailor your value proposition |
-| Content they have linked to before | ~~link database, their recent articles | Match the type of content they prefer |
-| How they prefer to be contacted | Website contact page, social bio | Some prefer Twitter DMs over email |
+| Check                              | Where to Find                          | How to Use                               |
+| ---------------------------------- | -------------------------------------- | ---------------------------------------- |
+| Their name (correct spelling)      | About page, LinkedIn, byline           | Use in greeting and body                 |
+| Recent article they wrote          | Their blog, Google "[name] + [site]"   | Reference in opening line                |
+| Their social media                 | Twitter/X, LinkedIn                    | Mention a recent post or shared interest |
+| Their publication's audience       | About page, media kit                  | Tailor your value proposition            |
+| Content they have linked to before | ~~link database, their recent articles | Match the type of content they prefer    |
+| How they prefer to be contacted    | Website contact page, social bio       | Some prefer Twitter DMs over email       |
 
 ### Personalization Levels
 
-| Level | Effort | Response Rate Impact | When to Use |
-|-------|--------|---------------------|-------------|
-| **Zero** (template only) | Minimal | Baseline (lowest) | Never recommended |
-| **Basic** (name + site name) | Low | +20-30% | Bulk outreach to lower-priority targets |
-| **Moderate** (+ specific article reference) | Medium | +50-80% | Standard outreach to mid-tier targets |
-| **Deep** (+ shared interest, social reference, mutual connection) | High | +100-200% | High-priority targets (DR 60+ sites, key relationships) |
+| Level                                                             | Effort  | Response Rate Impact | When to Use                                             |
+| ----------------------------------------------------------------- | ------- | -------------------- | ------------------------------------------------------- |
+| **Zero** (template only)                                          | Minimal | Baseline (lowest)    | Never recommended                                       |
+| **Basic** (name + site name)                                      | Low     | +20-30%              | Bulk outreach to lower-priority targets                 |
+| **Moderate** (+ specific article reference)                       | Medium  | +50-80%              | Standard outreach to mid-tier targets                   |
+| **Deep** (+ shared interest, social reference, mutual connection) | High    | +100-200%            | High-priority targets (DR 60+ sites, key relationships) |
 
 ---
 
@@ -557,22 +563,22 @@ Do not send further emails. Add to a "re-engage in 3-6 months" list. When you re
 
 ### High-Performing Subject Line Patterns
 
-| Strategy | Subject Lines (pick one) |
-|----------|------------------------|
-| **Broken link** | "Found a broken link on your [topic] page" / "Quick heads-up about [page title]" / "Broken resource on [their site]" |
-| **Guest post** | "Guest post idea: [title]" / "[Topic] contributor for [their site]" / "Content pitch for [their site]" |
-| **Resource page** | "Resource for your [topic] page" / "Suggestion for your [topic] list" / "Addition for [page title]?" |
-| **Unlinked mention** | "Thanks for mentioning [brand]" / "Re: your mention of [brand/data]" / "Quick favor re: [their article]" |
-| **Digital PR** | "New data: [headline stat]" / "Exclusive: [finding]" / "[Topic] research for your coverage" |
-| **Skyscraper** | "Updated resource on [topic]" / "Better version of [competitor content]" / "Thought you'd want to see this" |
+| Strategy             | Subject Lines (pick one)                                                                                             |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Broken link**      | "Found a broken link on your [topic] page" / "Quick heads-up about [page title]" / "Broken resource on [their site]" |
+| **Guest post**       | "Guest post idea: [title]" / "[Topic] contributor for [their site]" / "Content pitch for [their site]"               |
+| **Resource page**    | "Resource for your [topic] page" / "Suggestion for your [topic] list" / "Addition for [page title]?"                 |
+| **Unlinked mention** | "Thanks for mentioning [brand]" / "Re: your mention of [brand/data]" / "Quick favor re: [their article]"             |
+| **Digital PR**       | "New data: [headline stat]" / "Exclusive: [finding]" / "[Topic] research for your coverage"                          |
+| **Skyscraper**       | "Updated resource on [topic]" / "Better version of [competitor content]" / "Thought you'd want to see this"          |
 
 ### Subject Lines to Avoid
 
-| Avoid | Why |
-|-------|-----|
-| "Link exchange opportunity" | Screams spam and violates Google guidelines |
-| "SEO partnership" | Immediately signals manipulative intent |
-| ALL CAPS or excessive punctuation | Triggers spam filters, looks unprofessional |
-| "I'd love a backlink" | Too direct; leads with your need, not their value |
-| Misleading subjects ("Re:" when no prior conversation) | Damages trust immediately |
-| Long subjects (>60 characters) | Gets truncated in inbox, lower open rates |
+| Avoid                                                  | Why                                               |
+| ------------------------------------------------------ | ------------------------------------------------- |
+| "Link exchange opportunity"                            | Screams spam and violates Google guidelines       |
+| "SEO partnership"                                      | Immediately signals manipulative intent           |
+| ALL CAPS or excessive punctuation                      | Triggers spam filters, looks unprofessional       |
+| "I'd love a backlink"                                  | Too direct; leads with your need, not their value |
+| Misleading subjects ("Re:" when no prior conversation) | Damages trust immediately                         |
+| Long subjects (>60 characters)                         | Gets truncated in inbox, lower open rates         |

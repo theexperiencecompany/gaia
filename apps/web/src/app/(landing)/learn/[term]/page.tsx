@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-
-import FinalSection from "@/features/landing/components/sections/FinalSection";
 import JsonLd from "@/components/seo/JsonLd";
 import {
   getAllGlossaryTermSlugs,
   getGlossaryTerm,
 } from "@/features/glossary/data/glossaryData";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,
   generateDefinedTermSchema,
@@ -45,9 +44,7 @@ export async function generateMetadata({
   });
 }
 
-export default async function GlossaryTermPage({
-  params,
-}: PageProps) {
+export default async function GlossaryTermPage({ params }: PageProps) {
   const { term } = await params;
   const data = getGlossaryTerm(term);
 
@@ -91,19 +88,12 @@ export default async function GlossaryTermPage({
 
   const relatedTerms = data.relatedTerms
     .map((slug) => getGlossaryTerm(slug))
-    .filter(
-      (t): t is NonNullable<typeof t> => t !== undefined,
-    );
+    .filter((t): t is NonNullable<typeof t> => t !== undefined);
 
   return (
     <>
       <JsonLd
-        data={[
-          webPageSchema,
-          breadcrumbSchema,
-          faqSchema,
-          definedTermSchema,
-        ]}
+        data={[webPageSchema, breadcrumbSchema, faqSchema, definedTermSchema]}
       />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
@@ -113,16 +103,11 @@ export default async function GlossaryTermPage({
             Home
           </Link>
           <span className="mx-2">/</span>
-          <Link
-            href="/learn"
-            className="hover:text-zinc-300"
-          >
+          <Link href="/learn" className="hover:text-zinc-300">
             Glossary
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-zinc-300">
-            {data.term}
-          </span>
+          <span className="text-zinc-300">{data.term}</span>
         </nav>
 
         {/* Definition Hero */}
@@ -189,16 +174,11 @@ export default async function GlossaryTermPage({
           </h2>
           <div className="space-y-6">
             {data.faqs.map((faq) => (
-              <div
-                key={faq.question}
-                className="rounded-2xl bg-zinc-800 p-6"
-              >
+              <div key={faq.question} className="rounded-2xl bg-zinc-800 p-6">
                 <h3 className="mb-2 text-lg font-medium text-white">
                   {faq.question}
                 </h3>
-                <p className="leading-relaxed text-zinc-400">
-                  {faq.answer}
-                </p>
+                <p className="leading-relaxed text-zinc-400">{faq.answer}</p>
               </div>
             ))}
           </div>
@@ -218,8 +198,8 @@ export default async function GlossaryTermPage({
                 Compare GAIA with Alternatives
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                See how GAIA stacks up against other AI productivity
-                tools in detailed comparisons.
+                See how GAIA stacks up against other AI productivity tools in
+                detailed comparisons.
               </p>
             </Link>
             <Link
@@ -230,13 +210,12 @@ export default async function GlossaryTermPage({
                 GAIA for Your Role
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Discover how GAIA helps professionals in different
-                roles work smarter with AI.
+                Discover how GAIA helps professionals in different roles work
+                smarter with AI.
               </p>
             </Link>
           </div>
         </section>
-
       </article>
 
       <FinalSection />

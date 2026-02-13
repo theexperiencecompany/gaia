@@ -64,9 +64,9 @@ export default function PersonasHubPage() {
             GAIA for Every Role
           </h1>
           <p className="mx-auto max-w-2xl text-xl text-zinc-400">
-            Every professional has unique workflows and pain points. GAIA
-            adapts to your role, connecting the tools you already use and
-            automating the tasks that drain your time.
+            Every professional has unique workflows and pain points. GAIA adapts
+            to your role, connecting the tools you already use and automating
+            the tasks that drain your time.
           </p>
         </header>
 
@@ -86,7 +86,6 @@ export default function PersonasHubPage() {
             </Link>
           ))}
         </div>
-
       </div>
       <FinalSection />
     </>

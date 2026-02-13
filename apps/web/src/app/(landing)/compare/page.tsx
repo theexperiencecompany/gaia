@@ -3,8 +3,8 @@ import Image from "next/image";
 import Link from "next/link";
 
 import JsonLd from "@/components/seo/JsonLd";
-import FinalSection from "@/features/landing/components/sections/FinalSection";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,

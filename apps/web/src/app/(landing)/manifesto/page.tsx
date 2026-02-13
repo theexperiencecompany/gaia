@@ -51,7 +51,9 @@ export default function Manifesto() {
 
   return (
     <>
-      <JsonLd data={[aboutSchema, webPageSchema, breadcrumbSchema, faqSchema]} />
+      <JsonLd
+        data={[aboutSchema, webPageSchema, breadcrumbSchema, faqSchema]}
+      />
       <About />
     </>
   );

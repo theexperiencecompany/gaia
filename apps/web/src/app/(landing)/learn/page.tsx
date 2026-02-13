@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-
-import FinalSection from "@/features/landing/components/sections/FinalSection";
 import JsonLd from "@/components/seo/JsonLd";
 import {
   getAllGlossaryTerms,
   getGlossaryTermsByCategory,
 } from "@/features/glossary/data/glossaryData";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -81,13 +80,7 @@ export default function LearnHubPage() {
 
   return (
     <>
-      <JsonLd
-        data={[
-          webPageSchema,
-          breadcrumbSchema,
-          itemListSchema,
-        ]}
-      />
+      <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
 
       <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
         <header className="mb-16 text-center">
@@ -95,23 +88,20 @@ export default function LearnHubPage() {
             AI &amp; Productivity Glossary
           </h1>
           <p className="mx-auto max-w-2xl text-xl text-zinc-400">
-            Understand the key concepts behind AI agents,
-            automation, and modern productivity tools.
-            Learn how GAIA uses these technologies to
-            manage your digital workflow.
+            Understand the key concepts behind AI agents, automation, and modern
+            productivity tools. Learn how GAIA uses these technologies to manage
+            your digital workflow.
           </p>
         </header>
 
         {CATEGORY_ORDER.map((categoryKey) => {
-          const terms =
-            getGlossaryTermsByCategory(categoryKey);
+          const terms = getGlossaryTermsByCategory(categoryKey);
           if (terms.length === 0) return null;
 
           return (
             <section key={categoryKey} className="mb-14">
               <h2 className="mb-6 text-2xl font-semibold text-white">
-                {CATEGORY_LABELS[categoryKey] ??
-                  categoryKey}
+                {CATEGORY_LABELS[categoryKey] ?? categoryKey}
               </h2>
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -133,7 +123,6 @@ export default function LearnHubPage() {
             </section>
           );
         })}
-
       </div>
 
       <FinalSection />

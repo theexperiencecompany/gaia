@@ -3,13 +3,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 
 import FAQAccordion from "@/components/seo/FAQAccordion";
-import FinalSection from "@/features/landing/components/sections/FinalSection";
 import JsonLd from "@/components/seo/JsonLd";
 import {
-  type ComparisonData,
   getAllComparisonSlugs,
   getComparison,
 } from "@/features/comparisons/data/comparisonsData";
+import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -55,9 +54,7 @@ function ComparisonTableRow({
 }) {
   return (
     <tr className="border-b border-zinc-700/50 transition-colors hover:bg-white/[0.02]">
-      <td className="px-4 py-4 text-sm font-medium text-zinc-300">
-        {feature}
-      </td>
+      <td className="px-4 py-4 text-sm font-medium text-zinc-300">{feature}</td>
       <td className="px-4 py-4 text-sm text-emerald-400">{gaia}</td>
       <td className="px-4 py-4 text-sm text-zinc-400">{competitor}</td>
     </tr>
@@ -232,8 +229,8 @@ export default async function ComparisonPage({ params }: PageProps) {
                 AI Glossary
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Learn about the AI concepts and technology behind GAIA
-                and {data.name}.
+                Learn about the AI concepts and technology behind GAIA and{" "}
+                {data.name}.
               </p>
             </Link>
             <Link
@@ -244,13 +241,12 @@ export default async function ComparisonPage({ params }: PageProps) {
                 GAIA for Your Role
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                See how GAIA helps professionals in different roles
-                boost their productivity.
+                See how GAIA helps professionals in different roles boost their
+                productivity.
               </p>
             </Link>
           </div>
         </section>
-
       </article>
       <FinalSection />
     </>

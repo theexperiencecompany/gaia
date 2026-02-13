@@ -38,14 +38,17 @@ Comprehensive SEO and GEO (Generative Engine Optimization) for websites. Optimiz
 Get the target URL and analyze current SEO/GEO status.
 
 **Basic SEO Audit (Free):**
+
 ```bash
 python3 scripts/seo_audit.py "https://example.com"
 ```
+
 **Use this for**: Quick technical SEO check (title, meta, H1, robots, sitemap, load time). No API needed.
 
 ---
 
 **Check Meta Tags:**
+
 ```bash
 curl -sL "https://example.com" | grep -E "<title>|<meta name=\"description\"|<meta property=\"og:|application/ld\+json" | head -20
 ```
@@ -55,6 +58,7 @@ curl -sL "https://example.com" | grep -E "<title>|<meta name=\"description\"|<me
 ---
 
 **Check robots.txt:**
+
 ```bash
 curl -s "https://example.com/robots.txt"
 ```
@@ -64,6 +68,7 @@ curl -s "https://example.com/robots.txt"
 ---
 
 **Check sitemap:**
+
 ```bash
 curl -s "https://example.com/sitemap.xml" | head -50
 ```
@@ -71,6 +76,7 @@ curl -s "https://example.com/sitemap.xml" | head -50
 **Use this for**: Verify sitemap structure and ensure all important pages are included for search engine discovery.
 
 **Verify AI Bot Access:**
+
 ```
 # These bots should be allowed in robots.txt:
 - Googlebot (Google)
@@ -92,6 +98,7 @@ WebSearch: "site:{competitor.com} {keyword}"
 ```
 
 **Analyze:**
+
 - Search volume and difficulty
 - Competitor keyword strategies
 - Long-tail keyword opportunities
@@ -101,37 +108,41 @@ WebSearch: "site:{competitor.com} {keyword}"
 
 Apply the **9 Princeton GEO Methods** (see [references/geo-research.md](./references/geo-research.md)):
 
-| Method | Visibility Boost | How to Apply |
-|--------|-----------------|--------------|
-| **Cite Sources** | +40% | Add authoritative citations and references |
-| **Statistics Addition** | +37% | Include specific numbers and data points |
-| **Quotation Addition** | +30% | Add expert quotes with attribution |
-| **Authoritative Tone** | +25% | Use confident, expert language |
-| **Easy-to-understand** | +20% | Simplify complex concepts |
-| **Technical Terms** | +18% | Include domain-specific terminology |
-| **Unique Words** | +15% | Increase vocabulary diversity |
-| **Fluency Optimization** | +15-30% | Improve readability and flow |
-| ~~Keyword Stuffing~~ | **-10%** | **AVOID - hurts visibility** |
+| Method                   | Visibility Boost | How to Apply                               |
+| ------------------------ | ---------------- | ------------------------------------------ |
+| **Cite Sources**         | +40%             | Add authoritative citations and references |
+| **Statistics Addition**  | +37%             | Include specific numbers and data points   |
+| **Quotation Addition**   | +30%             | Add expert quotes with attribution         |
+| **Authoritative Tone**   | +25%             | Use confident, expert language             |
+| **Easy-to-understand**   | +20%             | Simplify complex concepts                  |
+| **Technical Terms**      | +18%             | Include domain-specific terminology        |
+| **Unique Words**         | +15%             | Increase vocabulary diversity              |
+| **Fluency Optimization** | +15-30%          | Improve readability and flow               |
+| ~~Keyword Stuffing~~     | **-10%**         | **AVOID - hurts visibility**               |
 
 **Best Combination:** Fluency + Statistics = Maximum boost
 
 **Generate FAQPage Schema** (+40% AI visibility):
+
 ```json
 {
   "@context": "https://schema.org",
   "@type": "FAQPage",
-  "mainEntity": [{
-    "@type": "Question",
-    "name": "What is [topic]?",
-    "acceptedAnswer": {
-      "@type": "Answer",
-      "text": "According to [source], [answer with statistics]."
+  "mainEntity": [
+    {
+      "@type": "Question",
+      "name": "What is [topic]?",
+      "acceptedAnswer": {
+        "@type": "Answer",
+        "text": "According to [source], [answer with statistics]."
+      }
     }
-  }]
+  ]
 }
 ```
 
 **Optimize Content Structure:**
+
 - Use "answer-first" format (direct answer at top)
 - Clear H1 > H2 > H3 hierarchy
 - Bullet points and numbered lists
@@ -141,26 +152,31 @@ Apply the **9 Princeton GEO Methods** (see [references/geo-research.md](./refere
 ### Step 4: Traditional SEO Optimization
 
 **Meta Tags Template:**
+
 ```html
 <title>{Primary Keyword} - {Brand} | {Secondary Keyword}</title>
-<meta name="description" content="{Compelling description with keyword, 150-160 chars}">
-<meta name="keywords" content="{keyword1}, {keyword2}, {keyword3}">
+<meta
+  name="description"
+  content="{Compelling description with keyword, 150-160 chars}"
+/>
+<meta name="keywords" content="{keyword1}, {keyword2}, {keyword3}" />
 
 <!-- Open Graph -->
-<meta property="og:title" content="{Title}">
-<meta property="og:description" content="{Description}">
-<meta property="og:image" content="{Image URL 1200x630}">
-<meta property="og:url" content="{Canonical URL}">
-<meta property="og:type" content="website">
+<meta property="og:title" content="{Title}" />
+<meta property="og:description" content="{Description}" />
+<meta property="og:image" content="{Image URL 1200x630}" />
+<meta property="og:url" content="{Canonical URL}" />
+<meta property="og:type" content="website" />
 
 <!-- Twitter Cards -->
-<meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:title" content="{Title}">
-<meta name="twitter:description" content="{Description}">
-<meta name="twitter:image" content="{Image URL}">
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:title" content="{Title}" />
+<meta name="twitter:description" content="{Description}" />
+<meta name="twitter:image" content="{Image URL}" />
 ```
 
 **JSON-LD Schema** (see [references/schema-templates.md](./references/schema-templates.md)):
+
 - WebPage / Article for content pages
 - FAQPage for FAQ sections
 - Product for product pages
@@ -168,6 +184,7 @@ Apply the **9 Princeton GEO Methods** (see [references/geo-research.md](./refere
 - SoftwareApplication for tools/apps
 
 **Check Content:**
+
 - [ ] H1 contains primary keyword
 - [ ] Images have descriptive alt text
 - [ ] Internal links to related content
@@ -178,6 +195,7 @@ Apply the **9 Princeton GEO Methods** (see [references/geo-research.md](./refere
 ### Step 5: Validate & Monitor
 
 **Schema Validation:**
+
 ```bash
 # Open Google Rich Results Test
 open "https://search.google.com/test/rich-results?url={encoded_url}"
@@ -187,6 +205,7 @@ open "https://validator.schema.org/?url={encoded_url}"
 ```
 
 **Check Indexing Status:**
+
 ```bash
 # Google (use Search Console API or manual check)
 open "https://www.google.com/search?q=site:{domain}"
@@ -196,10 +215,12 @@ open "https://www.bing.com/search?q=site:{domain}"
 ```
 
 **Generate Report:**
+
 ```markdown
 ## SEO/GEO Optimization Report
 
 ### Current Status
+
 - Meta Tags: ✅/❌
 - Schema Markup: ✅/❌
 - AI Bot Access: ✅/❌
@@ -207,11 +228,13 @@ open "https://www.bing.com/search?q=site:{domain}"
 - Page Speed: X seconds
 
 ### Recommendations
+
 1. [Priority 1 action]
 2. [Priority 2 action]
 3. [Priority 3 action]
 
 ### GEO Optimizations Applied
+
 - [ ] FAQPage schema added
 - [ ] Statistics included
 - [ ] Citations added
@@ -223,30 +246,35 @@ open "https://www.bing.com/search?q=site:{domain}"
 See [references/platform-algorithms.md](./references/platform-algorithms.md) for detailed ranking factors.
 
 ### ChatGPT
+
 - Focus on **branded domain authority** (cited 11% more than third-party)
 - Update content within **30 days** (3.2x more citations)
 - Build **backlinks** (>350K referring domains = 8.4 avg citations)
 - Match content style to ChatGPT's response format
 
 ### Perplexity
+
 - Allow **PerplexityBot** in robots.txt
 - Use **FAQ Schema** (higher citation rate)
 - Host **PDF documents** (prioritized for citation)
 - Focus on **semantic relevance** over keywords
 
 ### Google AI Overview (SGE)
+
 - Optimize for **E-E-A-T** (Experience, Expertise, Authority, Trust)
 - Use **structured data** (Schema markup)
 - Build **topical authority** (content clusters + internal linking)
 - Include **authoritative citations** (+132% visibility)
 
 ### Microsoft Copilot / Bing
+
 - Ensure **Bing indexing** (required for citation)
 - Optimize for **Microsoft ecosystem** (LinkedIn, GitHub mentions help)
 - Page speed **< 2 seconds**
 - Clear **entity definitions**
 
 ### Claude AI
+
 - Ensure **Brave Search indexing** (Claude uses Brave, not Google)
 - High **factual density** (data-rich content preferred)
 - Clear **structural clarity** (easy to extract)
@@ -254,6 +282,7 @@ See [references/platform-algorithms.md](./references/platform-algorithms.md) for
 ## Skill Dependencies
 
 This skill works best with:
+
 - **twitter skill** - Search SEO experts for latest tips
 - **reddit skill** - Search r/SEO, r/bigseo for discussions
 - **WebSearch** - Keyword research and competitor analysis

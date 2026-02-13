@@ -325,7 +325,9 @@ export function generateBreadcrumbSchema(
         "@type": "ListItem",
         position: index + 1,
         name: item.name,
-        item: item.url.startsWith("http") ? item.url : `${siteConfig.url}${getCanonicalUrl(item.url)}`,
+        item: item.url.startsWith("http")
+          ? item.url
+          : `${siteConfig.url}${getCanonicalUrl(item.url)}`,
       }),
     ),
   };

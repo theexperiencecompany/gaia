@@ -29,8 +29,7 @@ export const comparisons: Record<string, ComparisonData> = {
     tagline: "AI-powered calendar scheduling",
     description:
       "Motion uses AI to automatically schedule tasks into your calendar. GAIA goes beyond calendar management to orchestrate your entire digital workflow.",
-    metaTitle:
-      "GAIA vs Motion: AI Calendar Scheduling vs Full Productivity OS",
+    metaTitle: "GAIA vs Motion: AI Calendar Scheduling vs Full Productivity OS",
     metaDescription:
       "Compare GAIA and Motion for AI-powered productivity. Motion schedules your calendar, but GAIA manages your email, tasks, workflows, and 50+ integrations proactively.",
     keywords: [
@@ -67,8 +66,7 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Memory and context",
         gaia: "Graph-based memory that connects tasks to projects, meetings to documents, and learns your patterns",
-        competitor:
-          "Tracks task durations and scheduling preferences",
+        competitor: "Tracks task durations and scheduling preferences",
       },
       {
         feature: "Proactive behavior",
@@ -218,8 +216,7 @@ export const comparisons: Record<string, ComparisonData> = {
     tagline: "Open-source workflow automation platform",
     description:
       "n8n provides powerful no-code workflow automation. GAIA adds AI intelligence to understand context and make decisions, not just execute rules.",
-    metaTitle:
-      "GAIA vs n8n: Intelligent AI Automation vs Rule-Based Workflows",
+    metaTitle: "GAIA vs n8n: Intelligent AI Automation vs Rule-Based Workflows",
     metaDescription:
       "Compare GAIA and n8n for workflow automation. n8n excels at deterministic workflows, but GAIA adds AI intelligence to understand context and act proactively.",
     keywords: [
@@ -442,7 +439,8 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Integrations",
         gaia: "50+ ready-to-use integrations including Gmail, Slack, Notion, GitHub, Linear",
-        competitor: "Integration capabilities that need developer configuration",
+        competitor:
+          "Integration capabilities that need developer configuration",
       },
       {
         feature: "Memory",
@@ -499,8 +497,7 @@ export const comparisons: Record<string, ComparisonData> = {
     tagline: "AI-powered productivity assistant",
     description:
       "Poke offers AI-driven productivity features. GAIA provides a comprehensive open-source productivity OS with 50+ integrations and proactive automation.",
-    metaTitle:
-      "GAIA vs Poke: Open-Source AI Assistant vs Productivity Tool",
+    metaTitle: "GAIA vs Poke: Open-Source AI Assistant vs Productivity Tool",
     metaDescription:
       "Compare GAIA and Poke for AI productivity. GAIA is open-source with 50+ integrations, proactive automation, and graph-based memory for comprehensive workflow management.",
     keywords: [
@@ -578,8 +575,7 @@ export const comparisons: Record<string, ComparisonData> = {
     tagline: "AI productivity assistant",
     description:
       "Martin AI offers AI-powered productivity features. GAIA provides a more comprehensive approach with 50+ integrations, proactive automation, and complete open-source transparency.",
-    metaTitle:
-      "GAIA vs Martin AI: Open-Source Productivity OS vs AI Assistant",
+    metaTitle: "GAIA vs Martin AI: Open-Source Productivity OS vs AI Assistant",
     metaDescription:
       "Compare GAIA and Martin AI for AI productivity. GAIA offers open-source code, 50+ integrations, proactive automation, and graph-based memory for comprehensive workflow management.",
     keywords: [
@@ -657,8 +653,7 @@ export const comparisons: Record<string, ComparisonData> = {
     tagline: "Work management platform",
     description:
       "Monday.com is a popular work management platform. GAIA adds AI intelligence to go beyond manual project management with proactive automation and cross-tool orchestration.",
-    metaTitle:
-      "GAIA vs Monday.com: AI-Powered Automation vs Work Management",
+    metaTitle: "GAIA vs Monday.com: AI-Powered Automation vs Work Management",
     metaDescription:
       "Compare GAIA and Monday.com for productivity. Monday.com offers visual work management, while GAIA provides AI-powered proactive automation across 50+ tools.",
     keywords: [
@@ -753,8 +748,7 @@ export const comparisons: Record<string, ComparisonData> = {
     tagline: "AI conversational assistant by Anthropic",
     description:
       "Claude excels at reasoning and conversation. GAIA goes beyond conversation to proactively manage your work, integrations, and daily workflows.",
-    metaTitle:
-      "GAIA vs Claude: Proactive Productivity OS vs Conversational AI",
+    metaTitle: "GAIA vs Claude: Proactive Productivity OS vs Conversational AI",
     metaDescription:
       "Compare GAIA and Claude (Anthropic). Claude excels at conversation and reasoning, but GAIA proactively manages email, calendar, tasks, and workflows across 50+ integrated tools.",
     keywords: [
@@ -775,8 +769,7 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Proactive behavior",
         gaia: "Monitors email, calendar, and tools 24/7 and takes action before you ask",
-        competitor:
-          "Responds only when you send a message in a conversation",
+        competitor: "Responds only when you send a message in a conversation",
       },
       {
         feature: "Tool integration",
@@ -799,7 +792,8 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Email management",
         gaia: "Full email automation: reads, triages, drafts replies, creates tasks from messages",
-        competitor: "Can draft emails if you paste content, no direct email access",
+        competitor:
+          "Can draft emails if you paste content, no direct email access",
       },
       {
         feature: "Workflow automation",
@@ -883,7 +877,8 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Workflow automation",
         gaia: "Multi-step workflows with triggers, cross-tool orchestration, and autonomous execution",
-        competitor: "No workflow automation; AI assistance within individual apps",
+        competitor:
+          "No workflow automation; AI assistance within individual apps",
       },
       {
         feature: "Memory",
@@ -894,7 +889,8 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Task management",
         gaia: "AI-powered todos with automatic creation, prioritization, and execution",
-        competitor: "Basic integration with Google Tasks, no autonomous management",
+        competitor:
+          "Basic integration with Google Tasks, no autonomous management",
       },
       {
         feature: "Third-party tools",
@@ -944,8 +940,7 @@ export const comparisons: Record<string, ComparisonData> = {
     tagline: "OpenAI's conversational AI",
     description:
       "ChatGPT excels at conversation but waits for your prompts. GAIA proactively manages your workflow, automates tasks, and orchestrates 50+ tools autonomously.",
-    metaTitle:
-      "GAIA vs ChatGPT: Proactive Productivity vs Conversational AI",
+    metaTitle: "GAIA vs ChatGPT: Proactive Productivity vs Conversational AI",
     metaDescription:
       "Compare GAIA and ChatGPT for productivity. ChatGPT answers questions, but GAIA proactively manages your email, calendar, tasks, and workflows across 50+ tools.",
     keywords: [
@@ -985,8 +980,7 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Task execution",
         gaia: "Creates, schedules, and completes tasks across your tools",
-        competitor:
-          "Suggests what to do; you execute the steps manually",
+        competitor: "Suggests what to do; you execute the steps manually",
       },
       {
         feature: "Memory",
@@ -1069,7 +1063,8 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Primary use case",
         gaia: "Email management, task automation, workflow orchestration, calendar management",
-        competitor: "Research, fact-checking, information synthesis with citations",
+        competitor:
+          "Research, fact-checking, information synthesis with citations",
       },
       {
         feature: "Proactive behavior",
@@ -1129,8 +1124,7 @@ export const comparisons: Record<string, ComparisonData> = {
     tagline: "Popular task management app",
     description:
       "Todoist is a well-designed task manager for organizing to-dos. GAIA goes beyond task lists by using AI to create, prioritize, and execute tasks across your entire workflow.",
-    metaTitle:
-      "GAIA vs Todoist: AI Task Automation vs Manual Task Management",
+    metaTitle: "GAIA vs Todoist: AI Task Automation vs Manual Task Management",
     metaDescription:
       "Compare GAIA and Todoist for task management. Todoist offers clean task lists, but GAIA uses AI to create tasks from emails, automate workflows, and manage your productivity proactively.",
     keywords: [
@@ -1152,20 +1146,17 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Task creation",
         gaia: "AI auto-creates tasks from emails, messages, and calendar events",
-        competitor:
-          "Manual task creation with natural language date parsing",
+        competitor: "Manual task creation with natural language date parsing",
       },
       {
         feature: "Prioritization",
         gaia: "AI analyzes context, deadlines, and dependencies to surface what matters now",
-        competitor:
-          "Manual priority levels (P1-P4) and user-defined filters",
+        competitor: "Manual priority levels (P1-P4) and user-defined filters",
       },
       {
         feature: "Email integration",
         gaia: "Reads emails, creates tasks automatically, drafts replies, triages inbox",
-        competitor:
-          "Forward emails to Todoist to create tasks manually",
+        competitor: "Forward emails to Todoist to create tasks manually",
       },
       {
         feature: "Workflow automation",
@@ -1176,8 +1167,7 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Integrations",
         gaia: "50+ integrations with AI-powered orchestration via MCP",
-        competitor:
-          "80+ integrations focused on task input and sync",
+        competitor: "80+ integrations focused on task input and sync",
       },
       {
         feature: "Collaboration",
@@ -1337,8 +1327,7 @@ export const comparisons: Record<string, ComparisonData> = {
     tagline: "No-code automation platform connecting 6,000+ apps",
     description:
       "Zapier connects thousands of apps with rule-based automations. GAIA adds AI intelligence to understand context and act proactively, not just follow predefined rules.",
-    metaTitle:
-      "GAIA vs Zapier: AI-Powered Automation vs Rule-Based Workflows",
+    metaTitle: "GAIA vs Zapier: AI-Powered Automation vs Rule-Based Workflows",
     metaDescription:
       "Compare GAIA and Zapier for automation. Zapier connects 6,000+ apps with rules, while GAIA uses AI to understand context, make decisions, and automate work proactively.",
     keywords: [
@@ -1379,20 +1368,17 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Proactive behavior",
         gaia: "Monitors your digital life and acts before you ask",
-        competitor:
-          "Executes only when a defined trigger fires",
+        competitor: "Executes only when a defined trigger fires",
       },
       {
         feature: "Integrations",
         gaia: "50+ integrations with AI-powered orchestration via MCP",
-        competitor:
-          "6,000+ integrations with broad but shallow connectivity",
+        competitor: "6,000+ integrations with broad but shallow connectivity",
       },
       {
         feature: "Decision making",
         gaia: "AI evaluates context and makes judgment calls on each action",
-        competitor:
-          "Follows the same path every time regardless of context",
+        competitor: "Follows the same path every time regardless of context",
       },
       {
         feature: "Open source",
@@ -1489,8 +1475,7 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Integrations",
         gaia: "50+ integrations with AI-powered cross-tool orchestration",
-        competitor:
-          "1,000+ integrations focused on syncing data into ClickUp",
+        competitor: "1,000+ integrations focused on syncing data into ClickUp",
       },
       {
         feature: "Team features",
@@ -1558,7 +1543,7 @@ export const comparisons: Record<string, ComparisonData> = {
       "AI workflow assistant",
     ],
     intro:
-      "Lindy AI lets you create AI agents (called \"Lindies\") that handle specific tasks like email triage, meeting scheduling, and CRM updates. It is a practical approach to AI-powered productivity with a focus on delegating individual workflows. GAIA takes a more integrated approach: rather than separate agents for separate tasks, GAIA is a unified assistant with graph-based memory that understands the connections between your email, calendar, tasks, and tools. It sees the full picture, not isolated tasks.",
+      'Lindy AI lets you create AI agents (called "Lindies") that handle specific tasks like email triage, meeting scheduling, and CRM updates. It is a practical approach to AI-powered productivity with a focus on delegating individual workflows. GAIA takes a more integrated approach: rather than separate agents for separate tasks, GAIA is a unified assistant with graph-based memory that understands the connections between your email, calendar, tasks, and tools. It sees the full picture, not isolated tasks.',
     rows: [
       {
         feature: "Core approach",
@@ -1575,8 +1560,7 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Email management",
         gaia: "Integrated email automation linked to tasks, calendar, and workflows",
-        competitor:
-          "Dedicated email agent for triage and drafting",
+        competitor: "Dedicated email agent for triage and drafting",
       },
       {
         feature: "Memory",
@@ -1587,20 +1571,17 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Workflow automation",
         gaia: "Multi-step workflows with cross-tool orchestration and natural language creation",
-        competitor:
-          "Agent chains where one Lindy triggers another in sequence",
+        competitor: "Agent chains where one Lindy triggers another in sequence",
       },
       {
         feature: "Integrations",
         gaia: "50+ integrations with MCP for extensibility and community contributions",
-        competitor:
-          "Growing integration list focused on common business tools",
+        competitor: "Growing integration list focused on common business tools",
       },
       {
         feature: "Multi-platform",
         gaia: "Web, desktop (macOS, Windows, Linux), mobile, Discord, Slack, Telegram",
-        competitor:
-          "Web interface and Chrome extension",
+        competitor: "Web interface and Chrome extension",
       },
       {
         feature: "Open source",
@@ -1788,8 +1769,7 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Task management",
         gaia: "AI creates, prioritizes, and automates tasks based on context from all connected tools",
-        competitor:
-          "Creates reminders and notes through voice commands",
+        competitor: "Creates reminders and notes through voice commands",
       },
       {
         feature: "Workflow automation",
@@ -1812,13 +1792,13 @@ export const comparisons: Record<string, ComparisonData> = {
       {
         feature: "Proactive behavior",
         gaia: "Monitors your tools continuously and acts on your behalf",
-        competitor:
-          "Siri Suggestions based on usage patterns and time of day",
+        competitor: "Siri Suggestions based on usage patterns and time of day",
       },
       {
         feature: "Open source",
         gaia: "Fully open source and self-hostable with complete data transparency",
-        competitor: "Proprietary, closed system with on-device processing focus",
+        competitor:
+          "Proprietary, closed system with on-device processing focus",
       },
     ],
     gaiaAdvantages: [

@@ -1,16 +1,15 @@
+import { Chip } from "@heroui/chip";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-
-import { Chip } from "@heroui/chip";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
-  type PersonaData,
   getAllPersonaSlugs,
   getPersona,
+  type PersonaData,
 } from "@/features/personas/data/personasData";
 import {
   generateBreadcrumbSchema,
@@ -170,9 +169,7 @@ export default async function PersonaPage({ params }: PageProps) {
             Roles
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-zinc-300">
-            AI Assistant for {data.role}
-          </span>
+          <span className="text-zinc-300">AI Assistant for {data.role}</span>
         </nav>
 
         {/* Hero */}
@@ -187,9 +184,7 @@ export default async function PersonaPage({ params }: PageProps) {
 
         {/* Introduction */}
         <section className="mb-16">
-          <p className="text-lg leading-relaxed text-zinc-300">
-            {data.intro}
-          </p>
+          <p className="text-lg leading-relaxed text-zinc-300">{data.intro}</p>
         </section>
 
         {/* Pain Points */}
@@ -203,12 +198,8 @@ export default async function PersonaPage({ params }: PageProps) {
                 key={point}
                 className="flex items-start gap-3 rounded-2xl bg-zinc-800 p-5"
               >
-                <span className="mt-0.5 shrink-0 text-red-400">
-                  *
-                </span>
-                <p className="leading-relaxed text-zinc-300">
-                  {point}
-                </p>
+                <span className="mt-0.5 shrink-0 text-red-400">*</span>
+                <p className="leading-relaxed text-zinc-300">{point}</p>
               </div>
             ))}
           </div>
@@ -221,10 +212,7 @@ export default async function PersonaPage({ params }: PageProps) {
           </h2>
           <div className="grid gap-6 md:grid-cols-2">
             {data.howGaiaHelps.map((feature) => (
-              <div
-                key={feature.title}
-                className="rounded-3xl bg-zinc-800 p-6"
-              >
+              <div key={feature.title} className="rounded-3xl bg-zinc-800 p-6">
                 <h3 className="mb-3 text-lg font-medium text-emerald-400">
                   {feature.title}
                 </h3>
@@ -242,16 +230,13 @@ export default async function PersonaPage({ params }: PageProps) {
             Integrations for {data.role}
           </h2>
           <p className="mb-6 text-zinc-400">
-            GAIA connects with the tools {data.role.toLowerCase()}{" "}
-            already use, creating an intelligent automation layer across
-            your entire workflow.
+            GAIA connects with the tools {data.role.toLowerCase()} already use,
+            creating an intelligent automation layer across your entire
+            workflow.
           </p>
           <div className="flex flex-wrap gap-3">
             {data.relevantIntegrations.map((integration) => (
-              <IntegrationBadge
-                key={integration}
-                name={integration}
-              />
+              <IntegrationBadge key={integration} name={integration} />
             ))}
           </div>
         </section>
@@ -278,8 +263,8 @@ export default async function PersonaPage({ params }: PageProps) {
                 See How GAIA Compares
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Compare GAIA with other AI productivity tools and see
-                why it stands out for {data.role.toLowerCase()}.
+                Compare GAIA with other AI productivity tools and see why it
+                stands out for {data.role.toLowerCase()}.
               </p>
             </Link>
             <Link
@@ -290,13 +275,12 @@ export default async function PersonaPage({ params }: PageProps) {
                 Learn About AI Concepts
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Explore the AI technology and concepts that power
-                GAIA's intelligent automation.
+                Explore the AI technology and concepts that power GAIA's
+                intelligent automation.
               </p>
             </Link>
           </div>
         </section>
-
       </article>
       <FinalSection />
     </>

@@ -433,12 +433,7 @@ Ready-to-use JSON-LD structured data templates for SEO and GEO optimization.
   "name": "[Page Title]",
   "speakable": {
     "@type": "SpeakableSpecification",
-    "cssSelector": [
-      "h1",
-      ".summary",
-      ".key-takeaways",
-      ".faq-answer"
-    ]
+    "cssSelector": ["h1", ".summary", ".key-takeaways", ".faq-answer"]
   }
 }
 ```
@@ -503,11 +498,13 @@ For a software product page with FAQ:
 ## Validation Tools
 
 1. **Google Rich Results Test**
+
    ```
    https://search.google.com/test/rich-results?url={your-url}
    ```
 
 2. **Schema.org Validator**
+
    ```
    https://validator.schema.org/?url={your-url}
    ```

@@ -9,13 +9,10 @@ interface FAQ {
 
 export default function FAQAccordion({ faqs }: { faqs: FAQ[] }) {
   return (
-    <Accordion
-      variant="light"
-      className="p-0!"
-      defaultSelectedKeys={["0"]}
-    >
+    <Accordion variant="light" className="p-0!" defaultSelectedKeys={["0"]}>
       {faqs.map((faq, index) => (
         <AccordionItem
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable faq array
           key={index}
           aria-label={faq.question}
           title={faq.question}

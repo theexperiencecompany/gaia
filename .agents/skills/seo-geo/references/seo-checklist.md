@@ -4,11 +4,11 @@ Complete checklist for auditing and optimizing websites for both traditional SEO
 
 ## Priority Levels
 
-| Level | Meaning | Action |
-|-------|---------|--------|
-| **P0** | Critical | Must fix immediately - blocks indexing or causes major issues |
-| **P1** | Important | Should fix soon - significant impact on rankings |
-| **P2** | Recommended | Nice to have - improves visibility and user experience |
+| Level  | Meaning     | Action                                                        |
+| ------ | ----------- | ------------------------------------------------------------- |
+| **P0** | Critical    | Must fix immediately - blocks indexing or causes major issues |
+| **P1** | Important   | Should fix soon - significant impact on rankings              |
+| **P2** | Recommended | Nice to have - improves visibility and user experience        |
 
 ---
 
@@ -237,13 +237,13 @@ curl "https://www.googleapis.com/pagespeedonline/v5/runPagespeed?url=https://exa
 
 ## Priority Matrix
 
-| Priority | Task | Impact |
-|----------|------|--------|
-| **Critical** | Fix crawl errors | Blocks indexing |
-| **Critical** | HTTPS enabled | Trust + ranking |
-| **High** | Core Web Vitals | UX + ranking |
-| **High** | Mobile-friendly | 60%+ traffic |
-| **High** | FAQPage schema | +40% AI visibility |
-| **Medium** | Meta descriptions | CTR improvement |
-| **Medium** | Internal linking | Authority distribution |
-| **Low** | Social meta tags | Share appearance |
+| Priority     | Task              | Impact                 |
+| ------------ | ----------------- | ---------------------- |
+| **Critical** | Fix crawl errors  | Blocks indexing        |
+| **Critical** | HTTPS enabled     | Trust + ranking        |
+| **High**     | Core Web Vitals   | UX + ranking           |
+| **High**     | Mobile-friendly   | 60%+ traffic           |
+| **High**     | FAQPage schema    | +40% AI visibility     |
+| **Medium**   | Meta descriptions | CTR improvement        |
+| **Medium**   | Internal linking  | Authority distribution |
+| **Low**      | Social meta tags  | Share appearance       |
