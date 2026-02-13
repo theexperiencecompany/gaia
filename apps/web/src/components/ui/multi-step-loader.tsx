@@ -1,5 +1,5 @@
 "use client";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { useEffect, useState } from "react";
 
 import { CheckmarkCircle02Icon } from "@/icons";
@@ -23,7 +23,7 @@ const LoaderCore = ({
         const opacity = Math.max(1 - distance * 0.2, 0); // Minimum opacity is 0, keep it 0.2 if you're sane.
 
         return (
-          <motion.div
+          <m.div
             key={loadingState.text}
             animate={{ opacity: opacity, y: -(value * 40) }}
             className={cn("mb-4 flex gap-2 text-left")}
@@ -51,7 +51,7 @@ const LoaderCore = ({
             >
               {loadingState.text}
             </span>
-          </motion.div>
+          </m.div>
         );
       })}
     </div>
@@ -93,7 +93,7 @@ export const MultiStepLoader = ({
   return (
     <AnimatePresence mode="wait">
       {loading && (
-        <motion.div
+        <m.div
           animate={{
             opacity: 1,
           }}
@@ -110,7 +110,7 @@ export const MultiStepLoader = ({
           </div>
 
           {/* <div className="bg-linear-to-t inset-x-0 z-20 bottom-0 bg-white dark:bg-black h-full absolute [mask-image:radial-gradient(900px_at_center,transparent_30%,white)]" /> */}
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

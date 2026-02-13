@@ -6,7 +6,7 @@ import {
   StartAudio,
 } from "@livekit/components-react";
 import { Room } from "livekit-client";
-import { motion } from "motion/react";
+import { m } from "motion/react";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";

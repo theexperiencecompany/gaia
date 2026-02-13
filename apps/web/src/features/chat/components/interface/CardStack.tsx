@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import { ArrowUpRight } from "@/icons";
@@ -48,7 +48,7 @@ export default function CardStack<T extends { id: string }>({
 
   return (
     <div className={className} onClick={toggleExpanded}>
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: -20, height: 0 }}
         animate={{
           opacity: isExpanded ? 1 : 0,
@@ -64,7 +64,7 @@ export default function CardStack<T extends { id: string }>({
         }}
         className="overflow-hidden"
       >
-        <motion.div
+        <m.div
           initial={{ opacity: 0 }}
           animate={{ opacity: isExpanded ? 1 : 0 }}
           transition={{ duration: 0.2 }}
@@ -81,8 +81,8 @@ export default function CardStack<T extends { id: string }>({
           >
             {isExpanded ? "Collapse" : "Expand"}
           </Button>
-        </motion.div>
-      </motion.div>
+        </m.div>
+      </m.div>
 
       <div
         className="relative"
@@ -95,7 +95,7 @@ export default function CardStack<T extends { id: string }>({
           const stackOpacity = 1 - index * 0.4; // Slight opacity reduction for depth
 
           return (
-            <motion.div
+            <m.div
               key={item.id}
               ref={index === 0 ? cardRef : undefined}
               initial={false}
@@ -142,12 +142,12 @@ export default function CardStack<T extends { id: string }>({
                   isExpanded && renderCard(item)
                 )}
               </div>
-            </motion.div>
+            </m.div>
           );
         })}
       </div>
 
-      <motion.div
+      <m.div
         initial={false}
         animate={{
           height: isExpanded ? data.length * cardHeight * 1.07 : 80,

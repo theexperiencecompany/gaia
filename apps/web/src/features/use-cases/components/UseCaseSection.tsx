@@ -1,8 +1,8 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { AnimatePresence, motion } from "framer-motion";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -210,7 +210,7 @@ export default function UseCaseSection({
         className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
       >
         {allCategories.map((category, index) => (
-          <motion.div
+          <m.div
             key={category as string}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -242,11 +242,11 @@ export default function UseCaseSection({
                     ? "Your Workflows"
                     : (category as string)}
             </Chip>
-          </motion.div>
+          </m.div>
         ))}
 
         {setShowUseCases && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{
@@ -266,7 +266,7 @@ export default function UseCaseSection({
             >
               <ChevronUp />
             </Button>
-          </motion.div>
+          </m.div>
         )}
       </div>
 
@@ -275,7 +275,7 @@ export default function UseCaseSection({
         {filteredUseCases.length > 0 &&
           selectedCategory !== null &&
           selectedCategory !== "workflows" && (
-            <motion.div
+            <m.div
               key={selectedCategory}
               className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
@@ -290,7 +290,7 @@ export default function UseCaseSection({
                   )
                 : filteredUseCases
               ).map((useCase: UseCase, index: number) => (
-                <motion.div
+                <m.div
                   key={useCase.published_id || index}
                   initial={{ opacity: 0, y: 20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -318,16 +318,16 @@ export default function UseCaseSection({
                         : "create"
                     }
                   />
-                </motion.div>
+                </m.div>
               ))}
-            </motion.div>
+            </m.div>
           )}
 
         {/* Render User Workflows */}
         {selectedCategory === "workflows" &&
           !isLoadingWorkflows &&
           workflows.length > 0 && (
-            <motion.div
+            <m.div
               key="workflows"
               className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
@@ -338,7 +338,7 @@ export default function UseCaseSection({
               {workflows
                 // .slice(0, 8)
                 .map((workflow: Workflow, index: number) => (
-                  <motion.div
+                  <m.div
                     key={workflow.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -355,9 +355,9 @@ export default function UseCaseSection({
                       primaryAction="run"
                       useBlurEffect={useBlurEffect}
                     />
-                  </motion.div>
+                  </m.div>
                 ))}
-            </motion.div>
+            </m.div>
           )}
       </AnimatePresence>
 

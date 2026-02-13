@@ -9,6 +9,7 @@ import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import { ArrowRight02Icon, RedoIcon } from "@/icons";
 import DemoCommunityCards from "./DemoCommunityCards";
 import DemoExecutionChat from "./DemoExecutionChat";
+
 import DemoWorkflowCard from "./DemoWorkflowCard";
 import DemoWorkflowModal from "./DemoWorkflowModal";
 import {

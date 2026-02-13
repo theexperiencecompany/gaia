@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import { type ComponentType, type ReactNode, Suspense } from "react";
 
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
@@ -31,7 +31,7 @@ export function AnimatedSection({
 }: AnimatedSectionProps) {
   return (
     <Suspense fallback={fallback}>
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
@@ -43,7 +43,7 @@ export function AnimatedSection({
         className={className}
       >
         {children}
-      </motion.div>
+      </m.div>
     </Suspense>
   );
 }
@@ -74,7 +74,7 @@ export function AnimatedLazySection({
 }: AnimatedLazySectionProps) {
   return (
     <Suspense fallback={fallback}>
-      <motion.div
+      <m.div
         initial={{ opacity: 0, y: 20 }}
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true, margin: "-100px" }}
@@ -86,7 +86,7 @@ export function AnimatedLazySection({
         className={className}
       >
         <Component {...componentProps} />
-      </motion.div>
+      </m.div>
     </Suspense>
   );
 }

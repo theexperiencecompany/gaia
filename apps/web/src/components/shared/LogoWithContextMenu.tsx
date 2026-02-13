@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
@@ -205,7 +205,7 @@ export function LogoWithContextMenu({
     <ContextMenu onOpenChange={setIsOpen} modal={false}>
       <ContextMenuTrigger asChild>
         <Button as={Link} href={"/"} variant="light" className={className}>
-          <motion.div
+          <m.div
             whileHover={{
               scale: 1.02,
               transition: { duration: 0.2 },
@@ -219,11 +219,11 @@ export function LogoWithContextMenu({
               priority
               className={imageClassName}
             />
-          </motion.div>
+          </m.div>
         </Button>
       </ContextMenuTrigger>
       <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">
-        <motion.div
+        <m.div
           initial="hidden"
           animate={isOpen ? "visible" : "hidden"}
           variants={containerVariants}
@@ -234,7 +234,7 @@ export function LogoWithContextMenu({
               asChild
               className="hover:bg-zinc-700! hover:text-white text-zinc-400 "
             >
-              <motion.div
+              <m.div
                 variants={itemVariants}
                 onClick={item.type === "button" ? item.onClick : undefined}
               >
@@ -253,10 +253,10 @@ export function LogoWithContextMenu({
                     <span>{item.label}</span>
                   </div>
                 )}
-              </motion.div>
+              </m.div>
             </ContextMenuItem>
           ))}
-        </motion.div>
+        </m.div>
       </ContextMenuContent>
     </ContextMenu>
   );

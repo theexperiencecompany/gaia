@@ -2,7 +2,7 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { usePathname } from "next/navigation";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -538,7 +538,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   return (
     <AnimatePresence>
       {isVisible && matches.length > 0 && (
-        <motion.div
+        <m.div
           ref={dropdownRef}
           initial={{ opacity: 0, y: -8, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -675,7 +675,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
               </div>
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

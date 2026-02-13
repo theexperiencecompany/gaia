@@ -2,7 +2,7 @@
 
 import { Kbd } from "@heroui/kbd";
 import { Command } from "cmdk";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 
@@ -178,14 +178,14 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       {open && (
         <div className={COMMAND_MENU_STYLES.modalWrapper}>
           {/* Backdrop */}
-          <motion.div
+          <m.div
             {...ANIMATION_CONFIG.backdrop}
             className={COMMAND_MENU_STYLES.backdrop}
             onClick={() => onOpenChange(false)}
           />
 
           {/* Command Menu */}
-          <motion.div
+          <m.div
             {...ANIMATION_CONFIG.container}
             className={COMMAND_MENU_STYLES.container}
           >
@@ -332,7 +332,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 </p>
               </div>
             </Command>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </AnimatePresence>

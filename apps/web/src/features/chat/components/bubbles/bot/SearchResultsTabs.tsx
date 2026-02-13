@@ -1,7 +1,7 @@
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Skeleton } from "@heroui/skeleton";
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
 
@@ -134,7 +134,7 @@ function ImageItem({
   }, []);
 
   return (
-    <motion.div
+    <m.div
       onClick={onImageClick}
       className={`group cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 ${
         (index + 1) % 2 === 0
@@ -177,7 +177,7 @@ function ImageItem({
         onLoad={handleLoad}
         priority={index < 3} // Prioritize first 3 images
       />
-    </motion.div>
+    </m.div>
   );
 }
 

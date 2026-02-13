@@ -1,4 +1,4 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import type React from "react";
 import { useEffect } from "react";
 
@@ -50,7 +50,7 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   return (
     <AnimatePresence>
       {toolName && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0, scale: 0.9, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           // exit={{ opacity: 0, scale: 0.9, y: 10 }}
@@ -75,16 +75,16 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
             {formatToolName(toolName)}
           </span>
           {onRemove && (
-            <motion.button
+            <m.button
               onClick={onRemove}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-zinc-400 transition-colors hover:bg-zinc-600 hover:text-zinc-200"
             >
               <Cancel01Icon size={15} />
-            </motion.button>
+            </m.button>
           )}
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

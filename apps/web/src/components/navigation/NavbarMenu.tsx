@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
@@ -131,7 +131,7 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
   const links = getMenuLinks().filter((link) => !link.hideNavbar);
 
   return (
-    <motion.div
+    <m.div
       initial={{ scaleY: 0.95, opacity: 0 }}
       animate={{ scaleY: 1, opacity: 1 }}
       exit={{ scaleY: 0.95, opacity: 0 }}
@@ -223,6 +223,6 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
           </div>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 }

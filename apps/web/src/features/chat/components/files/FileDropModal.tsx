@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 
 import { File01Icon, FileUploadIcon, Upload01Icon } from "@/icons";
 
@@ -18,14 +18,14 @@ export function FileDropModal({
   return (
     <AnimatePresence>
       {isDragging && (
-        <motion.div
+        <m.div
           className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.2 }}
         >
-          <motion.div
+          <m.div
             className="w-full max-w-md rounded-2xl border-2 border-dashed border-primary/70 bg-linear-to-b from-[#092a36] to-black p-8 shadow-2xl"
             initial={{ scale: 0.9, y: 10 }}
             animate={{ scale: 1, y: 0 }}
@@ -33,7 +33,7 @@ export function FileDropModal({
             transition={{ type: "spring", damping: 25, stiffness: 300 }}
           >
             <div className="flex flex-col items-center text-center">
-              <motion.div
+              <m.div
                 className="mb-5 flex h-20 w-20 items-center justify-center rounded-full bg-primary/10 text-primary"
                 animate={{
                   y: [0, -10, 0],
@@ -46,7 +46,7 @@ export function FileDropModal({
                 }}
               >
                 <Upload01Icon size={36} strokeWidth={1.5} />
-              </motion.div>
+              </m.div>
 
               <h3 className="mb-2 text-2xl font-bold text-foreground">
                 Drop files here
@@ -72,8 +72,8 @@ export function FileDropModal({
                 </div>
               </div>
             </div>
-          </motion.div>
-        </motion.div>
+          </m.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

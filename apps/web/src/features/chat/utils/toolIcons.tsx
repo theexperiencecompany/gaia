@@ -9,7 +9,7 @@
  * For icon configuration: src/config/toolIconConfig.ts
  */
 
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import Image from "next/image";
 import {
   iconAliases,
@@ -186,7 +186,7 @@ export const getToolCategoryIcon = (
       );
       return showBackground ? (
         <div className="relative rounded-lg p-1">
-          <motion.div
+          <m.div
             className="absolute inset-0 rounded-lg bg-zinc-700"
             animate={pulsating ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 1 }}
             transition={
@@ -234,7 +234,7 @@ export const getToolCategoryIcon = (
   const shouldShowBackground = showBackground && !(iconOnly && config.isImage);
   return shouldShowBackground ? (
     <div className="relative rounded-lg p-1">
-      <motion.div
+      <m.div
         className={`absolute inset-0 rounded-lg ${config.bgColor}`}
         animate={pulsating ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 1 }}
         transition={

@@ -1,10 +1,10 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 
 export function OnboardingBackground() {
   return (
-    <motion.div
+    <m.div
       className="absolute inset-0 z-0"
       style={{
         backgroundImage: `radial-gradient(100% 125% at 50% 100%, #000000 50%, #00bbffAA)`,
