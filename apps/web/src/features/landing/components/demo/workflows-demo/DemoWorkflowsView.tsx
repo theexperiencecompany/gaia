@@ -86,7 +86,7 @@ function DemoWorkflowCard({
   creatorName?: string;
 }) {
   return (
-    <div className="group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 bg-zinc-800 outline-zinc-800/70 p-4 transition-all select-none cursor-pointer hover:bg-zinc-700/50">
+    <div className="group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl bg-zinc-800/50 p-4 transition-all select-none cursor-pointer hover:bg-zinc-700/50">
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">
           <DemoWorkflowIcons steps={steps} iconSize={25} maxIcons={3} />
@@ -168,34 +168,38 @@ export default function DemoWorkflowsView() {
     <div className="space-y-8 overflow-y-auto p-4 sm:p-6 md:p-8">
       {/* Community Banner */}
       <div className="mb-6">
-        <div className="relative flex items-center justify-between overflow-hidden rounded-3xl border border-zinc-800 bg-zinc-900/50 px-6 py-5">
-          <div className="flex items-center gap-4">
-            <UserGroupIcon className="h-6 w-6 text-primary" />
-            <div>
-              <h3 className="text-base font-semibold text-zinc-100">
-                Explore the Community
-              </h3>
-              <p className="text-sm text-zinc-400">
-                Discover community workflows or publish your own for others to
-                use.
-              </p>
+        <div className="relative overflow-hidden rounded-3xl bg-zinc-800/50">
+          <div className="relative z-10 flex items-center justify-between gap-6 p-4">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/20">
+                <UserGroupIcon className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h3 className="text-lg font-medium text-white">
+                  Explore the Community
+                </h3>
+                <p className="text-sm text-zinc-400">
+                  Discover community workflows or publish your own for others to
+                  use.
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="flat"
-              size="sm"
-              endContent={<ArrowRight02Icon className="h-4 w-4" />}
-            >
-              Browse Use Cases
-            </Button>
-            <Button
-              color="primary"
-              size="sm"
-              startContent={<ZapIcon className="h-4 w-4" />}
-            >
-              Create New Workflow
-            </Button>
+            <div className="flex shrink-0 gap-3">
+              <Button
+                variant="flat"
+                size="sm"
+                endContent={<ArrowRight02Icon className="h-4 w-4" />}
+              >
+                Browse Use Cases
+              </Button>
+              <Button
+                color="primary"
+                size="sm"
+                startContent={<ZapIcon className="h-4 w-4" />}
+              >
+                Create New Workflow
+              </Button>
+            </div>
           </div>
         </div>
       </div>

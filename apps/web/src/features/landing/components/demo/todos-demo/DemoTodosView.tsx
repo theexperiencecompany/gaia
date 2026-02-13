@@ -1,14 +1,18 @@
 "use client";
 
+import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
+  ArrowDown01Icon,
   CalendarCheckOut01Icon,
   CheckmarkCircle02Icon,
+  Delete02Icon,
   Flag02Icon,
   Folder02Icon,
+  PlusSignIcon,
   Tag01Icon,
   ZapIcon,
 } from "@/icons";
@@ -23,13 +27,6 @@ const priorityRingColors = {
   medium: "border-yellow-500",
   low: "border-blue-500",
   none: "border-zinc-500",
-} as const;
-
-const priorityChipColors = {
-  high: "danger",
-  medium: "warning",
-  low: "primary",
-  none: "default",
 } as const;
 
 const priorityChipClassNames = {
@@ -243,6 +240,34 @@ function DemoTodoItem({
   );
 }
 
+function DemoFieldChip({
+  icon,
+  label,
+  color,
+}: {
+  icon: React.ReactNode;
+  label?: string;
+  color?: string;
+}) {
+  return (
+    <button
+      type="button"
+      className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors ${
+        color ? "" : "bg-zinc-800 text-zinc-500"
+      } hover:bg-zinc-700 cursor-pointer`}
+      style={
+        color
+          ? { backgroundColor: `${color}20`, color }
+          : undefined
+      }
+    >
+      {icon}
+      {label && <span className="truncate">{label}</span>}
+      <ArrowDown01Icon width={14} height={14} className="shrink-0 opacity-50" />
+    </button>
+  );
+}
+
 function DemoTodoSidebar({
   todo,
   onClose,
@@ -252,147 +277,123 @@ function DemoTodoSidebar({
 }) {
   const project = DEMO_PROJECTS.find((p) => p.id === todo.project_id);
 
+  const priorityColor = {
+    high: "#ef4444",
+    medium: "#eab308",
+    low: "#3b82f6",
+    none: undefined,
+  }[todo.priority];
+
   return (
     <div
-      className="flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800 overflow-y-auto"
+      className="flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800"
       style={{ backgroundColor: "#141414" }}
     >
-      {/* Close button */}
-      <div className="flex justify-end px-6 pb-0 pt-4">
-        <button
-          type="button"
-          onClick={onClose}
-          className="p-1 text-zinc-400 hover:text-zinc-200"
-        >
-          <svg
-            width="14"
-            height="14"
-            viewBox="0 0 14 14"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinecap="round"
-          >
-            <title>Close</title>
-            <path d="M1 1l12 12M13 1L1 13" />
-          </svg>
-        </button>
-      </div>
-
-      <div className="flex flex-col gap-4 px-6 pb-6">
-        {/* Checkbox + Title */}
-        <div className="flex items-start gap-2">
-          <div
-            className={`mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
-          >
-            {todo.completed && (
-              <div className="h-full w-full rounded-full bg-green-500" />
-            )}
+      <div className="flex-1 overflow-y-auto pl-6 pr-3 pt-4">
+        <div className="space-y-4">
+          {/* Checkbox + Title */}
+          <div className="flex items-start gap-1">
+            <div
+              className={`mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
+            >
+              {todo.completed && (
+                <div className="h-full w-full rounded-full bg-green-500" />
+              )}
+            </div>
+            <h2
+              className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${
+                todo.completed
+                  ? "text-zinc-500 line-through"
+                  : "text-zinc-100"
+              }`}
+            >
+              {todo.title}
+            </h2>
           </div>
-          <h2
-            className={`text-2xl font-medium ${
-              todo.completed
-                ? "text-zinc-500 line-through"
-                : "text-zinc-100"
+
+          {/* Description */}
+          <p
+            className={`cursor-pointer text-sm leading-relaxed transition-colors hover:text-zinc-300 ${
+              todo.completed ? "text-zinc-600" : "text-zinc-400"
             }`}
           >
-            {todo.title}
-          </h2>
-        </div>
+            {todo.description || "Add a description..."}
+          </p>
 
-        {/* Description */}
-        <p
-          className={`text-sm ${
-            todo.completed ? "text-zinc-600" : "text-zinc-400"
-          }`}
-        >
-          {todo.description || "Add a description..."}
-        </p>
-
-        {/* Field chips row */}
-        <div className="flex flex-wrap gap-2">
-          {/* Priority chip */}
-          <Chip
-            size="sm"
-            variant="flat"
-            radius="sm"
-            color={priorityChipColors[todo.priority]}
-            className={`px-2 ${priorityChipClassNames[todo.priority]}`}
-            startContent={
-              <Flag02Icon width={15} height={15} className="mx-1" />
-            }
-          >
-            {todo.priority.charAt(0).toUpperCase() + todo.priority.slice(1)}
-          </Chip>
-
-          {/* Project chip */}
-          {project && (
-            <Chip
-              size="sm"
-              variant="flat"
-              radius="sm"
-              className="px-1 text-zinc-400"
-              startContent={
-                <div
-                  className="ml-1 h-2 w-2 rounded-full"
-                  style={{ backgroundColor: project.color }}
+          {/* Field chips row - dropdown style like real TodoFieldsRow */}
+          <div className="flex flex-wrap gap-2 py-2">
+            <DemoFieldChip
+              icon={
+                <Folder02Icon
+                  width={18}
+                  height={18}
+                  style={{ color: project?.color || "#71717a" }}
                 />
               }
-            >
-              {project.name}
-            </Chip>
-          )}
-
-          {/* Date chip */}
-          {todo.due_date && (
-            <Chip
-              size="sm"
-              variant="flat"
-              radius="sm"
-              color={
-                isDueToday(todo.due_date)
-                  ? "success"
-                  : isOverdue(todo.due_date)
-                    ? "danger"
-                    : "default"
+              label={project?.name}
+              color={project ? "#3b82f6" : undefined}
+            />
+            <DemoFieldChip
+              icon={
+                <Flag02Icon
+                  width={18}
+                  height={18}
+                  style={{ color: priorityColor || "#71717a" }}
+                />
               }
-              className="px-1 text-zinc-400"
-              startContent={
+              label={
+                todo.priority !== "none"
+                  ? todo.priority.charAt(0).toUpperCase() +
+                    todo.priority.slice(1)
+                  : undefined
+              }
+              color={priorityColor}
+            />
+            <DemoFieldChip
+              icon={
                 <CalendarCheckOut01Icon
-                  width={16}
-                  height={16}
-                  className="mx-1"
+                  width={18}
+                  height={18}
                 />
               }
-            >
-              {formatDueDate(todo.due_date)}
-            </Chip>
-          )}
+              label={todo.due_date ? formatDueDate(todo.due_date) : undefined}
+              color={
+                todo.due_date
+                  ? isDueToday(todo.due_date)
+                    ? "#22c55e"
+                    : isOverdue(todo.due_date)
+                      ? "#ef4444"
+                      : undefined
+                  : undefined
+              }
+            />
+            <DemoFieldChip
+              icon={<Tag01Icon width={18} height={18} />}
+              label={
+                todo.labels.length > 0
+                  ? `${todo.labels.length} label${todo.labels.length > 1 ? "s" : ""}`
+                  : undefined
+              }
+              color={todo.labels.length > 0 ? "#3b82f6" : undefined}
+            />
+          </div>
 
-          {/* Labels */}
-          {todo.labels.map((label) => (
-            <Chip key={label} size="sm" variant="bordered" radius="sm">
-              {label.charAt(0).toUpperCase() + label.slice(1)}
-            </Chip>
-          ))}
-        </div>
-
-        {/* Subtasks section */}
-        {todo.subtasks.length > 0 && (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
+          {/* Subtasks section */}
+          <div className="border-y border-zinc-800 py-4">
+            <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium text-zinc-300">
-                Subtasks ({todo.subtasks.filter((s) => s.completed).length}/
-                {todo.subtasks.length})
+                Subtasks
+                {todo.subtasks.length > 0 &&
+                  ` (${todo.subtasks.filter((s) => s.completed).length}/${todo.subtasks.length})`}
               </span>
             </div>
             {todo.subtasks.map((st) => (
               <div
                 key={st.id}
-                className="flex items-center gap-2 rounded-xl p-2 hover:bg-zinc-800/50"
+                className="flex items-center gap-2 rounded-lg p-2 hover:bg-zinc-800/50"
               >
                 <div
-                  className={`h-3.5 w-3.5 rounded-full border ${
+                  className={`h-3.5 w-3.5 shrink-0 rounded-full border ${
                     st.completed
                       ? "border-green-500 bg-green-500"
                       : "border-dashed border-zinc-500"
@@ -409,42 +410,58 @@ function DemoTodoSidebar({
                 </span>
               </div>
             ))}
-          </div>
-        )}
-
-        {/* Workflow section */}
-        {todo.workflow_categories &&
-          todo.workflow_categories.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
-                <ZapIcon width={16} height={16} className="text-zinc-400" />
-                <span className="text-sm font-normal text-zinc-400">
-                  Suggested Workflow
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                {todo.workflow_categories.map((cat, i) => {
-                  const IconComponent = getToolCategoryIcon(cat, {
-                    width: 20,
-                    height: 20,
-                  });
-                  return IconComponent ? (
-                    <div key={cat} style={{ zIndex: i }}>
-                      {IconComponent}
-                    </div>
-                  ) : null;
-                })}
-              </div>
+            {/* Add subtask input placeholder */}
+            <div className="mt-2 flex items-center gap-2 rounded-lg px-2 py-1.5">
+              <PlusSignIcon width={14} height={14} className="text-zinc-600" />
+              <span className="text-sm text-zinc-600">Add subtask...</span>
             </div>
-          )}
+          </div>
 
-        {/* Footer: created date */}
-        <div className="mt-auto pt-4 text-xs text-zinc-600">
+          {/* Workflow section */}
+          {todo.workflow_categories &&
+            todo.workflow_categories.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1">
+                  <ZapIcon width={16} height={16} className="text-zinc-400" />
+                  <span className="text-sm font-normal text-zinc-400">
+                    Suggested Workflow
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {todo.workflow_categories.map((cat, i) => {
+                    const IconComponent = getToolCategoryIcon(cat, {
+                      width: 20,
+                      height: 20,
+                    });
+                    return IconComponent ? (
+                      <div key={cat} style={{ zIndex: i }}>
+                        {IconComponent}
+                      </div>
+                    ) : null;
+                  })}
+                </div>
+              </div>
+            )}
+        </div>
+      </div>
+
+      {/* Footer: created date + delete */}
+      <div className="flex items-center justify-between p-3">
+        <span className="text-xs text-zinc-600">
           Created{" "}
           {formatDistanceToNow(new Date(todo.created_at), {
             addSuffix: true,
           })}
-        </div>
+        </span>
+        <Button
+          isIconOnly
+          color="danger"
+          size="sm"
+          variant="flat"
+          aria-label="Delete todo"
+        >
+          <Delete02Icon className="size-5" />
+        </Button>
       </div>
     </div>
   );
@@ -462,24 +479,22 @@ export default function DemoTodosView() {
   }, []);
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full w-full">
       {/* Main todo list */}
-      <div className="flex-1 overflow-y-auto px-4">
-        <div className="flex w-full justify-center">
-          <div className="w-full space-y-1 divide-y divide-zinc-800 py-4">
-            {sortedTodos.map((todo) => (
-              <DemoTodoItem
-                key={todo.id}
-                todo={todo}
-                isSelected={selectedTodo?.id === todo.id}
-                onClick={() =>
-                  setSelectedTodo(
-                    selectedTodo?.id === todo.id ? null : todo,
-                  )
-                }
-              />
-            ))}
-          </div>
+      <div className="min-w-0 flex-1 overflow-y-auto px-4">
+        <div className="w-full space-y-1 divide-y divide-zinc-800 py-4">
+          {sortedTodos.map((todo) => (
+            <DemoTodoItem
+              key={todo.id}
+              todo={todo}
+              isSelected={selectedTodo?.id === todo.id}
+              onClick={() =>
+                setSelectedTodo(
+                  selectedTodo?.id === todo.id ? null : todo,
+                )
+              }
+            />
+          ))}
         </div>
       </div>
 

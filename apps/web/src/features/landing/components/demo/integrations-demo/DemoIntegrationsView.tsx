@@ -1,11 +1,20 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { useMemo, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Search01Icon, Unlink04Icon } from "@/icons";
+import {
+  ArrowRight02Icon,
+  ConnectIcon,
+  GlobalIcon,
+  InternetIcon,
+  Search01Icon,
+  Share08Icon,
+  Unlink04Icon,
+  ZapIcon,
+} from "@/icons";
 import {
   CATEGORY_LABELS,
   DEMO_CATEGORIES,
@@ -21,6 +30,7 @@ function DemoIntegrationRow({
   onClick: (id: string) => void;
 }) {
   const isConnected = integration.status === "connected";
+  const isPublic = integration.isPublic;
 
   return (
     <div
@@ -36,7 +46,14 @@ function DemoIntegrationRow({
         })}
       </div>
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <div className="font-medium">{integration.name}</div>
+        <div className="flex items-center gap-2">
+          <span className="font-medium">{integration.name}</span>
+          {isPublic && (
+            <Chip size="sm" variant="flat" color="secondary">
+              Community
+            </Chip>
+          )}
+        </div>
         <div className="truncate text-sm font-light text-zinc-400">
           {integration.description}
         </div>
@@ -50,6 +67,7 @@ function DemoIntegrationRow({
           <Button
             variant="flat"
             color="primary"
+            size="sm"
             className="text-sm text-primary"
           >
             Connect
@@ -68,73 +86,138 @@ function DemoIntegrationSidebar({
   onClose: () => void;
 }) {
   const isConnected = integration.status === "connected";
+  const isPublic = integration.isPublic;
+  const isCustom = integration.source === "custom";
 
   return (
     <div
-      className="flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800 overflow-y-auto"
+      className="flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800"
       style={{ backgroundColor: "#141414" }}
     >
-      <div className="px-6 pt-4 pb-0 flex justify-end">
-        <Button
-          isIconOnly
-          size="sm"
-          variant="light"
-          onClick={onClose}
-          className="text-zinc-400"
-        >
-          ✕
-        </Button>
-      </div>
-      <div className="px-6 pb-6 flex flex-col gap-4">
-        <div className="flex items-center gap-3">
-          {getToolCategoryIcon(integration.id, {
-            size: 40,
-            width: 40,
-            height: 40,
-          })}
-        </div>
-
-        {isConnected && (
-          <Chip size="sm" variant="flat" color="success">
-            Connected
-          </Chip>
-        )}
-
-        <h2 className="text-2xl font-semibold">{integration.name}</h2>
-        <p className="text-sm font-light text-zinc-400">
-          {integration.description}
-        </p>
-
-        {isConnected ? (
-          <Button
-            variant="flat"
-            color="danger"
-            size="sm"
-            className="w-full"
-            startContent={<Unlink04Icon width={16} height={16} />}
-          >
-            Disconnect
-          </Button>
-        ) : (
-          <Button color="primary" size="sm" className="w-full">
-            Connect
-          </Button>
-        )}
-
-        {integration.tools && integration.tools.length > 0 && (
-          <div className="mt-4">
-            <h4 className="text-sm font-medium text-zinc-300 mb-3">
-              Available Tools
-            </h4>
-            <div className="flex flex-wrap gap-2">
-              {integration.tools.map((tool) => (
-                <Chip key={tool} variant="bordered" color="default" size="sm">
-                  {tool}
-                </Chip>
-              ))}
-            </div>
+      <div className="flex-1 overflow-y-auto px-5 pt-4">
+        <div className="flex flex-col gap-3">
+          {/* Icon */}
+          <div className="w-fit">
+            {getToolCategoryIcon(integration.id, {
+              size: 40,
+              width: 40,
+              height: 40,
+              showBackground: false,
+            })}
           </div>
-        )}
+
+          {/* Status chips */}
+          <div className="flex items-center gap-2">
+            {isConnected && (
+              <Chip size="sm" variant="flat" color="success" radius="sm">
+                Connected
+              </Chip>
+            )}
+            {!isConnected && (
+              <Chip size="sm" variant="flat" color="default" radius="sm">
+                Not Connected
+              </Chip>
+            )}
+            {isCustom && (
+              <Chip
+                size="sm"
+                variant="flat"
+                radius="sm"
+                className="text-xs font-light text-zinc-400"
+              >
+                Custom
+              </Chip>
+            )}
+          </div>
+
+          {/* Title */}
+          <h1 className="text-2xl font-semibold text-zinc-100">
+            {integration.name}
+          </h1>
+
+          {/* Description */}
+          <p className="text-sm leading-relaxed font-light text-zinc-400">
+            {integration.description}
+          </p>
+
+          {/* Action buttons */}
+          {!isConnected ? (
+            <Button
+              color="primary"
+              className="w-full font-medium"
+              size="md"
+            >
+              Connect
+            </Button>
+          ) : (
+            <ButtonGroup variant="flat" className="w-full" fullWidth>
+              <Button
+                isIconOnly
+                className="w-full"
+                color="danger"
+                aria-label="Disconnect"
+                startContent={
+                  <Unlink04Icon width={18} height={18} />
+                }
+              />
+              {isPublic && (
+                <Button
+                  isIconOnly
+                  className="w-full"
+                  color="primary"
+                  aria-label="View on Marketplace"
+                  startContent={
+                    <InternetIcon width={18} height={18} />
+                  }
+                />
+              )}
+              {isCustom && !isPublic && (
+                <Button
+                  isIconOnly
+                  className="w-full"
+                  color="primary"
+                  aria-label="Publish"
+                  startContent={
+                    <GlobalIcon width={18} height={18} />
+                  }
+                />
+              )}
+              {isPublic && (
+                <Button
+                  isIconOnly
+                  className="w-full"
+                  color="default"
+                  aria-label="Share"
+                  startContent={
+                    <Share08Icon width={18} height={18} />
+                  }
+                />
+              )}
+            </ButtonGroup>
+          )}
+
+          {/* Available Tools */}
+          {integration.tools && integration.tools.length > 0 && (
+            <div className="mt-2">
+              <h2 className="mb-2 text-xs font-medium text-zinc-400">
+                Available Tools ({integration.tools.length})
+              </h2>
+              <div className="flex flex-wrap gap-2">
+                {integration.tools.map((tool) => (
+                  <Chip
+                    key={tool}
+                    variant="flat"
+                    size="sm"
+                    radius="full"
+                    className="font-light text-zinc-300"
+                  >
+                    {tool}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -191,9 +274,47 @@ export default function DemoIntegrationsView() {
   };
 
   return (
-    <div className="flex h-full">
+    <div className="flex h-full w-full">
       {/* Main content */}
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="min-w-0 flex-1 overflow-y-auto p-6">
+        {/* Community Banner */}
+        <div className="mb-6">
+          <div className="relative overflow-hidden rounded-3xl bg-zinc-800/50">
+            <div className="relative z-10 flex items-center justify-between gap-6 p-4">
+              <div className="flex items-center gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-primary/20">
+                  <ConnectIcon className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-medium text-white">
+                    Integration Marketplace
+                  </h3>
+                  <p className="text-sm text-zinc-400">
+                    Discover community integrations or create your own custom
+                    tools.
+                  </p>
+                </div>
+              </div>
+              <div className="flex shrink-0 gap-3">
+                <Button
+                  variant="flat"
+                  size="sm"
+                  endContent={<ArrowRight02Icon className="h-4 w-4" />}
+                >
+                  Browse Marketplace
+                </Button>
+                <Button
+                  color="primary"
+                  size="sm"
+                  startContent={<ZapIcon className="h-4 w-4" />}
+                >
+                  Create Custom
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* Search */}
         <div className="mb-6">
           <Input

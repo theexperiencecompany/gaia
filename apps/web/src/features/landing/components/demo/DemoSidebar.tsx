@@ -15,11 +15,18 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   BubbleChatAddIcon,
+  Calendar01Icon,
   Calendar03Icon,
+  CalendarUpload02Icon,
   CheckListIcon,
   ChevronsDownUp,
   ChevronsUpDown,
   ConnectIcon,
+  Flag02Icon,
+  Folder02Icon,
+  InboxCheckIcon,
+  InboxIcon,
+  Tag01Icon,
   ViewIcon,
   ZapIcon,
 } from "@/icons";
@@ -279,31 +286,139 @@ export default function DemoSidebar({
             )}
 
             {activePage === "todos" && (
-              <div className="px-2">
-                <p className="px-2 pb-1 text-xs font-normal text-zinc-600">
-                  Projects
-                </p>
-                <div className="flex flex-col gap-1">
+              <div className="flex flex-col space-y-3 px-2">
+                {/* Main Menu */}
+                <div className="flex flex-col gap-0.5">
                   {[
-                    { name: "Inbox", color: "#71717a", count: 4 },
-                    { name: "GAIA", color: "#00bbff", count: 5 },
-                    { name: "Personal", color: "#10b981", count: 3 },
-                    { name: "Marketing", color: "#f59e0b", count: 2 },
-                  ].map((project) => (
+                    {
+                      label: "Inbox",
+                      Icon: InboxIcon,
+                      count: 4,
+                      active: true,
+                    },
+                    {
+                      label: "Today",
+                      Icon: Calendar01Icon,
+                      count: 3,
+                      active: false,
+                    },
+                    {
+                      label: "Upcoming",
+                      Icon: CalendarUpload02Icon,
+                      count: 7,
+                      active: false,
+                    },
+                    {
+                      label: "Completed",
+                      Icon: InboxCheckIcon,
+                      count: 2,
+                      active: false,
+                    },
+                  ].map((item) => (
                     <div
-                      key={project.name}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300 cursor-pointer"
+                      key={item.label}
+                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer ${
+                        item.active
+                          ? "bg-zinc-800 text-zinc-300"
+                          : "text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300"
+                      }`}
                     >
-                      <div
-                        className="h-3 w-3 rounded-sm shrink-0"
-                        style={{ backgroundColor: project.color }}
-                      />
-                      <span className="flex-1 truncate">{project.name}</span>
-                      <span className="text-xs text-zinc-600">
-                        {project.count}
-                      </span>
+                      <item.Icon width={18} height={18} />
+                      <span className="flex-1 truncate">{item.label}</span>
+                      <span className="ml-auto text-xs">{item.count}</span>
                     </div>
                   ))}
+                </div>
+
+                {/* Priorities */}
+                <div>
+                  <p className="mb-1 px-2 text-xs font-normal text-zinc-600">
+                    Priorities
+                  </p>
+                  <div className="flex flex-col gap-0.5">
+                    {[
+                      {
+                        label: "High Priority",
+                        color: "#ef4444",
+                      },
+                      {
+                        label: "Medium Priority",
+                        color: "#eab308",
+                      },
+                      {
+                        label: "Low Priority",
+                        color: "#3b82f6",
+                      },
+                    ].map((item) => (
+                      <div
+                        key={item.label}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300 cursor-pointer"
+                      >
+                        <Flag02Icon
+                          width={18}
+                          height={18}
+                          style={{ color: item.color }}
+                        />
+                        <span className="flex-1 truncate">{item.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Labels */}
+                <div>
+                  <p className="mb-1 px-2 text-xs font-normal text-zinc-600">
+                    Labels
+                  </p>
+                  <div className="flex flex-col gap-0.5">
+                    {[
+                      { name: "content", count: 1 },
+                      { name: "marketing", count: 1 },
+                      { name: "infra", count: 1 },
+                      { name: "learning", count: 1 },
+                    ].map((label) => (
+                      <div
+                        key={label.name}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300 cursor-pointer"
+                      >
+                        <Tag01Icon width={18} height={18} />
+                        <span className="flex-1 truncate">
+                          {label.name.charAt(0).toUpperCase() +
+                            label.name.slice(1)}
+                        </span>
+                        <span className="ml-auto text-xs">{label.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Projects */}
+                <div>
+                  <p className="mb-1 px-2 text-xs font-normal text-zinc-600">
+                    Projects
+                  </p>
+                  <div className="flex flex-col gap-0.5">
+                    {[
+                      { name: "GAIA", color: "#00bbff", count: 5 },
+                      { name: "Personal", color: "#10b981", count: 3 },
+                      { name: "Marketing", color: "#f59e0b", count: 2 },
+                    ].map((project) => (
+                      <div
+                        key={project.name}
+                        className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-800/50 hover:text-zinc-300 cursor-pointer"
+                      >
+                        <Folder02Icon
+                          width={18}
+                          height={18}
+                          style={{ color: project.color }}
+                        />
+                        <span className="flex-1 truncate">{project.name}</span>
+                        <span className="ml-auto text-xs">
+                          {project.count}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}

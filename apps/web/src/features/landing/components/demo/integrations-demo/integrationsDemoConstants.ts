@@ -5,6 +5,8 @@ export interface DemoIntegration {
   category: string;
   status: "connected" | "not_connected";
   isFeatured?: boolean;
+  isPublic?: boolean;
+  source?: "platform" | "custom";
   tools?: string[];
 }
 
@@ -63,6 +65,7 @@ export const DEMO_INTEGRATIONS: DemoIntegration[] = [
     description: "Access and manage Notion pages and databases",
     category: "productivity",
     status: "connected",
+    isFeatured: true,
     tools: [
       "Get Page",
       "Create Page",
@@ -77,6 +80,9 @@ export const DEMO_INTEGRATIONS: DemoIntegration[] = [
     description: "Track issues, projects, and engineering workflows",
     category: "developer",
     status: "connected",
+    isFeatured: true,
+    isPublic: true,
+    source: "custom",
     tools: ["List Issues", "Create Issue", "Update Issue", "List Projects"],
   },
   {
@@ -117,6 +123,8 @@ export const DEMO_INTEGRATIONS: DemoIntegration[] = [
     description: "Manage tasks, projects, and to-do lists",
     category: "productivity",
     status: "not_connected",
+    isPublic: true,
+    source: "custom",
     tools: ["List Tasks", "Create Task", "Update Task", "List Projects"],
   },
   {
@@ -125,6 +133,8 @@ export const DEMO_INTEGRATIONS: DemoIntegration[] = [
     description: "Track projects, tasks, and team work",
     category: "productivity",
     status: "not_connected",
+    isPublic: true,
+    source: "custom",
     tools: ["List Tasks", "Create Task", "List Projects", "Get Project"],
   },
   {
