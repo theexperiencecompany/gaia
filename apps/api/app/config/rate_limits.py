@@ -46,167 +46,178 @@ class TieredRateLimits(BaseModel):
     info: FeatureInfo
 
 
-# All feature rate limits in one place
-# Free tier: Basic usage to try features
-# Pro tier (~$15-20/month): 20-50x multiplier for serious users
+# RECOMMENDED FEATURE LIMITS FOR $30/MONTH
 FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
+    # CORE COMMUNICATION
     "chat_messages": TieredRateLimits(
-        free=RateLimitConfig(day=200, month=5000),
-        pro=RateLimitConfig(day=2500, month=40000),
+        free=RateLimitConfig(day=200, month=5000),  # Unchanged - good trial
+        pro=RateLimitConfig(day=3000, month=60000),  # +20% / +50%
         info=FeatureInfo(
             title="Chat Messages", description="Send messages to AI assistants"
         ),
     ),
+    # FILE OPERATIONS (Expensive - Storage & Processing)
     "file_upload": TieredRateLimits(
-        free=RateLimitConfig(day=2, month=5),
-        pro=RateLimitConfig(day=100, month=3000),
+        free=RateLimitConfig(day=2, month=5),  # Keep restrictive
+        pro=RateLimitConfig(day=150, month=4500),  # +50%
         info=FeatureInfo(title="File Upload", description="Upload and process files"),
     ),
     "file_analysis": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),
-        pro=RateLimitConfig(day=100, month=3000),
+        free=RateLimitConfig(day=3, month=10),  # Keep restrictive
+        pro=RateLimitConfig(day=150, month=4500),  # +50%
         info=FeatureInfo(
             title="File Analysis", description="Analyze and process uploaded files"
         ),
     ),
+    # AI GENERATION (Very Expensive)
     "generate_image": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=2),
-        pro=RateLimitConfig(day=30, month=900),
+        free=RateLimitConfig(day=1, month=2),  # Keep very restrictive
+        pro=RateLimitConfig(day=45, month=1350),  # +50% (30→45, 900→1350)
         info=FeatureInfo(
             title="AI Image Generation", description="Generate images using AI models"
         ),
     ),
     "deep_research": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=2),
-        pro=RateLimitConfig(day=20, month=600),
+        free=RateLimitConfig(day=1, month=2),  # Keep very restrictive
+        pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
         info=FeatureInfo(
             title="Deep Research", description="Perform comprehensive research analysis"
         ),
     ),
+    "document_generation": TieredRateLimits(
+        free=RateLimitConfig(day=1, month=3),  # Keep restrictive
+        pro=RateLimitConfig(day=45, month=1350),  # +50% (30→45, 900→1350)
+        info=FeatureInfo(
+            title="Document Generation", description="Generate documents and reports"
+        ),
+    ),
+    # WEB FEATURES (Moderate Cost)
     "web_search": TieredRateLimits(
-        free=RateLimitConfig(day=10, month=50),
-        pro=RateLimitConfig(day=300, month=9000),
+        free=RateLimitConfig(day=10, month=50),  # Unchanged - good trial
+        pro=RateLimitConfig(day=450, month=13500),  # +50% (300→450, 9000→13500)
         info=FeatureInfo(
             title="Web Search", description="Search the web for information"
         ),
     ),
     "webpage_fetch": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),
-        pro=RateLimitConfig(day=100, month=3000),
+        free=RateLimitConfig(day=3, month=10),  # Keep restrictive
+        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
         info=FeatureInfo(
             title="Webpage Fetch", description="Fetch and analyze web pages"
         ),
     ),
+    # AUTOMATION (High Value)
     "workflow_operations": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=20),
-        pro=RateLimitConfig(day=30, month=900),
+        free=RateLimitConfig(day=5, month=20),  # Keep restrictive
+        pro=RateLimitConfig(day=45, month=1350),  # +50% (30→45, 900→1350)
         info=FeatureInfo(
             title="Workflow Operations",
             description="Create, execute, and manage AI workflows",
         ),
     ),
     "trigger_workflow_executions": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=20),
-        pro=RateLimitConfig(day=100, month=3000),
+        free=RateLimitConfig(day=5, month=20),  # Keep restrictive
+        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
         info=FeatureInfo(
             title="Trigger Workflow Executions",
-            description="Automated workflow executions triggered by integrations (email, calendar, etc.)",
+            description="Automated workflow executions triggered by integrations",
         ),
     ),
+    # PRODUCTIVITY TOOLS (Generous - Core Value)
     "goal_tracking": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),
-        pro=RateLimitConfig(day=500, month=1500),
+        free=RateLimitConfig(day=3, month=10),  # Keep restrictive for trial
+        pro=RateLimitConfig(day=75, month=2250),  # +50% (50→75, 1500→2250)
         info=FeatureInfo(
             title="Goal Tracking", description="Create and track personal goals"
         ),
     ),
     "todo_operations": TieredRateLimits(
-        free=RateLimitConfig(day=50, month=1000),
-        pro=RateLimitConfig(day=1000, month=15000),
+        free=RateLimitConfig(day=50, month=1000),  # Good trial experience
+        pro=RateLimitConfig(day=1500, month=22500),  # +50% (1000→1500, 15000→22500)
         info=FeatureInfo(
             title="Todo Operations", description="Create, update, and manage todo items"
         ),
     ),
     "calendar_management": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=50),
-        pro=RateLimitConfig(day=1000, month=15000),
+        free=RateLimitConfig(day=5, month=50),  # Keep restrictive for trial
+        pro=RateLimitConfig(day=1500, month=22500),  # +50% (1000→1500, 15000→22500)
         info=FeatureInfo(
             title="Calendar Management",
             description="Create, update, and manage calendar events",
         ),
     ),
     "reminder_operations": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),
-        pro=RateLimitConfig(day=100, month=3000),
+        free=RateLimitConfig(day=3, month=10),  # Keep restrictive
+        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
         info=FeatureInfo(
             title="Reminder Operations", description="Create and manage reminders"
         ),
     ),
+    # COMMUNICATION
     "mail_actions": TieredRateLimits(
-        free=RateLimitConfig(day=2, month=5),
-        pro=RateLimitConfig(day=50, month=1500),
+        free=RateLimitConfig(day=2, month=5),  # Keep very restrictive
+        pro=RateLimitConfig(day=75, month=2250),  # +50% (50→75, 1500→2250)
         info=FeatureInfo(
             title="Mail Actions", description="Send emails and manage mail operations"
         ),
     ),
+    # KNOWLEDGE MANAGEMENT
     "notes": TieredRateLimits(
-        free=RateLimitConfig(day=30, month=200),
-        pro=RateLimitConfig(day=1000, month=30000),
+        free=RateLimitConfig(day=30, month=200),  # Good trial
+        pro=RateLimitConfig(day=1500, month=45000),  # +50% (1000→1500, 30000→45000)
         info=FeatureInfo(
             title="Notes Management", description="Create and manage notes"
         ),
     ),
     "memory": TieredRateLimits(
-        free=RateLimitConfig(day=20, month=100),
-        pro=RateLimitConfig(day=500, month=15000),
+        free=RateLimitConfig(day=20, month=100),  # Good trial
+        pro=RateLimitConfig(day=750, month=22500),  # +50% (500→750, 15000→22500)
         info=FeatureInfo(
             title="Memory Operations", description="Store and retrieve memories"
         ),
     ),
-    "document_generation": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=3),
-        pro=RateLimitConfig(day=30, month=900),
-        info=FeatureInfo(
-            title="Document Generation", description="Generate documents and reports"
-        ),
-    ),
+    # CREATIVE TOOLS
     "flowchart_creation": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=3),
-        pro=RateLimitConfig(day=20, month=600),
+        free=RateLimitConfig(day=1, month=3),  # Keep restrictive
+        pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
         info=FeatureInfo(
             title="Flowchart Creation", description="Create flowcharts and diagrams"
         ),
     ),
     "code_execution": TieredRateLimits(
-        free=RateLimitConfig(day=3, month=10),
-        pro=RateLimitConfig(day=100, month=3000),
+        free=RateLimitConfig(day=3, month=10),  # Keep restrictive (security)
+        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
         info=FeatureInfo(title="Code Execution", description="Execute code snippets"),
     ),
+    # UTILITY
     "weather_checks": TieredRateLimits(
-        free=RateLimitConfig(day=5, month=20),
-        pro=RateLimitConfig(day=100, month=3000),
+        free=RateLimitConfig(day=5, month=20),  # Unchanged
+        pro=RateLimitConfig(day=150, month=4500),  # +50% (100→150, 3000→4500)
         info=FeatureInfo(
             title="Weather Checks", description="Check weather information"
         ),
     ),
     "notification_operations": TieredRateLimits(
-        free=RateLimitConfig(day=100, month=2000),
-        pro=RateLimitConfig(day=5000, month=150000),
+        free=RateLimitConfig(
+            day=50, month=1000
+        ),  # Reduced from 100/2000 (too generous)
+        pro=RateLimitConfig(day=7500, month=225000),  # +50% (5000→7500, 150000→225000)
         info=FeatureInfo(
             title="Notification Operations", description="Manage user notifications"
         ),
     ),
+    # MARKETPLACE (Community)
     "integration_publish": TieredRateLimits(
-        free=RateLimitConfig(day=10, month=50),
-        pro=RateLimitConfig(day=50, month=500),
+        free=RateLimitConfig(day=10, month=50),  # Unchanged - encourage sharing
+        pro=RateLimitConfig(day=75, month=750),  # +50% (50→75, 500→750)
         info=FeatureInfo(
             title="Integration Publishing",
             description="Publish custom integrations to the community marketplace",
         ),
     ),
     "integration_clone": TieredRateLimits(
-        free=RateLimitConfig(day=20, month=100),
-        pro=RateLimitConfig(day=100, month=1000),
+        free=RateLimitConfig(day=20, month=100),  # Unchanged - encourage adoption
+        pro=RateLimitConfig(day=150, month=1500),  # +50% (100→150, 1000→1500)
         info=FeatureInfo(
             title="Integration Cloning",
             description="Clone community integrations to your workspace",

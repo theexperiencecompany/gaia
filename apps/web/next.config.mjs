@@ -94,6 +94,15 @@ const nextConfig = {
         source: "/sitemap.xml",
         destination: "/sitemap-index",
       },
+      // Docs reverse proxy - serve Mintlify docs at /docs/* for SEO authority consolidation
+      {
+        source: "/docs",
+        destination: "https://docs.heygaia.io",
+      },
+      {
+        source: "/docs/:path*",
+        destination: "https://docs.heygaia.io/:path*",
+      },
       {
         source: "/ingest/static/:path*",
         destination: "https://us-assets.i.posthog.com/static/:path*",
@@ -105,6 +114,35 @@ const nextConfig = {
       {
         source: "/ingest/flags",
         destination: "https://us.i.posthog.com/flags",
+      },
+    ];
+  },
+  async redirects() {
+    return [
+      {
+        source: "/discord",
+        destination: "https://discord.heygaia.io",
+        permanent: true,
+      },
+      {
+        source: "/whatsapp",
+        destination: "https://whatsapp.heygaia.io",
+        permanent: true,
+      },
+      {
+        source: "/roadmap",
+        destination: "https://gaia.featurebase.app/roadmap",
+        permanent: false,
+      },
+      {
+        source: "/request-feature",
+        destination: "https://gaia.featurebase.app",
+        permanent: false,
+      },
+      {
+        source: "/status",
+        destination: "https://status.heygaia.io",
+        permanent: false,
       },
     ];
   },

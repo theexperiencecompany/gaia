@@ -128,7 +128,7 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
     }
   };
 
-  const links = getMenuLinks();
+  const links = getMenuLinks().filter((link) => !link.hideNavbar);
 
   return (
     <motion.div
