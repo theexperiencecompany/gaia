@@ -40,7 +40,7 @@ export const NAV_BUTTONS: {
   { Icon: DashboardSquare02Icon, label: "Dashboard", page: "dashboard" },
   { Icon: Calendar03Icon, label: "Calendar", page: "calendar" },
   { Icon: Target02Icon, label: "Goals" },
-  { Icon: CheckListIcon, label: "Todos" },
+  { Icon: CheckListIcon, label: "Todos", page: "todos" },
   { Icon: ConnectIcon, label: "Integrations", page: "integrations" },
   { Icon: ZapIcon, label: "Workflows", page: "workflows" },
   { Icon: MessageMultiple02Icon, label: "Chats", page: "chats" },

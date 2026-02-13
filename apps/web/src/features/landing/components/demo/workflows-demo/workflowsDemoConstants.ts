@@ -1,6 +1,101 @@
 export const DEMO_USER_WORKFLOWS = [
   {
     id: "uwf1",
+    title: "Investor Update Drafter",
+    description:
+      "Pull metrics from spreadsheets, draft a monthly investor update email, and send it out",
+    steps: [
+      { id: "s1", title: "Fetch Metrics", category: "googlesheets", description: "" },
+      { id: "s2", title: "Draft Update", category: "executor", description: "" },
+      { id: "s3", title: "Send Email", category: "gmail", description: "" },
+    ],
+    activated: true,
+    total_executions: 24,
+    trigger_type: "schedule" as const,
+    trigger_label: "Monthly on 1st",
+  },
+  {
+    id: "uwf2",
+    title: "PR & Standup Summary",
+    description:
+      "Aggregate open PRs and Linear issues into a daily standup summary posted to Slack",
+    steps: [
+      { id: "s1", title: "Fetch PRs", category: "github", description: "" },
+      { id: "s2", title: "Fetch Issues", category: "linear", description: "" },
+      { id: "s3", title: "Post Summary", category: "slack", description: "" },
+    ],
+    activated: true,
+    total_executions: 183,
+    trigger_type: "schedule" as const,
+    trigger_label: "Daily at 9 AM",
+  },
+  {
+    id: "uwf3",
+    title: "Social Content Scheduler",
+    description:
+      "Read a content calendar from Sheets, then draft and queue posts to Twitter and LinkedIn",
+    steps: [
+      { id: "s1", title: "Read Calendar", category: "googlesheets", description: "" },
+      { id: "s2", title: "Post to Twitter", category: "twitter", description: "" },
+      { id: "s3", title: "Post to LinkedIn", category: "linkedin", description: "" },
+    ],
+    activated: true,
+    total_executions: 97,
+    trigger_type: "schedule" as const,
+    trigger_label: "Daily at 8 AM",
+  },
+  {
+    id: "uwf4",
+    title: "Study Plan Builder",
+    description:
+      "Build a weekly study plan from your calendar availability, organize tasks in Todoist and Notion",
+    steps: [
+      {
+        id: "s1",
+        title: "Check Calendar",
+        category: "googlecalendar",
+        description: "",
+      },
+      {
+        id: "s2",
+        title: "Create Plan",
+        category: "notion",
+        description: "",
+      },
+      {
+        id: "s3",
+        title: "Add Tasks",
+        category: "todoist",
+        description: "",
+      },
+    ],
+    activated: false,
+    total_executions: 34,
+    trigger_type: "schedule" as const,
+    trigger_label: "Weekly on Sunday",
+  },
+  {
+    id: "uwf5",
+    title: "Morning Briefing",
+    description:
+      "Compile a morning briefing from emails and calendar events, then post highlights to Slack",
+    steps: [
+      { id: "s1", title: "Scan Inbox", category: "gmail", description: "" },
+      {
+        id: "s2",
+        title: "Check Calendar",
+        category: "googlecalendar",
+        description: "",
+      },
+      { id: "s3", title: "Post Briefing", category: "slack", description: "" },
+    ],
+    activated: true,
+    total_executions: 210,
+    trigger_type: "schedule" as const,
+    trigger_label: "Daily at 7 AM",
+  },
+  {
+    id: "uwf6",
     title: "Daily Email Digest",
     description:
       "Summarize important emails from today and send a digest to Slack",
@@ -13,70 +108,6 @@ export const DEMO_USER_WORKFLOWS = [
     total_executions: 45,
     trigger_type: "schedule" as const,
     trigger_label: "Daily at 9 AM",
-  },
-  {
-    id: "uwf2",
-    title: "PR Review Notifier",
-    description: "Get notified on Slack when PRs need review",
-    steps: [
-      { id: "s1", title: "Watch PRs", category: "github", description: "" },
-      { id: "s2", title: "Filter", category: "executor", description: "" },
-      { id: "s3", title: "Notify", category: "slack", description: "" },
-    ],
-    activated: true,
-    total_executions: 128,
-    trigger_type: "event" as const,
-    trigger_label: "On new PR",
-  },
-  {
-    id: "uwf3",
-    title: "Weekly Standup Summary",
-    description: "Generate weekly standup reports from Linear and GitHub",
-    steps: [
-      {
-        id: "s1",
-        title: "Fetch Issues",
-        category: "linear",
-        description: "",
-      },
-      { id: "s2", title: "Get PRs", category: "github", description: "" },
-      { id: "s3", title: "Summarize", category: "executor", description: "" },
-      { id: "s4", title: "Send", category: "gmail", description: "" },
-    ],
-    activated: false,
-    total_executions: 12,
-    trigger_type: "schedule" as const,
-    trigger_label: "Weekly on Monday",
-  },
-  {
-    id: "uwf4",
-    title: "Meeting Notes to Notion",
-    description:
-      "After each meeting, create a Notion doc with AI-generated notes",
-    steps: [
-      {
-        id: "s1",
-        title: "Detect Meeting End",
-        category: "googlecalendar",
-        description: "",
-      },
-      {
-        id: "s2",
-        title: "Transcribe",
-        category: "executor",
-        description: "",
-      },
-      {
-        id: "s3",
-        title: "Save to Notion",
-        category: "notion",
-        description: "",
-      },
-    ],
-    activated: true,
-    total_executions: 67,
-    trigger_type: "event" as const,
-    trigger_label: "After meetings",
   },
 ];
 
@@ -135,27 +166,5 @@ export const DEMO_COMMUNITY_WORKFLOWS = [
     creator: { id: "u3", name: "Lisa Park" },
     categories: ["productivity"],
     total_executions: 234,
-  },
-  {
-    id: "cwf4",
-    title: "Competitor Price Monitor",
-    description: "Track competitor pricing changes and alert via Slack",
-    steps: [
-      { title: "Scrape Prices", category: "executor", description: "" },
-      { title: "Compare", category: "executor", description: "" },
-      {
-        title: "Alert Slack",
-        category: "slack",
-        description: "",
-      },
-      {
-        title: "Log to Sheet",
-        category: "googlesheets",
-        description: "",
-      },
-    ],
-    creator: { id: "u4", name: "James Chen" },
-    categories: ["business"],
-    total_executions: 167,
   },
 ];

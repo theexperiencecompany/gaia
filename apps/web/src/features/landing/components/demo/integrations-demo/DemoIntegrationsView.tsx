@@ -79,7 +79,7 @@ function DemoIntegrationSidebar({
           isIconOnly
           size="sm"
           variant="light"
-          onPress={onClose}
+          onClick={onClose}
           className="text-zinc-400"
         >
           ✕

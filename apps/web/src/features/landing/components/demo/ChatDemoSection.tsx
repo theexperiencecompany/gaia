@@ -28,6 +28,7 @@ import { BASE_TIMINGS, ease, slideUp, tx, USE_CASES } from "./demoConstants";
 import DemoIntegrationsView from "./integrations-demo/DemoIntegrationsView";
 import MiniWaveSpinner from "./MiniWaveSpinner";
 import type { DemoPage, Phase } from "./types";
+import DemoTodosView from "./todos-demo/DemoTodosView";
 import DemoWorkflowsView from "./workflows-demo/DemoWorkflowsView";
 
 export default function ChatDemoSection() {
@@ -235,6 +236,7 @@ export default function ChatDemoSection() {
           >
             <DemoChatHeader
               sidebarOpen={sidebarOpen}
+              activePage={activePage}
               onToggleSidebar={() => setSidebarOpen((o) => !o)}
               onNotificationsClick={() => setNotificationsOpen((o) => !o)}
             />
@@ -262,6 +264,11 @@ export default function ChatDemoSection() {
             {activePage === "integrations" && (
               <div className="flex flex-1 overflow-hidden">
                 <DemoIntegrationsView />
+              </div>
+            )}
+            {activePage === "todos" && (
+              <div className="flex flex-1 overflow-hidden">
+                <DemoTodosView />
               </div>
             )}
 

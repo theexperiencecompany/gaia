@@ -16,6 +16,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   BubbleChatAddIcon,
   Calendar03Icon,
+  CheckListIcon,
   ChevronsDownUp,
   ChevronsUpDown,
   ConnectIcon,
@@ -107,6 +108,8 @@ export default function DemoSidebar({
                     <ZapIcon width={18} height={18} />
                   ) : activePage === "integrations" ? (
                     <ConnectIcon width={18} height={18} />
+                  ) : activePage === "todos" ? (
+                    <CheckListIcon width={18} height={18} />
                   ) : null
                 }
               >
@@ -118,7 +121,9 @@ export default function DemoSidebar({
                       ? "New Workflow"
                       : activePage === "integrations"
                         ? "Create Custom"
-                        : "New Chat"}
+                        : activePage === "todos"
+                          ? "New Todo"
+                          : "New Chat"}
               </Button>
             </div>
           </div>
@@ -267,6 +272,36 @@ export default function DemoSidebar({
                             : id.charAt(0).toUpperCase() + id.slice(1)}
                       </span>
                       <div className="h-2 w-2 rounded-full bg-green-500" />
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {activePage === "todos" && (
+              <div className="px-2">
+                <p className="px-2 pb-1 text-xs font-normal text-zinc-600">
+                  Projects
+                </p>
+                <div className="flex flex-col gap-1">
+                  {[
+                    { name: "Inbox", color: "#71717a", count: 4 },
+                    { name: "GAIA", color: "#00bbff", count: 5 },
+                    { name: "Personal", color: "#10b981", count: 3 },
+                    { name: "Marketing", color: "#f59e0b", count: 2 },
+                  ].map((project) => (
+                    <div
+                      key={project.name}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300 cursor-pointer"
+                    >
+                      <div
+                        className="h-3 w-3 rounded-sm shrink-0"
+                        style={{ backgroundColor: project.color }}
+                      />
+                      <span className="flex-1 truncate">{project.name}</span>
+                      <span className="text-xs text-zinc-600">
+                        {project.count}
+                      </span>
                     </div>
                   ))}
                 </div>

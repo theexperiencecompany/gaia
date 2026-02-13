@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   DAY_START_HOUR,
   DEMO_CALENDARS,
@@ -32,6 +32,14 @@ export default function DemoCalendarView() {
   const dates = useMemo(() => getDemoWeekDates(), []);
   const today = new Date();
   const todayStr = today.toDateString();
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (gridRef.current) {
+      const scrollTo = 8 * PX_PER_HOUR - 20;
+      gridRef.current.scrollTop = scrollTo;
+    }
+  }, []);
 
   // Current time position
   const currentHour = today.getHours();
@@ -93,7 +101,10 @@ export default function DemoCalendarView() {
       </div>
 
       {/* Calendar Grid */}
-      <div className="relative flex flex-1 overflow-y-auto overflow-x-hidden">
+      <div
+        ref={gridRef}
+        className="relative flex flex-1 overflow-y-auto overflow-x-hidden"
+      >
         {/* Time labels column */}
         <div
           className="sticky left-0 z-[11] w-16 shrink-0 border-r border-zinc-800"
