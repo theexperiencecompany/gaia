@@ -1,8 +1,15 @@
+"use client";
+
 import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
-import type { TimeOfDay } from "@/features/landing/utils/timeOfDay";
+import {
+  getTimeOfDay,
+  isDarkTimeOfDay,
+  type TimeOfDay,
+} from "@/features/landing/utils/timeOfDay";
 import { DiscordIcon, Github, TwitterIcon, WhatsappIcon } from "@/icons";
 
 import { SplitTextBlur } from "../hero/SplitTextBlur";
@@ -85,8 +92,8 @@ export const SOCIAL_LINKS = [
 
 export default function FinalSection({
   showSocials = true,
-  timeOfDay = null,
-  isDark = false,
+  timeOfDay: timeOfDayProp = null,
+  isDark: isDarkProp,
   onTextClick,
 }: {
   showSocials?: boolean;
@@ -94,6 +101,24 @@ export default function FinalSection({
   isDark?: boolean;
   onTextClick?: () => void;
 }) {
+  const [internalTimeOfDay, setInternalTimeOfDay] = useState<TimeOfDay | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (timeOfDayProp === null) {
+      setInternalTimeOfDay(getTimeOfDay());
+    }
+  }, [timeOfDayProp]);
+
+  const timeOfDay = timeOfDayProp ?? internalTimeOfDay;
+  const isDark =
+    isDarkProp !== undefined
+      ? isDarkProp
+      : timeOfDay
+        ? isDarkTimeOfDay(timeOfDay)
+        : false;
+
   const wallpaper = timeOfDay ? SWISS_KID_WALLPAPERS[timeOfDay] : null;
 
   return (
@@ -129,21 +154,21 @@ export default function FinalSection({
             <SplitTextBlur
               text="Stop doing everything yourself."
               delay={0}
-              className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug"
+              className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug text-white"
               gradient="linear-gradient(to bottom, #ffffff, #dbdbdb)"
             />
           ) : (
             <SplitTextBlur
               text="Stop doing everything yourself."
               delay={0}
-              className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug"
-              gradient="linear-gradient(to bottom, #837e88, #000000)"
+              className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug text-white"
+              gradient="linear-gradient(to bottom, #e8e8e8, #a8a8a8)"
             />
           )}
         </div>
 
         <div
-          className={`z-1 mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter sm:px-0 sm:text-xl sm:leading-7 md:text-2xl ${isDark ? "text-zinc-200" : "text-black"}`}
+          className={`z-1 mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter sm:px-0 sm:text-xl sm:leading-7 md:text-2xl ${isDark ? "text-white" : "text-white"}`}
         >
           Join thousands who stopped doing manually what GAIA can handle for
           them.

@@ -190,7 +190,7 @@ export default function ChatDemoSection() {
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5, ease }}
-        className="overflow-hidden rounded-3xl h-[65vh] sm:h-[85vh] w-[95vw] sm:w-[80vw]!"
+        className="overflow-hidden rounded-3xl h-[65vh] sm:h-[90vh] w-[95vw] sm:w-[85vw]"
         style={
           {
             "--color-primary-bg": "#111111",
