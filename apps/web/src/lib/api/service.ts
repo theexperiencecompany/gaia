@@ -6,6 +6,7 @@ interface ApiOptions {
   successMessage?: string;
   errorMessage?: string;
   silent?: boolean;
+  signal?: AbortSignal;
 }
 
 /**
@@ -29,6 +30,7 @@ async function request<T = unknown>(
       url,
       data: ["POST", "PUT", "PATCH"].includes(method) ? data : undefined,
       ...config,
+      ...(options.signal ? { signal: options.signal } : {}),
     });
 
     if (options.successMessage && !options.silent) {

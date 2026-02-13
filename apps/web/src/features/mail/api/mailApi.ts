@@ -14,9 +14,13 @@ import type {
 export const mailApi = {
   // Fetch email by ID
   fetchEmailById: async (messageId: string): Promise<EmailData> => {
-    return apiService.get<EmailData>(`/gmail/message/${messageId}`, {
+    const response = await apiService.get<{
+      message: EmailData;
+      status: string;
+    }>(`/gmail/message/${messageId}`, {
       errorMessage: "Failed to fetch email",
     });
+    return response.message;
   },
 
   // Mark email as read/unread (uses backend bulk endpoint with single message)
@@ -201,10 +205,18 @@ export const mailApi = {
   },
 
   // Search emails
-  searchEmails: async (query: string): Promise<{ emails?: string[] }> => {
-    return apiService.get(`/gmail/search?query=${encodeURIComponent(query)}`, {
-      errorMessage: "Failed to search emails",
-    });
+  searchEmails: async (
+    query: string,
+  ): Promise<{
+    messages: Array<EmailData>;
+    nextPageToken?: string;
+  }> => {
+    return apiService.get(
+      `/gmail/search?query=${encodeURIComponent(query)}`,
+      {
+        errorMessage: "Failed to search emails",
+      },
+    );
   },
 
   // Fetch emails by tab with pagination
@@ -297,18 +309,28 @@ export const mailApi = {
 
   // Summarize email
   summarizeEmail: async (summaryRequest: {
-    threadId?: string;
-    messageId?: string;
+    messageId: string;
+    include_action_items?: boolean;
+    max_length?: number;
   }): Promise<{ summary: string }> => {
-    return apiService.post("/gmail/summarize", summaryRequest, {
-      errorMessage: "Failed to summarize email",
-    });
+    const { messageId, ...rest } = summaryRequest;
+    return apiService.post(
+      "/gmail/summarize",
+      { message_id: messageId, ...rest },
+      {
+        errorMessage: "Failed to summarize email",
+      },
+    );
   },
 
   // Send email
   sendEmail: async (
     formData: FormData,
-  ): Promise<{ success: boolean; messageId?: string }> => {
+  ): Promise<{
+    message_id: string;
+    status: string;
+    attachments_count: number;
+  }> => {
     return apiService.post("/gmail/send", formData, {
       successMessage: "Email sent successfully",
       errorMessage: "Failed to send email",
@@ -342,7 +364,7 @@ export const mailApi = {
     writingStyle: string;
     contentLength: string;
     clarityOption: string;
-  }): Promise<{ content: string }> => {
+  }): Promise<{ subject: string; body: string }> => {
     return apiService.post("/mail/ai/compose", params, {
       errorMessage: "Failed to compose email with AI",
     });
@@ -409,9 +431,13 @@ export const mailApi = {
   },
 
   // Fetch email thread
-  fetchEmailThread: async (threadId: string): Promise<EmailThreadResponse> => {
+  fetchEmailThread: async (
+    threadId: string,
+    options?: { signal?: AbortSignal },
+  ): Promise<EmailThreadResponse> => {
     return apiService.get<EmailThreadResponse>(`/gmail/thread/${threadId}`, {
       errorMessage: "Failed to fetch email thread",
+      signal: options?.signal,
     });
   },
 };

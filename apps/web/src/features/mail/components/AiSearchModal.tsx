@@ -42,12 +42,12 @@ export const AiSearchModal: React.FC<AiSearchModalProps> = ({
     try {
       const response = await mailApi.searchEmails(query);
 
-      if (response?.emails?.length) {
+      if (response?.messages?.length) {
         setResults(
-          response.emails.map((email: string, index: number) => ({
+          response.messages.map((msg, index) => ({
             id: `${index + 1}`,
-            email,
-            name: email.split("@")[0], // Extract name from email
+            email: msg.from || "",
+            name: (msg.from || "").split("@")[0],
           })),
         );
       } else {
@@ -113,7 +113,7 @@ export const AiSearchModal: React.FC<AiSearchModalProps> = ({
             }
             onValueChange={setQuery}
           />
-          <Button type="submit" disabled={loading || !query} color="primary">
+          <Button type="submit" isDisabled={loading || !query} color="primary">
             {loading ? (
               <Spinner />
             ) : (
@@ -182,7 +182,7 @@ export const AiSearchModal: React.FC<AiSearchModalProps> = ({
           <Button
             color="primary"
             onPress={handleConfirm}
-            disabled={selected.length === 0}
+            isDisabled={selected.length === 0}
           >
             Confirm
           </Button>

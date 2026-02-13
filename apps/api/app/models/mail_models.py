@@ -22,7 +22,7 @@ class EmailSummaryRequest(BaseModel):
 
 
 class SendEmailRequest(BaseModel):
-    to: List[str]
+    to: List[str] = Field(..., min_length=1)
     subject: str
     body: str
     cc: Optional[List[str]] = None

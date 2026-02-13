@@ -3,6 +3,8 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Input } from "@heroui/input";
+import { Spinner as HeroSpinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import { User } from "@heroui/user";
 import { AnimatePresence, motion } from "framer-motion";
@@ -10,7 +12,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import Spinner from "@/components/ui/spinner";
+import { useUser } from "@/features/auth/hooks/useUser";
 import { mailApi } from "@/features/mail/api/mailApi";
+import { EmailAttachments } from "@/features/mail/components/EmailAttachments";
 import GmailBody from "@/features/mail/components/GmailBody";
 import { ReplyEditor } from "@/features/mail/components/ReplyEditor";
 import { SmartReplyChips } from "@/features/mail/components/SmartReplyChips";
@@ -119,16 +123,6 @@ function AISummary({
         >
           {analysis.importance_level}
         </Chip>
-        {analysis.category && (
-          <Chip size="sm" variant="flat" color="secondary">
-            {analysis.category}
-          </Chip>
-        )}
-        {analysis.intent && (
-          <Chip size="sm" variant="flat" color="secondary">
-            {analysis.intent}
-          </Chip>
-        )}
       </div>
 
       {analysis.semantic_labels && analysis.semantic_labels.length > 0 && (
@@ -186,7 +180,8 @@ export default function ViewEmail({
   threadMessages = [],
   isLoadingThread = false,
 }: ViewEmailProps) {
-  const { mail } = useFetchEmailById(mailId);
+  const { mail, isLoading } = useFetchEmailById(mailId);
+  const { email: currentUserEmail } = useUser();
   const { name: nameFrom, email: emailFrom } = parseEmail(
     mail?.from || "",
   );
@@ -197,6 +192,7 @@ export default function ViewEmail({
     string | undefined
   >(undefined);
   const [replyMode, setReplyMode] = useState<ReplyMode>("reply");
+  const [forwardTo, setForwardTo] = useState("");
   const [expandedMessages, setExpandedMessages] = useState<
     Set<string>
   >(new Set());
@@ -243,6 +239,7 @@ export default function ViewEmail({
     setReplyTo(null);
     setReplyInitialContent(undefined);
     setReplyMode("reply");
+    setForwardTo("");
   }, [mailId]);
 
   // Task 36: Focus modal content when modal opens
@@ -319,9 +316,14 @@ export default function ViewEmail({
       }
 
       if (replyMode === "forward") {
-        // Forward: send as new email (no threadId constraint)
+        // Task 51: Forward uses forwardTo recipient
+        if (!forwardTo.trim()) {
+          toast.error("Please enter a recipient email address");
+          return;
+        }
+
         const formData = new FormData();
-        formData.append("to", recipient);
+        formData.append("to", forwardTo.trim());
         formData.append(
           "subject",
           `Fwd: ${replyTo.subject || ""}`,
@@ -341,16 +343,39 @@ export default function ViewEmail({
         const ccHeader = replyTo.headers?.Cc || replyTo.headers?.cc || "";
 
         // Collect all recipients: original sender + To + CC
-        // but exclude the current user (we don't know their email,
-        // so the backend will handle deduplication)
-        const allTo = [
+        const allRecipients = [
           recipient,
           ...toHeader
             .split(",")
             .map((e: string) => parseEmail(e.trim()).email)
             .filter(Boolean),
         ];
-        const uniqueTo = [...new Set(allTo)].join(",");
+
+        // Task 73: Exclude current user from Reply All recipients
+        const filteredRecipients = currentUserEmail
+          ? allRecipients.filter(
+              (email) =>
+                email.toLowerCase() !==
+                currentUserEmail.toLowerCase(),
+            )
+          : allRecipients;
+        const uniqueTo = [...new Set(filteredRecipients)].join(",");
+
+        // Task 73: Also filter current user from CC
+        const filteredCc = currentUserEmail
+          ? ccHeader
+              .split(",")
+              .map((e: string) => e.trim())
+              .filter((e: string) => {
+                const parsed = parseEmail(e).email;
+                return (
+                  parsed &&
+                  parsed.toLowerCase() !==
+                    currentUserEmail.toLowerCase()
+                );
+              })
+              .join(",")
+          : ccHeader;
 
         const formData = new FormData();
         formData.append("to", uniqueTo);
@@ -361,8 +386,8 @@ export default function ViewEmail({
         formData.append("body", htmlContent);
         formData.append("thread_id", replyTo.threadId);
         formData.append("is_html", "true");
-        if (ccHeader) {
-          formData.append("cc", ccHeader);
+        if (filteredCc) {
+          formData.append("cc", filteredCc);
         }
 
         await mailApi.sendEmail(formData);
@@ -387,6 +412,7 @@ export default function ViewEmail({
       setShowReplyEditor(false);
       setReplyTo(null);
       setReplyInitialContent(undefined);
+      setForwardTo("");
     } catch (error) {
       console.error("Error sending reply:", error);
       toast.error("Failed to send reply. Please try again.");
@@ -399,6 +425,7 @@ export default function ViewEmail({
     setShowReplyEditor(false);
     setReplyTo(null);
     setReplyInitialContent(undefined);
+    setForwardTo("");
   };
 
   const handleAnalyzeEmail = async () => {
@@ -479,6 +506,15 @@ export default function ViewEmail({
                 </Tooltip>
               </div>
 
+              {/* Task 74: Loading state */}
+              {isLoading && !mail && (
+                <div className="flex flex-1 items-center justify-center">
+                  <HeroSpinner size="lg" color="primary" />
+                </div>
+              )}
+
+              {(!isLoading || mail) && (
+              <>
               <header className="mb-2 flex items-center gap-2">
                 {!aiAnalysis && (
                   <Button
@@ -632,6 +668,12 @@ export default function ViewEmail({
                                 <GmailBody
                                   email={message}
                                 />
+                                <EmailAttachments
+                                  parts={
+                                    message.payload
+                                      ?.parts || []
+                                  }
+                                />
                               </div>
 
                               <div className="mt-4 flex justify-end gap-2">
@@ -717,6 +759,9 @@ export default function ViewEmail({
                     <div>
                       <hr className="my-4 border-gray-700" />
                       <GmailBody email={mail} />
+                      <EmailAttachments
+                        parts={mail.payload?.parts || []}
+                      />
                     </div>
                   </>
                 ) : null}
@@ -728,6 +773,23 @@ export default function ViewEmail({
                   />
                 )}
 
+                {/* Task 51: Forward To field */}
+                {showReplyEditor &&
+                  replyTo &&
+                  replyMode === "forward" && (
+                    <div className="mb-2">
+                      <Input
+                        label="To"
+                        placeholder="Enter recipient email"
+                        value={forwardTo}
+                        onValueChange={setForwardTo}
+                        type="email"
+                        variant="bordered"
+                        size="sm"
+                      />
+                    </div>
+                  )}
+
                 {showReplyEditor && replyTo && (
                   <ReplyEditor
                     replyTo={replyTo}
@@ -738,6 +800,8 @@ export default function ViewEmail({
                   />
                 )}
               </div>
+              </>
+              )}
             </div>
           </motion.div>
         </>

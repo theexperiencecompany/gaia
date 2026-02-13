@@ -7,7 +7,8 @@ import type { EmailData, EmailPart } from "@/types/features/mailTypes";
 export const decodeBase64 = (str: string): string => {
   try {
     const decoded = atob(str.replace(/-/g, "+").replace(/_/g, "/"));
-    return decodeURIComponent(escape(decoded));
+    const bytes = Uint8Array.from(decoded, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
   } catch (error) {
     console.error("Error decoding Base64 string:", error);
     return "";

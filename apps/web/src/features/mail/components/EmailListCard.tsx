@@ -67,10 +67,10 @@ export default function EmailListCard({
   const appendToInput = useAppendToInput();
 
   const handleEmailClick = (email: EmailFetchData) => {
-    if (email.thread_id) {
+    if (email.threadId) {
       const sender = extractSenderName(email.from);
       appendToInput(
-        `Tell me about the mail with thread id: ${email.thread_id} from ${sender} with subject "${email.subject}"`,
+        `Tell me about the mail with thread id: ${email.threadId} from ${sender} with subject "${email.subject}"`,
       );
     }
   };

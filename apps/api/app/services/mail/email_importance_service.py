@@ -1,7 +1,7 @@
 """Simple email processing with Gemini for background tasks."""
 
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, NotRequired, Optional, TypedDict
 
 from app.agents.llm.client import init_llm
 from app.agents.prompts.mail_prompts import (
@@ -13,6 +13,45 @@ from app.db.mongodb.collections import mail_collection
 from app.models.mail_models import EmailComprehensiveAnalysis, SmartRepliesResponse
 from langchain_core.output_parsers import PydanticOutputParser
 
+
+class ImportanceSummaryDoc(TypedDict):
+    user_id: str
+    message_id: str
+    thread_id: NotRequired[str]
+    subject: str
+    sender: str
+    is_important: bool
+    importance_level: str
+    summary: str
+    semantic_labels: list[str]
+    analyzed_at: str
+
+
+class ImportanceSummariesResponse(TypedDict):
+    status: str
+    emails: list[dict[str, Any]]
+    count: int
+    filtered_by_importance: bool
+
+
+class SingleImportanceSummaryResponse(TypedDict):
+    status: str
+    email: dict[str, Any]
+
+
+class BulkImportanceSummariesResponse(TypedDict):
+    status: str
+    emails: dict[str, dict[str, Any]]
+    found_count: int
+    missing_count: int
+    found_message_ids: list[str]
+    missing_message_ids: list[str]
+
+
+class SmartRepliesResult(TypedDict):
+    smart_replies: list[dict[str, Any]]
+    cached: bool
+
 email_comprehensive_parser = PydanticOutputParser(
     pydantic_object=EmailComprehensiveAnalysis
 )
@@ -22,7 +61,7 @@ smart_reply_parser = PydanticOutputParser(pydantic_object=SmartRepliesResponse)
 
 async def get_email_importance_summaries(
     user_id: str, limit: int = 50, important_only: bool = False
-) -> Dict[str, Any]:
+) -> ImportanceSummariesResponse:
     """
     Get email importance summaries for a user.
 
@@ -36,7 +75,7 @@ async def get_email_importance_summaries(
     """
     try:
         # Build query filter
-        query_filter: Dict[str, Any] = {"user_id": user_id}
+        query_filter: dict[str, Any] = {"user_id": user_id}
         if important_only:
             query_filter["is_important"] = True
 
@@ -64,7 +103,7 @@ async def get_email_importance_summaries(
 
 async def get_single_email_importance_summary(
     user_id: str, message_id: str
-) -> Optional[Dict[str, Any]]:
+) -> Optional[SingleImportanceSummaryResponse]:
     """
     Get importance summary for a specific email.
 
@@ -155,8 +194,8 @@ async def process_email_comprehensive_analysis(
 
 
 async def get_bulk_email_importance_summaries(
-    user_id: str, message_ids: List[str]
-) -> Dict[str, Any]:
+    user_id: str, message_ids: list[str]
+) -> BulkImportanceSummariesResponse:
     """
     Get importance summaries for multiple emails in bulk.
 
@@ -226,8 +265,8 @@ async def generate_smart_replies(
 
 
 async def analyze_email_on_demand(
-    user_id: str, message_id: str, email_data: Dict[str, Any]
-) -> Optional[Dict[str, Any]]:
+    user_id: str, message_id: str, email_data: dict[str, Any]
+) -> Optional[ImportanceSummaryDoc]:
     """Run comprehensive analysis on an email and store in MongoDB. Returns cached if exists."""
     try:
         existing = await mail_collection.find_one(
@@ -249,7 +288,7 @@ async def analyze_email_on_demand(
         if not analysis:
             return None
 
-        doc: Dict[str, Any] = {
+        doc: ImportanceSummaryDoc = {
             "user_id": user_id,
             "message_id": message_id,
             "thread_id": email_data.get("thread_id"),
@@ -272,8 +311,8 @@ async def analyze_email_on_demand(
 
 
 async def get_or_generate_smart_replies(
-    user_id: str, message_id: str, email_data: Dict[str, Any]
-) -> Optional[Dict[str, Any]]:
+    user_id: str, message_id: str, email_data: dict[str, Any]
+) -> Optional[SmartRepliesResult]:
     """Get cached smart replies or generate new ones."""
     try:
         existing = await mail_collection.find_one(

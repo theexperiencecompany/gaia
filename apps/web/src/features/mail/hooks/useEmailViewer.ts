@@ -25,7 +25,9 @@ export const useEmailViewer = () => {
 
     setIsLoadingThread(true);
     try {
-      const response = await mailApi.fetchEmailThread(threadId);
+      const response = await mailApi.fetchEmailThread(threadId, {
+        signal: abortControllerRef.current.signal,
+      });
       if (!abortControllerRef.current?.signal.aborted) {
         setThreadMessages(response.thread.messages || []);
       }

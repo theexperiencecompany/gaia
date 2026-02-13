@@ -48,11 +48,6 @@ export interface EmailThreadResponse {
 export interface EmailPayload {
   parts: EmailPart[];
   body: EmailBody;
-  payload: {
-    headers: { name: string; value: string }[];
-    parts?: { mimeType: string; body: { data: string } }[];
-    body?: { data: string };
-  };
 }
 
 export interface EmailPart {
@@ -83,18 +78,14 @@ export interface EmailImportanceSummary {
   _id: string;
   user_id: string;
   message_id: string;
+  thread_id?: string;
   subject: string;
   sender: string;
-  date: string;
-  labels: string[];
   is_important: boolean;
   importance_level: "URGENT" | "HIGH" | "MEDIUM" | "LOW";
   summary: string;
   semantic_labels: string[];
-  category: string;
-  intent: string;
   analyzed_at: string;
-  content_preview: string;
 }
 
 export interface EmailSummariesResponse {
@@ -105,19 +96,11 @@ export interface EmailSummariesResponse {
   searched_labels?: string[];
 }
 
-export interface SemanticLabelsStats {
-  status: string;
-  semantic_labels: Array<{ _id: string; count: number }>;
-  categories: Array<{ _id: string; count: number }>;
-  intents: Array<{ _id: string; count: number }>;
-}
-
-export type EmailFetchData = {
-  from: string;
-  subject: string;
-  time: string;
-  thread_id?: string;
-  id: string;
+export type EmailFetchData = Pick<
+  EmailData,
+  "id" | "from" | "subject" | "time"
+> & {
+  threadId?: string;
 };
 
 export type EmailThreadData = {
@@ -149,9 +132,5 @@ export type ContactData = {
   resource_name: string;
 };
 
-export type PeopleSearchData = {
-  name: string;
-  email: string;
-  phone?: string;
-  resource_name: string;
-};
+/** @deprecated Use ContactData instead */
+export type PeopleSearchData = ContactData;

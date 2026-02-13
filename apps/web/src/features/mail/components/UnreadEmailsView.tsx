@@ -25,7 +25,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
         from: email.from || "",
         subject: email.subject || "No Subject",
         time: email.time || "",
-        thread_id: email.threadId,
+        threadId: email.threadId,
         id: email.id,
       }))
       .sort((a, b) => {

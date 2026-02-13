@@ -1,5 +1,5 @@
 import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
-import { useCallback, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import type { EmailsResponse, MailTab } from "@/types/features/mailTypes";
@@ -13,7 +13,7 @@ export const useEmailSelection = (tab: MailTab = "inbox") => {
     new Set<string>(),
   );
   const queryClient = useQueryClient();
-  const queryKey = ["emails", tab];
+  const queryKey = useMemo(() => ["emails", tab], [tab]);
 
   const clearSelections = useCallback(() => {
     setSelectedKeys(new Set<string>());

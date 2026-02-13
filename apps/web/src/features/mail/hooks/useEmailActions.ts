@@ -1,4 +1,5 @@
 import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
+import { useMemo } from "react";
 
 import type {
   EmailData,
@@ -10,7 +11,7 @@ import { mailApi } from "../api/mailApi";
 
 export const useEmailActions = (tab: MailTab = "inbox") => {
   const queryClient = useQueryClient();
-  const queryKey = ["emails", tab];
+  const queryKey = useMemo(() => ["emails", tab], [tab]);
 
   const updateStarredStatus = (emailId: string, isStarred: boolean) => {
     queryClient.setQueryData<InfiniteData<EmailsResponse>>(

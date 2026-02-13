@@ -183,28 +183,13 @@ export function useEmailComposition(): UseEmailCompositionReturn {
           clarityOption,
         });
 
-        if (response.content) {
-          let parsedContent: { subject?: string; body?: string };
-          try {
-            parsedContent = JSON.parse(response.content);
-          } catch {
-            setError("Failed to parse AI response");
-            toast.error("Failed to parse AI response");
-            return;
-          }
-          if (parsedContent.subject && parsedContent.body) {
-            const formattedBody = marked(
-              parsedContent.body.replace(/\n/g, "<br />"),
-            );
-            if (editor) editor.commands.setContent(formattedBody);
-            setSubject(parsedContent.subject);
-          } else {
-            console.log(`Invalid response format: ${JSON.stringify(response)}`);
-            setError("Invalid response format from server");
-            toast.error("Invalid response format from server");
-          }
+        if (response.subject && response.body) {
+          const formattedBody = await marked(
+            response.body.replace(/\n/g, "<br />"),
+          );
+          if (editor) editor.commands.setContent(formattedBody);
+          setSubject(response.subject);
         } else {
-          console.log(`Invalid response format: ${JSON.stringify(response)}`);
           setError("Invalid response format from server");
           toast.error("Invalid response format from server");
         }

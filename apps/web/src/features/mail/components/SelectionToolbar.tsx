@@ -25,6 +25,7 @@ interface SelectionToolbarProps {
   onBulkMarkAsRead: () => void;
   onBulkMarkAsUnread: () => void;
   onBulkStar: () => void;
+  onBulkUnstar: () => void;
   onBulkArchive: () => void;
   onBulkTrash: () => void;
 }
@@ -35,6 +36,7 @@ export function SelectionToolbar({
   onBulkMarkAsRead,
   onBulkMarkAsUnread,
   onBulkStar,
+  onBulkUnstar,
   onBulkArchive,
   onBulkTrash,
 }: SelectionToolbarProps) {
@@ -93,6 +95,18 @@ export function SelectionToolbar({
               onPress={onBulkStar}
               isIconOnly
               aria-label="Star"
+            >
+              <StarIcon size={16} />
+            </Button>
+          </Tooltip>
+          <Tooltip content="Unstar">
+            <Button
+              size="sm"
+              color="default"
+              variant="flat"
+              onPress={onBulkUnstar}
+              isIconOnly
+              aria-label="Unstar"
             >
               <StarIcon size={16} />
             </Button>

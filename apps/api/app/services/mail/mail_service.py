@@ -1,5 +1,5 @@
+import asyncio
 import json
-import time
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import general_logger as logger
@@ -81,7 +81,7 @@ async def send_email(
     body: str,
     thread_id: Optional[str] = None,
     is_html: bool = False,
-    extra_recipients: List[str] = [],
+    extra_recipients: Optional[List[str]] = None,
     cc_list: Optional[List[str]] = None,
     bcc_list: Optional[List[str]] = None,
     attachments: Optional[List[UploadFile]] = None,
@@ -108,6 +108,7 @@ async def send_email(
     Returns:
         Sent message data from the appropriate Composio Gmail tool
     """
+    extra_recipients = extra_recipients or []
     try:
         # Determine tool and body parameter name
         is_reply = bool(thread_id)
@@ -192,7 +193,7 @@ async def fetch_detailed_messages(
 
         # Rate limiting: wait between batches
         if i + batch_size < total_messages and delay > 0:
-            time.sleep(delay)
+            await asyncio.sleep(delay)
 
     return detailed_messages
 
@@ -248,9 +249,7 @@ async def modify_message_labels(
                 user_id, "GMAIL_REMOVE_LABEL", remove_params
             )
             if remove_result.get("successful", True):
-                # Only extend if we didn't already get results from adding labels
-                if not add_labels:
-                    results.extend(remove_result.get("messages", []))
+                results.extend(remove_result.get("messages", []))
         except Exception as e:
             logger.error(f"Error removing labels {remove_labels} from messages: {e}")
 
@@ -331,22 +330,22 @@ async def trash_messages(user_id: str, message_ids: List[str]) -> List[Dict[str,
         List of modified messages
     """
     logger.info(f"Moving {len(message_ids)} messages to trash")
-    results = []
 
-    for message_id in message_ids:
+    async def _trash_one(message_id: str) -> Optional[Dict[str, Any]]:
         try:
             parameters = {"message_id": message_id}
             result = await invoke_gmail_tool(user_id, "GMAIL_TRASH_MESSAGE", parameters)
             if result.get("successful", True):
-                results.append(result)
-            else:
-                logger.error(
-                    f"Error trashing message {message_id}: {result.get('error')}"
-                )
+                return result
+            logger.error(
+                f"Error trashing message {message_id}: {result.get('error')}"
+            )
         except Exception as e:
             logger.error(f"Error trashing message {message_id}: {e}")
+        return None
 
-    return results
+    outcomes = await asyncio.gather(*[_trash_one(mid) for mid in message_ids])
+    return [r for r in outcomes if r is not None]
 
 
 async def untrash_messages(
@@ -363,24 +362,24 @@ async def untrash_messages(
         List of modified messages
     """
     logger.info(f"Restoring {len(message_ids)} messages from trash")
-    results = []
 
-    for message_id in message_ids:
+    async def _untrash_one(message_id: str) -> Optional[Dict[str, Any]]:
         try:
             parameters = {"message_id": message_id}
             result = await invoke_gmail_tool(
                 user_id, "GMAIL_UNTRASH_MESSAGE", parameters
             )
             if result.get("successful", True):
-                results.append(result)
-            else:
-                logger.error(
-                    f"Error untrashing message {message_id}: {result.get('error')}"
-                )
+                return result
+            logger.error(
+                f"Error untrashing message {message_id}: {result.get('error')}"
+            )
         except Exception as e:
             logger.error(f"Error untrashing message {message_id}: {e}")
+        return None
 
-    return results
+    outcomes = await asyncio.gather(*[_untrash_one(mid) for mid in message_ids])
+    return [r for r in outcomes if r is not None]
 
 
 async def archive_messages(
@@ -830,6 +829,8 @@ async def update_draft(
             parameters["cc"] = cc_list
         if bcc_list:
             parameters["bcc"] = bcc_list
+        if is_html:
+            parameters["html"] = True
 
         result = await invoke_gmail_tool(user_id, "GMAIL_UPDATE_DRAFT", parameters)
 
@@ -1003,25 +1004,30 @@ async def get_contact_list(user_id: str, max_results=100):
 
         messages = search_result.get("messages", [])
 
+        # Fetch all message details concurrently
+        msg_ids = [m.get("id") for m in messages if m.get("id")]
+
+        async def _fetch_one(msg_id: str) -> Optional[Dict[str, Any]]:
+            try:
+                msg_params = {"message_id": msg_id}
+                msg_result = await invoke_gmail_tool(
+                    user_id, "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", msg_params
+                )
+                if msg_result.get("successful", True):
+                    return msg_result
+            except Exception:
+                pass
+            return None
+
+        fetched = await asyncio.gather(*[_fetch_one(mid) for mid in msg_ids])
+
         # Use a dictionary to track unique contacts
         contacts = {}
 
         # Process each message to extract contacts
-        for msg_data in messages:
-            msg_id = msg_data.get("id")
-            if not msg_id:
+        for msg in fetched:
+            if msg is None:
                 continue
-
-            # Fetch full message details
-            msg_params = {"message_id": msg_id}
-            msg_result = await invoke_gmail_tool(
-                user_id, "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", msg_params
-            )
-
-            if not msg_result.get("successful", True):
-                continue
-
-            msg = msg_result
 
             # Extract headers
             headers = {}

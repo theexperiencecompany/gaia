@@ -28,6 +28,7 @@ import { useEmailReadStatus } from "@/features/mail/hooks/useEmailReadStatus";
 import { useEmailSelection } from "@/features/mail/hooks/useEmailSelection";
 import { useEmailViewer } from "@/features/mail/hooks/useEmailViewer";
 import { useMailTabs } from "@/features/mail/hooks/useMailTabs";
+import { useUrlEmailSelection } from "@/features/mail/hooks/useUrlEmailSelection";
 import { useTableInfiniteScroll } from "@/features/mail/hooks/useTableInfiniteScroll";
 import { formatTime } from "@/features/mail/utils/mailUtils";
 import {
@@ -40,7 +41,7 @@ import {
   SquareIcon,
   StarIcon,
 } from "@/icons";
-import type { EmailData } from "@/types/features/mailTypes";
+import type { EmailData, MailTab } from "@/types/features/mailTypes";
 
 import { EmailHoverSummary } from "./EmailHoverSummary";
 import { EmailTabs } from "./EmailTabs";
@@ -66,6 +67,7 @@ function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {
 
 export default function MailsPage() {
   const { activeTab, setActiveTab } = useMailTabs();
+  const { clearEmailIdOnTabChange } = useUrlEmailSelection();
   const { toggleReadStatus } = useEmailReadStatus(activeTab);
   const { toggleStarStatus, archiveEmail, trashEmail } =
     useEmailActions(activeTab);
@@ -131,8 +133,10 @@ export default function MailsPage() {
       setIsSearching(true);
       try {
         const result = await mailApi.searchEmails(query);
-        if (result.emails) {
-          setSearchResults(new Set(result.emails));
+        if (result.messages && result.messages.length > 0) {
+          setSearchResults(
+            new Set(result.messages.map((msg) => msg.id)),
+          );
         } else {
           setSearchResults(new Set());
         }
@@ -182,6 +186,17 @@ export default function MailsPage() {
     if (!searchResults) return emails;
     return emails.filter((email) => searchResults.has(email.id));
   }, [emails, searchResults]);
+
+  const unreadCounts = useMemo(() => {
+    const counts: Partial<Record<MailTab, number>> = {};
+    const count = emails.filter((email) =>
+      email.labelIds?.includes("UNREAD"),
+    ).length;
+    if (count > 0) {
+      counts[activeTab] = count;
+    }
+    return counts;
+  }, [emails, activeTab]);
 
   const handleToggleReadStatus = (
     e: React.MouseEvent,
@@ -356,7 +371,14 @@ export default function MailsPage() {
 
   return (
     <div className="relative flex h-full w-full flex-col">
-      <EmailTabs activeTab={activeTab} onTabChange={setActiveTab} />
+      <EmailTabs
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          clearEmailIdOnTabChange();
+          setActiveTab(tab);
+        }}
+        unreadCounts={unreadCounts}
+      />
 
       {/* Search bar (Task 30) */}
       <div className="flex items-center gap-2 border-b border-zinc-800 px-3 py-1.5">
@@ -424,6 +446,7 @@ export default function MailsPage() {
           onBulkMarkAsRead={bulkMarkAsRead}
           onBulkMarkAsUnread={bulkMarkAsUnread}
           onBulkStar={bulkStarEmails}
+          onBulkUnstar={bulkUnstarEmails}
           onBulkArchive={bulkArchiveEmails}
           onBulkTrash={bulkTrashEmails}
         />
@@ -654,34 +677,22 @@ export default function MailsPage() {
                                   ? "orange"
                                   : "transparent",
                               },
-                              onClick: (
-                                e: React.MouseEvent,
-                              ) =>
-                                handleToggleStarStatus(
-                                  e,
-                                  email,
-                                ),
+                              action: () =>
+                                toggleStarStatus(email),
                             },
                             {
                               icon: Archive01Icon,
                               label: "Archive",
                               iconProps: {},
-                              onClick: (
-                                e: React.MouseEvent,
-                              ) =>
-                                handleArchiveEmail(
-                                  e,
-                                  email,
-                                ),
+                              action: () =>
+                                archiveEmail(email.id),
                             },
                             {
                               icon: Delete02Icon,
                               label: "Move to Trash",
                               iconProps: { color: "red" },
-                              onClick: (
-                                e: React.MouseEvent,
-                              ) =>
-                                handleTrashEmail(e, email),
+                              action: () =>
+                                trashEmail(email.id),
                             },
                             {
                               icon: email?.labelIds?.includes(
@@ -696,20 +707,15 @@ export default function MailsPage() {
                                   ? "Mark as Read"
                                   : "Mark as Unread",
                               iconProps: {},
-                              onClick: (
-                                e: React.MouseEvent,
-                              ) =>
-                                handleToggleReadStatus(
-                                  e,
-                                  email,
-                                ),
+                              action: () =>
+                                toggleReadStatus(email),
                             },
                           ].map(
                             ({
                               icon: Icon,
                               label,
                               iconProps,
-                              onClick,
+                              action,
                             }) => (
                               <Tooltip
                                 key={label}
@@ -723,16 +729,18 @@ export default function MailsPage() {
                                   aria-label={label}
                                   tabIndex={0}
                                   className="flex h-6 w-6 cursor-pointer items-center justify-center text-zinc-300"
-                                  onClick={onClick}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    action();
+                                  }}
                                   onKeyDown={(e) => {
                                     if (
                                       e.key === "Enter" ||
                                       e.key === " "
                                     ) {
                                       e.preventDefault();
-                                      onClick(
-                                        e as unknown as React.MouseEvent,
-                                      );
+                                      e.stopPropagation();
+                                      action();
                                     }
                                   }}
                                 >

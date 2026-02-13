@@ -110,7 +110,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
         <Drawer.Portal>
           <Drawer.Overlay
             className={`fixed inset-0 bg-black/40 backdrop-blur-md ${
-              isAiModalOpen ? "pointer-events-auto" : "pointer-events-none"
+              isAiModalOpen ? "pointer-events-none" : "pointer-events-auto"
             }`}
           />
           <Drawer.Content

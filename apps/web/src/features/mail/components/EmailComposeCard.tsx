@@ -32,7 +32,7 @@ const emailComposeSchema = z.object({
 
 const emailValidationSchema = z.string().email("Invalid email address");
 
-interface EmailData {
+interface ComposeEmailData {
   to: string[];
   subject: string;
   body: string;
@@ -44,7 +44,7 @@ interface EmailData {
 }
 
 interface EmailComposeCardProps {
-  emailData: EmailData;
+  emailData: ComposeEmailData;
   onSent?: () => void;
 }
 
@@ -59,8 +59,8 @@ function EditEmailModal({
   isOpen: boolean;
   onClose: () => void;
   onSave: () => void;
-  editData: EmailData;
-  setEditData: React.Dispatch<React.SetStateAction<EmailData>>;
+  editData: ComposeEmailData;
+  setEditData: React.Dispatch<React.SetStateAction<ComposeEmailData>>;
   errors: Record<string, string>;
 }) {
   return (
@@ -246,7 +246,7 @@ export default function EmailComposeCard({
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isRecipientModalOpen, setIsRecipientModalOpen] = useState(false);
   const [isSending, setIsSending] = useState(false);
-  const [editData, setEditData] = useState<EmailData>(emailData);
+  const [editData, setEditData] = useState<ComposeEmailData>(emailData);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   // Suggestions come from emailData.to - these are resolved email addresses from the agent

@@ -1,7 +1,7 @@
 import json
-from typing import Any, List, Optional
+from typing import Any, Optional
 
-from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
+from app.agents.prompts.mail_prompts import EMAIL_COMPOSER, EMAIL_SUMMARIZER
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
 from app.decorators import tiered_rate_limit
 from app.models.mail_models import (
@@ -53,7 +53,7 @@ from app.services.mail.mail_service import (
 )
 from app.utils.chat_utils import do_prompt_no_stream
 from app.utils.embedding_utils import search_notes_by_similarity
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 
 router = APIRouter()
 
@@ -61,11 +61,11 @@ router = APIRouter()
 @router.get("/gmail/labels", summary="List Gmail Labels")
 async def list_labels(
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Use the list_labels service function
         result = await list_labels_service(user_id=str(user_id))
@@ -88,14 +88,14 @@ async def list_labels(
 
 @router.get("/gmail/messages")
 async def list_messages(
-    max_results: int = 20,
+    max_results: int = Query(default=20, ge=1, le=100),
     pageToken: Optional[str] = None,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Use the new search_messages function with inbox filter
         search_results = await search_messages(
@@ -117,7 +117,7 @@ async def list_messages(
 async def get_email_by_id(
     message_id: str,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Get a Gmail message by its ID.
 
@@ -126,7 +126,7 @@ async def get_email_by_id(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Use the get_email_by_id service function
         result = await get_email_by_id_service(
@@ -163,10 +163,10 @@ async def search_emails(
     date_to: Optional[str] = None,
     label: Optional[str] = None,
     is_read: Optional[bool] = None,
-    max_results: int = 20,
+    max_results: int = Query(default=20, ge=1, le=100),
     page_token: Optional[str] = None,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Search Gmail messages with advanced query parameters.
 
@@ -189,7 +189,7 @@ async def search_emails(
         # Get user_id
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Build Gmail query string from parameters
         query_parts = []
@@ -237,7 +237,7 @@ async def search_emails(
 async def process_email(
     request: EmailRequest,
     current_user: dict = Depends(require_integration("gmail")),
-) -> Any:
+) -> dict[str, str]:
     try:
         user_id = current_user.get("user_id")
         if user_id is None:
@@ -289,9 +289,9 @@ async def send_email_route(
     is_html: Optional[bool] = Form(False),
     cc: Optional[str] = Form(None),
     bcc: Optional[str] = Form(None),
-    attachments: Optional[List[UploadFile]] = File(None),
+    attachments: Optional[list[UploadFile]] = File(None),
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Send an email using the Gmail API.
 
@@ -305,7 +305,7 @@ async def send_email_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Parse recipients
         to_list = [email.strip() for email in to.split(",") if email.strip()]
@@ -340,7 +340,7 @@ async def send_email_route(
 async def send_email_json(
     request: SendEmailRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Send an email using the Gmail API with JSON payload (no attachments).
 
@@ -353,7 +353,12 @@ async def send_email_json(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
+
+        if not request.to:
+            raise HTTPException(
+                status_code=422, detail="At least one recipient is required"
+            )
 
         # Send the email using the new async function
         sent_message = await send_email(
@@ -373,6 +378,8 @@ async def send_email_json(
             "message_id": sent_message.get("id"),
             "status": "Email sent successfully",
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to send email: {str(e)}")
 
@@ -381,7 +388,7 @@ async def send_email_json(
 async def summarize_email(
     request: EmailSummaryRequest,
     current_user: dict = Depends(require_integration("gmail")),
-) -> Any:
+) -> dict[str, str]:
     """
     Summarize an email using the LLM service.
 
@@ -395,15 +402,45 @@ async def summarize_email(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
-        # Note: Getting email by ID for summarization would need a dedicated Composio tool
-        # For now, return a placeholder response or implement with available tools
-        # This endpoint needs to be implemented based on available Composio Gmail tools
-        raise HTTPException(
-            status_code=501,
-            detail="Email summarization not yet implemented with Composio tools",
+        email_result = await get_email_by_id_service(
+            user_id=str(user_id), message_id=request.message_id
         )
+
+        if not email_result.get("success"):
+            raise HTTPException(status_code=404, detail="Email not found")
+
+        msg = email_result["message"]
+
+        action_items_instruction = (
+            "Also list any action items or tasks mentioned in the email."
+            if request.include_action_items
+            else ""
+        )
+
+        prompt = EMAIL_SUMMARIZER.format(
+            subject=msg.get("subject", ""),
+            sender=msg.get("from", ""),
+            date=msg.get("time", ""),
+            content=msg.get("snippet", "") or msg.get("body", ""),
+            max_length=request.max_length or 100,
+            action_items_instruction=action_items_instruction,
+        )
+
+        result = await do_prompt_no_stream(prompt=prompt)
+
+        if isinstance(result, dict) and result.get("response"):
+            return {
+                "message_id": request.message_id,
+                "summary": result["response"],
+            }
+        else:
+            raise HTTPException(
+                status_code=500, detail="Failed to generate summary"
+            )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to summarize email: {str(e)}"
@@ -415,7 +452,7 @@ async def summarize_email(
 async def mark_as_read(
     request: EmailReadStatusRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Mark Gmail messages as read by removing the UNREAD label.
 
@@ -426,7 +463,7 @@ async def mark_as_read(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Mark messages as read using the new async function
         modified_messages = await mark_messages_as_read(
@@ -450,7 +487,7 @@ async def mark_as_read(
 async def mark_as_unread(
     request: EmailReadStatusRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Mark Gmail messages as unread by adding the UNREAD label.
 
@@ -461,7 +498,7 @@ async def mark_as_unread(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Mark messages as unread using the new async function
         modified_messages = await mark_messages_as_unread(
@@ -485,7 +522,7 @@ async def mark_as_unread(
 async def star_emails(
     request: EmailActionRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Star Gmail messages by adding the STARRED label.
 
@@ -496,7 +533,7 @@ async def star_emails(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Star messages using the new async function
         modified_messages = await star_messages(
@@ -520,7 +557,7 @@ async def star_emails(
 async def unstar_emails(
     request: EmailActionRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Unstar Gmail messages by removing the STARRED label.
 
@@ -531,7 +568,7 @@ async def unstar_emails(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Unstar messages using the new async function
         modified_messages = await unstar_messages(
@@ -555,7 +592,7 @@ async def unstar_emails(
 async def trash_emails(
     request: EmailActionRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Move Gmail messages to trash.
 
@@ -566,7 +603,7 @@ async def trash_emails(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Trash messages using the new async function
         modified_messages = await trash_messages(
@@ -590,7 +627,7 @@ async def trash_emails(
 async def untrash_emails(
     request: EmailActionRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Restore Gmail messages from trash.
 
@@ -601,7 +638,7 @@ async def untrash_emails(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Restore messages using the new async function
         modified_messages = await untrash_messages(
@@ -625,7 +662,7 @@ async def untrash_emails(
 async def archive_emails(
     request: EmailActionRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Archive Gmail messages by removing the INBOX label.
 
@@ -636,7 +673,7 @@ async def archive_emails(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Archive messages using the new async function
         modified_messages = await archive_messages(
@@ -660,7 +697,7 @@ async def archive_emails(
 async def move_emails_to_inbox(
     request: EmailActionRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Move Gmail messages to inbox by adding the INBOX label.
 
@@ -671,7 +708,7 @@ async def move_emails_to_inbox(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Move messages to inbox using the new async function
         modified_messages = await move_to_inbox(
@@ -693,7 +730,7 @@ async def move_emails_to_inbox(
 @router.get("/gmail/thread/{thread_id}", summary="Get complete email thread")
 async def get_thread(
     thread_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+) -> dict[str, Any]:
     """
     Fetch a complete email thread with all messages.
 
@@ -704,7 +741,7 @@ async def get_thread(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Get thread using the new async function
         thread = await fetch_thread(user_id=str(user_id), thread_id=thread_id)
@@ -725,7 +762,7 @@ async def get_thread(
 async def create_label_route(
     request: LabelRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Create a new Gmail label.
 
@@ -740,7 +777,7 @@ async def create_label_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Create label using the new async function
         new_label = await create_label(
@@ -748,6 +785,8 @@ async def create_label_route(
             name=request.name,
             label_list_visibility=request.label_list_visibility or "labelShow",
             message_list_visibility=request.message_list_visibility or "show",
+            background_color=request.background_color,
+            text_color=request.text_color,
         )
         return new_label
     except Exception as e:
@@ -760,7 +799,7 @@ async def update_label_route(
     label_id: str,
     request: LabelRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Update an existing Gmail label.
 
@@ -776,7 +815,7 @@ async def update_label_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Update label using the new async function
         updated_label = await update_label(
@@ -795,7 +834,7 @@ async def update_label_route(
 @tiered_rate_limit("mail_actions")
 async def delete_label_route(
     label_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+) -> dict[str, Any]:
     """
     Delete a Gmail label.
 
@@ -806,14 +845,16 @@ async def delete_label_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Delete label using the new async function
         success = await delete_label(user_id=str(user_id), label_id=label_id)
         if success:
             return {"status": "success", "message": "Label deleted successfully"}
         else:
-            return {"status": "error", "message": "Failed to delete label"}
+            raise HTTPException(status_code=400, detail="Failed to delete label")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -823,7 +864,7 @@ async def delete_label_route(
 async def apply_labels_route(
     request: ApplyLabelRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Apply one or more labels to specified messages.
 
@@ -835,7 +876,7 @@ async def apply_labels_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Apply labels using the new async function
         modified_messages = await apply_labels(
@@ -859,7 +900,7 @@ async def apply_labels_route(
 async def remove_labels_route(
     request: ApplyLabelRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Remove one or more labels from specified messages.
 
@@ -871,7 +912,7 @@ async def remove_labels_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Remove labels using the new async function
         modified_messages = await remove_labels(
@@ -895,7 +936,7 @@ async def remove_labels_route(
 async def create_draft_route(
     request: DraftRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Create a new Gmail draft email.
 
@@ -911,7 +952,7 @@ async def create_draft_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Create draft using the new async function
         draft = await create_draft(
@@ -936,10 +977,10 @@ async def create_draft_route(
 
 @router.get("/gmail/drafts", summary="List all draft emails")
 async def list_drafts_route(
-    max_results: int = 20,
+    max_results: int = Query(default=20, ge=1, le=100),
     page_token: Optional[str] = None,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     List all Gmail draft emails.
 
@@ -951,7 +992,7 @@ async def list_drafts_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # List drafts using the new async function
         drafts = await list_drafts(
@@ -968,7 +1009,7 @@ async def list_drafts_route(
 @router.get("/gmail/drafts/{draft_id}", summary="Get a specific draft email")
 async def get_draft_route(
     draft_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+) -> dict[str, Any]:
     """
     Get a specific Gmail draft email.
 
@@ -979,7 +1020,7 @@ async def get_draft_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Get draft using the new async function
         draft = await get_draft(user_id=str(user_id), draft_id=draft_id)
@@ -995,7 +1036,7 @@ async def update_draft_route(
     draft_id: str,
     request: DraftRequest,
     current_user: dict = Depends(require_integration("gmail")),
-):
+) -> dict[str, Any]:
     """
     Update an existing Gmail draft email.
 
@@ -1012,7 +1053,7 @@ async def update_draft_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Update draft using the new async function
         updated_draft = await update_draft(
@@ -1040,7 +1081,7 @@ async def update_draft_route(
 @tiered_rate_limit("mail_actions")
 async def delete_draft_route(
     draft_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+) -> dict[str, Any]:
     """
     Delete a Gmail draft email.
 
@@ -1051,7 +1092,7 @@ async def delete_draft_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Delete draft using the new async function
         success = await delete_draft(user_id=str(user_id), draft_id=draft_id)
@@ -1059,7 +1100,9 @@ async def delete_draft_route(
         if success:
             return {"status": "success", "message": "Draft deleted successfully"}
         else:
-            return {"status": "error", "message": "Failed to delete draft"}
+            raise HTTPException(status_code=400, detail="Failed to delete draft")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1068,7 +1111,7 @@ async def delete_draft_route(
 @tiered_rate_limit("mail_actions")
 async def send_draft_route(
     draft_id: str, current_user: dict = Depends(require_integration("gmail"))
-):
+) -> dict[str, Any]:
     """
     Send an existing Gmail draft email.
 
@@ -1079,7 +1122,7 @@ async def send_draft_route(
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         # Send draft using the new async function
         sent_message = await send_draft(user_id=str(user_id), draft_id=draft_id)
@@ -1107,11 +1150,11 @@ async def send_draft_route(
 async def generate_smart_replies_endpoint(
     message_id: str,
     current_user: dict = Depends(require_integration("gmail")),
-) -> dict:
+) -> dict[str, Any]:
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         email_result = await get_email_by_id_service(
             user_id=str(user_id), message_id=message_id
@@ -1158,11 +1201,11 @@ async def generate_smart_replies_endpoint(
 async def analyze_email_endpoint(
     message_id: str,
     current_user: dict = Depends(require_integration("gmail")),
-) -> dict:
+) -> dict[str, Any]:
     try:
         user_id = current_user.get("user_id")
         if not user_id:
-            raise HTTPException(status_code=400, detail="User ID not found")
+            raise HTTPException(status_code=401, detail="User ID not found")
 
         email_result = await get_email_by_id_service(
             user_id=str(user_id), message_id=message_id
@@ -1206,7 +1249,7 @@ async def get_email_importance_summaries(
     limit: int = 50,
     important_only: bool = False,
     current_user: dict = Depends(require_integration("gmail")),
-) -> dict:
+) -> dict[str, Any]:
     """
     Get email importance summaries for the current user.
 
@@ -1234,7 +1277,7 @@ async def get_email_importance_summaries(
 )
 async def get_single_email_importance_summary(
     message_id: str, current_user: dict = Depends(require_integration("gmail"))
-) -> dict:
+) -> dict[str, Any]:
     """
     Get importance summary for a specific email.
 
@@ -1268,7 +1311,7 @@ async def get_single_email_importance_summary(
 async def get_bulk_email_importance_summaries(
     request: EmailActionRequest,
     current_user: dict = Depends(require_integration("gmail")),
-) -> dict:
+) -> dict[str, Any]:
     """
     Get importance summaries for multiple emails in bulk.
 

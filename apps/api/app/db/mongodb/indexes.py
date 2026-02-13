@@ -314,10 +314,16 @@ async def create_mail_indexes():
     try:
         # Create all mail indexes concurrently
         await asyncio.gather(
-            # Unique index for email IDs
-            mail_collection.create_index([("user_id", 1)]),
-            # For thread-based queries
-            mail_collection.create_index([("message_id", 1)]),
+            # Compound unique index for user + message lookups (most common query pattern)
+            mail_collection.create_index(
+                [("user_id", 1), ("message_id", 1)], unique=True
+            ),
+            # For user-specific queries with sorting (e.g., listing emails by analysis date)
+            mail_collection.create_index([("user_id", 1), ("analyzed_at", -1)]),
+            # For user-specific importance filtering
+            mail_collection.create_index(
+                [("user_id", 1), ("is_important", 1), ("analyzed_at", -1)]
+            ),
         )
 
     except Exception as e:
