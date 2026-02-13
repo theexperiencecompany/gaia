@@ -13,28 +13,28 @@ In scrollable containers like drawers, dragging should only start when scrolled 
 
 ```tsx
 const shouldDrag = () => {
-  return scrollContainer.scrollTop === 0
-}
+  return scrollContainer.scrollTop === 0;
+};
 // Scroll momentum can accidentally trigger dismiss
 ```
 
 **Correct (timeout prevents momentum accidents):**
 
 ```tsx
-const [canDrag, setCanDrag] = useState(false)
-const timeoutRef = useRef()
+const [canDrag, setCanDrag] = useState(false);
+const timeoutRef = useRef();
 
 const onScroll = () => {
-  clearTimeout(timeoutRef.current)
+  clearTimeout(timeoutRef.current);
 
   if (scrollContainer.scrollTop === 0) {
     timeoutRef.current = setTimeout(() => {
-      setCanDrag(true)
-    }, 100) // Wait for momentum to settle
+      setCanDrag(true);
+    }, 100); // Wait for momentum to settle
   } else {
-    setCanDrag(false)
+    setCanDrag(false);
   }
-}
+};
 ```
 
 This matches iOS drawer behavior where you must pause at the top before dragging to close.

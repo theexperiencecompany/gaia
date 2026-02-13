@@ -14,8 +14,15 @@
  * For Next.js App Router, add "use client" directive at top of file.
  */
 
-import { motion, useScroll, useTransform, useInView, useMotionValue, useSpring } from "motion/react"
-import { useRef } from "react"
+import {
+  motion,
+  useScroll,
+  useTransform,
+  useInView,
+  useMotionValue,
+  useSpring,
+} from "motion/react";
+import { useRef } from "react";
 
 // ============================================================================
 // PATTERN 1: Scroll-Triggered Reveal (whileInView)
@@ -31,15 +38,15 @@ export function FadeInSection({ children }: { children: React.ReactNode }) {
       initial={{ opacity: 0, y: 50 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{
-        once: true,       // Animate only once (don't re-animate on scroll up)
+        once: true, // Animate only once (don't re-animate on scroll up)
         margin: "-100px", // Start animation 100px before entering viewport
-        amount: 0.3,      // Trigger when 30% of element is visible
+        amount: 0.3, // Trigger when 30% of element is visible
       }}
       transition={{ duration: 0.5 }}
     >
       {children}
     </motion.div>
-  )
+  );
 }
 
 /**
@@ -59,21 +66,18 @@ export function FadeInSection({ children }: { children: React.ReactNode }) {
  * Perfect for hero sections and landing pages.
  */
 export function ParallaxHero() {
-  const { scrollY } = useScroll()
+  const { scrollY } = useScroll();
 
   // Transform scroll position to different speeds for each layer
-  const y1 = useTransform(scrollY, [0, 1000], [0, -300])   // Fast layer (background)
-  const y2 = useTransform(scrollY, [0, 1000], [0, -150])   // Medium layer (middle)
-  const y3 = useTransform(scrollY, [0, 1000], [0, -50])    // Slow layer (foreground)
-  const opacity = useTransform(scrollY, [0, 300], [1, 0])  // Fade out
+  const y1 = useTransform(scrollY, [0, 1000], [0, -300]); // Fast layer (background)
+  const y2 = useTransform(scrollY, [0, 1000], [0, -150]); // Medium layer (middle)
+  const y3 = useTransform(scrollY, [0, 1000], [0, -50]); // Slow layer (foreground)
+  const opacity = useTransform(scrollY, [0, 300], [1, 0]); // Fade out
 
   return (
     <div className="relative h-screen overflow-hidden">
       {/* Background layer (fastest) */}
-      <motion.div
-        style={{ y: y1 }}
-        className="absolute inset-0 -z-10"
-      >
+      <motion.div style={{ y: y1 }} className="absolute inset-0 -z-10">
         <img
           src="/images/background.jpg"
           alt="Background"
@@ -82,10 +86,7 @@ export function ParallaxHero() {
       </motion.div>
 
       {/* Middle layer (medium speed) */}
-      <motion.div
-        style={{ y: y2 }}
-        className="absolute inset-0 -z-5"
-      >
+      <motion.div style={{ y: y2 }} className="absolute inset-0 -z-5">
         <img
           src="/images/mountains.png"
           alt="Mountains"
@@ -104,7 +105,7 @@ export function ParallaxHero() {
         </div>
       </motion.div>
     </div>
-  )
+  );
 }
 
 // ============================================================================
@@ -116,14 +117,14 @@ export function ParallaxHero() {
  * Perfect for blog posts and long-form content.
  */
 export function ScrollProgressBar() {
-  const { scrollYProgress } = useScroll()
+  const { scrollYProgress } = useScroll();
 
   return (
     <motion.div
       style={{ scaleX: scrollYProgress }}
       className="fixed top-0 left-0 right-0 h-1 bg-blue-600 origin-left z-50"
     />
-  )
+  );
 }
 
 /**
@@ -143,16 +144,16 @@ export function ScrollProgressBar() {
  * Perfect for multi-section landing pages.
  */
 export function SectionScrollIndicator() {
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement>(null);
 
   // Only track scroll within this section
   const { scrollYProgress } = useScroll({
     target: ref,
     offset: ["start end", "end start"], // Start when section enters, end when it leaves
-  })
+  });
 
   // Convert 0-1 progress to 0-100 for display
-  const percentage = useTransform(scrollYProgress, [0, 1], [0, 100])
+  const percentage = useTransform(scrollYProgress, [0, 1], [0, 100]);
 
   return (
     <section ref={ref} className="min-h-screen bg-gray-100 p-8">
@@ -167,7 +168,7 @@ export function SectionScrollIndicator() {
         Scroll through this section to see the progress bar fill.
       </p>
     </section>
-  )
+  );
 }
 
 // ============================================================================
@@ -179,21 +180,18 @@ export function SectionScrollIndicator() {
  * Adds inertia/lag effect like Apple's website.
  */
 export function SmoothParallax() {
-  const { scrollY } = useScroll()
+  const { scrollY } = useScroll();
 
   // Add spring physics to parallax for smooth, natural motion
   const y = useSpring(useTransform(scrollY, [0, 1000], [0, -200]), {
     stiffness: 100,
     damping: 30,
     restDelta: 0.001,
-  })
+  });
 
   return (
     <div className="relative h-screen overflow-hidden">
-      <motion.div
-        style={{ y }}
-        className="absolute inset-0"
-      >
+      <motion.div style={{ y }} className="absolute inset-0">
         <img
           src="/images/hero.jpg"
           alt="Hero"
@@ -205,7 +203,7 @@ export function SmoothParallax() {
         <h1 className="text-6xl font-bold text-white">Smooth Parallax</h1>
       </div>
     </div>
-  )
+  );
 }
 
 // ============================================================================
@@ -217,16 +215,12 @@ export function SmoothParallax() {
  * Perfect for sticky headers that shrink on scroll.
  */
 export function ScaleOnScroll({ children }: { children: React.ReactNode }) {
-  const { scrollY } = useScroll()
+  const { scrollY } = useScroll();
 
   // Scale from 1 to 0.8 as user scrolls from 0 to 300px
-  const scale = useTransform(scrollY, [0, 300], [1, 0.8])
+  const scale = useTransform(scrollY, [0, 300], [1, 0.8]);
 
-  return (
-    <motion.div style={{ scale }}>
-      {children}
-    </motion.div>
-  )
+  return <motion.div style={{ scale }}>{children}</motion.div>;
 }
 
 // ============================================================================
@@ -238,16 +232,16 @@ export function ScaleOnScroll({ children }: { children: React.ReactNode }) {
  * Creates "scroll-jacking" effect like Apple product pages.
  */
 export function HorizontalScrollGallery() {
-  const targetRef = useRef<HTMLDivElement>(null)
+  const targetRef = useRef<HTMLDivElement>(null);
 
   const { scrollYProgress } = useScroll({
     target: targetRef,
     offset: ["start start", "end end"],
-  })
+  });
 
   // Convert vertical scroll to horizontal movement
   // 0 → 0%, 1 → -300% (moves 3 screens to the left)
-  const x = useTransform(scrollYProgress, [0, 1], ["0%", "-300%"])
+  const x = useTransform(scrollYProgress, [0, 1], ["0%", "-300%"]);
 
   return (
     <section ref={targetRef} className="relative h-[400vh]">
@@ -268,7 +262,7 @@ export function HorizontalScrollGallery() {
         </motion.div>
       </div>
     </section>
-  )
+  );
 }
 
 // ============================================================================
@@ -280,17 +274,17 @@ export function HorizontalScrollGallery() {
  * Perfect for decorative elements and logos.
  */
 export function RotateOnScroll() {
-  const { scrollY } = useScroll()
+  const { scrollY } = useScroll();
 
   // Rotate 360 degrees as user scrolls 1000px
-  const rotate = useTransform(scrollY, [0, 1000], [0, 360])
+  const rotate = useTransform(scrollY, [0, 1000], [0, 360]);
 
   return (
     <motion.div
       style={{ rotate }}
       className="w-32 h-32 bg-gradient-to-br from-pink-500 to-purple-600 rounded-full"
     />
-  )
+  );
 }
 
 // ============================================================================
@@ -302,11 +296,11 @@ export function RotateOnScroll() {
  * Perfect for "scroll to continue" indicators.
  */
 export function StickyScrollIndicator() {
-  const { scrollY } = useScroll()
+  const { scrollY } = useScroll();
 
   // Fade out and scale down after scrolling 200px
-  const opacity = useTransform(scrollY, [0, 200], [1, 0])
-  const scale = useTransform(scrollY, [0, 200], [1, 0.5])
+  const opacity = useTransform(scrollY, [0, 200], [1, 0]);
+  const scale = useTransform(scrollY, [0, 200], [1, 0.5]);
 
   return (
     <motion.div
@@ -330,7 +324,7 @@ export function StickyScrollIndicator() {
         </svg>
       </div>
     </motion.div>
-  )
+  );
 }
 
 // ============================================================================
@@ -342,20 +336,22 @@ export function StickyScrollIndicator() {
  * Trigger custom animations when element enters viewport.
  */
 export function CustomInViewAnimation() {
-  const ref = useRef<HTMLDivElement>(null)
+  const ref = useRef<HTMLDivElement>(null);
 
   // Returns true when element is in viewport
   const isInView = useInView(ref, {
     once: true,
     margin: "-100px",
     amount: 0.5,
-  })
+  });
 
   return (
     <div ref={ref} className="min-h-screen flex items-center justify-center">
       <motion.div
         initial={{ opacity: 0, scale: 0.5 }}
-        animate={isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.5 }}
+        animate={
+          isInView ? { opacity: 1, scale: 1 } : { opacity: 0, scale: 0.5 }
+        }
         transition={{ duration: 0.5 }}
         className="p-8 bg-blue-100 rounded-lg"
       >
@@ -364,7 +360,7 @@ export function CustomInViewAnimation() {
         </h2>
       </motion.div>
     </div>
-  )
+  );
 }
 
 // ============================================================================
@@ -376,14 +372,14 @@ export function CustomInViewAnimation() {
  * Perfect for section transitions.
  */
 export function ScrollColorChange() {
-  const { scrollYProgress } = useScroll()
+  const { scrollYProgress } = useScroll();
 
   // Interpolate between colors
   const backgroundColor = useTransform(
     scrollYProgress,
     [0, 0.33, 0.66, 1],
-    ["#ef4444", "#3b82f6", "#10b981", "#8b5cf6"] // red → blue → green → purple
-  )
+    ["#ef4444", "#3b82f6", "#10b981", "#8b5cf6"], // red → blue → green → purple
+  );
 
   return (
     <motion.div
@@ -394,7 +390,7 @@ export function ScrollColorChange() {
         Background changes as you scroll
       </div>
     </motion.div>
-  )
+  );
 }
 
 // ============================================================================
@@ -408,9 +404,7 @@ export function ScrollAnimationExamples() {
   return (
     <div>
       <ScrollProgressBar />
-
       <ParallaxHero />
-
       <FadeInSection>
         <div className="container mx-auto p-8">
           <h2 className="text-4xl font-bold mb-4">Fade In Section</h2>
@@ -419,33 +413,24 @@ export function ScrollAnimationExamples() {
           </p>
         </div>
       </FadeInSection>
-
       <SectionScrollIndicator />
-
       <SmoothParallax />
-
       <div className="container mx-auto p-8">
         <ScaleOnScroll>
           <h2 className="text-4xl font-bold mb-4">Scale on Scroll</h2>
           <p className="text-gray-700">This scales down as you scroll.</p>
         </ScaleOnScroll>
       </div>
-
       <HorizontalScrollGallery />
-
       <div className="container mx-auto p-8 flex justify-center">
         <RotateOnScroll />
       </div>
-
       <StickyScrollIndicator />
-
       <CustomInViewAnimation />
-
       <ScrollColorChange />
-
       <div className="h-screen" /> {/* Spacer to allow scrolling */}
     </div>
-  )
+  );
 }
 
 /**

@@ -13,15 +13,15 @@ CSS variables are inherited by all children. During drag animations, updating a 
 
 ```tsx
 function Drawer({ children }) {
-  const [dragY, setDragY] = useState(0)
+  const [dragY, setDragY] = useState(0);
 
   return (
-    <div style={{ '--drag-y': `${dragY}px` }}>
-      <div style={{ transform: 'translateY(var(--drag-y))' }}>
+    <div style={{ "--drag-y": `${dragY}px` }}>
+      <div style={{ transform: "translateY(var(--drag-y))" }}>
         {children} {/* All children recalculate styles */}
       </div>
     </div>
-  )
+  );
 }
 ```
 
@@ -29,13 +29,13 @@ function Drawer({ children }) {
 
 ```tsx
 function Drawer({ children }) {
-  const drawerRef = useRef()
+  const drawerRef = useRef();
 
   const onDrag = (y) => {
-    drawerRef.current.style.transform = `translateY(${y}px)`
-  }
+    drawerRef.current.style.transform = `translateY(${y}px)`;
+  };
 
-  return <div ref={drawerRef}>{children}</div>
+  return <div ref={drawerRef}>{children}</div>;
 }
 ```
 

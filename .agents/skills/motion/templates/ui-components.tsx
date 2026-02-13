@@ -14,18 +14,18 @@
  * For Next.js App Router, add "use client" directive at top of file.
  */
 
-import { motion, AnimatePresence } from "motion/react"
-import { useState, ReactNode, useRef } from "react"
+import { motion, AnimatePresence } from "motion/react";
+import { useState, ReactNode, useRef } from "react";
 
 // ============================================================================
 // COMPONENT 1: Modal Dialog
 // ============================================================================
 
 interface ModalProps {
-  isOpen: boolean
-  onClose: () => void
-  title: string
-  children: ReactNode
+  isOpen: boolean;
+  onClose: () => void;
+  title: string;
+  children: ReactNode;
 }
 
 export function Modal({ isOpen, onClose, title, children }: ModalProps) {
@@ -67,9 +67,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
             </div>
 
             {/* Content */}
-            <div className="text-gray-700 dark:text-gray-300">
-              {children}
-            </div>
+            <div className="text-gray-700 dark:text-gray-300">{children}</div>
 
             {/* Footer */}
             <div className="mt-6 flex justify-end gap-2">
@@ -86,7 +84,7 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
         </>
       )}
     </AnimatePresence>
-  )
+  );
 }
 
 /**
@@ -115,13 +113,18 @@ export function Modal({ isOpen, onClose, title, children }: ModalProps) {
 // ============================================================================
 
 interface AccordionItemProps {
-  title: string
-  children: ReactNode
-  isOpen: boolean
-  onToggle: () => void
+  title: string;
+  children: ReactNode;
+  isOpen: boolean;
+  onToggle: () => void;
 }
 
-export function AccordionItem({ title, children, isOpen, onToggle }: AccordionItemProps) {
+export function AccordionItem({
+  title,
+  children,
+  isOpen,
+  onToggle,
+}: AccordionItemProps) {
   return (
     <div className="border-b border-gray-200 dark:border-gray-700">
       {/* Trigger */}
@@ -149,40 +152,38 @@ export function AccordionItem({ title, children, isOpen, onToggle }: AccordionIt
         transition={{ duration: 0.3 }}
         style={{ overflow: "hidden" }}
       >
-        <div className="p-4 text-gray-700 dark:text-gray-300">
-          {children}
-        </div>
+        <div className="p-4 text-gray-700 dark:text-gray-300">{children}</div>
       </motion.div>
     </div>
-  )
+  );
 }
 
 interface AccordionProps {
   items: Array<{
-    id: string
-    title: string
-    content: ReactNode
-  }>
-  allowMultiple?: boolean
+    id: string;
+    title: string;
+    content: ReactNode;
+  }>;
+  allowMultiple?: boolean;
 }
 
 export function Accordion({ items, allowMultiple = false }: AccordionProps) {
-  const [openItems, setOpenItems] = useState<Set<string>>(new Set())
+  const [openItems, setOpenItems] = useState<Set<string>>(new Set());
 
   const handleToggle = (id: string) => {
     setOpenItems((prev) => {
-      const next = new Set(prev)
+      const next = new Set(prev);
       if (next.has(id)) {
-        next.delete(id)
+        next.delete(id);
       } else {
         if (!allowMultiple) {
-          next.clear()
+          next.clear();
         }
-        next.add(id)
+        next.add(id);
       }
-      return next
-    })
-  }
+      return next;
+    });
+  };
 
   return (
     <div className="border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
@@ -197,7 +198,7 @@ export function Accordion({ items, allowMultiple = false }: AccordionProps) {
         </AccordionItem>
       ))}
     </div>
-  )
+  );
 }
 
 /**
@@ -218,25 +219,25 @@ export function Accordion({ items, allowMultiple = false }: AccordionProps) {
 
 interface CarouselProps {
   images: Array<{
-    id: string
-    url: string
-    alt: string
-  }>
+    id: string;
+    url: string;
+    alt: string;
+  }>;
 }
 
 export function Carousel({ images }: CarouselProps) {
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [direction, setDirection] = useState(0) // 1 = next, -1 = prev
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [direction, setDirection] = useState(0); // 1 = next, -1 = prev
 
   const handleNext = () => {
-    setDirection(1)
-    setCurrentIndex((prev) => (prev + 1) % images.length)
-  }
+    setDirection(1);
+    setCurrentIndex((prev) => (prev + 1) % images.length);
+  };
 
   const handlePrev = () => {
-    setDirection(-1)
-    setCurrentIndex((prev) => (prev - 1 + images.length) % images.length)
-  }
+    setDirection(-1);
+    setCurrentIndex((prev) => (prev - 1 + images.length) % images.length);
+  };
 
   const variants = {
     enter: (direction: number) => ({
@@ -251,7 +252,7 @@ export function Carousel({ images }: CarouselProps) {
       x: direction < 0 ? 1000 : -1000,
       opacity: 0,
     }),
-  }
+  };
 
   return (
     <div className="relative w-full h-96 overflow-hidden bg-gray-100 dark:bg-gray-800 rounded-lg">
@@ -291,8 +292,8 @@ export function Carousel({ images }: CarouselProps) {
           <motion.button
             key={index}
             onClick={() => {
-              setDirection(index > currentIndex ? 1 : -1)
-              setCurrentIndex(index)
+              setDirection(index > currentIndex ? 1 : -1);
+              setCurrentIndex(index);
             }}
             animate={{
               scale: index === currentIndex ? 1.2 : 1,
@@ -303,7 +304,7 @@ export function Carousel({ images }: CarouselProps) {
         ))}
       </div>
     </div>
-  )
+  );
 }
 
 /**
@@ -322,11 +323,11 @@ export function Carousel({ images }: CarouselProps) {
 // ============================================================================
 
 interface DragCarouselProps {
-  items: ReactNode[]
+  items: ReactNode[];
 }
 
 export function DragCarousel({ items }: DragCarouselProps) {
-  const constraintsRef = useRef<HTMLDivElement>(null)
+  const constraintsRef = useRef<HTMLDivElement>(null);
 
   return (
     <div
@@ -351,7 +352,7 @@ export function DragCarousel({ items }: DragCarouselProps) {
         ))}
       </motion.div>
     </div>
-  )
+  );
 }
 
 /**
@@ -371,17 +372,17 @@ export function DragCarousel({ items }: DragCarouselProps) {
 // ============================================================================
 
 interface Tab {
-  id: string
-  label: string
-  content: ReactNode
+  id: string;
+  label: string;
+  content: ReactNode;
 }
 
 interface TabsProps {
-  tabs: Tab[]
+  tabs: Tab[];
 }
 
 export function Tabs({ tabs }: TabsProps) {
-  const [activeTab, setActiveTab] = useState(tabs[0].id)
+  const [activeTab, setActiveTab] = useState(tabs[0].id);
 
   return (
     <div>
@@ -421,7 +422,7 @@ export function Tabs({ tabs }: TabsProps) {
         </motion.div>
       </AnimatePresence>
     </div>
-  )
+  );
 }
 
 /**
@@ -441,22 +442,20 @@ export function Tabs({ tabs }: TabsProps) {
 // ============================================================================
 
 interface DropdownProps {
-  trigger: ReactNode
+  trigger: ReactNode;
   items: Array<{
-    label: string
-    onClick: () => void
-  }>
+    label: string;
+    onClick: () => void;
+  }>;
 }
 
 export function Dropdown({ trigger, items }: DropdownProps) {
-  const [isOpen, setIsOpen] = useState(false)
+  const [isOpen, setIsOpen] = useState(false);
 
   return (
     <div className="relative">
       {/* Trigger */}
-      <div onClick={() => setIsOpen(!isOpen)}>
-        {trigger}
-      </div>
+      <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
 
       {/* Menu */}
       <AnimatePresence>
@@ -481,8 +480,8 @@ export function Dropdown({ trigger, items }: DropdownProps) {
                   key={index}
                   whileHover={{ backgroundColor: "rgba(0, 0, 0, 0.05)" }}
                   onClick={() => {
-                    item.onClick()
-                    setIsOpen(false)
+                    item.onClick();
+                    setIsOpen(false);
                   }}
                   className="w-full text-left px-4 py-2 first:rounded-t-lg last:rounded-b-lg"
                 >
@@ -494,7 +493,7 @@ export function Dropdown({ trigger, items }: DropdownProps) {
         )}
       </AnimatePresence>
     </div>
-  )
+  );
 }
 
 /**
@@ -515,18 +514,23 @@ export function Dropdown({ trigger, items }: DropdownProps) {
 // ============================================================================
 
 interface ToastProps {
-  message: string
-  type?: "success" | "error" | "info"
-  isVisible: boolean
-  onClose: () => void
+  message: string;
+  type?: "success" | "error" | "info";
+  isVisible: boolean;
+  onClose: () => void;
 }
 
-export function Toast({ message, type = "info", isVisible, onClose }: ToastProps) {
+export function Toast({
+  message,
+  type = "info",
+  isVisible,
+  onClose,
+}: ToastProps) {
   const colors = {
     success: "bg-green-500",
     error: "bg-red-500",
     info: "bg-blue-500",
-  }
+  };
 
   return (
     <AnimatePresence>
@@ -550,7 +554,7 @@ export function Toast({ message, type = "info", isVisible, onClose }: ToastProps
         </motion.div>
       )}
     </AnimatePresence>
-  )
+  );
 }
 
 /**
@@ -578,8 +582,8 @@ export function Toast({ message, type = "info", isVisible, onClose }: ToastProps
 // ============================================================================
 
 export function UIComponentsDemo() {
-  const [isModalOpen, setIsModalOpen] = useState(false)
-  const [showToast, setShowToast] = useState(false)
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [showToast, setShowToast] = useState(false);
 
   return (
     <div className="max-w-4xl mx-auto p-8 space-y-12">
@@ -608,9 +612,21 @@ export function UIComponentsDemo() {
         <h2 className="text-2xl font-bold mb-4">2. Accordion</h2>
         <Accordion
           items={[
-            { id: "1", title: "Section 1", content: <p>Content for section 1</p> },
-            { id: "2", title: "Section 2", content: <p>Content for section 2</p> },
-            { id: "3", title: "Section 3", content: <p>Content for section 3</p> },
+            {
+              id: "1",
+              title: "Section 1",
+              content: <p>Content for section 1</p>,
+            },
+            {
+              id: "2",
+              title: "Section 2",
+              content: <p>Content for section 2</p>,
+            },
+            {
+              id: "3",
+              title: "Section 3",
+              content: <p>Content for section 3</p>,
+            },
           ]}
         />
       </section>
@@ -620,9 +636,21 @@ export function UIComponentsDemo() {
         <h2 className="text-2xl font-bold mb-4">3. Carousel</h2>
         <Carousel
           images={[
-            { id: "1", url: "https://via.placeholder.com/800x400/ff6b6b", alt: "Red" },
-            { id: "2", url: "https://via.placeholder.com/800x400/4ecdc4", alt: "Teal" },
-            { id: "3", url: "https://via.placeholder.com/800x400/ffe66d", alt: "Yellow" },
+            {
+              id: "1",
+              url: "https://via.placeholder.com/800x400/ff6b6b",
+              alt: "Red",
+            },
+            {
+              id: "2",
+              url: "https://via.placeholder.com/800x400/4ecdc4",
+              alt: "Teal",
+            },
+            {
+              id: "3",
+              url: "https://via.placeholder.com/800x400/ffe66d",
+              alt: "Yellow",
+            },
           ]}
         />
       </section>
@@ -646,8 +674,16 @@ export function UIComponentsDemo() {
         <Tabs
           tabs={[
             { id: "home", label: "Home", content: <p>Home tab content</p> },
-            { id: "profile", label: "Profile", content: <p>Profile tab content</p> },
-            { id: "settings", label: "Settings", content: <p>Settings tab content</p> },
+            {
+              id: "profile",
+              label: "Profile",
+              content: <p>Profile tab content</p>,
+            },
+            {
+              id: "settings",
+              label: "Settings",
+              content: <p>Settings tab content</p>,
+            },
           ]}
         />
       </section>
@@ -686,7 +722,7 @@ export function UIComponentsDemo() {
         />
       </section>
     </div>
-  )
+  );
 }
 
 /**

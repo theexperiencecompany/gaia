@@ -29,6 +29,7 @@ The `--format llm` output is a compact, token-optimized hybrid XML/text format d
 ```
 
 Attributes:
+
 - `url` - Base URL audited
 - `crawled` - Number of pages crawled
 - `date` - ISO 8601 timestamp
@@ -44,6 +45,7 @@ Attributes:
 ```
 
 Attributes:
+
 - `overall` - 0-100 health score
 - `grade` - Letter grade (A-F)
 - Categories with individual scores
@@ -55,6 +57,7 @@ Attributes:
 ```
 
 Attributes:
+
 - `passed` - Number of passed checks
 - `warnings` - Number of warnings
 - `failed` - Number of failed checks
@@ -92,11 +95,13 @@ Issues are grouped by category with compact inline metadata:
 Each `<rule>` element contains:
 
 **Attributes:**
+
 - `id` - Rule identifier (e.g., `core/meta-title`)
 - `severity` - `error`, `warning`, or `info`
 - `status` - `pass`, `warn`, or `fail`
 
 **Text Content (in order):**
+
 1. **Message** (optional) - Human-readable issue summary
 2. **Desc:** - Rule description (what's being checked)
 3. **Fix:** - Recommended solution (how to fix)
@@ -115,6 +120,7 @@ Items (3):
 ```
 
 Item format:
+
 - `- <id>` - Primary identifier (URL, selector, etc.)
 - `(<label>)` - Optional human-readable label if different from id
 - `[key: value, ...]` - Metadata in square brackets
@@ -153,6 +159,7 @@ the output is a compact XML diff format:
 ```
 
 Key fields:
+
 - `fp`: deterministic fingerprint for the issue instance
 - `rule`, `check`, `severity`, `status`: rule and check metadata
 - `Target:`: item/page/check target
@@ -206,12 +213,12 @@ The `audit` command supports `--format llm` directly for convenience. Use the tw
 
 ## Comparison with Other Formats
 
-| Format | Size | Structure | Best For |
-|--------|------|-----------|----------|
-| `xml` | 209KB | Verbose, 2-space indent, fully nested | Enterprise integration, archival |
-| `llm` | 125KB | Compact, 1-space indent, hybrid | AI agents, token-limited contexts |
-| `json` | 180KB | Structured data | Programmatic processing |
-| `text` | 45KB | Plain text, no structure | Simple piping, grep |
+| Format | Size  | Structure                             | Best For                          |
+| ------ | ----- | ------------------------------------- | --------------------------------- |
+| `xml`  | 209KB | Verbose, 2-space indent, fully nested | Enterprise integration, archival  |
+| `llm`  | 125KB | Compact, 1-space indent, hybrid       | AI agents, token-limited contexts |
+| `json` | 180KB | Structured data                       | Programmatic processing           |
+| `text` | 45KB  | Plain text, no structure              | Simple piping, grep               |
 
 ## Token Efficiency
 
@@ -226,6 +233,7 @@ The LLM format achieves 40-70% size reduction compared to verbose XML through:
 ## XML Character Escaping
 
 Special characters are properly escaped:
+
 - `&` → `&amp;`
 - `<` → `&lt;`
 - `>` → `&gt;`
@@ -235,6 +243,7 @@ Special characters are properly escaped:
 ## Design Philosophy
 
 The LLM format is optimized for:
+
 1. **Token efficiency** - Critical for API cost and context limits
 2. **Easy parsing** - XML structure for reliable extraction
 3. **Human readability** - AI agents can explain issues naturally

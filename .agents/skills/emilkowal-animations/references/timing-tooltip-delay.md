@@ -35,7 +35,7 @@ Tooltips should have a delay before appearing to prevent accidental activation. 
 
 ```tsx
 // Set data-instant when any tooltip is already open
-const [instantTooltips, setInstantTooltips] = useState(false)
+const [instantTooltips, setInstantTooltips] = useState(false);
 ```
 
 This feels faster without defeating the purpose of the initial delay.

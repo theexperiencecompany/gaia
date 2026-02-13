@@ -14,9 +14,9 @@ Allow users to dismiss elements with a fast flick, not just by dragging past a t
 ```tsx
 const onDragEnd = (dragDistance) => {
   if (Math.abs(dragDistance) > 100) {
-    dismiss()
+    dismiss();
   }
-}
+};
 // Fast flicks don't dismiss if distance is short
 ```
 
@@ -24,12 +24,12 @@ const onDragEnd = (dragDistance) => {
 
 ```tsx
 const onDragEnd = (dragDistance, dragDuration) => {
-  const velocity = Math.abs(dragDistance) / dragDuration
+  const velocity = Math.abs(dragDistance) / dragDuration;
 
   if (Math.abs(dragDistance) > 100 || velocity > 0.11) {
-    dismiss()
+    dismiss();
   }
-}
+};
 // Fast flicks dismiss even with short distance
 ```
 

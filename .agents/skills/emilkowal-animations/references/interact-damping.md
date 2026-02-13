@@ -13,9 +13,9 @@ When users drag past boundaries, apply resistance (damping) instead of hard stop
 
 ```tsx
 const onDrag = (y) => {
-  const clampedY = Math.max(0, y) // Hard stop at 0
-  setPosition(clampedY)
-}
+  const clampedY = Math.max(0, y); // Hard stop at 0
+  setPosition(clampedY);
+};
 // Dragging up at top does nothing, feels broken
 ```
 
@@ -25,12 +25,12 @@ const onDrag = (y) => {
 const onDrag = (y) => {
   if (y < 0) {
     // Apply resistance when dragging past boundary
-    const damped = y * 0.3 // 70% resistance
-    setPosition(damped)
+    const damped = y * 0.3; // 70% resistance
+    setPosition(damped);
   } else {
-    setPosition(y)
+    setPosition(y);
   }
-}
+};
 // Dragging past boundary has resistance, feels natural
 ```
 

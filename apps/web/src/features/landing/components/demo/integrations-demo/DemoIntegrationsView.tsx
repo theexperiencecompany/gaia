@@ -142,11 +142,7 @@ function DemoIntegrationSidebar({
 
           {/* Action buttons */}
           {!isConnected ? (
-            <Button
-              color="primary"
-              className="w-full font-medium"
-              size="md"
-            >
+            <Button color="primary" className="w-full font-medium" size="md">
               Connect
             </Button>
           ) : (
@@ -156,9 +152,7 @@ function DemoIntegrationSidebar({
                 className="w-full"
                 color="danger"
                 aria-label="Disconnect"
-                startContent={
-                  <Unlink04Icon width={18} height={18} />
-                }
+                startContent={<Unlink04Icon width={18} height={18} />}
               />
               {isPublic && (
                 <Button
@@ -166,9 +160,7 @@ function DemoIntegrationSidebar({
                   className="w-full"
                   color="primary"
                   aria-label="View on Marketplace"
-                  startContent={
-                    <InternetIcon width={18} height={18} />
-                  }
+                  startContent={<InternetIcon width={18} height={18} />}
                 />
               )}
               {isCustom && !isPublic && (
@@ -177,9 +169,7 @@ function DemoIntegrationSidebar({
                   className="w-full"
                   color="primary"
                   aria-label="Publish"
-                  startContent={
-                    <GlobalIcon width={18} height={18} />
-                  }
+                  startContent={<GlobalIcon width={18} height={18} />}
                 />
               )}
               {isPublic && (
@@ -188,9 +178,7 @@ function DemoIntegrationSidebar({
                   className="w-full"
                   color="default"
                   aria-label="Share"
-                  startContent={
-                    <Share08Icon width={18} height={18} />
-                  }
+                  startContent={<Share08Icon width={18} height={18} />}
                 />
               )}
             </ButtonGroup>

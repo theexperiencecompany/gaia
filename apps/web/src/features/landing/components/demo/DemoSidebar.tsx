@@ -413,9 +413,7 @@ export default function DemoSidebar({
                           style={{ color: project.color }}
                         />
                         <span className="flex-1 truncate">{project.name}</span>
-                        <span className="ml-auto text-xs">
-                          {project.count}
-                        </span>
+                        <span className="ml-auto text-xs">{project.count}</span>
                       </div>
                     ))}
                   </div>

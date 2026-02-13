@@ -35,6 +35,7 @@ Clip-path creates reveal animations without layout shifts—elements occupy thei
 ```
 
 **Common clip-path patterns:**
+
 - `inset(0 0 100% 0)` - Hide bottom
 - `inset(100% 0 0 0)` - Hide top
 - `inset(0 100% 0 0)` - Hide right

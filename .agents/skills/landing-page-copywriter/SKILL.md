@@ -82,6 +82,7 @@ When a user needs landing page copy or marketing website content:
    - Button text that reinforces value
 
 4. **Format Output**:
+
    ```
    🎯 LANDING PAGE COPY
    Product/Service: [Name]
@@ -185,6 +186,7 @@ When a user needs landing page copy or marketing website content:
 ## Output Quality
 
 Ensure all copy:
+
 - Leads with value, not features
 - Addresses target audience pain points
 - Uses emotional and logical appeals

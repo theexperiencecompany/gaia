@@ -14,6 +14,7 @@ user-invocable: true
 Motion (package: `motion`, formerly `framer-motion`) is the industry-standard React animation library used in production by thousands of applications. With 30,200+ GitHub stars and 300+ official examples, it provides a declarative API for creating sophisticated animations with minimal code.
 
 **Key Capabilities:**
+
 - **Gestures**: drag, hover, tap, pan, focus with cross-device support
 - **Scroll Animations**: viewport-triggered, scroll-linked, parallax effects
 - **Layout Animations**: FLIP technique for smooth layout changes, shared element transitions
@@ -31,24 +32,28 @@ Motion (package: `motion`, formerly `framer-motion`) is the industry-standard Re
 ### ✅ Use Motion When:
 
 **Complex Interactions**:
+
 - Drag-and-drop interfaces (sortable lists, kanban boards, sliders)
 - Hover states with scale/rotation/color changes
 - Tap feedback with bounce/squeeze effects
 - Pan gestures for mobile-friendly controls
 
 **Scroll-Based Animations**:
+
 - Hero sections with parallax layers
 - Scroll-triggered reveals (fade in as elements enter viewport)
 - Progress bars linked to scroll position
 - Sticky headers with scroll-dependent transforms
 
 **Layout Transitions**:
+
 - Shared element transitions between routes (card → detail page)
 - Expand/collapse with automatic height animation
 - Grid/list view switching with smooth repositioning
 - Tab navigation with animated underline
 
 **Advanced Features**:
+
 - SVG line drawing animations
 - Path morphing between shapes
 - Spring physics for natural bounce
@@ -56,12 +61,14 @@ Motion (package: `motion`, formerly `framer-motion`) is the industry-standard Re
 - Modal dialogs with backdrop blur
 
 **Bundle Optimization**:
+
 - Need 2.3 KB animation library (useAnimate mini)
 - Want to reduce Motion from 34 KB to 4.6 KB (LazyMotion)
 
 ### ❌ Don't Use Motion When:
 
 **Simple List Animations** → Use `auto-animate` skill instead:
+
 - Todo list add/remove (auto-animate: 3.28 KB vs motion: 34 KB)
 - Search results filtering
 - Shopping cart items
@@ -69,15 +76,18 @@ Motion (package: `motion`, formerly `framer-motion`) is the industry-standard Re
 - Basic accordions without gestures
 
 **Static Content**:
+
 - No user interaction or animations needed
 - Server-rendered content without client interactivity
 
 **Cloudflare Workers Deployment** → ✅ **Fixed (Dec 2024)**:
+
 - Previous build compatibility issues resolved (GitHub issue #2918 closed as completed)
 - Motion now works directly with Wrangler - no workaround needed
 - Both `motion` and `framer-motion` v12.23.24 work correctly
 
 **3D Animations** → Use dedicated 3D library:
+
 - Three.js for WebGL
 - React Three Fiber for React + Three.js
 
@@ -101,6 +111,7 @@ yarn add motion
 **Current Version**: 12.27.5 (verified 2026-01-21)
 
 **Note for Cloudflare Workers**:
+
 ```bash
 # Both packages work with Cloudflare Workers (issue #2918 fixed Dec 2024)
 pnpm add motion
@@ -127,7 +138,7 @@ pnpm add framer-motion  # Same version, same API
 Enables animations when components unmount:
 
 ```tsx
-import { AnimatePresence } from "motion/react"
+import { AnimatePresence } from "motion/react";
 
 <AnimatePresence>
   {isVisible && (
@@ -140,46 +151,50 @@ import { AnimatePresence } from "motion/react"
       Modal content
     </motion.div>
   )}
-</AnimatePresence>
+</AnimatePresence>;
 ```
 
 **Critical Rules:**
+
 - AnimatePresence **must stay mounted** (don't wrap in conditional)
 - All children **must have unique `key` props**
 - AnimatePresence **wraps the conditional**, not the other way around
 
 **Common Mistake** (exit animation won't play):
+
 ```tsx
 // ❌ Wrong - AnimatePresence unmounts with condition
-{isVisible && (
-  <AnimatePresence>
-    <motion.div>Content</motion.div>
-  </AnimatePresence>
-)}
+{
+  isVisible && (
+    <AnimatePresence>
+      <motion.div>Content</motion.div>
+    </AnimatePresence>
+  );
+}
 
 // ✅ Correct - AnimatePresence stays mounted
 <AnimatePresence>
   {isVisible && <motion.div key="unique">Content</motion.div>}
-</AnimatePresence>
+</AnimatePresence>;
 ```
 
 ### 2. Layout Animations
 
 **Special Props:**
+
 - `layout`: Enable FLIP layout animations
 - `layoutId`: Connect separate elements for shared transitions
 - `layoutScroll`: Fix animations in scrollable containers (see Issue #5)
 - `layoutRoot`: Fix animations in fixed-position elements (see Issue #7)
 
 ```tsx
-<motion.div layout>
-  {isExpanded ? <FullContent /> : <Summary />}
-</motion.div>
+<motion.div layout>{isExpanded ? <FullContent /> : <Summary />}</motion.div>
 ```
 
 ### 3. Scroll Animations
 
 #### Viewport-Triggered (whileInView)
+
 ```tsx
 <motion.div
   initial={{ opacity: 0, y: 50 }}
@@ -191,6 +206,7 @@ import { AnimatePresence } from "motion/react"
 ```
 
 #### Scroll-Linked (useScroll)
+
 ```tsx
 import { useScroll, useTransform } from "motion/react"
 
@@ -225,45 +241,46 @@ Import: `import { motion } from "motion/react"`
 **Step 1: Create Client Component Wrapper**
 
 `src/components/motion-client.tsx`:
+
 ```tsx
-"use client"
+"use client";
 
 // Optimized import for Next.js (reduces client JS)
-import * as motion from "motion/react-client"
+import * as motion from "motion/react-client";
 
-export { motion }
+export { motion };
 ```
 
 **Step 2: Use in Server Components**
 
 `src/app/page.tsx`:
+
 ```tsx
-import { motion } from "@/components/motion-client"
+import { motion } from "@/components/motion-client";
 
 export default function Page() {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       This works in Server Component (wrapper is client)
     </motion.div>
-  )
+  );
 }
 ```
 
 **Alternative: Direct Client Component**
-```tsx
-"use client"
 
-import { motion } from "motion/react"
+```tsx
+"use client";
+
+import { motion } from "motion/react";
 
 export function AnimatedCard() {
-  return <motion.div>...</motion.div>
+  return <motion.div>...</motion.div>;
 }
 ```
 
 **Known Issues (Next.js 15+ + React 19)**:
+
 - React 19 fully supported as of December 2025 (see Issue #11 for one StrictMode edge case)
 - Most compatibility issues resolved in Motion 12.27.5
 - AnimatePresence may fail with soft navigation
@@ -274,10 +291,10 @@ export function AnimatedCard() {
 Works without modifications:
 
 ```tsx
-import { motion } from "motion/react"
+import { motion } from "motion/react";
 
 export default function Page() {
-  return <motion.div>No "use client" needed</motion.div>
+  return <motion.div>No "use client" needed</motion.div>;
 }
 ```
 
@@ -299,6 +316,7 @@ export default function Page() {
 ```
 
 **⚠️ Remove Tailwind Transitions**: Causes stuttering/conflicts.
+
 ```tsx
 // ❌ Wrong - Tailwind transition conflicts with Motion
 <motion.div className="transition-all duration-300" animate={{ x: 100 }} />
@@ -314,14 +332,16 @@ export default function Page() {
 **Status**: ✅ **Fixed as of December 2024** (GitHub issue #2918 closed as completed)
 
 **Installation**:
+
 ```bash
 # Motion now works directly with Cloudflare Workers
 pnpm add motion
 ```
 
 **Import:**
+
 ```tsx
-import { motion } from "motion/react"
+import { motion } from "motion/react";
 ```
 
 **Historical Note**: Prior to December 2024, there was a Wrangler ESM resolution issue requiring use of `framer-motion` as a workaround. This has been resolved, and both packages now work correctly with Cloudflare Workers.
@@ -337,39 +357,38 @@ import { motion } from "motion/react"
 **Solution**: Use `LazyMotion` + `m` component for 4.6 KB:
 
 ```tsx
-import { LazyMotion, domAnimation, m } from "motion/react"
+import { LazyMotion, domAnimation, m } from "motion/react";
 
 function App() {
   return (
     <LazyMotion features={domAnimation}>
       {/* Use 'm' instead of 'motion' */}
-      <m.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-      >
+      <m.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
         Only 4.6 KB!
       </m.div>
     </LazyMotion>
-  )
+  );
 }
 ```
 
 **How it works**: Loads animation features on-demand instead of bundling everything.
 
 **Alternative (Smallest)**: `useAnimate` mini (2.3 KB):
+
 ```tsx
-import { useAnimate } from "motion/react"
+import { useAnimate } from "motion/react";
 
 function Component() {
-  const [scope, animate] = useAnimate()
+  const [scope, animate] = useAnimate();
 
-  return <div ref={scope}>Smallest possible React animation</div>
+  return <div ref={scope}>Smallest possible React animation</div>;
 }
 ```
 
 ### 2. Hardware Acceleration
 
 **Add `willChange` for transforms:**
+
 ```tsx
 <motion.div
   style={{ willChange: "transform" }}
@@ -386,6 +405,7 @@ function Component() {
 **Problem**: Animating 50-100+ items causes severe slowdown.
 
 **Solutions:**
+
 ```bash
 pnpm add react-window
 # or
@@ -395,21 +415,18 @@ pnpm add @tanstack/react-virtual
 ```
 
 **Pattern:**
-```tsx
-import { FixedSizeList } from 'react-window'
-import { motion } from 'motion/react'
 
-<FixedSizeList
-  height={600}
-  itemCount={1000}
-  itemSize={50}
->
+```tsx
+import { FixedSizeList } from "react-window";
+import { motion } from "motion/react";
+
+<FixedSizeList height={600} itemCount={1000} itemSize={50}>
   {({ index, style }) => (
     <motion.div style={style} layout>
       Item {index}
     </motion.div>
   )}
-</FixedSizeList>
+</FixedSizeList>;
 ```
 
 **Why**: Only renders visible items, reduces DOM updates and memory usage.
@@ -433,14 +450,15 @@ Automatically animates layout changes without JavaScript calculation:
 ### Respect `prefers-reduced-motion`
 
 ```tsx
-import { MotionConfig } from "motion/react"
+import { MotionConfig } from "motion/react";
 
 <MotionConfig reducedMotion="user">
   <App />
-</MotionConfig>
+</MotionConfig>;
 ```
 
 **Options:**
+
 - `"user"`: Respects OS setting (recommended)
 - `"always"`: Force instant transitions
 - `"never"`: Ignore user preference
@@ -452,6 +470,7 @@ import { MotionConfig } from "motion/react"
 ## Common Patterns
 
 **5 Production-Ready Patterns:**
+
 1. **Modal Dialog** - AnimatePresence with backdrop + dialog exit animations
 2. **Accordion** - Animate height with `height: "auto"`
 3. **Drag Carousel** - `drag="x"` with `dragConstraints`
@@ -472,6 +491,7 @@ See `references/common-patterns.md` for full code (15+ patterns).
 **Why It Happens**: AnimatePresence wrapped in conditional or missing `key` props. Defining `exit` props on staggered children inside modals can also prevent modal from unmounting (backdrop remains visible).
 
 **Solution**:
+
 ```tsx
 // ❌ Wrong - AnimatePresence wrapped in conditional
 {isVisible && (
@@ -517,6 +537,7 @@ See `references/common-patterns.md` for full code (15+ patterns).
 **Symptom**: 50-100+ animated items cause severe slowdown, browser freezes.
 
 **Solution**: Use virtualization:
+
 ```bash
 pnpm add react-window
 ```
@@ -528,6 +549,7 @@ See `references/performance-optimization.md` for full guide.
 **Symptom**: Animations stutter or don't work.
 
 **Solution**: Remove `transition-*` classes:
+
 ```tsx
 // ❌ Wrong
 <motion.div className="transition-all" animate={{ x: 100 }} />
@@ -541,10 +563,11 @@ See `references/performance-optimization.md` for full guide.
 **Symptom**: Build fails with "motion is not defined" or SSR errors.
 
 **Solution**: Add `"use client"` directive:
-```tsx
-"use client"
 
-import { motion } from "motion/react"
+```tsx
+"use client";
+
+import { motion } from "motion/react";
 ```
 
 See `references/nextjs-integration.md` for App Router patterns.
@@ -554,9 +577,10 @@ See `references/nextjs-integration.md` for App Router patterns.
 **Symptom**: Incomplete transitions when removing items from scrolled containers.
 
 **Solution**: Add `layoutScroll` prop:
+
 ```tsx
 <motion.div layoutScroll className="overflow-auto">
-  {items.map(item => (
+  {items.map((item) => (
     <motion.div key={item.id} layout>
       {item.content}
     </motion.div>
@@ -581,6 +605,7 @@ GitHub issue: #2918 (closed as completed Dec 13, 2024)
 **Symptom**: Layout animations in fixed elements have incorrect positioning.
 
 **Solution**: Add `layoutRoot` prop:
+
 ```tsx
 <motion.div layoutRoot className="fixed top-0 left-0">
   <motion.div layout>Content</motion.div>
@@ -592,18 +617,19 @@ GitHub issue: #2918 (closed as completed Dec 13, 2024)
 **Symptom**: Elements with `layoutId` inside AnimatePresence fail to unmount.
 
 **Solution**: Wrap in `LayoutGroup` or avoid mixing exit + layout animations:
+
 ```tsx
-import { LayoutGroup } from "motion/react"
+import { LayoutGroup } from "motion/react";
 
 <LayoutGroup>
   <AnimatePresence>
-    {items.map(item => (
+    {items.map((item) => (
       <motion.div key={item.id} layoutId={item.id}>
         {item.content}
       </motion.div>
     ))}
   </AnimatePresence>
-</LayoutGroup>
+</LayoutGroup>;
 ```
 
 ### Issue 9: Reduced Motion with AnimatePresence (✅ RESOLVED)
@@ -615,6 +641,7 @@ import { LayoutGroup } from "motion/react"
 **Current State**: MotionConfig now correctly applies reducedMotion to AnimatePresence components. The setting works as documented.
 
 **Optional Manual Control**: If you need custom behavior beyond the built-in support:
+
 ```tsx
 const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches
 
@@ -633,10 +660,12 @@ GitHub issue: #1567 (closed as completed Jan 13, 2023)
 **Source**: [GitHub Issue #3469](https://github.com/motiondivision/motion/issues/3469), #2183, #2101
 
 **Why It Happens**:
+
 - **Page-level scrolling**: Reorder auto-scroll only works when `Reorder.Group` is inside element with `overflow: auto/scroll`, NOT when document itself is scrollable
 - **Next.js routing**: Incompatible with Next.js routing system, causes random stuck states
 
 **Prevention**:
+
 ```tsx
 // ❌ Wrong - Page-level scrolling (auto-scroll fails)
 <body style={{ height: "200vh" }}>
@@ -685,6 +714,7 @@ See `references/nextjs-integration.md` for full Next.js troubleshooting guide.
 **Why It Happens**: Layout animation system uses scaled coordinates as if they were unscaled. Motion's layout animations work in pixels, while parent scale affects visual coordinates. The mismatch causes position calculation errors.
 
 **Prevention (Community Workaround)**:
+
 ```tsx
 // Use transformTemplate to correct for parent scale
 const scale = 2; // Parent's transform scale value
@@ -703,7 +733,7 @@ const scale = 2; // Parent's transform scale value
   >
     Content
   </motion.div>
-</div>
+</div>;
 ```
 
 **Limitations**: Only works for layout animations only, doesn't fix other transforms, requires knowing parent scale value.
@@ -796,18 +826,18 @@ See `scripts/` directory for automation tools.
 
 ## Comparison: Motion vs AutoAnimate
 
-| Aspect | AutoAnimate | Motion |
-|--------|-------------|--------|
-| **Bundle Size** | 3.28 KB | 2.3 KB (mini) - 34 KB (full) |
-| **Use Case** | Simple list animations | Complex gestures, scroll, layout |
-| **API** | Zero-config, 1 line | Declarative props, verbose |
-| **Setup** | Single ref | Motion components + props |
-| **Gestures** | ❌ Not supported | ✅ Drag, hover, tap, pan |
-| **Scroll Animations** | ❌ Not supported | ✅ Parallax, scroll-linked |
-| **Layout Animations** | ❌ Not supported | ✅ FLIP, shared elements |
-| **SVG** | ❌ Not supported | ✅ Path morphing, line drawing |
-| **Cloudflare Workers** | ✅ Full support | ✅ Full support (fixed Dec 2024) |
-| **Accessibility** | ✅ Auto prefers-reduced-motion | ✅ Manual MotionConfig |
+| Aspect                 | AutoAnimate                    | Motion                           |
+| ---------------------- | ------------------------------ | -------------------------------- |
+| **Bundle Size**        | 3.28 KB                        | 2.3 KB (mini) - 34 KB (full)     |
+| **Use Case**           | Simple list animations         | Complex gestures, scroll, layout |
+| **API**                | Zero-config, 1 line            | Declarative props, verbose       |
+| **Setup**              | Single ref                     | Motion components + props        |
+| **Gestures**           | ❌ Not supported               | ✅ Drag, hover, tap, pan         |
+| **Scroll Animations**  | ❌ Not supported               | ✅ Parallax, scroll-linked       |
+| **Layout Animations**  | ❌ Not supported               | ✅ FLIP, shared elements         |
+| **SVG**                | ❌ Not supported               | ✅ Path morphing, line drawing   |
+| **Cloudflare Workers** | ✅ Full support                | ✅ Full support (fixed Dec 2024) |
+| **Accessibility**      | ✅ Auto prefers-reduced-motion | ✅ Manual MotionConfig           |
 
 **Rule of Thumb**: Use AutoAnimate for 90% of cases (list animations), Motion for 10% (complex interactions).
 
@@ -817,11 +847,11 @@ See `references/motion-vs-auto-animate.md` for detailed comparison.
 
 ## Token Efficiency Metrics
 
-| Approach | Tokens Used | Errors Encountered | Time to Complete |
-|----------|------------|-------------------|------------------|
-| **Manual Setup** | ~30,000 | 3-5 (AnimatePresence, Next.js, performance) | ~2-3 hours |
-| **With This Skill** | ~5,000 | 0 ✅ | ~20-30 min |
-| **Savings** | **~83%** | **100%** | **~85%** |
+| Approach            | Tokens Used | Errors Encountered                          | Time to Complete |
+| ------------------- | ----------- | ------------------------------------------- | ---------------- |
+| **Manual Setup**    | ~30,000     | 3-5 (AnimatePresence, Next.js, performance) | ~2-3 hours       |
+| **With This Skill** | ~5,000      | 0 ✅                                        | ~20-30 min       |
+| **Savings**         | **~83%**    | **100%**                                    | **~85%**         |
 
 **Errors Prevented**: 35 documented errors = 100% prevention rate
 
@@ -829,19 +859,20 @@ See `references/motion-vs-auto-animate.md` for detailed comparison.
 
 ## Package Versions (Verified 2026-01-21)
 
-| Package | Version | Status |
-|---------|---------|--------|
-| motion | 12.27.5 | ✅ Latest stable |
+| Package       | Version | Status                    |
+| ------------- | ------- | ------------------------- |
+| motion        | 12.27.5 | ✅ Latest stable          |
 | framer-motion | 12.27.5 | ✅ Same version as motion |
-| react | 19.2.3 | ✅ Latest stable |
-| next | 16.1.1 | ✅ Latest stable |
-| vite | 7.3.1 | ✅ Latest stable |
+| react         | 19.2.3  | ✅ Latest stable          |
+| next          | 16.1.1  | ✅ Latest stable          |
+| vite          | 7.3.1   | ✅ Latest stable          |
 
 ---
 
 ## Contributing
 
 Found an issue or have a suggestion?
+
 - Open an issue: https://github.com/jezweb/claude-skills/issues
 - See templates and references for detailed examples
 

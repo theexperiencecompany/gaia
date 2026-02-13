@@ -13,7 +13,9 @@ UI animations should stay under 300ms to feel responsive. Longer animations make
 
 ```css
 .dropdown {
-  transition: opacity 500ms ease-out, transform 500ms ease-out;
+  transition:
+    opacity 500ms ease-out,
+    transform 500ms ease-out;
 }
 /* Feels sluggish, user waits for UI to catch up */
 ```
@@ -22,12 +24,15 @@ UI animations should stay under 300ms to feel responsive. Longer animations make
 
 ```css
 .dropdown {
-  transition: opacity 200ms ease-out, transform 200ms ease-out;
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms ease-out;
 }
 /* Feels responsive and connected to user action */
 ```
 
 **Duration Guidelines:**
+
 - 150–250ms for micro UI changes (buttons, toggles)
 - 250–400ms for larger context switches (modals, page transitions)
 - Longer durations only for marketing/intro animations

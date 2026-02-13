@@ -13,11 +13,7 @@ Framer Motion provides the `useReducedMotion` hook for programmatic control over
 
 ```tsx
 function Sidebar({ isOpen }) {
-  return (
-    <motion.div
-      animate={{ x: isOpen ? 0 : '-100%' }}
-    />
-  )
+  return <motion.div animate={{ x: isOpen ? 0 : "-100%" }} />;
 }
 // Slides regardless of user preference
 ```
@@ -25,20 +21,20 @@ function Sidebar({ isOpen }) {
 **Correct (respects motion preference):**
 
 ```tsx
-import { useReducedMotion, motion } from 'framer-motion'
+import { useReducedMotion, motion } from "framer-motion";
 
 function Sidebar({ isOpen }) {
-  const shouldReduceMotion = useReducedMotion()
-  const closedX = shouldReduceMotion ? 0 : '-100%'
+  const shouldReduceMotion = useReducedMotion();
+  const closedX = shouldReduceMotion ? 0 : "-100%";
 
   return (
     <motion.div
       animate={{
         opacity: isOpen ? 1 : 0,
-        x: isOpen ? 0 : closedX
+        x: isOpen ? 0 : closedX,
       }}
     />
-  )
+  );
 }
 // Fades only when motion is reduced, slides otherwise
 ```

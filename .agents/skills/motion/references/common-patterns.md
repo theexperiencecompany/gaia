@@ -7,7 +7,7 @@ Production-tested animation patterns with code examples. Copy-paste ready.
 ## 1. Modal Dialog
 
 ```tsx
-import { motion, AnimatePresence } from "motion/react"
+import { motion, AnimatePresence } from "motion/react";
 
 <AnimatePresence>
   {isOpen && (
@@ -31,7 +31,7 @@ import { motion, AnimatePresence } from "motion/react"
       </motion.dialog>
     </>
   )}
-</AnimatePresence>
+</AnimatePresence>;
 ```
 
 ---
@@ -54,7 +54,7 @@ import { motion, AnimatePresence } from "motion/react"
 
 ```tsx
 <div className="flex gap-4 border-b">
-  {tabs.map(tab => (
+  {tabs.map((tab) => (
     <button key={tab.id} onClick={() => setActive(tab.id)}>
       {tab.label}
       {active === tab.id && (
@@ -183,7 +183,9 @@ const { scrollYProgress } = useScroll()
   dragConstraints={{ left: -width, right: 0 }}
   className="flex"
 >
-  {images.map(img => <img key={img.id} src={img.url} />)}
+  {images.map((img) => (
+    <img key={img.id} src={img.url} />
+  ))}
 </motion.div>
 ```
 
@@ -192,10 +194,7 @@ const { scrollYProgress } = useScroll()
 ## 12. Hover & Tap Button
 
 ```tsx
-<motion.button
-  whileHover={{ scale: 1.1 }}
-  whileTap={{ scale: 0.95 }}
->
+<motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>
   Click me
 </motion.button>
 ```
@@ -245,7 +244,7 @@ const { scrollYProgress } = useScroll()
   transition={{
     type: "spring",
     stiffness: 300,
-    damping: 10
+    damping: 10,
   }}
 />
 ```

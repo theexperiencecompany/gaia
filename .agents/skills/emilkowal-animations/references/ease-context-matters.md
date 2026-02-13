@@ -11,13 +11,13 @@ Different animation contexts require different easing approaches. Using the wron
 
 **Easing by Context:**
 
-| Context | Recommended Easing | Why |
-|---------|-------------------|-----|
-| Enter/Exit | ease-out | Immediate response, smooth settle |
-| On-screen movement | ease-in-out | Natural acceleration/deceleration |
-| Hover effects | ease (built-in OK) | Simple, quick feedback |
-| Spring interactions | spring physics | Natural, interruptible feel |
-| Exit only | ease-in | Accelerates away from view |
+| Context             | Recommended Easing | Why                               |
+| ------------------- | ------------------ | --------------------------------- |
+| Enter/Exit          | ease-out           | Immediate response, smooth settle |
+| On-screen movement  | ease-in-out        | Natural acceleration/deceleration |
+| Hover effects       | ease (built-in OK) | Simple, quick feedback            |
+| Spring interactions | spring physics     | Natural, interruptible feel       |
+| Exit only           | ease-in            | Accelerates away from view        |
 
 **Incorrect (ease-in for enter animation):**
 

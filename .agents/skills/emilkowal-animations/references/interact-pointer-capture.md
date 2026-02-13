@@ -13,9 +13,9 @@ Use pointer capture during drag operations so the drag continues even when the p
 
 ```tsx
 const onPointerMove = (e) => {
-  if (!isDragging) return
-  updatePosition(e.clientY)
-}
+  if (!isDragging) return;
+  updatePosition(e.clientY);
+};
 // Drag breaks if pointer leaves element
 ```
 
@@ -23,19 +23,19 @@ const onPointerMove = (e) => {
 
 ```tsx
 const onPointerDown = (e) => {
-  e.target.setPointerCapture(e.pointerId)
-  setIsDragging(true)
-}
+  e.target.setPointerCapture(e.pointerId);
+  setIsDragging(true);
+};
 
 const onPointerMove = (e) => {
-  if (!isDragging) return
-  updatePosition(e.clientY)
-}
+  if (!isDragging) return;
+  updatePosition(e.clientY);
+};
 
 const onPointerUp = (e) => {
-  e.target.releasePointerCapture(e.pointerId)
-  setIsDragging(false)
-}
+  e.target.releasePointerCapture(e.pointerId);
+  setIsDragging(false);
+};
 // Drag continues even if pointer leaves element bounds
 ```
 

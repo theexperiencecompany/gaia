@@ -13,13 +13,13 @@ Keyboard navigation and actions may be performed hundreds of times daily. Animat
 
 ```tsx
 const handleKeyDown = (e) => {
-  if (e.key === 'ArrowDown') {
-    setSelectedIndex(i => i + 1)
+  if (e.key === "ArrowDown") {
+    setSelectedIndex((i) => i + 1);
   }
-}
+};
 
 // With animation
-<motion.div animate={{ y: selectedIndex * 40 }} />
+<motion.div animate={{ y: selectedIndex * 40 }} />;
 // Feels slow when pressing arrow keys rapidly
 ```
 
@@ -27,13 +27,13 @@ const handleKeyDown = (e) => {
 
 ```tsx
 const handleKeyDown = (e) => {
-  if (e.key === 'ArrowDown') {
-    setSelectedIndex(i => i + 1)
+  if (e.key === "ArrowDown") {
+    setSelectedIndex((i) => i + 1);
   }
-}
+};
 
 // Instant position update
-<div style={{ transform: `translateY(${selectedIndex * 40}px)` }} />
+<div style={{ transform: `translateY(${selectedIndex * 40}px)` }} />;
 // Keeps up with rapid key presses
 ```
 
