@@ -1,5 +1,12 @@
 // ─── Demo component types ─────────────────────────────────────────────────────
 
+export type DemoPage =
+  | "dashboard"
+  | "calendar"
+  | "integrations"
+  | "workflows"
+  | "chats";
+
 export type FinalCardType =
   | "email"
   | "workflow"

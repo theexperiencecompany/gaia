@@ -17,16 +17,21 @@ import {
   ThumbsDownIcon,
   ThumbsUpIcon,
 } from "@/icons";
+import DemoCalendarView from "./calendar-demo/DemoCalendarView";
 import DemoChatHeader from "./DemoChatHeader";
 import { DemoFinalCard } from "./DemoFinalCards";
 import DemoNotificationsPopover from "./DemoNotificationsPopover";
 import DemoSidebar from "./DemoSidebar";
 import DemoToolCalls from "./DemoToolCalls";
+import DemoDashboardView from "./dashboard-demo/DemoDashboardView";
 import { BASE_TIMINGS, ease, slideUp, tx, USE_CASES } from "./demoConstants";
+import DemoIntegrationsView from "./integrations-demo/DemoIntegrationsView";
 import MiniWaveSpinner from "./MiniWaveSpinner";
-import type { Phase } from "./types";
+import type { DemoPage, Phase } from "./types";
+import DemoWorkflowsView from "./workflows-demo/DemoWorkflowsView";
 
 export default function ChatDemoSection() {
+  const [activePage, setActivePage] = useState<DemoPage>("chats");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activeUseCase, setActiveUseCase] = useState(0);
@@ -210,11 +215,19 @@ export default function ChatDemoSection() {
             </a>
           </div>
         </div>
-        <div
-          className="flex h-full w-full"
-          style={{ height: "calc(100% - 36px)" }}
-        >
-          <DemoSidebar open={sidebarOpen} />
+        <div className="flex h-full" style={{ height: "calc(100% - 36px)" }}>
+          <DemoSidebar
+            open={sidebarOpen}
+            activePage={activePage}
+            onPageChange={(page) => {
+              setActivePage(page);
+              if (page !== "chats") {
+                clearAll();
+              } else if (phase === "idle") {
+                runAnimation(activeCaseRef.current);
+              }
+            }}
+          />
 
           <div
             className="relative flex min-w-0 flex-1 flex-col"
@@ -231,30 +244,246 @@ export default function ChatDemoSection() {
               onClose={() => setNotificationsOpen(false)}
             />
 
-            {/* Messages — slightly narrower than full for visual breathing room */}
-            <div ref={messagesRef} className="flex-1 overflow-y-auto px-4 py-3">
-              <div className="mx-auto w-full max-w-2xl">
-                {/* User bubble */}
-                <AnimatePresence>
-                  {showUser && (
-                    <m.div
-                      key={`user-${uc.id}`}
-                      variants={slideUp}
-                      initial="initial"
-                      animate="animate"
-                      exit="exit"
-                      transition={tx}
-                      className="mb-2 flex w-full items-end justify-end gap-3"
+            {activePage === "dashboard" && (
+              <div className="flex-1 overflow-y-auto">
+                <DemoDashboardView />
+              </div>
+            )}
+            {activePage === "calendar" && (
+              <div className="flex flex-1 overflow-hidden">
+                <DemoCalendarView />
+              </div>
+            )}
+            {activePage === "workflows" && (
+              <div className="flex-1 overflow-y-auto">
+                <DemoWorkflowsView />
+              </div>
+            )}
+            {activePage === "integrations" && (
+              <div className="flex flex-1 overflow-hidden">
+                <DemoIntegrationsView />
+              </div>
+            )}
+
+            {activePage === "chats" && (
+              <>
+                {/* Messages — slightly narrower than full for visual breathing room */}
+                <div
+                  ref={messagesRef}
+                  className="flex-1 overflow-y-auto px-4 py-3"
+                >
+                  <div className="mx-auto w-full max-w-2xl">
+                    {/* User bubble */}
+                    <AnimatePresence>
+                      {showUser && (
+                        <m.div
+                          key={`user-${uc.id}`}
+                          variants={slideUp}
+                          initial="initial"
+                          animate="animate"
+                          exit="exit"
+                          transition={tx}
+                          className="mb-2 flex w-full items-end justify-end gap-3"
+                        >
+                          <div
+                            className="chat_bubble_container user group"
+                            id={`user-${uc.id}`}
+                          >
+                            <div className="imessage-bubble imessage-from-me">
+                              {uc.userMessage}
+                            </div>
+                            <div className="flex flex-col items-end justify-end gap-1 pb-3 opacity-0 transition-all group-hover:opacity-100">
+                              <span className="flex flex-col text-xs text-zinc-400 select-text">
+                                just now
+                              </span>
+                              <div className="flex w-fit items-center">
+                                {[
+                                  { Icon: LinkBackwardIcon, label: "Reply" },
+                                  { Icon: Copy01Icon, label: "Copy" },
+                                  { Icon: PinIcon, label: "Pin" },
+                                ].map(({ Icon, label }) => (
+                                  <button
+                                    key={label}
+                                    type="button"
+                                    aria-label={label}
+                                    title={label}
+                                    className="aspect-square size-7.5 min-w-7.5 rounded-md p-0 text-zinc-500 hover:text-zinc-300"
+                                  >
+                                    <Icon height="18" width="18" />
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="min-w-10">
+                            <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
+                              <AvatarImage
+                                src="https://github.com/aryanranderiya.png"
+                                alt="Aryan"
+                              />
+                              <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
+                                AR
+                              </AvatarFallback>
+                            </Avatar>
+                          </div>
+                        </m.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Loading indicator */}
+                    <AnimatePresence mode="wait">
+                      {showLoading && (
+                        <m.div
+                          key={`loading-${uc.id}-${loadingKey}`}
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          exit={{ opacity: 0, y: -6 }}
+                          transition={tx}
+                          className="mb-4 flex items-center gap-3"
+                        >
+                          {loadingCat ? (
+                            getToolCategoryIcon(loadingCat, {
+                              size: 18,
+                              width: 18,
+                              height: 18,
+                              iconOnly: true,
+                              pulsating: true,
+                            })
+                          ) : (
+                            <MiniWaveSpinner />
+                          )}
+                          <AnimatePresence mode="wait">
+                            <m.span
+                              key={loadingKey}
+                              variants={slideUp}
+                              initial="initial"
+                              animate="animate"
+                              exit="exit"
+                              transition={tx}
+                              className="animate-shine bg-size-[200%_100%] w-fit bg-clip-text text-sm font-medium text-transparent"
+                              style={{
+                                backgroundImage:
+                                  "linear-gradient(90deg, rgb(255 255 255 / 0.3) 20%, rgb(255 255 255) 50%, rgb(255 255 255 / 0.3) 80%)",
+                              }}
+                            >
+                              {loadingText}
+                            </m.span>
+                          </AnimatePresence>
+                        </m.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Bot row: tool calls → text → final card */}
+                    <div
+                      id={`bot-${uc.id}`}
+                      className="group relative flex flex-col"
+                      onMouseOver={(e) => {
+                        const el =
+                          e.currentTarget.querySelector<HTMLElement>(
+                            ".bot-actions",
+                          );
+                        if (el) {
+                          el.style.opacity = "1";
+                          el.style.visibility = "visible";
+                        }
+                      }}
+                      onMouseOut={(e) => {
+                        const el =
+                          e.currentTarget.querySelector<HTMLElement>(
+                            ".bot-actions",
+                          );
+                        if (el) {
+                          el.style.opacity = "0";
+                          el.style.visibility = "hidden";
+                        }
+                      }}
                     >
-                      <div
-                        className="chat_bubble_container user group"
-                        id={`user-${uc.id}`}
-                      >
-                        <div className="imessage-bubble imessage-from-me">
-                          {uc.userMessage}
+                      {/* Tool calls — above all bot content */}
+                      <AnimatePresence>
+                        {showTools && (
+                          <div className="mb-2 ml-10.75">
+                            <DemoToolCalls
+                              tools={uc.tools}
+                              expanded={toolsExpanded}
+                              onToggle={() => setToolsExpanded((e) => !e)}
+                            />
+                          </div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Final card — above the text bubble, below tool calls */}
+                      <AnimatePresence>
+                        {showFinalCard && (
+                          <m.div
+                            key={`card-${uc.id}`}
+                            initial={{ opacity: 0, y: 10, scale: 0.97 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            transition={{
+                              duration: 0.3,
+                              ease: [0.34, 1.2, 0.64, 1],
+                            }}
+                            className="ml-10.75 mb-3"
+                          >
+                            <DemoFinalCard type={uc.finalCard} />
+                          </m.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* Bot row: logo + text bubble — always at the bottom */}
+                      <div className="flex items-end gap-1">
+                        {/* GAIA logo — pinned to bottom, only with response */}
+                        <div className="relative bottom-0 min-w-10 shrink-0">
+                          <AnimatePresence>
+                            {showBotLogo && (
+                              <m.div
+                                key="bot-logo"
+                                initial={{ opacity: 0, scale: 0.8 }}
+                                animate={{ opacity: 1, scale: 1 }}
+                                transition={tx}
+                              >
+                                <Image
+                                  src="/images/logos/logo.webp"
+                                  width={28}
+                                  height={28}
+                                  loading="lazy"
+                                  alt="GAIA"
+                                  className="relative z-10"
+                                />
+                              </m.div>
+                            )}
+                          </AnimatePresence>
                         </div>
-                        <div className="flex flex-col items-end justify-end gap-1 pb-3 opacity-0 transition-all group-hover:opacity-100">
-                          <span className="flex flex-col text-xs text-zinc-400 select-text">
+
+                        <div className="chatbubblebot_parent flex-1">
+                          {/* Text response */}
+                          <AnimatePresence>
+                            {showResponse && (
+                              <m.div
+                                key={`response-${uc.id}`}
+                                initial={{ opacity: 0, y: 6 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                transition={tx}
+                                className="chat_bubble_container"
+                              >
+                                <div className="imessage-bubble imessage-from-them text-white">
+                                  {typedResponse}
+                                  {phase === "responding" && (
+                                    <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-white/60 align-middle" />
+                                  )}
+                                </div>
+                              </m.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      </div>
+
+                      {/* Bot hover actions — always last, after all content */}
+                      {showResponse && (
+                        <div
+                          className="bot-actions ml-10.75 flex flex-col transition-all"
+                          style={{ opacity: 0, visibility: "hidden" }}
+                        >
+                          <span className="p-1 py-2 text-xs text-nowrap text-zinc-400 select-text">
                             just now
                           </span>
                           <div className="flex w-fit items-center">
@@ -262,6 +491,8 @@ export default function ChatDemoSection() {
                               { Icon: LinkBackwardIcon, label: "Reply" },
                               { Icon: Copy01Icon, label: "Copy" },
                               { Icon: PinIcon, label: "Pin" },
+                              { Icon: ThumbsUpIcon, label: "Helpful" },
+                              { Icon: ThumbsDownIcon, label: "Not helpful" },
                             ].map(({ Icon, label }) => (
                               <button
                                 key={label}
@@ -275,247 +506,58 @@ export default function ChatDemoSection() {
                             ))}
                           </div>
                         </div>
-                      </div>
-                      <div className="min-w-10">
-                        <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
-                          <AvatarImage
-                            src="https://github.com/aryanranderiya.png"
-                            alt="Aryan"
-                          />
-                          <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
-                            AR
-                          </AvatarFallback>
-                        </Avatar>
-                      </div>
-                    </m.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Loading indicator */}
-                <AnimatePresence mode="wait">
-                  {showLoading && (
-                    <m.div
-                      key={`loading-${uc.id}-${loadingKey}`}
-                      initial={{ opacity: 0, y: 8 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={tx}
-                      className="mb-4 flex items-center gap-3"
-                    >
-                      {loadingCat ? (
-                        getToolCategoryIcon(loadingCat, {
-                          size: 18,
-                          width: 18,
-                          height: 18,
-                          iconOnly: true,
-                          pulsating: true,
-                        })
-                      ) : (
-                        <MiniWaveSpinner />
                       )}
-                      <AnimatePresence mode="wait">
-                        <m.span
-                          key={loadingKey}
-                          variants={slideUp}
-                          initial="initial"
-                          animate="animate"
-                          exit="exit"
-                          transition={tx}
-                          className="animate-shine bg-size-[200%_100%] w-fit bg-clip-text text-sm font-medium text-transparent"
-                          style={{
-                            backgroundImage:
-                              "linear-gradient(90deg, rgb(255 255 255 / 0.3) 20%, rgb(255 255 255) 50%, rgb(255 255 255 / 0.3) 80%)",
-                          }}
-                        >
-                          {loadingText}
-                        </m.span>
-                      </AnimatePresence>
-                    </m.div>
-                  )}
-                </AnimatePresence>
-
-                {/* Bot row: tool calls → text → final card */}
-                <div
-                  id={`bot-${uc.id}`}
-                  className="group relative flex flex-col"
-                  onMouseOver={(e) => {
-                    const el =
-                      e.currentTarget.querySelector<HTMLElement>(
-                        ".bot-actions",
-                      );
-                    if (el) {
-                      el.style.opacity = "1";
-                      el.style.visibility = "visible";
-                    }
-                  }}
-                  onMouseOut={(e) => {
-                    const el =
-                      e.currentTarget.querySelector<HTMLElement>(
-                        ".bot-actions",
-                      );
-                    if (el) {
-                      el.style.opacity = "0";
-                      el.style.visibility = "hidden";
-                    }
-                  }}
-                >
-                  {/* Tool calls — above all bot content */}
-                  <AnimatePresence>
-                    {showTools && (
-                      <div className="mb-2 ml-10.75">
-                        <DemoToolCalls
-                          tools={uc.tools}
-                          expanded={toolsExpanded}
-                          onToggle={() => setToolsExpanded((e) => !e)}
-                        />
-                      </div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Final card — above the text bubble, below tool calls */}
-                  <AnimatePresence>
-                    {showFinalCard && (
-                      <m.div
-                        key={`card-${uc.id}`}
-                        initial={{ opacity: 0, y: 10, scale: 0.97 }}
-                        animate={{ opacity: 1, y: 0, scale: 1 }}
-                        transition={{
-                          duration: 0.3,
-                          ease: [0.34, 1.2, 0.64, 1],
-                        }}
-                        className="ml-10.75 mb-3"
-                      >
-                        <DemoFinalCard type={uc.finalCard} />
-                      </m.div>
-                    )}
-                  </AnimatePresence>
-
-                  {/* Bot row: logo + text bubble — always at the bottom */}
-                  <div className="flex items-end gap-1">
-                    {/* GAIA logo — pinned to bottom, only with response */}
-                    <div className="relative bottom-0 min-w-10 shrink-0">
-                      <AnimatePresence>
-                        {showBotLogo && (
-                          <m.div
-                            key="bot-logo"
-                            initial={{ opacity: 0, scale: 0.8 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            transition={tx}
-                          >
-                            <Image
-                              src="/images/logos/logo.webp"
-                              width={28}
-                              height={28}
-                              loading="lazy"
-                              alt="GAIA"
-                              className="relative z-10"
-                            />
-                          </m.div>
-                        )}
-                      </AnimatePresence>
-                    </div>
-
-                    <div className="chatbubblebot_parent flex-1">
-                      {/* Text response */}
-                      <AnimatePresence>
-                        {showResponse && (
-                          <m.div
-                            key={`response-${uc.id}`}
-                            initial={{ opacity: 0, y: 6 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={tx}
-                            className="chat_bubble_container"
-                          >
-                            <div className="imessage-bubble imessage-from-them text-white">
-                              {typedResponse}
-                              {phase === "responding" && (
-                                <span className="ml-0.5 inline-block h-3.5 w-0.5 animate-pulse bg-white/60 align-middle" />
-                              )}
-                            </div>
-                          </m.div>
-                        )}
-                      </AnimatePresence>
                     </div>
                   </div>
-
-                  {/* Bot hover actions — always last, after all content */}
-                  {showResponse && (
-                    <div
-                      className="bot-actions ml-10.75 flex flex-col transition-all"
-                      style={{ opacity: 0, visibility: "hidden" }}
-                    >
-                      <span className="p-1 py-2 text-xs text-nowrap text-zinc-400 select-text">
-                        just now
-                      </span>
-                      <div className="flex w-fit items-center">
-                        {[
-                          { Icon: LinkBackwardIcon, label: "Reply" },
-                          { Icon: Copy01Icon, label: "Copy" },
-                          { Icon: PinIcon, label: "Pin" },
-                          { Icon: ThumbsUpIcon, label: "Helpful" },
-                          { Icon: ThumbsDownIcon, label: "Not helpful" },
-                        ].map(({ Icon, label }) => (
-                          <button
-                            key={label}
-                            type="button"
-                            aria-label={label}
-                            title={label}
-                            className="aspect-square size-7.5 min-w-7.5 rounded-md p-0 text-zinc-500 hover:text-zinc-300"
-                          >
-                            <Icon height="18" width="18" />
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                 </div>
-              </div>
-            </div>
 
-            {/* Composer */}
-            <div className="relative shrink-0 px-4 pb-4 w-full">
-              <DummyComposer hideIntegrationBanner />
-            </div>
+                {/* Composer */}
+                <div className="relative shrink-0 px-4 pb-4 w-full">
+                  <DummyComposer hideIntegrationBanner />
+                </div>
+              </>
+            )}
           </div>
         </div>
       </m.div>
 
-      {/* Use case chips + retry */}
-      <m.div
-        initial={{ opacity: 0, y: 12 }}
-        whileInView={{ opacity: 1, y: 0 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.4, delay: 0.2 }}
-        className="relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl"
-      >
-        <div className="hidden sm:block" />
-        <div className="flex items-center justify-center gap-2">
-          {USE_CASES.map((useCase, i) => (
-            <Chip
-              key={useCase.id}
-              // radius="sm"
-              size="lg"
-              variant={activeUseCase === i ? "shadow" : "flat"}
-              className={`cursor-pointer select-none`}
-              onClick={() => switchUseCase(i)}
-            >
-              {useCase.label}
-            </Chip>
-          ))}
-        </div>
-
-        <Button
-          type="button"
-          aria-label="Retry"
-          title="Replay demo"
-          onPress={() => switchUseCase(activeUseCase)}
-          isIconOnly
-          radius="full"
-          variant="light"
+      {/* Use case chips + retry — only for chat demo */}
+      {activePage === "chats" && (
+        <m.div
+          initial={{ opacity: 0, y: 12 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          className="relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl"
         >
-          <RedoIcon width={20} height={20} />
-        </Button>
-      </m.div>
+          <div className="hidden sm:block" />
+          <div className="flex items-center justify-center gap-2">
+            {USE_CASES.map((useCase, i) => (
+              <Chip
+                key={useCase.id}
+                size="lg"
+                variant={activeUseCase === i ? "shadow" : "flat"}
+                className="cursor-pointer select-none"
+                onClick={() => switchUseCase(i)}
+              >
+                {useCase.label}
+              </Chip>
+            ))}
+          </div>
+
+          <Button
+            type="button"
+            aria-label="Retry"
+            title="Replay demo"
+            onPress={() => switchUseCase(activeUseCase)}
+            isIconOnly
+            radius="full"
+            variant="flat"
+          >
+            <RedoIcon width={20} height={20} />
+          </Button>
+        </m.div>
+      )}
     </div>
   );
 }

@@ -47,7 +47,7 @@ const DEMO_WORKFLOW = {
 
 const wfEase = [0.32, 0.72, 0, 1] as const;
 const wfTx = { duration: 0.22, ease: wfEase };
-const wfSlideUp = {
+const _wfSlideUp = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -8 },
