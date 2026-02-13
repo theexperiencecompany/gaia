@@ -221,7 +221,9 @@ export default function ChatDemoSection() {
             activePage={activePage}
             onPageChange={(page) => {
               setActivePage(page);
-              if (page === "chats" && phase === "idle") {
+              if (page !== "chats") {
+                clearAll();
+              } else if (phase === "idle") {
                 runAnimation(activeCaseRef.current);
               }
             }}

@@ -65,27 +65,27 @@ export default function DemoSidebar({
               {NAV_BUTTONS.map(({ Icon, label, page }) => {
                 const isActive = page === activePage;
                 return (
-                  <Button
+                  <button
                     key={label}
-                    size="sm"
-                    variant={isActive ? "flat" : "light"}
-                    color="default"
-                    className={`w-full justify-start text-sm focus-visible:outline-none ${
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (page) onPageChange(page);
+                    }}
+                    className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition-colors ${
                       isActive
-                        ? "text-zinc-300"
-                        : "text-zinc-400 hover:text-zinc-300"
-                    }`}
-                    onPress={() => page && onPageChange(page)}
+                        ? "bg-zinc-800 text-zinc-300"
+                        : "text-zinc-400 hover:bg-zinc-800/50 hover:text-zinc-300"
+                    } ${page ? "cursor-pointer" : "cursor-default opacity-60"}`}
                   >
-                    <div className="flex w-full items-center gap-2">
-                      <div className="flex w-4.25 min-w-4.25 items-center justify-center">
-                        <Icon width={18} height={18} />
-                      </div>
-                      <span className="w-[calc(100%-45px)] max-w-50 truncate text-left">
-                        {label}
-                      </span>
+                    <div className="flex w-4.25 min-w-4.25 items-center justify-center">
+                      <Icon width={18} height={18} />
                     </div>
-                  </Button>
+                    <span className="w-[calc(100%-45px)] max-w-50 truncate text-left">
+                      {label}
+                    </span>
+                  </button>
                 );
               })}
             </div>
