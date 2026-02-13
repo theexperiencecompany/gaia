@@ -1,11 +1,31 @@
 import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 import Link from "next/link";
-
+import ProgressiveImage from "@/components/ui/ProgressiveImage";
+import type { TimeOfDay } from "@/features/landing/utils/timeOfDay";
 import { DiscordIcon, Github, TwitterIcon, WhatsappIcon } from "@/icons";
 
 import { SplitTextBlur } from "../hero/SplitTextBlur";
 import GetStartedButton from "../shared/GetStartedButton";
+
+const SWISS_KID_WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
+  morning: {
+    webp: "/images/wallpapers/swiss kid morning.webp",
+    png: "/images/wallpapers/swiss kid morning.png",
+  },
+  day: {
+    webp: "/images/wallpapers/swiss kid day.webp",
+    png: "/images/wallpapers/swiss kid day.png",
+  },
+  evening: {
+    webp: "/images/wallpapers/swiss kid evening.webp",
+    png: "/images/wallpapers/swiss kid evening.png",
+  },
+  night: {
+    webp: "/images/wallpapers/swiss kid night.webp",
+    png: "/images/wallpapers/swiss kid night.png",
+  },
+};
 
 export const SOCIAL_LINKS = [
   {
@@ -65,38 +85,77 @@ export const SOCIAL_LINKS = [
 
 export default function FinalSection({
   showSocials = true,
+  timeOfDay = null,
+  isDark = false,
+  onTextClick,
 }: {
   showSocials?: boolean;
+  timeOfDay?: TimeOfDay | null;
+  isDark?: boolean;
+  onTextClick?: () => void;
 }) {
+  const wallpaper = timeOfDay ? SWISS_KID_WALLPAPERS[timeOfDay] : null;
+
   return (
     <div className="relative z-1 m-0! flex min-h-[90vh] w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
-      <div className="pointer-events-none absolute inset-x-0 -top-5 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
-      <div className="absolute inset-0 h-full w-full">
-        <Image
-          src="/images/wallpapers/landscape.webp"
-          alt="Wallpaper"
-          fill
-          className="object-cover"
-          sizes="100vw"
-          priority
-        />
+      <div className="pointer-events-none absolute inset-x-0 -top-0 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
+      <div className="absolute bottom-0 left-0 right-0">
+        {wallpaper ? (
+          <ProgressiveImage
+            webpSrc={wallpaper.webp}
+            pngSrc={wallpaper.png}
+            alt="Wallpaper"
+            className="object-cover object-bottom"
+            shouldHaveInitialFade={true}
+            priority={false}
+          />
+        ) : (
+          <Image
+            src="/images/wallpapers/landscape.webp"
+            alt="Wallpaper"
+            fill
+            className="object-cover object-bottom"
+            sizes="100vw"
+          />
+        )}
       </div>
 
       <div
         className={`relative z-2 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
       >
-        <SplitTextBlur
-          text="Stop doing everything yourself."
-          delay={0}
-          className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug"
-        />
+        <div onClick={onTextClick} className="cursor-default select-none">
+          {isDark ? (
+            <SplitTextBlur
+              text="Stop doing everything yourself."
+              delay={0}
+              className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug"
+              gradient="linear-gradient(to bottom, #ffffff, #dbdbdb)"
+            />
+          ) : (
+            <SplitTextBlur
+              text="Stop doing everything yourself."
+              delay={0}
+              className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug"
+              gradient="linear-gradient(to bottom, #837e88, #000000)"
+            />
+          )}
+        </div>
 
-        <div className="z-1 mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-foreground-600 sm:px-0 sm:text-xl sm:leading-7 md:text-2xl">
+        <div
+          className={`z-1 mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter sm:px-0 sm:text-xl sm:leading-7 md:text-2xl ${isDark ? "text-zinc-200" : "text-black"}`}
+        >
           Join thousands who stopped doing manually what GAIA can handle for
           them.
         </div>
-        <GetStartedButton />
+        <GetStartedButton
+          btnColor={isDark ? "#00bbff" : "#000000"}
+          classname={
+            isDark
+              ? "text-black! text-lg h-12 px-2 rounded-2xl"
+              : "text-white! text-lg h-12 px-2 rounded-2xl"
+          }
+        />
 
         {showSocials && (
           <div className="mt-4 flex items-center gap-3 sm:mt-6 sm:gap-2">

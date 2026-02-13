@@ -122,7 +122,12 @@ export default function LandingPageClient() {
           <FAQAccordion />
           <LandingDownloadSection />
           <CommunitySection />
-          <FinalSection showSocials={false} />
+          <FinalSection
+            showSocials={false}
+            timeOfDay={timeOfDay}
+            isDark={isDark}
+            onTextClick={handleTextClick}
+          />
         </div>
       </div>
     </LazyMotionProvider>
