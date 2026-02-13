@@ -202,7 +202,7 @@ export default function DemoWorkflowsView() {
 
       {/* User Workflows Grid */}
       <div className="flex flex-col gap-6">
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {DEMO_USER_WORKFLOWS.map((wf) => (
             <DemoWorkflowCard
               key={wf.id}
@@ -234,7 +234,7 @@ export default function DemoWorkflowsView() {
             useful!
           </p>
         </div>
-        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {DEMO_COMMUNITY_WORKFLOWS.map((wf) => (
             <DemoWorkflowCard
               key={wf.id}

@@ -5,6 +5,7 @@ export type DemoPage =
   | "calendar"
   | "integrations"
   | "workflows"
+  | "todos"
   | "chats";
 
 export type FinalCardType =
