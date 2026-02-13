@@ -21,7 +21,7 @@ export default function CommunitySection() {
         </div>
 
         {/* Right Column - Social Buttons 2x2 Grid */}
-        <div className="grid grid-cols-2 gap-3 w-fit ml-auto">
+        <div className="grid grid-cols-2 gap-3 w-fit mx-auto md:ml-auto">
           {SOCIAL_LINKS.map(({ href, ariaLabel, icon, label, buttonProps }) => (
             <Link
               key={href}
@@ -32,7 +32,7 @@ export default function CommunitySection() {
             >
               <RaisedButton
                 color={buttonProps.color}
-                className={`flex h-auto w-40 flex-row items-center justify-center gap-2  ${label === "GitHub" ? "text-white" : "text-black!"}`}
+                className={`flex h-auto w-32 sm:w-40 flex-row items-center justify-center gap-2  ${label === "GitHub" ? "text-white" : "text-black!"}`}
               >
                 {icon &&
                   React.cloneElement(icon, {

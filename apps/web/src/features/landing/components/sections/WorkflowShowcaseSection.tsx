@@ -27,12 +27,12 @@ const CONTENT_SECTIONS = [
 
 export default function WorkflowShowcaseSection() {
   return (
-    <div className="relative mx-auto mb-20 flex w-full flex-col justify-center px-[4em]">
+    <div className="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-4 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="mb-2 text-xl font-light text-primary sm:text-2xl">
+      <div className="mb-2 text-xl font-light text-primary sm:text-2xl text-center lg:text-left">
         Kill the Busywork
       </div>
-      <div className="mb-8 font-serif text-4xl font-normal sm:text-5xl">
+      <div className="mb-8 font-serif text-4xl font-normal sm:text-5xl text-center lg:text-left">
         Your most draining tasks, handled without you
       </div>
 

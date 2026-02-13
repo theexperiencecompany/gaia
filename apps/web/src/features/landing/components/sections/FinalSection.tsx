@@ -69,7 +69,7 @@ export default function FinalSection({
   showSocials?: boolean;
 }) {
   return (
-    <div className="relative z-1 m-0! flex min-h-[90vh] w-screen flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
+    <div className="relative z-1 m-0! flex min-h-[90vh] w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 -top-5 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
       <div className="absolute inset-0 h-full w-full">
@@ -89,7 +89,7 @@ export default function FinalSection({
         <SplitTextBlur
           text="Stop doing everything yourself."
           delay={0}
-          className="z-10 text-center text-[2.2rem] font-medium sm:text-8xl tracking-tight leading-snug"
+          className="z-10 text-center text-[2.2rem] font-medium sm:text-5xl md:text-8xl tracking-tight leading-snug"
         />
 
         <div className="z-1 mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter text-foreground-600 sm:px-0 sm:text-xl sm:leading-7 md:text-2xl">

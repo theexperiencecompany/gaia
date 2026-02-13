@@ -221,7 +221,7 @@ export default function WorkflowDemoAnimation() {
 
                 {/* Fixed composer at bottom */}
                 {showComposer && (
-                  <div className="shrink-0 px-3 pb-3 [&_.searchbar]:w-full! [&_.searchbar_container]:w-full!">
+                  <div className="shrink-0 px-3 pb-3">
                     <DummyComposer hideIntegrationBanner />
                   </div>
                 )}

@@ -11,7 +11,7 @@ export default function HeroSection() {
   // );
 
   return (
-    <div className="relative w-screen flex-col gap-8 pb-40">
+    <div className="relative w-full flex-col gap-8 pb-20 sm:pb-40">
       <MotionContainer
         className="relative z-2 flex h-full flex-col items-center justify-start gap-4 bg-transparent"
         staggerDelay={0.07}
@@ -50,16 +50,16 @@ export default function HeroSection() {
 
         <div className="relative">
           <div className="mb-6 max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-black sm:px-0 sm:text-xl">
-            GAIA handles your emails, tasks, calendar, and workflows,
-            <br /> so you can focus on work that actually matters.{" "}
+            GAIA handles your emails, tasks, calendar, and workflows, so you can
+            focus on work that actually matters.{" "}
           </div>
           <div className="mb-6 absolute top-0 blur-sm max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-white z-[-1] sm:px-0 sm:text-xl">
-            GAIA handles your emails, tasks, calendar, and workflows,
-            <br /> so you can focus on work that actually matters.
+            GAIA handles your emails, tasks, calendar, and workflows, so you can
+            focus on work that actually matters.
           </div>
           <div className="mb-6 absolute top-0 blur-lg max-w-(--breakpoint-lg) px-4 py-0 text-center text-lg leading-7 font-normal tracking-tighter text-white z-[-1] sm:px-0 sm:text-xl">
-            GAIA handles your emails, tasks, calendar, and workflows,
-            <br /> so you can focus on work that actually matters.
+            GAIA handles your emails, tasks, calendar, and workflows, so you can
+            focus on work that actually matters.
           </div>
         </div>
         <div className="flex gap-4">

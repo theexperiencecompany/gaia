@@ -63,7 +63,7 @@ export default function LandingPageClient() {
           <HeroSection />
         </section>
 
-        <section className="relative z-20 w-full py-20 mb-30">
+        <section className="relative z-20 w-full py-20 mb-12 sm:mb-30">
           <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[10vh] bg-linear-to-b from-black to-transparent" />
 
           <Image

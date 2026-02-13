@@ -201,6 +201,7 @@ const TOOL_ICONS = [
     opacity: 0.52,
     blur: 0.8,
     delay: 2.8,
+    hideMobile: true,
   },
   {
     src: "/images/icons/macos/clickup.webp",
@@ -212,6 +213,7 @@ const TOOL_ICONS = [
     opacity: 0.52,
     blur: 0.9,
     delay: 3.2,
+    hideMobile: true,
   },
   {
     src: "/images/icons/linkedin.svg",
@@ -223,6 +225,7 @@ const TOOL_ICONS = [
     opacity: 0.52,
     blur: 0.8,
     delay: 2.6,
+    hideMobile: true,
   },
   {
     src: "/images/icons/macos/instagram.webp",
@@ -234,6 +237,7 @@ const TOOL_ICONS = [
     opacity: 0.48,
     blur: 0.9,
     delay: 3.0,
+    hideMobile: true,
   },
   {
     src: "/images/icons/googlesheets.webp",
@@ -245,6 +249,7 @@ const TOOL_ICONS = [
     opacity: 0.55,
     blur: 0.8,
     delay: 2.2,
+    hideMobile: true,
   },
   {
     src: "/images/icons/macos/airtable.webp",
@@ -256,6 +261,7 @@ const TOOL_ICONS = [
     opacity: 0.52,
     blur: 0.9,
     delay: 2.4,
+    hideMobile: true,
   },
   {
     src: "/images/icons/macos/youtube.webp",
@@ -267,6 +273,7 @@ const TOOL_ICONS = [
     opacity: 0.52,
     blur: 0.8,
     delay: 3.4,
+    hideMobile: true,
   },
   {
     src: "/images/icons/macos/teams.webp",
@@ -278,6 +285,7 @@ const TOOL_ICONS = [
     opacity: 0.52,
     blur: 0.8,
     delay: 3.1,
+    hideMobile: true,
   },
 
   // Outermost — decorative, most blur (1.5px)
@@ -291,6 +299,7 @@ const TOOL_ICONS = [
     opacity: 0.38,
     blur: 1.5,
     delay: 3.8,
+    hideMobile: true,
   },
 ];
 
@@ -302,6 +311,14 @@ export default function Tired() {
   // Use refs so observers don't re-create on state changes
   const hasAnimatedRef = useRef(false);
   const isLeavingRef = useRef(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 640);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   useEffect(() => {
     hasAnimatedRef.current = hasAnimated;
@@ -350,7 +367,7 @@ export default function Tired() {
   }, []);
 
   return (
-    <section className="relative flex flex-col items-center justify-center px-4 py-20 sm:py-32">
+    <section className="relative flex flex-col items-center justify-center px-4 sm:px-6 py-20 sm:py-32">
       <style>{`
         @keyframes tool-float {
           0%, 100% { transform: translateY(0px); }
@@ -414,7 +431,7 @@ export default function Tired() {
       {/* Icon constellation */}
       <div
         ref={containerRef}
-        className="relative mt-12 aspect-square w-full max-w-2xl sm:mt-20"
+        className="relative mt-12 aspect-square w-full max-w-2xl sm:mt-20 overflow-hidden sm:overflow-visible"
         style={{
           background:
             "radial-gradient(circle at center, rgba(0, 187, 255, 0.05) 0%, transparent 60%)",
@@ -440,6 +457,11 @@ export default function Tired() {
 
         {/* Tool icons — outside the bg container, positioned in the same relative space */}
         {TOOL_ICONS.map((icon) => {
+          if (isMobile && (icon as { hideMobile?: boolean }).hideMobile)
+            return null;
+          const displaySize = isMobile
+            ? Math.round(icon.size * 0.7)
+            : icon.size;
           const scatterDuration = 0.8 + icon.delay * 0.15;
           const scatterDelay = icon.delay * 0.12;
           const floatDelay = scatterDuration + scatterDelay;
@@ -497,13 +519,13 @@ export default function Tired() {
                   <Image
                     src={icon.src}
                     alt={icon.alt}
-                    width={icon.size}
-                    height={icon.size}
+                    width={displaySize}
+                    height={displaySize}
                     loading="lazy"
                     className="rounded-xl object-contain"
                     style={{
-                      width: icon.size,
-                      height: icon.size,
+                      width: displaySize,
+                      height: displaySize,
                       transform: `rotate(${icon.rotate}deg)`,
                     }}
                   />

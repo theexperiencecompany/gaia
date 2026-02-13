@@ -27,7 +27,7 @@ import MiniWaveSpinner from "./MiniWaveSpinner";
 import type { Phase } from "./types";
 
 export default function ChatDemoSection() {
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activeUseCase, setActiveUseCase] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -138,6 +138,10 @@ export default function ChatDemoSection() {
     return () => clearAll();
   }, [isInView]);
 
+  useEffect(() => {
+    setSidebarOpen(window.innerWidth >= 768);
+  }, []);
+
   const switchUseCase = (idx: number) => {
     activeCaseRef.current = idx;
     setActiveUseCase(idx);
@@ -181,7 +185,7 @@ export default function ChatDemoSection() {
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5, ease }}
-        className="overflow-hidden rounded-3xl h-[85vh] w-[80vw]"
+        className="overflow-hidden rounded-3xl h-[65vh] sm:h-[85vh] w-[95vw] sm:w-[80vw]"
         style={
           {
             "--color-primary-bg": "#111111",
@@ -466,7 +470,7 @@ export default function ChatDemoSection() {
             </div>
 
             {/* Composer */}
-            <div className="relative shrink-0 px-4 pb-4 [&_.searchbar]:w-[65%]! [&_.searchbar_container]:w-full!">
+            <div className="relative shrink-0 px-4 pb-4 w-full">
               <DummyComposer hideIntegrationBanner />
             </div>
           </div>
@@ -479,9 +483,9 @@ export default function ChatDemoSection() {
         whileInView={{ opacity: 1, y: 0 }}
         viewport={{ once: true }}
         transition={{ duration: 0.4, delay: 0.2 }}
-        className="relative mt-6 flex w-full flex-wrap items-center justify-between gap-2 max-w-7xl"
+        className="relative mt-6 flex w-full flex-wrap items-center justify-end sm:justify-between gap-2 max-w-7xl"
       >
-        <div />
+        <div className="hidden sm:block" />
         <div className="flex items-center justify-center gap-2">
           {USE_CASES.map((useCase, i) => (
             <Chip
