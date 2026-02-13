@@ -256,6 +256,66 @@ const TOOL_RENDERERS: Record<
       </Card.Body>
     </Card>
   ),
+
+  todo_progress_data: (data, baseKey) => {
+    const progress = data as Record<
+      string,
+      {
+        todos?: { id: string; content: string; status: string }[];
+        source?: string;
+      }
+    >;
+    const allTodos: {
+      id: string;
+      content: string;
+      status: string;
+      source: string;
+    }[] = [];
+    for (const [source, snapshot] of Object.entries(progress)) {
+      if (snapshot?.todos) {
+        for (const todo of snapshot.todos) {
+          allTodos.push({ ...todo, source });
+        }
+      }
+    }
+    if (allTodos.length === 0) return null;
+    const completedCount = allTodos.filter(
+      (t) => t.status === "completed",
+    ).length;
+    const statusIcon: Record<string, string> = {
+      completed: "\u2713",
+      in_progress: "\u2192",
+      cancelled: "\u2717",
+      pending: "\u25CB",
+    };
+    return (
+      <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
+        <Card.Body className="py-3 px-4">
+          <View className="flex-row items-center justify-between mb-1">
+            <Text className="text-xs text-muted">Task Progress</Text>
+            <Text className="text-xs text-muted">
+              {completedCount}/{allTodos.length}
+            </Text>
+          </View>
+          {allTodos.map((todo) => (
+            <View
+              key={`${todo.source}-${todo.id}`}
+              className="flex-row items-start gap-2 mb-0.5"
+            >
+              <Text className="text-xs text-muted w-4">
+                {statusIcon[todo.status] ?? "\u25CB"}
+              </Text>
+              <Text
+                className={`text-xs flex-1 ${todo.status === "completed" ? "text-success" : todo.status === "in_progress" ? "text-primary" : "text-muted"}`}
+              >
+                {todo.content}
+              </Text>
+            </View>
+          ))}
+        </Card.Body>
+      </Card>
+    );
+  },
 };
 
 interface ToolDataRendererProps {

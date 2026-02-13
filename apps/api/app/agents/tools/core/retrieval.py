@@ -35,6 +35,103 @@ from langgraph.store.base import BaseStore, SearchItem
 
 WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name]
 
+# ---------------------------------------------------------------------------
+# retrieve_tools docstring (doubles as LLM-facing tool description)
+# ---------------------------------------------------------------------------
+# The base docstring covers discovery and binding modes. The subagent section
+# is appended only when include_subagents=True so that provider/spawned
+# subagents never see delegation guidance they can't act on.
+
+_RETRIEVE_TOOLS_BASE_DOC = """\
+Discover available tools or load specific tools by exact name.
+
+This is your primary interface to the tool ecosystem. It supports TWO modes:
+
+—DISCOVERY MODE (query)
+Use natural language to semantically search for relevant tools.
+
+IMPORTANT BEHAVIOR:
+- Discovery results are LIMITED and NOT exhaustive
+- Not all relevant tools may be returned in a single query
+- Absence of a tool in results does NOT mean it does not exist
+- You are expected to retry with different wording if needed
+
+You may:
+- Rephrase queries
+- Try broader or narrower intent
+- Use multiple intents in a single query (comma-separated)
+
+Examples of valid queries:
+- "send email"
+- "email operations"
+- "send email, delete draft"
+- "create pull request, list branches"
+
+The query is semantic, not keyword-based. Comma-separated intents
+are treated as a single semantic search and are encouraged when
+exploring related capabilities.
+
+Discovery mode ONLY returns tool names. Tools are NOT loaded.
+
+—BINDING MODE (exact_tool_names)
+Load tools by their exact names.
+- Use this ONLY after discovery or when exact names are already known
+- Invalid or unknown tool names are ignored
+- Successfully validated tools become available for execution
+
+—RECOMMENDED WORKFLOW
+1. Call retrieve_tools(query="your intent") to discover tools
+2. Review returned tool names
+3. Retry discovery with alternate queries if needed
+4. Call retrieve_tools(exact_tool_names=[...]) to bind tools
+5. Execute bound tools
+
+—TOOL NAME FORMATS
+- Regular tools: "GMAIL_SEND_DRAFT", "CREATE_TODO"
+
+—ARGS
+query:
+    Natural language description of intent for discovery.
+    Results are limited and best-effort.
+    Retry with different phrasing if needed.
+
+exact_tool_names:
+    Exact tool names to load and bind for execution.
+
+—RETURNS
+RetrieveToolsResult with:
+- tools_to_bind: tools that are loaded and executable
+- response: tool names discovered or validated
+
+—EXAMPLES
+1. Find and reply to email (Gmail)
+Discover:
+  retrieve_tools(query="find emails, reply to thread")
+  → returns ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
+Bind & Execute:
+  retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS","GMAIL_REPLY_TO_THREAD"])
+  → GMAIL_FETCH_EMAILS(...) returns email list
+  → GMAIL_REPLY_TO_THREAD(...) sends reply
+
+2. Search, delete, and recreate tasks with subtasks (Todo)
+Discover:
+  retrieve_tools(query="search todos, delete task, create with subtasks")
+  → returns ["search_todos", "delete_todo", "create_todo", "add_subtask", ...]
+Bind & Execute:
+  retrieve_tools(exact_tool_names=["search_todos","delete_todo","create_todo","add_subtask"])
+  → search_todos(...) finds matching tasks
+  → delete_todo(...) removes old task
+  → create_todo(...) creates new task
+  → add_subtask(...) adds subtasks"""
+
+_RETRIEVE_TOOLS_SUBAGENT_SECTION = """
+
+—SUBAGENT TOOLS
+Discovery may also return subagent tools alongside regular tools.
+- Subagent tool format: "subagent:gmail", "subagent:fb9dfd7e05f8"
+- Subagent tools require delegation via the `handoff` tool
+- They cannot be executed directly"""
+
 
 class RetrieveToolsResult(TypedDict):
     """Result from retrieve_tools function."""
@@ -357,93 +454,6 @@ def get_retrieve_tools_function(
         query: Optional[str] = None,
         exact_tool_names: Optional[list[str]] = None,
     ) -> RetrieveToolsResult:
-        """Discover available tools or load specific tools by exact name.
-
-        This is your primary interface to the tool ecosystem. It supports TWO modes:
-
-        —DISCOVERY MODE (query)
-        Use natural language to semantically search for relevant tools.
-
-        IMPORTANT BEHAVIOR:
-        - Discovery results are LIMITED and NOT exhaustive
-        - Not all relevant tools may be returned in a single query
-        - Absence of a tool in results does NOT mean it does not exist
-        - You are expected to retry with different wording if needed
-
-        You may:
-        - Rephrase queries
-        - Try broader or narrower intent
-        - Use multiple intents in a single query (comma-separated)
-
-        Examples of valid queries:
-        - "send email"
-        - "email operations"
-        - "send email, delete draft"
-        - "create pull request, list branches"
-
-        The query is semantic, not keyword-based. Comma-separated intents
-        are treated as a single semantic search and are encouraged when
-        exploring related capabilities.
-
-        Discovery mode ONLY returns tool names. Tools are NOT loaded.
-
-        —BINDING MODE (exact_tool_names)
-        Load tools by their exact names.
-        - Use this ONLY after discovery or when exact names are already known
-        - Invalid or unknown tool names are ignored
-        - Successfully validated tools become available for execution
-
-        —RECOMMENDED WORKFLOW
-        1. Call retrieve_tools(query="your intent") to discover tools
-        2. Review returned tool names
-        3. Retry discovery with alternate queries if needed
-        4. Call retrieve_tools(exact_tool_names=[...]) to bind tools
-        5. Execute bound tools
-
-        —TOOL NAME FORMATS
-        - Regular tools: "GMAIL_SEND_DRAFT", "CREATE_TODO"
-        - Subagent tools: "subagent:gmail", "subagent:fb9dfd7e05f8"
-
-        Note:
-        - Subagent tools require delegation via the `handoff` tool
-        - Discovery may return subagents alongside regular tools
-
-        —ARGS
-        query:
-            Natural language description of intent for discovery.
-            Results are limited and best-effort.
-            Retry with different phrasing if needed.
-
-        exact_tool_names:
-            Exact tool names to load and bind for execution.
-
-        —RETURNS
-        RetrieveToolsResult with:
-        - tools_to_bind: tools that are loaded and executable
-        - response: tool names discovered or validated
-
-        —EXAMPLES
-        1. Find and reply to email (Gmail)
-        Discover:
-          retrieve_tools(query="find emails, reply to thread")
-          → returns ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
-        Bind & Execute:
-          retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS","GMAIL_REPLY_TO_THREAD"])
-          → GMAIL_FETCH_EMAILS(...) returns email list
-          → GMAIL_REPLY_TO_THREAD(...) sends reply
-
-        2. Search, delete, and recreate tasks with subtasks (Todo)
-        Discover:
-          retrieve_tools(query="search todos, delete task, create with subtasks")
-          → returns ["search_todos", "delete_todo", "create_todo", "add_subtask", ...]
-        Bind & Execute:
-          retrieve_tools(exact_tool_names=["search_todos","delete_todo","create_todo","add_subtask"])
-          → search_todos(...) finds matching tasks
-          → delete_todo(...) removes old task
-          → create_todo(...) creates new task
-          → add_subtask(...) adds subtasks
-        """
-
         if not query and not exact_tool_names:
             raise ValueError(
                 "Either 'query' (for discovery) or 'exact_tool_names' (for binding) is required."
@@ -525,5 +535,13 @@ def get_retrieve_tools_function(
             tools_to_bind=[],
             response=final_tools,
         )
+
+    # Assign the LLM-facing docstring from pre-built constants
+    if include_subagents:
+        retrieve_tools.__doc__ = (
+            _RETRIEVE_TOOLS_BASE_DOC + _RETRIEVE_TOOLS_SUBAGENT_SECTION
+        )
+    else:
+        retrieve_tools.__doc__ = _RETRIEVE_TOOLS_BASE_DOC
 
     return retrieve_tools

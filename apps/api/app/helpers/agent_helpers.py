@@ -338,7 +338,7 @@ def build_agent_config(
 
     config = {
         "configurable": configurable,
-        "recursion_limit": 35,
+        "recursion_limit": 75,
         "metadata": {"user_id": user.get("user_id")},
         "callbacks": callbacks,
         "agent_name": agent_name,

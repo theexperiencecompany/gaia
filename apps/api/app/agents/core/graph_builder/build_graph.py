@@ -13,7 +13,8 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.llm.client import init_llm
-from app.agents.middleware import create_middleware_stack
+from app.agents.middleware import create_comms_middleware, create_executor_middleware
+from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools import memory_tools
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
@@ -43,7 +44,20 @@ async def build_executor_graph(
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({"handoff": handoff_tool})
 
-    middleware = create_middleware_stack()
+    # Build excluded tool names for spawn_subagent: handoff and all subagent:-prefixed
+    excluded_subagent_tools = {"handoff"}
+
+    middleware = create_executor_middleware(
+        subagent_excluded_tools=excluded_subagent_tools,
+    )
+
+    # Wire SubagentMiddleware with LLM and full tool registry
+    for mw in middleware:
+        if isinstance(mw, SubagentMiddleware):
+            mw.set_llm(chat_llm)
+            mw.set_tools(registry=tool_dict)
+            mw.set_store(store)
+            break
 
     builder = create_agent(
         llm=chat_llm,
@@ -105,7 +119,7 @@ async def build_comms_graph(
     }
     store = await get_tools_store()
 
-    middleware = create_middleware_stack()
+    middleware = create_comms_middleware()
 
     builder = create_agent(
         llm=chat_llm,

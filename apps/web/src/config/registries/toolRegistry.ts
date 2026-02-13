@@ -32,6 +32,7 @@ import type {
 import type { NotificationRecord } from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
+import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type {
   TwitterSearchData,
   TwitterUserData,
@@ -109,6 +110,7 @@ export const TOOL_REGISTRY = {
   twitter_user_data: null as unknown as TwitterUserData[],
   workflow_draft: null as unknown as WorkflowDraftData,
   workflow_created: null as unknown as WorkflowCreatedData,
+  todo_progress_data: null as unknown as TodoProgressData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;

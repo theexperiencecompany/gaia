@@ -12,7 +12,7 @@ It handles executing middleware hooks at appropriate points:
 """
 
 import inspect
-from typing import Any, Callable, Optional, Awaitable
+from typing import Any, Awaitable, Callable, Optional
 
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, ToolMessage
@@ -35,6 +35,32 @@ from app.agents.middleware.runtime_adapter import (
     create_tool_call_request,
 )
 from app.config.loggers import app_logger as logger
+
+
+def _has_override(mw: AgentMiddleware, method_name: str) -> bool:
+    """Check if middleware actually overrides a method.
+
+    The base AgentMiddleware defines all hook methods (awrap_model_call,
+    wrap_model_call, etc.) but their default implementations raise
+    NotImplementedError. A naive hasattr() check always returns True,
+    causing the executor to call unimplemented methods.
+
+    This function walks the MRO and returns True only if a concrete
+    subclass (not the AgentMiddleware base) defines the method.
+
+    Args:
+        mw: Middleware instance to check
+        method_name: Name of the method to look for
+
+    Returns:
+        True if the method is overridden by a subclass
+    """
+    for cls in type(mw).__mro__:
+        if cls is AgentMiddleware or cls is object:
+            continue
+        if method_name in cls.__dict__:
+            return True
+    return False
 
 
 class MiddlewareExecutor:
@@ -121,9 +147,9 @@ class MiddlewareExecutor:
         for mw in self.middleware:
             try:
                 # Try async version first
-                if hasattr(mw, "abefore_model"):
+                if _has_override(mw, "abefore_model"):
                     result = await mw.abefore_model(current_state, runtime)
-                elif hasattr(mw, "before_model"):
+                elif _has_override(mw, "before_model"):
                     result = mw.before_model(current_state, runtime)
                     if inspect.iscoroutine(result):
                         result = await result
@@ -169,9 +195,9 @@ class MiddlewareExecutor:
         for mw in self.middleware:
             try:
                 # Try async version first
-                if hasattr(mw, "aafter_model"):
+                if _has_override(mw, "aafter_model"):
                     result = await mw.aafter_model(current_state, runtime)
-                elif hasattr(mw, "after_model"):
+                elif _has_override(mw, "after_model"):
                     result = mw.after_model(current_state, runtime)
                     if inspect.iscoroutine(result):
                         result = await result
@@ -220,13 +246,18 @@ class MiddlewareExecutor:
         # Build the handler chain from inside out
         async def final_handler(req: ModelRequest) -> ModelResponse:
             """Innermost handler - actually calls the model."""
-            response = await invoke_fn(req.state.messages)
-            return ModelResponse(response=response)
+            # Build messages list: prepend system_message if present, then messages
+            messages_to_send: list = []
+            if req.system_message:
+                messages_to_send.append(req.system_message)
+            messages_to_send.extend(req.messages)
+            response = await invoke_fn(messages_to_send)
+            return ModelResponse(result=[response])
 
         # Wrap with middleware (reverse order so first middleware is outermost)
         current_handler = final_handler
         for mw in reversed(self.middleware):
-            if hasattr(mw, "awrap_model_call"):
+            if _has_override(mw, "awrap_model_call"):
                 # Create closure to capture current handler and middleware
                 def make_wrapper(middleware, handler):
                     async def wrapped(req: ModelRequest) -> ModelResponse:
@@ -235,7 +266,7 @@ class MiddlewareExecutor:
                     return wrapped
 
                 current_handler = make_wrapper(mw, current_handler)
-            elif hasattr(mw, "wrap_model_call"):
+            elif _has_override(mw, "wrap_model_call"):
 
                 def make_sync_wrapper(middleware, handler):
                     async def wrapped(req: ModelRequest) -> ModelResponse:
@@ -252,7 +283,10 @@ class MiddlewareExecutor:
         # Execute the chain
         try:
             result = await current_handler(request)
-            return result.response if hasattr(result, "response") else result
+            # ModelResponse.result is list[BaseMessage]; extract the AIMessage
+            if hasattr(result, "result") and isinstance(result.result, list):
+                return result.result[0]  # type: ignore[return-value]
+            return result  # type: ignore[return-value]
         except Exception as e:
             logger.error(f"Middleware wrap_model_call chain failed: {e}")
             # Fallback to direct invocation
@@ -296,7 +330,7 @@ class MiddlewareExecutor:
         # Wrap with middleware (reverse order so first middleware is outermost)
         current_handler = final_handler
         for mw in reversed(self.middleware):
-            if hasattr(mw, "awrap_tool_call"):
+            if _has_override(mw, "awrap_tool_call"):
 
                 def make_wrapper(middleware, handler):
                     async def wrapped(req: ToolCallRequest) -> ToolMessage:
@@ -305,7 +339,7 @@ class MiddlewareExecutor:
                     return wrapped
 
                 current_handler = make_wrapper(mw, current_handler)
-            elif hasattr(mw, "wrap_tool_call"):
+            elif _has_override(mw, "wrap_tool_call"):
 
                 def make_sync_wrapper(middleware, handler):
                     async def wrapped(req: ToolCallRequest) -> ToolMessage:
@@ -329,13 +363,14 @@ class MiddlewareExecutor:
     def has_wrap_model_call(self) -> bool:
         """Check if any middleware has wrap_model_call."""
         return any(
-            hasattr(mw, "wrap_model_call") or hasattr(mw, "awrap_model_call")
+            _has_override(mw, "wrap_model_call")
+            or _has_override(mw, "awrap_model_call")
             for mw in self.middleware
         )
 
     def has_wrap_tool_call(self) -> bool:
         """Check if any middleware has wrap_tool_call."""
         return any(
-            hasattr(mw, "wrap_tool_call") or hasattr(mw, "awrap_tool_call")
+            _has_override(mw, "wrap_tool_call") or _has_override(mw, "awrap_tool_call")
             for mw in self.middleware
         )

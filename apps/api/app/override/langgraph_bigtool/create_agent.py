@@ -112,6 +112,14 @@ def create_agent(
     """
     middleware_executor = MiddlewareExecutor(list(middleware)) if middleware else None
 
+    # Extract tools from middleware (e.g., TodoMiddleware, SubagentMiddleware)
+    middleware_tools: list[BaseTool] = []
+    for mw in middleware or []:
+        mw_tools = getattr(mw, "tools", [])
+        for tool in mw_tools:
+            if isinstance(tool, BaseTool):
+                middleware_tools.append(tool)
+
     retrieve_tools: StructuredTool | None = None
     store_arg = None
     if not disable_retrieve_tools:
@@ -125,7 +133,7 @@ def create_agent(
         store_arg = get_store_arg(retrieve_tools)
 
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
-        sync_execute_hooks(end_graph_hooks, state, config, store)
+        sync_execute_hooks(pre_model_hooks, state, config, store)
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
@@ -136,6 +144,7 @@ def create_agent(
             tools_to_bind.append(retrieve_tools)
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
+        tools_to_bind.extend(middleware_tools)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         response = llm_with_tools.invoke(state["messages"])
 
@@ -166,6 +175,7 @@ def create_agent(
             tools_to_bind.append(retrieve_tools)
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
+        tools_to_bind.extend(middleware_tools)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
@@ -186,7 +196,7 @@ def create_agent(
         if isinstance(response.content, str) and agent_name == "comms_agent":
             response.content = response.content + NEW_MESSAGE_BREAKER
 
-        # Build updated state with response
+        # Build updated state with response for after_model hooks
         updated_state: State = {
             "messages": state.get("messages", []) + [response],
             "selected_tool_ids": state.get("selected_tool_ids", []),
@@ -198,7 +208,15 @@ def create_agent(
                 updated_state, config, store
             )
 
-        return {"messages": [response]}  # type: ignore[return-value]
+        # Return partial state update: new message + any keys added by
+        # after_model (e.g. todos). Messages use an append reducer, so only
+        # return the new response — not the full list.
+        result: dict[str, Any] = {"messages": [response]}
+        base_keys = {"messages", "selected_tool_ids"}
+        for key, value in updated_state.items():
+            if key not in base_keys:
+                result[key] = value
+        return result  # type: ignore[return-value]
 
     def select_tools(
         tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
@@ -328,6 +346,7 @@ def create_agent(
     tool_node = DynamicToolNode(
         tool_registry,  # type: ignore[arg-type]
         middleware_executor=middleware_executor,
+        middleware_tools=middleware_tools,
     )
 
     builder.set_entry_point("agent")

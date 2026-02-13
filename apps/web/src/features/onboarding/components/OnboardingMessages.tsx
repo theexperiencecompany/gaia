@@ -46,6 +46,7 @@ export const OnboardingMessages = ({
               follow_up_actions={undefined}
               image_data={undefined}
               memory_data={undefined}
+              todo_progress={undefined}
               replyToMessage={undefined}
               setOpenImage={() => {}}
               setImageData={() => {}}
@@ -78,6 +79,7 @@ export const OnboardingMessages = ({
               fileData={undefined}
               selectedTool={undefined}
               toolCategory={undefined}
+              todo_progress={undefined}
               selectedWorkflow={undefined}
               selectedCalendarEvent={undefined}
               isConvoSystemGenerated={undefined}

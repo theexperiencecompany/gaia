@@ -82,6 +82,7 @@ import type {
   RedditSearchData,
 } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
+import type { TodoProgressData } from "@/types/features/todoProgressTypes";
 import type {
   TwitterSearchData,
   TwitterUserData,
@@ -105,6 +106,7 @@ import RedditCreatedSection from "./RedditCreatedSection";
 import RedditPostSection from "./RedditPostSection";
 import RedditSearchSection from "./RedditSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
+import TodoProgressSection from "./TodoProgressSection";
 import TodoSection from "./TodoSection";
 import TwitterSearchSection from "./TwitterSearchSection";
 import TwitterUserSection from "./TwitterUserSection";
@@ -419,6 +421,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     <WorkflowCreatedCard
       key={`tool-workflow-created-${index}`}
       workflow={data as WorkflowCreatedData}
+    />
+  ),
+
+  todo_progress_data: (data, index) => (
+    <TodoProgressSection
+      key={`tool-todo-progress-${index}`}
+      todo_progress={data as TodoProgressData}
     />
   ),
 };

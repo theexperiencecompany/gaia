@@ -6,7 +6,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, field_serializer, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_validator
 
 
 class ScheduledTaskStatus(str, Enum):
@@ -70,10 +70,7 @@ class BaseScheduledTask(BaseModel):
             return value.isoformat()
         return None
 
-    class Config:
-        """Pydantic configuration."""
-
-        populate_by_name = True
+    model_config = ConfigDict(populate_by_name=True)
 
 
 class ScheduleConfig(BaseModel):

@@ -21,12 +21,11 @@ gmail:
 
 googledocs:
   # Creates temp doc via GOOGLEDOCS_CREATE_DOCUMENT, deletes via Google Drive
-  share_email: ${TEST_SHARE_EMAIL}  # Email to share docs/sheets with for testing
-
+  share_email: ${TEST_SHARE_EMAIL} # Email to share docs/sheets with for testing
 
 googlesheets:
   # Creates temp spreadsheet via GOOGLESHEETS_CREATE_FILE_FROM_TEXT, deletes after
-  share_email: ${TEST_SHARE_EMAIL}  # Email to share docs/sheets with for testing
+  share_email: ${TEST_SHARE_EMAIL} # Email to share docs/sheets with for testing
 
 notion:
   # Creates temp page via NOTION_CREATE_A_PAGE, archives after (no true delete)

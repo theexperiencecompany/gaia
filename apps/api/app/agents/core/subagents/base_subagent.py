@@ -22,7 +22,7 @@ from app.agents.core.nodes import (
     memory_learning_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
-from app.agents.middleware import create_middleware_stack
+from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.memory_tools import search_memory
@@ -81,7 +81,17 @@ class SubAgentFactory:
         # Add search_memory to scoped_tool_dict so subagents can access user memories
         scoped_tool_dict[search_memory.name] = search_memory
 
-        middleware = create_middleware_stack()
+        middleware = create_subagent_middleware(
+            todo_source=provider,
+            subagent_llm=llm,
+            subagent_registry=scoped_tool_dict,
+        )
+
+        for mw in middleware:
+            if isinstance(mw, SubagentMiddleware):
+                mw.set_tools(registry=scoped_tool_dict, tool_space=tool_space)
+                mw.set_store(store)
+                break
 
         common_kwargs = {
             "llm": llm,

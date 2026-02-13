@@ -16,6 +16,7 @@ from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
+from langgraph.types import Command
 from langgraph_bigtool.graph import State
 
 from app.agents.middleware.executor import MiddlewareExecutor
@@ -35,6 +36,7 @@ class DynamicToolNode(ToolNode):
         self,
         tool_registry: Mapping[str, BaseTool | Callable],
         middleware_executor: "MiddlewareExecutor | None" = None,
+        middleware_tools: list[BaseTool] | None = None,
         **kwargs,
     ):
         """Initialize DynamicToolNode.
@@ -42,12 +44,23 @@ class DynamicToolNode(ToolNode):
         Args:
             tool_registry: Mapping of tool names to tool instances or callables
             middleware_executor: Optional middleware executor for wrap_tool_call hooks
+            middleware_tools: Optional list of tools from middleware (e.g., TodoMiddleware)
             **kwargs: Additional arguments passed to ToolNode
         """
-        # Initialize with current tools
-        super().__init__(list(tool_registry.values()), **kwargs)
+        # Combine registry tools with middleware tools for initialization
+        all_tools = list(tool_registry.values())
+        if middleware_tools:
+            all_tools.extend(middleware_tools)
+
+        super().__init__(all_tools, **kwargs)
         self._tool_registry = tool_registry
         self._middleware_executor = middleware_executor
+        self._middleware_tools = middleware_tools or []
+
+        # Register middleware tools in tools_by_name for lookup
+        for tool in self._middleware_tools:
+            if hasattr(tool, "name"):
+                self.tools_by_name[tool.name] = tool
 
     def _get_tool(self, name: str) -> BaseTool | Callable | None:
         """Look up tool dynamically from registry.
@@ -90,16 +103,46 @@ class DynamicToolNode(ToolNode):
 
         This method is called when middleware with wrap_tool_call is present.
         It wraps each tool invocation with the middleware hooks.
+
+        Middleware tools (plan_tasks, mark_task, add_task) return Command objects
+        that LangGraph must process directly. These are delegated to the parent
+        ToolNode._afunc which handles Commands, arg injection, and validation.
+        Only non-middleware, non-Command tool calls go through the middleware
+        wrap_tool_call chain (e.g. VFSCompactionMiddleware).
         """
+        # Middleware tool names — these return Command and must bypass wrapping
+        mw_tool_names = {t.name for t in self._middleware_tools if hasattr(t, "name")}
+
+        # Check if input contains ONLY middleware tool calls
+        tool_calls = input if isinstance(input, list) else [input]
+        all_middleware = all(tc.get("name", "") in mw_tool_names for tc in tool_calls)
+
+        # If all calls are middleware tools, delegate entirely to parent
+        # which properly handles Command returns, arg injection, etc.
+        if all_middleware:
+            return await super()._afunc(input, config, runtime)
+
         # Get store from runtime if available
         store: BaseStore | None = getattr(runtime, "store", None)
 
-        # The input is a list of tool calls from Send
-        tool_calls = input if isinstance(input, list) else [input]
         results = []
-
         for tool_call in tool_calls:
             tool_name = tool_call.get("name", "")
+
+            # Middleware tools: delegate to parent's execution path
+            if tool_name in mw_tool_names:
+                # Use parent _afunc for this single call — it handles
+                # Command returns, InjectedToolCallId, validation, etc.
+                single_result = await super()._afunc([tool_call], config, runtime)
+                # Parent returns {"messages": [...]} or list — extract results
+                if isinstance(single_result, dict):
+                    results.extend(single_result.get("messages", []))
+                elif isinstance(single_result, list):
+                    results.extend(single_result)
+                else:
+                    results.append(single_result)
+                continue
+
             tool = self._get_tool(tool_name)
 
             # Create minimal state dict for middleware
@@ -120,13 +163,20 @@ class DynamicToolNode(ToolNode):
 
                 if isinstance(resolved_tool, BaseTool):
                     result = await resolved_tool.ainvoke(
-                        tc.get("args", {}), config=config
+                        {**tc, "type": "tool_call"}, config=config
                     )
                 else:
-                    # Callable
                     result = resolved_tool(**tc.get("args", {}))
                     if inspect.iscoroutine(result):
                         result = await result
+
+                # If tool returned a Command, pass through directly
+                if isinstance(result, Command):
+                    return result
+
+                # If tool returned a ToolMessage, pass through
+                if isinstance(result, ToolMessage):
+                    return result
 
                 return ToolMessage(
                     content=str(result) if not isinstance(result, str) else result,
@@ -145,4 +195,10 @@ class DynamicToolNode(ToolNode):
             )
             results.append(result)
 
-        return {"messages": results}
+        # Separate Commands from ToolMessages for proper LangGraph handling
+        has_commands = any(isinstance(r, Command) for r in results)
+        if not has_commands:
+            return {"messages": results}
+
+        # Mixed results: return as list so LangGraph handles Commands
+        return results

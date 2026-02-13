@@ -57,7 +57,7 @@ def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> 
                 # Create a new AI message with filtered tool calls
                 # We need to preserve the message even if all tool calls are filtered out
                 # because it might contain important content/reasoning
-                filtered_msg = msg.copy()
+                filtered_msg = msg.model_copy()
                 filtered_msg.tool_calls = answered_tool_calls
                 filtered_messages.append(filtered_msg)
             else:

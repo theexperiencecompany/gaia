@@ -51,6 +51,7 @@ tool_fields = [
     "twitter_search_data",
     "workflow_draft",
     "workflow_created",
+    "todo_progress_data",
 ]
 
 

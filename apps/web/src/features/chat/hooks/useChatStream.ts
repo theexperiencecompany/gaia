@@ -10,7 +10,6 @@ import {
   ANALYTICS_EVENTS,
   trackConversationCreated,
   trackEvent,
-  trackFirstMessageIfNeeded,
 } from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
@@ -18,6 +17,7 @@ import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionS
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
+import type { TodoProgressSnapshot } from "@/types/features/todoProgressTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared";
 import fetchDate from "@/utils/date/dateUtils";
@@ -153,6 +153,7 @@ export const useChatStream = () => {
       follow_up_actions: sourceMessage.follow_up_actions ?? null,
       image_data: sourceMessage.image_data ?? null,
       memory_data: sourceMessage.memory_data ?? null,
+      todo_progress: sourceMessage.todo_progress ?? null,
       pinned: sourceMessage.pinned ?? false,
       isConvoSystemGenerated: sourceMessage.isConvoSystemGenerated ?? false,
       replyToMessageId: sourceMessage.replyToMessage?.id ?? null,
@@ -246,6 +247,47 @@ export const useChatStream = () => {
       ...data,
       output: toolOutput.output,
     }));
+  };
+
+  const handleTodoProgress = (snapshot: TodoProgressSnapshot) => {
+    // Accumulate snapshots keyed by source on the todo_progress field
+    const existing = refs.current.botMessage?.todo_progress ?? {};
+    const accumulated = {
+      ...existing,
+      [snapshot.source]: snapshot,
+    };
+
+    // Upsert a single tool_data entry so it renders through the tool pipeline
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const progressIdx = existingToolData.findIndex(
+      (e) => e.tool_name === "todo_progress_data",
+    );
+    const progressEntry: ToolDataEntry = {
+      tool_name: "todo_progress_data",
+      tool_category: "",
+      data: accumulated as ToolDataEntry["data"],
+      timestamp: null,
+    };
+
+    const updatedToolData =
+      progressIdx >= 0
+        ? existingToolData.map((e, i) =>
+            i === progressIdx ? progressEntry : e,
+          )
+        : [progressEntry, ...existingToolData];
+
+    updateBotMessage({
+      todo_progress: accumulated,
+      tool_data: updatedToolData,
+    });
+
+    // Sync to store for live rendering
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
   };
 
   const handleImageGeneration = (data: Record<string, unknown>) => {
@@ -450,9 +492,14 @@ export const useChatStream = () => {
       refs.current.accumulatedResponse += data.response;
     }
 
-    // Skip tool_data and tool_output - they're handled separately
+    // Skip tool_data, tool_output, and todo_progress - they're handled separately
     // to avoid double-processing in parseStreamData
-    const { tool_data: _, tool_output: __, ...restData } = data;
+    const {
+      tool_data: _,
+      tool_output: __,
+      todo_progress: ___,
+      ...restData
+    } = data;
     const streamUpdates = parseStreamData(
       restData as Partial<MessageType>,
       refs.current.botMessage,
@@ -538,6 +585,7 @@ export const useChatStream = () => {
       follow_up_actions: refs.current.botMessage.follow_up_actions ?? null,
       image_data: refs.current.botMessage.image_data ?? null,
       memory_data: refs.current.botMessage.memory_data ?? null,
+      todo_progress: refs.current.botMessage.todo_progress ?? null,
       pinned: refs.current.botMessage.pinned ?? false,
       isConvoSystemGenerated:
         refs.current.botMessage.isConvoSystemGenerated ?? false,
@@ -573,6 +621,9 @@ export const useChatStream = () => {
 
       // Handle tool_output events (tool execution results)
       if (data.tool_output) handleToolOutput(data.tool_output);
+
+      // Handle todo_progress events (agent task planning progress)
+      if (data.todo_progress) handleTodoProgress(data.todo_progress);
 
       if (handleImageGeneration(data)) return;
 
