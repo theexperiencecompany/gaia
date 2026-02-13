@@ -80,8 +80,12 @@ const SplitTextBlur = ({
 
   const MotionComponent = m[as] as typeof m.div;
 
+  const gradientStyle = {
+    "--split-gradient": gradient,
+  } as React.CSSProperties;
+
   return (
-    <div className="relative">
+    <div className="relative" style={gradientStyle}>
       <MotionComponent
         ref={ref}
         initial="hidden"
@@ -89,7 +93,7 @@ const SplitTextBlur = ({
         variants={containerVariants}
         className={`${cn(className)} z-[10]`}
         style={{
-          background: gradient,
+          background: "var(--split-gradient)",
           WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",
           backgroundClip: "text",

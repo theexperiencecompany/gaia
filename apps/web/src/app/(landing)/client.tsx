@@ -2,10 +2,17 @@
 
 import dynamic from "next/dynamic";
 import Image from "next/image";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
+import {
+  getTimeOfDay,
+  isDarkTimeOfDay,
+  type TimeOfDay,
+} from "@/features/landing/utils/timeOfDay";
+
+const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
 
 // Below-fold sections — dynamically imported to reduce initial bundle
 const ChatDemoSection = dynamic(
@@ -44,6 +51,26 @@ const FinalSection = dynamic(
 );
 
 export default function LandingPageClient() {
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null);
+  const [clickCount, setClickCount] = useState(0);
+  const isDark = timeOfDay ? isDarkTimeOfDay(timeOfDay) : false;
+
+  useEffect(() => {
+    setTimeOfDay(getTimeOfDay());
+  }, []);
+
+  const handleTextClick = () => {
+    const next = clickCount + 1;
+    setClickCount(next);
+    if (next % 5 === 0) {
+      setTimeOfDay((prev) => {
+        const current = prev ?? getTimeOfDay();
+        const idx = TIME_OF_DAY_CYCLE.indexOf(current);
+        return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
+      });
+    }
+  };
+
   useEffect(() => {
     document.documentElement.style.overflowY = "scroll";
 
@@ -56,11 +83,11 @@ export default function LandingPageClient() {
     <LazyMotionProvider>
       <div className="relative overflow-hidden">
         <div className="absolute inset-0 h-screen w-full opacity-100">
-          <HeroImage />
+          <HeroImage timeOfDay={timeOfDay} />
         </div>
 
         <section className="relative z-20 flex min-h-screen w-full flex-col items-center justify-center">
-          <HeroSection />
+          <HeroSection isDark={isDark} onTextClick={handleTextClick} />
         </section>
 
         <section className="relative z-20 w-full py-28 sm:py-20 mb-12 sm:mb-30">

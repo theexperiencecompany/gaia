@@ -74,7 +74,7 @@ export default function FinalSection({
       <div className="pointer-events-none absolute inset-x-0 -top-5 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
       <div className="absolute inset-0 h-full w-full">
         <Image
-          src="/images/wallpapers/swiss_night.png"
+          src="/images/wallpapers/landscape.webp"
           alt="Wallpaper"
           fill
           className="object-cover"

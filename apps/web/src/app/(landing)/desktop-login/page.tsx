@@ -7,6 +7,10 @@ import { ArrowUpRight } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import Spinner from "@/components/ui/spinner";
 import HeroImage from "@/features/landing/components/hero/HeroImage";
+import {
+  getTimeOfDay,
+  type TimeOfDay,
+} from "@/features/landing/utils/timeOfDay";
 import { useElectron } from "@/hooks/useElectron";
 
 /**
@@ -19,9 +23,14 @@ import { useElectron } from "@/hooks/useElectron";
 export default function DesktopLoginPage() {
   const { isElectron, openExternal } = useElectron();
   const router = useRouter();
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null);
   const [status, setStatus] = useState<
     "ready" | "opened" | "waiting" | "error"
   >("ready");
+
+  useEffect(() => {
+    setTimeOfDay(getTimeOfDay());
+  }, []);
 
   // Redirect to normal login if not in Electron (after brief check)
   useEffect(() => {
@@ -58,7 +67,7 @@ export default function DesktopLoginPage() {
   return (
     <div className="relative flex min-h-screen w-full items-center justify-center">
       <div className="fixed inset-0 z-0 opacity-60">
-        <HeroImage />
+        <HeroImage timeOfDay={timeOfDay} />
       </div>
 
       <div className="relative z-10 w-full max-w-xl px-6">

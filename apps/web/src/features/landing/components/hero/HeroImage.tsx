@@ -1,12 +1,32 @@
 import { useEffect, useRef } from "react";
 
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
+import type { TimeOfDay } from "@/features/landing/utils/timeOfDay";
+
+const WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
+  morning: {
+    webp: "/images/wallpapers/swiss_morning.webp",
+    png: "/images/wallpapers/swiss_morning.png",
+  },
+  day: {
+    webp: "/images/wallpapers/swiss.webp",
+    png: "/images/wallpapers/swiss.png",
+  },
+  evening: {
+    webp: "/images/wallpapers/swiss_evening.webp",
+    png: "/images/wallpapers/swiss_evening.png",
+  },
+  night: {
+    webp: "/images/wallpapers/swiss_night.webp",
+    png: "/images/wallpapers/swiss_night.png",
+  },
+};
 
 export default function HeroImage({
-  shouldHaveInitialFade = false,
+  timeOfDay,
   parallaxSpeed = 0.3,
 }: {
-  shouldHaveInitialFade?: boolean;
+  timeOfDay: TimeOfDay | null;
   parallaxSpeed?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -30,6 +50,8 @@ export default function HeroImage({
     };
   }, [parallaxSpeed]);
 
+  const wallpaper = timeOfDay ? WALLPAPERS[timeOfDay] : null;
+
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <div
@@ -42,13 +64,15 @@ export default function HeroImage({
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent opacity-50" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 
-        <ProgressiveImage
-          webpSrc="/images/wallpapers/swiss.webp"
-          pngSrc="/images/wallpapers/swiss.png"
-          alt="wallpaper"
-          className="object-cover"
-          shouldHaveInitialFade={shouldHaveInitialFade}
-        />
+        {wallpaper && (
+          <ProgressiveImage
+            webpSrc={wallpaper.webp}
+            pngSrc={wallpaper.png}
+            alt="wallpaper"
+            className="object-cover"
+            shouldHaveInitialFade={true}
+          />
+        )}
       </div>
     </div>
   );
