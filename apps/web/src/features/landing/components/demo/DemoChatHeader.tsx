@@ -44,7 +44,7 @@ export default function DemoChatHeader({
     <button
       type="button"
       onClick={onToggleSidebar}
-      className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-primary"
+      className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-primary"
       aria-label="Toggle sidebar"
     >
       {sidebarOpen ? (
@@ -99,7 +99,7 @@ export default function DemoChatHeader({
             key={label}
             type="button"
             aria-label={label}
-            className="flex h-8 w-8 items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-primary"
+            className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-lg text-zinc-400 transition-colors hover:text-primary"
           >
             <Icon className="h-5 w-5" />
           </button>

@@ -26,6 +26,7 @@ import {
   Folder02Icon,
   InboxCheckIcon,
   InboxIcon,
+  InternetIcon,
   Tag01Icon,
   ViewIcon,
   ZapIcon,
@@ -251,34 +252,81 @@ export default function DemoSidebar({
             {activePage === "integrations" && (
               <div className="px-2">
                 <p className="px-2 pb-1 text-xs font-normal text-zinc-600">
-                  Connected
+                  Integrations
                 </p>
-                <div className="flex flex-col gap-1">
+                <div className="flex flex-col gap-0.5">
                   {[
-                    "gmail",
-                    "googlecalendar",
-                    "slack",
-                    "github",
-                    "notion",
-                    "linear",
-                  ].map((id) => (
+                    {
+                      id: "gmail",
+                      name: "Gmail",
+                      status: "connected" as const,
+                    },
+                    {
+                      id: "googlecalendar",
+                      name: "Google Calendar",
+                      status: "connected" as const,
+                    },
+                    {
+                      id: "slack",
+                      name: "Slack",
+                      status: "connected" as const,
+                    },
+                    {
+                      id: "github",
+                      name: "GitHub",
+                      status: "connected" as const,
+                    },
+                    {
+                      id: "notion",
+                      name: "Notion",
+                      status: "connected" as const,
+                    },
+                    {
+                      id: "linear",
+                      name: "Linear",
+                      status: "connected" as const,
+                      isPublic: true,
+                    },
+                    {
+                      id: "todoist",
+                      name: "Todoist",
+                      status: "created" as const,
+                      isPublic: true,
+                    },
+                    {
+                      id: "asana",
+                      name: "Asana",
+                      status: "created" as const,
+                      isPublic: true,
+                    },
+                  ].map((integration) => (
                     <div
-                      key={id}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-400 hover:bg-zinc-800 hover:text-zinc-300 cursor-pointer"
+                      key={integration.id}
+                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 cursor-pointer"
                     >
-                      {getToolCategoryIcon(id, {
+                      {getToolCategoryIcon(integration.id, {
                         width: 18,
                         height: 18,
                         showBackground: false,
                       })}
-                      <span className="flex-1 truncate capitalize">
-                        {id === "googlecalendar"
-                          ? "Google Calendar"
-                          : id === "gmail"
-                            ? "Gmail"
-                            : id.charAt(0).toUpperCase() + id.slice(1)}
+                      <span className="flex-1 truncate">
+                        {integration.name}
                       </span>
-                      <div className="h-2 w-2 rounded-full bg-green-500" />
+                      <div className="flex items-center gap-1.5">
+                        {integration.isPublic && (
+                          <InternetIcon
+                            width={14}
+                            height={14}
+                            className="text-primary"
+                          />
+                        )}
+                        {integration.status === "connected" && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                        )}
+                        {integration.status === "created" && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-yellow-500" />
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

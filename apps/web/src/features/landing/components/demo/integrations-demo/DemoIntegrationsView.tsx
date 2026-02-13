@@ -7,6 +7,7 @@ import { useMemo, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   ArrowRight02Icon,
+  Cancel01Icon,
   ConnectIcon,
   GlobalIcon,
   InternetIcon,
@@ -89,12 +90,34 @@ function DemoIntegrationSidebar({
   const isPublic = integration.isPublic;
   const isCustom = integration.source === "custom";
 
+  // Count how many action buttons will show to decide icon-only vs text
+  const buttonCount = [
+    isConnected, // Disconnect
+    isConnected && isPublic, // View on Marketplace
+    isConnected && isCustom && !isPublic, // Publish
+    isConnected && isPublic, // Share
+  ].filter(Boolean).length;
+  const useIconOnly = buttonCount >= 3;
+
   return (
     <div
       className="flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800"
       style={{ backgroundColor: "#141414" }}
     >
-      <div className="flex-1 overflow-y-auto px-5 pt-4">
+      {/* Close button */}
+      <div className="flex w-full items-end justify-end px-6 pt-4 pb-0">
+        <Button
+          onPress={onClose}
+          variant="light"
+          isIconOnly
+          size="sm"
+          aria-label="Close"
+        >
+          <Cancel01Icon className="size-4" />
+        </Button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-5">
         <div className="flex flex-col gap-3">
           {/* Icon */}
           <div className="w-fit">
@@ -152,46 +175,54 @@ function DemoIntegrationSidebar({
           ) : (
             <ButtonGroup variant="flat" className="w-full" fullWidth>
               <Button
-                isIconOnly
+                isIconOnly={useIconOnly}
                 className="w-full"
                 color="danger"
                 aria-label="Disconnect"
                 startContent={
                   <Unlink04Icon width={18} height={18} />
                 }
-              />
+              >
+                {!useIconOnly && "Disconnect"}
+              </Button>
               {isPublic && (
                 <Button
-                  isIconOnly
+                  isIconOnly={useIconOnly}
                   className="w-full"
                   color="primary"
                   aria-label="View on Marketplace"
                   startContent={
                     <InternetIcon width={18} height={18} />
                   }
-                />
+                >
+                  {!useIconOnly && "View"}
+                </Button>
               )}
               {isCustom && !isPublic && (
                 <Button
-                  isIconOnly
+                  isIconOnly={useIconOnly}
                   className="w-full"
                   color="primary"
                   aria-label="Publish"
                   startContent={
                     <GlobalIcon width={18} height={18} />
                   }
-                />
+                >
+                  {!useIconOnly && "Publish"}
+                </Button>
               )}
               {isPublic && (
                 <Button
-                  isIconOnly
+                  isIconOnly={useIconOnly}
                   className="w-full"
                   color="default"
                   aria-label="Share"
                   startContent={
                     <Share08Icon width={18} height={18} />
                   }
-                />
+                >
+                  {!useIconOnly && "Share"}
+                </Button>
               )}
             </ButtonGroup>
           )}

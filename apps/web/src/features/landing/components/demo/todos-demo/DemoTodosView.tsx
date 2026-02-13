@@ -16,7 +16,12 @@ import {
   Tag01Icon,
   ZapIcon,
 } from "@/icons";
-import { DEMO_PROJECTS, DEMO_TODOS, type DemoTodo } from "./todosDemoConstants";
+import {
+  DEMO_PROJECTS,
+  DEMO_TODOS,
+  type DemoTodo,
+  type DemoWorkflowStep,
+} from "./todosDemoConstants";
 
 const priorityRingColors = {
   high: "border-red-500",
@@ -90,7 +95,7 @@ function DemoTodoItem({
       <div className="flex h-full items-start gap-3">
         {/* Checkbox circle */}
         <div
-          className={`mt-1 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
+          className={`mt-1 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
         >
           {todo.completed && (
             <div className="h-full w-full rounded-full bg-green-500" />
@@ -247,15 +252,66 @@ function DemoFieldChip({
   return (
     <button
       type="button"
-      className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors ${
+      className={`flex h-7 items-center gap-1 rounded-lg px-2 text-xs transition-colors ${
         color ? "" : "bg-zinc-800 text-zinc-500"
       } hover:bg-zinc-700 cursor-pointer`}
       style={color ? { backgroundColor: `${color}20`, color } : undefined}
     >
       {icon}
       {label && <span className="truncate">{label}</span>}
-      <ArrowDown01Icon width={14} height={14} className="shrink-0 opacity-50" />
+      <ArrowDown01Icon width={12} height={12} className="shrink-0 opacity-50" />
     </button>
+  );
+}
+
+function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
+  return (
+    <div className="relative">
+      {/* Gradient connector line */}
+      <div
+        className="absolute left-[13px] top-4 bottom-4 w-[2px] bg-linear-to-b from-primary via-primary/80 to-transparent"
+      />
+      <div className="space-y-4">
+        {steps.map((step, index) => {
+          const IconComponent = getToolCategoryIcon(step.category, {
+            width: 16,
+            height: 16,
+          });
+          return (
+            <div key={step.id} className="flex items-start gap-3">
+              {/* Numbered dot */}
+              <div className="relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-primary bg-primary/10 backdrop-blur-sm">
+                <span className="text-xs font-medium text-primary">
+                  {index + 1}
+                </span>
+              </div>
+              {/* Step content */}
+              <div className="flex-1 space-y-1 pt-0.5">
+                <div className="flex items-center gap-2">
+                  <Chip
+                    size="sm"
+                    variant="flat"
+                    className="h-6 text-xs"
+                    startContent={IconComponent}
+                  >
+                    {step.category
+                      .replace(/([a-z])([A-Z])/g, "$1 $2")
+                      .replace(/_/g, " ")
+                      .replace(/\b\w/g, (c) => c.toUpperCase())}
+                  </Chip>
+                </div>
+                <p className="text-xs font-medium text-zinc-100">
+                  {step.title}
+                </p>
+                <p className="text-xs leading-relaxed text-zinc-400">
+                  {step.description}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }
 
@@ -285,7 +341,7 @@ function DemoTodoSidebar({
           {/* Checkbox + Title */}
           <div className="flex items-start gap-1">
             <div
-              className={`mt-1.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
+              className={`mt-1.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2 border-dashed ${priorityRingColors[todo.priority]}`}
             >
               {todo.completed && (
                 <div className="h-full w-full rounded-full bg-green-500" />
@@ -310,12 +366,12 @@ function DemoTodoSidebar({
           </p>
 
           {/* Field chips row - dropdown style like real TodoFieldsRow */}
-          <div className="flex flex-wrap gap-2 py-2">
+          <div className="flex flex-wrap gap-1.5 py-2">
             <DemoFieldChip
               icon={
                 <Folder02Icon
-                  width={18}
-                  height={18}
+                  width={16}
+                  height={16}
                   style={{ color: project?.color || "#71717a" }}
                 />
               }
@@ -325,8 +381,8 @@ function DemoTodoSidebar({
             <DemoFieldChip
               icon={
                 <Flag02Icon
-                  width={18}
-                  height={18}
+                  width={16}
+                  height={16}
                   style={{ color: priorityColor || "#71717a" }}
                 />
               }
@@ -339,7 +395,7 @@ function DemoTodoSidebar({
               color={priorityColor}
             />
             <DemoFieldChip
-              icon={<CalendarCheckOut01Icon width={18} height={18} />}
+              icon={<CalendarCheckOut01Icon width={16} height={16} />}
               label={todo.due_date ? formatDueDate(todo.due_date) : undefined}
               color={
                 todo.due_date
@@ -352,7 +408,7 @@ function DemoTodoSidebar({
               }
             />
             <DemoFieldChip
-              icon={<Tag01Icon width={18} height={18} />}
+              icon={<Tag01Icon width={16} height={16} />}
               label={
                 todo.labels.length > 0
                   ? `${todo.labels.length} label${todo.labels.length > 1 ? "s" : ""}`
@@ -402,27 +458,15 @@ function DemoTodoSidebar({
           </div>
 
           {/* Workflow section */}
-          {todo.workflow_categories && todo.workflow_categories.length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-1">
+          {todo.workflow_steps && todo.workflow_steps.length > 0 && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-1.5">
                 <ZapIcon width={16} height={16} className="text-zinc-400" />
                 <span className="text-sm font-normal text-zinc-400">
                   Suggested Workflow
                 </span>
               </div>
-              <div className="flex items-center gap-2">
-                {todo.workflow_categories.map((cat, i) => {
-                  const IconComponent = getToolCategoryIcon(cat, {
-                    width: 20,
-                    height: 20,
-                  });
-                  return IconComponent ? (
-                    <div key={cat} style={{ zIndex: i }}>
-                      {IconComponent}
-                    </div>
-                  ) : null;
-                })}
-              </div>
+              <DemoWorkflowSteps steps={todo.workflow_steps} />
             </div>
           )}
         </div>
