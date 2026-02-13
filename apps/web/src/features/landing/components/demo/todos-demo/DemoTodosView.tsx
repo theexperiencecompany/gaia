@@ -16,11 +16,7 @@ import {
   Tag01Icon,
   ZapIcon,
 } from "@/icons";
-import {
-  DEMO_PROJECTS,
-  DEMO_TODOS,
-  type DemoTodo,
-} from "./todosDemoConstants";
+import { DEMO_PROJECTS, DEMO_TODOS, type DemoTodo } from "./todosDemoConstants";
 
 const priorityRingColors = {
   high: "border-red-500",
@@ -151,8 +147,7 @@ function DemoTodoItem({
                   <Flag02Icon width={15} height={15} className="mx-1" />
                 }
               >
-                {todo.priority.charAt(0).toUpperCase() +
-                  todo.priority.slice(1)}
+                {todo.priority.charAt(0).toUpperCase() + todo.priority.slice(1)}
               </Chip>
             )}
 
@@ -255,11 +250,7 @@ function DemoFieldChip({
       className={`flex h-8 items-center gap-1.5 rounded-lg px-2.5 text-sm transition-colors ${
         color ? "" : "bg-zinc-800 text-zinc-500"
       } hover:bg-zinc-700 cursor-pointer`}
-      style={
-        color
-          ? { backgroundColor: `${color}20`, color }
-          : undefined
-      }
+      style={color ? { backgroundColor: `${color}20`, color } : undefined}
     >
       {icon}
       {label && <span className="truncate">{label}</span>}
@@ -302,9 +293,7 @@ function DemoTodoSidebar({
             </div>
             <h2
               className={`cursor-pointer text-2xl leading-tight font-medium transition-colors hover:text-zinc-200 ${
-                todo.completed
-                  ? "text-zinc-500 line-through"
-                  : "text-zinc-100"
+                todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"
               }`}
             >
               {todo.title}
@@ -350,12 +339,7 @@ function DemoTodoSidebar({
               color={priorityColor}
             />
             <DemoFieldChip
-              icon={
-                <CalendarCheckOut01Icon
-                  width={18}
-                  height={18}
-                />
-              }
+              icon={<CalendarCheckOut01Icon width={18} height={18} />}
               label={todo.due_date ? formatDueDate(todo.due_date) : undefined}
               color={
                 todo.due_date
@@ -418,30 +402,29 @@ function DemoTodoSidebar({
           </div>
 
           {/* Workflow section */}
-          {todo.workflow_categories &&
-            todo.workflow_categories.length > 0 && (
-              <div className="space-y-2">
-                <div className="flex items-center gap-1">
-                  <ZapIcon width={16} height={16} className="text-zinc-400" />
-                  <span className="text-sm font-normal text-zinc-400">
-                    Suggested Workflow
-                  </span>
-                </div>
-                <div className="flex items-center gap-2">
-                  {todo.workflow_categories.map((cat, i) => {
-                    const IconComponent = getToolCategoryIcon(cat, {
-                      width: 20,
-                      height: 20,
-                    });
-                    return IconComponent ? (
-                      <div key={cat} style={{ zIndex: i }}>
-                        {IconComponent}
-                      </div>
-                    ) : null;
-                  })}
-                </div>
+          {todo.workflow_categories && todo.workflow_categories.length > 0 && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-1">
+                <ZapIcon width={16} height={16} className="text-zinc-400" />
+                <span className="text-sm font-normal text-zinc-400">
+                  Suggested Workflow
+                </span>
               </div>
-            )}
+              <div className="flex items-center gap-2">
+                {todo.workflow_categories.map((cat, i) => {
+                  const IconComponent = getToolCategoryIcon(cat, {
+                    width: 20,
+                    height: 20,
+                  });
+                  return IconComponent ? (
+                    <div key={cat} style={{ zIndex: i }}>
+                      {IconComponent}
+                    </div>
+                  ) : null;
+                })}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -489,9 +472,7 @@ export default function DemoTodosView() {
               todo={todo}
               isSelected={selectedTodo?.id === todo.id}
               onClick={() =>
-                setSelectedTodo(
-                  selectedTodo?.id === todo.id ? null : todo,
-                )
+                setSelectedTodo(selectedTodo?.id === todo.id ? null : todo)
               }
             />
           ))}

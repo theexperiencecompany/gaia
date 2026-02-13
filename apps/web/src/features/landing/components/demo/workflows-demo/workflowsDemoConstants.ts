@@ -5,8 +5,18 @@ export const DEMO_USER_WORKFLOWS = [
     description:
       "Pull metrics from spreadsheets, draft a monthly investor update email, and send it out",
     steps: [
-      { id: "s1", title: "Fetch Metrics", category: "googlesheets", description: "" },
-      { id: "s2", title: "Draft Update", category: "executor", description: "" },
+      {
+        id: "s1",
+        title: "Fetch Metrics",
+        category: "googlesheets",
+        description: "",
+      },
+      {
+        id: "s2",
+        title: "Draft Update",
+        category: "executor",
+        description: "",
+      },
       { id: "s3", title: "Send Email", category: "gmail", description: "" },
     ],
     activated: true,
@@ -35,9 +45,24 @@ export const DEMO_USER_WORKFLOWS = [
     description:
       "Read a content calendar from Sheets, then draft and queue posts to Twitter and LinkedIn",
     steps: [
-      { id: "s1", title: "Read Calendar", category: "googlesheets", description: "" },
-      { id: "s2", title: "Post to Twitter", category: "twitter", description: "" },
-      { id: "s3", title: "Post to LinkedIn", category: "linkedin", description: "" },
+      {
+        id: "s1",
+        title: "Read Calendar",
+        category: "googlesheets",
+        description: "",
+      },
+      {
+        id: "s2",
+        title: "Post to Twitter",
+        category: "twitter",
+        description: "",
+      },
+      {
+        id: "s3",
+        title: "Post to LinkedIn",
+        category: "linkedin",
+        description: "",
+      },
     ],
     activated: true,
     total_executions: 97,
