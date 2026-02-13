@@ -6,12 +6,12 @@ const CONTENT_SECTIONS = [
   {
     title: "Set it once, runs forever",
     description:
-      "Describe what you want automated — GAIA builds the steps, sets the trigger, and runs it on repeat. Morning briefings, receipt forwarding, meeting prep — handled.",
+      "Describe what you want automated. GAIA builds the steps, sets the trigger, and runs on repeat. Morning briefings, receipt forwarding, meeting prep: handled.",
   },
   {
-    title: "Runs on your schedule, not a reminder",
+    title: "Runs when you need it. Not when you remember it.",
     description:
-      "Set it to run every morning at 9 AM, trigger it when you get an email, a Slack message pops up, or your next meeting's about to start.",
+      "Schedule it for 9 AM every morning, or trigger it from an incoming email, a Slack message, or an upcoming meeting.",
   },
   // {
   //   title: "Powered by Your Todos",
@@ -21,7 +21,7 @@ const CONTENT_SECTIONS = [
   {
     title: "One workflow. Your whole stack.",
     description:
-      "Gmail, Google Docs, Slack, Calendar — one workflow connects them all. Pull from your inbox, write a doc, schedule a meeting, ping your team. Done.",
+      "Gmail, Google Docs, Slack, Calendar. One workflow connects them all. Pull from your inbox, write a doc, schedule a meeting, ping your team. Done.",
   },
 ];
 
@@ -33,7 +33,7 @@ export default function WorkflowShowcaseSection() {
         Kill the Busywork
       </div>
       <div className="mb-8 font-serif text-4xl font-normal sm:text-5xl text-center lg:text-left">
-        Your most draining tasks, handled without you
+        Your daily busywork, handled without lifting a finger
       </div>
 
       {/* 70/30 split */}

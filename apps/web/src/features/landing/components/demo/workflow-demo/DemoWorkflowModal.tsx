@@ -11,7 +11,7 @@ import DemoTriggerTabs from "./DemoTriggerTabs";
 import type { WorkflowDemoPhase } from "./workflowDemoConstants";
 
 const DEMO_WORKFLOW = {
-  title: "Daily Email Digest",
+  title: "Daily Email Digest & Briefing",
   description:
     "Every morning at 9 AM, scan my inbox for unread emails from the past 24 hours. Use AI to summarize the key points and extract action items. Create a formatted briefing document in Google Docs with sections for urgent items, meetings, and general updates. Finally, post the top 3-5 action items to our #daily-briefing Slack channel so the team stays aligned.",
   steps: [

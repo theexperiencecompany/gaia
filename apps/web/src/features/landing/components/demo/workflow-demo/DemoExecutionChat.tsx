@@ -148,7 +148,7 @@ export default function DemoExecutionChat({
                 <span
                   className={`animate-pulse text-sm ${light ? "text-zinc-500" : "text-zinc-300"}`}
                 >
-                  GAIA is thinking...
+                  GAIA is working…
                 </span>
               </m.div>
             )}

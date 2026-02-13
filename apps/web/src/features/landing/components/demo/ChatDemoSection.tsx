@@ -174,7 +174,7 @@ export default function ChatDemoSection() {
         <p className="mb-2 text-sm uppercase tracking-widest text-primary">
           See it in action
         </p>
-        <h2 className="text-3xl font-semibold tracking-tight text-white">
+        <h2 className="text-6xl font-serif tracking-tight text-white font-normal">
           Your GAIA, actually working
         </h2>
       </m.div>
@@ -185,7 +185,7 @@ export default function ChatDemoSection() {
         whileInView={{ opacity: 1, y: 0, scale: 1 }}
         viewport={{ once: true }}
         transition={{ duration: 0.5, ease }}
-        className="overflow-hidden rounded-3xl h-[65vh] sm:h-[85vh] w-[95vw] sm:w-[80vw]"
+        className="overflow-hidden rounded-3xl h-[65vh] sm:h-[85vh] w-[95vw] sm:w-[80vw]!"
         style={
           {
             "--color-primary-bg": "#111111",
@@ -210,7 +210,10 @@ export default function ChatDemoSection() {
             </a>
           </div>
         </div>
-        <div className="flex h-full" style={{ height: "calc(100% - 36px)" }}>
+        <div
+          className="flex h-full w-full"
+          style={{ height: "calc(100% - 36px)" }}
+        >
           <DemoSidebar open={sidebarOpen} />
 
           <div
@@ -508,7 +511,7 @@ export default function ChatDemoSection() {
           onPress={() => switchUseCase(activeUseCase)}
           isIconOnly
           radius="full"
-          variant="flat"
+          variant="light"
         >
           <RedoIcon width={20} height={20} />
         </Button>

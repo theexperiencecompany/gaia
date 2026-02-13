@@ -9,7 +9,7 @@ export default function GetStartedButton({
   small_text = false,
   text = "Get Started",
   btnColor = "#00bbff",
-  classname = "text-white!",
+  classname = "text-black!",
 }: {
   small_text?: boolean;
   text?: string;
