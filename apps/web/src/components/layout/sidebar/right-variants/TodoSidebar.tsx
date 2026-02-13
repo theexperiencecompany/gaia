@@ -3,16 +3,15 @@
 import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
+import { Delete02Icon } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import type React from "react";
 import { useState } from "react";
-
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
 import { useUser } from "@/features/auth/hooks/useUser";
 import SubtaskManager from "@/features/todo/components/shared/SubtaskManager";
 import TodoFieldsRow from "@/features/todo/components/shared/TodoFieldsRow";
 import WorkflowSection from "@/features/todo/components/WorkflowSection";
-import { Delete02Icon } from "@/icons";
 import type {
   Priority,
   Project,

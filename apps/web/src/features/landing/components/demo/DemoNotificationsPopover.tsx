@@ -1,11 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { CheckmarkBadge01Icon } from "@icons";
 import { ScrollArea } from "@radix-ui/react-scroll-area";
 import { AnimatePresence, m } from "motion/react";
 import { useState } from "react";
-
-import { CheckmarkBadge01Icon } from "@/icons";
 import { DUMMY_NOTIFICATIONS, ease } from "./demoConstants";
 
 interface DemoNotificationsPopoverProps {

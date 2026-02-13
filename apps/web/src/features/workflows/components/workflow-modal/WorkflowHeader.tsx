@@ -6,14 +6,14 @@ import {
   DropdownTrigger,
 } from "@heroui/dropdown";
 import { Input } from "@heroui/input";
-import { useRouter } from "next/navigation";
-import { type Control, Controller, type FieldErrors } from "react-hook-form";
 import {
   Delete02Icon,
   LinkSquare02Icon,
   MoreVerticalIcon,
   PlayIcon,
-} from "@/icons";
+} from "@icons";
+import { useRouter } from "next/navigation";
+import { type Control, Controller, type FieldErrors } from "react-hook-form";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import { type Workflow, workflowApi } from "../../api/workflowApi";

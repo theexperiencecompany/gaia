@@ -1,10 +1,9 @@
 "use client";
 
+import { BubbleChatAddIcon } from "@icons";
 import Link from "next/link";
-
 import { Button } from "@/components/ui/button";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
-import { BubbleChatAddIcon } from "@/icons";
 
 export default function DefaultHeader() {
   return (

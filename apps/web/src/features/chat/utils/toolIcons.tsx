@@ -9,13 +9,6 @@
  * For icon configuration: src/config/toolIconConfig.ts
  */
 
-import { m } from "motion/react";
-import Image from "next/image";
-import {
-  iconAliases,
-  normalizeCategoryName,
-  toolIconConfigs,
-} from "@/config/toolIconConfig";
 import {
   AlarmClockIcon,
   Brain02Icon,
@@ -31,7 +24,14 @@ import {
   SquareArrowUpRight02Icon,
   Target02Icon,
   ToolsIcon,
-} from "@/icons";
+} from "@icons";
+import { m } from "motion/react";
+import Image from "next/image";
+import {
+  iconAliases,
+  normalizeCategoryName,
+  toolIconConfigs,
+} from "@/config/toolIconConfig";
 
 interface IconProps {
   size?: number;

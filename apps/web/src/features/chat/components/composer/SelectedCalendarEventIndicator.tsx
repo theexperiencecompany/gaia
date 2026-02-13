@@ -1,9 +1,8 @@
 "use client";
 
+import { Cancel01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
-
 import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
-import { Cancel01Icon } from "@/icons";
 
 interface SelectedCalendarEventIndicatorProps {
   event: SelectedCalendarEventData | null;

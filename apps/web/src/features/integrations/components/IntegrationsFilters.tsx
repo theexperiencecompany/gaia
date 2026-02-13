@@ -3,8 +3,8 @@
 import { Input } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Tab, Tabs } from "@heroui/tabs";
+import { SearchIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SearchIcon } from "@/icons";
 
 const CATEGORIES = [
   { key: "all", label: "All" },

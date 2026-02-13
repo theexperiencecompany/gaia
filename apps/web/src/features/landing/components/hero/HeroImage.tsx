@@ -1,6 +1,5 @@
+import Image from "next/image";
 import { useEffect, useRef } from "react";
-
-import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import type { TimeOfDay } from "@/features/landing/utils/timeOfDay";
 
 const WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
@@ -64,12 +63,28 @@ export default function HeroImage({
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent opacity-50" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 
-        <ProgressiveImage
+        {/* <ProgressiveImage
           webpSrc={wallpaper.webp}
           pngSrc={wallpaper.png}
           alt="wallpaper"
           className="object-cover"
           shouldHaveInitialFade={true}
+      /> */}
+        <Image
+          src={wallpaper.webp}
+          alt={`png`}
+          width={1920}
+          height={1080}
+          sizes={"100vw"}
+          loading={"eager"}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            position: "absolute",
+            top: 0,
+            left: 0,
+          }}
         />
       </div>
     </div>

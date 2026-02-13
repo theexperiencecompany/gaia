@@ -1,8 +1,8 @@
+import { InboxUnreadIcon, Loading02Icon } from "@icons";
 import type React from "react";
-
+import { Gmail } from "@/components/shared/icons";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import EmailListCard from "@/features/mail/components/EmailListCard";
-import { Gmail, InboxUnreadIcon, Loading02Icon } from "@/icons";
 import type { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 
 interface UnreadEmailsViewProps {

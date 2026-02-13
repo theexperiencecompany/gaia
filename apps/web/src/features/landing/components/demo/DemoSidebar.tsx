@@ -1,9 +1,27 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import {
+  BubbleChatAddIcon,
+  Calendar01Icon,
+  Calendar03Icon,
+  CalendarUpload02Icon,
+  CheckListIcon,
+  ConnectIcon,
+  Flag02Icon,
+  Folder02Icon,
+  InboxCheckIcon,
+  InboxIcon,
+  Tag01Icon,
+  ViewIcon,
+} from "@icons";
 import { m } from "motion/react";
 import { useState } from "react";
-
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  ZapIcon,
+} from "@/components/shared/icons";
 import { LogoWithContextMenu } from "@/components/shared/LogoWithContextMenu";
 import {
   Accordion,
@@ -13,23 +31,6 @@ import {
 } from "@/components/ui/accordion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
-  BubbleChatAddIcon,
-  Calendar01Icon,
-  Calendar03Icon,
-  CalendarUpload02Icon,
-  CheckListIcon,
-  ChevronsDownUp,
-  ChevronsUpDown,
-  ConnectIcon,
-  Flag02Icon,
-  Folder02Icon,
-  InboxCheckIcon,
-  InboxIcon,
-  Tag01Icon,
-  ViewIcon,
-  ZapIcon,
-} from "@/icons";
 import DemoChatTab from "./DemoChatTab";
 import DemoSettingsDropdown from "./DemoSettingsDropdown";
 import { CHAT_GROUPS, ease, NAV_BUTTONS } from "./demoConstants";

@@ -1,12 +1,11 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { ArrowRight02Icon, RedoIcon } from "@icons";
 import { AnimatePresence, m, useInView } from "motion/react";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
-import { ArrowRight02Icon, RedoIcon } from "@/icons";
 import DemoCommunityCards from "./DemoCommunityCards";
 import DemoExecutionChat from "./DemoExecutionChat";
 

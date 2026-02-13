@@ -3,8 +3,6 @@
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
-import { useMemo, useState } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   ArrowRight02Icon,
   ConnectIcon,
@@ -14,7 +12,9 @@ import {
   Share08Icon,
   Unlink04Icon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { useMemo, useState } from "react";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CATEGORY_LABELS,
   DEMO_CATEGORIES,
@@ -80,10 +80,10 @@ function DemoIntegrationRow({
 
 function DemoIntegrationSidebar({
   integration,
-  onClose,
+  _onClose,
 }: {
   integration: DemoIntegration;
-  onClose: () => void;
+  _onClose: () => void;
 }) {
   const isConnected = integration.status === "connected";
   const isPublic = integration.isPublic;
@@ -410,7 +410,7 @@ export default function DemoIntegrationsView() {
       {selectedIntegration && (
         <DemoIntegrationSidebar
           integration={selectedIntegration}
-          onClose={() => setSelectedIntegration(null)}
+          _onClose={() => setSelectedIntegration(null)}
         />
       )}
     </div>

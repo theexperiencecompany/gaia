@@ -1,9 +1,8 @@
+import { Cancel01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import type React from "react";
 import { useEffect } from "react";
-
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Cancel01Icon } from "@/icons";
 import { useComposerUI } from "@/stores/composerStore";
 
 interface SelectedToolIndicatorProps {

@@ -1,5 +1,3 @@
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import EmailComposeCard from "@/features/mail/components/EmailComposeCard";
 import {
   CalendarIcon,
   CheckmarkBadge01Icon,
@@ -9,7 +7,9 @@ import {
   MessageIcon,
   RepeatIcon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import EmailComposeCard from "@/features/mail/components/EmailComposeCard";
 import { FOUNDER_EMAIL } from "./demoConstants";
 import type { FinalCardType } from "./types";
 

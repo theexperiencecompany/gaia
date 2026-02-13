@@ -1,12 +1,12 @@
 import { Avatar, AvatarGroup } from "@heroui/avatar";
+import { ArrowRight01Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import { lazy, Suspense, useEffect, useState } from "react";
-
+import { StarFilledIcon } from "@/components/shared/icons";
 import { RaisedButton } from "@/components/ui/raised-button";
 import Spinner from "@/components/ui/spinner";
 import { useGitHubContributors } from "@/hooks/useGitHubContributors";
-import { ArrowRight01Icon, StarFilledIcon } from "@/icons";
 
 import LargeHeader from "../shared/LargeHeader";
 

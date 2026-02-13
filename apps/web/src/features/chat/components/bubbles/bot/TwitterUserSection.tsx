@@ -1,16 +1,16 @@
 "use client";
 
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
-import { format, parseISO } from "date-fns";
-import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
-import { TwitterIcon } from "@/components/shared/icons";
 import {
   Calendar01Icon,
   CheckmarkBadge02Icon,
   LinkIcon,
   MapsIcon,
-} from "@/icons";
+} from "@icons";
+import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
+import { format, parseISO } from "date-fns";
+import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
+import { TwitterIcon } from "@/components/shared/icons";
 import type { TwitterUserData } from "@/types/features/twitterTypes";
 
 /**

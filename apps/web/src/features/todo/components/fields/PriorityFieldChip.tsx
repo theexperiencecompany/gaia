@@ -1,6 +1,6 @@
 "use client";
 
-import { Flag02Icon } from "@/icons";
+import { Flag02Icon } from "@icons";
 import { Priority } from "@/types/features/todoTypes";
 
 import BaseFieldChip from "./BaseFieldChip";

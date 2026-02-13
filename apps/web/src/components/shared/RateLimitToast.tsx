@@ -1,9 +1,8 @@
 "use client";
 
+import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
 import type { ReactNode } from "react";
 import { toast } from "sonner";
-
-import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@/icons";
 
 interface ToastConfig {
   duration: number;

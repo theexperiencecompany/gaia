@@ -1,8 +1,8 @@
 "use client";
+
+import { CheckmarkCircle02Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import { useEffect, useState } from "react";
-
-import { CheckmarkCircle02Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 type LoadingState = {

@@ -1,6 +1,6 @@
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
-import { InformationCircleIcon } from "@/icons";
+import { InformationCircleIcon } from "@icons";
 import {
   getBrowserTimezone,
   type WorkflowFormData,

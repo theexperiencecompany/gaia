@@ -1,7 +1,7 @@
 "use client";
 
+import { ArrowRight02Icon, UserGroupIcon, ZapIcon } from "@icons";
 import { PromoBanner } from "@/components/shared/PromoBanner";
-import { ArrowRight02Icon, UserGroupIcon, ZapIcon } from "@/icons";
 
 interface CommunityBannerProps {
   onCreateWorkflow?: () => void;

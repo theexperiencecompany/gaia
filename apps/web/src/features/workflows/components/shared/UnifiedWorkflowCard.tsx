@@ -2,14 +2,13 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
+import { PlayIcon, ZapIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { PlayIcon, ZapIcon } from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useAppendToInput } from "@/stores/composerStore";
 import type {

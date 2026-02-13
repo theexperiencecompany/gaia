@@ -1,6 +1,5 @@
+import { Brain02Icon } from "@icons";
 import { useState } from "react";
-
-import { Brain02Icon } from "@/icons";
 
 interface ThinkingBubbleProps {
   thinkingContent: string;

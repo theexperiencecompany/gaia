@@ -3,13 +3,18 @@
 import { Tooltip } from "@heroui/tooltip";
 import Link from "next/link";
 import { useState } from "react";
+import {
+  DiscordIcon,
+  Github,
+  TwitterIcon,
+  WhatsappIcon,
+} from "@/components/shared/icons";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import {
   getTimeOfDay,
   isDarkTimeOfDay,
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
-import { DiscordIcon, Github, TwitterIcon, WhatsappIcon } from "@/icons";
 
 import { SplitTextBlur } from "../hero/SplitTextBlur";
 import GetStartedButton from "../shared/GetStartedButton";

@@ -27,13 +27,16 @@ const nextConfig = {
   // Explicitly set turbopack workspace root to silence inference warning
   turbopack: {
     root: path.join(__dirname, "../.."),
+    // Change the value here to swap the entire icon variant across the app
+    resolveAlias: {
+      "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
+    },
   },
   experimental: {
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
       "cytoscape",
-      "@theexperiencecompany/gaia-icons",
       "@heroui/*",
     ],
   },
@@ -47,6 +50,9 @@ const nextConfig = {
         "cytoscape-fcose": false,
       };
     }
+    // Alias @icons to the active icon variant — change here to swap the entire set
+    config.resolve.alias["@icons"] =
+      "@theexperiencecompany/gaia-icons/solid-rounded";
     return config;
   },
   images: {

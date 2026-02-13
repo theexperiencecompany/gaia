@@ -1,12 +1,12 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { PlayIcon, ZapIcon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { PlayIcon, ZapIcon } from "@/icons";
 import {
   COMMUNITY_WORKFLOWS,
   type WorkflowDemoPhase,

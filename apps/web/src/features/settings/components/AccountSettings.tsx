@@ -2,6 +2,12 @@
 
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
+import {
+  Camera01Icon,
+  Logout02Icon,
+  PencilEdit02Icon,
+  UserCircle02Icon,
+} from "@icons";
 import Image from "next/image";
 import type React from "react";
 import { useRef, useState } from "react";
@@ -12,12 +18,6 @@ import { LabeledField } from "@/features/settings/components/FormField";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
 import { SettingsCardSimple } from "@/features/settings/components/SettingsCardSimple";
 import { SettingsOption } from "@/features/settings/components/SettingsOption";
-import {
-  Camera01Icon,
-  Logout02Icon,
-  PencilEdit02Icon,
-  UserCircle02Icon,
-} from "@/icons";
 import type { ModalAction } from "./SettingsMenu";
 
 export default function AccountSection({

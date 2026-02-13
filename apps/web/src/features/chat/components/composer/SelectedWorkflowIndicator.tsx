@@ -1,12 +1,11 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Cancel01Icon } from "@icons";
 import { m } from "motion/react";
 import { useRouter } from "next/navigation";
-
 import type { SelectedWorkflowData } from "@/features/chat/hooks/useWorkflowSelection";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import { Cancel01Icon } from "@/icons";
 
 interface SelectedWorkflowIndicatorProps {
   workflow: SelectedWorkflowData | null;

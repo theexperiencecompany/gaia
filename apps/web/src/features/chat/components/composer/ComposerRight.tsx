@@ -1,11 +1,10 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-
+import { ArrowUp02Icon, StopIcon } from "@icons";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { ArrowUp02Icon, StopIcon } from "@/icons";
 import { useComposerFiles } from "@/stores/composerStore";
 
 interface RightSideProps {

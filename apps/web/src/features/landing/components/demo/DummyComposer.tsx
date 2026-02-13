@@ -2,9 +2,15 @@ import { Button } from "@heroui/button";
 import { Textarea } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
+import {
+  ArrowRight01Icon,
+  ArrowUp02Icon,
+  AttachmentIcon,
+  PlusSignIcon,
+  ToolsIcon,
+} from "@icons";
 import type React from "react";
 import { useRef, useState } from "react";
-
 import { Button as ShadcnButton } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -13,13 +19,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
-  ArrowRight01Icon,
-  ArrowUp02Icon,
-  AttachmentIcon,
-  PlusSignIcon,
-  ToolsIcon,
-} from "@/icons";
 import { dummyIntegrations } from "./constants";
 import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
 

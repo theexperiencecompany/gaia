@@ -1,9 +1,8 @@
 import { Button } from "@heroui/button";
+import { SquareLock01Icon } from "@icons";
 import type React from "react";
-
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { SquareLock01Icon } from "@/icons";
 
 import type { SlashCommandMatch } from "../../hooks/useSlashCommands";
 

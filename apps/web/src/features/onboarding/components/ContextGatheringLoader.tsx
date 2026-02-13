@@ -1,6 +1,7 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
+import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -15,7 +16,6 @@ import {
   isPersonalizationCompleteMessage,
   isPersonalizationProgressMessage,
 } from "@/features/onboarding/types/websocket";
-import { Cancel01Icon } from "@/icons";
 import { apiService } from "@/lib/api";
 import { wsManager } from "@/lib/websocket";
 import {

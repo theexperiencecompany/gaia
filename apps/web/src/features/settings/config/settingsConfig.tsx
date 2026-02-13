@@ -9,7 +9,7 @@ import {
   TwitterIcon,
   UserCircleIcon,
   WhatsappIcon,
-} from "@/icons";
+} from "@icons";
 
 export interface SettingsMenuItem {
   key: string;

@@ -2,10 +2,9 @@
 
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
+import { Book01Icon, Timer02Icon } from "@icons";
 import type React from "react";
-
 import { SidebarContent, SidebarFooter } from "@/components/ui/sidebar";
-import { Book01Icon, Timer02Icon } from "@/icons";
 import type { NodeData } from "@/types/features/goalTypes";
 
 interface GoalSidebarProps {

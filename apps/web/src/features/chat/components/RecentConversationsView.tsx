@@ -1,10 +1,9 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
+import { Calendar03Icon, MessageMultiple02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { memo, useCallback, useMemo } from "react";
-
-import { Calendar03Icon, MessageMultiple02Icon } from "@/components";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useSyncStatus } from "@/hooks/useBackgroundSync";

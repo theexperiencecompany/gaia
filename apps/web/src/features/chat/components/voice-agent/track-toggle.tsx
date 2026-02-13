@@ -1,10 +1,10 @@
 "use client";
 
+import { LoadingIcon, MicIcon, MicOffIcon } from "@icons";
 import type { useTrackToggle } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import * as React from "react";
 import { Button } from "@/components/ui/button";
-import { LoadingIcon, MicIcon, MicOffIcon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 export type TrackToggleProps = React.ComponentProps<typeof Button> & {

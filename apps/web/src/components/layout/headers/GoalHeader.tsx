@@ -1,13 +1,12 @@
 "use client";
 
+import { ArrowRight01Icon, BubbleChatAddIcon, Target02Icon } from "@icons";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
-import { ArrowRight01Icon, BubbleChatAddIcon, Target02Icon } from "@/icons";
 import type { Goal } from "@/types/api/goalsApiTypes";
 
 export default function GoalHeader() {

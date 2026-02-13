@@ -7,9 +7,6 @@ import {
   DropdownSection,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import type React from "react";
-import { NestedMenuTooltip } from "@/features/settings/components/NestedMenuTooltip";
-import { useNestedMenu } from "@/features/settings/hooks/useNestedMenu";
 import {
   AiBrain01Icon,
   ArrowRight01Icon,
@@ -33,7 +30,10 @@ import {
   TwitterIcon,
   UserCircleIcon,
   WhatsappIcon,
-} from "@/icons";
+} from "@icons";
+import type React from "react";
+import { NestedMenuTooltip } from "@/features/settings/components/NestedMenuTooltip";
+import { useNestedMenu } from "@/features/settings/hooks/useNestedMenu";
 
 const ic = "h-[18px] w-[18px]";
 

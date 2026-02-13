@@ -1,11 +1,10 @@
 "use client";
 
 import { Checkbox } from "@heroui/checkbox";
+import { Cancel01Icon, PlusSignIcon, Tick02Icon } from "@icons";
 import { useState } from "react";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Cancel01Icon, PlusSignIcon, Tick02Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 import type { SubTask } from "@/types/features/todoTypes";
 

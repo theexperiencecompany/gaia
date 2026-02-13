@@ -1,14 +1,12 @@
+import { Mail01Icon, SquareLock01Icon, WavingHand01Icon } from "@icons";
 import {
   DiscordIcon,
   Github,
   LinkedinIcon,
-  Mail01Icon,
-  SquareLock01Icon,
   TwitterIcon,
-  WavingHand01Icon,
   WhatsappIcon,
   YoutubeIcon,
-} from "@/icons";
+} from "@/components/shared/icons";
 
 const emailLinks = [
   {

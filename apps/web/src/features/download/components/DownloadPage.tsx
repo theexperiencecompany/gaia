@@ -8,10 +8,12 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
+import { ArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { ChevronDown } from "@/components/shared/icons";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import {
@@ -19,7 +21,6 @@ import {
   platformConfigs,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
-import { ArrowRight02Icon, ChevronDown } from "@/icons";
 
 type MacChipOption = "intel" | "m-series";
 

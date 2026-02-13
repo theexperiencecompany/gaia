@@ -3,13 +3,12 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Cancel01Icon, GridIcon, SearchIcon, Tick02Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import type React from "react";
 import { useMemo, useState } from "react";
-
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Cancel01Icon, GridIcon, SearchIcon, Tick02Icon } from "@/icons";
 
 import { dummyIntegrations } from "./constants";
 

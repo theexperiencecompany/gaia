@@ -2,9 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { formatDistanceToNow } from "date-fns";
-import { useMemo, useState } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   ArrowDown01Icon,
   CalendarCheckOut01Icon,
@@ -15,7 +12,10 @@ import {
   PlusSignIcon,
   Tag01Icon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { formatDistanceToNow } from "date-fns";
+import { useMemo, useState } from "react";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { DEMO_PROJECTS, DEMO_TODOS, type DemoTodo } from "./todosDemoConstants";
 
 const priorityRingColors = {
@@ -261,10 +261,10 @@ function DemoFieldChip({
 
 function DemoTodoSidebar({
   todo,
-  onClose,
+  _onClose,
 }: {
   todo: DemoTodo;
-  onClose: () => void;
+  _onClose: () => void;
 }) {
   const project = DEMO_PROJECTS.find((p) => p.id === todo.project_id);
 
@@ -483,7 +483,7 @@ export default function DemoTodosView() {
       {selectedTodo && (
         <DemoTodoSidebar
           todo={selectedTodo}
-          onClose={() => setSelectedTodo(null)}
+          _onClose={() => setSelectedTodo(null)}
         />
       )}
     </div>

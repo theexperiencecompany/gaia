@@ -1,13 +1,8 @@
 "use client";
 
+import { CheckmarkCircle02Icon, Loading03Icon, TimeScheduleIcon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
-
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import {
-  CheckmarkCircle02Icon,
-  Loading03Icon,
-  TimeScheduleIcon,
-} from "@/icons";
 
 const DEMO_WORKFLOW = {
   title: "Daily Email Digest & Briefing",

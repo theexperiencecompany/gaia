@@ -1,9 +1,8 @@
 "use client";
 
 import { Card } from "@heroui/react";
-
+import { ArrowDown01Icon, ArrowLeft01Icon } from "@icons";
 import { Button } from "@/components/ui/button";
-import { ArrowDown01Icon, ArrowLeft01Icon } from "@/icons";
 import type { Notification } from "@/types/notifications";
 import { getNotificationIcon } from "@/utils/notifications";
 

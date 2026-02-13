@@ -1,14 +1,13 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
-import React from "react";
-
 import {
   CreditCardIcon,
   SecurityCheckIcon,
   StarsIcon,
   Tick02Icon,
-} from "@/icons";
+} from "@icons";
+import React from "react";
 
 import type { PaymentFlowStates } from "../hooks/usePaymentFlow";
 

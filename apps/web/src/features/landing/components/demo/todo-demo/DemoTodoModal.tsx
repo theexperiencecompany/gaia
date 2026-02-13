@@ -4,14 +4,14 @@ import { Button } from "@heroui/button";
 import { Checkbox } from "@heroui/checkbox";
 import { Input, Textarea } from "@heroui/input";
 import { Kbd } from "@heroui/kbd";
-import { m } from "motion/react";
-import { useEffect, useState } from "react";
 import {
   CalendarCheckOut01Icon,
   Flag02Icon,
   Folder02Icon,
   Tag01Icon,
-} from "@/icons";
+} from "@icons";
+import { m } from "motion/react";
+import { useEffect, useState } from "react";
 import { type TodoDemoPhase, tdTx } from "./todoDemoConstants";
 
 const FULL_TITLE = "Prepare Q3 investor pitch deck";

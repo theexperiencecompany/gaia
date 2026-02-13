@@ -4,16 +4,15 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
+import { Calendar03Icon, CreditCardIcon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import {
   convertToUSDCents,
   formatUSDFromCents,
 } from "@/features/pricing/utils/currencyConverter";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
-import { Calendar03Icon, CreditCardIcon } from "@/icons";
 
 /**
  * Formats a date string to a human-readable format

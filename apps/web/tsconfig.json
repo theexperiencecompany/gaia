@@ -24,7 +24,9 @@
     "paths": {
       "@/*": ["./src/*"],
       "@/src": ["./src/*"],
-      "@/icons": ["./src/components/shared/icons"]
+      "@icons": [
+        "../../node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded"
+      ]
     }
   },
   "include": [

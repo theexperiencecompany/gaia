@@ -1,11 +1,10 @@
 import { Button } from "@heroui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Skeleton } from "@heroui/skeleton";
+import { NewsIcon } from "@icons";
 import { m } from "motion/react";
 import Image from "next/image";
 import { useCallback, useEffect, useState } from "react";
-
-import { NewsIcon } from "@/icons";
 import { useImageDialog } from "@/stores/uiStore";
 import type {
   ImageResult,

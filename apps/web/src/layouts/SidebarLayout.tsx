@@ -1,4 +1,5 @@
 import { Kbd } from "@heroui/kbd";
+import { SidebarLeft01Icon, SidebarRight01Icon } from "@icons";
 import type { ReactNode } from "react";
 import { SidebarHeaderButton } from "@/components";
 import ContactSupport from "@/components/layout/sidebar/ContactSupport";
@@ -15,7 +16,6 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { SidebarLeft01Icon, SidebarRight01Icon } from "@/icons";
 
 interface SidebarLayoutProps {
   children: ReactNode;

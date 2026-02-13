@@ -2,6 +2,14 @@
 
 import { Avatar } from "@heroui/avatar";
 import { Skeleton } from "@heroui/skeleton";
+import {
+  Alert01Icon,
+  Calendar03Icon,
+  CheckmarkCircle02Icon,
+  Mail01Icon,
+  Target02Icon,
+  ZapIcon,
+} from "@icons";
 import { useEffect } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useCalendarsQuery } from "@/features/calendar/hooks/useCalendarsQuery";
@@ -12,14 +20,6 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useUnreadEmailsQuery } from "@/features/mail/hooks/useUnreadEmailsQuery";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
-import {
-  Alert01Icon,
-  Calendar03Icon,
-  CheckmarkCircle02Icon,
-  Mail01Icon,
-  Target02Icon,
-  ZapIcon,
-} from "@/icons";
 import { getSimpleTimeGreeting } from "@/utils/greetingUtils";
 
 export default function HomePage() {

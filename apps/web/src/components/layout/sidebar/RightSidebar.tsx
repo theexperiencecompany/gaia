@@ -1,9 +1,8 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Cancel01Icon } from "@icons";
 import { type ReactNode, useEffect } from "react";
-
-import { Cancel01Icon } from "@/icons";
 import {
   type RightSidebarVariant,
   useRightSidebar,

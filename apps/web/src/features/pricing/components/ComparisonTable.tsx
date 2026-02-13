@@ -1,12 +1,5 @@
 "use client";
 
-import { shuffle } from "lodash";
-import Image from "next/image";
-import Link from "next/link";
-import { useMemo } from "react";
-
-import { RaisedButton } from "@/components/ui/raised-button";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   AiBrain01Icon,
   Calendar01Icon,
@@ -16,7 +9,13 @@ import {
   SquareLock02Icon,
   UserCircle02Icon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { shuffle } from "lodash";
+import Image from "next/image";
+import Link from "next/link";
+import { useMemo } from "react";
+import { RaisedButton } from "@/components/ui/raised-button";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface FeatureStatus {
   // description: string;

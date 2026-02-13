@@ -1,24 +1,25 @@
-import type { ReactElement } from "react";
-
 import {
   BlushBrush02Icon,
   BookOpen02Icon,
   ConnectIcon,
   CreditCardPosIcon,
-  DiscordIcon,
-  Github,
   GlobalIcon,
-  HeartHandIcon,
   Home01Icon,
   Idea01Icon,
-  LinkedinIcon,
   MapsIcon,
   MessageMultiple02Icon,
   QuillWrite01Icon,
+} from "@icons";
+import type { ReactElement } from "react";
+import {
+  DiscordIcon,
+  Github,
+  HeartHandIcon,
+  LinkedinIcon,
   TwitterIcon,
   WhatsappIcon,
   YoutubeIcon,
-} from "@/icons";
+} from "@/components/shared/icons";
 
 export interface AppLink {
   label: string;

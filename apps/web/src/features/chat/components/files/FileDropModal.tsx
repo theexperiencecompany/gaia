@@ -1,8 +1,7 @@
 "use client";
 
+import { File01Icon, FileUploadIcon, Upload01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
-
-import { File01Icon, FileUploadIcon, Upload01Icon } from "@/icons";
 
 interface FileDropModalProps {
   isDragging: boolean;

@@ -1,12 +1,11 @@
+import { Timer02Icon } from "@icons";
 import Twemoji from "react-twemoji";
-
 import {
   formatEventDate,
   getEventColor,
   getEventIcon,
   isTooDark,
 } from "@/features/calendar/utils/calendarUtils";
-import { Timer02Icon } from "@/icons";
 import type {
   CalendarCardProps,
   GoogleCalendarEvent,

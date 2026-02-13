@@ -4,6 +4,13 @@ import { Avatar } from "@heroui/avatar";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import { Spinner } from "@heroui/spinner";
+import {
+  DateTimeIcon,
+  GitForkIcon,
+  LayersIcon,
+  PackageOpenIcon,
+  UserCircle02Icon,
+} from "@icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
@@ -18,13 +25,6 @@ import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
-import {
-  DateTimeIcon,
-  GitForkIcon,
-  LayersIcon,
-  PackageOpenIcon,
-  UserCircle02Icon,
-} from "@/icons";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;

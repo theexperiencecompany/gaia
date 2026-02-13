@@ -1,9 +1,9 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { PlayIcon, ZapIcon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { PlayIcon, ZapIcon } from "@/icons";
 import {
   DEMO_TODO_WORKFLOW,
   TARGET_TODO,

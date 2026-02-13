@@ -1,6 +1,6 @@
 "use client";
 
-import { Folder02Icon } from "@/icons";
+import { Folder02Icon } from "@icons";
 import type { Project } from "@/types/features/todoTypes";
 
 import BaseFieldChip from "./BaseFieldChip";

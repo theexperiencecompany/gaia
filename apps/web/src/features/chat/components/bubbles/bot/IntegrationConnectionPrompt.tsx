@@ -1,10 +1,10 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { AlertCircleIcon } from "@icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations";
 import type { IntegrationConnectionData } from "@/features/integrations/types";
-import { AlertCircleIcon } from "@/icons";
 
 interface IntegrationConnectionPromptProps {
   integration_connection_required: IntegrationConnectionData;

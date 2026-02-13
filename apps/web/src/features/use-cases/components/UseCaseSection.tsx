@@ -1,15 +1,12 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import {
-  ChevronUp,
-  StarAward01Icon,
-  WorkflowCircle03Icon,
-} from "@/components/shared/icons";
+import { ChevronUp } from "@/components/shared/icons";
 import type { UseCase } from "@/features/use-cases/types";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";

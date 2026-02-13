@@ -1,7 +1,6 @@
 import { Chip } from "@heroui/chip";
-
+import { CheckmarkCircle02Icon } from "@icons";
 import { Gmail } from "@/components";
-import { CheckmarkCircle02Icon } from "@/icons";
 import type { EmailSentData } from "@/types/features/mailTypes";
 
 interface EmailSentCardProps {

@@ -7,16 +7,15 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/react";
+import { ArrowDown01Icon } from "@icons";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import React from "react";
-
 import {
   getEventColor,
   isTooDark,
 } from "@/features/calendar/utils/calendarUtils";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
-import { ArrowDown01Icon } from "@/icons";
 import { useAppendToInput } from "@/stores/composerStore";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";

@@ -5,12 +5,11 @@ import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
 import { Progress } from "@heroui/progress";
 import { Tab, Tabs } from "@heroui/tabs";
+import { CalendarIcon, ChartIcon, ChartIncreaseIcon } from "@icons";
 import Link from "next/link";
 import { useState } from "react";
-
 import Spinner from "@/components/ui/spinner";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
-import { CalendarIcon, ChartIcon, ChartIncreaseIcon } from "@/icons";
 
 import { useUsageSummary } from "../hooks/useUsage";
 

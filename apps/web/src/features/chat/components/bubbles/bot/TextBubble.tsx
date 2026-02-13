@@ -13,6 +13,7 @@ function getTypedData<K extends ToolName>(
 }
 
 import { Chip } from "@heroui/chip";
+import { Alert01Icon } from "@icons";
 import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
@@ -43,7 +44,6 @@ import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
 import WorkflowCreatedCard from "@/features/workflows/components/WorkflowCreatedCard";
 import WorkflowDraftCard from "@/features/workflows/components/WorkflowDraftCard";
-import { Alert01Icon } from "@/icons";
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,

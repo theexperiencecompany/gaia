@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { m } from "motion/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-import { ArrowUpRight } from "@/icons";
+import { ArrowUpRight } from "@/components/shared/icons";
 
 interface CardStackProps<T> {
   title?: string;

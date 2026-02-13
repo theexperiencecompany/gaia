@@ -15,18 +15,6 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
-import { useRouter } from "next/navigation";
-import {
-  type ReactNode,
-  type SetStateAction,
-  useCallback,
-  useState,
-} from "react";
-
-import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
-import { chatApi } from "@/features/chat/api/chatApi";
-import { useConfirmation } from "@/hooks/useConfirmation";
-import { useDeleteConversation } from "@/hooks/useDeleteConversation";
 import {
   ArrowDown01Icon,
   Delete02Icon,
@@ -34,7 +22,18 @@ import {
   MoreVerticalIcon,
   PencilEdit02Icon,
   StarIcon,
-} from "@/icons";
+} from "@icons";
+import { useRouter } from "next/navigation";
+import {
+  type ReactNode,
+  type SetStateAction,
+  useCallback,
+  useState,
+} from "react";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import { chatApi } from "@/features/chat/api/chatApi";
+import { useConfirmation } from "@/hooks/useConfirmation";
+import { useDeleteConversation } from "@/hooks/useDeleteConversation";
 import { db } from "@/lib/db/chatDb";
 import { useChatStore } from "@/stores/chatStore";
 

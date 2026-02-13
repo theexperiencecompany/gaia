@@ -1,10 +1,5 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
-import { useParams } from "next/navigation";
-import { toast } from "sonner";
-
-import { chatApi } from "@/features/chat/api/chatApi";
-import { useConversation } from "@/features/chat/hooks/useConversation";
 import {
   Copy01Icon,
   LinkBackwardIcon,
@@ -12,7 +7,11 @@ import {
   RedoIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
-} from "@/icons";
+} from "@icons";
+import { useParams } from "next/navigation";
+import { toast } from "sonner";
+import { chatApi } from "@/features/chat/api/chatApi";
+import { useConversation } from "@/features/chat/hooks/useConversation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 

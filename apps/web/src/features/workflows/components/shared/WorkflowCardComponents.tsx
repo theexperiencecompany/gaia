@@ -2,17 +2,16 @@
 
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
-import Image from "next/image";
-
-import { CursorMagicSelection03Icon } from "@/components";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
+  CursorMagicSelection03Icon,
   DateTimeIcon,
   Mail01Icon,
   PlayIcon,
   TimeScheduleIcon,
   UserCircle02Icon,
-} from "@/icons";
+} from "@icons";
+import Image from "next/image";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { formatRunCount } from "@/utils/formatters";
 
 import type { Workflow } from "../../api/workflowApi";

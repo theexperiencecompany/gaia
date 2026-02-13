@@ -1,7 +1,5 @@
 "use client";
 
-import { format } from "date-fns";
-
 import {
   ArrowRight01Icon,
   Award01Icon,
@@ -9,7 +7,8 @@ import {
   CheckmarkCircle02Icon,
   Target02Icon,
   UserGroupIcon,
-} from "@/icons";
+} from "@icons";
+import { format } from "date-fns";
 
 import type {
   GoalCardActionsProps,

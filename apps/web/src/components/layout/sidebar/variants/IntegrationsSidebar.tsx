@@ -4,13 +4,12 @@ import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tooltip } from "@heroui/tooltip";
+import { CursorAddSelectionIcon, InternetIcon } from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import type { Integration } from "@/features/integrations/types";
-import { CursorAddSelectionIcon, InternetIcon } from "@/icons";
 import { useIntegrationModalStore } from "@/stores/integrationModalStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
