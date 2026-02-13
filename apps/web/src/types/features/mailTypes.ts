@@ -1,3 +1,23 @@
+export type MailTab =
+  | "inbox"
+  | "sent"
+  | "spam"
+  | "starred"
+  | "trash"
+  | "drafts";
+
+export interface SmartReply {
+  title: string;
+  body: string;
+  tone: "positive" | "neutral" | "action-oriented";
+}
+
+export interface SmartRepliesResponse {
+  message_id: string;
+  smart_replies: SmartReply[];
+  cached: boolean;
+}
+
 export interface EmailData {
   id: string;
   from: string;
@@ -26,7 +46,6 @@ export interface EmailThreadResponse {
 }
 
 export interface EmailPayload {
-  [x: string]: unknown;
   parts: EmailPart[];
   body: EmailBody;
   payload: {

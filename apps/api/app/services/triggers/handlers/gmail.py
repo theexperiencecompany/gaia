@@ -4,7 +4,7 @@ Gmail trigger handler.
 Handles Gmail new message trigger processing.
 """
 
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
@@ -12,6 +12,7 @@ from app.models.composio_schemas import GmailNewMessagePayload
 from app.models.trigger_configs import GmailNewMessageConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
+from app.utils.redis_utils import RedisPoolManager
 
 
 class GmailTriggerHandler(TriggerHandler):
@@ -107,6 +108,53 @@ class GmailTriggerHandler(TriggerHandler):
         except Exception as e:
             logger.error(f"Error finding Gmail workflows: {e}")
             return []
+
+    async def process_event(
+        self,
+        event_type: str,
+        trigger_id: Optional[str],
+        user_id: Optional[str],
+        data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Process Gmail webhook: run workflows AND trigger email analysis."""
+        workflow_result = await super().process_event(
+            event_type, trigger_id, user_id, data
+        )
+
+        if user_id and event_type == "GMAIL_NEW_GMAIL_MESSAGE":
+            try:
+                pool = await RedisPoolManager.get_pool()
+                payload = data.get("payload", data)
+                message_id = (
+                    payload.get("message_id")
+                    or payload.get("messageId")
+                    or data.get("message_id")
+                )
+
+                if message_id:
+                    await pool.enqueue_job(
+                        "process_email_analysis_and_replies",
+                        user_id,
+                        message_id,
+                        {
+                            "subject": payload.get("subject", ""),
+                            "sender": payload.get("sender", payload.get("from", "")),
+                            "date": payload.get(
+                                "message_timestamp", payload.get("messageTimestamp", "")
+                            ),
+                            "content": payload.get(
+                                "message_text", payload.get("messageText", "")
+                            ),
+                            "thread_id": payload.get(
+                                "thread_id", payload.get("threadId")
+                            ),
+                        },
+                    )
+                    logger.info(f"Queued email analysis for message {message_id}")
+            except Exception as e:
+                logger.error(f"Failed to queue email analysis: {e}")
+
+        return workflow_result
 
 
 gmail_trigger_handler = GmailTriggerHandler()

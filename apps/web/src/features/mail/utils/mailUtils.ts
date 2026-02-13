@@ -1,8 +1,6 @@
 "use client";
-import type { QueryFunctionContext } from "@tanstack/react-query";
 
-import { mailApi } from "@/features/mail/api/mailApi";
-import type { EmailsResponse } from "@/types/features/mailTypes";
+import type { MailTab } from "@/types/features/mailTypes";
 
 export function parseEmail(from: string | undefined): {
   name: string;
@@ -59,8 +57,22 @@ export function formatTime(timestamp: string): string {
   });
 }
 
-export const fetchEmails = async ({
-  pageParam = undefined,
-}: QueryFunctionContext<string[]>): Promise<EmailsResponse> => {
-  return mailApi.fetchEmails(pageParam as string | undefined);
-};
+export function getQueryForTab(tab: MailTab): {
+  endpoint: "search" | "drafts";
+  params: Record<string, string>;
+} {
+  switch (tab) {
+    case "inbox":
+      return { endpoint: "search", params: { query: "in:inbox" } };
+    case "sent":
+      return { endpoint: "search", params: { label: "sent" } };
+    case "spam":
+      return { endpoint: "search", params: { label: "spam" } };
+    case "starred":
+      return { endpoint: "search", params: { label: "starred" } };
+    case "trash":
+      return { endpoint: "search", params: { label: "trash" } };
+    case "drafts":
+      return { endpoint: "drafts", params: {} };
+  }
+}

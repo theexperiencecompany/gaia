@@ -27,6 +27,8 @@ class SendEmailRequest(BaseModel):
     body: str
     cc: Optional[List[str]] = None
     bcc: Optional[List[str]] = None
+    thread_id: Optional[str] = None
+    is_html: Optional[bool] = False
 
 
 class EmailReadStatusRequest(BaseModel):
@@ -119,6 +121,22 @@ class EmailWorkflowFilterDecision(BaseModel):
         ge=0.0,
         le=1.0,
         description="Confidence level in the decision (0.0 to 1.0)",
+    )
+
+
+class SmartReply(BaseModel):
+    title: str = Field(
+        description="Short label for the reply, e.g. 'Accept', 'Decline', 'Ask for more info'"
+    )
+    body: str = Field(description="Full composed reply body text ready to send")
+    tone: str = Field(
+        description="Tone category: 'positive', 'neutral', or 'action-oriented'"
+    )
+
+
+class SmartRepliesResponse(BaseModel):
+    replies: List[SmartReply] = Field(
+        description="List of 3 smart reply suggestions with different tones"
     )
 
 

@@ -1,17 +1,23 @@
 """Simple email processing with Gemini for background tasks."""
 
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.agents.llm.client import init_llm
-from app.agents.prompts.mail_prompts import EMAIL_COMPREHENSIVE_ANALYSIS
+from app.agents.prompts.mail_prompts import (
+    EMAIL_COMPREHENSIVE_ANALYSIS,
+    SMART_REPLY_GENERATION,
+)
 from app.config.loggers import common_logger as logger
 from app.db.mongodb.collections import mail_collection
-from app.models.mail_models import EmailComprehensiveAnalysis
+from app.models.mail_models import EmailComprehensiveAnalysis, SmartRepliesResponse
 from langchain_core.output_parsers import PydanticOutputParser
 
 email_comprehensive_parser = PydanticOutputParser(
     pydantic_object=EmailComprehensiveAnalysis
 )
+
+smart_reply_parser = PydanticOutputParser(pydantic_object=SmartRepliesResponse)
 
 
 async def get_email_importance_summaries(
@@ -194,3 +200,123 @@ async def get_bulk_email_importance_summaries(
     except Exception as e:
         logger.error(f"Error retrieving bulk email summaries for user {user_id}: {e}")
         raise
+
+
+async def generate_smart_replies(
+    subject: str, sender: str, date: str, content: str
+) -> Optional[SmartRepliesResponse]:
+    """Generate 3 smart reply suggestions using Gemini LLM."""
+    try:
+        llm = init_llm(preferred_provider="gemini")
+        prompt = SMART_REPLY_GENERATION.format(
+            subject=subject,
+            sender=sender,
+            date=date,
+            content=content,
+            format_instructions=smart_reply_parser.get_format_instructions(),
+        )
+        response = await llm.ainvoke(prompt)
+        response_text = response.text if hasattr(response, "text") else str(response)
+        result = smart_reply_parser.parse(response_text.strip())
+        logger.info(f"Successfully generated smart replies for: {subject}")
+        return result
+    except Exception as e:
+        logger.error(f"Error generating smart replies: {e}")
+        return None
+
+
+async def analyze_email_on_demand(
+    user_id: str, message_id: str, email_data: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """Run comprehensive analysis on an email and store in MongoDB. Returns cached if exists."""
+    try:
+        existing = await mail_collection.find_one(
+            {"user_id": user_id, "message_id": message_id}
+        )
+        if existing:
+            existing["_id"] = str(existing["_id"])
+            if "analyzed_at" in existing:
+                existing["analyzed_at"] = existing["analyzed_at"].isoformat()
+            return existing
+
+        analysis = await process_email_comprehensive_analysis(
+            subject=email_data["subject"],
+            sender=email_data["sender"],
+            date=email_data["date"],
+            content=email_data["content"],
+        )
+
+        if not analysis:
+            return None
+
+        doc: Dict[str, Any] = {
+            "user_id": user_id,
+            "message_id": message_id,
+            "thread_id": email_data.get("thread_id"),
+            "subject": email_data["subject"],
+            "sender": email_data["sender"],
+            "is_important": analysis.is_important,
+            "importance_level": analysis.importance_level.value,
+            "summary": analysis.summary,
+            "semantic_labels": analysis.semantic_labels,
+            "analyzed_at": datetime.now(timezone.utc),
+        }
+
+        await mail_collection.insert_one(doc)
+        doc["_id"] = str(doc["_id"])
+        doc["analyzed_at"] = doc["analyzed_at"].isoformat()
+        return doc
+    except Exception as e:
+        logger.error(f"Error analyzing email on demand for {message_id}: {e}")
+        return None
+
+
+async def get_or_generate_smart_replies(
+    user_id: str, message_id: str, email_data: Dict[str, Any]
+) -> Optional[Dict[str, Any]]:
+    """Get cached smart replies or generate new ones."""
+    try:
+        existing = await mail_collection.find_one(
+            {
+                "user_id": user_id,
+                "message_id": message_id,
+                "smart_replies": {"$exists": True},
+            }
+        )
+        if existing and existing.get("smart_replies"):
+            return {"smart_replies": existing["smart_replies"], "cached": True}
+
+        result = await generate_smart_replies(
+            subject=email_data["subject"],
+            sender=email_data["sender"],
+            date=email_data["date"],
+            content=email_data["content"],
+        )
+
+        if not result:
+            return None
+
+        replies_data = [reply.model_dump() for reply in result.replies]
+
+        await mail_collection.update_one(
+            {"user_id": user_id, "message_id": message_id},
+            {
+                "$set": {
+                    "smart_replies": replies_data,
+                    "smart_replies_generated_at": datetime.now(timezone.utc),
+                },
+                "$setOnInsert": {
+                    "user_id": user_id,
+                    "message_id": message_id,
+                    "thread_id": email_data.get("thread_id"),
+                    "subject": email_data["subject"],
+                    "sender": email_data["sender"],
+                },
+            },
+            upsert=True,
+        )
+
+        return {"smart_replies": replies_data, "cached": False}
+    except Exception as e:
+        logger.error(f"Error generating smart replies for {message_id}: {e}")
+        return None

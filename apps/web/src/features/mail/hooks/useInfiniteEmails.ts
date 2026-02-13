@@ -1,13 +1,10 @@
 import { type InfiniteData, useInfiniteQuery } from "@tanstack/react-query";
 import { useCallback } from "react";
 
-import { fetchEmails } from "@/features/mail/utils/mailUtils";
-import type { EmailsResponse } from "@/types/features/mailTypes";
+import { mailApi } from "@/features/mail/api/mailApi";
+import type { EmailsResponse, MailTab } from "@/types/features/mailTypes";
 
-/**
- * Hook for handling infinite loading of emails
- */
-export const useInfiniteEmails = () => {
+export const useInfiniteEmails = (tab: MailTab = "inbox") => {
   const { data, isLoading, fetchNextPage, hasNextPage, error } =
     useInfiniteQuery<
       EmailsResponse,
@@ -15,15 +12,14 @@ export const useInfiniteEmails = () => {
       InfiniteData<EmailsResponse>,
       string[]
     >({
-      queryKey: ["emails"],
-      queryFn: fetchEmails,
+      queryKey: ["emails", tab],
+      queryFn: ({ pageParam }) =>
+        mailApi.fetchEmailsByTab(tab, pageParam as string | undefined),
       getNextPageParam: (lastPage) => lastPage.nextPageToken || undefined,
       initialPageParam: undefined,
-      retry: 0, // Explicitly set to 0 to override global retry settings
-      refetchOnWindowFocus: false, // Prevent refetch on window focus
-      refetchOnReconnect: false, // Prevent refetch on network reconnect
-      refetchOnMount: false, // Prevent refetch on component mount
-      staleTime: Infinity, // Keep data fresh to prevent background refetching
+      retry: 0,
+      refetchOnWindowFocus: true,
+      staleTime: 2 * 60 * 1000,
     });
 
   const emails = data
@@ -37,12 +33,10 @@ export const useInfiniteEmails = () => {
 
   const loadMoreItems = useCallback(
     async (_startIndex: number, _stopIndex: number) => {
-      // Only attempt to fetch more if we have a next page and no current error
       if (hasNextPage && !error) {
         try {
           await fetchNextPage();
         } catch (fetchError) {
-          // Log the error but don't throw it to prevent infinite retry loops
           console.error("Failed to fetch more emails:", fetchError);
         }
       }
@@ -58,6 +52,6 @@ export const useInfiniteEmails = () => {
     hasNextPage,
     isItemLoaded,
     loadMoreItems,
-    error, // Expose error state so components can handle it
+    error,
   };
 };

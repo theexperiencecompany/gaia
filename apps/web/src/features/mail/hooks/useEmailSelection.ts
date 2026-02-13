@@ -1,54 +1,49 @@
 import { type InfiniteData, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { toast } from "sonner";
 
-import type { EmailsResponse } from "@/types/features/mailTypes";
+import type { EmailsResponse, MailTab } from "@/types/features/mailTypes";
 
 import { mailApi } from "../api/mailApi";
 
-/**
- * Hook for managing email multi-selection and bulk actions
- */
-export const useEmailSelection = () => {
-  const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set());
+type Selection = Set<string> | "all";
+
+export const useEmailSelection = (tab: MailTab = "inbox") => {
+  const [selectedKeys, setSelectedKeys] = useState<Selection>(
+    new Set<string>(),
+  );
   const queryClient = useQueryClient();
+  const queryKey = ["emails", tab];
 
-  // Toggle email selection
-  const toggleEmailSelection = (e: React.MouseEvent, emailId: string) => {
-    e.stopPropagation(); // Prevent opening the email
+  const clearSelections = useCallback(() => {
+    setSelectedKeys(new Set<string>());
+  }, []);
 
-    setSelectedEmails((prev) => {
-      const newSet = new Set(prev);
-      if (newSet.has(emailId)) {
-        newSet.delete(emailId);
-      } else {
-        newSet.add(emailId);
-      }
-      return newSet;
-    });
-  };
+  const onSelectionChange = useCallback((keys: Selection) => {
+    setSelectedKeys(keys);
+  }, []);
 
-  // Clear all selections
-  const clearSelections = () => {
-    setSelectedEmails(new Set());
-  };
+  const getSelectedIds = useCallback((): string[] => {
+    if (selectedKeys === "all") return [];
+    return Array.from(selectedKeys);
+  }, [selectedKeys]);
 
-  // Bulk actions for selected emails
+  const selectedCount = selectedKeys === "all" ? 0 : selectedKeys.size;
+
   const bulkMarkAsRead = async () => {
-    if (selectedEmails.size === 0) return;
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
 
-    // First update UI optimistically
     queryClient.setQueryData<InfiniteData<EmailsResponse>>(
-      ["emails"],
+      queryKey,
       (oldData) => {
         if (!oldData) return oldData;
-
         return {
           ...oldData,
           pages: oldData.pages.map((page) => ({
             ...page,
             emails: page.emails.map((email) => {
-              if (selectedEmails.has(email.id)) {
+              if (ids.includes(email.id)) {
                 return {
                   ...email,
                   labelIds: (email.labelIds || []).filter(
@@ -63,45 +58,36 @@ export const useEmailSelection = () => {
       },
     );
 
-    // Show immediate success toast
-    toast.success(`${selectedEmails.size} emails marked as read`);
-
-    // Clear selections immediately for better UX
+    toast.success(`${ids.length} emails marked as read`);
     clearSelections();
 
-    // Then make API call in the background
     try {
-      await mailApi.bulkMarkAsRead(Array.from(selectedEmails));
+      await mailApi.bulkMarkAsRead(ids);
     } catch (error) {
       console.error("Failed to mark emails as read:", error);
-      // Refresh data since we may have incomplete state
-      queryClient.invalidateQueries({ queryKey: ["emails"] });
+      queryClient.invalidateQueries({ queryKey });
     }
   };
 
   const bulkMarkAsUnread = async () => {
-    if (selectedEmails.size === 0) return;
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
 
-    // First update UI optimistically
     queryClient.setQueryData<InfiniteData<EmailsResponse>>(
-      ["emails"],
+      queryKey,
       (oldData) => {
         if (!oldData) return oldData;
-
         return {
           ...oldData,
           pages: oldData.pages.map((page) => ({
             ...page,
             emails: page.emails.map((email) => {
-              if (selectedEmails.has(email.id)) {
+              if (ids.includes(email.id)) {
                 const newLabelIds = [...(email.labelIds || [])];
                 if (!newLabelIds.includes("UNREAD")) {
                   newLabelIds.push("UNREAD");
                 }
-                return {
-                  ...email,
-                  labelIds: newLabelIds,
-                };
+                return { ...email, labelIds: newLabelIds };
               }
               return email;
             }),
@@ -110,45 +96,36 @@ export const useEmailSelection = () => {
       },
     );
 
-    // Show immediate success toast
-    toast.success(`${selectedEmails.size} emails marked as unread`);
-
-    // Clear selections immediately for better UX
+    toast.success(`${ids.length} emails marked as unread`);
     clearSelections();
 
-    // Then make API call in the background
     try {
-      await mailApi.bulkMarkAsUnread(Array.from(selectedEmails));
+      await mailApi.bulkMarkAsUnread(ids);
     } catch (error) {
       console.error("Failed to mark emails as unread:", error);
-      // Refresh data since we may have incomplete state
-      queryClient.invalidateQueries({ queryKey: ["emails"] });
+      queryClient.invalidateQueries({ queryKey });
     }
   };
 
   const bulkStarEmails = async () => {
-    if (selectedEmails.size === 0) return;
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
 
-    // First update UI optimistically
     queryClient.setQueryData<InfiniteData<EmailsResponse>>(
-      ["emails"],
+      queryKey,
       (oldData) => {
         if (!oldData) return oldData;
-
         return {
           ...oldData,
           pages: oldData.pages.map((page) => ({
             ...page,
             emails: page.emails.map((email) => {
-              if (selectedEmails.has(email.id)) {
+              if (ids.includes(email.id)) {
                 const newLabelIds = [...(email.labelIds || [])];
                 if (!newLabelIds.includes("STARRED")) {
                   newLabelIds.push("STARRED");
                 }
-                return {
-                  ...email,
-                  labelIds: newLabelIds,
-                };
+                return { ...email, labelIds: newLabelIds };
               }
               return email;
             }),
@@ -157,155 +134,83 @@ export const useEmailSelection = () => {
       },
     );
 
-    // Show immediate success toast
-    toast.success(`${selectedEmails.size} emails starred`);
-
-    // Clear selections immediately for better UX
+    toast.success(`${ids.length} emails starred`);
     clearSelections();
 
-    // Then make API call in the background
     try {
-      await mailApi.bulkStarEmails(Array.from(selectedEmails));
+      await mailApi.bulkStarEmails(ids);
     } catch (error) {
       console.error("Failed to star emails:", error);
-      // Refresh data since we may have incomplete state
-      queryClient.invalidateQueries({ queryKey: ["emails"] });
-    }
-  };
-
-  const bulkUnstarEmails = async () => {
-    if (selectedEmails.size === 0) return;
-
-    // First update UI optimistically
-    queryClient.setQueryData<InfiniteData<EmailsResponse>>(
-      ["emails"],
-      (oldData) => {
-        if (!oldData) return oldData;
-
-        return {
-          ...oldData,
-          pages: oldData.pages.map((page) => ({
-            ...page,
-            emails: page.emails.map((email) => {
-              if (selectedEmails.has(email.id)) {
-                return {
-                  ...email,
-                  labelIds: (email.labelIds || []).filter(
-                    (label) => label !== "STARRED",
-                  ),
-                };
-              }
-              return email;
-            }),
-          })),
-        };
-      },
-    );
-
-    // Show immediate success toast
-    toast.success(`${selectedEmails.size} emails unstarred`);
-
-    // Clear selections immediately for better UX
-    clearSelections();
-
-    // Then make API call in the background
-    try {
-      await mailApi.bulkUnstarEmails(Array.from(selectedEmails));
-    } catch (error) {
-      console.error("Failed to unstar emails:", error);
-      // Refresh data since we may have incomplete state
-      queryClient.invalidateQueries({ queryKey: ["emails"] });
+      queryClient.invalidateQueries({ queryKey });
     }
   };
 
   const bulkArchiveEmails = async () => {
-    if (selectedEmails.size === 0) return;
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
 
-    // Store selected email IDs in a local variable before clearing the selection
-    const emailIdsToArchive = Array.from(selectedEmails);
-
-    // First update UI optimistically
     queryClient.setQueryData<InfiniteData<EmailsResponse>>(
-      ["emails"],
+      queryKey,
       (oldData) => {
         if (!oldData) return oldData;
-
         return {
           ...oldData,
           pages: oldData.pages.map((page) => ({
             ...page,
-            emails: page.emails.filter(
-              (email) => !selectedEmails.has(email.id),
-            ),
+            emails: page.emails.filter((email) => !ids.includes(email.id)),
           })),
         };
       },
     );
 
-    // Show immediate success toast
-    toast.success(`${selectedEmails.size} emails archived`);
-
-    // Clear selections immediately for better UX
+    toast.success(`${ids.length} emails archived`);
     clearSelections();
 
-    // Then make API call in the background
     try {
-      await mailApi.bulkArchiveEmails(emailIdsToArchive);
+      await mailApi.bulkArchiveEmails(ids);
     } catch (error) {
       console.error("Failed to archive emails:", error);
-      // Refresh data since we may have incomplete state
-      queryClient.invalidateQueries({ queryKey: ["emails"] });
+      queryClient.invalidateQueries({ queryKey });
     }
   };
 
   const bulkTrashEmails = async () => {
-    if (selectedEmails.size === 0) return;
+    const ids = getSelectedIds();
+    if (ids.length === 0) return;
 
-    // Store selected email IDs in a local variable before clearing the selection
-    const emailIdsToTrash = Array.from(selectedEmails);
-
-    // First update UI optimistically
     queryClient.setQueryData<InfiniteData<EmailsResponse>>(
-      ["emails"],
+      queryKey,
       (oldData) => {
         if (!oldData) return oldData;
-
         return {
           ...oldData,
           pages: oldData.pages.map((page) => ({
             ...page,
-            emails: page.emails.filter(
-              (email) => !selectedEmails.has(email.id),
-            ),
+            emails: page.emails.filter((email) => !ids.includes(email.id)),
           })),
         };
       },
     );
 
-    // Show immediate success toast
-    toast.success(`${selectedEmails.size} emails moved to trash`);
-
-    // Clear selections immediately for better UX
+    toast.success(`${ids.length} emails moved to trash`);
     clearSelections();
 
-    // Then make API call in the background
     try {
-      await mailApi.bulkTrashEmails(emailIdsToTrash);
+      await mailApi.bulkTrashEmails(ids);
     } catch (error) {
       console.error("Failed to trash emails:", error);
-      // Refresh data since we may have incomplete state
-      queryClient.invalidateQueries({ queryKey: ["emails"] });
+      queryClient.invalidateQueries({ queryKey });
     }
   };
 
   return {
-    selectedEmails,
-    toggleEmailSelection,
+    selectedKeys,
+    selectedCount,
+    onSelectionChange,
     clearSelections,
     bulkMarkAsRead,
     bulkMarkAsUnread,
     bulkStarEmails,
-    bulkUnstarEmails,
     bulkArchiveEmails,
     bulkTrashEmails,
   };

@@ -3,6 +3,7 @@ Task modules for ARQ worker.
 """
 
 from .cleanup_tasks import cleanup_stuck_personalization
+from .mail_analysis_tasks import process_email_analysis_and_replies
 from .memory_email_tasks import process_gmail_emails_to_memory
 from .memory_tasks import store_memories_batch
 from .onboarding_tasks import process_personalization_task
@@ -17,6 +18,7 @@ from .workflow_tasks import (
 )
 
 __all__ = [
+    "process_email_analysis_and_replies",
     "process_gmail_emails_to_memory",
     "process_personalization_task",
     "store_memories_batch",

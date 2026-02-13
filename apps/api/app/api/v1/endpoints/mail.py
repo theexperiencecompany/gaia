@@ -15,12 +15,10 @@ from app.models.mail_models import (
     SendEmailRequest,
 )
 from app.services.mail.email_importance_service import (
+    analyze_email_on_demand,
     get_bulk_email_importance_summaries as get_bulk_importance_summaries_service,
-)
-from app.services.mail.email_importance_service import (
     get_email_importance_summaries as get_importance_summaries_service,
-)
-from app.services.mail.email_importance_service import (
+    get_or_generate_smart_replies,
     get_single_email_importance_summary as get_single_importance_summary_service,
 )
 from app.services.mail.mail_service import (
@@ -364,10 +362,11 @@ async def send_email_json(
             extra_recipients=request.to[1:],
             subject=request.subject,
             body=request.body,
-            is_html=False,
+            is_html=request.is_html or False,
             cc_list=request.cc,
             bcc_list=request.bcc,
             attachments=None,
+            thread_id=request.thread_id,
         )
 
         return {
@@ -1099,6 +1098,107 @@ async def send_draft_route(
             )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post(
+    "/gmail/smart-replies/{message_id}", summary="Generate smart replies for an email"
+)
+@tiered_rate_limit("mail_actions")
+async def generate_smart_replies_endpoint(
+    message_id: str,
+    current_user: dict = Depends(require_integration("gmail")),
+) -> dict:
+    try:
+        user_id = current_user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        email_result = await get_email_by_id_service(
+            user_id=str(user_id), message_id=message_id
+        )
+
+        if not email_result.get("success"):
+            raise HTTPException(status_code=404, detail="Email not found")
+
+        msg = email_result["message"]
+        email_data = {
+            "subject": msg.get("subject", ""),
+            "sender": msg.get("from", ""),
+            "date": msg.get("time", ""),
+            "content": msg.get("snippet", "") or msg.get("body", ""),
+            "thread_id": msg.get("threadId"),
+        }
+
+        result = await get_or_generate_smart_replies(
+            user_id=str(user_id),
+            message_id=message_id,
+            email_data=email_data,
+        )
+
+        if not result:
+            raise HTTPException(
+                status_code=500, detail="Failed to generate smart replies"
+            )
+
+        return {
+            "message_id": message_id,
+            "smart_replies": result["smart_replies"],
+            "cached": result.get("cached", False),
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to generate smart replies: {str(e)}"
+        )
+
+
+@router.post("/gmail/analyze/{message_id}", summary="Analyze an email on demand")
+@tiered_rate_limit("mail_actions")
+async def analyze_email_endpoint(
+    message_id: str,
+    current_user: dict = Depends(require_integration("gmail")),
+) -> dict:
+    try:
+        user_id = current_user.get("user_id")
+        if not user_id:
+            raise HTTPException(status_code=400, detail="User ID not found")
+
+        email_result = await get_email_by_id_service(
+            user_id=str(user_id), message_id=message_id
+        )
+
+        if not email_result.get("success"):
+            raise HTTPException(status_code=404, detail="Email not found")
+
+        msg = email_result["message"]
+        email_data = {
+            "subject": msg.get("subject", ""),
+            "sender": msg.get("from", ""),
+            "date": msg.get("time", ""),
+            "content": msg.get("snippet", "") or msg.get("body", ""),
+            "thread_id": msg.get("threadId"),
+        }
+
+        result = await analyze_email_on_demand(
+            user_id=str(user_id),
+            message_id=message_id,
+            email_data=email_data,
+        )
+
+        if not result:
+            raise HTTPException(status_code=500, detail="Failed to analyze email")
+
+        return {
+            "message_id": message_id,
+            "analysis": result,
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to analyze email: {str(e)}"
+        )
 
 
 @router.get("/gmail/importance-summaries", summary="Get email importance summaries")

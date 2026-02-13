@@ -1,3 +1,4 @@
+import { getQueryForTab } from "@/features/mail/utils/mailUtils";
 import { apiService } from "@/lib/api";
 import type { EmailActionResponse } from "@/types/api/mailApiTypes";
 import type {
@@ -6,22 +7,11 @@ import type {
   EmailSummariesResponse,
   EmailsResponse,
   EmailThreadResponse,
+  MailTab,
+  SmartRepliesResponse,
 } from "@/types/features/mailTypes";
 
 export const mailApi = {
-  // Fetch emails with pagination
-  fetchEmails: async (pageToken?: string): Promise<EmailsResponse> => {
-    const maxResults = 20;
-    const url = `/gmail/messages?maxResults=${maxResults}${
-      pageToken ? `&pageToken=${pageToken}` : ""
-    }`;
-    const data = await apiService.get<{
-      messages: EmailData[];
-      nextPageToken?: string;
-    }>(url);
-    return { emails: data.messages, nextPageToken: data.nextPageToken };
-  },
-
   // Fetch email by ID
   fetchEmailById: async (messageId: string): Promise<EmailData> => {
     return apiService.get<EmailData>(`/gmail/message/${messageId}`, {
@@ -105,10 +95,10 @@ export const mailApi = {
   bulkMarkAsRead: async (
     messageIds: string[],
   ): Promise<EmailActionResponse> => {
-    await apiService.patch(
-      "/gmail/messages/bulk/mark-read",
+    await apiService.post(
+      "/gmail/mark-as-read",
       {
-        messageIds,
+        message_ids: messageIds,
       },
       {
         successMessage: `${messageIds.length} emails marked as read`,
@@ -124,10 +114,10 @@ export const mailApi = {
   bulkMarkAsUnread: async (
     messageIds: string[],
   ): Promise<EmailActionResponse> => {
-    await apiService.patch(
-      "/gmail/messages/bulk/mark-unread",
+    await apiService.post(
+      "/gmail/mark-as-unread",
       {
-        messageIds,
+        message_ids: messageIds,
       },
       {
         successMessage: `${messageIds.length} emails marked as unread`,
@@ -143,10 +133,10 @@ export const mailApi = {
   bulkStarEmails: async (
     messageIds: string[],
   ): Promise<EmailActionResponse> => {
-    await apiService.patch(
-      "/gmail/messages/bulk/star",
+    await apiService.post(
+      "/gmail/star",
       {
-        messageIds,
+        message_ids: messageIds,
       },
       {
         successMessage: `${messageIds.length} emails starred`,
@@ -217,22 +207,93 @@ export const mailApi = {
     });
   },
 
-  // Reply to email - TODO: Backend endpoint doesn't exist yet
-  // replyToEmail: async (reply: {
-  //   threadId: string;
-  //   to: string[];
-  //   cc?: string[];
-  //   bcc?: string[];
-  //   subject: string;
-  //   body: string;
-  //   inReplyTo?: string;
-  //   references?: string[];
-  // }): Promise<{ messageId: string }> => {
-  //   return apiService.post("/gmail/reply", reply, {
-  //     successMessage: "Reply sent successfully",
-  //     errorMessage: "Failed to send reply",
-  //   });
-  // },
+  // Fetch emails by tab with pagination
+  fetchEmailsByTab: async (
+    tab: MailTab,
+    pageToken?: string,
+  ): Promise<EmailsResponse> => {
+    const { endpoint, params } = getQueryForTab(tab);
+    const maxResults = 20;
+
+    if (endpoint === "drafts") {
+      const data = await apiService.get<{
+        drafts: EmailData[];
+        nextPageToken?: string;
+      }>(
+        `/gmail/drafts?max_results=${maxResults}${pageToken ? `&page_token=${pageToken}` : ""}`,
+      );
+      return {
+        emails: data.drafts || [],
+        nextPageToken: data.nextPageToken,
+      };
+    }
+
+    const searchParams = new URLSearchParams({
+      max_results: String(maxResults),
+      ...params,
+    });
+    if (pageToken) searchParams.set("page_token", pageToken);
+
+    const data = await apiService.get<{
+      messages: EmailData[];
+      nextPageToken?: string;
+    }>(`/gmail/search?${searchParams.toString()}`);
+    return {
+      emails: data.messages || [],
+      nextPageToken: data.nextPageToken,
+    };
+  },
+
+  // Reply to email using existing send endpoint with thread_id
+  replyToEmail: async (data: {
+    to: string;
+    subject: string;
+    body: string;
+    threadId: string;
+  }): Promise<{ message_id: string; status: string }> => {
+    const formData = new FormData();
+    formData.append("to", data.to);
+    formData.append("subject", data.subject);
+    formData.append("body", data.body);
+    formData.append("thread_id", data.threadId);
+    formData.append("is_html", "true");
+
+    return apiService.post("/gmail/send", formData, {
+      successMessage: "Reply sent successfully",
+      errorMessage: "Failed to send reply",
+    });
+  },
+
+  // Generate smart replies for an email
+  generateSmartReplies: async (
+    messageId: string,
+  ): Promise<SmartRepliesResponse> => {
+    return apiService.post<SmartRepliesResponse>(
+      `/gmail/smart-replies/${messageId}`,
+      {},
+      {
+        errorMessage: "Failed to generate smart replies",
+        silent: true,
+      },
+    );
+  },
+
+  // Analyze email on demand
+  analyzeEmail: async (
+    messageId: string,
+  ): Promise<{
+    message_id: string;
+    analysis: EmailImportanceSummary;
+  }> => {
+    return apiService.post(
+      `/gmail/analyze/${messageId}`,
+      {},
+      {
+        errorMessage: "Failed to analyze email",
+        silent: true,
+      },
+    );
+  },
 
   // Summarize email
   summarizeEmail: async (summaryRequest: {
@@ -306,14 +367,18 @@ export const mailApi = {
   ): Promise<{
     status: string;
     email: EmailImportanceSummary;
-  }> => {
-    return apiService.get<{
-      status: string;
-      email: EmailImportanceSummary;
-    }>(`/gmail/importance-summary/${messageId}`, {
-      errorMessage: "Failed to fetch email summary",
-      silent: true,
-    });
+  } | null> => {
+    try {
+      return await apiService.get<{
+        status: string;
+        email: EmailImportanceSummary;
+      }>(`/gmail/importance-summary/${messageId}`, {
+        errorMessage: "Failed to fetch email summary",
+        silent: true,
+      });
+    } catch {
+      return null;
+    }
   },
 
   fetchEmailSummaryByIds: async (

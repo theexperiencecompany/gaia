@@ -191,3 +191,29 @@ Analysis Requirements:
 
 {format_instructions}
 """
+
+SMART_REPLY_GENERATION = """
+Generate exactly 3 smart reply suggestions for the following email. Each reply should be a complete, ready-to-send response.
+
+Email Details:
+Subject: {subject}
+From: {sender}
+Date: {date}
+Content: {content}
+
+Requirements:
+1. Generate exactly 3 replies with different tones:
+   - Reply 1: POSITIVE tone (accepting, agreeing, enthusiastic)
+   - Reply 2: NEUTRAL tone (acknowledging, informational, balanced)
+   - Reply 3: ACTION-ORIENTED tone (requesting clarification, suggesting next steps, proposing alternatives)
+
+2. Each reply must have:
+   - title: A short 2-4 word label describing the reply action (e.g., "Accept", "Need More Info", "Suggest Alternative")
+   - body: A complete, professional reply body (2-5 sentences). Do NOT include greetings or sign-offs.
+   - tone: One of "positive", "neutral", or "action-oriented"
+
+3. Replies should be contextually relevant to the email content.
+4. Keep replies concise but complete.
+
+{format_instructions}
+"""
