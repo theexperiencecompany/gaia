@@ -1,6 +1,8 @@
+import { Button } from "@heroui/button";
 import { Call02Icon, ChatBotIcon, VoiceIcon } from "@icons";
 import Image from "next/image";
-import { Button } from "@/components/ui/button";
+import Link from "next/link";
+import { ChevronRight } from "@/components";
 import { SectionHeading } from "@/features/landing/layouts/SectionHeader";
 
 export default function MobileSection() {
@@ -39,53 +41,50 @@ export default function MobileSection() {
             </div>
           </div>
 
-          <div className="relative z-1 flex justify-center gap-2 px-5 sm:justify-start sm:px-0">
+          <div className="relative z-1 flex flex-col gap-3 px-5 sm:px-0">
             <Button
-              className="flex h-[60px] rounded-xl border-2 border-white/30 bg-black text-white"
-              aria-label="Download GAIA from App Store - Coming Soon"
+              as={Link}
+              href="https://heygaia.app"
+              target="_blank"
+              rel="noopener noreferrer"
             >
-              <div className="flex flex-row items-center gap-4">
-                <Image
-                  src="/images/icons/apple.svg"
-                  alt="Apple Icon"
-                  width={30}
-                  height={30}
-                  loading="lazy"
-                />
-
-                <div className="flex flex-col items-start pr-3">
-                  <div className="text-xs font-normal text-white/60 sm:text-sm">
-                    COMING SOON
-                  </div>
-                  <div className="text-md font-medium sm:text-lg">
-                    App Store
-                  </div>
-                </div>
-              </div>
+              Sign up for waitlist <ChevronRight width={17} height={17} />
             </Button>
 
-            <Button
-              className="flex h-[60px] rounded-xl border-2 border-white/30 bg-black text-white"
-              aria-label="Download GAIA from Google Play Store - Coming Soon"
-            >
-              <div className="flex flex-row items-center gap-4">
-                <Image
-                  src="/images/icons/google_play.svg"
-                  alt="Play Store Icon"
-                  width={27}
-                  height={27}
-                  loading="lazy"
-                />
-                <div className="flex flex-col items-start pr-3">
-                  <div className="text-xs font-normal text-white/60 sm:text-sm">
-                    COMING SOON
+            <div className="flex flex-wrap gap-2">
+              <Button
+                variant="flat"
+                isDisabled
+                startContent={
+                  <div className="relative h-4 w-4">
+                    <Image
+                      src="/images/icons/apple.svg"
+                      alt="iOS"
+                      fill
+                      className="object-contain"
+                    />
                   </div>
-                  <div className="text-md font-medium sm:text-lg">
-                    Google Play
+                }
+              >
+                App Store
+              </Button>
+              <Button
+                variant="flat"
+                isDisabled
+                startContent={
+                  <div className="relative h-4 w-4">
+                    <Image
+                      src="/images/icons/google_play.svg"
+                      alt="Android"
+                      fill
+                      className="object-contain"
+                    />
                   </div>
-                </div>
-              </div>
-            </Button>
+                }
+              >
+                Google Play
+              </Button>
+            </div>
           </div>
         </div>
         {/* <Iphone15Pro

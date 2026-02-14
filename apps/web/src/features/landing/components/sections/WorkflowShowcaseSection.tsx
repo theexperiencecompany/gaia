@@ -1,5 +1,6 @@
 "use client";
 
+import { ZapIcon } from "@/components";
 import WorkflowDemoAnimation from "../demo/workflow-demo/WorkflowDemoAnimation";
 
 const CONTENT_SECTIONS = [
@@ -27,9 +28,9 @@ const CONTENT_SECTIONS = [
 
 export default function WorkflowShowcaseSection() {
   return (
-    <div className="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-6 sm:px-4">
+    <div className="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-6 sm:px-6">
       {/* Header */}
-      <div className="mb-2 text-xl font-light text-primary sm:text-2xl text-center lg:text-left">
+      <div className="mb-5 text-xl font-light text-primary sm:text-2xl text-center lg:text-left">
         Kill the Busywork
       </div>
       <div className="mb-8 font-serif text-4xl font-normal sm:text-5xl text-center lg:text-left">
@@ -45,6 +46,9 @@ export default function WorkflowShowcaseSection() {
 
         {/* Right: 30% — Text sidebar */}
         <div className="flex w-full flex-col justify-end gap-7 lg:w-[25%] pb-[52px]">
+          <div className="flex items-center text-4xl font-serif gap-2 text-foreground-400">
+            <ZapIcon width={40} height={40} /> Workflows
+          </div>
           {CONTENT_SECTIONS.map((section) => (
             <div key={section.title}>
               <h3 className="mb-2 text-xl font-medium text-zinc-100">
