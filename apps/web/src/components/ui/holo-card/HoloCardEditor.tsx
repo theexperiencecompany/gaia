@@ -10,22 +10,20 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Slider } from "@heroui/slider";
 import { Tooltip } from "@heroui/tooltip";
-import { toPng } from "html-to-image";
-import { useCallback, useEffect, useRef, useState } from "react";
-import ColorPicker from "react-best-gradient-color-picker";
-import { TwitterShareButton } from "react-share";
-import { toast } from "sonner";
-
-import { TwitterIcon } from "@/components";
-import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
 import {
   Copy01Icon,
-  Dices,
   LinkSquare02Icon,
   PaintBoardIcon,
   ReloadIcon,
   Share08Icon,
-} from "@/icons";
+} from "@icons";
+import { useCallback, useEffect, useRef, useState } from "react";
+import ColorPicker from "react-best-gradient-color-picker";
+import { TwitterShareButton } from "react-share";
+import { toast } from "sonner";
+import { TwitterIcon } from "@/components";
+import { Dices } from "@/components/shared/icons";
+import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
 
 import { HoloCard } from "./HoloCard";
 import type { HoloCardDisplayData } from "./types";

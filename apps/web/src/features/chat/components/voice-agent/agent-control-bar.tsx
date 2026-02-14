@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Message01Icon, PhoneOffIcon } from "@icons";
 import { useRemoteParticipants } from "@livekit/components-react";
 import { Track } from "livekit-client";
 import * as React from "react";
@@ -9,7 +10,6 @@ import {
   useAgentControlBar,
 } from "@/features/chat/components/voice-agent/hooks/use-agent-control-bar";
 import { TrackToggle } from "@/features/chat/components/voice-agent/track-toggle";
-import { Message01Icon, PhoneOffIcon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 export interface AgentControlBarProps

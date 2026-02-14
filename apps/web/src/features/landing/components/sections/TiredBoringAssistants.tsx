@@ -1,12 +1,11 @@
 "use client";
 
 import { Tooltip } from "@heroui/tooltip";
+import { ArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-
 import { RaisedButton } from "@/components/ui/raised-button";
-import { ArrowRight02Icon } from "@/icons";
 import LargeHeader from "../shared/LargeHeader";
 
 const TOOL_ICONS = [

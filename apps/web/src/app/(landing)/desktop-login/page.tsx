@@ -23,14 +23,10 @@ import { useElectron } from "@/hooks/useElectron";
 export default function DesktopLoginPage() {
   const { isElectron, openExternal } = useElectron();
   const router = useRouter();
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null);
+  const [timeOfDay] = useState<TimeOfDay>(() => getTimeOfDay());
   const [status, setStatus] = useState<
     "ready" | "opened" | "waiting" | "error"
   >("ready");
-
-  useEffect(() => {
-    setTimeOfDay(getTimeOfDay());
-  }, []);
 
   // Redirect to normal login if not in Electron (after brief check)
   useEffect(() => {

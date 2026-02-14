@@ -13,7 +13,9 @@ The ease-out curve starts fast and slows at the end, creating an impression of q
 
 ```css
 .modal {
-  transition: opacity 200ms linear, transform 200ms linear;
+  transition:
+    opacity 200ms linear,
+    transform 200ms linear;
 }
 /* Animation feels mechanical and disconnected */
 ```
@@ -22,12 +24,15 @@ The ease-out curve starts fast and slows at the end, creating an impression of q
 
 ```css
 .modal {
-  transition: opacity 200ms ease-out, transform 200ms ease-out;
+  transition:
+    opacity 200ms ease-out,
+    transform 200ms ease-out;
 }
 /* Starts fast, giving immediate feedback, then settles smoothly */
 ```
 
 **When to use ease-out:**
+
 - Enter and exit animations
 - User-initiated interactions (dropdowns, modals, tooltips)
 - Any element responding to user action

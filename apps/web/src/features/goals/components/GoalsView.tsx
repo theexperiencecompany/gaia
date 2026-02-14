@@ -1,11 +1,10 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
+import { Calendar03Icon, CheckmarkCircle02Icon, Target02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { memo, useCallback, useMemo } from "react";
-
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
-import { Calendar03Icon, CheckmarkCircle02Icon, Target02Icon } from "@/icons";
 import type { Goal } from "@/types/api/goalsApiTypes";
 import { formatDate } from "@/utils";
 

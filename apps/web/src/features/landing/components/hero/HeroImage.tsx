@@ -1,6 +1,5 @@
+import Image from "next/image";
 import { useEffect, useRef } from "react";
-
-import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import type { TimeOfDay } from "@/features/landing/utils/timeOfDay";
 
 const WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
@@ -26,7 +25,7 @@ export default function HeroImage({
   timeOfDay,
   parallaxSpeed = 0.3,
 }: {
-  timeOfDay: TimeOfDay | null;
+  timeOfDay: TimeOfDay;
   parallaxSpeed?: number;
 }) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -50,7 +49,7 @@ export default function HeroImage({
     };
   }, [parallaxSpeed]);
 
-  const wallpaper = timeOfDay ? WALLPAPERS[timeOfDay] : null;
+  const wallpaper = WALLPAPERS[timeOfDay];
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
@@ -64,15 +63,29 @@ export default function HeroImage({
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent opacity-50" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 
-        {wallpaper && (
-          <ProgressiveImage
-            webpSrc={wallpaper.webp}
-            pngSrc={wallpaper.png}
-            alt="wallpaper"
-            className="object-cover"
-            shouldHaveInitialFade={true}
-          />
-        )}
+        {/* <ProgressiveImage
+          webpSrc={wallpaper.webp}
+          pngSrc={wallpaper.png}
+          alt="wallpaper"
+          className="object-cover"
+          shouldHaveInitialFade={true}
+      /> */}
+        <Image
+          src={wallpaper.webp}
+          alt={`png`}
+          width={1920}
+          height={1080}
+          sizes={"100vw"}
+          loading={"eager"}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            position: "absolute",
+            top: 0,
+            left: 0,
+          }}
+        />
       </div>
     </div>
   );

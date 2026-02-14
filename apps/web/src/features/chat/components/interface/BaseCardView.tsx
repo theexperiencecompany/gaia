@@ -1,10 +1,9 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
+import { RedoIcon } from "@icons";
 import Link from "next/link";
 import type React from "react";
-
 import { IntegrationConnectCard } from "@/components/shared/IntegrationConnectCard";
-import { RedoIcon } from "@/icons";
 
 interface BaseCardViewProps {
   title: string;

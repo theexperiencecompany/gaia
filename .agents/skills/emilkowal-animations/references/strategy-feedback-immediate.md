@@ -13,10 +13,10 @@ The interface should feel like it's listening to the user. Every action should h
 
 ```tsx
 const onSubmit = async () => {
-  await saveData() // User waits with no feedback
-}
+  await saveData(); // User waits with no feedback
+};
 
-<button onClick={onSubmit}>Save</button>
+<button onClick={onSubmit}>Save</button>;
 // User wonders if click registered
 ```
 
@@ -24,16 +24,18 @@ const onSubmit = async () => {
 
 ```tsx
 const onSubmit = async () => {
-  setIsLoading(true)
-  await saveData()
-  setIsLoading(false)
-  setShowSuccess(true)
-}
+  setIsLoading(true);
+  await saveData();
+  setIsLoading(false);
+  setShowSuccess(true);
+};
 
 <button onClick={onSubmit} disabled={isLoading}>
-  {isLoading ? <Spinner /> : 'Save'}
-</button>
-{showSuccess && <CheckAnimation />}
+  {isLoading ? <Spinner /> : "Save"}
+</button>;
+{
+  showSuccess && <CheckAnimation />;
+}
 // User knows action is processing
 ```
 

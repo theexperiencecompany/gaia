@@ -1,10 +1,8 @@
 "use client";
 
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { formatDistanceToNow } from "date-fns";
-import { useMemo, useState } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   ArrowDown01Icon,
   CalendarCheckOut01Icon,
@@ -15,7 +13,9 @@ import {
   PlusSignIcon,
   Tag01Icon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { formatDistanceToNow } from "date-fns";
+import { useMemo, useState } from "react";
 import {
   DEMO_PROJECTS,
   DEMO_TODOS,
@@ -268,9 +268,7 @@ function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
   return (
     <div className="relative">
       {/* Gradient connector line */}
-      <div
-        className="absolute left-[13px] top-4 bottom-4 w-[2px] bg-linear-to-b from-primary via-primary/80 to-transparent"
-      />
+      <div className="absolute left-[13px] top-4 bottom-4 w-[2px] bg-linear-to-b from-primary via-primary/80 to-transparent" />
       <div className="space-y-4">
         {steps.map((step, index) => {
           const IconComponent = getToolCategoryIcon(step.category, {
@@ -317,10 +315,10 @@ function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
 
 function DemoTodoSidebar({
   todo,
-  onClose,
+  _onClose,
 }: {
   todo: DemoTodo;
-  onClose: () => void;
+  _onClose: () => void;
 }) {
   const project = DEMO_PROJECTS.find((p) => p.id === todo.project_id);
 
@@ -527,7 +525,7 @@ export default function DemoTodosView() {
       {selectedTodo && (
         <DemoTodoSidebar
           todo={selectedTodo}
-          onClose={() => setSelectedTodo(null)}
+          _onClose={() => setSelectedTodo(null)}
         />
       )}
     </div>

@@ -7,14 +7,14 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import { useState } from "react";
 import {
   Delete02Icon,
   MoreVerticalIcon,
   PencilEdit02Icon,
   PinIcon,
   StarIcon,
-} from "@/icons";
+} from "@icons";
+import { useState } from "react";
 
 interface DemoChatTabProps {
   label: string;

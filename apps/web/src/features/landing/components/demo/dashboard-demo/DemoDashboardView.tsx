@@ -2,7 +2,6 @@
 
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   Alert01Icon,
   Calendar03Icon,
@@ -14,7 +13,8 @@ import {
   Target02Icon,
   WorkflowSquare05Icon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DUMMY_CALENDARS,
   DUMMY_CONVERSATIONS,

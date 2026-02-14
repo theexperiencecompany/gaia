@@ -1,7 +1,5 @@
 import type React from "react";
 
-export * from "@theexperiencecompany/gaia-icons/solid-rounded";
-
 export interface IconProps extends React.SVGProps<SVGSVGElement> {
   size?: number;
   color?: string;

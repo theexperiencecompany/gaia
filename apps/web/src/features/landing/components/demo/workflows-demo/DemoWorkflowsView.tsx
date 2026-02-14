@@ -2,14 +2,14 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   ArrowRight02Icon,
   PlayIcon,
   TimeScheduleIcon,
   UserGroupIcon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DEMO_COMMUNITY_WORKFLOWS,
   DEMO_USER_WORKFLOWS,

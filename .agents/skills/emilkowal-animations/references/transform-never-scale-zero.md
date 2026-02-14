@@ -16,8 +16,14 @@ Elements animating from scale(0) feel unnatural—nothing in the real world appe
   animation: appear 200ms ease-out;
 }
 @keyframes appear {
-  from { transform: scale(0); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 /* Feels like element appears from nowhere */
 ```
@@ -29,8 +35,14 @@ Elements animating from scale(0) feel unnatural—nothing in the real world appe
   animation: appear 200ms ease-out;
 }
 @keyframes appear {
-  from { transform: scale(0.95); opacity: 0; }
-  to { transform: scale(1); opacity: 1; }
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 /* Gentle expansion feels natural */
 ```

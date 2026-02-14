@@ -1,10 +1,9 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Copy01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
 import { toast } from "sonner";
-
-import { Copy01Icon, Tick02Icon } from "@/icons";
 
 interface ShareButtonProps {
   /** ID or slug to use in the URL */

@@ -17,11 +17,7 @@ interface RedirectLoaderProps {
 
 export function RedirectLoader({ url, replace = false }: RedirectLoaderProps) {
   const router = useRouter();
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null);
-
-  useEffect(() => {
-    setTimeOfDay(getTimeOfDay());
-  }, []);
+  const [timeOfDay] = useState<TimeOfDay>(() => getTimeOfDay());
 
   useEffect(() => {
     const navigator = replace ? router.replace : router.push;

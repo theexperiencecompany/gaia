@@ -11,12 +11,12 @@ Animations that delight on first use become annoying on the hundredth. Consider 
 
 **Frequency Guidelines:**
 
-| Frequency | Animation Approach |
-|-----------|-------------------|
+| Frequency         | Animation Approach             |
+| ----------------- | ------------------------------ |
 | Once (onboarding) | Full, expressive animations OK |
-| Daily | Subtle, fast animations |
-| Hourly | Very subtle or none |
-| Constantly | No animation |
+| Daily             | Subtle, fast animations        |
+| Hourly            | Very subtle or none            |
+| Constantly        | No animation                   |
 
 **Incorrect (animate frequent action):**
 
@@ -34,12 +34,14 @@ Animations that delight on first use become annoying on the hundredth. Consider 
 
 ```tsx
 // Frequent: instant
-<TabContent style={{ opacity: 1 }} />
+<TabContent style={{ opacity: 1 }} />;
 
 // Rare (first visit): animated
-{isFirstVisit && (
-  <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} />
-)}
+{
+  isFirstVisit && (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} />
+  );
+}
 ```
 
 Reference: [You Don't Need Animations](https://emilkowal.ski/ui/you-dont-need-animations)

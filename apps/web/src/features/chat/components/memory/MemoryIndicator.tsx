@@ -1,9 +1,8 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { AiBrain01Icon } from "@icons";
 import { useEffect, useState } from "react";
-
-import { AiBrain01Icon } from "@/icons";
 
 interface MemoryResult {
   id: string;

@@ -3,8 +3,6 @@
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
-import { useMemo, useState } from "react";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   ArrowRight02Icon,
   Cancel01Icon,
@@ -15,7 +13,9 @@ import {
   Share08Icon,
   Unlink04Icon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { useMemo, useState } from "react";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CATEGORY_LABELS,
   DEMO_CATEGORIES,
@@ -165,11 +165,7 @@ function DemoIntegrationSidebar({
 
           {/* Action buttons */}
           {!isConnected ? (
-            <Button
-              color="primary"
-              className="w-full font-medium"
-              size="md"
-            >
+            <Button color="primary" className="w-full font-medium" size="md">
               Connect
             </Button>
           ) : (
@@ -179,9 +175,7 @@ function DemoIntegrationSidebar({
                 className="w-full"
                 color="danger"
                 aria-label="Disconnect"
-                startContent={
-                  <Unlink04Icon width={18} height={18} />
-                }
+                startContent={<Unlink04Icon width={18} height={18} />}
               >
                 {!useIconOnly && "Disconnect"}
               </Button>
@@ -191,9 +185,7 @@ function DemoIntegrationSidebar({
                   className="w-full"
                   color="primary"
                   aria-label="View on Marketplace"
-                  startContent={
-                    <InternetIcon width={18} height={18} />
-                  }
+                  startContent={<InternetIcon width={18} height={18} />}
                 >
                   {!useIconOnly && "View"}
                 </Button>
@@ -204,9 +196,7 @@ function DemoIntegrationSidebar({
                   className="w-full"
                   color="primary"
                   aria-label="Publish"
-                  startContent={
-                    <GlobalIcon width={18} height={18} />
-                  }
+                  startContent={<GlobalIcon width={18} height={18} />}
                 >
                   {!useIconOnly && "Publish"}
                 </Button>
@@ -217,9 +207,7 @@ function DemoIntegrationSidebar({
                   className="w-full"
                   color="default"
                   aria-label="Share"
-                  startContent={
-                    <Share08Icon width={18} height={18} />
-                  }
+                  startContent={<Share08Icon width={18} height={18} />}
                 >
                   {!useIconOnly && "Share"}
                 </Button>

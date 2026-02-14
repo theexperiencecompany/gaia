@@ -1,11 +1,10 @@
 "use client";
 
+import { CheckmarkCircle02Icon, Loading02Icon } from "@icons";
 import { memo, useCallback, useMemo, useState } from "react";
-
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import TodoItem from "@/features/todo/components/TodoItem";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
-import { CheckmarkCircle02Icon, Loading02Icon } from "@/icons";
 import type { Todo, TodoUpdate } from "@/types/features/todoTypes";
 
 interface InboxTodosViewProps {

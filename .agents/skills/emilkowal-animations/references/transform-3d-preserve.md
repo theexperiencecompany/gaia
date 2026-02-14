@@ -34,7 +34,8 @@ Combine `transform-style: preserve-3d` with `rotateX()` and `rotateY()` to creat
 .card:hover {
   transform: rotateY(180deg);
 }
-.card-front, .card-back {
+.card-front,
+.card-back {
   backface-visibility: hidden;
 }
 .card-back {

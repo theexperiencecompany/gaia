@@ -1,15 +1,14 @@
 "use client";
 
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
+import { Login02Icon } from "@icons";
 import { usePathname } from "next/navigation";
-
 import { RaisedButton } from "@/components/ui/raised-button";
 import { handleAuthLogin } from "@/features/auth/hooks/handleAuthLogin";
 import {
   useLoginModal,
   useLoginModalActions,
 } from "@/features/auth/hooks/useLoginModal";
-import { Login02Icon } from "@/icons";
 
 // Routes where login modal should NOT be dismissable (main app routes that require auth)
 const NON_DISMISSABLE_ROUTE_PREFIXES = [

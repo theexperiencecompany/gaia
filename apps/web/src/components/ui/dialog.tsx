@@ -1,9 +1,8 @@
 "use client";
 
+import { Cancel01Icon } from "@icons";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import type * as React from "react";
-
-import { Cancel01Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 function Dialog({

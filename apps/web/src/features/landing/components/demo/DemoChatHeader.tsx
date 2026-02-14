@@ -1,5 +1,3 @@
-import type { ComponentType, SVGAttributes } from "react";
-
 import {
   BubbleChatAddIcon,
   Calendar03Icon,
@@ -12,7 +10,8 @@ import {
   SidebarLeft01Icon,
   SidebarRight01Icon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import type { ComponentType, SVGAttributes } from "react";
 import DemoModelPicker from "./DemoModelPicker";
 import type { DemoPage } from "./types";
 

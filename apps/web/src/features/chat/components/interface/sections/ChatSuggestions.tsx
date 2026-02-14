@@ -1,11 +1,11 @@
 import { Button } from "@heroui/button";
-import { motion } from "framer-motion";
+import { UndoIcon } from "@icons";
+import { m } from "motion/react";
 import type React from "react";
 import { useCallback, useMemo, useState } from "react";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
 import { useExploreWorkflows } from "@/features/workflows/hooks";
-import { UndoIcon } from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useComposerTextActions } from "@/stores/composerStore";
 import type { CommunityWorkflow } from "@/types/features/workflowTypes";
@@ -85,7 +85,7 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
         </div>
       )}
 
-      <motion.div
+      <m.div
         className="grid w-full grid-cols-3 gap-4"
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -93,7 +93,7 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
         {currentSuggestions.map((workflow, index) => (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{
@@ -114,9 +114,9 @@ export const ChatSuggestions: React.FC<ChatSuggestionsProps> = () => {
                 clearInputText();
               }}
             />
-          </motion.div>
+          </m.div>
         ))}
-      </motion.div>
+      </m.div>
     </div>
   );
 };

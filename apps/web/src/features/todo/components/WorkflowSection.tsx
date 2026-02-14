@@ -2,15 +2,14 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
+import { PlayIcon, SparklesIcon, UndoIcon, ZapIcon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-
 import { Skeleton } from "@/components/ui/skeleton";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { todoApi } from "@/features/todo/api/todoApi";
 import { useTodoWorkflowWebSocket } from "@/features/todo/hooks/useTodoWorkflowWebSocket";
 import { WorkflowSteps } from "@/features/workflows/components";
-import { PlayIcon, SparklesIcon, UndoIcon, ZapIcon } from "@/icons";
 import { useTodoStore } from "@/stores/todoStore";
 import type { Workflow as WorkflowType } from "@/types/features/workflowTypes";
 

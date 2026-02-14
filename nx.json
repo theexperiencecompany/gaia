@@ -51,6 +51,9 @@
     "clean": {
       "cache": false
     },
+    "next:build": {
+      "cache": false
+    },
     "next:start": {
       "dependsOn": []
     }

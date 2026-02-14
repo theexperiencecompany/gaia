@@ -7,65 +7,87 @@ import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import {
-  getTimeOfDay,
   isDarkTimeOfDay,
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
 
 const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
 
+function SectionLoader() {
+  return (
+    <div className="w-full animate-pulse py-20">
+      <div className="mx-auto max-w-4xl space-y-4 px-6">
+        <div className="h-8 w-1/3 rounded-lg bg-white/10" />
+        <div className="h-4 w-2/3 rounded bg-white/10" />
+        <div className="h-4 w-1/2 rounded bg-white/10" />
+      </div>
+    </div>
+  );
+}
+
 // Below-fold sections — dynamically imported to reduce initial bundle
 const ChatDemoSection = dynamic(
   () => import("@/features/landing/components/demo/ChatDemoSection"),
+  { loading: SectionLoader },
 );
 const TiredBoringAssistants = dynamic(
   () => import("@/features/landing/components/sections/TiredBoringAssistants"),
+  { loading: SectionLoader },
 );
 const WorkflowSection = dynamic(
   () => import("@/features/landing/components/sections/WorkflowSection"),
+  { loading: SectionLoader },
 );
 const UseCasesSectionLanding = dynamic(
   () => import("@/features/landing/components/sections/Productivity"),
+  { loading: SectionLoader },
 );
 const TodoShowcaseSection = dynamic(
   () => import("@/features/landing/components/sections/TodoShowcaseSection"),
+  { loading: SectionLoader },
 );
 const OpenSource = dynamic(
   () => import("@/features/landing/components/sections/OpenSource"),
+  { loading: SectionLoader },
 );
-const FAQAccordion = dynamic(() =>
-  import("@/features/pricing/components/FAQAccordion").then((mod) => ({
-    default: mod.FAQAccordion,
-  })),
+const FAQAccordion = dynamic(
+  () =>
+    import("@/features/pricing/components/FAQAccordion").then((mod) => ({
+      default: mod.FAQAccordion,
+    })),
+  { loading: SectionLoader },
 );
-const LandingDownloadSection = dynamic(() =>
-  import("@/features/download/components/DownloadPage").then((mod) => ({
-    default: mod.LandingDownloadSection,
-  })),
+const LandingDownloadSection = dynamic(
+  () =>
+    import("@/features/download/components/DownloadPage").then((mod) => ({
+      default: mod.LandingDownloadSection,
+    })),
+  { loading: SectionLoader },
 );
 const CommunitySection = dynamic(
   () => import("@/features/landing/components/sections/CommunitySection"),
+  { loading: SectionLoader },
 );
 const FinalSection = dynamic(
   () => import("@/features/landing/components/sections/FinalSection"),
+  { loading: SectionLoader },
 );
 
-export default function LandingPageClient() {
-  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay | null>(null);
+export default function LandingPageClient({
+  initialTimeOfDay,
+}: {
+  initialTimeOfDay: TimeOfDay;
+}) {
+  const [timeOfDay, setTimeOfDay] = useState<TimeOfDay>(initialTimeOfDay);
   const [clickCount, setClickCount] = useState(0);
-  const isDark = timeOfDay ? isDarkTimeOfDay(timeOfDay) : false;
-
-  useEffect(() => {
-    setTimeOfDay(getTimeOfDay());
-  }, []);
+  const isDark = isDarkTimeOfDay(timeOfDay);
 
   const handleTextClick = () => {
     const next = clickCount + 1;
     setClickCount(next);
-    if (next % 5 === 0) {
+    if (next % 3 === 0) {
       setTimeOfDay((prev) => {
-        const current = prev ?? getTimeOfDay();
-        const idx = TIME_OF_DAY_CYCLE.indexOf(current);
+        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
         return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
       });
     }

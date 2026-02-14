@@ -18,10 +18,10 @@ by emulating a browser, search crawler, and analyzing the website's structure an
 
 It will provide you a list of issues as well as suggestions on how to fix them.
 
-## Links 
+## Links
 
-* squirrelscan website is at [https://squirrelscan.com](https://squirrelscan.com)
-* documentation (including rule references) are at [docs.squirrelscan.com](https://docs.squirrelscan.com)
+- squirrelscan website is at [https://squirrelscan.com](https://squirrelscan.com)
+- documentation (including rule references) are at [docs.squirrelscan.com](https://docs.squirrelscan.com)
 
 You can look up the docs for any rule with this template:
 
@@ -51,7 +51,7 @@ This skill enables AI agents to audit websites for over 230 rules in 21 categori
 - **Legal**: Compliance with legal requirements, privacy policies, terms of service
 - **Social**: Open graph, twitter cards and validating schemas, snippets etc.
 - **Url Structure**: Length, hyphens, keywords
-- **Keywords**: Keyword stuffing 
+- **Keywords**: Keyword stuffing
 - **Content**: Content structure, headings
 - **Images**: Alt text, color contrast, image size, image format
 - **Local SEO**: NAP consistency, geo metadata
@@ -60,6 +60,7 @@ This skill enables AI agents to audit websites for over 230 rules in 21 categori
 and more
 
 The audit crawls the website, analyzes each page against audit rules, and returns a comprehensive report with:
+
 - Overall health score (0-100)
 - Category breakdowns (core SEO, technical SEO, content, security)
 - Specific issues with affected URLs
@@ -80,7 +81,7 @@ Use this skill when you need to:
 - Compare site health before/after changes
 - Improve website performance, accessibility, SEO, security and more.
 
-You should re-audit as often as possible to ensure your website remains healthy and performs well. 
+You should re-audit as often as possible to ensure your website remains healthy and performs well.
 
 ## Prerequisites
 
@@ -89,6 +90,7 @@ This skill requires the squirrel CLI installed and in PATH.
 **Install:** [squirrelscan.com/download](https://squirrelscan.com/download)
 
 **Verify:**
+
 ```bash
 squirrel --version
 ```
@@ -127,13 +129,13 @@ SECOND SCAN should be a deep scan, which is a thorough and detailed scan of the 
 
 If the user doesn't provide a website to audit, ask which URL they'd like audited.
 
-You should PREFER to audit live websites - only there do we get a TRUE representation of the website and performance or rendering issuers. 
+You should PREFER to audit live websites - only there do we get a TRUE representation of the website and performance or rendering issuers.
 
 If you have both local and live websites to audit, prompt the user to choose which one to audit and SUGGEST they choose live.
 
 You can apply fixes from an audit on the live site against the local code.
 
-When planning scope tasks so they can run concurrently as sub-agents to speed up fixes. 
+When planning scope tasks so they can run concurrently as sub-agents to speed up fixes.
 
 When implementing fixes take advantage of subagents to speed up implementation of fixes.
 
@@ -200,27 +202,27 @@ After fixes are applied, ask the user if they'd like to review the changes.
 
 ### Score Targets
 
-| Starting Score | Target Score | Expected Work |
-|----------------|--------------|---------------|
-| < 50 (Grade F) | 75+ (Grade C) | Major fixes |
+| Starting Score  | Target Score  | Expected Work  |
+| --------------- | ------------- | -------------- |
+| < 50 (Grade F)  | 75+ (Grade C) | Major fixes    |
 | 50-70 (Grade D) | 85+ (Grade B) | Moderate fixes |
-| 70-85 (Grade C) | 90+ (Grade A) | Polish |
-| > 85 (Grade B+) | 95+ | Fine-tuning |
+| 70-85 (Grade C) | 90+ (Grade A) | Polish         |
+| > 85 (Grade B+) | 95+           | Fine-tuning    |
 
 A site is only considered COMPLETE and FIXED when scores are above 95 (Grade A) with coverage set to FULL (--coverage full).
 
 ### Issue Categories
 
-| Category | Fix Approach | Parallelizable |
-|----------|--------------|----------------|
-| Meta tags/titles | Edit page components or metadata | No |
-| Structured data | Add JSON-LD to page templates | No |
-| Missing H1/headings | Edit page components + content files | Yes (content) |
-| Image alt text | Edit content files | Yes |
-| Heading hierarchy | Edit content files | Yes |
-| Short descriptions | Edit content frontmatter | Yes |
-| HTTP→HTTPS links | Find and replace in content | Yes |
-| Broken links | Manual review (flag for user) | No |
+| Category            | Fix Approach                         | Parallelizable |
+| ------------------- | ------------------------------------ | -------------- |
+| Meta tags/titles    | Edit page components or metadata     | No             |
+| Structured data     | Add JSON-LD to page templates        | No             |
+| Missing H1/headings | Edit page components + content files | Yes (content)  |
+| Image alt text      | Edit content files                   | Yes            |
+| Heading hierarchy   | Edit content files                   | Yes            |
+| Short descriptions  | Edit content frontmatter             | Yes            |
+| HTTP→HTTPS links    | Find and replace in content          | Yes            |
+| Broken links        | Manual review (flag for user)        | No             |
 
 **For parallelizable fixes**: Spawn subagents with specific file assignments.
 
@@ -272,28 +274,28 @@ squirrel audit https://example.com --verbose
 
 ### Audit Command Options
 
-| Option | Alias | Description | Default |
-|--------|-------|-------------|---------|
-| `--format <fmt>` | `-f <fmt>` | Output format: console, text, json, html, markdown, llm | console |
-| `--coverage <mode>` | `-C <mode>` | Coverage mode: quick, surface, full | surface |
-| `--max-pages <n>` | `-m <n>` | Maximum pages to crawl (max 5000) | varies by coverage |
-| `--output <path>` | `-o <path>` | Output file path | - |
-| `--refresh` | `-r` | Ignore cache, fetch all pages fresh | false |
-| `--resume` | - | Resume interrupted crawl | false |
-| `--verbose` | `-v` | Verbose output | false |
-| `--debug` | - | Debug logging | false |
-| `--trace` | - | Enable performance tracing | false |
-| `--project-name <name>` | `-n <name>` | Override project name | from config |
+| Option                  | Alias       | Description                                             | Default            |
+| ----------------------- | ----------- | ------------------------------------------------------- | ------------------ |
+| `--format <fmt>`        | `-f <fmt>`  | Output format: console, text, json, html, markdown, llm | console            |
+| `--coverage <mode>`     | `-C <mode>` | Coverage mode: quick, surface, full                     | surface            |
+| `--max-pages <n>`       | `-m <n>`    | Maximum pages to crawl (max 5000)                       | varies by coverage |
+| `--output <path>`       | `-o <path>` | Output file path                                        | -                  |
+| `--refresh`             | `-r`        | Ignore cache, fetch all pages fresh                     | false              |
+| `--resume`              | -           | Resume interrupted crawl                                | false              |
+| `--verbose`             | `-v`        | Verbose output                                          | false              |
+| `--debug`               | -           | Debug logging                                           | false              |
+| `--trace`               | -           | Enable performance tracing                              | false              |
+| `--project-name <name>` | `-n <name>` | Override project name                                   | from config        |
 
 ### Coverage Modes
 
 Choose a coverage mode based on your audit needs:
 
-| Mode | Default Pages | Behavior | Use Case |
-|------|---------------|----------|----------|
-| `quick` | 25 | Seed + sitemaps only, no link discovery | CI checks, fast health check |
-| `surface` | 100 | One sample per URL pattern | General audits (default) |
-| `full` | 500 | Crawl everything up to limit | Deep analysis |
+| Mode      | Default Pages | Behavior                                | Use Case                     |
+| --------- | ------------- | --------------------------------------- | ---------------------------- |
+| `quick`   | 25            | Seed + sitemaps only, no link discovery | CI checks, fast health check |
+| `surface` | 100           | One sample per URL pattern              | General audits (default)     |
+| `full`    | 500           | Crawl everything up to limit            | Deep analysis                |
 
 **Surface mode is smart** - it detects URL patterns like `/blog/{slug}` or `/products/{id}` and only crawls one sample per pattern. This makes it efficient for sites with many similar pages (blogs, e-commerce).
 
@@ -312,51 +314,52 @@ squirrel audit https://example.com -C surface -m 200 --format llm
 ```
 
 **When to use each mode:**
+
 - `quick`: CI pipelines, daily health checks, monitoring
 - `surface`: Most audits - covers unique templates efficiently
 - `full`: Before launches, comprehensive analysis, deep dives
 
 ### Report Command Options
 
-| Option | Alias | Description |
-|--------|-------|-------------|
-| `--list` | `-l` | List recent audits |
-| `--severity <level>` | - | Filter by severity: error, warning, all |
-| `--category <cats>` | - | Filter by categories (comma-separated) |
-| `--format <fmt>` | `-f <fmt>` | Output format: console, text, json, html, markdown, xml, llm |
-| `--output <path>` | `-o <path>` | Output file path |
-| `--input <path>` | `-i <path>` | Load from JSON file (fallback mode) |
+| Option               | Alias       | Description                                                  |
+| -------------------- | ----------- | ------------------------------------------------------------ |
+| `--list`             | `-l`        | List recent audits                                           |
+| `--severity <level>` | -           | Filter by severity: error, warning, all                      |
+| `--category <cats>`  | -           | Filter by categories (comma-separated)                       |
+| `--format <fmt>`     | `-f <fmt>`  | Output format: console, text, json, html, markdown, xml, llm |
+| `--output <path>`    | `-o <path>` | Output file path                                             |
+| `--input <path>`     | `-i <path>` | Load from JSON file (fallback mode)                          |
 
 ### Config Subcommands
 
-| Command | Description |
-|---------|-------------|
-| `config show` | Show current config |
-| `config set <key> <value>` | Set config value |
-| `config path` | Show config file path |
-| `config validate` | Validate config file |
+| Command                    | Description           |
+| -------------------------- | --------------------- |
+| `config show`              | Show current config   |
+| `config set <key> <value>` | Set config value      |
+| `config path`              | Show config file path |
+| `config validate`          | Validate config file  |
 
 ### Other Commands
 
-| Command | Description |
-|---------|-------------|
-| `squirrel feedback` | Send feedback to squirrelscan team |
-| `squirrel skills install` | Install Claude Code skill |
-| `squirrel skills update` | Update Claude Code skill |
+| Command                   | Description                        |
+| ------------------------- | ---------------------------------- |
+| `squirrel feedback`       | Send feedback to squirrelscan team |
+| `squirrel skills install` | Install Claude Code skill          |
+| `squirrel skills update`  | Update Claude Code skill           |
 
 ### Self Commands
 
 Self-management commands under `squirrel self`:
 
-| Command | Description |
-|---------|-------------|
-| `self install` | Bootstrap local installation |
-| `self update` | Check and apply updates |
-| `self completion` | Generate shell completions |
-| `self doctor` | Run health checks |
-| `self version` | Show version information |
-| `self settings` | Manage CLI settings |
-| `self uninstall` | Remove squirrel from the system |
+| Command           | Description                     |
+| ----------------- | ------------------------------- |
+| `self install`    | Bootstrap local installation    |
+| `self update`     | Check and apply updates         |
+| `self completion` | Generate shell completions      |
+| `self doctor`     | Run health checks               |
+| `self version`    | Show version information        |
+| `self settings`   | Manage CLI settings             |
+| `self uninstall`  | Remove squirrel from the system |
 
 ## Output Formats
 
@@ -426,6 +429,7 @@ On completion give the user a summary of all of the changes you made.
 If you see this error, squirrel is not installed or not in your PATH.
 
 **Solution:**
+
 1. Install squirrel: [squirrelscan.com/download](https://squirrelscan.com/download)
 2. Ensure `~/.local/bin` is in PATH
 3. Verify: `squirrel --version`

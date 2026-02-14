@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
+import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
@@ -15,6 +17,9 @@ const SITEMAP_IDS = {
   EXPLORE: 2,
   COMMUNITY: 3,
   INTEGRATIONS: 4,
+  COMPARISONS: 5,
+  PERSONAS: 6,
+  GLOSSARY: 7,
 } as const;
 
 /**
@@ -29,6 +34,9 @@ export async function generateSitemaps() {
     { id: SITEMAP_IDS.EXPLORE },
     { id: SITEMAP_IDS.COMMUNITY },
     { id: SITEMAP_IDS.INTEGRATIONS },
+    { id: SITEMAP_IDS.COMPARISONS },
+    { id: SITEMAP_IDS.PERSONAS },
+    { id: SITEMAP_IDS.GLOSSARY },
   ];
 }
 
@@ -44,6 +52,9 @@ const STATIC_PAGES: Array<{
   { path: "/blog", freq: "daily", priority: 0.9 },
   { path: "/use-cases", freq: "weekly", priority: 0.9 },
   { path: "/download", freq: "weekly", priority: 0.9 },
+  { path: "/compare", freq: "weekly", priority: 0.9 },
+  { path: "/for", freq: "weekly", priority: 0.9 },
+  { path: "/learn", freq: "weekly", priority: 0.8 },
   { path: "/faq", freq: "monthly", priority: 0.8 },
   { path: "/manifesto", freq: "monthly", priority: 0.8 },
   { path: "/about", freq: "monthly", priority: 0.8 },
@@ -56,6 +67,8 @@ const STATIC_PAGES: Array<{
   { path: "/terms", freq: "monthly", priority: 0.5 },
   { path: "/privacy", freq: "monthly", priority: 0.5 },
   { path: "/request-feature", freq: "monthly", priority: 0.5 },
+  { path: "/support", freq: "monthly", priority: 0.6 },
+  { path: "/desktop", freq: "monthly", priority: 0.6 },
   { path: "/thanks", freq: "monthly", priority: 0.4 },
 ];
 
@@ -228,6 +241,56 @@ async function getIntegrationPages(
 }
 
 /**
+ * Comparison pages (GAIA vs competitors)
+ */
+function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
+  const slugs = getAllComparisonSlugs();
+  return slugs.map((slug) => ({
+    url: `${baseUrl}/compare/${slug}`,
+    lastModified: new Date(),
+    changeFrequency: "monthly" as const,
+    priority: 0.8,
+  }));
+}
+
+/**
+ * Persona pages (AI assistant for [role])
+ * Dynamically imports to avoid circular dependency issues at build time.
+ */
+async function getPersonaPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  try {
+    const { getAllPersonaSlugs } = await import(
+      "@/features/personas/data/personasData"
+    );
+    const slugs = getAllPersonaSlugs();
+    return slugs.map((slug) => ({
+      url: `${baseUrl}/for/${slug}`,
+      lastModified: new Date(),
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    }));
+  } catch (error) {
+    console.error("Error generating persona sitemap pages:", error);
+    return [];
+  }
+}
+
+/**
+ * Glossary term pages (AI/productivity concepts)
+ */
+function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
+  const slugs = getAllGlossaryTermSlugs();
+  return slugs.map((slug) => ({
+    url: `${baseUrl}/learn/${slug}`,
+    lastModified: new Date(),
+    changeFrequency: "monthly" as const,
+    priority: 0.7,
+  }));
+}
+
+/**
  * Generate dynamic sitemap for GAIA.
  * Uses sitemap index pattern with separate sitemaps for each content type.
  * Note: In Next.js 16.0.0+, the id is passed as a Promise that resolves to a string.
@@ -250,6 +313,12 @@ export default async function sitemap(props: {
       return getCommunityWorkflowPages(baseUrl);
     case SITEMAP_IDS.INTEGRATIONS:
       return getIntegrationPages(baseUrl);
+    case SITEMAP_IDS.COMPARISONS:
+      return getComparisonPages(baseUrl);
+    case SITEMAP_IDS.PERSONAS:
+      return getPersonaPages(baseUrl);
+    case SITEMAP_IDS.GLOSSARY:
+      return getGlossaryPages(baseUrl);
     default:
       return [];
   }

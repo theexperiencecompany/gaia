@@ -2,7 +2,7 @@
 
 import { Chip } from "@heroui/chip";
 
-import { ArrowUp02Icon, BubbleChatIcon, LinkSquare02Icon } from "@/icons";
+import { ArrowUp02Icon, BubbleChatIcon, LinkSquare02Icon } from "@icons";
 import type { RedditPostData } from "@/types/features/redditTypes";
 
 interface RedditPostCardProps {

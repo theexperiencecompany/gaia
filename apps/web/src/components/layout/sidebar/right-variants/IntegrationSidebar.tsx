@@ -4,11 +4,18 @@ import { Avatar } from "@heroui/avatar";
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
+import {
+  GlobalIcon,
+  LinkSquareIcon,
+  RemoveCircleIcon,
+  Share08Icon,
+  Unlink04Icon,
+  UserCircle02Icon,
+} from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import React, { useState } from "react";
 import { toast } from "sonner";
-
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
@@ -18,14 +25,6 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import type { Integration } from "@/features/integrations/types";
-import {
-  GlobalIcon,
-  LinkSquareIcon,
-  RemoveCircleIcon,
-  Share08Icon,
-  Unlink04Icon,
-  UserCircle02Icon,
-} from "@/icons";
 import { useUserStore } from "@/stores/userStore";
 
 interface IntegrationSidebarProps {

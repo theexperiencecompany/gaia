@@ -8,10 +8,12 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
+import { ArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { ChevronDown, ChevronRight } from "@/components/shared/icons";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import {
@@ -19,7 +21,6 @@ import {
   platformConfigs,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
-import { ArrowRight02Icon, ChevronDown } from "@/icons";
 
 type MacChipOption = "intel" | "m-series";
 
@@ -378,39 +379,49 @@ function MobileSection() {
       title="Mobile Apps"
       description="GAIA for iOS and Android is currently in development."
       actions={
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-3">
           <Button
-            variant="flat"
-            isDisabled
-            startContent={
-              <div className="relative h-4 w-4">
-                <Image
-                  src="/images/icons/apple.svg"
-                  alt="iOS"
-                  fill
-                  className="object-contain"
-                />
-              </div>
-            }
+            as={Link}
+            href="https://heygaia.app"
+            target="_blank"
+            rel="noopener noreferrer"
           >
-            App Store
+            Sign up for waitlist <ChevronRight width={17} height={17} />
           </Button>
-          <Button
-            variant="flat"
-            isDisabled
-            startContent={
-              <div className="relative h-4 w-4">
-                <Image
-                  src="/images/icons/google_play.svg"
-                  alt="Android"
-                  fill
-                  className="object-contain"
-                />
-              </div>
-            }
-          >
-            Google Play
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="flat"
+              isDisabled
+              startContent={
+                <div className="relative h-4 w-4">
+                  <Image
+                    src="/images/icons/apple.svg"
+                    alt="iOS"
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+              }
+            >
+              App Store
+            </Button>
+            <Button
+              variant="flat"
+              isDisabled
+              startContent={
+                <div className="relative h-4 w-4">
+                  <Image
+                    src="/images/icons/google_play.svg"
+                    alt="Android"
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+              }
+            >
+              Google Play
+            </Button>
+          </div>
         </div>
       }
     />
@@ -529,7 +540,7 @@ export function LandingDownloadSection() {
               webpSrc="/images/screenshots/phone_dock.webp"
               pngSrc="/images/screenshots/phone_dock.png"
               alt="GAIA Mobile App"
-              className="object-cover object-center scale-115"
+              className="object-cover object-center"
             />
           </div>
           <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center pt-6.5">
@@ -542,41 +553,51 @@ export function LandingDownloadSection() {
             <p className="text-sm text-zinc-400">
               iOS and Android apps in development
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <Button
-                variant="flat"
-                isDisabled
-                size="sm"
-                startContent={
-                  <div className="relative h-4 w-4">
-                    <Image
-                      src="/images/icons/apple.svg"
-                      alt="iOS"
-                      fill
-                      className="object-contain"
-                    />
-                  </div>
-                }
+                as={Link}
+                href="https://heygaia.app"
+                target="_blank"
+                rel="noopener noreferrer"
               >
-                App Store
+                Sign up for waitlist <ChevronRight width={17} height={17} />
               </Button>
-              <Button
-                variant="flat"
-                isDisabled
-                size="sm"
-                startContent={
-                  <div className="relative h-4 w-4">
-                    <Image
-                      src="/images/icons/google_play.svg"
-                      alt="Android"
-                      fill
-                      className="object-contain"
-                    />
-                  </div>
-                }
-              >
-                Google Play
-              </Button>
+              <div className="flex gap-2">
+                <Button
+                  variant="flat"
+                  isDisabled
+                  size="sm"
+                  startContent={
+                    <div className="relative h-4 w-4">
+                      <Image
+                        src="/images/icons/apple.svg"
+                        alt="iOS"
+                        fill
+                        className="object-contain"
+                      />
+                    </div>
+                  }
+                >
+                  App Store
+                </Button>
+                <Button
+                  variant="flat"
+                  isDisabled
+                  size="sm"
+                  startContent={
+                    <div className="relative h-4 w-4">
+                      <Image
+                        src="/images/icons/google_play.svg"
+                        alt="Android"
+                        fill
+                        className="object-contain"
+                      />
+                    </div>
+                  }
+                >
+                  Google Play
+                </Button>
+              </div>
             </div>
           </div>
         </div>

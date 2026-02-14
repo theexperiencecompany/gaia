@@ -1,7 +1,4 @@
 import { Button } from "@heroui/button";
-import Image from "next/image";
-
-import Spinner from "@/components/ui/spinner";
 import {
   Cancel01Icon,
   CodeIcon,
@@ -10,7 +7,9 @@ import {
   MusicNote01Icon,
   Pdf02Icon,
   Video01Icon,
-} from "@/icons";
+} from "@icons";
+import Image from "next/image";
+import Spinner from "@/components/ui/spinner";
 
 export interface UploadedFilePreview {
   id: string;

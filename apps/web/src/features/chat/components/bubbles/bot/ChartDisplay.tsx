@@ -1,4 +1,11 @@
 import { Tab, Tabs } from "@heroui/tabs";
+import {
+  Cancel01Icon,
+  ChartIcon,
+  Download01Icon,
+  Image02Icon,
+  MaximizeScreenIcon,
+} from "@icons";
 import Image from "next/image";
 import type React from "react";
 import { useState } from "react";
@@ -19,13 +26,6 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import {
-  Cancel01Icon,
-  ChartIcon,
-  Download01Icon,
-  Image02Icon,
-  MaximizeScreenIcon,
-} from "@/icons";
 
 interface ChartData {
   id: string;

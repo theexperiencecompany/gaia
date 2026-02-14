@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 
 import { RaisedButton } from "@/components/ui/raised-button";
 
@@ -8,7 +8,7 @@ interface OnboardingCompleteProps {
 
 export const OnboardingComplete = ({ onLetsGo }: OnboardingCompleteProps) => {
   return (
-    <motion.div
+    <m.div
       className="mx-auto w-full max-w-2xl text-center"
       initial={{ opacity: 0, scale: 0.9, y: 15 }}
       animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -25,6 +25,6 @@ export const OnboardingComplete = ({ onLetsGo }: OnboardingCompleteProps) => {
       >
         Let's Go!
       </RaisedButton>
-    </motion.div>
+    </m.div>
   );
 };

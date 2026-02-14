@@ -1,5 +1,4 @@
 import "./styles/globals.css";
-import "./styles/tailwind.css";
 
 import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -139,13 +138,44 @@ export default function RootLayout({
           href="https://status.heygaia.io"
           crossOrigin="anonymous"
         />
-        <link rel="dns-prefetch" href="https://uptime.betterstack.com" />
+        <link
+          rel="preconnect"
+          href="https://api.github.com"
+          crossOrigin="anonymous"
+        />
+        <link rel="dns-prefetch" href="https://uptime.betterstackcdn.com" />
         <link rel="dns-prefetch" href="https://us.i.posthog.com" />
         <link
           rel="preload"
           as="image"
           href="/_next/image?url=%2Fimages%2Flogos%2Ftext_w_logo_white.webp&w=256&q=75"
           fetchPriority="high"
+          type="image/webp"
+        />
+        {/* Preload hero wallpaper for fast LCP — browser starts fetch at HTML parse time */}
+        <link
+          rel="preload"
+          as="image"
+          href="/images/wallpapers/swiss_morning.webp"
+          fetchPriority="high"
+          type="image/webp"
+        />
+        <link
+          rel="preload"
+          as="image"
+          href="/images/wallpapers/swiss.webp"
+          type="image/webp"
+        />
+        <link
+          rel="preload"
+          as="image"
+          href="/images/wallpapers/swiss_evening.webp"
+          type="image/webp"
+        />
+        <link
+          rel="preload"
+          as="image"
+          href="/images/wallpapers/swiss_night.webp"
           type="image/webp"
         />
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}

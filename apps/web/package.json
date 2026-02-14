@@ -132,7 +132,6 @@
     "dexie": "^4.2.0",
     "dompurify": "^3.2.6",
     "emblor": "^1.4.8",
-    "framer-motion": "^12.29.2",
     "fuse.js": "^7.1.0",
     "glob": "^11.0.3",
     "gray-matter": "^4.0.3",
@@ -206,7 +205,7 @@
     "barrelsby": "^2.8.1",
     "depcheck": "^1.4.7",
     "schema-dts": "^1.1.5",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@10.18.3"
 }

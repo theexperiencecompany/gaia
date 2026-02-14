@@ -1,15 +1,14 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
-import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-
 import {
   Download01Icon,
   MoveIcon,
   RedoIcon,
   ZoomInAreaIcon,
   ZoomOutAreaIcon,
-} from "@/icons";
+} from "@icons";
+import type React from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 interface FlowchartPreviewProps {
   children: React.ReactNode;

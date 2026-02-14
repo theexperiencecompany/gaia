@@ -3,15 +3,14 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
-import { useRouter } from "next/navigation";
-
 import {
   AlertCircleIcon,
   CheckmarkCircle02Icon,
-  ChevronRight,
   Clock04Icon,
   Loading03Icon,
-} from "@/icons";
+} from "@icons";
+import { useRouter } from "next/navigation";
+import { ChevronRight } from "@/components/shared/icons";
 
 import { useWorkflowExecutions } from "../hooks/useWorkflowExecutions";
 import type { WorkflowExecution } from "../types/workflowExecutionTypes";

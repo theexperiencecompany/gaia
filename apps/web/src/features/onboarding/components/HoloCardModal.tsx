@@ -3,11 +3,11 @@
 import { Button } from "@heroui/button";
 import { Modal, ModalContent } from "@heroui/modal";
 import { Skeleton } from "@heroui/skeleton";
+import { Rocket01Icon } from "@icons";
 import confetti from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { TwitterShareButton } from "react-share";
 import { toast } from "sonner";
-
 import { TwitterIcon } from "@/components";
 import {
   type HoloCardDisplayData,
@@ -20,7 +20,6 @@ import {
   usePersonalization,
 } from "@/features/onboarding/hooks/usePersonalization";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import { Rocket01Icon } from "@/icons";
 
 interface FeatureModalProps {
   isOpen: boolean;

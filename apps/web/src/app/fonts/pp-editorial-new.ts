@@ -22,16 +22,16 @@ export const ppEditorialNew = localFont({
       weight: "400",
       style: "italic",
     },
-    {
-      path: "./editor-new/PPEditorialNew-Ultrabold.otf",
-      weight: "800",
-      style: "normal",
-    },
-    {
-      path: "./editor-new/PPEditorialNew-UltraboldItalic.otf",
-      weight: "800",
-      style: "italic",
-    },
+    // {
+    //   path: "./editor-new/PPEditorialNew-Ultrabold.otf",
+    //   weight: "800",
+    //   style: "normal",
+    // },
+    // {
+    //   path: "./editor-new/PPEditorialNew-UltraboldItalic.otf",
+    //   weight: "800",
+    //   style: "italic",
+    // },
   ],
   variable: "--font-pp-editorial-new",
   display: "swap",

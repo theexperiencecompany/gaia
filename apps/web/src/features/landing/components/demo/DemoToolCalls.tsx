@@ -1,7 +1,7 @@
+import { Wrench01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
-
+import { ChevronDown } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { ChevronDown, Wrench01Icon } from "@/icons";
 import { tx } from "./demoConstants";
 import type { ToolStep } from "./types";
 

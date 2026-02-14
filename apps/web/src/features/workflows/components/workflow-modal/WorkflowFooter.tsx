@@ -2,7 +2,7 @@ import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { Switch } from "@heroui/switch";
 import { Tooltip } from "@heroui/tooltip";
-import { PlayIcon } from "@/icons";
+import { PlayIcon } from "@icons";
 
 interface WorkflowFooterProps {
   mode: "create" | "edit";

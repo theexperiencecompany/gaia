@@ -1,10 +1,9 @@
 import { Button } from "@heroui/button";
 import { ScrollShadow } from "@heroui/scroll-shadow";
+import { CalendarCheckIn01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
 import { toast } from "sonner";
-
 import { calendarApi } from "@/features/calendar/api/calendarApi";
-import { CalendarCheckIn01Icon, Tick02Icon } from "@/icons";
 import type { CalendarEditOptions } from "@/types/features/calendarTypes";
 import { hasEventChanges } from "@/utils/calendar/eventHelpers";
 import { buildEditEventPayload } from "@/utils/calendar/eventPayloadBuilders";

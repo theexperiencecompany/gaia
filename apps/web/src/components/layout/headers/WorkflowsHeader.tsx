@@ -1,7 +1,7 @@
 "use client";
 
+import { ZapIcon } from "@icons";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { ZapIcon } from "@/icons";
 
 export default function WorkflowsHeader() {
   return (

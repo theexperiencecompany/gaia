@@ -1,19 +1,8 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Switch } from "@heroui/switch";
-import type React from "react";
-import { useMemo, useState } from "react";
-
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   CloudAngledRainIcon,
   CloudAngledZapIcon,
-  CloudFogIcon,
   CloudIcon,
   CloudLittleRainIcon,
   CloudSnowIcon,
@@ -27,7 +16,17 @@ import {
   ThermometerWarmIcon,
   Tornado02Icon,
   VisionIcon,
-} from "@/icons";
+} from "@icons";
+import type React from "react";
+import { useMemo, useState } from "react";
+import { CloudFogIcon } from "@/components/shared/icons";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { WeatherData } from "@/types/features/convoTypes";
 
 import { WeatherDetailItem } from "./WeatherDetailItem";

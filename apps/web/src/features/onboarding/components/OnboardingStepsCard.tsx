@@ -8,7 +8,7 @@ import {
   CalendarAdd01Icon,
   MailAdd01Icon,
   WorkflowCircle03Icon,
-} from "@/icons";
+} from "@icons";
 import {
   OnboardingPhase,
   useOnboardingPhaseStore,

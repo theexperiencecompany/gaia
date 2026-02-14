@@ -5,15 +5,14 @@ import { Chip } from "@heroui/chip";
 import { Input, Textarea } from "@heroui/input";
 import { Modal, ModalBody, ModalContent } from "@heroui/modal";
 import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Cancel01Icon, PencilEdit01Icon, PlusSignIcon } from "@icons";
 import DOMPurify from "dompurify";
 import type React from "react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
-
-import { Gmail, PencilEdit01Icon, Separator } from "@/components";
+import { Gmail, Separator } from "@/components";
 import { mailApi } from "@/features/mail/api/mailApi";
-import { Cancel01Icon, PlusSignIcon } from "@/icons";
 
 // Email validation schema
 const emailComposeSchema = z.object({

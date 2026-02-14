@@ -1,5 +1,5 @@
 import { Chip } from "@heroui/chip";
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 
 import { questions } from "../constants";
 import type { OnboardingState } from "../types";
@@ -25,7 +25,7 @@ export const OnboardingChips = ({
   const currentQuestion = questions[onboardingState.currentQuestionIndex];
 
   return (
-    <motion.div
+    <m.div
       key={`chips-${currentQuestion.id}`}
       className="mb-4"
       initial={{ opacity: 0, y: 8 }}
@@ -38,7 +38,7 @@ export const OnboardingChips = ({
     >
       <div className="flex flex-wrap gap-2">
         {currentQuestion.chipOptions!.map((option, index) => (
-          <motion.div
+          <m.div
             key={option.value}
             initial={{ opacity: 0, scale: 0.9 }}
             animate={{ opacity: 1, scale: 1 }}
@@ -58,9 +58,9 @@ export const OnboardingChips = ({
             >
               {option.label}
             </Chip>
-          </motion.div>
+          </m.div>
         ))}
       </div>
-    </motion.div>
+    </m.div>
   );
 };

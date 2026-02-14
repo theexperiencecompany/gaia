@@ -10,11 +10,10 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
+import { Cancel01Icon } from "@icons";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-
 import { mailApi as EmailsAPI } from "@/features/mail/api/mailApi";
-import { Cancel01Icon } from "@/icons";
 
 import { NotificationsAPI } from "../../../services/api/notifications";
 

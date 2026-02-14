@@ -1,5 +1,5 @@
 import { useVoiceAssistant } from "@livekit/components-react";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, m } from "motion/react";
 
 import {
   type AgentState,
@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 import { AgentTile } from "./agent-tile";
 import { useAgentControlBar } from "./hooks/use-agent-control-bar";
 
-const MotionAgentTile = motion.create(AgentTile);
+const MotionAgentTile = m.create(AgentTile);
 
 interface MediaTilesProps {
   chatOpen: boolean;
@@ -63,7 +63,7 @@ export function MediaTiles({ chatOpen }: MediaTilesProps) {
             )}
           />
         ) : (
-          <motion.div
+          <m.div
             key="bar-visualizer"
             initial={{ opacity: 0, y: 10, scale: 0.95 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -80,7 +80,7 @@ export function MediaTiles({ chatOpen }: MediaTilesProps) {
               demo={!mediaStream}
               className="h-full w-full"
             />
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

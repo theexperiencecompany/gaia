@@ -28,6 +28,7 @@ Drawer components are an exception to the 300ms rule. The 500ms duration with iO
 ```
 
 The 500ms duration works because:
+
 - Drawers cover large screen areas
 - Users expect mobile-native behavior
 - The custom easing makes it feel faster than it is

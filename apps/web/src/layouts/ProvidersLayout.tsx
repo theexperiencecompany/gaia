@@ -7,6 +7,7 @@ import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsP
 import { Toaster } from "@/components/ui/sonner";
 import LoginModal from "@/features/auth/components/LoginModal";
 import { GlobalIntegrationModal } from "@/features/integrations/components/GlobalIntegrationModal";
+import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useNotificationWebSocket } from "@/features/notification/hooks/useNotificationWebSocket";
 
@@ -28,23 +29,25 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
 
   return (
     <HeroUIProvider>
-      <QueryProvider>
-        {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
-        <Suspense fallback={<></>}>
-          <GlobalAuth />
-        </Suspense>
-        <GlobalInterceptor />
-        {/* <HydrationManager /> */}
-        <Toaster closeButton richColors position="top-right" theme="dark" />
-        <LoginModal />
-        <GlobalIntegrationModal />
-        <ElectronRouteGuard>
-          <KeyboardShortcutsProvider>
-            {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
-            <Suspense fallback={<></>}>{children}</Suspense>
-          </KeyboardShortcutsProvider>
-        </ElectronRouteGuard>
-      </QueryProvider>
+      <LazyMotionProvider>
+        <QueryProvider>
+          {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+          <Suspense fallback={<></>}>
+            <GlobalAuth />
+          </Suspense>
+          <GlobalInterceptor />
+          {/* <HydrationManager /> */}
+          <Toaster closeButton richColors position="top-right" theme="dark" />
+          <LoginModal />
+          <GlobalIntegrationModal />
+          <ElectronRouteGuard>
+            <KeyboardShortcutsProvider>
+              {/** biome-ignore lint/complexity/noUselessFragments: needs empty component */}
+              <Suspense fallback={<></>}>{children}</Suspense>
+            </KeyboardShortcutsProvider>
+          </ElectronRouteGuard>
+        </QueryProvider>
+      </LazyMotionProvider>
     </HeroUIProvider>
   );
 }

@@ -4,6 +4,7 @@ import { Button } from "@heroui/react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import type React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { GoogleCalendarIcon } from "@/components/shared/icons";
 import { CalendarGrid } from "@/features/calendar/components/CalendarGrid";
 import { DateStrip } from "@/features/calendar/components/DateStrip";
 import { useHorizontalScrollObserver } from "@/features/calendar/hooks/useHorizontalScrollObserver";
@@ -12,7 +13,6 @@ import { useSharedCalendar } from "@/features/calendar/hooks/useSharedCalendar";
 import { getInitialMonthlyDateRange } from "@/features/calendar/utils/dateRangeUtils";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { GoogleCalendarIcon } from "@/icons";
 import {
   useCalendarCurrentWeek,
   useCalendarSelectedDate,

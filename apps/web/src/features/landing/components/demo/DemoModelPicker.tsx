@@ -1,10 +1,9 @@
 "use client";
 
 import { Select, SelectItem, SelectSection } from "@heroui/react";
+import { BubbleChatSparkIcon } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
-
-import { BubbleChatSparkIcon } from "@/components/shared/icons";
 import { DEMO_MODELS, MODEL_PROVIDERS } from "./demoConstants";
 
 export default function DemoModelPicker() {

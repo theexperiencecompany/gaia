@@ -4,6 +4,13 @@ import { Avatar } from "@heroui/avatar";
 import { Card, CardBody, CardHeader } from "@heroui/card";
 import { BreadcrumbItem, Breadcrumbs } from "@heroui/react";
 import { Spinner } from "@heroui/spinner";
+import {
+  DateTimeIcon,
+  GitForkIcon,
+  LayersIcon,
+  PackageOpenIcon,
+  UserCircle02Icon,
+} from "@icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
@@ -18,13 +25,6 @@ import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
-import {
-  DateTimeIcon,
-  GitForkIcon,
-  LayersIcon,
-  PackageOpenIcon,
-  UserCircle02Icon,
-} from "@/icons";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
@@ -197,11 +197,10 @@ export function IntegrationDetailClient({
                   {integration.name}
                 </h1>
               </div>
-              {integration.description && (
-                <p className="text-lg leading-relaxed text-zinc-500 max-w-5xl mt-6">
-                  {integration.description}
-                </p>
-              )}
+              <p className="text-lg leading-relaxed text-zinc-500 max-w-5xl mt-6">
+                {integration.description ||
+                  `Connect ${integration.name} to your AI assistant and automate your ${integration.category} workflows.`}
+              </p>
             </div>
 
             <div className="flex items-center gap-3">

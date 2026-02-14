@@ -20,20 +20,20 @@ npm install motion
 
 ```typescript
 /* ❌ Old imports */
-import { motion, AnimatePresence } from 'framer-motion'
+import { motion, AnimatePresence } from "framer-motion";
 
 /* ✅ New imports */
-import { motion, AnimatePresence } from 'motion/react'
+import { motion, AnimatePresence } from "motion/react";
 ```
 
 ## React 19 Compatibility
 
 ```typescript
 /* ❌ May cause issues with React 19 */
-import { motion } from 'framer-motion'
+import { motion } from "framer-motion";
 
 /* ✅ motion/react is React 19 compatible */
-import { motion } from 'motion/react'
+import { motion } from "motion/react";
 ```
 
 ## Variants Pattern (Unchanged)
@@ -58,13 +58,13 @@ const variants = {
 
 ```typescript
 /* ❌ Old import */
-import { useAnimation } from 'framer-motion'
+import { useAnimation } from "framer-motion";
 
 /* ✅ New import */
-import { useAnimation } from 'motion/react'
+import { useAnimation } from "motion/react";
 
-const controls = useAnimation()
-await controls.start({ opacity: 1 })
+const controls = useAnimation();
+await controls.start({ opacity: 1 });
 ```
 
 ## Layout Animations
@@ -83,9 +83,9 @@ import { LayoutGroup } from 'motion/react'
 
 ## Quick Fixes
 
-| If Claude suggests... | Use instead... |
-|----------------------|----------------|
-| `npm install framer-motion` | `npm install motion` |
-| `from 'framer-motion'` | `from 'motion/react'` |
+| If Claude suggests...                  | Use instead...                          |
+| -------------------------------------- | --------------------------------------- |
+| `npm install framer-motion`            | `npm install motion`                    |
+| `from 'framer-motion'`                 | `from 'motion/react'`                   |
 | `import { motion }` from framer-motion | `import { motion } from 'motion/react'` |
-| `motion` package without `/react` | Use `motion/react` for React components |
+| `motion` package without `/react`      | Use `motion/react` for React components |

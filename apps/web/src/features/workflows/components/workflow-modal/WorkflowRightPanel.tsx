@@ -1,5 +1,5 @@
 import { Tab, Tabs } from "@heroui/tabs";
-import { Clock04Icon } from "@/icons";
+import { Clock04Icon } from "@icons";
 
 import type { Workflow } from "../../api/workflowApi";
 import WorkflowExecutionHistory from "../WorkflowExecutionHistory";

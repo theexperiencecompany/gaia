@@ -6,7 +6,7 @@ import {
   MessageMultiple02Icon,
   Target02Icon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
 import type { DemoPage, UseCase } from "./types";
 
 // ─── Animation helpers ────────────────────────────────────────────────────────

@@ -30,6 +30,7 @@ Built-in CSS easing curves (ease, ease-in, ease-out) are usually not strong enou
 **Exception:** The `ease` keyword works well for basic hover effects like background color changes—anything more complex needs a custom curve.
 
 **Resources for custom curves:**
+
 - [easings.co](https://easings.co)
 - [easing.dev](https://easing.dev)
 

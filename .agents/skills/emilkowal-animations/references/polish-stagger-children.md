@@ -13,10 +13,8 @@ Stagger child animations to create orchestrated reveals. Children should animate
 
 ```tsx
 <motion.ul animate={{ opacity: 1 }}>
-  {items.map(item => (
-    <motion.li animate={{ opacity: 1, y: 0 }}>
-      {item.name}
-    </motion.li>
+  {items.map((item) => (
+    <motion.li animate={{ opacity: 1, y: 0 }}>{item.name}</motion.li>
   ))}
 </motion.ul>
 // All items appear at once

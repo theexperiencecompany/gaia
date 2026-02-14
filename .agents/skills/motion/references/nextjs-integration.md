@@ -7,24 +7,26 @@ This guide covers how to use Motion (Framer Motion) with Next.js, including App 
 ## TL;DR - Quick Start
 
 **Pages Router** (Next.js 12):
+
 ```tsx
 // Works out of the box, no special setup needed
-import { motion } from "motion/react"
+import { motion } from "motion/react";
 
 export default function Page() {
-  return <motion.div animate={{ opacity: 1 }}>Content</motion.div>
+  return <motion.div animate={{ opacity: 1 }}>Content</motion.div>;
 }
 ```
 
 **App Router** (Next.js 13+):
+
 ```tsx
 // MUST add "use client" directive
-"use client"
+"use client";
 
-import { motion } from "motion/react-client" // Optimized import
+import { motion } from "motion/react-client"; // Optimized import
 
 export default function Page() {
-  return <motion.div animate={{ opacity: 1 }}>Content</motion.div>
+  return <motion.div animate={{ opacity: 1 }}>Content</motion.div>;
 }
 ```
 
@@ -43,28 +45,28 @@ Motion uses browser APIs (DOM, window, events) that **don't exist on the server*
 Add `"use client"` directive at the top of any file using Motion:
 
 **File**: `src/app/page.tsx`
-```tsx
-"use client"
 
-import { motion } from "motion/react-client" // Optimized for Next.js
+```tsx
+"use client";
+
+import { motion } from "motion/react-client"; // Optimized for Next.js
 
 export default function Page() {
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-    >
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
       Welcome to Next.js + Motion
     </motion.div>
-  )
+  );
 }
 ```
 
 **Pros**:
+
 - ✅ Simple, straightforward
 - ✅ Works immediately
 
 **Cons**:
+
 - ❌ Entire page becomes client-rendered
 - ❌ Loses Server Component benefits (streaming, server-side data fetching)
 
@@ -75,13 +77,14 @@ export default function Page() {
 Create a reusable Client Component wrapper to avoid repeating `"use client"`:
 
 **File**: `src/components/motion-client.tsx`
+
 ```tsx
-"use client"
+"use client";
 
 // Optimized import for Next.js (reduces client JS)
-import * as motion from "motion/react-client"
+import * as motion from "motion/react-client";
 
-export { motion }
+export { motion };
 
 // Also export commonly used components/hooks
 export {
@@ -95,32 +98,31 @@ export {
   useSpring,
   useAnimate,
   useInView,
-} from "motion/react-client"
+} from "motion/react-client";
 ```
 
 **File**: `src/app/page.tsx` (Server Component)
+
 ```tsx
-import { motion } from "@/components/motion-client"
+import { motion } from "@/components/motion-client";
 
 export default function Page() {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
-      This page is a Server Component!
-      Motion wrapper is a Client Component.
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      This page is a Server Component! Motion wrapper is a Client Component.
     </motion.div>
-  )
+  );
 }
 ```
 
 **Pros**:
+
 - ✅ Server Components can use Motion via wrapper
 - ✅ Only Motion components are client-rendered
 - ✅ Cleaner imports (no need to repeat `"use client"`)
 
 **Cons**:
+
 - ❌ Slight indirection (one extra file)
 
 ---
@@ -130,18 +132,25 @@ export default function Page() {
 Fetch data in Server Component, animate in Client Component:
 
 **File**: `src/components/AnimatedCard.tsx` (Client Component)
-```tsx
-"use client"
 
-import { motion } from "motion/react-client"
+```tsx
+"use client";
+
+import { motion } from "motion/react-client";
 
 interface Product {
-  id: number
-  name: string
-  price: number
+  id: number;
+  name: string;
+  price: number;
 }
 
-export function AnimatedCard({ product, index }: { product: Product; index: number }) {
+export function AnimatedCard({
+  product,
+  index,
+}: {
+  product: Product;
+  index: number;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
@@ -153,23 +162,24 @@ export function AnimatedCard({ product, index }: { product: Product; index: numb
       <h3 className="font-bold">{product.name}</h3>
       <p className="text-gray-600">${product.price}</p>
     </motion.div>
-  )
+  );
 }
 ```
 
 **File**: `src/app/products/page.tsx` (Server Component)
+
 ```tsx
-import { AnimatedCard } from "@/components/AnimatedCard"
+import { AnimatedCard } from "@/components/AnimatedCard";
 
 async function getProducts() {
-  const res = await fetch('https://api.example.com/products', {
-    cache: 'force-cache' // Server-side caching
-  })
-  return res.json()
+  const res = await fetch("https://api.example.com/products", {
+    cache: "force-cache", // Server-side caching
+  });
+  return res.json();
 }
 
 export default async function ProductsPage() {
-  const products = await getProducts() // Server-side fetch
+  const products = await getProducts(); // Server-side fetch
 
   return (
     <div className="grid grid-cols-3 gap-4">
@@ -177,16 +187,18 @@ export default async function ProductsPage() {
         <AnimatedCard key={product.id} product={product} index={index} />
       ))}
     </div>
-  )
+  );
 }
 ```
 
 **Pros**:
+
 - ✅ Data fetched on server (SEO, performance, security)
 - ✅ Animations run on client (interactivity)
 - ✅ Best of both worlds
 
 **Cons**:
+
 - ❌ Requires splitting into two components
 
 ---
@@ -196,35 +208,31 @@ export default async function ProductsPage() {
 Wrap app in MotionConfig for global settings (reduced motion, transitions):
 
 **File**: `src/components/MotionProvider.tsx` (Client Component)
-```tsx
-"use client"
 
-import { MotionConfig } from "motion/react-client"
-import { ReactNode } from "react"
+```tsx
+"use client";
+
+import { MotionConfig } from "motion/react-client";
+import { ReactNode } from "react";
 
 export function MotionProvider({ children }: { children: ReactNode }) {
-  return (
-    <MotionConfig reducedMotion="user">
-      {children}
-    </MotionConfig>
-  )
+  return <MotionConfig reducedMotion="user">{children}</MotionConfig>;
 }
 ```
 
 **File**: `src/app/layout.tsx` (Root Layout)
+
 ```tsx
-import { MotionProvider } from "@/components/MotionProvider"
+import { MotionProvider } from "@/components/MotionProvider";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en">
       <body>
-        <MotionProvider>
-          {children}
-        </MotionProvider>
+        <MotionProvider>{children}</MotionProvider>
       </body>
     </html>
-  )
+  );
 }
 ```
 
@@ -239,18 +247,16 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 Motion works out of the box with Pages Router:
 
 **File**: `pages/index.tsx`
+
 ```tsx
-import { motion } from "motion/react"
+import { motion } from "motion/react";
 
 export default function HomePage() {
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       Welcome
     </motion.div>
-  )
+  );
 }
 ```
 
@@ -265,36 +271,38 @@ Motion is **client-only**, so you may see hydration warnings in development. Thi
 **If you see hydration errors**:
 
 **Option 1: Dynamic Import**
+
 ```tsx
-import dynamic from 'next/dynamic'
+import dynamic from "next/dynamic";
 
 const AnimatedComponent = dynamic(
-  () => import('@/components/AnimatedComponent'),
-  { ssr: false }
-)
+  () => import("@/components/AnimatedComponent"),
+  { ssr: false },
+);
 
 export default function Page() {
-  return <AnimatedComponent />
+  return <AnimatedComponent />;
 }
 ```
 
 **Option 2: Conditional Rendering**
+
 ```tsx
-import { useState, useEffect } from 'react'
-import { motion } from 'motion/react'
+import { useState, useEffect } from "react";
+import { motion } from "motion/react";
 
 export default function Page() {
-  const [isClient, setIsClient] = useState(false)
+  const [isClient, setIsClient] = useState(false);
 
   useEffect(() => {
-    setIsClient(true)
-  }, [])
+    setIsClient(true);
+  }, []);
 
   if (!isClient) {
-    return <div>Loading...</div>
+    return <div>Loading...</div>;
   }
 
-  return <motion.div animate={{ opacity: 1 }}>Content</motion.div>
+  return <motion.div animate={{ opacity: 1 }}>Content</motion.div>;
 }
 ```
 
@@ -307,10 +315,12 @@ export default function Page() {
 **Status**: Most issues resolved in latest Motion version (12.23.24)
 
 **Symptoms**:
-- Build errors: "unsupported to use 'export *' in a client boundary"
+
+- Build errors: "unsupported to use 'export \*' in a client boundary"
 - Runtime errors with Server Components
 
 **Solution**: Update to latest versions:
+
 ```bash
 pnpm add motion@latest react@latest next@latest
 ```
@@ -328,6 +338,7 @@ pnpm add motion@latest react@latest next@latest
 **Solutions**:
 
 **Option 1: Component-level AnimatePresence** (Recommended)
+
 ```tsx
 // Use AnimatePresence for modals, dropdowns, tooltips
 <AnimatePresence>
@@ -344,11 +355,12 @@ pnpm add motion@latest react@latest next@latest
 ```
 
 **Option 2: template.tsx** (Experimental)
+
 ```tsx
 // src/app/template.tsx
-"use client"
+"use client";
 
-import { motion } from "motion/react-client"
+import { motion } from "motion/react-client";
 
 export default function Template({ children }: { children: ReactNode }) {
   return (
@@ -359,7 +371,7 @@ export default function Template({ children }: { children: ReactNode }) {
     >
       {children}
     </motion.div>
-  )
+  );
 }
 ```
 
@@ -377,6 +389,7 @@ Use Next.js middleware to detect route changes and trigger animations manually. 
 **Problem**: Motion's `<Reorder>` component doesn't work with Next.js routing.
 
 **Symptoms**:
+
 - Random stuck states
 - Items don't reorder
 - Console errors
@@ -384,11 +397,13 @@ Use Next.js middleware to detect route changes and trigger animations manually. 
 **GitHub Issues**: #2183, #2101
 
 **Solution**: Use alternative drag-to-reorder implementations:
+
 - `@dnd-kit/core` (recommended)
 - `react-beautiful-dnd`
 - Manual implementation with `drag` prop
 
 **Example with `drag` prop**:
+
 ```tsx
 <motion.div
   drag="y"
@@ -408,22 +423,19 @@ Use Next.js middleware to detect route changes and trigger animations manually. 
 **Solution**: Use optimized import and LazyMotion:
 
 **File**: `src/components/motion-client.tsx`
-```tsx
-"use client"
 
-import { LazyMotion, domAnimation } from "motion/react-client"
-import { ReactNode } from "react"
+```tsx
+"use client";
+
+import { LazyMotion, domAnimation } from "motion/react-client";
+import { ReactNode } from "react";
 
 export function MotionProvider({ children }: { children: ReactNode }) {
-  return (
-    <LazyMotion features={domAnimation}>
-      {children}
-    </LazyMotion>
-  )
+  return <LazyMotion features={domAnimation}>{children}</LazyMotion>;
 }
 
 // Export 'm' component instead of 'motion'
-export { m as motion } from "motion/react-client"
+export { m as motion } from "motion/react-client";
 ```
 
 **Reduces bundle from 34 KB → 4.6 KB**
@@ -439,23 +451,30 @@ See `performance-optimization.md` for full guide.
 **GitHub Issue**: #1567
 
 **Workaround**: Manual check:
+
 ```tsx
-"use client"
+"use client";
 
-import { useState, useEffect } from "react"
-import { motion, AnimatePresence } from "motion/react-client"
+import { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react-client";
 
-export function Modal({ isOpen, onClose }: { isOpen: boolean; onClose: () => void }) {
-  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false)
+export function Modal({
+  isOpen,
+  onClose,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+}) {
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)")
-    setPrefersReducedMotion(mediaQuery.matches)
+    const mediaQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    setPrefersReducedMotion(mediaQuery.matches);
 
-    const handleChange = () => setPrefersReducedMotion(mediaQuery.matches)
-    mediaQuery.addEventListener("change", handleChange)
-    return () => mediaQuery.removeEventListener("change", handleChange)
-  }, [])
+    const handleChange = () => setPrefersReducedMotion(mediaQuery.matches);
+    mediaQuery.addEventListener("change", handleChange);
+    return () => mediaQuery.removeEventListener("change", handleChange);
+  }, []);
 
   return (
     <AnimatePresence>
@@ -470,7 +489,7 @@ export function Modal({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
         </motion.div>
       )}
     </AnimatePresence>
-  )
+  );
 }
 ```
 
@@ -481,13 +500,15 @@ export function Modal({ isOpen, onClose }: { isOpen: boolean; onClose: () => voi
 ### 1. Use `motion/react-client` Import
 
 **Regular import** (full bundle):
+
 ```tsx
-import { motion } from "motion/react"
+import { motion } from "motion/react";
 ```
 
 **Optimized import** (smaller bundle):
+
 ```tsx
-import { motion } from "motion/react-client"
+import { motion } from "motion/react-client";
 ```
 
 **Difference**: `react-client` variant excludes server-side code, reducing client JavaScript.
@@ -499,19 +520,19 @@ import { motion } from "motion/react-client"
 For animations not needed on initial load:
 
 ```tsx
-import dynamic from 'next/dynamic'
+import dynamic from "next/dynamic";
 
-const AnimatedHero = dynamic(
-  () => import('@/components/AnimatedHero'),
-  { ssr: false }
-)
+const AnimatedHero = dynamic(() => import("@/components/AnimatedHero"), {
+  ssr: false,
+});
 
 export default function HomePage() {
-  return <AnimatedHero />
+  return <AnimatedHero />;
 }
 ```
 
 **Benefits**:
+
 - ✅ Reduces initial JavaScript bundle
 - ✅ Loads animation code only when needed
 
@@ -520,28 +541,26 @@ export default function HomePage() {
 ### 3. LazyMotion for Smaller Bundle
 
 **Setup**:
-```tsx
-"use client"
 
-import { LazyMotion, domAnimation, m } from "motion/react-client"
+```tsx
+"use client";
+
+import { LazyMotion, domAnimation, m } from "motion/react-client";
 
 export default function Layout({ children }: { children: ReactNode }) {
-  return (
-    <LazyMotion features={domAnimation}>
-      {children}
-    </LazyMotion>
-  )
+  return <LazyMotion features={domAnimation}>{children}</LazyMotion>;
 }
 ```
 
 **Then use `m` instead of `motion`**:
-```tsx
-"use client"
 
-import { m } from "motion/react-client"
+```tsx
+"use client";
+
+import { m } from "motion/react-client";
 
 export function Component() {
-  return <m.div animate={{ opacity: 1 }}>Content</m.div>
+  return <m.div animate={{ opacity: 1 }}>Content</m.div>;
 }
 ```
 
@@ -554,27 +573,22 @@ export function Component() {
 Combine Motion with Next.js Image optimization:
 
 ```tsx
-"use client"
+"use client";
 
-import { motion } from "motion/react-client"
-import Image from "next/image"
+import { motion } from "motion/react-client";
+import Image from "next/image";
 
 export function AnimatedImage() {
   return (
     <motion.div whileHover={{ scale: 1.05 }}>
-      <Image
-        src="/hero.jpg"
-        width={1200}
-        height={600}
-        alt="Hero"
-        priority
-      />
+      <Image src="/hero.jpg" width={1200} height={600} alt="Hero" priority />
     </motion.div>
-  )
+  );
 }
 ```
 
 **Benefits**:
+
 - ✅ Automatic image optimization
 - ✅ Smooth animations
 
@@ -587,10 +601,12 @@ export function AnimatedImage() {
 **Problem**: Accidentally using Motion in Server Component.
 
 **Check**:
+
 1. Look for `"use client"` directive at top of file
 2. If using wrapper, verify wrapper has `"use client"`
 
 **Error message**:
+
 ```
 Error: motion is not defined
 ```
@@ -602,6 +618,7 @@ Error: motion is not defined
 ### 2. Check Bundle Size
 
 **Analyze**:
+
 ```bash
 pnpm build
 
@@ -617,6 +634,7 @@ pnpm build
 ### 3. Test Reduced Motion
 
 **Enable in OS**:
+
 - **macOS**: System Settings → Accessibility → Display → Reduce motion
 - **Windows**: Settings → Ease of Access → Display → Show animations
 - **iOS**: Settings → Accessibility → Motion
@@ -629,6 +647,7 @@ pnpm build
 ### 4. Lighthouse Performance
 
 **Run**:
+
 ```bash
 pnpm build
 pnpm start
@@ -636,10 +655,12 @@ pnpm start
 ```
 
 **Target Scores**:
+
 - Performance: >90
 - Accessibility: 100
 
 **If low performance**: Check for:
+
 - Large bundle size (optimize with LazyMotion)
 - Too many animated elements (use virtualization)
 - Non-accelerated animations (use transform, not width/height)
@@ -667,22 +688,22 @@ Before deploying Next.js + Motion:
 
 ### App Router
 
-| Task | Solution |
-|------|----------|
-| **Use Motion** | Add `"use client"` to file |
-| **Optimize import** | `import from "motion/react-client"` |
-| **Reduce bundle** | Use LazyMotion |
-| **Global config** | Wrap in MotionProvider |
+| Task                        | Solution                                               |
+| --------------------------- | ------------------------------------------------------ |
+| **Use Motion**              | Add `"use client"` to file                             |
+| **Optimize import**         | `import from "motion/react-client"`                    |
+| **Reduce bundle**           | Use LazyMotion                                         |
+| **Global config**           | Wrap in MotionProvider                                 |
 | **Server data + animation** | Fetch in Server Component, animate in Client Component |
-| **Route transitions** | Not reliable, use component-level only |
+| **Route transitions**       | Not reliable, use component-level only                 |
 
 ### Pages Router
 
-| Task | Solution |
-|------|----------|
-| **Use Motion** | Just import and use (no setup) |
+| Task                       | Solution                             |
+| -------------------------- | ------------------------------------ |
+| **Use Motion**             | Just import and use (no setup)       |
 | **Avoid hydration errors** | Use dynamic import with `ssr: false` |
-| **Optimize bundle** | Use LazyMotion |
+| **Optimize bundle**        | Use LazyMotion                       |
 
 ---
 

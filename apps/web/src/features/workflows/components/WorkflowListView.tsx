@@ -1,10 +1,9 @@
 "use client";
 
+import { WorkflowSquare05Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { memo, useCallback } from "react";
-
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
-import { WorkflowSquare05Icon } from "@/icons";
 import type { Workflow } from "@/types/features/workflowTypes";
 import WorkflowIcons from "./shared/WorkflowIcons";
 

@@ -40,7 +40,7 @@ export const faqData: FAQItem[] = [
   {
     question: "Is GAIA free?",
     answer:
-      "GAIA starts completely free with core features that handle email automation, calendar management, and task organization. Pro plans begin at $20/month and unlock higher usage limits, and priority support. For maximum privacy and control, you can self-host GAIA entirely free on your own infrastructure - no ongoing costs, complete data ownership.",
+      "GAIA starts completely free with core features that handle email automation, calendar management, and task organization. Pro plans begin at $30/month and unlock higher usage limits, and priority support. For maximum privacy and control, you can self-host GAIA entirely free on your own infrastructure - no ongoing costs, complete data ownership.",
   },
   {
     question: "Can I talk to customer support?",

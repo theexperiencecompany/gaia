@@ -1,10 +1,9 @@
 import { Button } from "@heroui/button";
 import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Cancel01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
 import { toast } from "sonner";
-
 import { calendarApi } from "@/features/calendar/api/calendarApi";
-import { Cancel01Icon, Tick02Icon } from "@/icons";
 import type { CalendarDeleteOptions } from "@/types/features/calendarTypes";
 import { buildDeleteEventPayload } from "@/utils/calendar/eventPayloadBuilders";
 import { formatDateWithRelative } from "@/utils/date/calendarDateUtils";

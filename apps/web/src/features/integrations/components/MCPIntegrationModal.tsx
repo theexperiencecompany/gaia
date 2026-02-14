@@ -11,11 +11,11 @@ import {
   ModalHeader,
   Textarea,
 } from "@heroui/react";
+import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { toast } from "sonner";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { ConnectIcon, KeyIcon, PuzzleIcon } from "@/icons";
 import { useIntegrations } from "../hooks/useIntegrations";
 
 interface MCPIntegrationModalProps {

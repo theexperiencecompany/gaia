@@ -29,7 +29,7 @@ When hovering should persist across a group of elements with gaps between them, 
 }
 
 .toast::after {
-  content: '';
+  content: "";
   position: absolute;
   bottom: -8px; /* Fills the gap */
   left: 0;

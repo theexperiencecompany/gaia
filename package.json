@@ -24,17 +24,13 @@
       "@heroui/shared-utils",
       "@parcel/watcher",
       "@sentry/cli",
-      "@tailwindcss/oxide",
-      "@vercel/speed-insights",
+      "@swc/core",
       "canvas",
       "core-js",
       "electron",
       "esbuild",
-      "heapdump",
       "nx",
-      "oxc-resolver",
-      "sharp",
-      "unrs-resolver"
+      "sharp"
     ],
     "overrides": {
       "react": "19.1.0",

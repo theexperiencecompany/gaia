@@ -1,11 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { CancelIcon, ZapIcon } from "@icons";
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
 import { RaisedButton } from "@/components/ui/raised-button";
-import { CancelIcon, ZapIcon } from "@/icons";
 
 const STORAGE_KEY = "sidebar-promo-collapsed";
 

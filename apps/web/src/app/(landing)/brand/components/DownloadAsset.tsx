@@ -1,9 +1,9 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Download01Icon } from "@icons";
 import Image from "next/image";
 import { useState } from "react";
-import { Download01Icon } from "@/components";
 
 interface DownloadOption {
   format: string;

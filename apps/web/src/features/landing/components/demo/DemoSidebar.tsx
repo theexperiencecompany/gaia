@@ -1,9 +1,10 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { m } from "motion/react";
-import { useState } from "react";
-
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  ZapIcon,
+} from "@/components/shared/icons";
 import { LogoWithContextMenu } from "@/components/shared/LogoWithContextMenu";
 import {
   Accordion,
@@ -13,14 +14,13 @@ import {
 } from "@/components/ui/accordion";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { Button } from "@heroui/button";
 import {
   BubbleChatAddIcon,
   Calendar01Icon,
   Calendar03Icon,
   CalendarUpload02Icon,
   CheckListIcon,
-  ChevronsDownUp,
-  ChevronsUpDown,
   ConnectIcon,
   Flag02Icon,
   Folder02Icon,
@@ -29,11 +29,12 @@ import {
   InternetIcon,
   Tag01Icon,
   ViewIcon,
-  ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { m } from "motion/react";
+import { useState } from "react";
 import DemoChatTab from "./DemoChatTab";
-import DemoSettingsDropdown from "./DemoSettingsDropdown";
 import { CHAT_GROUPS, ease, NAV_BUTTONS } from "./demoConstants";
+import DemoSettingsDropdown from "./DemoSettingsDropdown";
 import type { DemoPage } from "./types";
 
 interface DemoSidebarProps {
@@ -461,9 +462,7 @@ export default function DemoSidebar({
                           style={{ color: project.color }}
                         />
                         <span className="flex-1 truncate">{project.name}</span>
-                        <span className="ml-auto text-xs">
-                          {project.count}
-                        </span>
+                        <span className="ml-auto text-xs">{project.count}</span>
                       </div>
                     ))}
                   </div>
@@ -483,7 +482,7 @@ export default function DemoSidebar({
               <div className="flex items-center gap-2.5">
                 <Avatar className="size-7 shrink-0 rounded-full bg-black">
                   <AvatarImage
-                    src="https://github.com/aryanranderiya.png"
+                    src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
                     alt="Aryan"
                   />
                   <AvatarFallback className="bg-zinc-700 text-xs text-zinc-300">

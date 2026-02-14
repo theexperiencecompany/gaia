@@ -30,6 +30,7 @@ Marketing and landing pages are exceptions to speed rules. Users visit once or i
 ```
 
 **Guidelines by context:**
+
 - **App UI:** <300ms, subtle, functional
 - **Marketing:** 500-1000ms OK, expressive, attention-grabbing
 - **Onboarding:** Can be playful, guiding

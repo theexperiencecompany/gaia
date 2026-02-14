@@ -16,8 +16,12 @@ Users should be able to change animation state at any time with smooth transitio
   animation: slideIn 300ms ease-out;
 }
 @keyframes slideIn {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
 }
 /* If user closes mid-animation, it jumps or glitches */
 ```

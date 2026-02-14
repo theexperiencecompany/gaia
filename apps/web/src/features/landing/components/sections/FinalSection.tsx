@@ -1,16 +1,20 @@
 "use client";
 
 import { Tooltip } from "@heroui/tooltip";
-import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import {
+  DiscordIcon,
+  Github,
+  TwitterIcon,
+  WhatsappIcon,
+} from "@/components/shared/icons";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import {
   getTimeOfDay,
   isDarkTimeOfDay,
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
-import { DiscordIcon, Github, TwitterIcon, WhatsappIcon } from "@/icons";
 
 import { SplitTextBlur } from "../hero/SplitTextBlur";
 import GetStartedButton from "../shared/GetStartedButton";
@@ -92,64 +96,61 @@ export const SOCIAL_LINKS = [
 
 export default function FinalSection({
   showSocials = true,
-  timeOfDay: timeOfDayProp = null,
+  timeOfDay: timeOfDayProp,
   isDark: isDarkProp,
   onTextClick,
 }: {
   showSocials?: boolean;
-  timeOfDay?: TimeOfDay | null;
+  timeOfDay?: TimeOfDay;
   isDark?: boolean;
   onTextClick?: () => void;
 }) {
-  const [internalTimeOfDay, setInternalTimeOfDay] = useState<TimeOfDay | null>(
-    null,
+  const [internalTimeOfDay, setInternalTimeOfDay] = useState<TimeOfDay>(() =>
+    getTimeOfDay(),
   );
-
-  useEffect(() => {
-    if (timeOfDayProp === null) {
-      setInternalTimeOfDay(getTimeOfDay());
-    }
-  }, [timeOfDayProp]);
+  const [internalClickCount, setInternalClickCount] = useState(0);
 
   const timeOfDay = timeOfDayProp ?? internalTimeOfDay;
   const isDark =
-    isDarkProp !== undefined
-      ? isDarkProp
-      : timeOfDay
-        ? isDarkTimeOfDay(timeOfDay)
-        : false;
+    isDarkProp !== undefined ? isDarkProp : isDarkTimeOfDay(timeOfDay);
 
-  const wallpaper = timeOfDay ? SWISS_KID_WALLPAPERS[timeOfDay] : null;
+  const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
+
+  const handleInternalClick = () => {
+    const next = internalClickCount + 1;
+    setInternalClickCount(next);
+    if (next % 3 === 0) {
+      setInternalTimeOfDay((prev) => {
+        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
+        return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
+      });
+    }
+  };
+
+  const wallpaper = SWISS_KID_WALLPAPERS[timeOfDay];
 
   return (
     <div className="relative z-1 m-0! flex min-h-[90vh] w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 -top-0 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
       <div className="absolute bottom-0 left-0 right-0">
-        {wallpaper ? (
-          <ProgressiveImage
-            webpSrc={wallpaper.webp}
-            pngSrc={wallpaper.png}
-            alt="Wallpaper"
-            className="object-cover object-bottom"
-            shouldHaveInitialFade={true}
-            priority={false}
-          />
-        ) : (
-          <Image
-            src="/images/wallpapers/landscape.webp"
-            alt="Wallpaper"
-            fill
-            className="object-cover object-bottom"
-            sizes="100vw"
-          />
-        )}
+        <ProgressiveImage
+          webpSrc={wallpaper.webp}
+          pngSrc={wallpaper.png}
+          alt="Wallpaper"
+          className="object-cover object-bottom"
+          shouldHaveInitialFade={true}
+          priority={false}
+        />
       </div>
 
       <div
         className={`relative z-20 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
       >
-        <div onClick={onTextClick} className="cursor-default select-none">
+        <div
+          onClick={onTextClick ?? handleInternalClick}
+          className="cursor-default select-none"
+        >
           {isDark || timeOfDay === "morning" ? (
             <SplitTextBlur
               text="Stop doing everything yourself."

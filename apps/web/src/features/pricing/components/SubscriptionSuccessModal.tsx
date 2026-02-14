@@ -2,9 +2,8 @@
 
 import { Button } from "@heroui/button";
 import { Modal, ModalContent, ModalFooter, ModalHeader } from "@heroui/modal";
+import { ArrowRight01Icon, Tick02Icon } from "@icons";
 import { useEffect, useState } from "react";
-
-import { ArrowRight01Icon, Tick02Icon } from "@/icons";
 
 import UseCreateConfetti from "../../../hooks/ui/useCreateConfetti";
 

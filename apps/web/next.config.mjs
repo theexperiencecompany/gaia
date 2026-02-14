@@ -12,6 +12,7 @@ const withBundleAnalyzer = bundleAnalyzer({
 });
 
 const nextConfig = {
+  productionBrowserSourceMaps: true,
   compiler: {
     removeConsole:
       process.env.NODE_ENV === "production"
@@ -27,13 +28,16 @@ const nextConfig = {
   // Explicitly set turbopack workspace root to silence inference warning
   turbopack: {
     root: path.join(__dirname, "../.."),
+    // Change the value here to swap the entire icon variant across the app
+    resolveAlias: {
+      "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
+    },
   },
   experimental: {
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
       "cytoscape",
-      "@theexperiencecompany/gaia-icons",
       "@heroui/*",
     ],
   },
@@ -47,10 +51,14 @@ const nextConfig = {
         "cytoscape-fcose": false,
       };
     }
+    // Alias @icons to the active icon variant — change here to swap the entire set
+    config.resolve.alias["@icons"] =
+      "@theexperiencecompany/gaia-icons/solid-rounded";
     return config;
   },
   images: {
     dangerouslyAllowSVG: true,
+    minimumCacheTTL: 2592000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
     remotePatterns: [
       {
         protocol: "https",
@@ -68,24 +76,33 @@ const nextConfig = {
   pageExtensions: ["js", "jsx", "mdx", "ts", "tsx"],
   async headers() {
     return [
-      // {
-      //   source: "/_next/static/(.*)",
-      //   headers: [
-      //     {
-      //       key: "Cache-Control",
-      //       value: "public, max-age=31536000, immutable",
-      //     },
-      //   ],
-      // },
-      // {
-      //   source: "/images/(.*)",
-      //   headers: [
-      //     {
-      //       key: "Cache-Control",
-      //       value: "public, max-age=86400, stale-while-revalidate=604800",
-      //     },
-      //   ],
-      // },
+      {
+        source: "/_next/static/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=31536000, immutable",
+          },
+        ],
+      },
+      {
+        source: "/images/(.*)",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=2592000, stale-while-revalidate=604800",
+          },
+        ],
+      },
+      {
+        source: "/site.webmanifest",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
     ];
   },
   async rewrites() {
@@ -93,6 +110,15 @@ const nextConfig = {
       {
         source: "/sitemap.xml",
         destination: "/sitemap-index",
+      },
+      // Docs reverse proxy - serve Mintlify docs at /docs/* for SEO authority consolidation
+      {
+        source: "/docs",
+        destination: "https://docs.heygaia.io",
+      },
+      {
+        source: "/docs/:path*",
+        destination: "https://docs.heygaia.io/:path*",
       },
       {
         source: "/ingest/static/:path*",
@@ -105,6 +131,35 @@ const nextConfig = {
       {
         source: "/ingest/flags",
         destination: "https://us.i.posthog.com/flags",
+      },
+    ];
+  },
+  async redirects() {
+    return [
+      {
+        source: "/discord",
+        destination: "https://discord.heygaia.io",
+        permanent: true,
+      },
+      {
+        source: "/whatsapp",
+        destination: "https://whatsapp.heygaia.io",
+        permanent: true,
+      },
+      {
+        source: "/roadmap",
+        destination: "https://gaia.featurebase.app/roadmap",
+        permanent: false,
+      },
+      {
+        source: "/request-feature",
+        destination: "https://gaia.featurebase.app",
+        permanent: false,
+      },
+      {
+        source: "/status",
+        destination: "https://status.heygaia.io",
+        permanent: false,
       },
     ];
   },
@@ -131,6 +186,9 @@ export default withSentryConfig(withBundleAnalyzer(withMDX(nextConfig)), {
 
   // Upload a larger set of source maps for prettier stack traces (increases build time)
   widenClientFileUpload: true,
+
+  // Keep source maps in the build output so browsers can load them (don't delete after Sentry upload)
+  hideSourceMaps: false,
 
   // Uncomment to route browser requests to Sentry through a Next.js rewrite to circumvent ad-blockers.
   // This can increase your server load as well as your hosting bill.

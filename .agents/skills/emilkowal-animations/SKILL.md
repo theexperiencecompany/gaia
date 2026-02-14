@@ -10,6 +10,7 @@ Comprehensive animation guide for web interfaces based on Emil Kowalski's teachi
 ## When to Apply
 
 Reference these guidelines when:
+
 - Adding animations to React components
 - Choosing easing curves or timing values
 - Implementing gesture-based interactions (swipe, drag)
@@ -19,15 +20,15 @@ Reference these guidelines when:
 
 ## Rule Categories by Priority
 
-| Priority | Category | Impact | Prefix |
-|----------|----------|--------|--------|
-| 1 | Easing Selection | CRITICAL | `ease-` |
-| 2 | Timing & Duration | CRITICAL | `timing-` |
-| 3 | Property Selection | HIGH | `props-` |
-| 4 | Transform Techniques | HIGH | `transform-` |
-| 5 | Interaction Patterns | MEDIUM-HIGH | `interact-` |
-| 6 | Strategic Animation | MEDIUM | `strategy-` |
-| 7 | Accessibility & Polish | MEDIUM | `polish-` |
+| Priority | Category               | Impact      | Prefix       |
+| -------- | ---------------------- | ----------- | ------------ |
+| 1        | Easing Selection       | CRITICAL    | `ease-`      |
+| 2        | Timing & Duration      | CRITICAL    | `timing-`    |
+| 3        | Property Selection     | HIGH        | `props-`     |
+| 4        | Transform Techniques   | HIGH        | `transform-` |
+| 5        | Interaction Patterns   | MEDIUM-HIGH | `interact-`  |
+| 6        | Strategic Animation    | MEDIUM      | `strategy-`  |
+| 7        | Accessibility & Polish | MEDIUM      | `polish-`    |
 
 ## Quick Reference
 
@@ -98,22 +99,22 @@ Reference these guidelines when:
 
 ## Key Values Reference
 
-| Value | Usage |
-|-------|-------|
-| `cubic-bezier(0.32, 0.72, 0, 1)` | iOS-style drawer/sheet animation |
-| `scale(0.97)` | Button press feedback |
-| `scale(0.95)` | Minimum enter scale (never scale(0)) |
-| `200ms ease-out` | Standard UI transition |
-| `300ms` | Maximum duration for UI animations |
-| `500ms` | Drawer animation duration |
-| `0.11 px/ms` | Velocity threshold for momentum dismiss |
-| `100px` | Scroll-reveal viewport threshold |
-| `14px` | Toast stack offset |
+| Value                            | Usage                                   |
+| -------------------------------- | --------------------------------------- |
+| `cubic-bezier(0.32, 0.72, 0, 1)` | iOS-style drawer/sheet animation        |
+| `scale(0.97)`                    | Button press feedback                   |
+| `scale(0.95)`                    | Minimum enter scale (never scale(0))    |
+| `200ms ease-out`                 | Standard UI transition                  |
+| `300ms`                          | Maximum duration for UI animations      |
+| `500ms`                          | Drawer animation duration               |
+| `0.11 px/ms`                     | Velocity threshold for momentum dismiss |
+| `100px`                          | Scroll-reveal viewport threshold        |
+| `14px`                           | Toast stack offset                      |
 
 ## Reference Files
 
-| File | Description |
-|------|-------------|
-| [references/_sections.md](references/_sections.md) | Category definitions and ordering |
-| [assets/templates/_template.md](assets/templates/_template.md) | Template for new rules |
-| [metadata.json](metadata.json) | Version and reference information |
+| File                                                            | Description                       |
+| --------------------------------------------------------------- | --------------------------------- |
+| [references/\_sections.md](references/_sections.md)             | Category definitions and ordering |
+| [assets/templates/\_template.md](assets/templates/_template.md) | Template for new rules            |
+| [metadata.json](metadata.json)                                  | Version and reference information |
