@@ -1,19 +1,5 @@
 "use client";
 
-import {
-  ChevronsDownUp,
-  ChevronsUpDown,
-  ZapIcon,
-} from "@/components/shared/icons";
-import { LogoWithContextMenu } from "@/components/shared/LogoWithContextMenu";
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from "@/components/ui/accordion";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { Button } from "@heroui/button";
 import {
   BubbleChatAddIcon,
@@ -32,9 +18,23 @@ import {
 } from "@icons";
 import { m } from "motion/react";
 import { useState } from "react";
+import {
+  ChevronsDownUp,
+  ChevronsUpDown,
+  ZapIcon,
+} from "@/components/shared/icons";
+import { LogoWithContextMenu } from "@/components/shared/LogoWithContextMenu";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import DemoChatTab from "./DemoChatTab";
-import { CHAT_GROUPS, ease, NAV_BUTTONS } from "./demoConstants";
 import DemoSettingsDropdown from "./DemoSettingsDropdown";
+import { CHAT_GROUPS, ease, NAV_BUTTONS } from "./demoConstants";
 import type { DemoPage } from "./types";
 
 interface DemoSidebarProps {

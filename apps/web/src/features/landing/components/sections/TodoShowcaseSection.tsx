@@ -1,6 +1,9 @@
 "use client";
 
+import { CheckListIcon } from "@icons";
 import TodoDemoAnimation from "../demo/todo-demo/TodoDemoAnimation";
+import ShowcaseSectionLayout from "./ShowcaseSectionLayout";
+import ShowcaseSidebarContent from "./ShowcaseSidebarContent";
 
 const CONTENT_SECTIONS = [
   {
@@ -22,32 +25,19 @@ const CONTENT_SECTIONS = [
 
 export default function TodoShowcaseSection() {
   return (
-    <div className="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-6 sm:px-4">
-      <div className="mb-2 text-xl font-light text-primary sm:text-2xl text-center lg:text-left">
-        Your tasks, on autopilot
-      </div>
-      <div className="mb-8 font-serif text-4xl font-normal sm:text-5xl text-center lg:text-left">
-        The to-do list that works while you don't
-      </div>
-
-      <div className="flex flex-col gap-6 lg:flex-row lg:gap-8 lg:items-end">
-        <div className="w-full lg:w-[70%]">
-          <TodoDemoAnimation />
-        </div>
-
-        <div className="flex w-full flex-col justify-end gap-7 lg:w-[25%] pb-[52px]">
-          {CONTENT_SECTIONS.map((section) => (
-            <div key={section.title}>
-              <h3 className="mb-2 text-xl font-medium text-zinc-100">
-                {section.title}
-              </h3>
-              <p className="text-base font-light leading-relaxed text-zinc-400 text-justify">
-                {section.description}
-              </p>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
+    <ShowcaseSectionLayout
+      header="Your tasks, on autopilot"
+      subheader="The to-do list that works while you don't"
+      DemoComponent={<TodoDemoAnimation />}
+      SidebarContent={
+        <ShowcaseSidebarContent
+          sidebarIcon={<CheckListIcon width={30} height={30} />}
+          sidebarTitle="Todos"
+          contentSections={CONTENT_SECTIONS}
+        />
+      }
+      containerClassName="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-6 sm:px-4"
+      sidebarClassName="flex w-full flex-col justify-end gap-7 lg:w-[25%] pb-13"
+    />
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import {
@@ -16,6 +15,7 @@ import {
 } from "@icons";
 import { formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DEMO_PROJECTS,
   DEMO_TODOS,
