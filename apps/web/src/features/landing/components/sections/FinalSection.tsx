@@ -105,11 +105,27 @@ export default function FinalSection({
   isDark?: boolean;
   onTextClick?: () => void;
 }) {
-  const [internalTimeOfDay] = useState<TimeOfDay>(() => getTimeOfDay());
+  const [internalTimeOfDay, setInternalTimeOfDay] = useState<TimeOfDay>(() =>
+    getTimeOfDay(),
+  );
+  const [internalClickCount, setInternalClickCount] = useState(0);
 
   const timeOfDay = timeOfDayProp ?? internalTimeOfDay;
   const isDark =
     isDarkProp !== undefined ? isDarkProp : isDarkTimeOfDay(timeOfDay);
+
+  const TIME_OF_DAY_CYCLE: TimeOfDay[] = ["morning", "day", "evening", "night"];
+
+  const handleInternalClick = () => {
+    const next = internalClickCount + 1;
+    setInternalClickCount(next);
+    if (next % 3 === 0) {
+      setInternalTimeOfDay((prev) => {
+        const idx = TIME_OF_DAY_CYCLE.indexOf(prev);
+        return TIME_OF_DAY_CYCLE[(idx + 1) % TIME_OF_DAY_CYCLE.length];
+      });
+    }
+  };
 
   const wallpaper = SWISS_KID_WALLPAPERS[timeOfDay];
 
@@ -131,7 +147,10 @@ export default function FinalSection({
       <div
         className={`relative z-20 ${showSocials ? "mb-30" : "mb-10"} flex h-full flex-col items-center justify-start gap-4`}
       >
-        <div onClick={onTextClick} className="cursor-default select-none">
+        <div
+          onClick={onTextClick ?? handleInternalClick}
+          className="cursor-default select-none"
+        >
           {isDark || timeOfDay === "morning" ? (
             <SplitTextBlur
               text="Stop doing everything yourself."
