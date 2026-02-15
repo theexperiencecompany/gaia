@@ -78,12 +78,14 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   } = useQuery({
     queryKey: ["integrations", "user"],
     queryFn: integrationsApi.getUserIntegrations,
+    staleTime: 0, // Always refetch - user integrations are mutable state
   });
 
   // Query for platform integration status
   const { data: statusData, isLoading: statusLoading } = useQuery({
     queryKey: ["integrations", "status"],
     queryFn: integrationsApi.getIntegrationStatus,
+    staleTime: 0, // Always refetch - status can change externally (OAuth callbacks)
   });
 
   // Merge platform integrations with user's custom integrations
