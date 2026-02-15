@@ -9,6 +9,7 @@ from typing import Any, Dict
 from app.config.loggers import general_logger as logger
 from app.config.settings import settings
 from app.db.mongodb.collections import (
+    processed_webhooks_collection,
     subscriptions_collection,
     users_collection,
 )
@@ -101,23 +102,73 @@ class PaymentWebhookService:
             logger.warning(f"Webhook signature verification failed: {e}")
             return False
 
-    async def process_webhook(
-        self, webhook_data: Dict[str, Any]
-    ) -> DodoWebhookProcessingResult:
-        """Process Dodo payment webhook."""
+    async def _is_webhook_processed(self, webhook_id: str) -> bool:
+        """Check if webhook has already been processed."""
+        processed = await processed_webhooks_collection.find_one(
+            {"webhook_id": webhook_id}
+        )
+        return processed is not None
+
+    async def _mark_webhook_as_processed(
+        self, webhook_id: str, event_type: str, result: DodoWebhookProcessingResult
+    ) -> None:
+        """Store webhook ID as processed in database."""
         try:
+            await processed_webhooks_collection.insert_one(
+                {
+                    "webhook_id": webhook_id,
+                    "event_type": event_type,
+                    "status": result.status,
+                    "message": result.message,
+                    "payment_id": result.payment_id,
+                    "subscription_id": result.subscription_id,
+                    "processed_at": datetime.now(timezone.utc),
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to store processed webhook ID: {e}")
+
+    async def process_webhook(
+        self, webhook_data: Dict[str, Any], webhook_id: str
+    ) -> DodoWebhookProcessingResult:
+        """
+        Process Dodo payment webhook with idempotency check.
+
+        Args:
+            webhook_data: The webhook payload
+            webhook_id: Unique webhook ID from webhook-id header for idempotency
+
+        Returns:
+            Processing result
+        """
+        try:
+            # Check if webhook has already been processed
+            if await self._is_webhook_processed(webhook_id):
+                logger.info(f"Webhook {webhook_id} already processed, skipping")
+                return DodoWebhookProcessingResult(
+                    event_type=webhook_data.get("type", "unknown"),
+                    status="ignored",
+                    message="Webhook already processed",
+                )
+
             event = DodoWebhookEvent(**webhook_data)
 
             handler = self.handlers.get(event.type)
             if not handler:
-                return DodoWebhookProcessingResult(
+                result = DodoWebhookProcessingResult(
                     event_type=event.type.value,
                     status="ignored",
                     message=f"No handler for {event.type}",
                 )
+                # Store even ignored webhooks to prevent reprocessing
+                await self._mark_webhook_as_processed(webhook_id, event.type.value, result)
+                return result
 
             result = await handler(event)
             logger.info(f"Webhook processed: {event.type} - {result.status}")
+
+            # Store webhook as processed after successful handler execution
+            await self._mark_webhook_as_processed(webhook_id, event.type.value, result)
             return result
 
         except Exception as e:

@@ -121,6 +121,7 @@ _COLLECTION_MAPPINGS = {
     "user_integrations_collection": "user_integrations",
     "device_tokens_collection": "device_tokens",
     "workflow_executions_collection": "workflow_executions",
+    "processed_webhooks_collection": "processed_webhooks",
 }
 
 

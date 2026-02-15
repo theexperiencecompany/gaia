@@ -28,6 +28,7 @@ from app.db.mongodb.collections import (
     notifications_collection,
     payments_collection,
     plans_collection,
+    processed_webhooks_collection,
     projects_collection,
     reminders_collection,
     subscriptions_collection,
@@ -70,6 +71,7 @@ async def create_all_indexes():
             create_reminder_indexes(),
             create_workflow_indexes(),
             create_payment_indexes(),
+            create_processed_webhook_indexes(),
             create_usage_indexes(),
             create_ai_models_indexes(),
             create_integration_indexes(),
@@ -96,6 +98,7 @@ async def create_all_indexes():
             "reminders",
             "workflows",
             "payments",
+            "processed_webhooks",
             "usage",
             "ai_models",
             "integrations",
@@ -539,6 +542,27 @@ async def create_payment_indexes():
 
     except Exception as e:
         logger.error(f"Error creating payment indexes: {str(e)}")
+        raise
+
+
+async def create_processed_webhook_indexes():
+    """
+    Create indexes for processed_webhooks collection for idempotency.
+    
+    - Unique index for idempotency check
+    - TTL index for automatic cleanup
+    """
+    try:
+        await asyncio.gather(
+            # Unique index on webhook_id - required for idempotency
+            processed_webhooks_collection.create_index("webhook_id", unique=True),
+            # TTL index to auto-delete old records after 30 days
+            processed_webhooks_collection.create_index(
+                "processed_at", expireAfterSeconds=2592000  # 30 days
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Error creating processed webhook indexes: {str(e)}")
         raise
 
 
