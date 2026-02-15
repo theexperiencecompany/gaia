@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { cache } from "react";
 
 import BlogPostClient from "@/app/(landing)/blog/client";
-import { getAllBlogSlugs, getBlogPost } from "@/lib/blog";
+import { getAllBlogPosts, getAllBlogSlugs, getBlogPost } from "@/lib/blog";
 import {
   generateArticleSchema,
   generateBreadcrumbSchema,
@@ -65,6 +65,12 @@ export default async function BlogPostPage({ params }: PageProps) {
       );
     }
 
+    // Get suggested posts (excluding current post)
+    const allBlogs = await getAllBlogPosts(false);
+    const suggestedPosts = allBlogs
+      .filter((post) => post.slug !== slug)
+      .slice(0, 3);
+
     // Generate structured data for SEO
     const articleSchema = generateArticleSchema(
       blog.title,
@@ -89,6 +95,7 @@ export default async function BlogPostPage({ params }: PageProps) {
     return (
       <BlogPostClient
         blog={blog}
+        suggestedPosts={suggestedPosts}
         structuredData={articleSchema}
         breadcrumbSchema={breadcrumbSchema}
       />

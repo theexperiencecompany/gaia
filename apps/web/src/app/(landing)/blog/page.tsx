@@ -58,7 +58,7 @@ export default async function BlogPage() {
         <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
         <div className="flex min-h-screen w-screen justify-center py-28">
           <div className="w-full max-w-(--breakpoint-lg) space-y-4">
-            <h1>Blog</h1>
+            <h1 className="font-serif text-6xl">Blog</h1>
             <BlogList blogs={blogs} />
           </div>
         </div>

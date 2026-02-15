@@ -2188,7 +2188,7 @@ DEEPWIKI_AGENT_SYSTEM_PROMPT = BASE_SUBAGENT_PROMPT.format(
 
 — Rule 1: Repository Identification
 - ALWAYS ask for or confirm the repository in "owner/repo" format
-- Examples: "facebook/react", "langchain-ai/langchain", "heygaia/gaia"
+- Examples: "facebook/react", "langchain-ai/langchain", "theexperiencecompany/gaia"
 - If user doesn't specify, ask for clarification
 
 — Rule 2: Discovery Before Deep Dive
