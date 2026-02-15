@@ -63,6 +63,7 @@ from app.utils.mcp_oauth_utils import (
     MCP_PROTOCOL_VERSION,
     OAuthSecurityError,
     get_client_metadata_document_url,
+    is_localhost_url,
     parse_oauth_error_response,
     validate_https_url,
     validate_jwt_issuer,
@@ -190,7 +191,7 @@ class MCPClient:
 
         Transport selection:
         - If mcp_config.transport is set, use that explicitly
-        - Otherwise, defaults to "streamable-http" per MCP spec 2025-06-18
+        - Otherwise, defaults to "streamable-http" per MCP spec 2025-11-25
         - SSE transport is deprecated per MCP spec 2025-11-25
 
         Auth handling:
@@ -201,7 +202,7 @@ class MCPClient:
         server_config: dict = {"url": mcp_config.server_url}
 
         # Transport: explicit config or let mcp_use auto-detect
-        # Per MCP spec 2025-06-18, streamable HTTP is preferred over deprecated SSE
+        # Per MCP spec 2025-11-25, streamable HTTP is preferred over deprecated SSE
         if mcp_config.transport:
             server_config["transport"] = mcp_config.transport
         else:
@@ -492,25 +493,31 @@ class MCPClient:
             integration_id, mcp_config, challenge_data=challenge_data
         )
 
-        # Get or register client credentials
+        # Resolve client credentials with the following priority order per MCP spec:
+        # 1. Pre-configured credentials (from MCPConfig or env vars)
+        # 2. Stored DCR client (from PostgreSQL, saved during previous _register_client)
+        # 3. Client Metadata Document URL (when AS supports it and API is non-localhost)
+        # 4. Dynamic Client Registration (DCR) as last resort
         client_id, client_secret = self._resolve_client_credentials(mcp_config)
 
         if not client_id:
-            # Try stored DCR client first
+            # Priority 2: Check for stored DCR client from a previous registration.
+            # This is effectively "pre-registered" for this specific integration.
             dcr_data = await self.token_store.get_dcr_client(integration_id)
             if dcr_data:
                 client_id = dcr_data.get("client_id")
+                logger.debug(f"Using stored DCR client for {integration_id}")
 
         if not client_id:
-            # NEW: Check if client metadata document is supported
+            # Priority 3: Use Client ID Metadata Document if supported.
             # Per draft-ietf-oauth-client-id-metadata-document, the client_id
-            # can be the URL to the client metadata document
+            # can be the URL to the client metadata document.
             #
             # IMPORTANT: Only use client metadata document when our API is publicly
             # accessible. The auth server needs to fetch our metadata document to
             # validate the client. When running on localhost, this is impossible.
             api_base = get_api_base_url()
-            is_localhost = "localhost" in api_base or "127.0.0.1" in api_base
+            is_localhost = is_localhost_url(api_base)
 
             if (
                 oauth_config.get("client_id_metadata_document_supported")
@@ -520,22 +527,26 @@ class MCPClient:
                 logger.info(
                     f"Using client metadata document URL as client_id for {integration_id}: {client_id}"
                 )
+            # Priority 4: Fall back to Dynamic Client Registration (DCR).
+            # Also required when running locally since the auth server
+            # cannot reach localhost to validate the client metadata document.
             elif oauth_config.get("registration_endpoint"):
-                # Fall back to Dynamic Client Registration (DCR)
-                # This is also required when running locally since the auth server
-                # cannot reach localhost to validate the client metadata document
                 client_id = await self._register_client(
                     integration_id,
                     oauth_config["registration_endpoint"],
                     redirect_uri,
                 )
+                logger.info(f"Registered new client via DCR for {integration_id}")
 
         if not client_id:
             raise ValueError(
                 f"Could not obtain client_id for {integration_id}. "
-                "DCR may not be supported and client metadata document not supported. "
-                "Check if pre-registration is required."
+                "Tried: (1) pre-configured credentials, (2) stored DCR client, "
+                "(3) client metadata document, (4) new DCR registration. "
+                "The authorization server may require manual client pre-registration."
             )
+
+        logger.info(f"[{integration_id}] client_id resolved for auth URL: ")
 
         # Verify PKCE support per MCP spec using centralized validation
         validate_pkce_support(oauth_config, integration_id)
@@ -685,21 +696,56 @@ class MCPClient:
         except OAuthSecurityError as e:
             logger.warning(f"Token endpoint security warning: {e}")
 
-        # Get client credentials - check DCR first, then resolve from config/env
+        # Resolve client credentials using same priority as build_oauth_auth_url
+        # to ensure the same client_id is used for both authorization and token exchange.
+        #
+        # Priority order (must match build_oauth_auth_url):
+        # 1. Pre-configured credentials (from MCPConfig or env vars)
+        # 2. Stored DCR client (from PostgreSQL, saved during _register_client)
+        # 3. Client Metadata Document URL (when AS supports it, non-localhost)
         client_id = None
         client_secret = None
 
-        dcr_data = await self.token_store.get_dcr_client(integration_id)
-        if dcr_data:
-            client_id = dcr_data.get("client_id")
-            client_secret = dcr_data.get("client_secret")
+        # 1. Pre-configured credentials
+        resolved_id, resolved_secret = self._resolve_client_credentials(mcp_config)
+        if resolved_id:
+            client_id = resolved_id
+            client_secret = resolved_secret
 
-        if not client_id or not client_secret:
-            resolved_id, resolved_secret = self._resolve_client_credentials(mcp_config)
-            if not client_id:
-                client_id = resolved_id
-            if not client_secret:
-                client_secret = resolved_secret
+        # 2. Stored DCR client
+        if not client_id:
+            dcr_data = await self.token_store.get_dcr_client(integration_id)
+            if dcr_data:
+                client_id = dcr_data.get("client_id")
+                client_secret = dcr_data.get("client_secret")
+
+        # 3. Client Metadata Document URL (must match build_oauth_auth_url logic)
+        # Priority 3: Client Metadata Document URL (must match build_oauth_auth_url logic)
+        if not client_id:
+            api_base = get_api_base_url()
+            is_localhost = is_localhost_url(api_base)
+            if (
+                oauth_config.get("client_id_metadata_document_supported")
+                and not is_localhost
+            ):
+                client_id = get_client_metadata_document_url(api_base)
+                logger.info(
+                    f"Using client metadata document URL as client_id "
+                    f"for token exchange: {client_id}"
+                )
+
+        if not client_id:
+            raise ValueError(
+                f"Could not resolve client_id for token exchange ({integration_id}). "
+                "No pre-configured credentials, no DCR registration, "
+                "and client metadata document not applicable."
+            )
+
+        logger.info(
+            f"[{integration_id}] client_id resolved for token exchange: "
+            f"client_id={client_id[:50]}{'...' if len(client_id) > 50 else ''}, "
+            f"has_secret={client_secret is not None}"
+        )
 
         # Get resource for token binding (RFC 8707)
         resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))

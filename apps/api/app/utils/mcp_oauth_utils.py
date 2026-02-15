@@ -15,15 +15,27 @@ import json
 import re
 import time
 from typing import Any, Optional, Protocol
+import ipaddress
 from urllib.parse import urlparse
 
 import httpx
 
 from app.config.loggers import langchain_logger as logger
 
-# MCP Protocol Version header value per MCP spec
-# This should be included in discovery requests for protocol version negotiation
-MCP_PROTOCOL_VERSION = "2025-06-18"
+# MCP Protocol Version header value per MCP spec.
+#
+# Per MCP Authorization Specification, OAuth discovery requests SHOULD include
+# the MCP-Protocol-Version header for protocol version negotiation.
+#
+# This value is sent in:
+# - Protected Resource Metadata requests (RFC 9728)
+# - Authorization Server Metadata requests (RFC 8414)
+# - Dynamic Client Registration requests (RFC 7591)
+# - Token requests and revocations
+#
+# Version: 2025-11-25 is the current stable MCP specification.
+# See: https://modelcontextprotocol.io/specification/versioning
+MCP_PROTOCOL_VERSION = "2025-11-25"
 
 # Timeout constants for OAuth operations
 # TLS handshakes can take 2-5 seconds on slow connections, so we use generous timeouts
@@ -82,6 +94,45 @@ def validate_https_url(url: str, allow_localhost: bool = True) -> None:
         f"OAuth endpoint must use HTTPS: {url}. "
         "HTTP is only allowed for localhost during development."
     )
+
+
+def is_localhost_url(url: str) -> bool:
+    """
+    Check if URL points to localhost or loopback address.
+
+    Handles:
+    - localhost (case-insensitive)
+    - 127.0.0.0/8 (all IPv4 loopback addresses)
+    - ::1 (IPv6 loopback)
+    - 0.0.0.0 (all interfaces)
+
+    Args:
+        url: The URL to check
+
+    Returns:
+        True if URL points to localhost/loopback, False otherwise
+    """
+    try:
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+
+        if not hostname:
+            return False
+
+        # Check hostname string (case-insensitive)
+        hostname_lower = hostname.lower()
+        if hostname_lower in ("localhost", ""):
+            return True
+
+        # Check if it's a loopback IP address
+        try:
+            ip = ipaddress.ip_address(hostname)
+            return ip.is_loopback or ip.is_unspecified
+        except ValueError:
+            return False
+
+    except Exception:
+        return False
 
 
 def validate_oauth_endpoints(oauth_config: dict, allow_localhost: bool = True) -> None:
@@ -288,10 +339,18 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
 
     candidate_urls = []
 
+    # For issuer URLs with path components, try all discovery variants per MCP spec:
+    # 1. OAuth 2.0 path insertion (RFC 8414 Section 3.1)
+    # 2. OpenID Connect path insertion (RFC 8414 Section 5)
+    # 3. OpenID Connect path appending (OIDC Discovery 1.0)
     if path:
         candidate_urls.append(f"{origin}/.well-known/oauth-authorization-server{path}")
         candidate_urls.append(f"{origin}/.well-known/openid-configuration{path}")
+        candidate_urls.append(
+            f"{auth_server_url.rstrip('/')}/.well-known/openid-configuration"
+        )
 
+    # For all URLs (with or without path), try standard root locations
     candidate_urls.append(f"{origin}/.well-known/oauth-authorization-server")
     candidate_urls.append(f"{origin}/.well-known/openid-configuration")
 
@@ -315,22 +374,26 @@ async def fetch_auth_server_metadata(auth_server_url: str) -> dict:
                 logger.debug(f"Auth metadata not found at {url}: {e}")
 
     # MCP Spec Fallback: If metadata discovery fails, use default URL pattern
-    # Per MCP Authorization spec: "MCP servers that do not support the OAuth 2.0
-    # Authorization Server Metadata protocol MUST support fallback URLs."
+    # Per MCP Authorization spec (2025-03-26): fallback URLs use the
+    # "authorization base URL" which is the server URL with path removed.
+    # Per MCP draft spec: fallback endpoints are removed entirely.
+    #
+    # We use origin-only (no path) per the 2025-03-26 spec since the auth
+    # server URL represents the authorization server, and its authorization/
+    # token/registration endpoints are typically at the root, not nested
+    # under the MCP resource path (e.g., /excalidraw/token is wrong,
+    # /token is correct for server.smithery.ai/excalidraw).
     elapsed_ms = (time.perf_counter() - start_time) * 1000
     logger.info(
         f"[TIMING] Metadata discovery failed for {auth_server_url} after {elapsed_ms:.0f}ms, "
-        "using MCP spec fallback URLs"
+        "using MCP spec fallback URLs (origin-only, per spec)"
     )
 
-    # Use the full base URL (origin + path) for fallback endpoints
-    # This ensures path-based servers (e.g., /api/v1) get correct fallback URLs
-    base = f"{origin}{path}" if path else origin
     return {
-        "authorization_endpoint": f"{base}/authorize",
-        "token_endpoint": f"{base}/token",
-        "registration_endpoint": f"{base}/register",
-        "issuer": base,
+        "authorization_endpoint": f"{origin}/authorize",
+        "token_endpoint": f"{origin}/token",
+        "registration_endpoint": f"{origin}/register",
+        "issuer": origin,
         "fallback": True,  # Flag indicating these are fallback URLs, not discovered
     }
 
@@ -611,7 +674,10 @@ def validate_pkce_support(oauth_config: dict, integration_id: str) -> None:
     """
     Validate PKCE support per MCP spec.
 
-    MCP requires S256 PKCE. Plain PKCE is not allowed.
+    Per MCP Authorization Spec:
+    "MCP clients MUST verify PKCE support before proceeding. If
+    code_challenge_methods_supported is absent, the authorization server
+    does not support PKCE and MCP clients MUST refuse to proceed."
 
     Args:
         oauth_config: OAuth configuration with code_challenge_methods_supported
@@ -623,17 +689,17 @@ def validate_pkce_support(oauth_config: dict, integration_id: str) -> None:
     pkce_methods = oauth_config.get("code_challenge_methods_supported", [])
 
     if not pkce_methods:
-        # If not specified, assume S256 is supported (per RFC 8414 Section 5)
-        logger.debug(
-            f"No PKCE methods specified for {integration_id}, assuming S256 support"
+        raise ValueError(
+            f"Server {integration_id} does not advertise PKCE support "
+            "(code_challenge_methods_supported field is missing from OAuth metadata). "
+            "MCP requires explicit PKCE support with S256 method."
         )
-        return
 
     if "S256" not in pkce_methods:
         if "plain" in pkce_methods:
             raise ValueError(
                 f"Server {integration_id} only supports PKCE 'plain' method which is insecure. "
-                "MCP requires S256 PKCE."
+                "MCP requires S256 PKCE. Plain PKCE is not allowed."
             )
         raise ValueError(
             f"Server {integration_id} does not support S256 PKCE method. "
