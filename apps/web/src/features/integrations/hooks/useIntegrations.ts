@@ -78,12 +78,14 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   } = useQuery({
     queryKey: ["integrations", "user"],
     queryFn: integrationsApi.getUserIntegrations,
+    staleTime: 0, // Always refetch - user integrations are mutable state
   });
 
   // Query for platform integration status
   const { data: statusData, isLoading: statusLoading } = useQuery({
     queryKey: ["integrations", "status"],
     queryFn: integrationsApi.getIntegrationStatus,
+    staleTime: 0, // Always refetch - status can change externally (OAuth callbacks)
   });
 
   // Merge platform integrations with user's custom integrations
@@ -167,11 +169,11 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const connectIntegration = useCallback(
     async (
       integrationId: string,
-    ): Promise<{ status: string; toolsCount?: number }> => {
+    ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
       const integration = integrations.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
-      const integrationName = integration?.name || integrationId;
+      const integrationName = integration?.name || "Integration";
 
       const toastId = toast.loading(`Connecting to ${integrationName}...`);
 
@@ -183,7 +185,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         });
 
         if (result.status === "connected") {
-          toast.success(`Connected to ${integrationName}`, { id: toastId });
+          toast.success(`Connected to ${result.name}`, { id: toastId });
           // Refetch all data
           await Promise.all([
             queryClient.refetchQueries({ queryKey: ["integrations"] }),

@@ -102,10 +102,31 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       ...(integration.includedIntegrations || []),
     ].map((id) => id.toLowerCase());
 
-    return tools.filter((tool) =>
+    const fromToolsEndpoint = tools.filter((tool) =>
       integrationIds.includes(tool.category.toLowerCase()),
     );
-  }, [tools, integration.id, integration.includedIntegrations]);
+
+    // Fallback: if the /tools endpoint doesn't know about this integration's
+    // tools yet, use the tools array from the integration record itself
+    if (fromToolsEndpoint.length === 0 && integration.tools?.length) {
+      return integration.tools.map((t) => ({
+        name: t.name,
+        category: integration.id,
+        displayName: integration.name,
+        iconUrl: integration.iconUrl,
+        isLocked: false,
+      }));
+    }
+
+    return fromToolsEndpoint;
+  }, [
+    tools,
+    integration.id,
+    integration.includedIntegrations,
+    integration.tools,
+    integration.name,
+    integration.iconUrl,
+  ]);
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;

@@ -73,6 +73,7 @@ def build_integrations_config() -> IntegrationsConfigResponse:
 async def connect_mcp_integration(
     user_id: str,
     integration_id: str,
+    integration_name: str,
     requires_auth: bool,
     redirect_path: str,
     server_url: str | None = None,
@@ -86,7 +87,7 @@ async def connect_mcp_integration(
     # Bearer token flow - store and connect directly
     if bearer_token:
         return await _connect_with_bearer_token(
-            user_id, integration_id, bearer_token, mcp_client
+            user_id, integration_id, integration_name, bearer_token, mcp_client
         )
 
     # Use provided probe_result or perform probe if needed
@@ -115,6 +116,7 @@ async def connect_mcp_integration(
         return ConnectIntegrationResponse(
             status="redirect",
             integration_id=integration_id,
+            name=integration_name,
             redirect_url=auth_url,
             message="OAuth authentication required",
         )
@@ -133,6 +135,7 @@ async def connect_mcp_integration(
         return ConnectIntegrationResponse(
             status="redirect",
             integration_id=integration_id,
+            name=integration_name,
             redirect_url=auth_url,
             message="OAuth authentication required",
         )
@@ -143,13 +146,18 @@ async def connect_mcp_integration(
     return ConnectIntegrationResponse(
         status="connected",
         integration_id=integration_id,
+        name=integration_name,
         tools_count=tools_count,
         message="Integration connected successfully",
     )
 
 
 async def _connect_with_bearer_token(
-    user_id: str, integration_id: str, bearer_token: str, mcp_client: Any
+    user_id: str,
+    integration_id: str,
+    integration_name: str,
+    bearer_token: str,
+    mcp_client: Any,
 ) -> ConnectIntegrationResponse:
     """Store bearer token and attempt connection."""
     token_store = MCPTokenStore(user_id)
@@ -162,6 +170,7 @@ async def _connect_with_bearer_token(
         return ConnectIntegrationResponse(
             status="connected",
             integration_id=integration_id,
+            name=integration_name,
             tools_count=len(tools) if tools else 0,
             message="Integration connected successfully",
         )
@@ -172,6 +181,7 @@ async def _connect_with_bearer_token(
         return ConnectIntegrationResponse(
             status="error",
             integration_id=integration_id,
+            name=integration_name,
             error=str(e),
             message="Connection failed",
         )
@@ -180,6 +190,7 @@ async def _connect_with_bearer_token(
 async def connect_composio_integration(
     user_id: str,
     integration_id: str,
+    integration_name: str,
     provider: str,
     redirect_path: str,
 ) -> ConnectIntegrationResponse:
@@ -201,6 +212,7 @@ async def connect_composio_integration(
     return ConnectIntegrationResponse(
         status="redirect",
         integration_id=integration_id,
+        name=integration_name,
         redirect_url=url["redirect_url"],
         message="OAuth authentication required",
     )
@@ -210,6 +222,7 @@ async def connect_self_integration(
     user_id: str,
     user_email: str,
     integration_id: str,
+    integration_name: str,
     provider: str,
     redirect_path: str,
 ) -> ConnectIntegrationResponse:
@@ -218,6 +231,7 @@ async def connect_self_integration(
         return ConnectIntegrationResponse(
             status="error",
             integration_id=integration_id,
+            name=integration_name,
             error=f"Provider {provider} not implemented",
         )
 
@@ -239,6 +253,7 @@ async def connect_self_integration(
     return ConnectIntegrationResponse(
         status="redirect",
         integration_id=integration_id,
+        name=integration_name,
         redirect_url=auth_url,
         message="OAuth authentication required",
     )
