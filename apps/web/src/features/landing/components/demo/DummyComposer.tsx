@@ -25,7 +25,8 @@ import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
 const DummyComposer: React.FC<{
   hideIntegrationBanner?: boolean;
   fullWidth?: boolean;
-}> = ({ hideIntegrationBanner = false, fullWidth = false }) => {
+  onSend?: (message: string) => void;
+}> = ({ hideIntegrationBanner = false, fullWidth = false, onSend }) => {
   const [message, setMessage] = useState("");
   const [isSlashDropdownOpen, setIsSlashDropdownOpen] = useState(false);
 
@@ -51,7 +52,7 @@ const DummyComposer: React.FC<{
 
   const handleSend = () => {
     if (message.trim()) {
-      console.log("Sending message:", message);
+      onSend?.(message);
       setMessage("");
     }
   };

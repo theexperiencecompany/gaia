@@ -14,6 +14,8 @@ import {
   WorkflowSquare05Icon,
   ZapIcon,
 } from "@icons";
+import { m, useInView } from "motion/react";
+import { useRef } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DUMMY_CALENDARS,
@@ -465,6 +467,9 @@ function formatEventTime(start: string, end: string): string {
 }
 
 export default function DemoDashboardView() {
+  const ref = useRef<HTMLDivElement>(null);
+  const isInView = useInView(ref, { once: true, amount: 0.15 });
+
   const sections = [
     {
       icon: <Calendar03Icon className="w-7 h-7 text-blue-400" />,
@@ -501,9 +506,26 @@ export default function DemoDashboardView() {
   const firstLine = sections.slice(0, 2);
   const secondLine = sections.slice(2);
 
+  const cards = [
+    { id: "emails", node: <DemoEmailsCard /> },
+    { id: "events", node: <DemoEventsCard /> },
+    { id: "todos", node: <DemoTodosCard /> },
+    { id: "goals", node: <DemoGoalsCard /> },
+    { id: "workflows", node: <DemoWorkflowsCard /> },
+    { id: "conversations", node: <DemoConversationsCard /> },
+  ];
+
   return (
-    <div className="flex flex-col p-6 pt-0 min-h-full h-fit overflow-y-auto">
-      <div className="flex flex-col p-3 mb-10 space-y-1">
+    <div
+      ref={ref}
+      className="flex flex-col p-6 pt-0 min-h-full h-fit overflow-y-auto"
+    >
+      <m.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 16 }}
+        transition={{ duration: 0.5, ease: [0.32, 0.72, 0, 1] }}
+        className="flex flex-col p-3 mb-10 space-y-1"
+      >
         <div className="flex items-center gap-3 mb-5">
           <h2 className="text-4xl font-medium text-zinc-700">Good morning</h2>
           <h1 className="font-medium text-4xl text-zinc-700">
@@ -546,16 +568,24 @@ export default function DemoDashboardView() {
             ))}
           </div>
         </div>
-      </div>
+      </m.div>
 
       <div className="relative flex h-fit w-full snap-start flex-col items-center justify-center">
         <div className="mb-20 grid min-h-screen w-full grid-cols-1 sm:grid-cols-2 sm:space-y-0">
-          <DemoEmailsCard />
-          <DemoEventsCard />
-          <DemoTodosCard />
-          <DemoGoalsCard />
-          <DemoWorkflowsCard />
-          <DemoConversationsCard />
+          {cards.map((card, i) => (
+            <m.div
+              key={card.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={isInView ? { opacity: 1, y: 0 } : { opacity: 0, y: 20 }}
+              transition={{
+                duration: 0.4,
+                ease: [0.32, 0.72, 0, 1],
+                delay: 0.3 + i * 0.1,
+              }}
+            >
+              {card.node}
+            </m.div>
+          ))}
         </div>
       </div>
     </div>

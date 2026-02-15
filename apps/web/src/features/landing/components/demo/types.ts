@@ -25,7 +25,8 @@ export type Phase =
   | "tool_calls"
   | "responding"
   | "final_card"
-  | "done";
+  | "done"
+  | "cta";
 
 export interface ToolStep {
   category: string;

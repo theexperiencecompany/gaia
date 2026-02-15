@@ -3,8 +3,11 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import {
+  ArrowRight01Icon,
   Copy01Icon,
   LinkBackwardIcon,
+  Login02Icon,
+  Login03Icon,
   PinIcon,
   RedoIcon,
   ThumbsDownIcon,
@@ -12,7 +15,10 @@ import {
 } from "@icons";
 import { AnimatePresence, m, useInView } from "motion/react";
 import Image from "next/image";
+import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { ChevronRight } from "@/components";
+import { RaisedButton } from "@/components/ui";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { appConfig } from "@/config";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -46,6 +52,7 @@ export default function ChatDemoSection() {
   const [loadingCat, setLoadingCat] = useState<string | undefined>();
   const [toolsExpanded, setToolsExpanded] = useState(false);
   const [typedResponse, setTypedResponse] = useState("");
+  const [customUserMessage, setCustomUserMessage] = useState("");
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const messagesRef = useRef<HTMLDivElement>(null);
   const activeCaseRef = useRef(0);
@@ -158,9 +165,16 @@ export default function ChatDemoSection() {
     runAnimation(idx);
   };
 
+  const handleUserSend = (message: string) => {
+    clearAll();
+    setCustomUserMessage(message);
+    setPhase("cta");
+    scrollToBottom();
+  };
+
   const uc = USE_CASES[activeUseCase];
 
-  const showUser = phase !== "idle";
+  const showUser = phase !== "idle" && phase !== "cta";
   const showLoading = ["thinking", "loading1", "loading2"].includes(phase);
   const showTools = ["tool_calls", "responding", "final_card", "done"].includes(
     phase,
@@ -298,6 +312,118 @@ export default function ChatDemoSection() {
                   className="flex-1 overflow-y-auto px-4 py-3"
                 >
                   <div className="mx-auto w-full max-w-2xl">
+                    {/* CTA state — shown when user sends a real message */}
+                    {phase === "cta" && (
+                      <m.div
+                        key="cta-view"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ duration: 0.3 }}
+                        className="flex flex-col"
+                      >
+                        {/* User message bubble */}
+                        <m.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.1, duration: 0.3, ease }}
+                          className="mb-2 flex w-full items-end justify-end gap-3"
+                        >
+                          <div className="chat_bubble_container user">
+                            <div className="imessage-bubble imessage-from-me">
+                              {customUserMessage}
+                            </div>
+                          </div>
+                          <div className="min-w-10">
+                            <Avatar className="relative bottom-18 rounded-full border border-white/10 bg-black">
+                              <AvatarImage
+                                src="https://avatars.githubusercontent.com/u/64796509?v=3&s=56"
+                                alt="User"
+                              />
+                              <AvatarFallback className="bg-primary/20 text-xs font-medium text-primary">
+                                U
+                              </AvatarFallback>
+                            </Avatar>
+                          </div>
+                        </m.div>
+
+                        {/* GAIA Image outside bubble */}
+                        <m.div
+                          initial={{ opacity: 0, y: 8 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: 0.2, duration: 0.3, ease }}
+                          className="mb-3 ml-10.75"
+                        >
+                          <Image
+                            src="/og-image.webp"
+                            alt="GAIA"
+                            width={460}
+                            height={194}
+                            className="rounded-xl object-cover aspect-video"
+                          />
+                        </m.div>
+
+                        {/* Bot message and buttons */}
+                        <div className="flex items-start gap-1">
+                          {/* GAIA logo */}
+                          <m.div
+                            initial={{ opacity: 0, scale: 0.8 }}
+                            animate={{ opacity: 1, scale: 1 }}
+                            transition={{ delay: 0.3, duration: 0.3, ease }}
+                            className="min-w-10 shrink-0"
+                          >
+                            <Image
+                              src="/images/logos/logo.webp"
+                              width={28}
+                              height={28}
+                              loading="lazy"
+                              alt="GAIA"
+                            />
+                          </m.div>
+
+                          <div className="flex-1 flex flex-col gap-3">
+                            {/* Bot message bubble */}
+                            <m.div
+                              initial={{ opacity: 0, y: 6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.4, duration: 0.3, ease }}
+                              className="chat_bubble_container"
+                            >
+                              <div className="imessage-bubble imessage-from-them text-white">
+                                Hey! Sign up to start chatting with me 👋
+                              </div>
+                            </m.div>
+
+                            {/* Buttons below bubble */}
+                            <m.div
+                              initial={{ opacity: 0, y: 6 }}
+                              animate={{ opacity: 1, y: 0 }}
+                              transition={{ delay: 0.5, duration: 0.3, ease }}
+                              className="flex gap-2"
+                            >
+                              <Link href="/signup">
+                                <RaisedButton
+                                  color={"#00bbff"}
+                                  className="text-black!"
+                                >
+                                  Get Started
+                                  <ChevronRight width={16} height={16} />
+                                </RaisedButton>
+                              </Link>
+                              <Link href="/login">
+                                <RaisedButton
+                                  className="border-0 outline-none"
+                                  color={"#3f3f46"}
+                                >
+                                  Login
+                                  <Login02Icon width={16} height={16} />
+                                </RaisedButton>
+                              </Link>
+                            </m.div>
+                          </div>
+                        </div>
+                      </m.div>
+                    )}
+
                     {/* User bubble */}
                     <AnimatePresence>
                       {showUser && (
@@ -538,7 +664,10 @@ export default function ChatDemoSection() {
 
                 {/* Composer */}
                 <div className="relative shrink-0 px-4 pb-4 w-full">
-                  <DummyComposer hideIntegrationBanner />
+                  <DummyComposer
+                    hideIntegrationBanner
+                    onSend={handleUserSend}
+                  />
                 </div>
               </>
             )}

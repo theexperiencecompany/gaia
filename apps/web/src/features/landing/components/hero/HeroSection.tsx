@@ -19,11 +19,12 @@ export default function HeroSection({
         disableIntersectionObserver={true}
       >
         <div className="mx-auto flex w-full justify-center gap-2">
-          <Link href="/blog/public-beta">
+          <Link href="/manifesto">
             <div
               className={`relative z-10 flex w-fit cursor-pointer font-light items-center gap-1 rounded-full  ${isDark ? "text-white bg-zinc-400/30  outline-zinc-400/40" : "text-zinc-700 bg-white/40  outline-white/50"}  p-1 px-2 text-sm outline-1  transition mb-2 hover:scale-105 duration-300 backdrop-blur-xl`}
             >
-              <span>Currently in Public Beta</span>
+              {/* <span>Currently in Public Beta</span> */}
+              <span>Read the Manifesto</span>
               <ChevronRight width={15} height={15} />
             </div>
           </Link>
