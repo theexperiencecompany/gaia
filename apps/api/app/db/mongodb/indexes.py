@@ -104,7 +104,7 @@ async def create_all_indexes():
             "user_integrations",
             "device_tokens",
             "vfs_nodes",
-            "installed_skills",
+            "skills",
         ]
 
         index_results = {}

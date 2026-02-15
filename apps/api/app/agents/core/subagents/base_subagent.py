@@ -88,9 +88,13 @@ class SubAgentFactory:
             subagent_registry=scoped_tool_dict,
         )
 
-        # Create todo tools with InjectedState (source=provider name)
+        # Create todo tools and register them in the scoped tool registry
         todo_tools = create_todo_tools(source=provider)
         todo_hook = create_todo_pre_model_hook(source=provider)
+        todo_tool_names = []
+        for t in todo_tools:
+            scoped_tool_dict[t.name] = t
+            todo_tool_names.append(t.name)
 
         for mw in middleware:
             if isinstance(mw, SubagentMiddleware):
@@ -103,7 +107,6 @@ class SubAgentFactory:
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_name": name,
             "middleware": middleware,
-            "extra_tools": todo_tools,
             "pre_model_hooks": [
                 filter_messages_node,
                 manage_system_prompts_node,
@@ -115,7 +118,7 @@ class SubAgentFactory:
         if use_direct_tools:
             common_kwargs.update(
                 {
-                    "initial_tool_ids": initial_tool_ids,
+                    "initial_tool_ids": initial_tool_ids + todo_tool_names,
                     "disable_retrieve_tools": disable_retrieve_tools,
                 }
             )
@@ -128,7 +131,7 @@ class SubAgentFactory:
                         tool_space=tool_space,
                         include_subagents=False,
                     ),
-                    "initial_tool_ids": [search_memory.name],
+                    "initial_tool_ids": [search_memory.name] + todo_tool_names,
                 }
             )
 

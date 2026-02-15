@@ -38,7 +38,7 @@ class VFSCompactionMiddleware(AgentMiddleware):
 
     Usage:
         middleware = VFSCompactionMiddleware(
-            max_output_chars=5000,      # Single output > 5k chars → compact
+            max_output_chars=20000,     # Single output > 20k chars → compact
             compaction_threshold=0.65,  # Thread at 65% context → compact all
         )
     """
@@ -46,7 +46,7 @@ class VFSCompactionMiddleware(AgentMiddleware):
     def __init__(
         self,
         compaction_threshold: float = 0.65,
-        max_output_chars: int = 5000,
+        max_output_chars: int = 20000,
         always_persist_tools: list[str] | None = None,
         context_window: int = 128000,
     ):

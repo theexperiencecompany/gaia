@@ -8,8 +8,7 @@ Agent Skills spec (agentskills.io/specification).
 import re
 from typing import List, Tuple
 
-import yaml
-
+import yaml  # type: ignore[import-untyped]
 from app.agents.skills.models import SkillMetadata
 
 # Frontmatter delimiter pattern

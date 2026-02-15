@@ -13,7 +13,7 @@ from uuid import uuid4
 from app.agents.skills.models import InstalledSkill, SkillMetadata, SkillSource
 from app.config.loggers import app_logger as logger
 
-COLLECTION_NAME = "installed_skills"
+COLLECTION_NAME = "skills"
 
 
 def _get_collection():

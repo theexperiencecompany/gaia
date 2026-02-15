@@ -17,6 +17,7 @@ from app.agents.tools.core.retrieval import (
     RetrieveToolsResult,
     get_retrieve_tools_function,
 )
+from app.agents.tools.vfs_tools import vfs_read
 from app.config.loggers import app_logger as logger
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -30,6 +31,11 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
+
+# VFS tools that spawned subagents always get direct access to.
+# This is critical because VFS compaction middleware stores large tool outputs
+# in VFS and instructs the agent to use spawn_subagent to read them.
+_VFS_TOOLS: list[BaseTool] = [vfs_read]
 
 _RETRIEVE_TOOLS_NAME = "retrieve_tools"
 
@@ -218,6 +224,15 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             all_tools = self._collect_tools()
             tools_by_name = {t.name: t for t in all_tools}
             bound_tool_names = set(tools_by_name.keys())
+
+        # Always inject VFS tools so subagents can read compacted tool outputs.
+        # The VFS compaction middleware stores large outputs in VFS and instructs
+        # the agent to use spawn_subagent to read them, so the spawned subagent
+        # must always have direct access to vfs_read regardless of tool_space scoping.
+        for vfs_tool in _VFS_TOOLS:
+            if vfs_tool.name not in tools_by_name:
+                tools_by_name[vfs_tool.name] = vfs_tool
+                bound_tool_names.add(vfs_tool.name)
 
         llm_with_tools = (
             llm.bind_tools(list(tools_by_name.values()))  # type: ignore[union-attr, attr-defined]

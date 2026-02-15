@@ -36,6 +36,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
 from langgraph.store.base import BaseStore
+from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.types import Send
 from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.graph import State as _BigtoolState
@@ -81,7 +82,6 @@ def create_agent(
     context_schema=None,
     agent_name: str = "main_agent",
     middleware: Sequence["AgentMiddleware"] | None = None,
-    extra_tools: list[BaseTool] | None = None,
     pre_model_hooks: list[HookType] | None = None,
     end_graph_hooks: list[HookType] | None = None,
 ) -> StateGraph:
@@ -115,8 +115,6 @@ def create_agent(
             - after_model: Called after each LLM response
             - wrap_model_call: Wraps the model invocation
             - wrap_tool_call: Wraps each tool execution (replaces post_tool_hooks)
-        extra_tools: Optional list of additional BaseTool instances to bind to the model
-            and register with DynamicToolNode (e.g., todo tools from create_todo_tools).
         pre_model_hooks: Optional list of callables to process state before model calls.
             Hooks are executed in sequence as provided. Each hook has signature:
             (state: State, config: RunnableConfig, store: BaseStore) -> State.
@@ -133,10 +131,6 @@ def create_agent(
         for tool in mw_tools:
             if isinstance(tool, BaseTool):
                 middleware_tools.append(tool)
-
-    # Merge extra_tools (e.g., todo tools via InjectedState)
-    if extra_tools:
-        middleware_tools.extend(extra_tools)
 
     retrieve_tools: StructuredTool | None = None
     store_arg = None
@@ -339,8 +333,19 @@ def create_agent(
                 if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                     destinations.append(Send("select_tools", [call]))
                 else:
-                    # Tool args injection handled internally by ToolNode during execution
-                    destinations.append(Send("tools", [call]))
+                    # Wrap each tool call with ToolCallWithContext so that
+                    # ToolNode receives the full state dict (including
+                    # "todos") for InjectedState injection.
+                    destinations.append(
+                        Send(
+                            "tools",
+                            ToolCallWithContext(
+                                __type="tool_call_with_context",
+                                tool_call=call,
+                                state=state,
+                            ),
+                        )
+                    )
 
             return destinations
 

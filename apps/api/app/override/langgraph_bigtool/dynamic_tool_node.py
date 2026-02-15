@@ -14,6 +14,7 @@ from typing import Callable
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
 from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt.tool_node import _get_all_injected_args
 from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
@@ -45,7 +46,7 @@ class DynamicToolNode(ToolNode):
             tool_registry: Mapping of tool names to tool instances or callables
             middleware_executor: Optional middleware executor for wrap_tool_call hooks
             middleware_tools: Optional list of tools from middleware (e.g., SubagentMiddleware)
-                or extra_tools (e.g., todo tools via InjectedState)
+                that need parent ToolNode handling (InjectedToolCallId, Command returns)
             **kwargs: Additional arguments passed to ToolNode
         """
         # Combine registry tools with middleware tools for initialization
@@ -79,10 +80,15 @@ class DynamicToolNode(ToolNode):
         return self.tools_by_name.get(name)
 
     def _sync_registry(self):
-        """Sync tools_by_name with current registry state."""
+        """Sync tools_by_name and _injected_args with current registry state."""
         for name in self._tool_registry:
             if name not in self.tools_by_name:
-                self.tools_by_name[name] = self._tool_registry[name]  # type: ignore[assignment]
+                tool = self._tool_registry[name]
+                self.tools_by_name[name] = tool  # type: ignore[assignment]
+                # Build injected args for newly added tools so parent
+                # ToolNode._afunc can handle InjectedState injection
+                if isinstance(tool, BaseTool) and name not in self._injected_args:
+                    self._injected_args[name] = _get_all_injected_args(tool)
 
     def _func(self, input, config, runtime: "Runtime"):
         """Override to inject dynamically added tools before execution."""
@@ -99,29 +105,57 @@ class DynamicToolNode(ToolNode):
 
         return await super()._afunc(input, config, runtime)
 
+    def _needs_parent_routing(self, tool_name: str) -> bool:
+        """Check if a tool needs parent ToolNode execution path.
+
+        Returns True for middleware tools (e.g. spawn_subagent) and tools
+        with InjectedState which need state injection only the parent handles.
+        """
+        mw_names = {t.name for t in self._middleware_tools if hasattr(t, "name")}
+        if tool_name in mw_names:
+            return True
+        injected = self._injected_args.get(tool_name)
+        return injected is not None and bool(injected.state)
+
     async def _afunc_with_middleware(self, input, config, runtime: "Runtime"):
         """Execute tools with middleware wrap_tool_call hooks.
 
         This method is called when middleware with wrap_tool_call is present.
         It wraps each tool invocation with the middleware hooks.
 
-        Middleware tools (plan_tasks, mark_task, add_task) return Command objects
-        that LangGraph must process directly. These are delegated to the parent
-        ToolNode._afunc which handles Commands, arg injection, and validation.
-        Only non-middleware, non-Command tool calls go through the middleware
-        wrap_tool_call chain (e.g. VFSCompactionMiddleware).
+        Tools that use InjectedState or come from middleware are delegated to
+        the parent ToolNode._afunc which handles InjectedState injection,
+        Command returns, InjectedToolCallId, and validation.
+        Only regular tool calls go through the middleware wrap_tool_call chain
+        (e.g. VFSCompactionMiddleware).
         """
-        # Middleware tool names — these return Command and must bypass wrapping
-        mw_tool_names = {t.name for t in self._middleware_tools if hasattr(t, "name")}
+        # Handle ToolCallWithContext from Send API — each Send dispatches
+        # exactly one tool call wrapped with full graph state.
+        is_context_wrapped = (
+            isinstance(input, dict) and input.get("__type") == "tool_call_with_context"
+        )
 
-        # Check if input contains ONLY middleware tool calls
-        tool_calls = input if isinstance(input, list) else [input]
-        all_middleware = all(tc.get("name", "") in mw_tool_names for tc in tool_calls)
+        if is_context_wrapped:
+            tool_call = input["tool_call"]
+            tool_name = tool_call.get("name", "")
 
-        # If all calls are middleware tools, delegate entirely to parent
-        # which properly handles Command returns, arg injection, etc.
-        if all_middleware:
-            return await super()._afunc(input, config, runtime)
+            # Parent-routed tools (InjectedState / Command): delegate to
+            # super() which handles state extraction and injection.
+            if self._needs_parent_routing(tool_name):
+                return await super()._afunc(input, config, runtime)
+
+            # Regular tools: extract the call for middleware wrapping
+            tool_calls = [tool_call]
+        else:
+            # Legacy list-of-tool-calls path (kept for compatibility)
+            tool_calls = input if isinstance(input, list) else [input]
+
+            # Check if ALL calls are parent-routed — delegate entirely
+            all_parent_routed = all(
+                self._needs_parent_routing(tc.get("name", "")) for tc in tool_calls
+            )
+            if all_parent_routed:
+                return await super()._afunc(input, config, runtime)
 
         # Get store from runtime if available
         store: BaseStore | None = getattr(runtime, "store", None)
@@ -130,12 +164,9 @@ class DynamicToolNode(ToolNode):
         for tool_call in tool_calls:
             tool_name = tool_call.get("name", "")
 
-            # Middleware tools: delegate to parent's execution path
-            if tool_name in mw_tool_names:
-                # Use parent _afunc for this single call — it handles
-                # Command returns, InjectedToolCallId, validation, etc.
+            # Parent-routed tools: delegate to parent's execution path
+            if self._needs_parent_routing(tool_name):
                 single_result = await super()._afunc([tool_call], config, runtime)
-                # Parent returns {"messages": [...]} or list — extract results
                 if isinstance(single_result, dict):
                     results.extend(single_result.get("messages", []))
                 elif isinstance(single_result, list):

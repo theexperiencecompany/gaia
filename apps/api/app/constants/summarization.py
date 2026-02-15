@@ -9,7 +9,7 @@ SUMMARIZATION_KEEP_TOKENS = 8000  # Keep ~8K tokens after summarization
 COMPACTION_THRESHOLD = (
     0.65  # Thread context usage ratio to start compacting all outputs
 )
-MAX_OUTPUT_CHARS = 5000  # Single tool output > 5k chars → compact immediately to VFS
+MAX_OUTPUT_CHARS = 20000  # Single tool output > 20k chars → compact immediately to VFS
 
 # Minimum size (chars) to consider for compaction
 MIN_COMPACTION_SIZE = 500

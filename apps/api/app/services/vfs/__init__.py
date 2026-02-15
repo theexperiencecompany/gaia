@@ -32,11 +32,7 @@ SECURITY:
 """
 
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-
-# Re-export security error
-from app.services.vfs.mongo_vfs import VFSAccessError
-
-# Re-export path utilities for convenience
+from app.services.vfs.mongo_vfs import MongoVFS, VFSAccessError
 from app.services.vfs.path_resolver import (
     EXECUTOR_AGENT,
     build_path,
@@ -79,19 +75,14 @@ async def get_vfs():
 )
 async def init_vfs():
     """Initialize the VFS service."""
-    from app.services.vfs.mongo_vfs import MongoVFS
-
     vfs = MongoVFS()
     return vfs
 
 
 __all__ = [
-    # Main service
     "get_vfs",
     "init_vfs",
-    # Security
     "VFSAccessError",
-    # Path utilities
     "EXECUTOR_AGENT",
     "normalize_path",
     "validate_user_access",

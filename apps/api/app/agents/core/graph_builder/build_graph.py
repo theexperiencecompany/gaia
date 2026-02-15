@@ -42,8 +42,13 @@ async def build_executor_graph(
         get_tools_store(),
     )
 
+    todo_tools = create_todo_tools(source="executor")
+
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({"handoff": handoff_tool})
+    tool_dict.update({t.name: t for t in todo_tools})
+
+    todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Build excluded tool names for spawn_subagent: handoff and all subagent:-prefixed
     excluded_subagent_tools = {"handoff"}
@@ -51,10 +56,6 @@ async def build_executor_graph(
     middleware = create_executor_middleware(
         subagent_excluded_tools=excluded_subagent_tools,
     )
-
-    # Create todo tools with InjectedState (source="executor")
-    todo_tools = create_todo_tools(source="executor")
-    todo_hook = create_todo_pre_model_hook(source="executor")
 
     # Wire SubagentMiddleware with LLM and full tool registry
     for mw in middleware:
@@ -69,9 +70,8 @@ async def build_executor_graph(
         agent_name="executor_agent",
         tool_registry=tool_dict,
         retrieve_tools_coroutine=get_retrieve_tools_function(),
-        initial_tool_ids=["handoff"],
+        initial_tool_ids=["handoff", "plan_tasks", "mark_task", "add_task"],
         middleware=middleware,
-        extra_tools=todo_tools,
         pre_model_hooks=[
             filter_messages_node,
             manage_system_prompts_node,
