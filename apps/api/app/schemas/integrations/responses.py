@@ -132,6 +132,7 @@ class UserIntegrationsListResponse(BaseModel):
 class ConnectIntegrationResponse(CamelModel):
     status: Literal["connected", "redirect", "error"]
     integration_id: str
+    name: str
     message: Optional[str] = None
     tools_count: Optional[int] = None
     redirect_url: Optional[str] = None

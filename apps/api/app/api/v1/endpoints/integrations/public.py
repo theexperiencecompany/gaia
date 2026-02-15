@@ -124,6 +124,7 @@ async def add_public_integration(
         connect_result = await connect_mcp_integration(
             user_id=user_id,
             integration_id=integration_id,
+            integration_name=integration_name,
             requires_auth=requires_auth,
             redirect_path=request.redirect_path,
             server_url=server_url,

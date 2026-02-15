@@ -169,11 +169,11 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const connectIntegration = useCallback(
     async (
       integrationId: string,
-    ): Promise<{ status: string; toolsCount?: number }> => {
+    ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
       const integration = integrations.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
-      const integrationName = integration?.name || integrationId;
+      const integrationName = integration?.name || "Integration";
 
       const toastId = toast.loading(`Connecting to ${integrationName}...`);
 
@@ -185,7 +185,7 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         });
 
         if (result.status === "connected") {
-          toast.success(`Connected to ${integrationName}`, { id: toastId });
+          toast.success(`Connected to ${result.name}`, { id: toastId });
           // Refetch all data
           await Promise.all([
             queryClient.refetchQueries({ queryKey: ["integrations"] }),

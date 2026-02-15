@@ -151,17 +151,20 @@ export default function IntegrationsPage() {
       router.replace("/integrations", { scroll: false });
 
       if (status === "connected") {
-        const integration = integrations.find((i) => i.id === integrationId);
         const nameParam = searchParams.get("name");
-        const displayName = integration?.name || nameParam || integrationId;
-        toast.success(`Connected to ${displayName}`);
+        if (nameParam) {
+          toast.success(`Connected to ${nameParam}`);
+        }
         refetch();
         queryClient.refetchQueries({ queryKey: ["tools", "available"] });
       } else if (status === "bearer_required") {
-        const integration = integrations.find((i) => i.id === integrationId);
-        setBearerIntegrationId(integrationId);
-        setBearerIntegrationName(integration?.name || integrationId);
-        setBearerModalOpen(true);
+        // name should be in URL when redirected here
+        const nameParam = searchParams.get("name");
+        if (nameParam) {
+          setBearerIntegrationId(integrationId);
+          setBearerIntegrationName(nameParam);
+          setBearerModalOpen(true);
+        }
       } else if (status === "failed") {
         const error = searchParams.get("error");
         toast.error(`Connection failed: ${error || "Unknown error"}`);
@@ -170,11 +173,11 @@ export default function IntegrationsPage() {
   }, [searchParams, integrations, router, refetch, queryClient]);
 
   const handleBearerSubmit = async (id: string, token: string) => {
-    const toastId = toast.loading(`Connecting to ${bearerIntegrationName}...`);
+    const toastId = toast.loading(`Connecting...`);
     try {
       const result = await integrationsApi.addIntegration(id, token);
       if (result.status === "connected") {
-        toast.success(`Connected to ${bearerIntegrationName}`, { id: toastId });
+        toast.success(`Connected to ${result.name}`, { id: toastId });
         refetch();
         queryClient.refetchQueries({ queryKey: ["tools", "available"] });
       } else if (result.status === "error") {

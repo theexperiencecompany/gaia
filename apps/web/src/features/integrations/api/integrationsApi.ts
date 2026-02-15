@@ -96,8 +96,9 @@ export const integrationsApi = {
   connectIntegration: async (
     integrationId: string,
     bearerToken?: string,
-  ): Promise<{ status: string; toolsCount?: number }> => {
-    if (typeof window === "undefined") return { status: "error" };
+  ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
+    if (typeof window === "undefined")
+      return { status: "error", name: "Unknown" };
 
     const redirectPath = window.location.pathname + window.location.search;
 
@@ -110,6 +111,7 @@ export const integrationsApi = {
     )) as {
       status: "connected" | "redirect" | "error";
       integrationId: string;
+      name: string;
       message?: string;
       toolsCount?: number;
       redirectUrl?: string;
@@ -122,7 +124,7 @@ export const integrationsApi = {
         throw new Error("Invalid redirect URL received from server");
       }
       window.location.href = safeUrl;
-      return { status: "redirecting" };
+      return { status: "redirecting", name: response.name };
     }
 
     if (response.status === "error") {
@@ -131,6 +133,7 @@ export const integrationsApi = {
 
     return {
       status: response.status,
+      name: response.name,
       toolsCount: response.toolsCount ?? undefined,
     };
   },

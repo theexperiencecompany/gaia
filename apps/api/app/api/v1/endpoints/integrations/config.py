@@ -96,6 +96,7 @@ async def connect_integration_endpoint(
             return ConnectIntegrationResponse(
                 status="error",
                 integration_id=integration_id,
+                name=resolved.name,
                 error=f"Integration {integration_id} is not available yet",
             )
 
@@ -104,6 +105,7 @@ async def connect_integration_endpoint(
             return await connect_mcp_integration(
                 user_id=str(user_id),
                 integration_id=integration_id,
+                integration_name=resolved.name,
                 requires_auth=resolved.requires_auth,
                 redirect_path=request.redirect_path,
                 server_url=resolved.mcp_config.server_url
@@ -123,6 +125,7 @@ async def connect_integration_endpoint(
             return await connect_composio_integration(
                 user_id=str(user_id),
                 integration_id=integration_id,
+                integration_name=resolved.name,
                 provider=provider,
                 redirect_path=request.redirect_path,
             )
@@ -138,6 +141,7 @@ async def connect_integration_endpoint(
                 user_id=str(user_id),
                 user_email=user.get("email", ""),
                 integration_id=integration_id,
+                integration_name=resolved.name,
                 provider=provider,
                 redirect_path=request.redirect_path,
             )
@@ -145,6 +149,7 @@ async def connect_integration_endpoint(
             return ConnectIntegrationResponse(
                 status="error",
                 integration_id=integration_id,
+                name=resolved.name,
                 error=f"Unsupported integration type: {resolved.managed_by}",
             )
     except Exception as e:
@@ -152,5 +157,6 @@ async def connect_integration_endpoint(
         return ConnectIntegrationResponse(
             status="error",
             integration_id=integration_id,
+            name=resolved.name,
             error=str(e),
         )
