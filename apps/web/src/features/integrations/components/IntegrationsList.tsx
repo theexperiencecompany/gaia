@@ -17,6 +17,90 @@ import type { Integration } from "../types";
 import { CategoryFilter } from "./CategoryFilter";
 import { MarketplaceBanner } from "./MarketplaceBanner";
 
+const SuperConnectorRow: React.FC<{
+  integration: Integration;
+  childIntegrations: Integration[];
+  onConnect: (id: string) => void;
+  onClick: (id: string) => void;
+}> = ({ integration, childIntegrations, onConnect, onClick }) => {
+  const connectedCount = childIntegrations.filter(
+    (c) => c.status === "connected",
+  ).length;
+  const totalCount = childIntegrations.length;
+  const allConnected = connectedCount === totalCount;
+
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className="cursor-pointer rounded-2xl border border-zinc-700/50 bg-zinc-800/30 p-4 hover:bg-zinc-800/60 transition-all duration-200"
+      onClick={() => onClick(integration.id)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onClick(integration.id);
+        }
+      }}
+    >
+      <div className="flex items-center gap-4">
+        <div className="shrink-0">
+          {getToolCategoryIcon(
+            integration.id,
+            { size: 36, width: 36, height: 36, showBackground: false },
+            integration.iconUrl,
+          )}
+        </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <div className="font-medium">{integration.name}</div>
+          <div className="text-sm font-light text-zinc-400">
+            {integration.description}
+          </div>
+        </div>
+        <div className="shrink-0">
+          {allConnected ? (
+            <Chip size="sm" variant="flat" color="success">
+              All Connected
+            </Chip>
+          ) : (
+            <Button
+              variant="flat"
+              color="primary"
+              className="text-sm text-primary"
+              onPress={() => onConnect(integration.id)}
+            >
+              {connectedCount > 0
+                ? `Connect (${connectedCount}/${totalCount})`
+                : "Connect All"}
+            </Button>
+          )}
+        </div>
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2 pl-[52px]">
+        {childIntegrations.map((child) => (
+          <div
+            key={child.id}
+            className="flex items-center gap-1.5 rounded-lg bg-zinc-800 px-2 py-1"
+          >
+            {getToolCategoryIcon(
+              child.id,
+              { size: 16, width: 16, height: 16, showBackground: false },
+              child.iconUrl,
+            )}
+            <span className="text-xs text-zinc-300">{child.name}</span>
+            {child.status === "connected" && (
+              <div
+                className="h-1.5 w-1.5 rounded-full bg-green-500"
+                role="img"
+                aria-label="Connected"
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const IntegrationRow: React.FC<{
   integration: Integration;
   onConnect: (id: string) => void;
@@ -137,6 +221,24 @@ export const IntegrationsList: React.FC<{
 
   const { filteredIntegrations } = useIntegrationSearch(integrations);
 
+  // Separate super-connectors from regular integrations
+  const superConnectors = useMemo(() => {
+    return filteredIntegrations.filter(
+      (i) => i.isSpecial && i.includedIntegrations?.length,
+    );
+  }, [filteredIntegrations]);
+
+  const superConnectorChildIds = useMemo(() => {
+    return new Set(
+      superConnectors.flatMap((sc) => sc.includedIntegrations || []),
+    );
+  }, [superConnectors]);
+
+  // Regular integrations (exclude super-connectors themselves)
+  const regularIntegrations = useMemo(() => {
+    return filteredIntegrations.filter((i) => !i.isSpecial);
+  }, [filteredIntegrations]);
+
   const handleConnect = async (integrationId: string) => {
     try {
       await connectIntegration(integrationId);
@@ -164,18 +266,27 @@ export const IntegrationsList: React.FC<{
     return filteredIntegrations.filter((i) => i.createdBy === currentUserId);
   }, [filteredIntegrations, currentUserId]);
 
-  // Separate featured integrations
+  // Separate featured integrations (exclude children of super-connectors)
   const featuredIntegrations = useMemo(() => {
-    return filteredIntegrations.filter((i) => i.isFeatured && i.available);
-  }, [filteredIntegrations]);
+    return regularIntegrations.filter(
+      (i) =>
+        i.isFeatured &&
+        i.available &&
+        (!superConnectorChildIds.has(i.id) || searchQuery),
+    );
+  }, [regularIntegrations, superConnectorChildIds, searchQuery]);
 
   // Group ALL integrations by category, sorted: connected first, then alphabetically
   const integrationsByCategory = useMemo(() => {
     const grouped: Record<string, Integration[]> = {};
 
     for (const category of availableCategories) {
-      grouped[category] = filteredIntegrations
-        .filter((i) => i.category === category)
+      grouped[category] = regularIntegrations
+        .filter(
+          (i) =>
+            i.category === category &&
+            (!superConnectorChildIds.has(i.id) || searchQuery),
+        )
         .sort((a, b) => {
           // Connected first
           if (a.status === "connected" && b.status !== "connected") return -1;
@@ -186,7 +297,7 @@ export const IntegrationsList: React.FC<{
     }
 
     return grouped;
-  }, [filteredIntegrations, availableCategories]);
+  }, [regularIntegrations, availableCategories, superConnectorChildIds, searchQuery]);
 
   // For when a specific category is selected
   const integrationsInSelectedCategory = useMemo(() => {
@@ -243,6 +354,30 @@ export const IntegrationsList: React.FC<{
           </p>
         </div>
       )}
+
+      {/* Super-Connectors */}
+      {superConnectors.length > 0 &&
+        !searchQuery &&
+        selectedCategory === "all" && (
+          <div className="mb-8">
+            <div className="mb-4 flex items-center gap-3 pl-4">
+              <h2 className="text-base font-semibold">Bundles</h2>
+            </div>
+            <div className="flex flex-col gap-3">
+              {superConnectors.map((sc) => (
+                <SuperConnectorRow
+                  key={sc.id}
+                  integration={sc}
+                  childIntegrations={integrations.filter((i) =>
+                    sc.includedIntegrations?.includes(i.id),
+                  )}
+                  onConnect={handleConnect}
+                  onClick={(id) => onIntegrationClick?.(id)}
+                />
+              ))}
+            </div>
+          </div>
+        )}
 
       {/* Featured Section */}
       {featuredIntegrations.length > 0 &&

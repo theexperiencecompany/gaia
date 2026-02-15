@@ -147,6 +147,14 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
             result[integration.id] = False
             continue
 
+        # Skip super-connectors without own Composio config — status derived in Step 3
+        if (
+            integration.is_special
+            and integration.included_integrations
+            and not integration.composio_config
+        ):
+            continue
+
         # If user has this integration in MongoDB, use that status
         if integration.id in mongo_status:
             result[integration.id] = mongo_status[integration.id]
@@ -193,6 +201,22 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
     for integration_id, is_connected in mongo_status.items():
         if integration_id not in result:
             result[integration_id] = is_connected
+
+    # Step 3: Handle super-connector status
+    for integration in OAUTH_INTEGRATIONS:
+        if not integration.is_special or not integration.included_integrations:
+            continue
+        if integration.composio_config:
+            # Super-connector with own Composio config: propagate status to children
+            if result.get(integration.id, False):
+                for child_id in integration.included_integrations:
+                    result[child_id] = True
+        else:
+            # Derive super-connector status from children
+            result[integration.id] = all(
+                result.get(child_id, False)
+                for child_id in integration.included_integrations
+            )
 
     return result
 

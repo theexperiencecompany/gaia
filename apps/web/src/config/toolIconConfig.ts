@@ -90,6 +90,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#e4e4e7",
     isImage: true,
   },
+  google: {
+    icon: "/images/icons/google.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
   search: {
     icon: "/images/icons/google.svg",
     bgColor: "bg-zinc-700",
