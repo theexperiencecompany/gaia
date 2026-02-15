@@ -546,7 +546,7 @@ class MCPClient:
                 "The authorization server may require manual client pre-registration."
             )
 
-        logger.info(f"[{integration_id}] client_id resolved for auth URL: ")
+        logger.info(f"[{integration_id}] client_id resolved for auth URL")
 
         # Verify PKCE support per MCP spec using centralized validation
         validate_pkce_support(oauth_config, integration_id)

@@ -6,6 +6,7 @@ Connection/disconnection is handled by the unified /integrations endpoints.
 """
 
 from typing import Optional
+from urllib.parse import quote
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
@@ -206,7 +207,6 @@ async def mcp_oauth_callback(
         # Subagent indexing handled in MCPClient._handle_custom_integration_connect
 
         frontend_url = get_frontend_url()
-        from urllib.parse import quote
 
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=connected&name={quote(integration_name)}"
