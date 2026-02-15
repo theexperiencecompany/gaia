@@ -260,10 +260,10 @@ export const useChatStream = () => {
     // Upsert a single tool_data entry so it renders through the tool pipeline
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
     const progressIdx = existingToolData.findIndex(
-      (e) => e.tool_name === "todo_progress_data",
+      (e) => e.tool_name === "todo_progress",
     );
     const progressEntry: ToolDataEntry = {
-      tool_name: "todo_progress_data",
+      tool_name: "todo_progress",
       tool_category: "",
       data: accumulated as ToolDataEntry["data"],
       timestamp: null,

@@ -27,7 +27,7 @@ NOTE: Type/linting errors in this file are expected since it's copied from exter
 """
 
 from collections.abc import Mapping, Sequence
-from typing import Any, Awaitable, Callable
+from typing import Annotated, Any, Awaitable, Callable
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import LanguageModelLike
@@ -38,7 +38,7 @@ from langgraph.graph import END, StateGraph
 from langgraph.store.base import BaseStore
 from langgraph.types import Send
 from langgraph.utils.runnable import RunnableCallable
-from langgraph_bigtool.graph import State
+from langgraph_bigtool.graph import State as _BigtoolState
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.middleware.executor import MiddlewareExecutor
@@ -53,6 +53,17 @@ from app.override.langgraph_bigtool.utils import (
     RetrieveToolsResult,
     format_selected_tools,
 )
+
+
+def _replace_todos(left: list, right: list) -> list:
+    """Last-write-wins reducer for the todos channel."""
+    return right
+
+
+class State(_BigtoolState):
+    """Extended state with todos channel for agent task management."""
+
+    todos: Annotated[list, _replace_todos]
 
 
 def create_agent(
@@ -70,6 +81,7 @@ def create_agent(
     context_schema=None,
     agent_name: str = "main_agent",
     middleware: Sequence["AgentMiddleware"] | None = None,
+    extra_tools: list[BaseTool] | None = None,
     pre_model_hooks: list[HookType] | None = None,
     end_graph_hooks: list[HookType] | None = None,
 ) -> StateGraph:
@@ -103,6 +115,8 @@ def create_agent(
             - after_model: Called after each LLM response
             - wrap_model_call: Wraps the model invocation
             - wrap_tool_call: Wraps each tool execution (replaces post_tool_hooks)
+        extra_tools: Optional list of additional BaseTool instances to bind to the model
+            and register with DynamicToolNode (e.g., todo tools from create_todo_tools).
         pre_model_hooks: Optional list of callables to process state before model calls.
             Hooks are executed in sequence as provided. Each hook has signature:
             (state: State, config: RunnableConfig, store: BaseStore) -> State.
@@ -112,13 +126,17 @@ def create_agent(
     """
     middleware_executor = MiddlewareExecutor(list(middleware)) if middleware else None
 
-    # Extract tools from middleware (e.g., TodoMiddleware, SubagentMiddleware)
+    # Extract tools from middleware (e.g., SubagentMiddleware)
     middleware_tools: list[BaseTool] = []
     for mw in middleware or []:
         mw_tools = getattr(mw, "tools", [])
         for tool in mw_tools:
             if isinstance(tool, BaseTool):
                 middleware_tools.append(tool)
+
+    # Merge extra_tools (e.g., todo tools via InjectedState)
+    if extra_tools:
+        middleware_tools.extend(extra_tools)
 
     retrieve_tools: StructuredTool | None = None
     store_arg = None
@@ -197,10 +215,8 @@ def create_agent(
             response.content = response.content + NEW_MESSAGE_BREAKER
 
         # Build updated state with response for after_model hooks
-        updated_state: State = {
-            "messages": state.get("messages", []) + [response],
-            "selected_tool_ids": state.get("selected_tool_ids", []),
-        }
+        updated_state: State = dict(state)  # type: ignore[assignment]
+        updated_state["messages"] = list(state.get("messages", [])) + [response]
 
         # Execute middleware after_model hooks
         if middleware_executor:

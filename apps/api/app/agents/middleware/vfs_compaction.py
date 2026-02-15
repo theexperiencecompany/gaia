@@ -9,10 +9,10 @@ This middleware:
 2. Stores large outputs in VFS
 3. Returns file reference instead of raw content
 
-Compaction triggers:
-- Tool output exceeds max_output_tokens (always)
-- Context usage exceeds compaction_threshold
-- Tool is in always_persist_tools list
+Two independent compaction triggers:
+- Per-tool: Single tool output > max_output_chars (always, regardless of context)
+- Thread-level: Context usage exceeds compaction_threshold (compacts any output > MIN_COMPACTION_SIZE)
+- Always: Tool is in always_persist_tools list
 """
 
 import hashlib
@@ -32,29 +32,21 @@ class VFSCompactionMiddleware(AgentMiddleware):
     """
     Compacts large tool outputs to VFS using wrap_tool_call.
 
-    When a tool returns output that exceeds the compaction threshold,
-    this middleware:
-    1. Stores the full output in VFS
-    2. Replaces the output with a compact summary + VFS reference
-    3. Preserves the tool call ID for proper message threading
-
-    Compaction is triggered when:
-    - Output size > max_output_tokens (token estimate)
-    - Context usage > compaction_threshold (fraction)
-    - Tool is in always_persist_tools list
+    Two independent triggers:
+    1. Per-tool: Any single output > max_output_chars → compact immediately
+    2. Thread-level: Context usage > compaction_threshold → compact outputs > MIN_COMPACTION_SIZE
 
     Usage:
         middleware = VFSCompactionMiddleware(
-            compaction_threshold=0.65,  # Start compacting at 65% context usage
-            max_output_tokens=4000,     # Always compact outputs > 4K tokens
-            always_persist_tools=["web_search_tool"],
+            max_output_chars=5000,      # Single output > 5k chars → compact
+            compaction_threshold=0.65,  # Thread at 65% context → compact all
         )
     """
 
     def __init__(
         self,
         compaction_threshold: float = 0.65,
-        max_output_tokens: int = 4000,
+        max_output_chars: int = 5000,
         always_persist_tools: list[str] | None = None,
         context_window: int = 128000,
     ):
@@ -62,16 +54,17 @@ class VFSCompactionMiddleware(AgentMiddleware):
         Initialize the VFS compaction middleware.
 
         Args:
-            compaction_threshold: Fraction of context window above which to
-                                  compact all tool outputs (not just large ones)
-            max_output_tokens: Maximum tokens for a single tool output before
-                               compaction (regardless of context usage)
+            compaction_threshold: Thread context usage fraction (0-1) above which
+                                  all tool outputs (> MIN_COMPACTION_SIZE) are compacted
+            max_output_chars: Character count threshold for a single tool output —
+                              outputs exceeding this are always compacted regardless
+                              of thread context usage
             always_persist_tools: Tools whose output should always be persisted
-            context_window: Total context window size (for threshold calculation)
+            context_window: Total context window size in tokens (for threshold calc)
         """
         super().__init__()
         self.compaction_threshold = compaction_threshold
-        self.max_output_tokens = max_output_tokens
+        self.max_output_chars = max_output_chars
         self.always_persist_tools = always_persist_tools or []
         self.context_window = context_window
         self._vfs = None  # Lazy loaded
@@ -171,12 +164,11 @@ class VFSCompactionMiddleware(AgentMiddleware):
         if tool_name in self.always_persist_tools:
             return True, "always_persist_tool"
 
-        # 2. Check content size (rough token estimation: 4 chars per token)
-        estimated_tokens = content_size // 4
-        if estimated_tokens > self.max_output_tokens:
-            return True, f"large_output ({estimated_tokens} tokens)"
+        # 2. Per-tool trigger: single output > max_output_chars → always compact
+        if content_size > self.max_output_chars:
+            return True, f"large_output ({content_size} chars)"
 
-        # 3. Context threshold - compact if we're running low on context
+        # 3. Thread-level trigger: context at threshold → compact anything above MIN_COMPACTION_SIZE
         if context_usage >= self.compaction_threshold:
             return True, f"context_threshold ({context_usage:.1%} used)"
 
@@ -246,9 +238,14 @@ class VFSCompactionMiddleware(AgentMiddleware):
             },
         )
 
-        # Create compacted content
+        # Create compacted content with size info and spawn_subagent hint
         summary = self._create_summary(content_str, tool_name)
-        compacted_content = f"{summary}\n\n[Full output stored at: {vfs_path}]"
+        size_kb = len(content_str) / 1024
+        compacted_content = (
+            f"{summary}\n\n"
+            f"[Full output ({size_kb:.1f} KB / {len(content_str)} chars) stored at: {vfs_path}]\n"
+            f"[Use spawn_subagent to read and process this file to keep your context clean]"
+        )
 
         logger.info(
             f"Compacted {tool_name} output ({len(content_str)} chars) to {vfs_path} ({reason})"

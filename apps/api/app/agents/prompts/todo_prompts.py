@@ -1,5 +1,5 @@
 """
-Prompts and tool descriptions for TodoMiddleware.
+Prompts and tool descriptions for agent task management tools.
 
 This file contains all text content for the todo management tools:
 - System prompts

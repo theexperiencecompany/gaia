@@ -15,6 +15,7 @@ from app.agents.tools import (
     memory_tools,
     notification_tool,
     reminder_tool,
+    skill_tools,
     support_tool,
     todo_tool,
     vfs_tools,
@@ -228,6 +229,13 @@ class ToolRegistry:
             is_delegated=True,
             integration_name="goals",
             space="goals",
+        )
+        self._add_category(
+            "skills",
+            tools=skill_tools.tools,
+            is_delegated=True,
+            integration_name="skills",
+            space="skills",
         )
 
         # General tools - directly accessible by executor

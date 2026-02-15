@@ -415,6 +415,7 @@ async def execute_graph_silent(
     """
     complete_message = ""
     tool_data: dict = {"tool_data": []}
+    todo_progress_accumulated: dict = {}  # Accumulate todo_progress by source
 
     # Track tool calls to avoid duplicate emissions (same as streaming)
     emitted_tool_calls: set[str] = set()
@@ -482,6 +483,12 @@ async def execute_graph_silent(
                     complete_message += content
 
         elif stream_mode == "custom":
+            # Accumulate todo_progress for persistence (payload is a dict here)
+            if isinstance(payload, dict) and "todo_progress" in payload:
+                snapshot = payload["todo_progress"]
+                source = snapshot.get("source", "executor")
+                todo_progress_accumulated[source] = snapshot
+
             new_data = process_custom_event_for_tools(payload)
             if new_data:
                 # Merge custom event tool_data into our array
@@ -493,6 +500,16 @@ async def execute_graph_silent(
                     for key, value in new_data.items():
                         if key != "tool_data":
                             tool_data[key] = value
+
+    # Inject accumulated todo_progress as a single tool_data entry
+    if todo_progress_accumulated:
+        tool_data["tool_data"].append(
+            {
+                "tool_name": "todo_progress",
+                "data": todo_progress_accumulated,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     return complete_message, tool_data
 

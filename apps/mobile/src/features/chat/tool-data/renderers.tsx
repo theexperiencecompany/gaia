@@ -257,7 +257,7 @@ const TOOL_RENDERERS: Record<
     </Card>
   ),
 
-  todo_progress_data: (data, baseKey) => {
+  todo_progress: (data, baseKey) => {
     const progress = data as Record<
       string,
       {

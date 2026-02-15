@@ -102,6 +102,39 @@ def get_skills_path(user_id: str, skill_type: str = "learned") -> str:
     return f"/users/{user_id}/global/skills/{skill_type}"
 
 
+def get_custom_skill_path(
+    user_id: str,
+    target: str,
+    skill_name: str,
+) -> str:
+    """
+    Get the VFS path for an installable custom skill.
+
+    Skills are scoped by target:
+      /users/{user_id}/global/skills/custom/global/{skill_name}/
+      /users/{user_id}/global/skills/custom/executor/{skill_name}/
+      /users/{user_id}/global/skills/custom/subagents/{agent_name}/{skill_name}/
+
+    Args:
+        user_id: The user ID
+        target: Skill target scope (global, executor, or subagent ID)
+        skill_name: The skill name (kebab-case)
+
+    Returns:
+        Full VFS directory path for the skill
+    """
+    safe_name = _sanitize_name(skill_name)
+    safe_target = _sanitize_name(target)
+
+    if safe_target in ("global", "executor"):
+        return f"/users/{user_id}/global/skills/custom/{safe_target}/{safe_name}"
+    else:
+        # Subagent-scoped: target is the subagent ID (gmail, github, slack, etc.)
+        return (
+            f"/users/{user_id}/global/skills/custom/subagents/{safe_target}/{safe_name}"
+        )
+
+
 def get_session_path(user_id: str, conversation_id: str) -> str:
     """
     Get the path to a conversation session folder.

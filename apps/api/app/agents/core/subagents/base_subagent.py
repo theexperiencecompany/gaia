@@ -26,6 +26,7 @@ from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.memory_tools import search_memory
+from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.config.loggers import langchain_logger as logger
 from app.override.langgraph_bigtool.create_agent import create_agent
 from langchain_core.language_models import LanguageModelLike
@@ -87,6 +88,10 @@ class SubAgentFactory:
             subagent_registry=scoped_tool_dict,
         )
 
+        # Create todo tools with InjectedState (source=provider name)
+        todo_tools = create_todo_tools(source=provider)
+        todo_hook = create_todo_pre_model_hook(source=provider)
+
         for mw in middleware:
             if isinstance(mw, SubagentMiddleware):
                 mw.set_tools(registry=scoped_tool_dict, tool_space=tool_space)
@@ -98,9 +103,11 @@ class SubAgentFactory:
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_name": name,
             "middleware": middleware,
+            "extra_tools": todo_tools,
             "pre_model_hooks": [
                 filter_messages_node,
                 manage_system_prompts_node,
+                todo_hook,
             ],
             "end_graph_hooks": [memory_learning_node],
         }

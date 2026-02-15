@@ -44,7 +44,8 @@ class DynamicToolNode(ToolNode):
         Args:
             tool_registry: Mapping of tool names to tool instances or callables
             middleware_executor: Optional middleware executor for wrap_tool_call hooks
-            middleware_tools: Optional list of tools from middleware (e.g., TodoMiddleware)
+            middleware_tools: Optional list of tools from middleware (e.g., SubagentMiddleware)
+                or extra_tools (e.g., todo tools via InjectedState)
             **kwargs: Additional arguments passed to ToolNode
         """
         # Combine registry tools with middleware tools for initialization

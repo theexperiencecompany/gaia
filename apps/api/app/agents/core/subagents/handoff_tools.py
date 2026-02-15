@@ -433,7 +433,7 @@ async def handoff(
             config=subagent_config,
             configurable=new_configurable,
             integration_id=int_id,
-            initial_state={"messages": messages},
+            initial_state={"messages": messages, "todos": []},
             user_id=user_id,
             stream_id=stream_id,
         )

@@ -13,23 +13,21 @@ This module consolidates middleware creation to:
 from collections.abc import Callable, Mapping
 from typing import Any, Optional
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.tools import BaseTool
-from langchain_google_genai import ChatGoogleGenerativeAI
-
 from app.agents.middleware.subagent import SubagentMiddleware
-from app.agents.middleware.todo import TodoMiddleware
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
 from app.config.loggers import app_logger as logger
 from app.config.settings import settings
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
-    MAX_OUTPUT_TOKENS,
+    MAX_OUTPUT_CHARS,
     SUMMARIZATION_KEEP_TOKENS,
     SUMMARIZATION_MODEL,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
+from langchain_core.language_models import BaseChatModel
+from langchain_core.tools import BaseTool
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 _summarization_llm: Optional[BaseChatModel] = None
 
@@ -65,9 +63,7 @@ def create_middleware_stack(
     *,
     enable_summarization: bool = True,
     enable_compaction: bool = True,
-    enable_todo: bool = True,
     enable_subagent: bool = False,
-    todo_source: str = "executor",
     subagent_llm: Optional[BaseChatModel] = None,
     subagent_tools: Optional[list[BaseTool]] = None,
     subagent_registry: Optional[Mapping[str, BaseTool | Callable[..., Any]]] = None,
@@ -75,14 +71,13 @@ def create_middleware_stack(
     summarization_trigger: tuple = ("fraction", SUMMARIZATION_TRIGGER_FRACTION),
     summarization_keep: tuple = ("tokens", SUMMARIZATION_KEEP_TOKENS),
     compaction_threshold: float = COMPACTION_THRESHOLD,
-    max_output_tokens: int = MAX_OUTPUT_TOKENS,
+    max_output_chars: int = MAX_OUTPUT_CHARS,
     vfs_enabled: bool = True,
 ) -> list:
     """
     Create the standard middleware stack for agents.
 
     Uses LangChain's AgentMiddleware system:
-    - TodoMiddleware: Task planning and tracking tools
     - SubagentMiddleware: Spawn subagents for parallel/focused work
     - VFSArchivingSummarizationMiddleware: Archives to VFS and summarizes at threshold
     - VFSCompactionMiddleware: Compacts large tool outputs to VFS
@@ -90,30 +85,20 @@ def create_middleware_stack(
     Args:
         enable_summarization: Whether to include summarization middleware
         enable_compaction: Whether to include compaction middleware
-        enable_todo: Whether to include todo/task management middleware
         enable_subagent: Whether to include subagent spawning middleware
-        todo_source: Source identifier for todo_progress events (e.g. "executor", "gmail")
         subagent_llm: LLM for subagent execution (required if enable_subagent=True)
         subagent_tools: Tools available to subagents
         subagent_registry: Alternative tool registry for subagents
         summarization_trigger: When to trigger summarization (fraction/tokens/messages)
         summarization_keep: How much to keep after summarization (tokens recommended)
         compaction_threshold: Context usage ratio to trigger compaction
-        max_output_tokens: Max tokens for single tool output before compaction
+        max_output_chars: Max chars for single tool output before compaction
         vfs_enabled: Whether to archive to VFS before summarization
 
     Returns:
         List of AgentMiddleware instances in execution order
     """
     middleware = []
-
-    # TodoMiddleware - task management tools (plan_tasks, mark_task, add_task)
-    if enable_todo:
-        todo = TodoMiddleware(source=todo_source)
-        middleware.append(todo)
-        logger.debug(
-            f"TodoMiddleware enabled (source={todo_source}) with 3 tools: plan_tasks, mark_task, add_task"
-        )
 
     # SubagentMiddleware - spawn_subagent tool for parallel/focused work
     if enable_subagent:
@@ -145,7 +130,7 @@ def create_middleware_stack(
     if enable_compaction:
         compaction = VFSCompactionMiddleware(
             compaction_threshold=compaction_threshold,
-            max_output_tokens=max_output_tokens,
+            max_output_chars=max_output_chars,
         )
         middleware.append(compaction)
         logger.debug(f"Compaction middleware enabled: threshold={compaction_threshold}")
@@ -173,7 +158,6 @@ def create_executor_middleware(
     Create middleware stack for the executor agent.
 
     The executor agent handles complex multi-step tasks and should have:
-    - TodoMiddleware: For task planning and tracking
     - SubagentMiddleware: For parallel/focused work with lightweight subagents
     - Summarization and compaction middleware
 
@@ -191,9 +175,7 @@ def create_executor_middleware(
         List of middleware for executor agent
     """
     return create_middleware_stack(
-        enable_todo=True,
         enable_subagent=True,
-        todo_source="executor",
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,
         subagent_registry=subagent_registry,
@@ -206,17 +188,12 @@ def create_comms_middleware() -> list:
     Create middleware stack for the comms agent.
 
     The comms agent handles user communication and delegates complex work
-    to the executor. It should NOT have:
-    - TodoMiddleware: Executor handles task tracking
-    - SubagentMiddleware: Executor handles parallel work
-
-    Only includes summarization and compaction middleware.
+    to the executor. Only includes summarization and compaction middleware.
 
     Returns:
         List of middleware for comms agent
     """
     return create_middleware_stack(
-        enable_todo=False,
         enable_subagent=False,
     )
 
@@ -233,7 +210,6 @@ def create_subagent_middleware(
     Create middleware stack for provider subagents.
 
     Provider subagents handle focused integration work and should have:
-    - TodoMiddleware: For tracking their task steps
     - SubagentMiddleware: For spawning focused sub-subagents
     - Summarization and compaction middleware
 
@@ -241,7 +217,7 @@ def create_subagent_middleware(
     SubagentMiddleware itself which excludes spawn_subagent from child tools).
 
     Args:
-        todo_source: Source identifier for todo_progress events (e.g. "gmail", "notion")
+        todo_source: Kept for API compatibility (unused — todo source set in todo_tools)
         subagent_llm: LLM for spawned sub-subagent execution
         subagent_tools: Tools available to spawned sub-subagents
         subagent_registry: Alternative tool registry for spawned sub-subagents
@@ -251,9 +227,7 @@ def create_subagent_middleware(
         List of middleware for provider subagents
     """
     return create_middleware_stack(
-        enable_todo=True,
         enable_subagent=True,
-        todo_source=todo_source,
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,
         subagent_registry=subagent_registry,

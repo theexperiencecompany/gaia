@@ -14,7 +14,7 @@ export type ToolName =
   | "todo_data"
   | "goal_data"
   | "integration_connection_required"
-  | "todo_progress_data";
+  | "todo_progress";
 
 export interface EmailComposeData {
   to: string[];
@@ -59,7 +59,7 @@ export interface ToolDataMap {
   todo_data: GenericToolData;
   goal_data: GenericToolData;
   integration_connection_required: GenericToolData;
-  todo_progress_data: GenericToolData;
+  todo_progress: GenericToolData;
 }
 
 export interface ToolDataEntry {
@@ -85,7 +85,7 @@ export function isKnownTool(name: string): name is ToolName {
     "todo_data",
     "goal_data",
     "integration_connection_required",
-    "todo_progress_data",
+    "todo_progress",
   ]);
   return knownTools.has(name);
 }

@@ -110,7 +110,7 @@ export const TOOL_REGISTRY = {
   twitter_user_data: null as unknown as TwitterUserData[],
   workflow_draft: null as unknown as WorkflowDraftData,
   workflow_created: null as unknown as WorkflowCreatedData,
-  todo_progress_data: null as unknown as TodoProgressData,
+  todo_progress: null as unknown as TodoProgressData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;

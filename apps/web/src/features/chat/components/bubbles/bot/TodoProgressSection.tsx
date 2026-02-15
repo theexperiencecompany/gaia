@@ -25,44 +25,26 @@ const STATUS_COLOR: Record<TodoProgressItem["status"], string> = {
   pending: "text-zinc-400",
 };
 
-export default function TodoProgressSection({
-  todo_progress,
-}: TodoProgressSectionProps) {
-  // Flatten all sources into one ordered list (executor first, then others)
-  const sources = Object.keys(todo_progress);
-  if (sources.length === 0) return null;
-
-  const allTodos: (TodoProgressItem & { source: string })[] = [];
-  for (const source of sources) {
-    const snapshot = todo_progress[source];
-    if (snapshot?.todos) {
-      for (const todo of snapshot.todos) {
-        allTodos.push({ ...todo, source });
-      }
-    }
-  }
-
-  if (allTodos.length === 0) return null;
-
-  const completedCount = allTodos.filter(
-    (t) => t.status === "completed",
-  ).length;
-  const totalCount = allTodos.length;
+function SourceCard({
+  source,
+  todos,
+}: {
+  source: string;
+  todos: TodoProgressItem[];
+}) {
+  const completedCount = todos.filter((t) => t.status === "completed").length;
 
   return (
-    <div className="mt-2 mb-2 w-fit min-w-[320px] max-w-[480px] rounded-xl bg-zinc-800/60 px-3 py-2.5">
+    <div className="min-w-[280px] max-w-[420px] flex-1 rounded-xl bg-zinc-800/60 px-3 py-2.5">
       <div className="mb-1.5 flex items-center justify-between">
-        <span className="text-xs font-medium text-zinc-400">Task Progress</span>
+        <span className="text-xs font-medium text-zinc-400">{source}</span>
         <span className="text-xs text-zinc-500">
-          {completedCount}/{totalCount}
+          {completedCount}/{todos.length}
         </span>
       </div>
       <div className="space-y-1">
-        {allTodos.map((todo) => (
-          <div
-            key={`${todo.source}-${todo.id}`}
-            className="flex items-start gap-2"
-          >
+        {todos.map((todo) => (
+          <div key={todo.id} className="flex items-start gap-2">
             <span
               className={`mt-px flex h-4 w-4 shrink-0 items-center justify-center text-xs font-medium ${STATUS_COLOR[todo.status]}`}
             >
@@ -76,18 +58,42 @@ export default function TodoProgressSection({
           </div>
         ))}
       </div>
-      {sources.length > 1 && (
-        <div className="mt-1.5 flex flex-wrap gap-1.5">
-          {sources.map((source) => (
-            <span
-              key={source}
-              className="rounded-full bg-zinc-700/50 px-1.5 py-0.5 text-[10px] text-zinc-500"
-            >
-              {source}
-            </span>
-          ))}
-        </div>
-      )}
+    </div>
+  );
+}
+
+export default function TodoProgressSection({
+  todo_progress,
+}: TodoProgressSectionProps) {
+  const sources = Object.keys(todo_progress);
+  if (sources.length === 0) return null;
+
+  // Filter out sources with no todos
+  const activeSources = sources.filter(
+    (s) => todo_progress[s]?.todos && todo_progress[s].todos.length > 0,
+  );
+  if (activeSources.length === 0) return null;
+
+  // Single source: render a compact card (backward compatible)
+  if (activeSources.length === 1) {
+    const source = activeSources[0];
+    return (
+      <div className="mt-2 mb-2">
+        <SourceCard source={source} todos={todo_progress[source].todos} />
+      </div>
+    );
+  }
+
+  // Multiple sources: render separate cards side by side
+  return (
+    <div className="mt-2 mb-2 flex flex-wrap gap-2">
+      {activeSources.map((source) => (
+        <SourceCard
+          key={source}
+          source={source}
+          todos={todo_progress[source].todos}
+        />
+      ))}
     </div>
   );
 }

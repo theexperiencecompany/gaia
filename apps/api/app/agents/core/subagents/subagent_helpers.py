@@ -224,6 +224,28 @@ async def create_agent_context_message(
         except Exception as e:
             logger.warning(f"Error retrieving skills for {subagent_id}: {e}")
 
-    content = "\n".join(context_parts) + memories_section + skills_section
+    # Inject installable skills metadata (available_skills XML)
+    installable_skills_section = ""
+    if user_id:
+        try:
+            from app.agents.skills.discovery import get_available_skills_xml
+
+            agent_for_skills = subagent_id or "executor"
+            skills_xml = await get_available_skills_xml(
+                user_id=user_id,
+                agent_name=agent_for_skills,
+            )
+            if skills_xml:
+                installable_skills_section = f"\n\n{skills_xml}"
+                logger.info(f"Injected installable skills XML for {agent_for_skills}")
+        except Exception as e:
+            logger.warning(f"Error injecting installable skills: {e}")
+
+    content = (
+        "\n".join(context_parts)
+        + memories_section
+        + skills_section
+        + installable_skills_section
+    )
 
     return SystemMessage(content=content, memory_message=True)

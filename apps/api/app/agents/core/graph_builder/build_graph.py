@@ -20,6 +20,7 @@ from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.executor_tool import call_executor
+from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.config.loggers import app_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
@@ -51,6 +52,10 @@ async def build_executor_graph(
         subagent_excluded_tools=excluded_subagent_tools,
     )
 
+    # Create todo tools with InjectedState (source="executor")
+    todo_tools = create_todo_tools(source="executor")
+    todo_hook = create_todo_pre_model_hook(source="executor")
+
     # Wire SubagentMiddleware with LLM and full tool registry
     for mw in middleware:
         if isinstance(mw, SubagentMiddleware):
@@ -66,9 +71,11 @@ async def build_executor_graph(
         retrieve_tools_coroutine=get_retrieve_tools_function(),
         initial_tool_ids=["handoff"],
         middleware=middleware,
+        extra_tools=todo_tools,
         pre_model_hooks=[
             filter_messages_node,
             manage_system_prompts_node,
+            todo_hook,
         ],
     )
 

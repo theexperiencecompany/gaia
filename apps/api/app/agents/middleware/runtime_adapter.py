@@ -10,7 +10,6 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from langchain.agents.middleware.types import (
-    AgentState,
     ModelRequest,
     ToolCallRequest,
 )
@@ -145,8 +144,8 @@ def create_model_request(
     # Use provided system_message or extracted one
     final_system = system_message or extracted_system
 
-    # Create AgentState wrapper
-    agent_state = AgentState(messages=messages)
+    # Create state wrapper — pass full state so middleware can access all channels
+    agent_state = dict(state)  # type: ignore[arg-type]
 
     return ModelRequest(
         model=model,

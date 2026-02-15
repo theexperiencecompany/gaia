@@ -30,6 +30,7 @@ from app.db.mongodb.collections import (
     plans_collection,
     projects_collection,
     reminders_collection,
+    skills_collection,
     subscriptions_collection,
     todos_collection,
     usage_snapshots_collection,
@@ -76,6 +77,7 @@ async def create_all_indexes():
             create_user_integration_indexes(),
             create_device_token_indexes(),
             create_vfs_indexes(),
+            create_installed_skills_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -102,6 +104,7 @@ async def create_all_indexes():
             "user_integrations",
             "device_tokens",
             "vfs_nodes",
+            "installed_skills",
         ]
 
         index_results = {}
@@ -810,6 +813,51 @@ async def create_vfs_indexes():
 
     except Exception as e:
         logger.error(f"Error creating VFS indexes: {str(e)}")
+        raise
+
+
+async def create_installed_skills_indexes():
+    """
+    Create indexes for installed_skills collection.
+
+    Query patterns:
+    - User's installed skills listing
+    - Skills for a specific agent (by target)
+    - Duplicate detection (user + name + target)
+    """
+    try:
+        await asyncio.gather(
+            # Unique: one skill per name per target per user
+            _create_index_safe(
+                skills_collection,
+                [
+                    ("user_id", 1),
+                    ("skill_metadata.name", 1),
+                    ("skill_metadata.target", 1),
+                ],
+                unique=True,
+                name="user_skill_name_target_unique",
+            ),
+            # List skills for an agent: user + enabled + target (for $in query)
+            _create_index_safe(
+                skills_collection,
+                [
+                    ("user_id", 1),
+                    ("enabled", 1),
+                    ("skill_metadata.target", 1),
+                ],
+                name="user_enabled_target",
+            ),
+            # List all user skills sorted by install date
+            _create_index_safe(
+                skills_collection,
+                [("user_id", 1), ("installed_at", -1)],
+                name="user_installed_at",
+            ),
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating installed_skills indexes: {str(e)}")
         raise
 
 

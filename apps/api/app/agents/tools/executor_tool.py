@@ -1,5 +1,6 @@
 """Executor tool for comms agent to delegate tasks to executor agent."""
 
+import asyncio
 from datetime import datetime
 from typing import Annotated
 
@@ -70,8 +71,11 @@ async def call_executor(
             stream_writer=writer,
         )
 
+    except asyncio.CancelledError:
+        logger.info("Executor call cancelled")
+        return "Task was cancelled"
     except Exception as e:
-        logger.error(f"Error calling executor: {e}")
+        logger.error(f"Error calling executor: {e}", exc_info=True)
         return f"Error executing task: {str(e)}"
 
 

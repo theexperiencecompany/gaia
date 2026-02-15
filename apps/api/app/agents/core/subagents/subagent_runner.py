@@ -206,7 +206,7 @@ async def prepare_subagent_execution(
         subagent_id=integration.id,  # Pass for skill retrieval
     )
 
-    initial_state = {"messages": messages}
+    initial_state = {"messages": messages, "todos": []}
 
     return SubagentExecutionContext(
         subagent_graph=subagent_graph,
@@ -385,7 +385,7 @@ async def prepare_executor_execution(
         config=config,
         configurable=new_configurable,
         integration_id="executor",
-        initial_state={"messages": messages},
+        initial_state={"messages": messages, "todos": []},
         user_id=user_id,
         stream_id=stream_id,
     ), None

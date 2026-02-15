@@ -6,7 +6,6 @@ system and our custom langgraph_bigtool-based agent architecture.
 
 Key Components:
 - MiddlewareExecutor: Executes middleware hooks at appropriate points
-- TodoMiddleware: Task planning and tracking tools (plan_tasks, mark_task, add_task)
 - SubagentMiddleware: Spawn subagents for parallel/focused work
 - VFSArchivingSummarizationMiddleware: Extends SummarizationMiddleware with VFS archiving
 - VFSCompactionMiddleware: Compacts large tool outputs to VFS
@@ -40,7 +39,6 @@ from app.agents.middleware.runtime_adapter import (
     create_tool_call_request,
 )
 from app.agents.middleware.subagent import SubagentMiddleware
-from app.agents.middleware.todo import Todo, TodoMiddleware, TodoState
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
 
@@ -60,9 +58,6 @@ __all__ = [
     "create_model_request",
     "create_tool_call_request",
     # Middleware classes (for custom configuration)
-    "TodoMiddleware",
-    "Todo",
-    "TodoState",
     "SubagentMiddleware",
     "VFSArchivingSummarizationMiddleware",
     "VFSCompactionMiddleware",

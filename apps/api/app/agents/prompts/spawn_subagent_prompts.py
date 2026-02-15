@@ -15,8 +15,9 @@ Rules:
   - Call retrieve_tools(query="your intent") to discover relevant tool names
   - Call retrieve_tools(exact_tool_names=["TOOL_A"]) to load them for execution
   - Then call the loaded tools directly
+- If given a VFS file path, use the appropriate tool to read and process the file content
 - Only return the essential information requested
-- Do NOT spawn additional subagents
+- Do NOT spawn additional subagents or invoke handoff
 - Be concise — your output goes back to the parent agent, not the user
 - You have a maximum of 5 tool-calling turns"""
 
@@ -24,10 +25,10 @@ Rules:
 SPAWN_SUBAGENT_DESCRIPTION = """Spawn a lightweight subagent for focused or parallel work.
 
 Use when:
-- A tool returned a large output that needs processing/extraction
+- A tool output was stored to VFS (you see "[Full output stored at: ...]") and
+  you need to read/process it without polluting your context
 - Multiple independent subtasks can run without provider context
 - You want to isolate work to keep your main context clean
-- A task needs focused tool use (e.g., search + filter + summarize)
 
 Do NOT use when:
 - The task involves a third-party provider (use handoff instead)
@@ -37,8 +38,8 @@ The subagent has access to your tools (except handoff and spawn_subagent),
 runs for up to 5 turns, and returns only the result.
 
 Args:
-    task: Clear, specific description of what the subagent should do
-    context: Data or context the subagent needs (e.g., paste large output here)
+    task: Clear, specific description of what to do. Include VFS file paths if processing stored outputs.
+    context: Data or context the subagent needs (e.g., paste summaries or references here)
 
 Returns:
     The subagent's result/findings"""

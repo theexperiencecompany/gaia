@@ -424,7 +424,7 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
 
-  todo_progress_data: (data, index) => (
+  todo_progress: (data, index) => (
     <TodoProgressSection
       key={`tool-todo-progress-${index}`}
       todo_progress={data as TodoProgressData}

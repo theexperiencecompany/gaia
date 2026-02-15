@@ -121,6 +121,7 @@ _COLLECTION_MAPPINGS = {
     "user_integrations_collection": "user_integrations",
     "device_tokens_collection": "device_tokens",
     "vfs_nodes_collection": "vfs_nodes",
+    "skills_collection": "skills",
 }
 
 

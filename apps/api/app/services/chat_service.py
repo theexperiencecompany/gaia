@@ -59,6 +59,7 @@ async def run_chat_stream_background(
     complete_message = ""
     tool_data: Dict[str, Any] = {"tool_data": []}
     tool_outputs: Dict[str, str] = {}  # Track tool_call_id -> output for merging
+    todo_progress_accumulated: Dict[str, Any] = {}  # Accumulate todo_progress by source
     user_message_id = str(uuid4())
     bot_message_id = str(uuid4())
     is_new_conversation = body.conversation_id is None
@@ -183,6 +184,16 @@ async def run_chat_stream_background(
                                 f"data: {json.dumps({'tool_output': output_data})}\n\n",
                             )
                     else:
+                        # Accumulate todo_progress for persistence
+                        # (not in tool_fields, so extract_tool_data skips it)
+                        try:
+                            chunk_json = json.loads(chunk[6:])
+                            if "todo_progress" in chunk_json:
+                                snapshot = chunk_json["todo_progress"]
+                                source = snapshot.get("source", "executor")
+                                todo_progress_accumulated[source] = snapshot
+                        except (json.JSONDecodeError, KeyError, TypeError):
+                            pass
                         await stream_manager.publish_chunk(stream_id, chunk)
 
                     # Update progress for recovery
@@ -251,6 +262,17 @@ async def run_chat_stream_background(
                     tool_call_id = data.get("tool_call_id")
                     if tool_call_id and tool_call_id in tool_outputs:
                         data["output"] = tool_outputs[tool_call_id]
+
+        # Inject accumulated todo_progress as a single tool_data entry
+        # Each source's latest snapshot is kept; frontend merges on render
+        if todo_progress_accumulated:
+            tool_data["tool_data"].append(
+                {
+                    "tool_name": "todo_progress",
+                    "data": todo_progress_accumulated,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
         # Always save conversation to MongoDB
         await _save_conversation_async(
