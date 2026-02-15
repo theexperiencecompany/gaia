@@ -76,12 +76,12 @@ async def disconnect_integration_endpoint(
                 resolved.platform_integration.included_integrations,
             )
         except ValueError as e:
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=str(e)) from e
         except Exception as e:
             logger.error(f"Error disconnecting super-connector {integration_id}: {e}")
             raise HTTPException(
                 status_code=500, detail="Failed to disconnect integration"
-            )
+            ) from e
 
     try:
         return await disconnect_integration(user_id, integration_id)
