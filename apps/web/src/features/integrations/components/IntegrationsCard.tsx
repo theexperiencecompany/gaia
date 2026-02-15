@@ -131,7 +131,10 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
   );
 
   const connectedCount = integrations.filter(
-    (i) => i.status === "connected" && !i.isSpecial,
+    (i) =>
+      i.status === "connected" &&
+      !i.isSpecial &&
+      !superConnectorChildIds.has(i.id),
   ).length;
 
   const visibleIntegrations = integrations.filter(

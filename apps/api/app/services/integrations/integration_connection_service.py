@@ -177,39 +177,26 @@ async def _connect_with_bearer_token(
         )
 
 
+
 async def connect_super_connector(
     user_id: str,
     integration_id: str,
-    included_integrations: list[str],
     redirect_path: str,
 ) -> ConnectIntegrationResponse:
-    """Handle super-connector connection by connecting the next unconnected child."""
-    from app.services.oauth.oauth_service import check_multiple_integrations_status
+    """Handle super-connector connection via Composio's unified OAuth config."""
+    integration = get_integration_by_id(integration_id)
+    if not integration or not integration.provider:
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            error=f"Super-connector {integration_id} not configured",
+        )
 
-    statuses = await check_multiple_integrations_status(
-        included_integrations, user_id
-    )
-
-    # Find the first unconnected child integration
-    for child_id in included_integrations:
-        if not statuses.get(child_id, False):
-            child_integration = get_integration_by_id(child_id)
-            if not child_integration or not child_integration.available:
-                continue
-
-            return await connect_composio_integration(
-                user_id=user_id,
-                integration_id=child_id,
-                provider=child_integration.provider,
-                redirect_path=redirect_path,
-            )
-
-    # All child integrations are already connected
-    await update_user_integration_status(user_id, integration_id, "connected")
-    return ConnectIntegrationResponse(
-        status="connected",
+    return await connect_composio_integration(
+        user_id=user_id,
         integration_id=integration_id,
-        message="All Google services connected successfully",
+        provider=integration.provider,
+        redirect_path=redirect_path,
     )
 
 
@@ -283,16 +270,35 @@ async def connect_self_integration(
 async def disconnect_super_connector(
     user_id: str, integration_id: str, included_integrations: list[str]
 ) -> IntegrationSuccessResponse:
-    """Disconnect all child integrations of a super-connector."""
+    """Disconnect a super-connector and its child integrations."""
+    integration = get_integration_by_id(integration_id)
+    if not integration or not integration.provider:
+        raise ValueError(f"Super-connector {integration_id} not configured")
+
+    # Disconnect the super-connector's own Composio account
+    composio_service = get_composio_service()
+    await composio_service.delete_connected_account(
+        user_id=user_id, provider=integration.provider
+    )
+
+    # Best-effort cleanup of any individually-connected children
+    failures = []
     for child_id in included_integrations:
         try:
             await disconnect_integration(user_id, child_id)
         except Exception as e:
             logger.warning(f"Failed to disconnect child {child_id}: {e}")
+            failures.append(child_id)
 
     await _invalidate_caches(user_id, integration_id, "composio")
+
+    if failures and len(failures) == len(included_integrations):
+        raise ValueError(
+            f"Failed to disconnect any child integrations for {integration_id}"
+        )
+
     return IntegrationSuccessResponse(
-        message="Successfully disconnected all Google services",
+        message=f"Successfully disconnected {integration_id} services",
         integration_id=integration_id,
     )
 

@@ -106,13 +106,13 @@ GOOGLE_INTEGRATION_IDS = [
 
 # Define all integrations dynamically
 OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
-    # Google Super-Connector (umbrella integration)
+    # Google Super-Connector — uses Composio's google_super unified OAuth config
     OAuthIntegration(
         id="google",
         name="Google",
         description="Connect all Google services at once — Calendar, Gmail, Docs, Sheets, Tasks, Meet, and Maps",
         category="productivity",
-        provider="google",
+        provider="google_super",
         scopes=[],
         available=True,
         is_special=True,
@@ -121,6 +121,11 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         included_integrations=GOOGLE_INTEGRATION_IDS,
         short_name="google",
         managed_by="composio",
+        composio_config=ComposioConfig(
+            # TODO: Replace with actual Composio google_super auth_config_id
+            auth_config_id="<GOOGLE_SUPER_AUTH_CONFIG_ID>",
+            toolkit="GOOGLE_SUPER",
+        ),
     ),
     # Individual Google integrations
     OAuthIntegration(

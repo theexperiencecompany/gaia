@@ -69,9 +69,19 @@ async def disconnect_integration_endpoint(
         and resolved.platform_integration.is_special
         and resolved.platform_integration.included_integrations
     ):
-        return await disconnect_super_connector(
-            user_id, integration_id, resolved.platform_integration.included_integrations
-        )
+        try:
+            return await disconnect_super_connector(
+                user_id,
+                integration_id,
+                resolved.platform_integration.included_integrations,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        except Exception as e:
+            logger.error(f"Error disconnecting super-connector {integration_id}: {e}")
+            raise HTTPException(
+                status_code=500, detail="Failed to disconnect integration"
+            )
 
     try:
         return await disconnect_integration(user_id, integration_id)
@@ -121,12 +131,19 @@ async def connect_integration_endpoint(
         and resolved.platform_integration.is_special
         and resolved.platform_integration.included_integrations
     ):
-        return await connect_super_connector(
-            user_id=str(user_id),
-            integration_id=integration_id,
-            included_integrations=resolved.platform_integration.included_integrations,
-            redirect_path=request.redirect_path,
-        )
+        try:
+            return await connect_super_connector(
+                user_id=str(user_id),
+                integration_id=integration_id,
+                redirect_path=request.redirect_path,
+            )
+        except Exception as e:
+            logger.error(f"Failed to connect super-connector {integration_id}: {e}")
+            return ConnectIntegrationResponse(
+                status="error",
+                integration_id=integration_id,
+                error=str(e),
+            )
 
     try:
         if resolved.managed_by == "mcp":

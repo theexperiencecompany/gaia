@@ -88,7 +88,11 @@ const SuperConnectorRow: React.FC<{
             )}
             <span className="text-xs text-zinc-300">{child.name}</span>
             {child.status === "connected" && (
-              <div className="h-1.5 w-1.5 rounded-full bg-green-500" />
+              <div
+                className="h-1.5 w-1.5 rounded-full bg-green-500"
+                role="img"
+                aria-label="Connected"
+              />
             )}
           </div>
         ))}
@@ -266,9 +270,11 @@ export const IntegrationsList: React.FC<{
   const featuredIntegrations = useMemo(() => {
     return regularIntegrations.filter(
       (i) =>
-        i.isFeatured && i.available && !superConnectorChildIds.has(i.id),
+        i.isFeatured &&
+        i.available &&
+        (!superConnectorChildIds.has(i.id) || searchQuery),
     );
-  }, [regularIntegrations, superConnectorChildIds]);
+  }, [regularIntegrations, superConnectorChildIds, searchQuery]);
 
   // Group ALL integrations by category, sorted: connected first, then alphabetically
   const integrationsByCategory = useMemo(() => {
@@ -278,7 +284,8 @@ export const IntegrationsList: React.FC<{
       grouped[category] = regularIntegrations
         .filter(
           (i) =>
-            i.category === category && !superConnectorChildIds.has(i.id),
+            i.category === category &&
+            (!superConnectorChildIds.has(i.id) || searchQuery),
         )
         .sort((a, b) => {
           // Connected first
@@ -290,7 +297,7 @@ export const IntegrationsList: React.FC<{
     }
 
     return grouped;
-  }, [regularIntegrations, availableCategories, superConnectorChildIds]);
+  }, [regularIntegrations, availableCategories, superConnectorChildIds, searchQuery]);
 
   // For when a specific category is selected
   const integrationsInSelectedCategory = useMemo(() => {
