@@ -172,6 +172,10 @@ async def mcp_oauth_callback(
 
     client = await get_mcp_client(user_id=str(user_id))
 
+    # Resolve integration name for the frontend toast
+    resolved = await IntegrationResolver.resolve(integration_id)
+    integration_name = resolved.name if resolved else integration_id
+
     try:
         tools = await client.handle_oauth_callback(
             integration_id=integration_id,
@@ -202,8 +206,10 @@ async def mcp_oauth_callback(
         # Subagent indexing handled in MCPClient._handle_custom_integration_connect
 
         frontend_url = get_frontend_url()
+        from urllib.parse import quote
+
         return RedirectResponse(
-            url=f"{frontend_url}{redirect_path}?id={integration_id}&status=connected"
+            url=f"{frontend_url}{redirect_path}?id={integration_id}&status=connected&name={quote(integration_name)}"
         )
 
     except Exception as e:

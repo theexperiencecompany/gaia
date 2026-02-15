@@ -152,7 +152,9 @@ export default function IntegrationsPage() {
 
       if (status === "connected") {
         const integration = integrations.find((i) => i.id === integrationId);
-        toast.success(`Connected to ${integration?.name || integrationId}`);
+        const nameParam = searchParams.get("name");
+        const displayName = integration?.name || nameParam || integrationId;
+        toast.success(`Connected to ${displayName}`);
         refetch();
         queryClient.refetchQueries({ queryKey: ["tools", "available"] });
       } else if (status === "bearer_required") {
