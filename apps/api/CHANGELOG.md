@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.14.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.13.0...api-v0.14.0) (2026-02-15)
+
+
+### Features
+
+* Add unified PostHog analytics tracking across frontend and backend ([#456](https://github.com/theexperiencecompany/gaia/issues/456)) ([744902e](https://github.com/theexperiencecompany/gaia/commit/744902ed37a2096f0b3c5e0dad016a5af9868c6d))
+* automatic creation of workflows ([#459](https://github.com/theexperiencecompany/gaia/issues/459)) ([f8391a2](https://github.com/theexperiencecompany/gaia/commit/f8391a2f983063b7059b79bcb169b2717b1e8e19))
+* Comprehensive Posthog setup, fix: MCP related issues ([#458](https://github.com/theexperiencecompany/gaia/issues/458)) ([2e25e0b](https://github.com/theexperiencecompany/gaia/commit/2e25e0b9defac009d74c938e11f0f31bee0c2bae))
+* **pricing:** Update pricing plans to reflect new $30/month tier and adjust limits ([#469](https://github.com/theexperiencecompany/gaia/issues/469)) ([25e7f25](https://github.com/theexperiencecompany/gaia/commit/25e7f252f69684138851efab7fefe2aad7bebcea))
+* Update Tool calling works blog & manifesto, and minor landing p… ([#477](https://github.com/theexperiencecompany/gaia/issues/477)) ([10ddc7b](https://github.com/theexperiencecompany/gaia/commit/10ddc7be52907bb2810114234418787aad257bd8))
+* Update Tool calling works blog & manifesto, and minor landing page improvements ([#476](https://github.com/theexperiencecompany/gaia/issues/476)) ([fc98e21](https://github.com/theexperiencecompany/gaia/commit/fc98e21e1362361051844b76daad82958c7cd061))
+* **workflows:** Add execution history tracking and UI ([#461](https://github.com/theexperiencecompany/gaia/issues/461)) ([c351046](https://github.com/theexperiencecompany/gaia/commit/c3510469cbce74cf031e08a138dae23cf6d62035))
+* **workflows:** improve MCP orchestration and improve tooling, indexing, execution history ([#462](https://github.com/theexperiencecompany/gaia/issues/462)) ([7f79f14](https://github.com/theexperiencecompany/gaia/commit/7f79f14304cf1530a761bfcd375a75d121eddd65))
+
+
+### Bug Fixes
+
+* idempotency for incoming webhhooks from dodpayments ignoring already processed webhooks ([#474](https://github.com/theexperiencecompany/gaia/issues/474)) ([e2157c8](https://github.com/theexperiencecompany/gaia/commit/e2157c895c09d682e94a864b3fa6e05887087284))
+* Make scheduled tasks timezone-aware and reschedule past tasks to prevent Redis PSETEX errors. ([5241b85](https://github.com/theexperiencecompany/gaia/commit/5241b8538c819963c59e6de18287eb04210e3e3d))
+* Normalize MCP Namespaces, Improve Tool Indexing, and Add Integration Cleanup, and minor fixes ([#460](https://github.com/theexperiencecompany/gaia/issues/460)) ([f47389c](https://github.com/theexperiencecompany/gaia/commit/f47389caf675d5e873ccf6284969dece0b3c3b17))
+* Posthog MCP not being connected, schema breaking. Updated twitter toolkit, and other mcp fixes ([#457](https://github.com/theexperiencecompany/gaia/issues/457)) ([8772df6](https://github.com/theexperiencecompany/gaia/commit/8772df6c54dfbeb49ed2df7b6d0b3726bebb199b))
+
 ## [0.13.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.12.1...api-v0.13.0) (2026-01-30)
 
 ### Features
