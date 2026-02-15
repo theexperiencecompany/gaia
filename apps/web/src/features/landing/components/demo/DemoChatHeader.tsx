@@ -9,6 +9,7 @@ import {
   SearchIcon,
   SidebarLeft01Icon,
   SidebarRight01Icon,
+  Target02Icon,
   ZapIcon,
 } from "@icons";
 import type { ComponentType, SVGAttributes } from "react";
@@ -24,6 +25,7 @@ const PAGE_META: Record<
   workflows: { Icon: ZapIcon, title: "Workflows" },
   integrations: { Icon: ConnectIcon, title: "Integrations" },
   todos: { Icon: CheckListIcon, title: "Todos" },
+  goals: { Icon: Target02Icon, title: "Goals" },
 };
 
 interface DemoChatHeaderProps {

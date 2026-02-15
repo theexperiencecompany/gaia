@@ -88,7 +88,7 @@ function DemoTodoItem({
   return (
     <div
       className={`w-full cursor-pointer p-4 pl-5 transition-all hover:bg-zinc-800/50 ${
-        isSelected ? "bg-primary/5 ring-2 ring-primary" : ""
+        isSelected ? "bg-primary/5" : ""
       } ${todo.completed ? "opacity-30" : ""}`}
       onClick={onClick}
     >
@@ -315,10 +315,10 @@ function DemoWorkflowSteps({ steps }: { steps: DemoWorkflowStep[] }) {
 
 function DemoTodoSidebar({
   todo,
-  _onClose,
+  onClose,
 }: {
   todo: DemoTodo;
-  _onClose: () => void;
+  onClose: () => void;
 }) {
   const project = DEMO_PROJECTS.find((p) => p.id === todo.project_id);
 
@@ -334,7 +334,17 @@ function DemoTodoSidebar({
       className="flex h-full w-[300px] shrink-0 flex-col border-l border-zinc-800"
       style={{ backgroundColor: "#141414" }}
     >
-      <div className="flex-1 overflow-y-auto pl-6 pr-3 pt-4">
+      <div className="flex shrink-0 items-center justify-end px-3 pt-2">
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close"
+          className="flex h-7 w-7 items-center justify-center rounded-md text-zinc-500 transition-colors hover:bg-zinc-800 hover:text-zinc-300"
+        >
+          ✕
+        </button>
+      </div>
+      <div className="flex-1 overflow-y-auto pl-6 pr-3 pt-2">
         <div className="space-y-4">
           {/* Checkbox + Title */}
           <div className="flex items-start gap-1">
@@ -525,7 +535,7 @@ export default function DemoTodosView() {
       {selectedTodo && (
         <DemoTodoSidebar
           todo={selectedTodo}
-          _onClose={() => setSelectedTodo(null)}
+          onClose={() => setSelectedTodo(null)}
         />
       )}
     </div>

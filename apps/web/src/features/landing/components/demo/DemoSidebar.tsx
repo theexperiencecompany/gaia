@@ -41,12 +41,16 @@ interface DemoSidebarProps {
   open: boolean;
   activePage: DemoPage;
   onPageChange: (page: DemoPage) => void;
+  selectedIntegrationId?: string | null;
+  onIntegrationSelect?: (id: string) => void;
 }
 
 export default function DemoSidebar({
   open,
   activePage,
   onPageChange,
+  selectedIntegrationId,
+  onIntegrationSelect,
 }: DemoSidebarProps) {
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -303,7 +307,12 @@ export default function DemoSidebar({
                   ].map((integration) => (
                     <div
                       key={integration.id}
-                      className="flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300 cursor-pointer"
+                      onClick={() => onIntegrationSelect?.(integration.id)}
+                      className={`flex items-center gap-2 rounded-lg px-2 py-1.5 text-sm cursor-pointer transition-colors ${
+                        selectedIntegrationId === integration.id
+                          ? "bg-zinc-800 text-zinc-300"
+                          : "text-zinc-500 hover:bg-zinc-800 hover:text-zinc-300"
+                      }`}
                     >
                       {getToolCategoryIcon(integration.id, {
                         width: 18,

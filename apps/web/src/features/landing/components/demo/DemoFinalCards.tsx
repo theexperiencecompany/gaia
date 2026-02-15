@@ -2,10 +2,7 @@ import {
   CalendarIcon,
   CheckmarkBadge01Icon,
   CheckmarkBadge02Icon,
-  FavouriteIcon,
   Flag02Icon,
-  MessageIcon,
-  RepeatIcon,
   ZapIcon,
 } from "@icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -58,44 +55,44 @@ function WorkflowCard() {
 }
 
 // ─── Social content card (marketer use case) ──────────────────────────────────
-// Shows scheduled posts styled like real TwitterCard from TwitterSearchSection
+// Shows scheduled draft posts ready to go out
 function SocialContentCard() {
   const posts = [
     {
       platform: "twitter",
       platformColor: "#1d9bf0",
       handle: "@gaiaapp",
-      name: "GAIA",
+      name: "GAIA App",
       verified: true,
-      scheduledFor: "Mon 9:00 AM",
+      scheduledFor: "Mon · 9:00 AM",
+      charCount: 104,
+      charLimit: 280,
+      hashtags: ["#AI", "#Productivity"],
       text: "We analyzed 6 months of top posts: threads with data get 3× more engagement. Here's the breakdown 🧵",
-      likes: "2.4K",
-      replies: "312",
-      retweets: "891",
     },
     {
       platform: "linkedin",
       platformColor: "#0a66c2",
       handle: "gaia-app",
-      name: "GAIA",
+      name: "GAIA App",
       verified: false,
-      scheduledFor: "Wed 11:00 AM",
+      scheduledFor: "Wed · 11:00 AM",
+      charCount: 98,
+      charLimit: 3000,
+      hashtags: ["#AI", "#FutureOfWork", "#Automation"],
       text: "AI assistants that actually do the work — 40% of tasks now completed autonomously. Here's what changed.",
-      likes: "1.1K",
-      replies: "87",
-      retweets: "204",
     },
   ];
 
   return (
     <div className="flex w-full max-w-sm flex-col gap-2">
       <p className="px-1 text-[11px] text-zinc-500">
-        2 posts scheduled · Mon–Wed
+        2 drafts scheduled · Mon–Wed
       </p>
       {posts.map((p) => (
         <div
           key={p.platform}
-          className="flex w-full flex-col gap-2 rounded-xl border border-zinc-700/60 bg-zinc-900 p-4"
+          className="flex w-full flex-col gap-2.5 rounded-xl border border-zinc-700/60 bg-zinc-900 p-4"
         >
           {/* Author row */}
           <div className="flex items-center gap-2.5">
@@ -114,9 +111,13 @@ function SocialContentCard() {
                   <CheckmarkBadge02Icon className="h-3.5 w-3.5 shrink-0 text-[#1d9bf0]" />
                 )}
               </div>
-              <span className="text-[11px] text-zinc-500">@{p.handle}</span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-zinc-500">@{p.handle}</span>
+                <span className="text-zinc-700">·</span>
+                {getToolCategoryIcon(p.platform, { width: 11, height: 11 })}
+              </div>
             </div>
-            <span className="shrink-0 rounded-full bg-green-500/15 px-2 py-0.5 text-[10px] text-green-400">
+            <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] text-amber-400">
               {p.scheduledFor}
             </span>
           </div>
@@ -124,24 +125,23 @@ function SocialContentCard() {
           {/* Post text */}
           <p className="text-xs leading-relaxed text-zinc-300">{p.text}</p>
 
-          {/* Metrics */}
-          <div className="flex items-center gap-5 pt-0.5 text-zinc-600">
-            <div className="flex items-center gap-1 text-[11px]">
-              <FavouriteIcon className="h-3.5 w-3.5" />
-              <span>{p.likes}</span>
-            </div>
-            <div className="flex items-center gap-1 text-[11px]">
-              <MessageIcon className="h-3.5 w-3.5" />
-              <span>{p.replies}</span>
-            </div>
-            <div className="flex items-center gap-1 text-[11px]">
-              <RepeatIcon className="h-3.5 w-3.5" />
-              <span>{p.retweets}</span>
-            </div>
-            <div className="ml-auto flex items-center gap-1 text-[10px] text-zinc-500">
-              {getToolCategoryIcon(p.platform, { width: 13, height: 13 })}
-              <span className="capitalize">{p.platform}</span>
-            </div>
+          {/* Hashtags */}
+          <div className="flex flex-wrap gap-1">
+            {p.hashtags.map((tag) => (
+              <span key={tag} className="text-[11px] text-[#1d9bf0]">
+                {tag}
+              </span>
+            ))}
+          </div>
+
+          {/* Footer: char count + draft badge */}
+          <div className="flex items-center justify-between border-t border-zinc-800 pt-2">
+            <span className="text-[11px] text-zinc-600">
+              {p.charCount} / {p.charLimit} chars
+            </span>
+            <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-[10px] text-zinc-400">
+              Draft · Ready to publish
+            </span>
           </div>
         </div>
       ))}

@@ -39,7 +39,7 @@ export const NAV_BUTTONS: {
 }[] = [
   { Icon: DashboardSquare02Icon, label: "Dashboard", page: "dashboard" },
   { Icon: Calendar03Icon, label: "Calendar", page: "calendar" },
-  { Icon: Target02Icon, label: "Goals" },
+  { Icon: Target02Icon, label: "Goals", page: "goals" },
   { Icon: CheckListIcon, label: "Todos", page: "todos" },
   { Icon: ConnectIcon, label: "Integrations", page: "integrations" },
   { Icon: ZapIcon, label: "Workflows", page: "workflows" },
@@ -218,7 +218,7 @@ export const USE_CASES: UseCase[] = [
       "Pulling Q4 metrics",
     ],
     botResponse:
-      "I've drafted your Q4 investor update based on your metrics and recent investor communications:",
+      "I've drafted your Q4 investor update using 12 recent investor emails and your Google Sheets metrics. It covers 3x MRR growth, key milestones, and a Series A narrative — review and send when you're ready:",
     finalCard: "email",
   },
   {
@@ -255,7 +255,7 @@ export const USE_CASES: UseCase[] = [
       "Checking Linear tickets",
     ],
     botResponse:
-      "Here's your standup summary based on GitHub and Linear activity. I've posted it to #engineering-standup:",
+      "Here's your standup summary across 4 open PRs and 12 in-progress Linear tickets. I flagged 2 blockers needing attention and posted the full update to #engineering-standup on Slack:",
     finalCard: "workflow",
   },
   {
@@ -292,7 +292,7 @@ export const USE_CASES: UseCase[] = [
       "Drafting social content",
     ],
     botResponse:
-      "Here's your weekly content calendar based on your top-performing posts and trending topics:",
+      "Based on your top performers, data-led threads get 3× more engagement. I've drafted 2 posts — one for X on Monday morning and one for LinkedIn mid-week — and logged both to your content calendar:",
     finalCard: "tools",
   },
   {
@@ -329,7 +329,7 @@ export const USE_CASES: UseCase[] = [
       "Reviewing your notes",
     ],
     botResponse:
-      "Here's your personalised finals study plan based on your deadlines, notes, and available time blocks:",
+      "Here's your finals study plan built around 3 upcoming deadlines and your Notion lecture notes. I've created 5 prioritised tasks starting Monday — high-priority chapters first, mock exam Thursday, revision Friday:",
     finalCard: "tasks",
   },
   {
@@ -366,7 +366,7 @@ export const USE_CASES: UseCase[] = [
       "Loading today's meetings",
     ],
     botResponse:
-      "Good morning! Here's your briefing: 3 urgent emails, 4 meetings, and 2 Slack threads needing attention.",
+      "Good morning! You have 4 meetings back-to-back from 9:30 AM, 3 urgent emails including a term sheet from Alex Chen, and 2 Slack threads in #engineering waiting on your input. Here's the full breakdown:",
     finalCard: "briefing",
   },
 ];

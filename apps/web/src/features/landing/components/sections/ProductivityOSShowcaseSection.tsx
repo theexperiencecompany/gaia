@@ -78,21 +78,8 @@ function ProductivityOSDemo({
 
   return (
     <div className="overflow-hidden rounded-2xl" style={{ height: "600px" }}>
-      {/* Title bar */}
-      <div
-        className="flex h-9 shrink-0 items-center gap-1.5 px-4"
-        style={{ backgroundColor: "#1a1a1a" }}
-      >
-        <div className="h-3 w-3 rounded-full bg-zinc-700" />
-        <div className="h-3 w-3 rounded-full bg-zinc-700" />
-        <div className="h-3 w-3 rounded-full bg-zinc-700" />
-      </div>
-
       {/* App shell */}
-      <div
-        className="flex"
-        style={{ height: "calc(100% - 36px)", backgroundColor: "#111111" }}
-      >
+      <div className="flex h-full" style={{ backgroundColor: "#111111" }}>
         <DemoSidebar
           open={sidebarOpen}
           activePage={activePage}

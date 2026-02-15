@@ -14,7 +14,7 @@ import {
   Unlink04Icon,
   ZapIcon,
 } from "@icons";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CATEGORY_LABELS,
@@ -242,11 +242,31 @@ function DemoIntegrationSidebar({
   );
 }
 
-export default function DemoIntegrationsView() {
+interface DemoIntegrationsViewProps {
+  externalSelectedId?: string | null;
+  onSelectionChange?: (id: string | null) => void;
+}
+
+export default function DemoIntegrationsView({
+  externalSelectedId,
+  onSelectionChange,
+}: DemoIntegrationsViewProps = {}) {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedIntegration, setSelectedIntegration] =
     useState<DemoIntegration | null>(null);
+
+  // Sync from external selection (e.g. left sidebar click)
+  useEffect(() => {
+    if (externalSelectedId !== undefined) {
+      const integration =
+        externalSelectedId === null
+          ? null
+          : (DEMO_INTEGRATIONS.find((i) => i.id === externalSelectedId) ??
+            null);
+      setSelectedIntegration(integration);
+    }
+  }, [externalSelectedId]);
 
   const filteredIntegrations = useMemo(() => {
     let result = DEMO_INTEGRATIONS;
@@ -289,7 +309,10 @@ export default function DemoIntegrationsView() {
 
   const handleIntegrationClick = (id: string) => {
     const integration = DEMO_INTEGRATIONS.find((i) => i.id === id);
-    if (integration) setSelectedIntegration(integration);
+    if (integration) {
+      setSelectedIntegration(integration);
+      onSelectionChange?.(id);
+    }
   };
 
   return (
@@ -441,7 +464,10 @@ export default function DemoIntegrationsView() {
       {selectedIntegration && (
         <DemoIntegrationSidebar
           integration={selectedIntegration}
-          onClose={() => setSelectedIntegration(null)}
+          onClose={() => {
+            setSelectedIntegration(null);
+            onSelectionChange?.(null);
+          }}
         />
       )}
     </div>

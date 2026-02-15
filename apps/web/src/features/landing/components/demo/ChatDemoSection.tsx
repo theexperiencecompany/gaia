@@ -25,6 +25,7 @@ import DemoSidebar from "./DemoSidebar";
 import DemoToolCalls from "./DemoToolCalls";
 import DemoDashboardView from "./dashboard-demo/DemoDashboardView";
 import { BASE_TIMINGS, ease, slideUp, tx, USE_CASES } from "./demoConstants";
+import DemoGoalsView from "./goals-demo/DemoGoalsView";
 import DemoIntegrationsView from "./integrations-demo/DemoIntegrationsView";
 import MiniWaveSpinner from "./MiniWaveSpinner";
 import DemoTodosView from "./todos-demo/DemoTodosView";
@@ -34,6 +35,9 @@ import DemoWorkflowsView from "./workflows-demo/DemoWorkflowsView";
 export default function ChatDemoSection() {
   const [activePage, setActivePage] = useState<DemoPage>("chats");
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedIntegrationId, setSelectedIntegrationId] = useState<
+    string | null
+  >(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [activeUseCase, setActiveUseCase] = useState(0);
   const [phase, setPhase] = useState<Phase>("idle");
@@ -220,8 +224,14 @@ export default function ChatDemoSection() {
           <DemoSidebar
             open={sidebarOpen}
             activePage={activePage}
+            selectedIntegrationId={selectedIntegrationId}
+            onIntegrationSelect={(id) => {
+              setSelectedIntegrationId(id);
+              setActivePage("integrations");
+            }}
             onPageChange={(page) => {
               setActivePage(page);
+              if (page !== "integrations") setSelectedIntegrationId(null);
               if (page !== "chats") {
                 clearAll();
               } else if (phase === "idle") {
@@ -261,9 +271,17 @@ export default function ChatDemoSection() {
                 <DemoWorkflowsView />
               </div>
             )}
+            {activePage === "goals" && (
+              <div className="flex flex-1 overflow-hidden">
+                <DemoGoalsView />
+              </div>
+            )}
             {activePage === "integrations" && (
               <div className="flex flex-1 overflow-hidden">
-                <DemoIntegrationsView />
+                <DemoIntegrationsView
+                  externalSelectedId={selectedIntegrationId}
+                  onSelectionChange={setSelectedIntegrationId}
+                />
               </div>
             )}
             {activePage === "todos" && (

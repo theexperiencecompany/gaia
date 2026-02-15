@@ -22,9 +22,10 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { dummyIntegrations } from "./constants";
 import DummySlashCommandDropdown from "./DummySlashCommandDropdown";
 
-const DummyComposer: React.FC<{ hideIntegrationBanner?: boolean }> = ({
-  hideIntegrationBanner = false,
-}) => {
+const DummyComposer: React.FC<{
+  hideIntegrationBanner?: boolean;
+  fullWidth?: boolean;
+}> = ({ hideIntegrationBanner = false, fullWidth = false }) => {
   const [message, setMessage] = useState("");
   const [isSlashDropdownOpen, setIsSlashDropdownOpen] = useState(false);
 
@@ -108,7 +109,7 @@ const DummyComposer: React.FC<{ hideIntegrationBanner?: boolean }> = ({
         {/* Main Composer */}
         <div
           ref={composerRef}
-          className="searchbar relative z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2"
+          className={`relative z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2 ${fullWidth ? "w-full" : "searchbar"}`}
         >
           {/* Textarea Input */}
           <form
