@@ -6,7 +6,7 @@ import {
   DashboardSquare02Icon,
   ZapIcon,
 } from "@icons";
-import { AnimatePresence, m } from "motion/react";
+import { AnimatePresence, m, useInView } from "motion/react";
 import type React from "react";
 import { useEffect, useRef, useState } from "react";
 import DemoCalendarView from "../demo/calendar-demo/DemoCalendarView";
@@ -215,6 +215,8 @@ function ProductivityOSSidebar({
 export default function ProductivityOSShowcaseSection() {
   const [activePage, setActivePage] = useState<DemoPage>("dashboard");
   const [progress, setProgress] = useState(0);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isInView = useInView(containerRef, { once: true, amount: 0.2 });
 
   // Refs for mutable state — avoids stale closures in the interval
   const stateRef = useRef({ activePage: "dashboard" as DemoPage, elapsed: 0 });
@@ -227,6 +229,9 @@ export default function ProductivityOSShowcaseSection() {
   };
 
   useEffect(() => {
+    // Only start the interval when the section is in view
+    if (!isInView) return;
+
     const interval = setInterval(() => {
       stateRef.current.elapsed += TICK;
       const p = Math.min((stateRef.current.elapsed / DURATION) * 100, 100);
@@ -245,25 +250,27 @@ export default function ProductivityOSShowcaseSection() {
     }, TICK);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [isInView]);
 
   return (
-    <ShowcaseSectionLayout
-      DemoComponent={
-        <ProductivityOSDemo
-          activePage={activePage}
-          onPageChange={handlePageChange}
-        />
-      }
-      SidebarContent={
-        <ProductivityOSSidebar
-          activePage={activePage}
-          progress={progress}
-          onPageChange={handlePageChange}
-        />
-      }
-      containerClassName="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-6 sm:px-4"
-      sidebarClassName="flex w-full flex-col justify-center lg:w-[28%]"
-    />
+    <div ref={containerRef}>
+      <ShowcaseSectionLayout
+        DemoComponent={
+          <ProductivityOSDemo
+            activePage={activePage}
+            onPageChange={handlePageChange}
+          />
+        }
+        SidebarContent={
+          <ProductivityOSSidebar
+            activePage={activePage}
+            progress={progress}
+            onPageChange={handlePageChange}
+          />
+        }
+        containerClassName="relative mx-auto mb-8 sm:mb-16 lg:mb-20 flex w-full flex-col justify-center px-6 sm:px-4"
+        sidebarClassName="flex w-full flex-col justify-center lg:w-[28%]"
+      />
+    </div>
   );
 }
