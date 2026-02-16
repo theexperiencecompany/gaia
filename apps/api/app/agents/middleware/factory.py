@@ -29,6 +29,9 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 
+VFS_TOOL_NAMES = {"vfs_read", "vfs_write", "vfs_analyze", "vfs_cmd"}
+SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
+
 _summarization_llm: Optional[BaseChatModel] = None
 
 
@@ -73,6 +76,8 @@ def create_middleware_stack(
     compaction_threshold: float = COMPACTION_THRESHOLD,
     max_output_chars: int = MAX_OUTPUT_CHARS,
     vfs_enabled: bool = True,
+    compaction_excluded_tools: Optional[set[str]] = None,
+    summarization_excluded_tools: Optional[set[str]] = None,
 ) -> list:
     """
     Create the standard middleware stack for agents.
@@ -94,6 +99,8 @@ def create_middleware_stack(
         compaction_threshold: Context usage ratio to trigger compaction
         max_output_chars: Max chars for single tool output before compaction
         vfs_enabled: Whether to archive to VFS before summarization
+        compaction_excluded_tools: Tools that should never be compacted
+        summarization_excluded_tools: Tools that should never trigger summarization
 
     Returns:
         List of AgentMiddleware instances in execution order
@@ -131,6 +138,7 @@ def create_middleware_stack(
         compaction = VFSCompactionMiddleware(
             compaction_threshold=compaction_threshold,
             max_output_chars=max_output_chars,
+            excluded_tools=compaction_excluded_tools,
         )
         middleware.append(compaction)
         logger.debug(f"Compaction middleware enabled: threshold={compaction_threshold}")
@@ -180,6 +188,7 @@ def create_executor_middleware(
         subagent_tools=subagent_tools,
         subagent_registry=subagent_registry,
         subagent_excluded_tools=subagent_excluded_tools,
+        compaction_excluded_tools=VFS_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
     )
 
 
@@ -195,6 +204,7 @@ def create_comms_middleware() -> list:
     """
     return create_middleware_stack(
         enable_subagent=False,
+        compaction_excluded_tools=VFS_TOOL_NAMES,
     )
 
 
@@ -211,7 +221,7 @@ def create_subagent_middleware(
 
     Provider subagents handle focused integration work and should have:
     - SubagentMiddleware: For spawning focused sub-subagents
-    - Summarization and compaction middleware
+    - NO summarization or compaction (short-lived, max 5 turns)
 
     Spawned sub-subagents will NOT have SubagentMiddleware (enforced by
     SubagentMiddleware itself which excludes spawn_subagent from child tools).
@@ -228,6 +238,8 @@ def create_subagent_middleware(
     """
     return create_middleware_stack(
         enable_subagent=True,
+        enable_summarization=False,
+        enable_compaction=False,
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,
         subagent_registry=subagent_registry,

@@ -24,7 +24,7 @@ from typing import Optional
 EXECUTOR_AGENT = "executor"
 
 # Reserved folder names that can't be used as agent names
-RESERVED_NAMES = {"skills", "executor", "subagents", "global", "users"}
+RESERVED_NAMES = {"skills", "executor", "subagents", "global", "users", "system"}
 
 
 def normalize_path(path: str) -> str:
@@ -66,6 +66,10 @@ def validate_user_access(path: str, user_id: str) -> bool:
     """
     Validate that a path belongs to the specified user.
 
+    Allows access to:
+    - /users/{user_id}/... (user's own files)
+    - /system/... (read-only system files, e.g., bundled skills)
+
     Args:
         path: The normalized path to check
         user_id: The user ID to validate against
@@ -74,6 +78,12 @@ def validate_user_access(path: str, user_id: str) -> bool:
         True if the user has access to this path
     """
     path = normalize_path(path)
+
+    # Allow system paths (read-only)
+    if path.startswith("/system/"):
+        return True
+
+    # User-specific paths
     expected_prefix = f"/users/{user_id}/"
     return path.startswith(expected_prefix) or path == f"/users/{user_id}"
 
@@ -100,6 +110,45 @@ def get_skills_path(user_id: str, skill_type: str = "learned") -> str:
         )
 
     return f"/users/{user_id}/global/skills/{skill_type}"
+
+
+def get_system_skills_path() -> str:
+    """
+    Get the path to system-wide bundled skills.
+
+    System skills are stored at /system/skills/ and are read-only,
+    available to all users without duplication.
+
+    Structure:
+        /system/skills/
+        ├── github/
+        │   └── create-pr/
+        │       └── SKILL.md
+        ├── twitter/
+        │   └── send-dm/
+        └── notion/
+            └── find-items/
+
+    Returns:
+        Path to the system skills root
+    """
+    return "/system/skills"
+
+
+def get_system_skill_path(target: str, skill_name: str) -> str:
+    """
+    Get the VFS path for a system skill.
+
+    Args:
+        target: Skill target scope (github, twitter, notion, etc.)
+        skill_name: The skill name (kebab-case)
+
+    Returns:
+        Full VFS directory path for the skill
+    """
+    safe_name = _sanitize_name(skill_name)
+    safe_target = _sanitize_name(target)
+    return f"/system/skills/{safe_target}/{safe_name}"
 
 
 def get_custom_skill_path(

@@ -49,6 +49,7 @@ class VFSCompactionMiddleware(AgentMiddleware):
         max_output_chars: int = 20000,
         always_persist_tools: list[str] | None = None,
         context_window: int = 128000,
+        excluded_tools: set[str] | None = None,
     ):
         """
         Initialize the VFS compaction middleware.
@@ -61,12 +62,14 @@ class VFSCompactionMiddleware(AgentMiddleware):
                               of thread context usage
             always_persist_tools: Tools whose output should always be persisted
             context_window: Total context window size in tokens (for threshold calc)
+            excluded_tools: Tools whose output should NEVER be compacted
         """
         super().__init__()
         self.compaction_threshold = compaction_threshold
         self.max_output_chars = max_output_chars
         self.always_persist_tools = always_persist_tools or []
         self.context_window = context_window
+        self.excluded_tools = excluded_tools or set()
         self._vfs = None  # Lazy loaded
 
     async def _get_vfs(self):
@@ -152,6 +155,10 @@ class VFSCompactionMiddleware(AgentMiddleware):
         Returns:
             (should_compact, reason) tuple
         """
+        # Skip excluded tools entirely
+        if tool_name in self.excluded_tools:
+            return False, ""
+
         content = result.content if hasattr(result, "content") else str(result)
         content_str = str(content)
         content_size = len(content_str)

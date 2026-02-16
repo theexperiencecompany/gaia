@@ -47,6 +47,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         trigger=("fraction", 0.85),
         keep=("messages", 15),
         vfs_enabled: bool = True,
+        excluded_tools: set[str] | None = None,
         **kwargs,
     ):
         """
@@ -59,6 +60,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
             keep: How many messages to keep after summarization.
                   Defaults to 15 messages.
             vfs_enabled: Whether to archive to VFS before summarization
+            excluded_tools: Tools whose outputs should never trigger summarization
             **kwargs: Additional arguments passed to SummarizationMiddleware
         """
         super().__init__(
@@ -68,6 +70,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
             **kwargs,
         )
         self.vfs_enabled = vfs_enabled
+        self.excluded_tools = excluded_tools or set()
         self._vfs = None  # Lazy loaded
         self._last_archive_path: str | None = None
 

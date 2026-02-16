@@ -36,15 +36,18 @@ from motor.motor_asyncio import AsyncIOMotorGridFSBucket
 
 
 class VFSAccessError(PermissionError):
-    """Raised when a user attempts to access another user's files."""
+    """Raised when a user attempts to access another user's files or system files."""
 
-    def __init__(self, path: str, user_id: str):
+    def __init__(self, path: str, user_id: str, message: str | None = None):
         self.path = path
         self.user_id = user_id
-        super().__init__(
-            f"Access denied: User '{user_id}' cannot access path '{path}'. "
-            f"Users can only access /users/{user_id}/..."
-        )
+        if message:
+            super().__init__(message)
+        else:
+            super().__init__(
+                f"Access denied: User '{user_id}' cannot access path '{path}'. "
+                f"Users can only access /users/{user_id}/..."
+            )
 
 
 class MongoVFS:
@@ -101,6 +104,46 @@ class MongoVFS:
 
         return normalized
 
+    def _validate_write_access(
+        self, path: str, original_path: str | None = None, allow_system: bool = False
+    ) -> None:
+        """
+        Validate that a path is writable (not system read-only).
+
+        Args:
+            path: The normalized path to check (after auto-prefix)
+            original_path: The original path before auto-prefix (to check for /system/)
+            allow_system: If True, allow writing to system paths (for seeding)
+
+        Raises:
+            VFSAccessError: If path is under /system/ (read-only)
+        """
+        # Check instance flag first (set by seeding script)
+        if self._allow_system_write:
+            return
+
+        if allow_system:
+            return
+
+        # Check original path for system paths (before auto-prefix)
+        if original_path:
+            original_normalized = normalize_path(original_path)
+            if original_normalized.startswith("/system/"):
+                raise VFSAccessError(
+                    original_normalized,
+                    "system",
+                    "System paths are read-only. Write operations not allowed.",
+                )
+
+        # Also check the normalized path (for paths that weren't prefixed)
+        normalized = normalize_path(path)
+        if normalized.startswith("/system/"):
+            raise VFSAccessError(
+                normalized,
+                "system",
+                "System paths are read-only. Write operations not allowed.",
+            )
+
     def _auto_prefix_path(self, path: str, user_id: str) -> str:
         """
         Auto-prefix a path with user scope if not already scoped.
@@ -113,11 +156,44 @@ class MongoVFS:
             The path with proper user scope
         """
         normalized = normalize_path(path)
+        # Don't prefix system paths - they have their own namespace
+        if normalized.startswith("/system/"):
+            return normalized
         if not normalized.startswith("/users/"):
             normalized = f"/users/{user_id}/global/{normalized.lstrip('/')}"
         return normalized
 
+    def _is_system_path(self, path: str) -> bool:
+        """Check if a path is a system path."""
+        return normalize_path(path).startswith("/system/")
+
+    def _build_query(
+        self, path: str, user_id: str, include_content: bool = False
+    ) -> dict:
+        """
+        Build MongoDB query for a path, handling system paths.
+
+        For system paths, query by path only (no user_id filter).
+        For user paths, query by path + user_id.
+
+        Args:
+            path: The normalized path
+            user_id: The user ID
+            include_content: If True, include content field in projection
+
+        Returns:
+            MongoDB query dict
+        """
+        if self._is_system_path(path):
+            query = {"path": path}
+        else:
+            query = {"path": path, "user_id": user_id}
+
+        return query
+
     # ==================== Write Operations ====================
+
+    _allow_system_write: bool = False
 
     async def write(
         self,
@@ -144,9 +220,11 @@ class MongoVFS:
         Raises:
             VFSAccessError: If user doesn't have access to the path
         """
+        original_path = path
         # Auto-prefix and validate
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
+        self._validate_write_access(path, original_path)
 
         parent = get_parent_path(path)
         name = get_filename(path)
@@ -223,6 +301,58 @@ class MongoVFS:
         logger.debug(f"VFS: Wrote file {path} ({size_bytes} bytes) for user {user_id}")
         return path
 
+    async def mkdir(self, path: str, user_id: str) -> str:
+        """
+        Create a directory in the VFS.
+
+        Args:
+            path: Target path for the directory
+            user_id: The user ID (REQUIRED for security)
+
+        Returns:
+            The normalized directory path
+
+        Raises:
+            VFSAccessError: If user doesn't have access to the path
+        """
+        original_path = path
+        path = self._auto_prefix_path(path, user_id)
+        path = self._validate_access(path, user_id)
+        self._validate_write_access(path, original_path)
+
+        parent = get_parent_path(path)
+        name = get_filename(path)
+        now = datetime.now(timezone.utc)
+
+        if parent:
+            await self._ensure_directories(parent, user_id)
+
+        await vfs_nodes_collection.update_one(
+            {"path": path, "user_id": user_id},
+            {
+                "$set": {
+                    "name": name,
+                    "node_type": VFSNodeType.FOLDER.value,
+                    "parent_path": parent,
+                    "content": None,
+                    "gridfs_id": None,
+                    "content_type": "inode/directory",
+                    "size_bytes": 0,
+                    "metadata": {"user_id": user_id},
+                    "updated_at": now,
+                    "accessed_at": now,
+                },
+                "$setOnInsert": {
+                    "user_id": user_id,
+                    "created_at": now,
+                },
+            },
+            upsert=True,
+        )
+
+        logger.debug(f"VFS: Created directory {path} for user {user_id}")
+        return path
+
     async def append(self, path: str, content: str, user_id: str) -> str:
         """
         Append content to an existing file.
@@ -240,48 +370,53 @@ class MongoVFS:
         Raises:
             VFSAccessError: If user doesn't have access to the path
         """
+        original_path = path
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
 
-        existing = await self.read(path, user_id)
-        if existing is None:
-            return await self.write(path, content, user_id)
+        if content:
+            self._validate_write_access(path, original_path)
 
-        new_content = existing + content
-        # Preserve existing metadata
-        node = await vfs_nodes_collection.find_one({"path": path, "user_id": user_id})
-        metadata = node.get("metadata", {}) if node else {}
-        return await self.write(path, new_content, user_id, metadata)
+        query = self._build_query(path, user_id)
+        node = await vfs_nodes_collection.find_one(query)
 
-    async def mkdir(self, path: str, user_id: str) -> str:
-        """
-        Create a directory (and all parent directories).
+        existing_content = ""
+        if node and node.get("node_type") == VFSNodeType.FILE.value:
+            if node.get("content") is not None:
+                existing_content = node["content"]
+            elif node.get("gridfs_id"):
+                try:
+                    bucket = await self._get_gridfs()
+                    stream = await bucket.open_download_stream(
+                        ObjectId(node["gridfs_id"])
+                    )
+                    content_bytes: bytes = await stream.read()
+                    existing_content = content_bytes.decode("utf-8")
+                except Exception as e:
+                    logger.error(f"VFS: Error reading GridFS file {path}: {e}")
 
-        Args:
-            path: Directory path to create
-            user_id: The user ID (REQUIRED for security)
+        new_content = existing_content + content
 
-        Returns:
-            The normalized directory path
+        if self._is_system_path(path):
+            await vfs_nodes_collection.update_one(
+                {"path": path},
+                {"$set": {"accessed_at": datetime.now(timezone.utc)}},
+            )
+        else:
+            await vfs_nodes_collection.update_one(
+                {"path": path, "user_id": user_id},
+                {"$set": {"accessed_at": datetime.now(timezone.utc)}},
+            )
 
-        Raises:
-            VFSAccessError: If user doesn't have access to the path
-        """
-        path = self._auto_prefix_path(path, user_id)
-        path = self._validate_access(path, user_id)
-
-        await self._ensure_directories(path, user_id)
-        logger.debug(f"VFS: Created directory {path} for user {user_id}")
+        await self.write(path, new_content, user_id)
         return path
-
-    # ==================== Read Operations ====================
 
     async def read(self, path: str, user_id: str) -> Optional[str]:
         """
         Read file content.
 
         Args:
-            path: File path to read
+            path: Target file path
             user_id: The user ID (REQUIRED for security)
 
         Returns:
@@ -293,27 +428,30 @@ class MongoVFS:
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
 
-        # Query MUST include user_id for security
-        node = await vfs_nodes_collection.find_one({"path": path, "user_id": user_id})
+        query = self._build_query(path, user_id)
+        node = await vfs_nodes_collection.find_one(query)
         if not node or node.get("node_type") != VFSNodeType.FILE.value:
             return None
 
-        # Update accessed_at
-        await vfs_nodes_collection.update_one(
-            {"path": path, "user_id": user_id},
-            {"$set": {"accessed_at": datetime.now(timezone.utc)}},
-        )
+        if self._is_system_path(path):
+            await vfs_nodes_collection.update_one(
+                {"path": path},
+                {"$set": {"accessed_at": datetime.now(timezone.utc)}},
+            )
+        else:
+            await vfs_nodes_collection.update_one(
+                {"path": path, "user_id": user_id},
+                {"$set": {"accessed_at": datetime.now(timezone.utc)}},
+            )
 
-        # Check inline first
         if node.get("content") is not None:
             return node["content"]
 
-        # Load from GridFS
         if node.get("gridfs_id"):
             try:
                 bucket = await self._get_gridfs()
                 stream = await bucket.open_download_stream(ObjectId(node["gridfs_id"]))
-                content_bytes = await stream.read()
+                content_bytes: bytes = await stream.read()
                 return content_bytes.decode("utf-8")
             except Exception as e:
                 logger.error(f"VFS: Error reading GridFS file {path}: {e}")
@@ -338,10 +476,9 @@ class MongoVFS:
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
 
-        # Query MUST include user_id for security
-        node = await vfs_nodes_collection.find_one(
-            {"path": path, "user_id": user_id}, {"_id": 1}
-        )
+        # Query - use _build_query to handle system paths
+        query = self._build_query(path, user_id)
+        node = await vfs_nodes_collection.find_one(query, {"_id": 1})
         return node is not None
 
     async def info(self, path: str, user_id: str) -> Optional[VFSNodeResponse]:
@@ -361,9 +498,10 @@ class MongoVFS:
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
 
-        # Query MUST include user_id for security
+        # Query - use _build_query to handle system paths
+        query = self._build_query(path, user_id)
         node = await vfs_nodes_collection.find_one(
-            {"path": path, "user_id": user_id}, {"content": 0, "gridfs_id": 0}
+            query, {"content": 0, "gridfs_id": 0}
         )
 
         if not node:
@@ -578,8 +716,10 @@ class MongoVFS:
         Raises:
             VFSAccessError: If user doesn't have access to the path
         """
+        original_path = path
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
+        self._validate_write_access(path, original_path)
 
         # Query MUST include user_id for security
         node = await vfs_nodes_collection.find_one({"path": path, "user_id": user_id})
@@ -639,10 +779,14 @@ class MongoVFS:
         Raises:
             VFSAccessError: If user doesn't have access to source or dest
         """
+        original_source = source
+        original_dest = dest
         source = self._auto_prefix_path(source, user_id)
         dest = self._auto_prefix_path(dest, user_id)
         source = self._validate_access(source, user_id)
         dest = self._validate_access(dest, user_id)
+        self._validate_write_access(source, original_source)
+        self._validate_write_access(dest, original_dest)
 
         # Query MUST include user_id for security
         node = await vfs_nodes_collection.find_one({"path": source, "user_id": user_id})
@@ -708,10 +852,12 @@ class MongoVFS:
         Raises:
             VFSAccessError: If user doesn't have access to source or dest
         """
+        original_dest = dest
         source = self._auto_prefix_path(source, user_id)
         dest = self._auto_prefix_path(dest, user_id)
         source = self._validate_access(source, user_id)
         dest = self._validate_access(dest, user_id)
+        self._validate_write_access(dest, original_dest)
 
         # Query MUST include user_id for security
         node = await vfs_nodes_collection.find_one({"path": source, "user_id": user_id})

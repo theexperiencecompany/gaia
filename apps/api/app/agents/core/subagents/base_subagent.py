@@ -27,6 +27,7 @@ from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
+from app.agents.tools.vfs_tools import vfs_read
 from app.config.loggers import langchain_logger as logger
 from app.override.langgraph_bigtool.create_agent import create_agent
 from langchain_core.language_models import LanguageModelLike
@@ -82,10 +83,20 @@ class SubAgentFactory:
         # Add search_memory to scoped_tool_dict so subagents can access user memories
         scoped_tool_dict[search_memory.name] = search_memory
 
+        # Add vfs_read so subagents can always read VFS files (e.g. compacted tool outputs)
+        scoped_tool_dict[vfs_read.name] = vfs_read
+
+        # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
+        # all parent tools, not just the provider's scoped tools.
+        # The provider agent itself uses scoped_tool_dict for its own tool access,
+        # but its SubagentMiddleware needs the full registry so that any child
+        # subagent it spawns can access tools like vfs_read, web_search, etc.
+        full_tool_dict = tool_registry.get_tool_dict()
+
         middleware = create_subagent_middleware(
             todo_source=provider,
             subagent_llm=llm,
-            subagent_registry=scoped_tool_dict,
+            subagent_registry=full_tool_dict,
         )
 
         # Create todo tools and register them in the scoped tool registry
@@ -98,7 +109,7 @@ class SubAgentFactory:
 
         for mw in middleware:
             if isinstance(mw, SubagentMiddleware):
-                mw.set_tools(registry=scoped_tool_dict, tool_space=tool_space)
+                mw.set_tools(registry=full_tool_dict)
                 mw.set_store(store)
                 break
 
@@ -118,7 +129,9 @@ class SubAgentFactory:
         if use_direct_tools:
             common_kwargs.update(
                 {
-                    "initial_tool_ids": initial_tool_ids + todo_tool_names,
+                    "initial_tool_ids": initial_tool_ids
+                    + todo_tool_names
+                    + [vfs_read.name],
                     "disable_retrieve_tools": disable_retrieve_tools,
                 }
             )
@@ -131,7 +144,8 @@ class SubAgentFactory:
                         tool_space=tool_space,
                         include_subagents=False,
                     ),
-                    "initial_tool_ids": [search_memory.name] + todo_tool_names,
+                    "initial_tool_ids": [search_memory.name, vfs_read.name]
+                    + todo_tool_names,
                 }
             )
 

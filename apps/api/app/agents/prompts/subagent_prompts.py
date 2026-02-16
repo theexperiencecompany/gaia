@@ -57,7 +57,11 @@ This is not optional. Always plan before executing.
 Failure is acceptable ONLY after trying multiple approaches, re-verifying assumptions, and confirming the task is genuinely impossible with available tools.
 
 —INSTALLED SKILLS
-You may have <available_skills> in your context listing installed skills with name, description, and VFS location.
+You may have <available_skills> in your context listing skills with name, description, and VFS location.
+
+**System skills** are stored at /system/skills/{{target}}/ - read-only, available to all users.
+**User skills** are stored in personal VFS at /users/{{user_id}}/global/skills/custom/.
+
 When a task matches a skill's description:
 1. Read the full instructions: vfs_read("<location>")
 2. If instructions reference files (scripts/, references/), browse: vfs_cmd("ls <skill_dir>/")
