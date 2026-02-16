@@ -96,6 +96,15 @@ class CommonSettings(BaseAppSettings):
     SKILL_LEARNING_ENABLED: bool = False  # Disabled until ready for production
 
     # ----------------------------------------------
+    # GitHub Integration (for Skill Discovery)
+    # ----------------------------------------------
+    # Optional: Get a token at https://github.com/settings/tokens
+    # - No scopes needed (just public repo read)
+    # - Gives 5,000 API requests/hour vs 60/hour without token
+    # - Used for discovering and installing skills from GitHub
+    GITHUB_TOKEN: Optional[str] = None
+
+    # ----------------------------------------------
     # Computed Properties
     # ----------------------------------------------
 

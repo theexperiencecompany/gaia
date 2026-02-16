@@ -3,6 +3,7 @@
 All HTTP calls are synchronous using httpx.Client to avoid event loop issues.
 """
 
+import asyncio
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -115,6 +116,20 @@ class SnoozeEmailInput(BaseModel):
         "Common values: 'tomorrow morning' (9am next day), 'next week' (Monday 9am), "
         "'this afternoon' (today 3pm), 'this evening' (today 6pm)",
     )
+
+
+class GetContactListInput(BaseModel):
+    """Input for getting contact list from email history."""
+
+    max_results: int = Field(
+        default=100,
+        description="Maximum number of messages to analyze (default: 100)",
+    )
+
+
+def _get_user_id(auth_credentials: Dict[str, Any]) -> str:
+    """Extract user_id from auth_credentials."""
+    return auth_credentials.get("user_id", "")
 
 
 def register_gmail_custom_tools(composio: Composio):
@@ -267,10 +282,55 @@ def register_gmail_custom_tools(composio: Composio):
             "label_id": request.label_id,
         }
 
+    @composio.tools.custom_tool(toolkit="gmail")
+    def GET_CONTACT_LIST(
+        request: GetContactListInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get contacts from email history.
+
+        Extracts unique contacts from the user's email history by:
+        1. Fetching messages from inbox and sent
+        2. Parsing email headers (From, To, Cc, Reply-To)
+        3. Extracting names and email addresses
+        4. Deduplicating results
+
+        Returns: Array of contacts with name and email, sorted alphabetically.
+
+        Use this when:
+        - User asks "Show me my contacts"
+        - User asks "Get my contact list"
+        - User asks "Who have I emailed recently?"
+        - User wants a list of all email addresses they've interacted with
+        """
+        from app.services.mail import mail_service
+
+        user_id = _get_user_id(auth_credentials)
+        if not user_id:
+            raise ValueError("Missing user_id in auth_credentials")
+
+        try:
+            loop = asyncio.new_event_loop()
+            try:
+                contacts = loop.run_until_complete(
+                    mail_service.get_contact_list(user_id, request.max_results)
+                )
+            finally:
+                loop.close()
+        except Exception as e:
+            raise RuntimeError(f"Failed to get contacts: {e}")
+
+        return {
+            "contacts": contacts,
+            "count": len(contacts),
+        }
+
     return [
         "GMAIL_MARK_AS_READ",
         "GMAIL_MARK_AS_UNREAD",
         "GMAIL_ARCHIVE_EMAIL",
         "GMAIL_STAR_EMAIL",
         "GMAIL_GET_UNREAD_COUNT",
+        "GMAIL_GET_CONTACT_LIST",
     ]

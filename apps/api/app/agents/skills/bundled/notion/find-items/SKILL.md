@@ -1,90 +1,56 @@
 ---
 name: find-items
-description: Find pages and databases in Notion - search for pages by title, list databases, query database contents with filters
+description: Find pages and databases in Notion - search, list, query database contents with filters
 target: notion
 auto_invoke: true
 ---
 
-# Notion Page and Database Lookup
+# Notion Discovery Tools
 
-Use this skill when helping users find information stored in Notion.
+Use this skill to find pages and databases before creating or modifying content.
 
-## Finding Pages
+**Core principle: ALWAYS discover before you act. Never assume or hardcode IDs.**
 
-### Search by Title
-Use `NOTION_SEARCH` with:
-- `query`: Search terms
-- `filter`: Set `value: "page"` to only return pages
+## When to Use
+- User wants to find a specific page or database
+- Before creating or modifying any Notion content
+- User asks to query database with filters
+- Need to verify page/database exists before operations
 
-### Get Page Content
-Once you have a page ID:
-- Use `NOTION_GET_PAGE` to get page metadata (title, created time, properties)
-- Use `NOTION_GET_BLOCK_CHILDREN` to get the page's content blocks
+## Tools
 
-## Working with Databases
+### NOTION_FETCH_DATA
+Primary discovery tool for listing pages and databases.
+- fetch_type: "pages" | "databases"
+- page_size: max results (default: 100)
+- query: optional title filter
 
-### List Databases
-Use `NOTION_SEARCH` with `filter: { value: "database", property: "object" }` to find all databases the user has access to.
+### NOTION_SEARCH_NOTION_PAGE
+Fuzzy search across pages/databases by title or content.
 
-### Query a Database
-Use `NOTION_DATABASE_QUERY` with:
-- `database_id`: The database's Notion ID
-- `filter`: Property-based filters (e.g., status = "In Progress")
-- `sorts`: Sort by property (e.g., date descending)
-- `page_size`: Limit results (default 100)
+### NOTION_FETCH_DATABASE
+Get database schema (properties, types). **Always call before inserting rows.**
 
-### Common Query Patterns
+### NOTION_QUERY_DATABASE_WITH_FILTER
+Query database with property-based filters.
 
-**Find by status:**
-```json
-{
-  "property": "Status",
-  "status": { "equals": "Done" }
-}
-```
+## Workflow
 
-**Find by person (assignee):**
-```json
-{
-  "property": "Assignee",
-  "people": { "contains": "{user_id}" }
-}
-```
+### Finding Pages/Databases
+1. NOTION_FETCH_DATA - List pages or databases (default: 100 results)
+2. NOTION_SEARCH_NOTION_PAGE - Fuzzy search if FETCH_DATA doesn't find target
 
-**Date filters:**
-```json
-{
-  "property": "Due Date",
-  "date": { "on_or_before": "2024-12-31" }
-}
-```
+### Before Creating Content
+1. Find parent page/database ID
+2. Use NOTION_FETCH_DATABASE to get schema (required before inserting rows)
+3. Create or insert
 
-**Text search:**
-```json
-{
-  "property": "Name",
-  "title": { "contains": "search term" }
-}
-```
-
-## Getting Database Schema
-To understand a database's properties:
-1. Get the database with `NOTION_GET_DATABASE`
-2. Look at the `properties` field to see all columns and their types
-
-## Creating Items in Notion
-
-### Create a Page
-Use `NOTION_CREATE_PAGE`:
-- Must provide `parent` (database_id or page_id)
-- Provide `properties` matching the database schema
-
-### Update Properties
-Use `NOTION_UPDATE_PAGE` to update specific properties on an existing page.
+### Querying Databases
+1. Find database ID
+2. Use NOTION_QUERY_DATABASE_WITH_FILTER with property filters
 
 ## Tips
-
-- Always verify you have the correct page/database ID
-- Check property types before attempting to filter or create
-- Use meaningful search queries - Notion search is powerful
-- For databases, check what views exist - users often have saved filters
+- Start with FETCH_DATA for overview, then SEARCH for specifics
+- Always verify IDs before creating/updating
+- Get schema first using NOTION_FETCH_DATABASE before inserting rows
+- Handle multiple search results by asking user to clarify

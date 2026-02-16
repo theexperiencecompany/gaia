@@ -5,6 +5,7 @@ Handles fetching skill content from external sources, parsing SKILL.md,
 writing files to VFS, and registering in the MongoDB skill registry.
 """
 
+import os
 import re
 from typing import List, Optional, Tuple
 
@@ -20,9 +21,22 @@ from app.agents.skills.registry import install_skill
 from app.config.loggers import app_logger as logger
 from app.services.vfs.path_resolver import get_custom_skill_path
 
-# GitHub raw content base
 GITHUB_API_BASE = "https://api.github.com"
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
+
+
+def _get_github_token() -> Optional[str]:
+    """Get GitHub token from environment for API rate limit relief."""
+    return os.environ.get("GITHUB_TOKEN")
+
+
+def _get_headers() -> dict:
+    """Get headers for GitHub API requests."""
+    headers = {"Accept": "application/vnd.github.v3+json"}
+    token = _get_github_token()
+    if token:
+        headers["Authorization"] = f"token {token}"
+    return headers
 
 
 def _parse_github_url(url: str) -> Tuple[str, str, Optional[str]]:
@@ -77,18 +91,22 @@ async def _fetch_github_contents(
     params = {"ref": branch}
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, params=params)
+        resp = await client.get(url, params=params, headers=_get_headers())
 
         if resp.status_code == 404:
-            # Try 'master' branch
             if branch == "main":
                 return await _fetch_github_contents(owner, repo, path, "master")
             raise ValueError(f"Path not found: {owner}/{repo}/{path}")
 
+        if resp.status_code == 403:
+            logger.warning("GitHub API rate limit exceeded. Try again later.")
+            raise ValueError(
+                "GitHub API rate limit exceeded. Please try again later, or set GITHUB_TOKEN for higher limits (5000/hr vs 60/hr)."
+            )
+
         resp.raise_for_status()
         data = resp.json()
 
-        # If it's a single file, wrap it
         if isinstance(data, dict):
             return [data]
         return data
@@ -97,7 +115,7 @@ async def _fetch_github_contents(
 async def _fetch_file_content(download_url: str) -> str:
     """Download raw file content from a URL."""
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(download_url)
+        resp = await client.get(download_url, headers=_get_headers())
         resp.raise_for_status()
         return resp.text
 

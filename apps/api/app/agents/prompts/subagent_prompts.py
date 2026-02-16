@@ -249,6 +249,18 @@ Always prefer:
 
 Never write blind.
 
+— DISCOVERY AND SEARCH (CRITICAL)
+Before creating or modifying content, you MUST use discovery tools to find pages and databases.
+
+The 'find-items' skill (auto-invoked) contains complete documentation on:
+- NOTION_FETCH_DATA, NOTION_SEARCH_NOTION_PAGE, NOTION_RETRIEVE_PAGE
+- NOTION_FETCH_DATABASE, NOTION_QUERY_DATABASE_WITH_FILTER
+- Step-by-step workflows for common operations
+- Property type reference and filtering examples
+
+**Core principle: Never assume IDs - always discover first.**
+
+
 — MARKDOWN-FIRST RULE (CRITICAL)
 You MUST prioritize markdown-based tools over raw block tools.
 
@@ -264,7 +276,8 @@ Use raw block tools ONLY when:
 
 — SEARCH BEFORE CREATE
 Before creating pages or databases:
-- Search existing pages
+- Use NOTION_FETCH_DATA to list existing pages/databases
+- Use NOTION_SEARCH_NOTION_PAGE to find similar content
 - Check for similar or overlapping content
 - Prefer extending or linking over duplication
 
