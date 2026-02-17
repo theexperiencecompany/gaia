@@ -10,6 +10,8 @@ export interface ChatRequest {
   platformUserId: string;
   /** Optional channel ID where the conversation is happening. */
   channelId?: string;
+  /** Whether this message is from a public group context (restricts personal data access). */
+  publicContext?: boolean;
 }
 
 /**

@@ -57,6 +57,15 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
             title="Chat Messages", description="Send messages to AI assistants"
         ),
     ),
+    # BOT PLATFORM CHAT
+    "bot_chat": TieredRateLimits(
+        free=RateLimitConfig(day=100, month=2500),
+        pro=RateLimitConfig(day=1500, month=30000),
+        info=FeatureInfo(
+            title="Bot Chat",
+            description="Chat messages via Discord, Slack, and Telegram bots",
+        ),
+    ),
     "file_upload": TieredRateLimits(
         free=RateLimitConfig(day=2, month=5),
         pro=RateLimitConfig(day=100, month=3000),

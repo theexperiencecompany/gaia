@@ -1,21 +1,17 @@
 import type { Bot } from "grammy";
 import type { GaiaClient } from "@gaia/shared";
-import { truncateResponse, formatError } from "@gaia/shared";
+import { splitMessage, formatError } from "@gaia/shared";
 
-/**
- * Registers the /gaia command handler.
- * Allows users to chat with the GAIA agent directly.
- *
- * @param {Bot} bot - The Telegram Bot instance.
- * @param {GaiaClient} gaia - The GAIA API client.
- */
 export function registerGaiaCommand(bot: Bot, gaia: GaiaClient) {
   bot.command("gaia", async (ctx) => {
     const message = ctx.match;
     const userId = ctx.from?.id.toString();
     const chatId = ctx.chat.id.toString();
 
-    if (!userId) return;
+    if (!userId) {
+      await ctx.reply("Could not identify your user.");
+      return;
+    }
 
     if (!message) {
       await ctx.reply("Usage: /gaia <your message>");
@@ -29,7 +25,7 @@ export function registerGaiaCommand(bot: Bot, gaia: GaiaClient) {
         message,
         platform: "telegram",
         platformUserId: userId,
-        channelId: chatId
+        channelId: chatId,
       });
 
       if (!response.authenticated) {
@@ -38,8 +34,10 @@ export function registerGaiaCommand(bot: Bot, gaia: GaiaClient) {
         return;
       }
 
-      const truncated = truncateResponse(response.response, "telegram");
-      await ctx.reply(truncated);
+      const chunks = splitMessage(response.response, "telegram");
+      for (const chunk of chunks) {
+        await ctx.reply(chunk);
+      }
     } catch (error) {
       await ctx.reply(formatError(error));
     }

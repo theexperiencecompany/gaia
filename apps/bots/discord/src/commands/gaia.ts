@@ -1,6 +1,10 @@
-import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from "discord.js";
+import {
+  SlashCommandBuilder,
+  ChatInputCommandInteraction,
+  MessageFlags,
+} from "discord.js";
 import type { GaiaClient } from "@gaia/shared";
-import { truncateResponse, formatError } from "@gaia/shared";
+import { splitMessage, formatError } from "@gaia/shared";
 
 export const data = new SlashCommandBuilder()
   .setName("gaia")
@@ -9,20 +13,12 @@ export const data = new SlashCommandBuilder()
     option
       .setName("message")
       .setDescription("Your message to GAIA")
-      .setRequired(true)
+      .setRequired(true),
   );
 
-/**
- * Executes the /gaia slash command.
- * Sends the user's message to GAIA and replies with the response.
- * Handles authentication if the user is not linked.
- *
- * @param {ChatInputCommandInteraction} interaction - The Discord interaction object.
- * @param {GaiaClient} gaia - The GAIA API client.
- */
 export async function execute(
   interaction: ChatInputCommandInteraction,
-  gaia: GaiaClient
+  gaia: GaiaClient,
 ) {
   const message = interaction.options.getString("message", true);
   const userId = interaction.user.id;
@@ -35,19 +31,25 @@ export async function execute(
       message,
       platform: "discord",
       platformUserId: userId,
-      channelId
+      channelId,
     });
 
     if (!response.authenticated) {
       const authUrl = gaia.getAuthUrl("discord", userId);
       await interaction.editReply({
-        content: `Please authenticate first: ${authUrl}`
+        content: `Please authenticate first: ${authUrl}`,
       });
       return;
     }
 
-    const truncated = truncateResponse(response.response, "discord");
-    await interaction.editReply({ content: truncated });
+    const chunks = splitMessage(response.response, "discord");
+    await interaction.editReply({ content: chunks[0] });
+    for (let i = 1; i < chunks.length; i++) {
+      await interaction.followUp({
+        content: chunks[i],
+        flags: MessageFlags.Ephemeral,
+      });
+    }
   } catch (error) {
     await interaction.editReply({ content: formatError(error) });
   }

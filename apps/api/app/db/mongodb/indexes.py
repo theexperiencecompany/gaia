@@ -183,6 +183,16 @@ async def create_conversation_indexes():
             conversations_collection.create_index(
                 [("user_id", 1), ("messages.pinned", 1)]
             ),
+            # For bot session queries (ESR order: equality fields first)
+            conversations_collection.create_index(
+                [
+                    ("user_id", 1),
+                    ("is_system_generated", 1),
+                    ("system_purpose", 1),
+                    ("metadata.bot_platform", 1),
+                    ("metadata.bot_active", 1),
+                ]
+            ),
         )
 
     except Exception as e:

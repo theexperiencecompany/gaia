@@ -1,8 +1,15 @@
 import { REST, Routes } from "discord.js";
 import { data as gaiaCommand } from "./commands/gaia";
 import { data as authCommand } from "./commands/auth";
+import { data as newCommand } from "./commands/new";
+import { data as helpCommand } from "./commands/help";
 
-const commands = [gaiaCommand.toJSON(), authCommand.toJSON()];
+const commands = [
+  gaiaCommand.toJSON(),
+  authCommand.toJSON(),
+  newCommand.toJSON(),
+  helpCommand.toJSON(),
+];
 
 const token = process.env.DISCORD_BOT_TOKEN;
 const clientId = process.env.DISCORD_CLIENT_ID;

@@ -1,14 +1,7 @@
 import type { GaiaClient } from "@gaia/shared";
-import { formatError, truncateResponse } from "@gaia/shared";
+import { formatError, splitMessage } from "@gaia/shared";
 import type { App } from "@slack/bolt";
 
-/**
- * Registers the /gaia slash command listener.
- * Handles authenticated chat with the GAIA agent.
- *
- * @param {App} app - The Slack App instance.
- * @param {GaiaClient} gaia - The GAIA API client.
- */
 export function registerGaiaCommand(app: App, gaia: GaiaClient) {
   app.command("/gaia", async ({ command, ack, respond }) => {
     await ack();
@@ -42,11 +35,13 @@ export function registerGaiaCommand(app: App, gaia: GaiaClient) {
         return;
       }
 
-      const truncated = truncateResponse(response.response, "slack");
-      await respond({
-        text: truncated,
-        response_type: "ephemeral",
-      });
+      const chunks = splitMessage(response.response, "slack");
+      for (const chunk of chunks) {
+        await respond({
+          text: chunk,
+          response_type: "ephemeral",
+        });
+      }
     } catch (error) {
       await respond({
         text: formatError(error),

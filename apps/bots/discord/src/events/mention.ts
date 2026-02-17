@@ -1,16 +1,16 @@
 import type { Message } from "discord.js";
 import type { GaiaClient } from "@gaia/shared";
-import { truncateResponse, formatError } from "@gaia/shared";
+import { splitMessage, formatError } from "@gaia/shared";
 
-/**
- * Handles messages where the bot is mentioned.
- * Treats these as public (unauthenticated) chat requests.
- *
- * @param {Message} message - The Discord message object.
- * @param {GaiaClient} gaia - The GAIA API client.
- */
-export async function handleMention(message: Message, gaia: GaiaClient) {
-  const content = message.content.replace(/<@!?\d+>/g, "").trim();
+export async function handleMention(
+  message: Message,
+  gaia: GaiaClient,
+  botId: string,
+) {
+  // Strip only the bot's own mention tag so user references remain intact
+  const content = message.content
+    .replace(new RegExp(`<@!?${botId}>`, "g"), "")
+    .trim();
 
   if (!content) {
     await message.reply("How can I help you?");
@@ -18,18 +18,30 @@ export async function handleMention(message: Message, gaia: GaiaClient) {
   }
 
   try {
-    if ('sendTyping' in message.channel) {
+    if ("sendTyping" in message.channel) {
       await message.channel.sendTyping();
     }
 
-    const response = await gaia.chatPublic({
+    const response = await gaia.chat({
       message: content,
       platform: "discord",
-      platformUserId: message.author.id
+      platformUserId: message.author.id,
+      channelId: message.channelId,
+      publicContext: true,
     });
 
-    const truncated = truncateResponse(response.response, "discord");
-    await message.reply(truncated);
+    if (!response.authenticated) {
+      const authUrl = gaia.getAuthUrl("discord", message.author.id);
+      await message.reply(
+        `Please link your account first: ${authUrl}`,
+      );
+      return;
+    }
+
+    const chunks = splitMessage(response.response, "discord");
+    for (const chunk of chunks) {
+      await message.reply(chunk);
+    }
   } catch (error) {
     await message.reply(formatError(error));
   }

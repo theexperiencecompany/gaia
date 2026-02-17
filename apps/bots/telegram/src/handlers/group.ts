@@ -2,10 +2,27 @@ import type { Bot } from "grammy";
 import type { GaiaClient } from "@gaia/shared";
 import { splitMessage, formatError } from "@gaia/shared";
 
-export function registerMessageHandler(bot: Bot, gaia: GaiaClient) {
-  bot.on("message:text", async (ctx) => {
-    if (ctx.message.text.startsWith("/")) return;
-    if (ctx.chat.type !== "private") return;
+export function registerGroupHandler(bot: Bot, gaia: GaiaClient) {
+  bot.on("message:text", async (ctx, next) => {
+    const chatType = ctx.chat.type;
+    if (chatType !== "group" && chatType !== "supergroup") {
+      return next();
+    }
+
+    const botUsername = ctx.me.username;
+    if (!botUsername || !ctx.message.text.includes(`@${botUsername}`)) {
+      return next();
+    }
+
+    // Strip only the bot's own @mention so user references remain intact
+    const content = ctx.message.text
+      .replace(new RegExp(`@${botUsername}`, "g"), "")
+      .trim();
+
+    if (!content) {
+      await ctx.reply("How can I help you?");
+      return;
+    }
 
     const userId = ctx.from?.id.toString();
     if (!userId) {
@@ -17,15 +34,16 @@ export function registerMessageHandler(bot: Bot, gaia: GaiaClient) {
       await ctx.replyWithChatAction("typing");
 
       const response = await gaia.chat({
-        message: ctx.message.text,
+        message: content,
         platform: "telegram",
         platformUserId: userId,
         channelId: ctx.chat.id.toString(),
+        publicContext: true,
       });
 
       if (!response.authenticated) {
         const authUrl = gaia.getAuthUrl("telegram", userId);
-        await ctx.reply(`Please authenticate first: ${authUrl}`);
+        await ctx.reply(`Please link your account first: ${authUrl}`);
         return;
       }
 
