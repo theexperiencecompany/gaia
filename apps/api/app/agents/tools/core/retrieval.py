@@ -488,9 +488,6 @@ def get_retrieve_tools_function(
         logger.info(f"User namespaces: {user_namespaces}")
         logger.info(f"Internal subagents (always available): {internal_subagents}")
 
-        # Run diagnostics
-        await _log_store_diagnostics(store)
-
         # Build and execute search tasks
         search_tasks = _build_search_tasks(
             store, query or "", tool_space, user_namespaces, include_subagents, limit

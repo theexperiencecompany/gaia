@@ -12,7 +12,9 @@ from typing import Any, Dict, Optional
 
 from app.config.loggers import app_logger as logger
 from app.config.oauth_config import get_integration_by_id
+from app.constants.cache import ONE_HOUR_TTL
 from app.db.mongodb.collections import users_collection
+from app.decorators.caching import Cacheable, CacheInvalidator
 from app.services.composio.composio_service import get_composio_service
 from bson import ObjectId
 
@@ -145,6 +147,7 @@ async def fetch_provider_user_info(
     return metadata if metadata else None
 
 
+@CacheInvalidator(key_patterns=["provider_metadata:{user_id}:{provider}"])
 async def store_provider_metadata(
     user_id: str, provider: str, metadata: Dict[str, str]
 ) -> bool:
@@ -182,6 +185,7 @@ async def store_provider_metadata(
         return False
 
 
+@Cacheable(key_pattern="provider_metadata:{user_id}:{provider}", ttl=ONE_HOUR_TTL)
 async def get_provider_metadata(
     user_id: str, provider: str
 ) -> Optional[Dict[str, str]]:

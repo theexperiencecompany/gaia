@@ -321,6 +321,7 @@ async def prepare_executor_execution(
     Similar to prepare_subagent_execution but:
     - Uses GraphManager for graph resolution (not providers)
     - Uses create_system_message for executor-specific prompts
+    - Injects direct handoff hints when selected_tool/tool_category is known
 
     Args:
         task: The task/query to execute
@@ -370,12 +371,27 @@ async def prepare_executor_execution(
         user_name=configurable.get("user_name"),
     )
 
+    # Inject direct handoff hint when tool_category maps to a known subagent
+    # This lets the executor skip the retrieve_tools discovery round-trip
+    enhanced_task = task
+    tool_category = configurable.get("tool_category")
+    selected_tool = configurable.get("selected_tool")
+    if tool_category and selected_tool:
+        subagent_integration = get_subagent_by_id(tool_category)
+        if subagent_integration:
+            enhanced_task = (
+                f"{task}\n\n"
+                f"DIRECT EXECUTION HINT: The tool '{selected_tool}' belongs to the "
+                f"'{tool_category}' subagent. Skip retrieve_tools discovery and directly "
+                f"call handoff(subagent_id=\"{tool_category}\", task=\"{task}\")."
+            )
+
     # Build messages using shared helper
     messages = await build_initial_messages(
         system_message=system_message,
         agent_name="executor_agent",
         configurable=new_configurable,
-        task=task,
+        task=enhanced_task,
         user_id=user_id,
     )
 

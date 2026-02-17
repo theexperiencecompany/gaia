@@ -5,6 +5,7 @@ Reusable utilities for working with subagents, including system prompt creation
 with provider metadata injection and skill retrieval.
 """
 
+import asyncio
 import re
 from datetime import datetime, timezone
 from typing import Optional
@@ -186,9 +187,13 @@ async def create_agent_context_message(
         except Exception as e:
             logger.warning(f"Error parsing user_time: {e}")
 
-    # Search for conversation memories
+    # Search for memories and skills concurrently
     memories_section = ""
-    if user_id and query:
+    skills_section = ""
+
+    async def _fetch_memories() -> str:
+        if not (user_id and query):
+            return ""
         try:
             results = await memory_service.search_memories(
                 query=query, user_id=user_id, limit=5
@@ -196,17 +201,18 @@ async def create_agent_context_message(
             if results:
                 memories = getattr(results, "memories", None)
                 if memories:
-                    memories_section = (
+                    logger.info(f"Added {len(memories)} memories to subagent context")
+                    return (
                         "\n\nBased on our previous conversations:\n"
                         + "\n".join(f"- {mem.content}" for mem in memories)
                     )
-                    logger.info(f"Added {len(memories)} memories to subagent context")
         except Exception as e:
             logger.warning(f"Error retrieving memories for subagent: {e}")
+        return ""
 
-    # Search for relevant skills (only for subagents, and only if skill learning is enabled)
-    skills_section = ""
-    if subagent_id and query and settings.SKILL_LEARNING_ENABLED:
+    async def _fetch_skills() -> str:
+        if not (subagent_id and query and settings.SKILL_LEARNING_ENABLED):
+            return ""
         try:
             skill_service = get_skill_learning_service()
             result = await skill_service.search_skills(
@@ -215,14 +221,19 @@ async def create_agent_context_message(
                 limit=3,
             )
             if result.skills:
-                skills_section = skill_service.format_skills_for_prompt(
-                    result.skills, subagent_id
-                )
                 logger.info(
                     f"Added {len(result.skills)} skills to {subagent_id} context"
                 )
+                return skill_service.format_skills_for_prompt(
+                    result.skills, subagent_id
+                )
         except Exception as e:
             logger.warning(f"Error retrieving skills for {subagent_id}: {e}")
+        return ""
+
+    memories_section, skills_section = await asyncio.gather(
+        _fetch_memories(), _fetch_skills()
+    )
 
     content = "\n".join(context_parts) + memories_section + skills_section
 

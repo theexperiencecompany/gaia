@@ -66,7 +66,7 @@ async def get_user_connected_integrations(user_id: str) -> List[Dict[str, Any]]:
     return results
 
 
-@CacheInvalidator(key_patterns=["tools:user:{user_id}:*"])
+@CacheInvalidator(key_patterns=["tools:user:{user_id}:*", "tool_namespaces:{user_id}"])
 async def add_user_integration(
     user_id: str,
     integration_id: str,
@@ -109,7 +109,7 @@ async def add_user_integration(
     return user_integration
 
 
-@CacheInvalidator(key_patterns=["tools:user:{user_id}:*"])
+@CacheInvalidator(key_patterns=["tools:user:{user_id}:*", "tool_namespaces:{user_id}"])
 async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     """Remove an integration from user's workspace."""
     result = await user_integrations_collection.delete_one(

@@ -10,19 +10,21 @@ For main functions, import directly from:
 
 from typing import Any, Dict, List, Set
 
-from app.config.oauth_config import OAUTH_INTEGRATIONS
+from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
+from app.constants.cache import ONE_DAY_TTL
+from app.decorators.caching import Cacheable
+from app.helpers.integration_helpers import generate_integration_slug
+from app.helpers.namespace_utils import derive_integration_namespace
 from app.schemas.integrations.responses import (
     CommunityIntegrationCreator,
     CommunityIntegrationItem,
     IntegrationTool,
 )
-from app.services.oauth.oauth_service import get_all_integrations_status
-from app.helpers.integration_helpers import generate_integration_slug
-from app.helpers.namespace_utils import derive_integration_namespace
-from app.config.oauth_config import get_integration_by_id
 from app.services.integrations.integration_resolver import IntegrationResolver
+from app.services.oauth.oauth_service import get_all_integrations_status
 
 
+@Cacheable(key_pattern="tool_namespaces:{user_id}", ttl=ONE_DAY_TTL)
 async def get_user_available_tool_namespaces(user_id: str) -> Set[str]:
     """Get the set of integration namespaces (tool spaces) that user has connected.
 
