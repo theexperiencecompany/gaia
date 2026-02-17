@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import List, Literal, Optional
 from zoneinfo import ZoneInfo
@@ -151,11 +152,11 @@ async def get_memory_message(
             except Exception as e:
                 logger.warning(f"Error formatting user local time: {e}")
 
-        # Search for conversation memories
-        memories_section = await _get_user_memories_section(query, user_id)
-
-        # Search for GAIA knowledge
-        gaia_knowledge_section = await _get_gaia_knowledge_section(query)
+        # Search for conversation memories and GAIA knowledge in parallel
+        memories_section, gaia_knowledge_section = await asyncio.gather(
+            _get_user_memories_section(query, user_id),
+            _get_gaia_knowledge_section(query),
+        )
 
         # Combine all sections
         content = "\n".join(context_parts) + memories_section + gaia_knowledge_section

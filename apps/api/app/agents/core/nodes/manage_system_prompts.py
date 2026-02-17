@@ -40,34 +40,28 @@ def manage_system_prompts_node(
         if not messages:
             return state
 
-        # Find the latest non-memory system prompt
+        # Single reverse scan to find the latest non-memory system prompt
         latest_non_memory_system_prompt_idx = None
-
-        for idx, msg in enumerate(messages):
+        for idx in range(len(messages) - 1, -1, -1):
+            msg = messages[idx]
             if msg.type == "system":
                 is_memory = msg.additional_kwargs.get(
                     "memory_message", False
                 ) or msg.model_extra.get("memory_message", False)
-                # Track the latest non-memory system prompt index
                 if not is_memory:
                     latest_non_memory_system_prompt_idx = idx
+                    break
 
-        # Filter messages: keep all except old non-memory system prompts
+        # Single forward pass to filter
         filtered_messages = []
         for idx, msg in enumerate(messages):
-            if msg.type == "system":
-                is_memory = msg.additional_kwargs.get(
-                    "memory_message", False
-                ) or msg.model_extra.get("memory_message", False)
-                # Keep memory messages always
-                if is_memory:
-                    filtered_messages.append(msg)
-                # Keep only the latest non-memory system prompt
-                elif idx == latest_non_memory_system_prompt_idx:
-                    filtered_messages.append(msg)
-                # Skip older non-memory system prompts
-            else:
-                # Keep all non-system messages
+            if msg.type != "system":
+                filtered_messages.append(msg)
+                continue
+            is_memory = msg.additional_kwargs.get(
+                "memory_message", False
+            ) or msg.model_extra.get("memory_message", False)
+            if is_memory or idx == latest_non_memory_system_prompt_idx:
                 filtered_messages.append(msg)
 
         return {**state, "messages": filtered_messages}
