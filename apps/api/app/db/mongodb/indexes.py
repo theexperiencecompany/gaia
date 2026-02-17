@@ -548,7 +548,7 @@ async def create_payment_indexes():
 async def create_processed_webhook_indexes():
     """
     Create indexes for processed_webhooks collection for idempotency.
-    
+
     - Unique index for idempotency check
     - TTL index for automatic cleanup
     """
@@ -558,7 +558,8 @@ async def create_processed_webhook_indexes():
             processed_webhooks_collection.create_index("webhook_id", unique=True),
             # TTL index to auto-delete old records after 30 days
             processed_webhooks_collection.create_index(
-                "processed_at", expireAfterSeconds=2592000  # 30 days
+                "processed_at",
+                expireAfterSeconds=2592000,  # 30 days
             ),
         )
     except Exception as e:

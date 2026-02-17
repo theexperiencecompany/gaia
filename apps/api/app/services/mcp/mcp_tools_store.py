@@ -83,25 +83,9 @@ class MCPToolsStore:
             return {}
 
     async def _refresh_cache(self) -> None:
-        """Pre-warm cache after write."""
+        """Pre-warm cache after write. Reuses get_all_mcp_tools which re-queries since cache was just deleted."""
         try:
-            cursor = integrations_collection.find(
-                {"tools": {"$exists": True, "$ne": []}},
-                {"integration_id": 1, "tools": 1, "name": 1, "icon_url": 1},
-            )
-
-            grouped: dict[str, dict] = {}
-            async for doc in cursor:
-                integration_id = doc.get("integration_id")
-                tools = doc.get("tools", [])
-                if integration_id and tools:
-                    grouped[integration_id] = {
-                        "tools": tools,
-                        "name": doc.get("name"),
-                        "icon_url": doc.get("icon_url"),
-                    }
-
-            await set_cache(MCP_TOOLS_CACHE_KEY, grouped, ttl=MCP_TOOLS_CACHE_TTL)
+            await self.get_all_mcp_tools()
         except Exception as e:
             logger.warning(f"Failed to refresh MCP tools cache: {e}")
 

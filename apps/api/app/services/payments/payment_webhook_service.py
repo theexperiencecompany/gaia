@@ -161,7 +161,9 @@ class PaymentWebhookService:
                     message=f"No handler for {event.type}",
                 )
                 # Store even ignored webhooks to prevent reprocessing
-                await self._mark_webhook_as_processed(webhook_id, event.type.value, result)
+                await self._mark_webhook_as_processed(
+                    webhook_id, event.type.value, result
+                )
                 return result
 
             result = await handler(event)

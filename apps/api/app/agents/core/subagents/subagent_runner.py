@@ -383,7 +383,7 @@ async def prepare_executor_execution(
                 f"{task}\n\n"
                 f"DIRECT EXECUTION HINT: The tool '{selected_tool}' belongs to the "
                 f"'{tool_category}' subagent. Skip retrieve_tools discovery and directly "
-                f"call handoff(subagent_id=\"{tool_category}\", task=\"{task}\")."
+                f'call handoff(subagent_id="{tool_category}", task="{task}").'
             )
 
     # Build messages using shared helper

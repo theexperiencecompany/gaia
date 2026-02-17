@@ -10,6 +10,7 @@ Configuration comes from oauth_config.py OAUTH_INTEGRATIONS.
 Tools are registered on-demand when subagent is first created.
 """
 
+import asyncio
 from typing import Any, Optional
 
 from app.agents.llm.client import init_llm
@@ -150,20 +151,10 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
 
         mcp_client = await get_mcp_client(user_id=user_id)
 
-        # get_all_connected_tools uses cached tools when available
-        all_tools = await mcp_client.get_all_connected_tools()
-
-        # Defensive check - all_tools should be dict
-        if not isinstance(all_tools, dict):
-            logger.error(
-                f"get_all_connected_tools returned {type(all_tools).__name__} instead of dict"
-            )
-            all_tools = {}
-
-        tools = all_tools.get(integration.id)
-
-        if not tools:
-            # Try direct connect as fallback
+        # Fast path: connect ONLY the needed integration instead of all
+        if integration.id in mcp_client._tools:
+            tools = mcp_client._tools[integration.id]
+        else:
             try:
                 tools = await mcp_client.connect(integration.id)
             except Exception as e:
@@ -173,6 +164,9 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
         if not tools:
             logger.error(f"No tools available for {integration_id}")
             return None
+
+        # Background: warm up other integrations for future handoffs
+        asyncio.create_task(mcp_client.get_all_connected_tools())
 
         tool_registry._add_category(
             name=category_name,
@@ -238,19 +232,10 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
 
         mcp_client = await get_mcp_client(user_id=user_id)
 
-        # get_all_connected_tools uses cached tools when available
-        all_tools = await mcp_client.get_all_connected_tools()
-
-        if not isinstance(all_tools, dict):
-            logger.error(
-                f"get_all_connected_tools returned {type(all_tools).__name__} instead of dict"
-            )
-            all_tools = {}
-
-        tools = all_tools.get(integration_id)
-
-        if not tools:
-            # Try direct connect as fallback
+        # Fast path: connect ONLY the needed integration instead of all
+        if integration_id in mcp_client._tools:
+            tools = mcp_client._tools[integration_id]
+        else:
             try:
                 tools = await mcp_client.connect(integration_id)
             except Exception as e:
@@ -260,6 +245,9 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
         if not tools:
             logger.error(f"No tools available for {integration_id}")
             return None
+
+        # Background: warm up other integrations for future handoffs
+        asyncio.create_task(mcp_client.get_all_connected_tools())
 
         # Get URL domain namespace from mcp_config to match indexing in mcp_client.py
         mcp_config = custom_doc.get("mcp_config", {})

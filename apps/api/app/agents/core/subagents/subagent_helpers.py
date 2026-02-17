@@ -202,9 +202,8 @@ async def create_agent_context_message(
                 memories = getattr(results, "memories", None)
                 if memories:
                     logger.info(f"Added {len(memories)} memories to subagent context")
-                    return (
-                        "\n\nBased on our previous conversations:\n"
-                        + "\n".join(f"- {mem.content}" for mem in memories)
+                    return "\n\nBased on our previous conversations:\n" + "\n".join(
+                        f"- {mem.content}" for mem in memories
                     )
         except Exception as e:
             logger.warning(f"Error retrieving memories for subagent: {e}")

@@ -1,7 +1,6 @@
 import asyncio
 from collections import defaultdict
 from collections.abc import KeysView, Mapping
-from functools import cache
 from typing import Dict, Iterator, List, Optional
 
 from app.agents.tools import (
@@ -431,7 +430,6 @@ class ToolRegistry:
 
         return loaded
 
-    @cache
     def get_category_of_tool(self, tool_name: str) -> str:
         """Get the category of a specific tool by name."""
         for category in self._categories.values():
