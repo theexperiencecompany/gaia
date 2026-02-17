@@ -71,6 +71,7 @@ def create_middleware_stack(
     subagent_tools: Optional[list[BaseTool]] = None,
     subagent_registry: Optional[Mapping[str, BaseTool | Callable[..., Any]]] = None,
     subagent_excluded_tools: Optional[set[str]] = None,
+    subagent_tool_space: str = "general",
     summarization_trigger: tuple = ("fraction", SUMMARIZATION_TRIGGER_FRACTION),
     summarization_keep: tuple = ("tokens", SUMMARIZATION_KEEP_TOKENS),
     compaction_threshold: float = COMPACTION_THRESHOLD,
@@ -94,6 +95,8 @@ def create_middleware_stack(
         subagent_llm: LLM for subagent execution (required if enable_subagent=True)
         subagent_tools: Tools available to subagents
         subagent_registry: Alternative tool registry for subagents
+        subagent_excluded_tools: Tool names to exclude from subagent access
+        subagent_tool_space: Tool space for spawned subagent retrieve_tools search
         summarization_trigger: When to trigger summarization (fraction/tokens/messages)
         summarization_keep: How much to keep after summarization (tokens recommended)
         compaction_threshold: Context usage ratio to trigger compaction
@@ -114,6 +117,7 @@ def create_middleware_stack(
             available_tools=subagent_tools,
             tool_registry=subagent_registry,
             excluded_tool_names=subagent_excluded_tools,
+            tool_space=subagent_tool_space,
         )
         middleware.append(subagent)
         logger.debug("SubagentMiddleware enabled with spawn_subagent tool")
@@ -215,6 +219,7 @@ def create_subagent_middleware(
     subagent_tools: Optional[list[BaseTool]] = None,
     subagent_registry: Optional[Mapping[str, BaseTool | Callable[..., Any]]] = None,
     subagent_excluded_tools: Optional[set[str]] = None,
+    subagent_tool_space: str = "general",
 ) -> list:
     """
     Create middleware stack for provider subagents.
@@ -232,6 +237,7 @@ def create_subagent_middleware(
         subagent_tools: Tools available to spawned sub-subagents
         subagent_registry: Alternative tool registry for spawned sub-subagents
         subagent_excluded_tools: Tool names to exclude from sub-subagent access
+        subagent_tool_space: Tool space for spawned sub-subagent retrieve_tools search
 
     Returns:
         List of middleware for provider subagents
@@ -244,4 +250,5 @@ def create_subagent_middleware(
         subagent_tools=subagent_tools,
         subagent_registry=subagent_registry,
         subagent_excluded_tools=subagent_excluded_tools,
+        subagent_tool_space=subagent_tool_space,
     )

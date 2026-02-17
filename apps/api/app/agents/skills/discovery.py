@@ -54,8 +54,8 @@ async def get_system_skills_for_agent(agent_name: str) -> List[dict]:
 
             target_name = target_dir.name
 
-            # Check if this target matches the agent
-            if target_name not in (agent_name, "global"):
+            # Check if this target matches the agent (no global fallback)
+            if target_name != agent_name:
                 continue
 
             # List skills in this target directory
@@ -78,7 +78,7 @@ async def get_system_skills_for_agent(agent_name: str) -> List[dict]:
 
                 # Read SKILL.md content
                 try:
-                    content = await vfs.append(skill_md_path, "", user_id="system")
+                    content = await vfs.read(skill_md_path, user_id="system")
                     if not content:
                         continue
 

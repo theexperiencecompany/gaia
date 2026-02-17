@@ -97,6 +97,7 @@ class SubAgentFactory:
             todo_source=provider,
             subagent_llm=llm,
             subagent_registry=full_tool_dict,
+            subagent_tool_space=tool_space,
         )
 
         # Create todo tools and register them in the scoped tool registry

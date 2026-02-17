@@ -424,6 +424,7 @@ async def handoff(
             configurable=new_configurable,
             task=task,
             user_id=user_id,
+            subagent_id=int_id,
         )
 
         # Create execution context with stream_id for cancellation

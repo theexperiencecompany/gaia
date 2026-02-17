@@ -176,11 +176,9 @@ async def list_skills(
 async def get_skills_for_agent(user_id: str, agent_name: str) -> List[InstalledSkill]:
     """Get all enabled skills available to a specific agent.
 
-    Returns skills where target is:
-    - "global" (available to all agents)
-    - Matching the agent_name exactly (e.g., "github", "gmail")
-
-    For executor, also includes "executor" target.
+    Returns skills where target matches:
+    - The agent_name exactly (e.g., "github", "gmail")
+    - For executor, includes "executor" target
 
     Args:
         user_id: Owner user ID
@@ -191,12 +189,12 @@ async def get_skills_for_agent(user_id: str, agent_name: str) -> List[InstalledS
     """
     collection = _get_collection()
 
-    # Build target list: always include global
-    targets = ["global"]
+    # Build target list: only include agent-specific targets
+    targets = []
     if agent_name == "executor":
         targets.append("executor")
     else:
-        # For subagents, also match their specific target
+        # For subagents, match their specific target only
         targets.append(agent_name)
         # Strip _agent suffix if present (e.g., "gmail_agent" -> "gmail")
         if agent_name.endswith("_agent"):

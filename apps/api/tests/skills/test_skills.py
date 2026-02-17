@@ -13,8 +13,19 @@ Tests use mocked MongoDB collections to avoid requiring a real database.
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
+from app.agents.skills.discovery import (
+    get_available_skills_xml,
+    get_system_skills_for_agent,
+)
 from app.agents.skills.models import InstalledSkill, SkillMetadata, SkillSource
+from app.agents.skills.registry import (
+    disable_skill,
+    enable_skill,
+    get_skill,
+    get_skills_for_agent,
+    install_skill,
+    list_skills,
+)
 
 
 @pytest.fixture
@@ -50,8 +61,6 @@ class TestSkillsRegistryCRUD:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import install_skill
-
             skill_metadata = SkillMetadata(
                 name="test-skill",
                 description="A test skill for unit testing",
@@ -81,8 +90,6 @@ class TestSkillsRegistryCRUD:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import install_skill
-
             skill_metadata = SkillMetadata(
                 name="existing-skill",
                 description="Already installed",
@@ -120,8 +127,6 @@ class TestSkillsRegistryCRUD:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import get_skill
-
             result = await get_skill("user123", "skill_123")
 
             assert result is not None
@@ -137,8 +142,6 @@ class TestSkillsRegistryCRUD:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import get_skill
-
             result = await get_skill("user123", "nonexistent")
 
             assert result is None
@@ -185,8 +188,6 @@ class TestSkillsRegistryCRUD:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import list_skills
-
             result = await list_skills("user123")
 
             assert len(result) == 2
@@ -221,8 +222,6 @@ class TestSkillsRegistryCRUD:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import list_skills
-
             result = await list_skills("user123", target="executor")
 
             assert len(result) == 1
@@ -239,8 +238,6 @@ class TestSkillsRegistryCRUD:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import enable_skill
-
             result = await enable_skill("user123", "skill_123")
 
             assert result is True
@@ -257,8 +254,6 @@ class TestSkillsRegistryCRUD:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import disable_skill
-
             result = await disable_skill("user123", "skill_123")
 
             assert result is True
@@ -311,8 +306,6 @@ class TestSkillsRegistryAgentFiltering:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import get_skills_for_agent
-
             result = await get_skills_for_agent("user123", "executor")
 
             assert len(result) == 2
@@ -349,8 +342,6 @@ class TestSkillsRegistryAgentFiltering:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import get_skills_for_agent
-
             result = await get_skills_for_agent("user123", "gmail")
 
             assert len(result) >= 1
@@ -367,8 +358,6 @@ class TestSkillsRegistryAgentFiltering:
             "app.agents.skills.registry._get_collection",
             return_value=mock_skills_collection,
         ):
-            from app.agents.skills.registry import get_skills_for_agent
-
             await get_skills_for_agent("user123", "executor")
 
             call_query = mock_skills_collection.find.call_args[0][0]
@@ -395,8 +384,6 @@ class TestSkillsDiscoverySystemSkills:
 
         with patch("app.agents.skills.discovery.MongoVFS") as MockVFS:
             MockVFS.return_value = mock_vfs_instance
-
-            from app.agents.skills.discovery import get_system_skills_for_agent
 
             result = await get_system_skills_for_agent("nonexistent_agent")
 
@@ -439,8 +426,6 @@ class TestSkillsDiscoveryXMLGeneration:
                 mock_get_user.return_value = [skill]
                 mock_get_system.return_value = [system_skill]
 
-                from app.agents.skills.discovery import get_available_skills_xml
-
                 result = await get_available_skills_xml("user123", "executor")
 
                 assert "<available_skills>" in result
@@ -459,8 +444,6 @@ class TestSkillsDiscoveryXMLGeneration:
             ) as mock_get_system:
                 mock_get_user.return_value = []
                 mock_get_system.return_value = []
-
-                from app.agents.skills.discovery import get_available_skills_xml
 
                 result = await get_available_skills_xml("user123", "executor")
 
@@ -497,8 +480,6 @@ class TestSkillsPromptInjection:
                 mock_xml.return_value = "<available_skills><skill><name>executor-skill</name></skill></available_skills>"
                 mock_get.return_value = [skill]
 
-                from app.agents.skills.discovery import get_available_skills_xml
-
                 result = await get_available_skills_xml("user123", "executor")
 
                 assert "executor-skill" in result
@@ -530,8 +511,6 @@ class TestSkillsPromptInjection:
                 mock_xml.return_value = "<available_skills><skill><name>gmail-skill</name></skill></available_skills>"
                 mock_get.return_value = [skill]
 
-                from app.agents.skills.discovery import get_available_skills_xml
-
                 result = await get_available_skills_xml("user123", "gmail")
 
                 assert "gmail-skill" in result
@@ -549,8 +528,6 @@ class TestSkillsPromptInjection:
         with patch(
             "app.agents.skills.registry._get_collection", return_value=mock_collection
         ):
-            from app.agents.skills.registry import get_skills_for_agent
-
             gmail_skills = await get_skills_for_agent("user123", "gmail")
             executor_skills = await get_skills_for_agent("user123", "executor")
 
@@ -570,8 +547,6 @@ class TestSkillsPromptInjection:
         with patch(
             "app.agents.skills.registry._get_collection", return_value=mock_collection
         ):
-            from app.agents.skills.registry import get_skills_for_agent
-
             gmail_skills = await get_skills_for_agent("user123", "gmail")
             executor_skills = await get_skills_for_agent("user123", "executor")
             github_skills = await get_skills_for_agent("user123", "github")
@@ -595,8 +570,6 @@ class TestSkillsContextMessageInjection:
         ) as mock_xml:
             mock_xml.return_value = skills_xml
 
-            from app.agents.skills.discovery import get_available_skills_xml
-
             result = await get_available_skills_xml("user123", "executor")
 
             assert "test-skill" in result
@@ -612,17 +585,19 @@ class TestSkillsContextMessageInjection:
         ) as mock_xml:
             mock_xml.return_value = skills_xml
 
-            from app.agents.skills.discovery import get_available_skills_xml
-
             result = await get_available_skills_xml("user123", "gmail")
 
             assert "gmail-skill" in result
 
     @pytest.mark.asyncio
     async def test_skills_section_empty_when_no_user_id(self):
-        """Skills section should be empty when no user_id provided."""
-        from app.agents.skills.discovery import get_available_skills_xml
+        """Skills section should include system skills even when no user_id provided."""
+        # Mock VFS to return no system skills for test
+        with patch(
+            "app.agents.skills.discovery.get_system_skills_for_agent",
+            new_callable=AsyncMock,
+            return_value=[],
+        ):
+            result = await get_available_skills_xml("", "executor")
 
-        result = await get_available_skills_xml("", "executor")
-
-        assert result == ""
+            assert result == ""

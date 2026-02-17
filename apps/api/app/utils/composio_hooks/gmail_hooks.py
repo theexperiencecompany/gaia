@@ -121,9 +121,39 @@ def gmail_compose_before_hook(
     tool: str, toolkit: str, params: ToolExecuteParams
 ) -> ToolExecuteParams:
     """Handle email composition response and streaming data."""
+
     try:
-        writer = get_stream_writer()
         arguments = params.get("arguments", {})
+
+        if tool in ["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT"]:
+            # Auto-convert 'to' to 'recipient_email' if needed
+            if "to" in arguments and "recipient_email" not in arguments:
+                arguments["recipient_email"] = arguments["to"]
+                params["arguments"] = arguments
+                logger.info(f"Mapped 'to' argument to 'recipient_email' for {tool}")
+
+            # Check if at least one recipient type is provided
+            recipient = arguments.get("recipient_email") or arguments.get("to")
+            cc = arguments.get("cc", [])
+            bcc = arguments.get("bcc", [])
+
+            has_recipient = bool(recipient) or bool(cc) or bool(bcc)
+
+            # Check if at least one of subject or body is provided
+            subject = arguments.get("subject")
+            body = arguments.get("body")
+
+            has_content = bool(subject) or bool(body)
+
+            # If validation fails, return params immediately to skip streaming
+            if not has_recipient or not has_content:
+                logger.warning(
+                    f"Skipping streaming for {tool}: Missing required fields. "
+                    f"Has recipient: {has_recipient}, Has content: {has_content}"
+                )
+                return params
+
+        writer = get_stream_writer()
 
         body = arguments.get("body", "")
         is_html = arguments.get("is_html", False)

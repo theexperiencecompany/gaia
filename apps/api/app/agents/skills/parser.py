@@ -62,6 +62,10 @@ def parse_skill_md(content: str) -> Tuple[SkillMetadata, str]:
     if "auto_invoke" in frontmatter:
         frontmatter["auto_invoke"] = bool(frontmatter["auto_invoke"])
 
+    # Map subagent_id to target (GAIA-specific extension)
+    if "subagent_id" in frontmatter:
+        frontmatter["target"] = frontmatter.pop("subagent_id")
+
     # Ensure metadata field is dict[str, str]
     if "metadata" in frontmatter and isinstance(frontmatter["metadata"], dict):
         frontmatter["metadata"] = {

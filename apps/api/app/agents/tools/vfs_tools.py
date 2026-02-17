@@ -69,6 +69,10 @@ def _resolve_path(
         # User tried to access another user's files - redirect to their space
         logger.warning(f"Access denied: {path} not in user {user_id} scope")
 
+    # System paths pass through directly (read-only, accessible to all users)
+    if path.startswith("/system/"):
+        return normalize_path(path)
+
     # If starts with /, treat as relative to agent root
     if path.startswith("/"):
         agent_root = get_agent_root(user_id, agent_name)

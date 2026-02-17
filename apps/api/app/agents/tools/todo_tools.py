@@ -108,6 +108,10 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
         List of three BaseTool instances
     """
 
+    # TODO: Remove these tool calls from the conversation history, we are tracking
+    # the tasks in state and these tool calls are just for updating the state.
+    # We should not be adding these tool calls to the conversation history.
+
     @tool(description=PLAN_TASKS_DESCRIPTION)
     async def plan_tasks(
         tasks: list[TaskInput],
