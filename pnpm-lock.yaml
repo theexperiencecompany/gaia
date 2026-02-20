@@ -106,6 +106,9 @@ importers:
       '@gaia/shared':
         specifier: workspace:*
         version: link:../../../libs/shared/ts
+      '@grammyjs/types':
+        specifier: ^3.0.0
+        version: 3.23.0
       grammy:
         specifier: ^1.30.0
         version: 1.39.3(encoding@0.1.13)
