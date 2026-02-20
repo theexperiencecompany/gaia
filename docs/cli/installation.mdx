@@ -4,45 +4,43 @@ description: "Install the GAIA CLI tool"
 icon: "download"
 ---
 
+![](../images/cli.webp)
+
 ## Install the CLI
 
 The GAIA CLI (`@heygaia/cli`) is a terminal-based tool for setting up, configuring, and managing GAIA instances.
 
 **Global installation is recommended** to use the `gaia` command from anywhere in your terminal.
 
-<Tabs>
-  <Tab title="curl (Recommended)" icon="terminal">
-    The quickest way to install globally. Automatically detects your system and uses npm or bun. Installs Node.js if needed.
 
-    ```bash
-    curl -fsSL https://heygaia.io/install.sh | sh
-    ```
-  </Tab>
+<CodeGroup>
 
-  <Tab title="npm">
-    Install globally using npm:
+```shell curl
+# The quickest way to install globally.
+# Automatically detects your system and uses npm or bun.
+# Installs Node.js if needed.
 
-    ```bash
-    npm install -g @heygaia/cli
-    ```
-  </Tab>
+curl -fsSL https://heygaia.io/install.sh | sh
+```
 
-  <Tab title="pnpm">
-    Install globally using pnpm:
+```shell npm
+# Install globally using npm:
 
-    ```bash
-    pnpm add -g @heygaia/cli
-    ```
-  </Tab>
+npm install -g @heygaia/cli
+```
 
-  <Tab title="bun">
-    Install globally using bun:
+```shell pnpm
+# Install globally using pnpm:
 
-    ```bash
-    bun add -g @heygaia/cli
-    ```
-  </Tab>
-</Tabs>
+pnpm add -g @heygaia/cli
+```
+
+```bash bun
+# Install globally using bun:
+
+bun add -g @heygaia/cli
+```
+</CodeGroup>
 
 ## Verify Installation
 
@@ -98,25 +96,21 @@ If the update includes dependency changes, run `gaia setup` afterwards to apply 
 
 Reinstall globally using whichever package manager you used originally:
 
-<Tabs>
-  <Tab title="npm">
-    ```bash
-    npm install -g @heygaia/cli
-    ```
-  </Tab>
+<CodeGroup>
 
-  <Tab title="pnpm">
-    ```bash
-    pnpm add -g @heygaia/cli
-    ```
-  </Tab>
+```bash npm
+npm install -g @heygaia/cli
+```
 
-  <Tab title="bun">
-    ```bash
-    bun add -g @heygaia/cli
-    ```
-  </Tab>
-</Tabs>
+```bash pnpm
+pnpm add -g @heygaia/cli
+```
+
+```bash bun
+bun add -g @heygaia/cli
+```
+
+</CodeGroup>
 
 ## Uninstalling
 
@@ -142,25 +136,21 @@ rm -rf ~/.gaia
 
 **4. Uninstall the CLI:**
 
-<Tabs>
-  <Tab title="npm">
-    ```bash
-    npm uninstall -g @heygaia/cli
-    ```
-  </Tab>
+<CodeGroup>
 
-  <Tab title="pnpm">
-    ```bash
-    pnpm remove -g @heygaia/cli
-    ```
-  </Tab>
+```bash npm
+npm uninstall -g @heygaia/cli
+```
 
-  <Tab title="bun">
-    ```bash
-    bun remove -g @heygaia/cli
-    ```
-  </Tab>
-</Tabs>
+```bash pnpm
+pnpm remove -g @heygaia/cli
+```
+
+```bash bun
+bun remove -g @heygaia/cli
+```
+
+</CodeGroup>
 
 ## Next Steps
 

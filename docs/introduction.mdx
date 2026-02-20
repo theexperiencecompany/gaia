@@ -1,46 +1,59 @@
 ---
 title: Introduction
-description: "Welcome to GAIA - Your Personal AI Assistant"
+description: "GAIA - the open-source, proactive AI assistant that manages your work so you can focus on what matters."
 icon: "book-open"
 ---
 
-<img 
-  src="/images/og-image.png" 
-  alt="Main dashboard interface"
-  style={{width: "60vw"}}
+<img
+  src="/images/og-image.webp"
+  alt="GAIA dashboard interface"
+  style={{ width: "60vw" }}
   className="rounded-lg"
 />
 
-## What is GAIA?
+## The problem
 
-GAIA is an advanced personal AI assistant designed to enhance productivity and streamline daily tasks. With seamless integration capabilities and intelligent features, GAIA provides a comprehensive solution for managing your digital life.
+Modern knowledge workers juggle dozens of apps, hundreds of notifications, and an endless stream of tasks that demand constant attention. Your calendar, inbox, task manager, and messaging tools don't talk to each other — so you become the glue.
 
-**Website:** [heygaia.io](https://heygaia.io)
+You spend hours every week triaging emails, scheduling meetings, chasing follow-ups, and deciding what to work on next. Not because you're inefficient — but because the tools you use were never designed to think for you.
 
-## Getting Started
+The result: decision fatigue, context switching, and the feeling that you're always reacting instead of making real progress.
 
-Choose your path to get started with GAIA based on your needs:
+## The solution
 
-<CardGroup cols={1}>
-  <Card title="Quick Start" icon="rocket" href="/quick-start" horizontal>
-    Try GAIA hosted at heygaia.io - no setup required
+GAIA is a proactive personal AI assistant that works across your tools — not inside a single one. It monitors your inbox, calendar, and tasks in the background, surfaces what matters, and takes action before you have to ask.
+
+Instead of waiting for commands, GAIA anticipates what you need:
+
+- Drafts replies to important emails
+- Blocks focus time before your calendar fills up
+- Creates tasks from conversations and commitments
+- Runs multi-step workflows triggered by real events
+- Remembers your preferences and adapts over time
+
+GAIA connects to 50+ integrations and operates with a long-term memory of your context — so it gets more useful the longer you use it.
+
+## Open source & self-hostable
+
+GAIA is fully open source, with the ability to self-host on your own infrastructure. That means:
+
+- **Complete data ownership** — your conversations and context stay on your servers
+- **Full customization** — modify GAIA to fit your specific workflow
+- **No vendor lock-in** — deploy, migrate, or fork whenever you want
+- **Community-driven** — built in the open, improved by contributors worldwide
+
+GAIA is licensed under the [Polyform Strict License 1.0.0](https://polyformproject.org/licenses/strict/1.0.0/), which permits noncommercial, personal, and research use.
+
+## Get started
+
+<CardGroup cols={3}>
+  <Card title="Use GAIA Cloud" icon="cloud" href="https://heygaia.io" arrow>
+    No setup required — start immediately at heygaia.io
   </Card>
-  <Card
-    title="Self-Hosting"
-    icon="server"
-    href="/self-hosting/overview"
-    horizontal
-  >
-    Deploy GAIA on your own infrastructure for complete control and privacy
+  <Card title="Self-host" icon="server" href="/self-hosting/overview" arrow>
+    Deploy GAIA on your own infrastructure for complete control
   </Card>
-  <Card
-    title="Development"
-    icon="code"
-    href="/developers/introduction"
-    horizontal
-  >
-    Set up a local development environment to contribute or customize GAIA
+  <Card title="Contribute" icon="code" href="/developers/introduction" arrow>
+    Help build the future of AI assistants
   </Card>
 </CardGroup>
-
-{/* ![image](/images/surreal.webp) */}

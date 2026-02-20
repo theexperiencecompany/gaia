@@ -15,6 +15,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";
+import ProgressiveImage from "@/components/ui/ProgressiveImage";
 
 function InlineCode({ children }: { children: ReactNode }) {
   return (
@@ -77,16 +78,16 @@ function InstallTab({
 
 const installMethods = [
   {
-    key: "curl",
-    title: "curl (Recommended)",
-    code: "curl -fsSL https://heygaia.io/install.sh | sh",
-    hint: "to set up GAIA.",
-  },
-  {
     key: "npm",
     title: "npm",
     code: "npm install -g @heygaia/cli",
     hint: "from any directory.",
+  },
+  {
+    key: "curl",
+    title: "curl",
+    code: "curl -fsSL https://heygaia.io/install.sh | sh",
+    hint: "to set up GAIA.",
   },
   {
     key: "pnpm",
@@ -152,9 +153,9 @@ export function InstallPageClient() {
       <div
         className={`relative aspect-video w-full overflow-hidden rounded-4xl bg-zinc-900 max-w-4xl mx-auto mt-24 sm:mt-32`}
       >
-        <Image
-          // webpSrc="/images/screenshots/cli.webp"
-          src="/images/screenshots/cli.png"
+        <ProgressiveImage
+          webpSrc="/images/screenshots/cli.webp"
+          pngSrc="/images/screenshots/cli.png"
           alt="Terminal"
           width={1920}
           height={1080}

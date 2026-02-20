@@ -48,37 +48,30 @@ icon: "laptop-code"
 
 mise is required for all GAIA development.
 
-<Tabs>
-  <Tab title="macOS (Homebrew)" icon="leaf">
-    ```bash
-    brew install mise
-    ```
-  </Tab>
+<CodeGroup>
 
-  <Tab title="macOS/Linux (curl)" icon="terminal">
-    ```bash
-    curl https://mise.run | sh
-    ```
-    
-    Add to PATH:
-    ```bash
-    echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-    ```
-  </Tab>
+```bash macOS (Homebrew)
+brew install mise
+```
 
-  <Tab title="Windows" icon="windows">
-    ```powershell
-    winget install jdx.mise
-    ```
-    
-    Or via scoop/choco:
-    ```powershell
-    scoop install mise
-    # or
-    choco install mise
-    ```
-  </Tab>
-</Tabs>
+```bash macOS/Linux (curl)
+curl https://mise.run | sh
+```
+
+```powershell Windows
+winget install jdx.mise
+# Or via scoop: scoop install mise
+# Or via choco: choco install mise
+```
+
+</CodeGroup>
+
+<Note>
+After installing via curl on macOS/Linux, add mise to your PATH:
+```bash
+echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+```
+</Note>
 
 ---
 
@@ -86,27 +79,23 @@ mise is required for all GAIA development.
 
 Add mise activation to your shell:
 
-<Tabs>
-  <Tab title="zsh">
-    ```bash
-    echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
-    source ~/.zshrc
-    ```
-  </Tab>
+<CodeGroup>
 
-  <Tab title="bash">
-    ```bash
-    echo 'eval "$(mise activate bash)"' >> ~/.bashrc
-    source ~/.bashrc
-    ```
-  </Tab>
+```bash zsh
+echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
+source ~/.zshrc
+```
 
-  <Tab title="fish">
-    ```bash
-    echo 'mise activate fish | source' >> ~/.config/fish/config.fish
-    ```
-  </Tab>
-</Tabs>
+```bash bash
+echo 'eval "$(mise activate bash)"' >> ~/.bashrc
+source ~/.bashrc
+```
+
+```bash fish
+echo 'mise activate fish | source' >> ~/.config/fish/config.fish
+```
+
+</CodeGroup>
 
 Verify mise is working:
 
@@ -202,12 +191,10 @@ mise doctor
 
         ```bash
         # Terminal 1: API
-        cd apps/api
-        mise dev
+        nx dev api
 
         # Terminal 2: Web
-        cd apps/web
-        mise dev
+        nx dev web
         ```
       </Step>
     </Steps>
@@ -219,15 +206,15 @@ mise doctor
 
 ## Development Commands
 
-| Command         | Description                   |
-| --------------- | ----------------------------- |
-| `mise dev`      | Start API + web (recommended) |
-| `mise dev:api`  | API server only               |
-| `mise dev:web`  | Web app only                  |
-| `mise dev:full` | API + web + ARQ worker        |
-| `mise lint`     | Lint all code                 |
-| `mise format`   | Format all code               |
-| `mise test`     | Run all tests                 |
+| Command                    | Description                   |
+| -------------------------- | ----------------------------- |
+| `nx dev api`               | API server only               |
+| `nx dev web`               | Web app only                  |
+| `nx dev desktop`           | Desktop app only              |
+| `nx dev mobile`            | Mobile app only               |
+| `nx worker api`            | ARQ background worker         |
+| `nx run-many -t lint`      | Lint all code                 |
+| `nx run-many -t format`    | Format all code               |
 
 See [Commands Reference](/developers/commands) for the complete list.
 
@@ -242,7 +229,7 @@ gaia/
 │   ├── web/           # Next.js frontend (TypeScript)
 │   ├── desktop/       # Electron desktop app
 │   ├── mobile/        # React Native mobile app
-│── docs/              # Documentation (Mintlify)
+├── docs/              # Documentation (Mintlify)
 ├── libs/              # Shared libraries
 ├── infra/
 │   └── docker/        # Docker Compose files
@@ -298,4 +285,4 @@ gaia/
 - [Development Commands](/developers/commands) - All mise and Nx commands
 - [Environment Variables](/configuration/environment-variables) - Configure your setup
 - [Contributing](/developers/contributing) - How to contribute
-- [Code Style](/developers/code-style) - Coding standards
+- [Code Style](/configuration/code-style) - Coding standards

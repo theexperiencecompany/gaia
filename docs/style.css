@@ -1,0 +1,50 @@
+img {
+  border-radius: 15px !important;
+  cursor: pointer !important;
+}
+
+#content-area {
+  max-width: 100%;
+}
+
+#sidebar-content {
+  padding: 1.2rem 1rem;
+}
+
+.dark #sidebar {
+  background-color: #1a1a1a60 !important;
+  border: none;
+}
+
+/* #almond-background-color { */
+/* background: #11111100; */
+/* } */
+
+#sidebar:first-child ul {
+  background: transparent;
+}
+
+.code-block {
+  border: none !important;
+}
+
+.dark .card {
+  background: #ffffff08;
+  border: none;
+}
+
+.dark #page-context-menu button {
+  border: none;
+  background: #ffffff10;
+}
+
+#page-context-menu-button {
+  padding-top: 7px;
+  padding-bottom: 6px;
+}
+
+.dark #page-context-menu > button:not(#page-context-menu-button) {
+  border: none;
+  border-left: 1px solid #ffffff20;
+  outline: none;
+}

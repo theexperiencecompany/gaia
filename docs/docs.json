@@ -1,11 +1,14 @@
 {
   "$schema": "https://mintlify.com/docs.json",
-  "theme": "almond",
+  "theme": "maple",
   "name": "GAIA Documentation",
   "colors": {
     "primary": "#00bbff",
     "light": "#00bbff",
     "dark": "#00bbff"
+  },
+  "background": {
+    "color": { "light": "#ffffff", "dark": "#111111" }
   },
   "seo": {
     "indexing": "all",
@@ -25,12 +28,18 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Home",
-        "icon": "home",
+        "tab": "Documentation",
         "groups": [
           {
             "group": "Get Started",
-            "pages": ["introduction", "quick-start", "resources", "manifesto"]
+            "pages": [
+              "introduction",
+              "quick-start",
+              "integrations",
+              "workflows",
+              "resources",
+              "manifesto"
+            ]
           },
           {
             "group": "CLI",
@@ -38,13 +47,18 @@
           },
           {
             "group": "Self-Hosting",
-            "pages": ["self-hosting/overview", "self-hosting/cli-setup", "self-hosting/docker-setup"]
+            "pages": [
+              "self-hosting/overview",
+              "self-hosting/cli-setup",
+              "self-hosting/docker-setup"
+            ]
           },
           {
             "group": "Developers",
             "pages": [
               "developers/introduction",
               "developers/development-setup",
+              "developers/monorepo",
               "developers/commands",
               "developers/contributing"
             ]
@@ -75,7 +89,6 @@
       },
       {
         "tab": "Guides",
-        "icon": "book-open",
         "groups": [
           {
             "group": "Guides",
@@ -85,7 +98,6 @@
       },
       {
         "tab": "Knowledge Base",
-        "icon": "brain",
         "groups": [
           {
             "group": "What is GAIA?",
@@ -345,17 +357,10 @@
     "light": "/logo/text_black.webp"
   },
   "navbar": {
-    "links": [
-      {
-        "label": "GitHub",
-        "href": "https://github.com/theexperiencecompany/gaia",
-        "icon": "github"
-      }
-    ],
     "primary": {
-      "type": "button",
-      "label": "Get Started",
-      "href": "https://heygaia.io"
+      "type": "github",
+      "label": "Github",
+      "href": "https://github.com/theexperiencecompany/gaia"
     }
   },
   "footer": {
