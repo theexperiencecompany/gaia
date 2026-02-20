@@ -48,7 +48,7 @@ experimental_monorepo_root = true
 #     "apps/web",
 #     "apps/desktop",
 #     "apps/mobile",
-#     "apps/docs",
+#     "docs",
 #     "apps/voice-agent",
 #     "apps/bots/*",
 # ]

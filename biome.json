@@ -30,7 +30,7 @@
       "!.vscode",
       "!.idea",
       "!**/.DS_Store",
-      "!apps/docs"
+      "!docs"
     ]
   },
   "formatter": {

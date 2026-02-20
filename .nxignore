@@ -12,7 +12,7 @@ apps/api/.venv
 
 # Next.js build output (watched separately by Next.js)
 apps/web/.next
-apps/docs/.next
+docs/.next
 
 # Logs
 **/logs

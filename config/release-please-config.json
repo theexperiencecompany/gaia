@@ -10,7 +10,7 @@
         "apps/web",
         "apps/desktop",
         "apps/mobile",
-        "apps/docs",
+        "docs",
         "apps/voice-agent",
         "apps/bots"
       ]
@@ -23,7 +23,7 @@
         "apps/api",
         "apps/desktop",
         "apps/mobile",
-        "apps/docs",
+        "docs",
         "apps/voice-agent",
         "apps/bots"
       ]
@@ -36,7 +36,7 @@
         "apps/api",
         "apps/web",
         "apps/mobile",
-        "apps/docs",
+        "docs",
         "apps/voice-agent",
         "apps/bots"
       ]
@@ -49,7 +49,7 @@
         "apps/api",
         "apps/web",
         "apps/desktop",
-        "apps/docs",
+        "docs",
         "apps/voice-agent",
         "apps/bots"
       ]
@@ -63,7 +63,7 @@
         "apps/web",
         "apps/desktop",
         "apps/mobile",
-        "apps/docs",
+        "docs",
         "apps/voice-agent"
       ]
     },
@@ -76,7 +76,7 @@
         "apps/web",
         "apps/desktop",
         "apps/mobile",
-        "apps/docs",
+        "docs",
         "apps/voice-agent"
       ]
     }

@@ -146,11 +146,11 @@ gaia
 │   ├── mobile           → React Native mobile app (beta)   
 │   ├── api              → FastAPI + LangGraph backend
 │   ├── voice-agent      → Voice processing worker
-│   ├── docs             → Documentation Website            https://docs.heygaia.io
 │   └── bots
 │       ├── discord      → Discord bot
 │       ├── slack        → Slack bot
 │       └── telegram     → Telegram bot
+├── docs                 → Documentation Website            https://docs.heygaia.io
 ├── packages
 │   ├── cli              → @heygaia/cli setup tool           https://heygaia.io/install.sh
 │   └── gaia-ui          → @heygaia/ui (wrapper)             https://ui.heygaia.io

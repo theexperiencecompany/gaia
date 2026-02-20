@@ -1,6 +1,6 @@
 {
   "name": "docs",
-  "root": "apps/docs",
+  "root": "docs",
   "targets": {
     "dev": {
       "executor": "nx:run-commands",
