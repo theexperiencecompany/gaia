@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.15.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.14.0...api-v0.15.0) (2026-02-20)
+
+
+### Features
+
+* Add a dedicated bots landing page and remove the unauthenticated bot mention API endpoint. ([6f901af](https://github.com/theexperiencecompany/gaia/commit/6f901affccfaaf63765952956cee627e7f95cec1))
+* Add Bots, CLI, Added skills in codebase ([#487](https://github.com/theexperiencecompany/gaia/issues/487)) ([206675b](https://github.com/theexperiencecompany/gaia/commit/206675bf79e41da50e9f1870e854783a22dee785))
+* Add integration status to API responses and display it in bot settings, fetching all user integrations. ([7153447](https://github.com/theexperiencecompany/gaia/commit/71534470e10e41e4c04db227e8adfd5e2a4e947f))
+* Add Telegram bot, enhance platform linking with user profile data, and centralize bot command documentation. ([d8a3b55](https://github.com/theexperiencecompany/gaia/commit/d8a3b55da6c97403d196a193eb92b725ced656be))
+* **api:** add comprehensive bot platform integration endpoints ([8c0050a](https://github.com/theexperiencecompany/gaia/commit/8c0050a270e34122663f666f9b5890d1397a75cf))
+* **bots:** implement security hardening and UX enhancements ([d93e3c4](https://github.com/theexperiencecompany/gaia/commit/d93e3c42af1e79b79db1acdaab3c1b9f43d6608a))
+* CLI (Command LIne Interface) to make it easy to self-host and contribute ([#431](https://github.com/theexperiencecompany/gaia/issues/431)) ([c6772df](https://github.com/theexperiencecompany/gaia/commit/c6772dfd60f1e60e7d559638ff133d40b3a65909))
+* Enhance bot streaming stability and implementation, add Discord bot landing page, and update bot documentation. ([82024be](https://github.com/theexperiencecompany/gaia/commit/82024be147391761b2f6f88168d77d9e0739eb61))
+* Enhance streaming chat reliability with server-sent keepalives, client-side retries for transient errors, and adjusted timeouts. ([a0cd51d](https://github.com/theexperiencecompany/gaia/commit/a0cd51d2d20544bb5599e7d0d7aa0d698b2fcf1a))
+* Implement bot API key authentication middleware and add Discord help and settings commands. ([a5549e9](https://github.com/theexperiencecompany/gaia/commit/a5549e9ee16a7686c96cba365cbb28b75bce5d46))
+* Implement secure platform linking using link tokens and enhance WorkOS SSO with return URL handling. ([d0b1caf](https://github.com/theexperiencecompany/gaia/commit/d0b1caf7b72716d24ee740abdf2dca2eee1c7923))
+* Introduce `/stop` and `/unlink` bot commands with supporting API endpoint and documentation updates. ([eabf7e7](https://github.com/theexperiencecompany/gaia/commit/eabf7e72844dc0ea59170ec8c77f9580ccdf99ce))
+* Introducing GAIA bots ([#485](https://github.com/theexperiencecompany/gaia/issues/485)) ([c47c6b8](https://github.com/theexperiencecompany/gaia/commit/c47c6b839484181a0b465b87a11261ed4e83cc70))
+* refactor bot streaming logic and remove unused weather and search commands ([1aff731](https://github.com/theexperiencecompany/gaia/commit/1aff7314c598f03efc37fc110d0dd95423c059a5))
+
+
+### Bug Fixes
+
+* add user_id ([3f9355f](https://github.com/theexperiencecompany/gaia/commit/3f9355fde382302e29d7ae2779ae9d5058843359))
+* add user_id fallback from metadata in handoff and retrieval ([2864695](https://github.com/theexperiencecompany/gaia/commit/28646952d514f4595cafae96876f54fda102c3bd))
+* **bots:** add public context restriction, mention stripping, and rate limit UX ([ac553fb](https://github.com/theexperiencecompany/gaia/commit/ac553fbc71fcd4f550e27fedf65a07bd9802816a))
+* **bots:** Comprehensive audit — fix deployment, security, and functional bugs ([e83a7b7](https://github.com/theexperiencecompany/gaia/commit/e83a7b7b590c512827541567c94c4d12797aef8c))
+* implement /new command and resolve Discord bot timeout issues ([eab9872](https://github.com/theexperiencecompany/gaia/commit/eab9872fb530aaf255d379d741c287e5357673b5))
+* **mcp:** Raise ValueError for missing OAuth token in MCPClient ([b31263f](https://github.com/theexperiencecompany/gaia/commit/b31263f00e6bb42de89db835e6d0f582af20f1fa))
+* normalize user dict ([6fb093c](https://github.com/theexperiencecompany/gaia/commit/6fb093cb534babd5cbc879b30f90d035686b44ce))
+* resolve subagent web_search_tool KeyError and OpenRouter credit issues ([ebdd1fd](https://github.com/theexperiencecompany/gaia/commit/ebdd1fdeb583c72a2ce3fc5e9c2ed0bd5a99b2fe))
+* update pre-commit config to exclude additional tsconfig.json files and improve code formatting in various scripts ([23e78ad](https://github.com/theexperiencecompany/gaia/commit/23e78ad0275ad623a723f7c4e79076bc651aa96f))
+
+
+### Performance Improvements
+
+* optimize agent flow latency for tool execution ([#483](https://github.com/theexperiencecompany/gaia/issues/483)) ([8670fdb](https://github.com/theexperiencecompany/gaia/commit/8670fdbf3669df15ee95ae6cf5c6ad3b4436c60c))
+
 ## [0.14.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.13.0...api-v0.14.0) (2026-02-16)
 
 
