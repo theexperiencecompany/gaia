@@ -31,7 +31,7 @@ from typing import Any, Optional
 
 import httpx
 from app.config.loggers import langchain_logger as logger
-from app.constants.cache import OAUTH_DISCOVERY_PREFIX
+from app.constants.cache import MCP_TOOLS_CACHE_KEY, OAUTH_DISCOVERY_PREFIX
 from app.core.lazy_loader import providers
 from app.db.chroma.chroma_tools_store import index_tools_to_store
 from app.db.mongodb.collections import (
@@ -988,8 +988,6 @@ class MCPClient:
                 {"$unset": {"tools": ""}},
             )
             # Invalidate the global MCP tools Redis cache
-            from app.constants.cache import MCP_TOOLS_CACHE_KEY
-
             await delete_cache(MCP_TOOLS_CACHE_KEY)
         except Exception as e:
             logger.warning(f"Failed to clear MongoDB tools for {integration_id}: {e}")

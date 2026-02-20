@@ -91,6 +91,7 @@ async def build_initial_messages(
     task: str,
     user_id: Optional[str] = None,
     subagent_id: Optional[str] = None,
+    retrieval_query: Optional[str] = None,
 ) -> list:
     """
     Build the standard message list for subagent/executor execution.
@@ -104,9 +105,12 @@ async def build_initial_messages(
         system_message: Pre-built system message for the agent
         agent_name: Name of the agent (for visibility metadata)
         configurable: Config dict with user_time, user_name, etc.
-        task: The task/query to execute
+        task: The task/query to execute (used as LLM prompt content)
         user_id: Optional user ID for memory retrieval
         subagent_id: Optional subagent ID for skill retrieval (e.g., "twitter", "github")
+        retrieval_query: Optional query for memory/context retrieval. Defaults to task
+            if not provided. Use this to pass the original unenhanced task when task
+            contains injected hints that would pollute semantic search.
 
     Returns:
         List of [system_message, context_message, human_message]
@@ -114,7 +118,7 @@ async def build_initial_messages(
     context_message = await create_agent_context_message(
         configurable=configurable,
         user_id=user_id,
-        query=task,
+        query=retrieval_query if retrieval_query is not None else task,
         subagent_id=subagent_id,
     )
 
@@ -386,13 +390,16 @@ async def prepare_executor_execution(
                 f'call handoff(subagent_id="{tool_category}", task="{task}").'
             )
 
-    # Build messages using shared helper
+    # Build messages using shared helper.
+    # Pass original task as retrieval_query so memory/context semantic search
+    # is not polluted by the DIRECT EXECUTION HINT injected into enhanced_task.
     messages = await build_initial_messages(
         system_message=system_message,
         agent_name="executor_agent",
         configurable=new_configurable,
         task=enhanced_task,
         user_id=user_id,
+        retrieval_query=task,
     )
 
     return SubagentExecutionContext(

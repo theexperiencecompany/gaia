@@ -7,9 +7,10 @@ PKCE generation, tool wrapping, and schema handling.
 
 import base64
 import hashlib
+import inspect
 import secrets
 from functools import wraps
-from typing import Any, Literal, Union
+from typing import Any, Callable, Literal, Optional, Union
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
@@ -45,7 +46,7 @@ _CONNECTION_ERROR_PATTERNS = (
 
 def wrap_tool_with_null_filter(
     tool: BaseTool,
-    on_connection_error: Any = None,
+    on_connection_error: Optional[Callable[[], None]] = None,
 ) -> BaseTool:
     """
     Wrap a LangChain tool to filter out None values before MCP invocation.
@@ -88,6 +89,10 @@ def wrap_tool_with_null_filter(
             if on_connection_error and any(
                 pat in error_lower for pat in _CONNECTION_ERROR_PATTERNS
             ):
+                if inspect.iscoroutinefunction(on_connection_error):
+                    raise TypeError(
+                        "on_connection_error must be a synchronous callable, not a coroutine function"
+                    )
                 logger.warning(
                     f"MCP tool '{tool.name}' hit connection error, evicting session"
                 )
