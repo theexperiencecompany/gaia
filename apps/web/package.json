@@ -1,7 +1,7 @@
 {
   "name": "gaia",
   "description": "Frontend Website of GAIA - The personal AI assistant",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "homepage": "https://github.com/theexperiencecompany/gaia",
   "bugs": {

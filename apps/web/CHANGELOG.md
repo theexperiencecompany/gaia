@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.16.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.15.0...web-v0.16.0) (2026-02-20)
+
+
+### Features
+
+* Add a dedicated bots landing page and remove the unauthenticated bot mention API endpoint. ([6f901af](https://github.com/theexperiencecompany/gaia/commit/6f901affccfaaf63765952956cee627e7f95cec1))
+* Add Bots, CLI, Added skills in codebase ([#487](https://github.com/theexperiencecompany/gaia/issues/487)) ([206675b](https://github.com/theexperiencecompany/gaia/commit/206675bf79e41da50e9f1870e854783a22dee785))
+* Add Telegram bot, enhance platform linking with user profile data, and centralize bot command documentation. ([d8a3b55](https://github.com/theexperiencecompany/gaia/commit/d8a3b55da6c97403d196a193eb92b725ced656be))
+* **bots:** Enhance Discord bot with rotating presence, DM welcome message, and context menu commands ([29ed4b7](https://github.com/theexperiencecompany/gaia/commit/29ed4b77a377e0be9fa7836da9295a188285635b))
+* CLI (Command LIne Interface) to make it easy to self-host and contribute ([#431](https://github.com/theexperiencecompany/gaia/issues/431)) ([c6772df](https://github.com/theexperiencecompany/gaia/commit/c6772dfd60f1e60e7d559638ff133d40b3a65909))
+* Enhance bot streaming stability and implementation, add Discord bot landing page, and update bot documentation. ([82024be](https://github.com/theexperiencecompany/gaia/commit/82024be147391761b2f6f88168d77d9e0739eb61))
+* enhance CLI initialization flow with logging and Docker support; add Docker build workflow ([d6e2e05](https://github.com/theexperiencecompany/gaia/commit/d6e2e0572558a3203388ee832332f14a2ad6430b))
+* Implement secure platform linking using link tokens and enhance WorkOS SSO with return URL handling. ([d0b1caf](https://github.com/theexperiencecompany/gaia/commit/d0b1caf7b72716d24ee740abdf2dca2eee1c7923))
+* Improve docs structure and styling ([#489](https://github.com/theexperiencecompany/gaia/issues/489)) ([3a93bab](https://github.com/theexperiencecompany/gaia/commit/3a93bab27e25bd58401aedc3ab8a4f1d55f2974b))
+* Improve docs structure and styling ([#489](https://github.com/theexperiencecompany/gaia/issues/489)) ([#490](https://github.com/theexperiencecompany/gaia/issues/490)) ([17c9475](https://github.com/theexperiencecompany/gaia/commit/17c94755e9f4b1160ff469eb166f5f042baa96da))
+* Introducing GAIA bots ([#485](https://github.com/theexperiencecompany/gaia/issues/485)) ([c47c6b8](https://github.com/theexperiencecompany/gaia/commit/c47c6b839484181a0b465b87a11261ed4e83cc70))
+* serialize Telegram message updates, improve Markdown parsing error handling, and refine streaming message break logic ([47390ec](https://github.com/theexperiencecompany/gaia/commit/47390ec2e7a277a2b7cf331f322636c2fac90842))
+* **web:** add bot platform linking UI in settings ([403363f](https://github.com/theexperiencecompany/gaia/commit/403363fb5654c9268e3809a8453671fd8b24b016))
+
+
+### Bug Fixes
+
+* **bots:** Comprehensive audit — fix deployment, security, and functional bugs ([e83a7b7](https://github.com/theexperiencecompany/gaia/commit/e83a7b7b590c512827541567c94c4d12797aef8c))
+* **mcp:** Raise ValueError for missing OAuth token in MCPClient ([b31263f](https://github.com/theexperiencecompany/gaia/commit/b31263f00e6bb42de89db835e6d0f582af20f1fa))
+* update pre-commit config to exclude additional tsconfig.json files and improve code formatting in various scripts ([23e78ad](https://github.com/theexperiencecompany/gaia/commit/23e78ad0275ad623a723f7c4e79076bc651aa96f))
+
 ## [0.15.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.14.0...web-v0.15.0) (2026-02-16)
 
 
