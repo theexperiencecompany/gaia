@@ -27,9 +27,11 @@ from app.utils.notification.channels import (
     InAppChannelAdapter,
     TelegramChannelAdapter,
 )
+from app.db.mongodb.collections import users_collection
 from app.utils.notification.storage import (
     MongoDBNotificationStorage,
 )
+from bson import ObjectId
 from fastapi import Request
 
 
@@ -120,11 +122,28 @@ class NotificationOrchestrator:
         logger.info(f"Delivering notification {notification.id}")
 
         delivery_tasks = []
+        explicitly_requested = {
+            ch.channel_type for ch in notification.original_request.channels
+        }
         for channel_config in notification.original_request.channels:
             adapter = self.channel_adapters.get(channel_config.channel_type)
             if adapter and adapter.can_handle(notification.original_request):
                 task = self._deliver_via_channel(notification, adapter)
                 delivery_tasks.append(task)
+
+        # Auto-inject Telegram and Discord if not already in the channel list
+        channel_prefs = await self._get_channel_prefs(notification.user_id)
+        for platform in ("telegram", "discord"):
+            if platform in explicitly_requested:
+                continue
+            if not channel_prefs.get(platform, True):
+                logger.info(
+                    f"Skipping {platform} delivery for {notification.user_id}: disabled by preference"
+                )
+                continue
+            adapter = self.channel_adapters.get(platform)
+            if adapter and adapter.can_handle(notification.original_request):
+                delivery_tasks.append(self._deliver_via_channel(notification, adapter))
 
         # Execute all deliveries concurrently
         if delivery_tasks:
@@ -163,6 +182,19 @@ class NotificationOrchestrator:
                     "notification": await self._serialize_notification(notification),
                 },
             )
+
+    async def _get_channel_prefs(self, user_id: str) -> dict:
+        """Fetch user's notification channel preferences from DB."""
+        try:
+            user = await users_collection.find_one({"_id": ObjectId(user_id)})
+            prefs = (user or {}).get("notification_channel_prefs", {})
+            return {
+                "telegram": prefs.get("telegram", True),
+                "discord": prefs.get("discord", True),
+            }
+        except Exception as e:
+            logger.warning(f"Failed to fetch channel prefs for {user_id}: {e}")
+            return {"telegram": True, "discord": True}
 
     async def _deliver_via_channel(
         self, notification: NotificationRecord, adapter: ChannelAdapter
