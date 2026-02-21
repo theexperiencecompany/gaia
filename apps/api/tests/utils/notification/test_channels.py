@@ -42,8 +42,10 @@ async def test_telegram_adapter_delivers_when_linked():
             "app.utils.notification.channels.PlatformLinkService.get_linked_platforms",
             new=AsyncMock(return_value=linked_platforms),
         ),
+        patch("app.utils.notification.channels.settings") as mock_settings,
         patch("aiohttp.ClientSession", return_value=mock_session),
     ):
+        mock_settings.TELEGRAM_BOT_TOKEN = "test-token"
         content = await adapter.transform(notification)
         result = await adapter.deliver(content, "user-123")
 

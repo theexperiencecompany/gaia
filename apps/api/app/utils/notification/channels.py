@@ -252,8 +252,24 @@ class TelegramChannelAdapter(ChannelAdapter):
                 error_message="telegram not linked",
             )
 
-        chat_id = telegram_info["id"]
+        chat_id = telegram_info.get("id")
+        if not chat_id:
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type,
+                status=NotificationStatus.PENDING,
+                skipped=True,
+                error_message="telegram chat_id missing",
+            )
+
         token = settings.TELEGRAM_BOT_TOKEN
+        if not token:
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type,
+                status=NotificationStatus.PENDING,
+                skipped=True,
+                error_message="telegram bot token not configured",
+            )
+
         url = f"https://api.telegram.org/bot{token}/sendMessage"
         payload = {
             "chat_id": chat_id,
