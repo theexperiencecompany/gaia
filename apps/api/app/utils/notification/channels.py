@@ -298,3 +298,105 @@ class TelegramChannelAdapter(ChannelAdapter):
                 status=NotificationStatus.PENDING,
                 error_message=str(exc),
             )
+
+
+class DiscordChannelAdapter(ChannelAdapter):
+    """Delivers notifications to a user's linked Discord account via DM."""
+
+    DISCORD_API = "https://discord.com/api/v10"
+
+    @property
+    def channel_type(self) -> str:
+        return "discord"
+
+    def can_handle(self, notification: NotificationRequest) -> bool:
+        return True
+
+    async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
+        content = notification.content
+        title = content.title or ""
+        body = content.body or ""
+        text = f"**{title}**\n{body}" if title else body
+        return {"text": text}
+
+    async def deliver(
+        self, content: Dict[str, Any], user_id: str
+    ) -> ChannelDeliveryStatus:
+        linked = await PlatformLinkService.get_linked_platforms(user_id)
+        discord_info = linked.get("discord")
+
+        if not discord_info:
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type,
+                status=NotificationStatus.PENDING,
+                skipped=True,
+                error_message="discord not linked",
+            )
+
+        discord_user_id = discord_info.get("id")
+        if not discord_user_id:
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type,
+                status=NotificationStatus.PENDING,
+                skipped=True,
+                error_message="discord user id missing",
+            )
+
+        token = settings.DISCORD_BOT_TOKEN
+        if not token:
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type,
+                status=NotificationStatus.PENDING,
+                skipped=True,
+                error_message="discord bot token not configured",
+            )
+
+        headers = {
+            "Authorization": f"Bot {token}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            async with aiohttp.ClientSession(headers=headers) as session:
+                async with session.post(
+                    f"{self.DISCORD_API}/users/@me/channels",
+                    json={"recipient_id": discord_user_id},
+                ) as resp:
+                    if resp.status not in (200, 201):
+                        err = await resp.text()
+                        return ChannelDeliveryStatus(
+                            channel_type=self.channel_type,
+                            status=NotificationStatus.PENDING,
+                            error_message=f"Discord DM channel error {resp.status}: {err}",
+                        )
+                    data = await resp.json()
+                    dm_channel_id = data.get("id")
+                    if not dm_channel_id:
+                        return ChannelDeliveryStatus(
+                            channel_type=self.channel_type,
+                            status=NotificationStatus.PENDING,
+                            error_message="Discord DM channel id missing from response",
+                        )
+
+                async with session.post(
+                    f"{self.DISCORD_API}/channels/{dm_channel_id}/messages",
+                    json={"content": content["text"]},
+                ) as resp:
+                    if resp.status in (200, 201):
+                        return ChannelDeliveryStatus(
+                            channel_type=self.channel_type,
+                            status=NotificationStatus.DELIVERED,
+                            delivered_at=datetime.now(timezone.utc),
+                        )
+                    err = await resp.text()
+                    return ChannelDeliveryStatus(
+                        channel_type=self.channel_type,
+                        status=NotificationStatus.PENDING,
+                        error_message=f"Discord message error {resp.status}: {err}",
+                    )
+        except Exception as exc:
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type,
+                status=NotificationStatus.PENDING,
+                error_message=str(exc),
+            )
