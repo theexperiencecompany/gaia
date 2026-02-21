@@ -174,6 +174,7 @@ class ChannelDeliveryStatus(BaseModel):
     delivered_at: Optional[datetime] = None
     error_message: Optional[str] = None
     retry_count: int = 0
+    skipped: bool = False
 
 
 class NotificationRecord(BaseModel):

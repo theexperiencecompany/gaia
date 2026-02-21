@@ -4,12 +4,16 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Any, Dict, List
 
+import aiohttp
+
+from app.config.settings import settings
 from app.models.notification.notification_models import (
     ActionType,
     ChannelDeliveryStatus,
     NotificationRequest,
     NotificationStatus,
 )
+from app.services.platform_link_service import PlatformLinkService
 
 
 # Abstract Base Classes
@@ -214,4 +218,67 @@ class EmailChannelAdapter(ChannelAdapter):
                 channel_type="email",
                 status=NotificationStatus.PENDING,
                 error_message=str(e),
+            )
+
+
+class TelegramChannelAdapter(ChannelAdapter):
+    """Delivers notifications to a user's linked Telegram account."""
+
+    @property
+    def channel_type(self) -> str:
+        return "telegram"
+
+    def can_handle(self, notification: NotificationRequest) -> bool:
+        return True
+
+    async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
+        content = notification.content
+        title = content.title or ""
+        body = content.body or ""
+        text = f"*{title}*\n{body}" if title else body
+        return {"text": text}
+
+    async def deliver(
+        self, content: Dict[str, Any], user_id: str
+    ) -> ChannelDeliveryStatus:
+        linked = await PlatformLinkService.get_linked_platforms(user_id)
+        telegram_info = linked.get("telegram")
+
+        if not telegram_info:
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type,
+                status=NotificationStatus.PENDING,
+                skipped=True,
+                error_message="telegram not linked",
+            )
+
+        chat_id = telegram_info["id"]
+        token = settings.TELEGRAM_BOT_TOKEN
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            "chat_id": chat_id,
+            "text": content["text"],
+            "parse_mode": "Markdown",
+        }
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(url, json=payload) as resp:
+                    if resp.status == 200:
+                        return ChannelDeliveryStatus(
+                            channel_type=self.channel_type,
+                            status=NotificationStatus.DELIVERED,
+                            delivered_at=datetime.now(timezone.utc),
+                        )
+                    error = await resp.text()
+                    return ChannelDeliveryStatus(
+                        channel_type=self.channel_type,
+                        status=NotificationStatus.PENDING,
+                        error_message=f"Telegram API error {resp.status}: {error}",
+                    )
+        except Exception as exc:
+            return ChannelDeliveryStatus(
+                channel_type=self.channel_type,
+                status=NotificationStatus.PENDING,
+                error_message=str(exc),
             )
