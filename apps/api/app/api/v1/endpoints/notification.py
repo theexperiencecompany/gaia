@@ -10,6 +10,8 @@ from app.models.device_token_models import (
     DeviceTokenResponse,
 )
 from app.models.notification.notification_models import (
+    ChannelPreferences,
+    ChannelPreferencesUpdate,
     NotificationStatus,
 )
 from app.models.notification.request_models import (
@@ -29,22 +31,6 @@ from fastapi import (
     Query,
     Request,
 )
-from pydantic import BaseModel
-
-
-class ChannelPreferences(BaseModel):
-    """User notification channel preferences."""
-
-    telegram: bool = True
-    discord: bool = True
-
-
-class ChannelPreferencesUpdate(BaseModel):
-    """Request body for updating channel preferences."""
-
-    telegram: Optional[bool] = None
-    discord: Optional[bool] = None
-
 
 router = APIRouter()
 

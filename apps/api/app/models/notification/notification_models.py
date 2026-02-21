@@ -271,3 +271,17 @@ class UserNotificationPreferences(BaseModel):
             return start <= now <= end
         else:
             return now >= start or now <= end
+
+
+class ChannelPreferences(BaseModel):
+    """User notification channel preferences."""
+
+    telegram: bool = True
+    discord: bool = True
+
+
+class ChannelPreferencesUpdate(BaseModel):
+    """Request body for updating channel preferences."""
+
+    telegram: Optional[bool] = None
+    discord: Optional[bool] = None

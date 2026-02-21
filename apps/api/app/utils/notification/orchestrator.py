@@ -3,6 +3,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import app_logger as logger
+from app.constants.notifications import (
+    DEFAULT_CHANNEL_PREFERENCES,
+    EXTERNAL_NOTIFICATION_CHANNELS,
+)
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
     ActionResult,
@@ -133,7 +137,7 @@ class NotificationOrchestrator:
 
         # Auto-inject Telegram and Discord if not already in the channel list
         channel_prefs = await self._get_channel_prefs(notification.user_id)
-        for platform in ("telegram", "discord"):
+        for platform in EXTERNAL_NOTIFICATION_CHANNELS:
             if platform in explicitly_requested:
                 continue
             if not channel_prefs.get(platform, True):
@@ -194,7 +198,7 @@ class NotificationOrchestrator:
             }
         except Exception as e:
             logger.warning(f"Failed to fetch channel prefs for {user_id}: {e}")
-            return {"telegram": True, "discord": True}
+            return DEFAULT_CHANNEL_PREFERENCES.copy()
 
     async def _deliver_via_channel(
         self, notification: NotificationRecord, adapter: ChannelAdapter

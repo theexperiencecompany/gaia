@@ -7,6 +7,7 @@ from typing import Any, Dict, List
 import aiohttp
 
 from app.config.settings import settings
+from app.constants.notifications import DISCORD_API_BASE, TELEGRAM_BOT_API_BASE
 from app.models.notification.notification_models import (
     ActionType,
     ChannelDeliveryStatus,
@@ -270,7 +271,7 @@ class TelegramChannelAdapter(ChannelAdapter):
                 error_message="telegram bot token not configured",
             )
 
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        url = f"{TELEGRAM_BOT_API_BASE}{token}/sendMessage"
         payload = {
             "chat_id": chat_id,
             "text": content["text"],
@@ -303,7 +304,7 @@ class TelegramChannelAdapter(ChannelAdapter):
 class DiscordChannelAdapter(ChannelAdapter):
     """Delivers notifications to a user's linked Discord account via DM."""
 
-    DISCORD_API = "https://discord.com/api/v10"
+    DISCORD_API = DISCORD_API_BASE
 
     @property
     def channel_type(self) -> str:
