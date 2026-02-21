@@ -22,8 +22,10 @@ from app.utils.notification.actions import (
 )
 from app.utils.notification.channels import (
     ChannelAdapter,
+    DiscordChannelAdapter,
     EmailChannelAdapter,
     InAppChannelAdapter,
+    TelegramChannelAdapter,
 )
 from app.utils.notification.storage import (
     MongoDBNotificationStorage,
@@ -57,6 +59,8 @@ class NotificationOrchestrator:
         # Channel adapters
         self.register_channel_adapter(InAppChannelAdapter())
         self.register_channel_adapter(adapter=EmailChannelAdapter())
+        self.register_channel_adapter(TelegramChannelAdapter())
+        self.register_channel_adapter(DiscordChannelAdapter())
 
         # Action handlers
         self.register_action_handler(ApiCallActionHandler())
