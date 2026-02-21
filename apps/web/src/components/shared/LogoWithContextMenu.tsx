@@ -163,7 +163,7 @@ export function LogoWithContextMenu({
       id: "experience-company",
       type: "link",
       label: "by The Experience Company",
-      href: "https://exprience.heygaia.io",
+      href: "https://experience.heygaia.io",
       icon: (
         <Image
           src="/images/logos/experience_logo.svg"

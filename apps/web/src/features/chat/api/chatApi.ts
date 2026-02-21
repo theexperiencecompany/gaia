@@ -30,6 +30,16 @@ export enum SystemPurpose {
   OTHER = "other", // Add more purposes as needed
 }
 
+export enum ConversationSource {
+  WEB = "web",
+  MOBILE = "mobile",
+  TELEGRAM = "telegram",
+  DISCORD = "discord",
+  SLACK = "slack",
+  WHATSAPP = "whatsapp",
+  WORKFLOW_SYSTEM = "workflow_system",
+}
+
 export interface Conversation {
   _id: string;
   user_id: string;
@@ -39,6 +49,7 @@ export interface Conversation {
   is_system_generated?: boolean;
   system_purpose?: SystemPurpose;
   is_unread?: boolean;
+  source?: ConversationSource;
   createdAt: string;
   updatedAt?: string;
 }

@@ -28,6 +28,8 @@ class NotificationSourceEnum(str, Enum):
     AI_TODO_ADDED = "ai_todo_added"
     EMAIL_TRIGGER = "email_trigger"
     BACKGROUND_JOB = "background_job"
+    WORKFLOW_COMPLETED = "workflow_completed"
+    WORKFLOW_FAILED = "workflow_failed"
 
 
 class ActionType(str, Enum):

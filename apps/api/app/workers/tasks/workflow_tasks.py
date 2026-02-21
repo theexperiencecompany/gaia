@@ -9,7 +9,10 @@ from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from app.agents.prompts.workflow_prompts import TODO_WORKFLOW_DESCRIPTION_TEMPLATE
-from app.api.v1.middleware.tiered_rate_limiter import tiered_rate_limit
+from app.api.v1.middleware.tiered_rate_limiter import (
+    RateLimitExceededException,
+    tiered_rate_limit,
+)
 from app.config.loggers import worker_logger as logger
 
 from app.core.websocket_manager import get_websocket_manager
@@ -28,6 +31,7 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
+    NotificationType,
     RedirectConfig,
 )
 from app.models.workflow_models import (
@@ -236,8 +240,12 @@ async def execute_workflow_by_id(
 
     except Exception as e:
         error_str = str(e)
+        # Escape curly braces so Loguru's .format() doesn't trip on dict-like
+        # exception messages (e.g. RateLimitExceededException contains {'error': ...})
+        safe_error_str = error_str.replace("{", "{{").replace("}", "}}")
         logger.error(
-            "Error executing workflow %s: %s" % (workflow_id, error_str), exc_info=True
+            "Error executing workflow %s: %s" % (workflow_id, safe_error_str),
+            exc_info=True,
         )
 
         # Complete execution record with failure
@@ -272,28 +280,62 @@ async def execute_workflow_by_id(
         # Send failure notification so the user knows the workflow failed
         if workflow:
             try:
-                from app.api.v1.middleware.tiered_rate_limiter import (
-                    RateLimitExceededException,
-                )
-
                 if isinstance(e, RateLimitExceededException):
                     title = f"Workflow Failed: {workflow.title}"
-                    body = (
-                        f"Your workflow '{workflow.title}' could not run because "
-                        f"scheduled workflow executions are not available on your current plan. "
-                        f"Upgrade to Pro to enable automatic workflow runs."
+                    detail = e.detail if isinstance(e.detail, dict) else {}
+                    plan_required = detail.get("plan_required", "pro").upper()
+                    reset_time_str = detail.get("reset_time", "")
+
+                    # Build human-readable reset hint from the reset timestamp
+                    if reset_time_str:
+                        try:
+                            reset_dt = datetime.fromisoformat(reset_time_str)
+                            formatted_reset = reset_dt.strftime("%I:%M %p UTC")
+                            body = (
+                                f"Your workflow '{workflow.title}' could not run - "
+                                f"you've reached your workflow execution limit for today. "
+                                f"Limit resets at {formatted_reset}. "
+                                f"Upgrade to {plan_required} for higher limits."
+                            )
+                        except Exception:
+                            body = (
+                                f"Your workflow '{workflow.title}' could not run - "
+                                f"you've reached your workflow execution limit. "
+                                f"Upgrade to {plan_required} for higher limits."
+                            )
+                    else:
+                        body = (
+                            f"Your workflow '{workflow.title}' could not run - "
+                            f"you've reached your workflow execution limit. "
+                            f"Upgrade to {plan_required} for higher limits."
+                        )
+
+                    upgrade_action = NotificationAction(
+                        type=ActionType.REDIRECT,
+                        label=f"Upgrade to {plan_required}",
+                        style=ActionStyle.PRIMARY,
+                        config=ActionConfig(
+                            redirect=RedirectConfig(
+                                url="/subscription",
+                                open_in_new_tab=False,
+                                close_notification=True,
+                            )
+                        ),
                     )
                 else:
                     title = f"Workflow Failed: {workflow.title}"
                     body = f"Your workflow '{workflow.title}' encountered an error and could not complete."
+                    upgrade_action = None
 
                 await notification_service.create_notification(
                     NotificationRequest(
                         user_id=workflow.user_id,
-                        source=NotificationSourceEnum.BACKGROUND_JOB,
+                        source=NotificationSourceEnum.WORKFLOW_FAILED,
+                        type=NotificationType.ERROR,
                         content=NotificationContent(
                             title=title,
                             body=body,
+                            actions=[upgrade_action] if upgrade_action else None,
                         ),
                         channels=[
                             ChannelConfig(
@@ -599,13 +641,29 @@ async def create_workflow_completion_notification(
 
     # Send notification (best effort - don't fail if this breaks)
     try:
+        # Extract final bot response for external channel delivery
+        bot_messages = (
+            [m for m in execution_messages if m.type == "bot"]
+            if execution_messages
+            else []
+        )
+        bot_response = bot_messages[-1].response if bot_messages else ""
+        message_parts = [
+            p.strip() for p in bot_response.split("<NEW_MESSAGE_BREAK>") if p.strip()
+        ]
+
+        # Format completion timestamp
+        completed_at = datetime.now(timezone.utc)
+        formatted_time = completed_at.strftime("%I:%M %p UTC, %b %d")
+
         await notification_service.create_notification(
             NotificationRequest(
                 user_id=user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
+                source=NotificationSourceEnum.WORKFLOW_COMPLETED,
+                type=NotificationType.SUCCESS,
                 content=NotificationContent(
                     title=f"Workflow Completed: {workflow.title}",
-                    body=f"Your workflow '{workflow.title}' has completed successfully.",
+                    body=f"Completed at {formatted_time}",
                     actions=[
                         NotificationAction(
                             type=ActionType.REDIRECT,
@@ -620,6 +678,12 @@ async def create_workflow_completion_notification(
                             ),
                         )
                     ],
+                    rich_content={
+                        "type": "workflow_execution",
+                        "messages": message_parts,
+                        "workflow_id": workflow.id,
+                        "conversation_id": conversation["conversation_id"],
+                    },
                 ),
                 channels=[
                     ChannelConfig(channel_type="inapp", enabled=True, priority=1)

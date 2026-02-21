@@ -549,6 +549,7 @@ class NotificationOrchestrator:
                 ],
             },
             "source": notification.original_request.source,
+            "type": notification.original_request.type.value,
             "metadata": notification.original_request.metadata,
             "channels": [
                 {

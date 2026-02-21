@@ -225,6 +225,8 @@ class EmailChannelAdapter(ChannelAdapter):
 class TelegramChannelAdapter(ChannelAdapter):
     """Delivers notifications to a user's linked Telegram account."""
 
+    MAX_MESSAGE_LENGTH = 4096
+
     @property
     def channel_type(self) -> str:
         return "telegram"
@@ -232,12 +234,60 @@ class TelegramChannelAdapter(ChannelAdapter):
     def can_handle(self, notification: NotificationRequest) -> bool:
         return True
 
+    def _split_text(self, text: str, limit: int) -> List[str]:
+        """Split text at paragraph/newline boundaries to respect platform char limits."""
+        if len(text) <= limit:
+            return [text]
+        parts = []
+        while len(text) > limit:
+            # Try to split at last newline within limit
+            split_at = text.rfind("\n", 0, limit)
+            if split_at == -1:
+                split_at = limit
+            parts.append(text[:split_at].rstrip())
+            text = text[split_at:].lstrip()
+        if text:
+            parts.append(text)
+        return parts
+
     async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
         content = notification.content
+        rich = content.rich_content or {}
+
+        if rich.get("type") == "workflow_execution":
+            title = content.title or ""
+            body = content.body or ""
+            header = f"\u2705 *{title}*\n\u23f0 {body}" if title else body
+            messages = rich.get("messages", [])
+            conversation_id = rich.get("conversation_id", "")
+            app_url = getattr(settings, "APP_URL", "https://app.heygaia.com")
+            footer = (
+                f"\U0001f517 [View full results]({app_url}/c/{conversation_id})"
+                if conversation_id
+                else ""
+            )
+            return {
+                "type": "workflow_messages",
+                "header": header,
+                "messages": messages,
+                "footer": footer,
+            }
+
+        # Standard single-message format
         title = content.title or ""
         body = content.body or ""
         text = f"*{title}*\n{body}" if title else body
         return {"text": text}
+
+    async def _send_message(
+        self, session: aiohttp.ClientSession, url: str, chat_id: str, text: str
+    ) -> str | None:
+        """Send a single message. Returns error string or None on success."""
+        payload = {"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}
+        async with session.post(url, json=payload) as resp:
+            if resp.status != 200:
+                return await resp.text()
+        return None
 
     async def deliver(
         self, content: Dict[str, Any], user_id: str
@@ -272,27 +322,67 @@ class TelegramChannelAdapter(ChannelAdapter):
             )
 
         url = f"{TELEGRAM_BOT_API_BASE}{token}/sendMessage"
-        payload = {
-            "chat_id": chat_id,
-            "text": content["text"],
-            "parse_mode": "Markdown",
-        }
 
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.post(url, json=payload) as resp:
-                    if resp.status == 200:
-                        return ChannelDeliveryStatus(
-                            channel_type=self.channel_type,
-                            status=NotificationStatus.DELIVERED,
-                            delivered_at=datetime.now(timezone.utc),
+                if content.get("type") == "workflow_messages":
+                    # Send header
+                    if content.get("header"):
+                        err = await self._send_message(
+                            session, url, chat_id, content["header"]
                         )
-                    error = await resp.text()
+                        if err:
+                            return ChannelDeliveryStatus(
+                                channel_type=self.channel_type,
+                                status=NotificationStatus.PENDING,
+                                error_message=f"Telegram header error: {err}",
+                            )
+
+                    # Send each message part, splitting if needed
+                    for msg in content.get("messages", []):
+                        for chunk in self._split_text(msg, self.MAX_MESSAGE_LENGTH):
+                            err = await self._send_message(session, url, chat_id, chunk)
+                            if err:
+                                return ChannelDeliveryStatus(
+                                    channel_type=self.channel_type,
+                                    status=NotificationStatus.PENDING,
+                                    error_message=f"Telegram message error: {err}",
+                                )
+
+                    # Send footer
+                    if content.get("footer"):
+                        await self._send_message(
+                            session, url, chat_id, content["footer"]
+                        )
+
                     return ChannelDeliveryStatus(
                         channel_type=self.channel_type,
-                        status=NotificationStatus.PENDING,
-                        error_message=f"Telegram API error {resp.status}: {error}",
+                        status=NotificationStatus.DELIVERED,
+                        delivered_at=datetime.now(timezone.utc),
                     )
+
+                else:
+                    # Standard single message
+                    async with session.post(
+                        url,
+                        json={
+                            "chat_id": chat_id,
+                            "text": content["text"],
+                            "parse_mode": "Markdown",
+                        },
+                    ) as resp:
+                        if resp.status == 200:
+                            return ChannelDeliveryStatus(
+                                channel_type=self.channel_type,
+                                status=NotificationStatus.DELIVERED,
+                                delivered_at=datetime.now(timezone.utc),
+                            )
+                        error = await resp.text()
+                        return ChannelDeliveryStatus(
+                            channel_type=self.channel_type,
+                            status=NotificationStatus.PENDING,
+                            error_message=f"Telegram API error {resp.status}: {error}",
+                        )
         except Exception as exc:
             return ChannelDeliveryStatus(
                 channel_type=self.channel_type,
@@ -305,6 +395,7 @@ class DiscordChannelAdapter(ChannelAdapter):
     """Delivers notifications to a user's linked Discord account via DM."""
 
     DISCORD_API = DISCORD_API_BASE
+    MAX_MESSAGE_LENGTH = 2000
 
     @property
     def channel_type(self) -> str:
@@ -313,8 +404,45 @@ class DiscordChannelAdapter(ChannelAdapter):
     def can_handle(self, notification: NotificationRequest) -> bool:
         return True
 
+    def _split_text(self, text: str, limit: int) -> List[str]:
+        """Split text at paragraph/newline boundaries to respect platform char limits."""
+        if len(text) <= limit:
+            return [text]
+        parts = []
+        while len(text) > limit:
+            split_at = text.rfind("\n", 0, limit)
+            if split_at == -1:
+                split_at = limit
+            parts.append(text[:split_at].rstrip())
+            text = text[split_at:].lstrip()
+        if text:
+            parts.append(text)
+        return parts
+
     async def transform(self, notification: NotificationRequest) -> Dict[str, Any]:
         content = notification.content
+        rich = content.rich_content or {}
+
+        if rich.get("type") == "workflow_execution":
+            title = content.title or ""
+            body = content.body or ""
+            header = f"\u2705 **{title}**\n\u23f0 {body}" if title else body
+            messages = rich.get("messages", [])
+            conversation_id = rich.get("conversation_id", "")
+            app_url = getattr(settings, "APP_URL", "https://app.heygaia.com")
+            footer = (
+                f"\U0001f517 [View full results]({app_url}/c/{conversation_id})"
+                if conversation_id
+                else ""
+            )
+            return {
+                "type": "workflow_messages",
+                "header": header,
+                "messages": messages,
+                "footer": footer,
+            }
+
+        # Standard single-message format
         title = content.title or ""
         body = content.body or ""
         text = f"**{title}**\n{body}" if title else body
@@ -359,6 +487,7 @@ class DiscordChannelAdapter(ChannelAdapter):
 
         try:
             async with aiohttp.ClientSession(headers=headers) as session:
+                # Open DM channel
                 async with session.post(
                     f"{self.DISCORD_API}/users/@me/channels",
                     json={"recipient_id": discord_user_id},
@@ -379,21 +508,59 @@ class DiscordChannelAdapter(ChannelAdapter):
                             error_message="Discord DM channel id missing from response",
                         )
 
-                async with session.post(
-                    f"{self.DISCORD_API}/channels/{dm_channel_id}/messages",
-                    json={"content": content.get("text", "")},
-                ) as resp:
-                    if resp.status in (200, 201):
-                        return ChannelDeliveryStatus(
-                            channel_type=self.channel_type,
-                            status=NotificationStatus.DELIVERED,
-                            delivered_at=datetime.now(timezone.utc),
-                        )
-                    err = await resp.text()
+                dm_url = f"{self.DISCORD_API}/channels/{dm_channel_id}/messages"
+
+                async def send_discord_msg(text: str) -> str | None:
+                    async with session.post(dm_url, json={"content": text}) as r:
+                        if r.status not in (200, 201):
+                            return await r.text()
+                    return None
+
+                if content.get("type") == "workflow_messages":
+                    # Send header
+                    if content.get("header"):
+                        err = await send_discord_msg(content["header"])
+                        if err:
+                            return ChannelDeliveryStatus(
+                                channel_type=self.channel_type,
+                                status=NotificationStatus.PENDING,
+                                error_message=f"Discord header error: {err}",
+                            )
+
+                    # Send each message part, splitting if needed
+                    for msg in content.get("messages", []):
+                        for chunk in self._split_text(msg, self.MAX_MESSAGE_LENGTH):
+                            err = await send_discord_msg(chunk)
+                            if err:
+                                return ChannelDeliveryStatus(
+                                    channel_type=self.channel_type,
+                                    status=NotificationStatus.PENDING,
+                                    error_message=f"Discord message error: {err}",
+                                )
+
+                    # Send footer
+                    if content.get("footer"):
+                        await send_discord_msg(content["footer"])
+
                     return ChannelDeliveryStatus(
                         channel_type=self.channel_type,
-                        status=NotificationStatus.PENDING,
-                        error_message=f"Discord message error {resp.status}: {err}",
+                        status=NotificationStatus.DELIVERED,
+                        delivered_at=datetime.now(timezone.utc),
+                    )
+
+                else:
+                    # Standard single message
+                    err = await send_discord_msg(content.get("text", ""))
+                    if err:
+                        return ChannelDeliveryStatus(
+                            channel_type=self.channel_type,
+                            status=NotificationStatus.PENDING,
+                            error_message=f"Discord message error: {err}",
+                        )
+                    return ChannelDeliveryStatus(
+                        channel_type=self.channel_type,
+                        status=NotificationStatus.DELIVERED,
+                        delivered_at=datetime.now(timezone.utc),
                     )
         except Exception as exc:
             return ChannelDeliveryStatus(
