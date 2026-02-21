@@ -380,7 +380,7 @@ class DiscordChannelAdapter(ChannelAdapter):
 
                 async with session.post(
                     f"{self.DISCORD_API}/channels/{dm_channel_id}/messages",
-                    json={"content": content["text"]},
+                    json={"content": content.get("text", "")},
                 ) as resp:
                     if resp.status in (200, 201):
                         return ChannelDeliveryStatus(
