@@ -15,6 +15,7 @@ import {
   type HoloCardData,
   holoCardApi,
 } from "@/features/onboarding/api/holoCardApi";
+import { SettingsPage } from "@/features/settings/components/ui";
 
 export default function ProfileCardSettings() {
   const [holoCardData, setHoloCardData] = useState<HoloCardData | null>(null);
@@ -76,11 +77,12 @@ export default function ProfileCardSettings() {
     : null;
 
   return (
-    <div className="w-full space-y-4">
+    <SettingsPage>
+      {/* Header row with actions */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-white">Your GAIA Card</h3>
-          <p className="text-sm text-zinc-400">A tiny window into you</p>
+          <h3 className="text-sm font-medium text-white">Your GAIA Card</h3>
+          <p className="mt-0.5 text-xs text-zinc-500">A tiny window into you</p>
         </div>
         <ButtonGroup>
           <Tooltip content="Copy profile link">
@@ -106,6 +108,7 @@ export default function ProfileCardSettings() {
         </ButtonGroup>
       </div>
 
+      {/* Card preview — centered, visual, no row structure needed */}
       <div className="flex justify-center py-4">
         {isLoading ? (
           <Skeleton className="h-[400px] w-[280px] rounded-2xl" />
@@ -128,6 +131,6 @@ export default function ProfileCardSettings() {
           </div>
         ) : null}
       </div>
-    </div>
+    </SettingsPage>
   );
 }

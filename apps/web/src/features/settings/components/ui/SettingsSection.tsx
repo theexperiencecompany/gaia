@@ -24,7 +24,7 @@ export function SettingsSection({
         <p className="mb-3 text-sm text-zinc-500">{description}</p>
       )}
       <div
-        className={`divide-y divide-zinc-800 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 ${className}`}
+        className={`divide-y divide-zinc-800/60 overflow-hidden rounded-2xl bg-zinc-900/60 ${className}`}
       >
         {children}
       </div>

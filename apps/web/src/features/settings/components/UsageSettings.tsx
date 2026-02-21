@@ -1,7 +1,6 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
 import { Progress } from "@heroui/progress";
 import { Tab, Tabs } from "@heroui/tabs";
@@ -9,7 +8,11 @@ import { CalendarIcon, ChartIcon, ChartIncreaseIcon } from "@icons";
 import Link from "next/link";
 import { useState } from "react";
 import Spinner from "@/components/ui/spinner";
-import { SettingsCard } from "@/features/settings/components/SettingsCard";
+import {
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+} from "@/features/settings/components/ui";
 
 import { useUsageSummary } from "../hooks/useUsage";
 
@@ -40,125 +43,102 @@ export default function UsageSettings() {
     : [];
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6">
-      {/* Upgrade to Pro Header */}
+    <SettingsPage>
+      {/* Upgrade CTA — only for free plan */}
       {summary?.plan_type !== "pro" && (
-        <SettingsCard
-          title="Upgrade to Pro"
-          className="border border-primary/70 bg-primary/10!"
-        >
-          <p className="mb-3 text-sm text-primary">
-            Get 25-250x higher usage limits across all features, priority
-            support, and private Discord channels.
-          </p>
-          <div className="flex w-full justify-end">
-            <Link href={"/pricing"}>
-              <Button color="primary" className="font-medium" size="sm">
-                Upgrade Now
-              </Button>
-            </Link>
+        <SettingsSection title="Upgrade">
+          <div className="px-4 py-4">
+            <p className="mb-3 text-sm text-primary">
+              Get 25-250x higher usage limits across all features, priority
+              support, and private Discord channels.
+            </p>
+            <div className="flex w-full justify-end">
+              <Link href="/pricing">
+                <Button color="primary" className="font-medium" size="sm">
+                  Upgrade Now
+                </Button>
+              </Link>
+            </div>
           </div>
-        </SettingsCard>
+        </SettingsSection>
       )}
 
-      {/* Header with Period Selection */}
-      <SettingsCard>
-        <div className="mb-6 flex items-center justify-between">
-          <p className="text-lg font-medium text-zinc-300">Usage</p>
-          <div className="flex items-center space-x-3">
-            <Chip
-              size="sm"
-              color={summary?.plan_type === "pro" ? "primary" : "default"}
-              className="font-medium"
-            >
-              {summary?.plan_type?.toUpperCase() || "FREE"} PLAN
-            </Chip>
-            <Tabs
-              selectedKey={selectedPeriod}
-              onSelectionChange={(key) => setSelectedPeriod(key as string)}
-            >
-              <Tab
-                key="day"
-                title={
-                  <div className="flex items-center space-x-2">
-                    <CalendarIcon size={16} />
-                    <span>Daily</span>
-                  </div>
-                }
-              />
-              <Tab
-                key="month"
-                title={
-                  <div className="flex items-center space-x-2">
-                    <ChartIncreaseIcon size={16} />
-                    <span>Monthly</span>
-                  </div>
-                }
-              />
-            </Tabs>
+      {/* Period selector + plan chip */}
+      <div className="flex items-center justify-between">
+        <Chip
+          size="sm"
+          color={summary?.plan_type === "pro" ? "primary" : "default"}
+          className="font-medium"
+        >
+          {summary?.plan_type?.toUpperCase() || "FREE"} PLAN
+        </Chip>
+        <Tabs
+          selectedKey={selectedPeriod}
+          onSelectionChange={(key) => setSelectedPeriod(key as string)}
+          size="sm"
+        >
+          <Tab
+            key="day"
+            title={
+              <div className="flex items-center space-x-2">
+                <CalendarIcon size={16} />
+                <span>Daily</span>
+              </div>
+            }
+          />
+          <Tab
+            key="month"
+            title={
+              <div className="flex items-center space-x-2">
+                <ChartIncreaseIcon size={16} />
+                <span>Monthly</span>
+              </div>
+            }
+          />
+        </Tabs>
+      </div>
+
+      <SettingsSection title="Usage">
+        {featuresWithPeriod.length === 0 ? (
+          <div className="flex flex-col items-center px-4 py-8 text-center">
+            <ChartIcon className="mx-auto h-10 w-10 text-zinc-600" />
+            <h3 className="mt-3 text-base font-medium text-white">
+              No limits configured
+            </h3>
+            <p className="mt-1 text-sm text-zinc-500">
+              No {selectedPeriod}ly limits are configured for your{" "}
+              {summary?.plan_type?.toUpperCase()} plan.
+            </p>
           </div>
-        </div>
+        ) : (
+          featuresWithPeriod.map(([key, feature]) => {
+            const periodData =
+              feature.periods[selectedPeriod as keyof typeof feature.periods];
+            if (!periodData) return null;
 
-        {/* Features List */}
-        <div className="space-y-3">
-          {featuresWithPeriod.length === 0 ? (
-            <Card>
-              <CardBody className="py-8 text-center">
-                <ChartIcon className="text-muted-foreground/50 mx-auto h-10 w-10" />
-                <h3 className="mt-3 text-base font-medium">
-                  No limits configured
-                </h3>
-                <p className="text-muted-foreground mt-1 text-sm">
-                  No {selectedPeriod}ly limits are configured for your{" "}
-                  {summary?.plan_type?.toUpperCase()} plan.
-                </p>
-              </CardBody>
-            </Card>
-          ) : (
-            featuresWithPeriod.map(([key, feature]) => {
-              const periodData =
-                feature.periods[selectedPeriod as keyof typeof feature.periods];
-              if (!periodData) return null;
-
-              return (
-                <Card
-                  key={key}
-                  className="border-none bg-zinc-800/60 shadow-none"
-                >
-                  <CardBody className="p-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex-1">
-                        <div className="mb-2 flex items-start justify-between">
-                          <div>
-                            <h4 className="text-sm font-normal">
-                              {feature.title}
-                            </h4>
-                            <div className="text-xs font-light text-foreground-400">
-                              {feature.description}
-                            </div>
-                          </div>
-                          <Chip
-                            className="flex items-center space-x-3 text-foreground-600"
-                            size="sm"
-                          >
-                            {periodData.used.toLocaleString()} /{" "}
-                            {periodData.limit.toLocaleString()}
-                          </Chip>
-                        </div>
-
-                        <Progress
-                          value={periodData.percentage}
-                          color={getProgressColor(periodData.percentage)}
-                        />
-                      </div>
-                    </div>
-                  </CardBody>
-                </Card>
-              );
-            })
-          )}
-        </div>
-      </SettingsCard>
-    </div>
+            return (
+              <SettingsRow
+                key={key}
+                label={feature.title}
+                description={feature.description}
+                stacked
+              >
+                <div className="flex items-center gap-3">
+                  <Progress
+                    value={periodData.percentage}
+                    color={getProgressColor(periodData.percentage)}
+                    className="flex-1"
+                  />
+                  <span className="shrink-0 text-xs text-zinc-500">
+                    {periodData.used.toLocaleString()} /{" "}
+                    {periodData.limit.toLocaleString()}
+                  </span>
+                </div>
+              </SettingsRow>
+            );
+          })
+        )}
+      </SettingsSection>
+    </SettingsPage>
   );
 }

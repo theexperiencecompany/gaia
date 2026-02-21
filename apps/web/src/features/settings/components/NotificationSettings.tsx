@@ -4,7 +4,11 @@ import { Switch } from "@heroui/switch";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { SettingsCard } from "@/features/settings/components/SettingsCard";
+import {
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+} from "@/features/settings/components/ui";
 import { apiService } from "@/lib/api";
 import { NotificationsAPI } from "@/services/api/notifications";
 import type { PlatformLink } from "@/types/platform";
@@ -71,36 +75,29 @@ export default function NotificationSettings() {
   };
 
   return (
-    <SettingsCard title="Notifications">
-      <div>
+    <SettingsPage>
+      <SettingsSection description="Choose where to receive GAIA notifications.">
         {NOTIFICATION_PLATFORMS.map((platform) => {
           const isConnected = !!platformLinks[platform.id]?.platformUserId;
-
           return (
-            <div
+            <SettingsRow
               key={platform.id}
-              className="flex items-center justify-between rounded-xl px-1 py-3"
-            >
-              <div className="flex items-center gap-3">
+              label={platform.name}
+              description={
+                isConnected
+                  ? "Send notifications to this platform"
+                  : "Connect in Linked Accounts to enable"
+              }
+              icon={
                 <Image
                   src={platform.image}
                   alt={platform.name}
-                  width={40}
-                  height={40}
-                  className="rounded-lg"
+                  width={36}
+                  height={36}
+                  className="rounded-xl"
                 />
-                <div>
-                  <p className="text-sm font-medium text-zinc-200">
-                    {platform.name}
-                  </p>
-                  <p className="text-xs text-zinc-500">
-                    {isConnected
-                      ? "Send notifications to this platform"
-                      : "Connect this platform in Linked Accounts to enable"}
-                  </p>
-                </div>
-              </div>
-
+              }
+            >
               <Switch
                 size="sm"
                 isSelected={isConnected ? channelPrefs[platform.id] : false}
@@ -110,10 +107,10 @@ export default function NotificationSettings() {
                 onValueChange={(enabled) => handleToggle(platform.id, enabled)}
                 aria-label={`Enable ${platform.name} notifications`}
               />
-            </div>
+            </SettingsRow>
           );
         })}
-      </div>
-    </SettingsCard>
+      </SettingsSection>
+    </SettingsPage>
   );
 }

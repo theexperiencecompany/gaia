@@ -9,6 +9,8 @@ interface SettingsRowProps {
   stacked?: boolean;
   className?: string;
   variant?: "default" | "danger";
+  /** Optional icon rendered to the left of the label */
+  icon?: ReactNode;
 }
 
 export function SettingsRow({
@@ -19,16 +21,20 @@ export function SettingsRow({
   stacked = false,
   className = "",
   variant = "default",
+  icon,
 }: SettingsRowProps) {
   const labelColor = variant === "danger" ? "text-red-400" : "text-white";
 
   const inner = (
     <>
-      <div className="min-w-0 flex-1">
-        <p className={cn("text-sm", labelColor)}>{label}</p>
-        {description && (
-          <p className="mt-0.5 text-xs text-zinc-500">{description}</p>
-        )}
+      <div className="flex min-w-0 flex-1 items-center gap-3">
+        {icon && <div className="shrink-0">{icon}</div>}
+        <div className="min-w-0 flex-1">
+          <p className={cn("text-sm", labelColor)}>{label}</p>
+          {description && (
+            <p className="mt-0.5 text-xs text-zinc-500">{description}</p>
+          )}
+        </div>
       </div>
       {children && (
         <div className={cn("ml-4 shrink-0", stacked && "ml-0 mt-2 w-full")}>

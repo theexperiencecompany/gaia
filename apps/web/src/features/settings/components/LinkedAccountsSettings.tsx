@@ -5,8 +5,11 @@ import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { TelegramIcon } from "@/components/shared/icons";
-import { SettingsCard } from "@/features/settings/components/SettingsCard";
+import {
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+} from "@/features/settings/components/ui";
 import { apiService } from "@/lib/api";
 import type { PlatformLink } from "@/types/platform";
 
@@ -134,140 +137,95 @@ export default function LinkedAccountsSettings() {
   };
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
-      <div>
-        <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-          <span>Linked Accounts</span>
-          <Chip color="success" variant="bordered" size="sm">
-            Beta
-          </Chip>
-        </h3>
-        <p className="mt-1 text-sm text-zinc-400">
-          Connect your messaging platforms to use GAIA from anywhere
-        </p>
-      </div>
+    <SettingsPage>
+      <SettingsSection description="Connect your messaging platforms to use GAIA from anywhere.">
+        {PLATFORMS.map((platform) => {
+          const isConnected =
+            platformLinks[platform.id]?.platformUserId != null;
+          const link = platformLinks[platform.id];
+          const userLabel = link?.displayName
+            ? `${link.displayName}${link.username ? ` (@${link.username})` : ""}`
+            : link?.username
+              ? `@${link.username}`
+              : undefined;
 
-      <SettingsCard>
-        <div className="divide-y divide-zinc-800">
-          {PLATFORMS.map((platform) => {
-            const isConnected =
-              platformLinks[platform.id]?.platformUserId != null;
-
-            return (
-              <div
-                key={platform.id}
-                className="flex items-center justify-between py-4 first:pt-0 last:pb-0"
-              >
-                <div className="flex items-center gap-4">
-                  <div
-                    className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl"
-                    style={
-                      platform.image
-                        ? undefined
-                        : { backgroundColor: platform.color }
-                    }
-                  >
-                    {platform.image ? (
-                      <Image
-                        src={platform.image}
-                        alt={platform.name}
-                        width={44}
-                        height={44}
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <TelegramIcon className="h-6 w-6 text-white" />
-                    )}
-                  </div>
-
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium text-white">
-                        {platform.name}
-                      </span>
-                      {isConnected && (
-                        <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
-                          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                          Connected
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 text-xs text-zinc-500">
-                      {isConnected
-                        ? platform.connectedDescription
-                        : platform.description}
-                    </p>
-                    {isConnected &&
-                      (platformLinks[platform.id]?.displayName ||
-                        platformLinks[platform.id]?.username) && (
-                        <p className="mt-0.5 text-xs text-zinc-600">
-                          {platformLinks[platform.id]?.displayName
-                            ? `${platformLinks[platform.id]?.displayName}${platformLinks[platform.id]?.username ? ` (@${platformLinks[platform.id]?.username})` : ""}`
-                            : `@${platformLinks[platform.id]?.username}`}
-                        </p>
-                      )}
-                  </div>
-                </div>
-
-                <div className="ml-4 flex shrink-0 items-center gap-3">
-                  {isConnected ? (
-                    <Button
-                      variant="flat"
-                      color="danger"
-                      size="sm"
-                      onPress={() => handleDisconnect(platform.id)}
-                      isDisabled={isLoading}
-                      className="text-xs"
-                    >
-                      Disconnect
-                    </Button>
-                  ) : (
-                    <Button
-                      variant="flat"
-                      color="primary"
-                      size="sm"
-                      onPress={() => handleConnect(platform.id)}
-                      isLoading={connectingPlatform === platform.id}
-                      isDisabled={isLoading || connectingPlatform != null}
-                      className="text-xs"
-                    >
-                      Connect
-                    </Button>
-                  )}
-                </div>
+          return (
+            <SettingsRow
+              key={platform.id}
+              label={platform.name}
+              description={
+                isConnected
+                  ? userLabel
+                    ? `${platform.connectedDescription} · ${userLabel}`
+                    : platform.connectedDescription
+                  : platform.description
+              }
+              icon={
+                platform.image ? (
+                  <Image
+                    src={platform.image}
+                    alt={platform.name}
+                    width={36}
+                    height={36}
+                    className="rounded-xl"
+                  />
+                ) : undefined
+              }
+            >
+              <div className="flex items-center gap-3">
+                {isConnected && (
+                  <span className="flex items-center gap-1 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-medium text-emerald-400">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    Connected
+                  </span>
+                )}
+                <Button
+                  variant="flat"
+                  color={isConnected ? "danger" : "primary"}
+                  size="sm"
+                  onPress={() =>
+                    isConnected
+                      ? handleDisconnect(platform.id)
+                      : handleConnect(platform.id)
+                  }
+                  isLoading={connectingPlatform === platform.id}
+                  isDisabled={isLoading || connectingPlatform != null}
+                  className="text-xs"
+                >
+                  {isConnected ? "Disconnect" : "Connect"}
+                </Button>
               </div>
-            );
-          })}
-        </div>
-      </SettingsCard>
+            </SettingsRow>
+          );
+        })}
+      </SettingsSection>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
-        <h4 className="mb-2 text-xs font-medium uppercase tracking-wider text-zinc-500">
-          How it works
-        </h4>
-        <ul className="space-y-1.5 text-sm text-zinc-400">
-          <li className="flex items-start gap-2">
-            <span className="mt-0.5 text-zinc-600">•</span>
-            Connect your account using the button above
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="mt-0.5 text-zinc-600">•</span>
-            Use{" "}
-            <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
-              /gaia
-            </code>{" "}
-            in Discord or Slack, or just message the Telegram bot
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="mt-0.5 text-zinc-600">•</span>
-            All conversations sync with your GAIA account
-          </li>
-          <li className="flex items-start gap-2">
-            <span className="mt-0.5 text-zinc-600">•</span>
-            Disconnect anytime from this page
-          </li>
-        </ul>
-      </div>
-    </div>
+      <SettingsSection title="How it works">
+        <div className="px-4 py-3.5">
+          <ul className="space-y-1.5 text-sm text-zinc-400">
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 text-zinc-600">•</span>
+              Connect your account using the button above
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 text-zinc-600">•</span>
+              Use{" "}
+              <code className="rounded bg-zinc-800 px-1 py-0.5 text-xs text-zinc-300">
+                /gaia
+              </code>{" "}
+              in Discord or Slack, or just message the Telegram bot
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 text-zinc-600">•</span>
+              All conversations sync with your GAIA account
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="mt-0.5 text-zinc-600">•</span>
+              Disconnect anytime from this page
+            </li>
+          </ul>
+        </div>
+      </SettingsSection>
+    </SettingsPage>
   );
 }
