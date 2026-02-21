@@ -2,12 +2,14 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
+import { Switch } from "@heroui/switch";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { TelegramIcon } from "@/components/shared/icons";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
 import { apiService } from "@/lib/api";
+import { NotificationsAPI } from "@/services/api/notifications";
 
 interface PlatformLink {
   platform: "discord" | "slack" | "telegram" | "whatsapp";
@@ -61,6 +63,8 @@ const PLATFORMS: PlatformConfig[] = [
   // },
 ];
 
+const NOTIFICATION_PLATFORMS = new Set(["telegram", "discord"]);
+
 export default function LinkedAccountsSettings() {
   const [platformLinks, setPlatformLinks] = useState<
     Record<string, PlatformLink | null>
@@ -69,10 +73,44 @@ export default function LinkedAccountsSettings() {
   const [connectingPlatform, setConnectingPlatform] = useState<string | null>(
     null,
   );
+  const [channelPrefs, setChannelPrefs] = useState<{
+    telegram: boolean;
+    discord: boolean;
+  }>({ telegram: true, discord: true });
+  const [prefsLoading, setPrefsLoading] = useState(true);
+  const [togglingPlatform, setTogglingPlatform] = useState<string | null>(null);
 
   useEffect(() => {
     fetchPlatformLinks();
+    fetchChannelPrefs();
   }, []);
+
+  const fetchChannelPrefs = async () => {
+    try {
+      setPrefsLoading(true);
+      const prefs = await NotificationsAPI.getChannelPreferences();
+      setChannelPrefs(prefs);
+    } catch {
+      // silently ignore — toggles will still render with default true
+    } finally {
+      setPrefsLoading(false);
+    }
+  };
+
+  const handleToggleNotification = async (
+    platform: "telegram" | "discord",
+    enabled: boolean,
+  ) => {
+    setTogglingPlatform(platform);
+    try {
+      await NotificationsAPI.updateChannelPreference(platform, enabled);
+      setChannelPrefs((prev) => ({ ...prev, [platform]: enabled }));
+    } catch {
+      toast.error(`Failed to update ${platform} notification preference`);
+    } finally {
+      setTogglingPlatform(null);
+    }
+  };
 
   const fetchPlatformLinks = async () => {
     try {
@@ -217,7 +255,28 @@ export default function LinkedAccountsSettings() {
                   </div>
                 </div>
 
-                <div className="ml-4 shrink-0">
+                <div className="ml-4 flex shrink-0 items-center gap-3">
+                  {isConnected && NOTIFICATION_PLATFORMS.has(platform.id) && (
+                    <div className="flex flex-col items-center gap-0.5">
+                      <Switch
+                        size="sm"
+                        isSelected={
+                          channelPrefs[platform.id as "telegram" | "discord"]
+                        }
+                        isDisabled={
+                          prefsLoading || togglingPlatform === platform.id
+                        }
+                        onValueChange={(enabled) =>
+                          handleToggleNotification(
+                            platform.id as "telegram" | "discord",
+                            enabled,
+                          )
+                        }
+                        aria-label={`Enable ${platform.name} notifications`}
+                      />
+                      <span className="text-[10px] text-zinc-500">Notify</span>
+                    </div>
+                  )}
                   {isConnected ? (
                     <Button
                       variant="flat"
