@@ -4,26 +4,15 @@ import { Button } from "@heroui/button";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiService } from "@/lib/api";
-
-interface PlatformLink {
-  platform: "discord" | "slack" | "telegram" | "whatsapp";
-  platformUserId: string;
-  username?: string;
-  displayName?: string;
-  connectedAt?: string;
-}
+import type { PlatformLink } from "@/types/platform";
+import {
+  NOTIFICATION_PLATFORM_LABELS,
+  NOTIFICATION_PLATFORMS,
+} from "../constants";
 
 interface NotificationConnectBannerProps {
   variant?: "compact" | "full";
 }
-
-const NOTIFICATION_PLATFORMS = ["telegram", "discord"] as const;
-type NotificationPlatform = (typeof NOTIFICATION_PLATFORMS)[number];
-
-const PLATFORM_LABELS: Record<NotificationPlatform, string> = {
-  telegram: "Telegram",
-  discord: "Discord",
-};
 
 export function NotificationConnectBanner({
   variant = "compact",
@@ -60,7 +49,7 @@ export function NotificationConnectBanner({
   if (unconnectedPlatforms.length === 0) return null;
 
   const platformList = unconnectedPlatforms
-    .map((p) => PLATFORM_LABELS[p])
+    .map((p) => NOTIFICATION_PLATFORM_LABELS[p])
     .join(" and ");
 
   if (variant === "compact") {

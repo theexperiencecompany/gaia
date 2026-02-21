@@ -7,17 +7,11 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { TelegramIcon } from "@/components/shared/icons";
+import { NOTIFICATION_PLATFORMS_SET } from "@/features/notification/constants";
 import { SettingsCard } from "@/features/settings/components/SettingsCard";
 import { apiService } from "@/lib/api";
 import { NotificationsAPI } from "@/services/api/notifications";
-
-interface PlatformLink {
-  platform: "discord" | "slack" | "telegram" | "whatsapp";
-  platformUserId: string;
-  username?: string;
-  displayName?: string;
-  connectedAt?: string;
-}
+import type { PlatformLink } from "@/types/platform";
 
 interface PlatformConfig {
   id: string;
@@ -62,8 +56,6 @@ const PLATFORMS: PlatformConfig[] = [
   //   connectedDescription: "Message GAIA on WhatsApp",
   // },
 ];
-
-const NOTIFICATION_PLATFORMS = new Set(["telegram", "discord"]);
 
 export default function LinkedAccountsSettings() {
   const [platformLinks, setPlatformLinks] = useState<
@@ -256,27 +248,30 @@ export default function LinkedAccountsSettings() {
                 </div>
 
                 <div className="ml-4 flex shrink-0 items-center gap-3">
-                  {isConnected && NOTIFICATION_PLATFORMS.has(platform.id) && (
-                    <div className="flex flex-col items-center gap-0.5">
-                      <Switch
-                        size="sm"
-                        isSelected={
-                          channelPrefs[platform.id as "telegram" | "discord"]
-                        }
-                        isDisabled={
-                          prefsLoading || togglingPlatform === platform.id
-                        }
-                        onValueChange={(enabled) =>
-                          handleToggleNotification(
-                            platform.id as "telegram" | "discord",
-                            enabled,
-                          )
-                        }
-                        aria-label={`Enable ${platform.name} notifications`}
-                      />
-                      <span className="text-[10px] text-zinc-500">Notify</span>
-                    </div>
-                  )}
+                  {isConnected &&
+                    NOTIFICATION_PLATFORMS_SET.has(platform.id) && (
+                      <div className="flex flex-col items-center gap-0.5">
+                        <Switch
+                          size="sm"
+                          isSelected={
+                            channelPrefs[platform.id as "telegram" | "discord"]
+                          }
+                          isDisabled={
+                            prefsLoading || togglingPlatform === platform.id
+                          }
+                          onValueChange={(enabled) =>
+                            handleToggleNotification(
+                              platform.id as "telegram" | "discord",
+                              enabled,
+                            )
+                          }
+                          aria-label={`Enable ${platform.name} notifications`}
+                        />
+                        <span className="text-[10px] text-zinc-500">
+                          Notify
+                        </span>
+                      </div>
+                    )}
                   {isConnected ? (
                     <Button
                       variant="flat"
