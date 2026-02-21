@@ -5,6 +5,7 @@ import { toast } from "sonner";
 
 import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
+import { NotificationConnectBanner } from "@/features/notification/components/NotificationConnectBanner";
 import { NotificationsList } from "@/features/notification/components/NotificationsList";
 import { useAllNotifications } from "@/features/notification/hooks/useAllNotifications";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
@@ -114,6 +115,7 @@ export default function NotificationsPage() {
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-primary-bg">
       <div className="max-h-[calc(100vh-120px)] overflow-y-auto px-6 pt-6">
+        <NotificationConnectBanner variant="full" />
         {selectedTab === "unread" ? (
           <NotificationsList
             notifications={unreadNotifications}

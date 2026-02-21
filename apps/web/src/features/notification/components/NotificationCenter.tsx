@@ -11,6 +11,7 @@ import { SidebarHeaderButton } from "@/components/";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { NotificationStatus } from "../../../types/features/notificationTypes";
+import { NotificationConnectBanner } from "./NotificationConnectBanner";
 import { NotificationItem } from "./NotificationItem";
 
 interface NotificationCenterProps {
@@ -141,6 +142,8 @@ export function NotificationCenter({
               </div>
             )}
           </ScrollArea>
+
+          <NotificationConnectBanner variant="compact" />
 
           {/* Footer */}
           <div className="flex w-full items-center justify-evenly gap-3 p-3">
