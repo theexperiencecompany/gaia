@@ -6,6 +6,7 @@ import {
   DiscordIcon,
   Link03Icon,
   MessageMultiple02Icon,
+  NotificationIcon,
   SparklesIcon,
   TwitterIcon,
   UserCircleIcon,
@@ -41,6 +42,12 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Linked Accounts",
     icon: Link03Icon,
     href: "/settings?section=linked-accounts",
+  },
+  {
+    key: "notifications",
+    label: "Notifications",
+    icon: NotificationIcon,
+    href: "/settings?section=notifications",
   },
   {
     key: "subscription",

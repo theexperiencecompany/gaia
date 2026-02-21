@@ -1,6 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { apiService } from "@/lib/api";
@@ -9,6 +10,11 @@ import {
   NOTIFICATION_PLATFORM_LABELS,
   NOTIFICATION_PLATFORMS,
 } from "../constants";
+
+const PLATFORM_ICONS: Record<string, string> = {
+  telegram: "/images/icons/macos/telegram.webp",
+  discord: "/images/icons/macos/discord.webp",
+};
 
 interface NotificationConnectBannerProps {
   variant?: "compact" | "full";
@@ -54,10 +60,24 @@ export function NotificationConnectBanner({
 
   if (variant === "compact") {
     return (
-      <div className="flex items-center justify-between gap-2 rounded-xl border border-zinc-700 bg-zinc-800/60 px-3 py-2 text-xs">
-        <span className="text-zinc-400">
-          Connect {platformList} to receive push notifications.
-        </span>
+      <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-900/80 mx-3 px-3 py-2 text-xs">
+        <div className="flex items-center gap-6">
+          <div className="-space-x-2 flex">
+            {unconnectedPlatforms.map((p, index) => (
+              <Image
+                key={p}
+                src={PLATFORM_ICONS[p]}
+                alt={NOTIFICATION_PLATFORM_LABELS[p]}
+                width={30}
+                height={30}
+                className={` ${index % 2 === 0 ? "-rotate-12" : "rotate-12"} rounded-md`}
+              />
+            ))}
+          </div>
+          <span className="text-zinc-400">
+            Connect {platformList} for notifications!
+          </span>
+        </div>
         <Button
           size="sm"
           variant="flat"
