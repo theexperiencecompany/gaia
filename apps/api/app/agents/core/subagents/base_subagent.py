@@ -9,7 +9,6 @@ invoked via tool-calling pattern similar to executor_agent.
 
 MEMORY LEARNING: Each subagent has memory_learning_node as an end_graph_hook.
 This allows subagents to learn both:
-- Skills: Procedural knowledge (how to do tasks) - stored per agent
 - User memories: IDs, preferences, contacts - stored per user
 Both are stored in separate mem0 namespaces and don't interfere.
 """
@@ -19,7 +18,7 @@ import asyncio
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes import (
     manage_system_prompts_node,
-    memory_learning_node,
+    memory_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
@@ -45,6 +44,7 @@ class SubAgentFactory:
         tool_space: str = "general",
         use_direct_tools: bool = False,
         disable_retrieve_tools: bool = False,
+        auto_bind_tools: list[str] | None = None,
     ):
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
@@ -53,6 +53,11 @@ class SubAgentFactory:
             provider: Provider name (gmail, notion, twitter, linkedin, calendar)
             llm: Language model to use
             tool_space: Tool space to use for retrieval (e.g., "gmail_delegated", "general")
+            use_direct_tools: If True, bind all tools directly without retrieve_tools
+            disable_retrieve_tools: If True, disable retrieve_tools mechanism entirely
+            auto_bind_tools: Tools to auto-bind at startup (only when use_direct_tools=False
+                and disable_retrieve_tools=False). These tools are immediately available
+                without calling retrieve_tools, reducing latency for frequently-used tools.
 
         Returns:
             Compiled LangGraph agent with tool registry, retrieval, and checkpointer
@@ -124,7 +129,7 @@ class SubAgentFactory:
                 manage_system_prompts_node,
                 todo_hook,
             ],
-            "end_graph_hooks": [memory_learning_node],
+            "end_graph_hooks": [memory_node],
         }
 
         if use_direct_tools:
@@ -137,16 +142,27 @@ class SubAgentFactory:
                 }
             )
         else:
-            # Use retrieve_tools with scoped tool_space (no subagent nesting)
-            # No initial_tool_ids needed - subagent will retrieve tools dynamically
+            base_initial_tools = [search_memory.name, vfs_read.name] + todo_tool_names
+
+            if auto_bind_tools and not disable_retrieve_tools:
+                valid_auto_bind = [
+                    tool_name
+                    for tool_name in auto_bind_tools
+                    if tool_name in scoped_tool_dict
+                ]
+                if valid_auto_bind:
+                    base_initial_tools.extend(valid_auto_bind)
+                    logger.info(
+                        f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
+                    )
+
             common_kwargs.update(
                 {
                     "retrieve_tools_coroutine": get_retrieve_tools_function(
                         tool_space=tool_space,
                         include_subagents=False,
                     ),
-                    "initial_tool_ids": [search_memory.name, vfs_read.name]
-                    + todo_tool_names,
+                    "initial_tool_ids": base_initial_tools,
                 }
             )
 

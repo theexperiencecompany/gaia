@@ -99,6 +99,7 @@ async def create_subagent(integration_id: str):
         name=config.agent_name,
         use_direct_tools=config.use_direct_tools,
         disable_retrieve_tools=config.disable_retrieve_tools,
+        auto_bind_tools=config.auto_bind_tools,
     )
 
     logger.info(f"Subagent {config.agent_name} created successfully")
@@ -195,6 +196,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
         name=config.agent_name,
         use_direct_tools=config.use_direct_tools,
         disable_retrieve_tools=config.disable_retrieve_tools,
+        auto_bind_tools=config.auto_bind_tools,
     )
 
     logger.info(f"User-specific subagent {config.agent_name} created successfully")

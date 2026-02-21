@@ -1,30 +1,21 @@
 """
-Memory Learning Node - Unified end_graph_hook for both skill and user memory extraction.
+Memory Learning Node - end_graph_hook for user memory extraction.
 
-Spawns TWO parallel background tasks (non-blocking):
+Spawns a background task (non-blocking):
 
-1. SKILL MEMORY (agent_id namespace) - NEW: Uses custom skill learning
-   - Learns procedural knowledge: "how to send DM", "how to create issue"
-   - Two extraction strategies: LLM extraction + self-reflection
-   - Stored in MongoDB (agent_skills collection)
-   - Shared across all users of this subagent
+- USER MEMORY (user_id namespace) - Uses mem0
+  - Learns user-specific data: IDs, contacts, preferences
+  - Uses integration-specific prompts (SLACK_MEMORY_PROMPT, etc.)
+  - Private to each user
 
-2. USER MEMORY (user_id namespace) - Uses mem0
-   - Learns user-specific data: IDs, contacts, preferences
-   - Uses integration-specific prompts (SLACK_MEMORY_PROMPT, etc.)
-   - Private to each user
-
-These are completely isolated - skills in MongoDB, user memory in mem0.
-Both tasks use fire-and-forget pattern - node returns immediately with zero latency.
+Uses fire-and-forget pattern - node returns immediately with zero latency.
 """
 
 import asyncio
 from typing import Dict, List, Optional
 
-from app.agents.memory.skill_learning.service import learn_skills
 from app.config.loggers import llm_logger as logger
 from app.config.oauth_config import get_memory_extraction_prompt
-from app.config.settings import settings
 from app.services.memory_service import memory_service
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
@@ -146,30 +137,6 @@ def _extract_text_content(content) -> str:
     return str(content)
 
 
-async def _store_skill_background(
-    messages: List[AnyMessage],
-    subagent_id: str,
-    session_id: Optional[str],
-) -> None:
-    """Background task - stores SKILL memory using custom skill learning.
-
-    Uses our custom skill extraction system with two approaches:
-    1. LLM Extraction - Cheap model analyzes the conversation
-    2. Self-Reflection - Model documents its own experience
-
-    Skills are stored in MongoDB (agent_skills collection).
-    These skills are shared across all users of this subagent.
-    """
-    try:
-        await learn_skills(
-            messages=messages,
-            agent_id=subagent_id,
-            session_id=session_id,
-        )
-    except Exception as e:
-        logger.error(f"[{subagent_id}] Skill learning failed: {e}")
-
-
 async def _store_user_memory_background(
     messages: List[AnyMessage],
     user_id: str,
@@ -215,27 +182,20 @@ async def _store_user_memory_background(
         logger.error(f"[{subagent_id or 'agent'}] User memory storage failed: {e}")
 
 
-async def memory_learning_node(
+async def memory_node(
     state: State,
     config: RunnableConfig,
     store: BaseStore,
 ) -> State:
     """
-    End-graph hook that learns from subagent executions.
+    End-graph hook that stores user memory from subagent executions.
 
-    Spawns TWO parallel background tasks (non-blocking):
+    Spawns a background task (non-blocking) for USER MEMORY (if user_id available):
+    - Entity: user_id
+    - Prompt: Integration-specific (or mem0 default)
+    - Purpose: Learn IDs, contacts, preferences private to user
 
-    1. SKILL MEMORY (if subagent_id available)
-       - Entity: agent_id = subagent_id (twitter, github, etc.)
-       - Prompt: Generic SKILL_EXTRACTION_PROMPT
-       - Purpose: Learn procedural workflows shared across users
-
-    2. USER MEMORY (if user_id available)
-       - Entity: user_id
-       - Prompt: Integration-specific (or mem0 default)
-       - Purpose: Learn IDs, contacts, preferences private to user
-
-    Both use fire-and-forget pattern via asyncio.create_task().
+    Uses fire-and-forget pattern via asyncio.create_task().
     Node returns immediately - zero added latency.
     """
     messages = state.get("messages", [])
@@ -259,19 +219,6 @@ async def memory_learning_node(
     # Track spawned Task objects to prevent GC and allow later awaiting/gathering
     tasks_spawned: list[asyncio.Task] = []
 
-    # 1. SKILL MEMORY (requires subagent_id and feature flag enabled)
-    if subagent_id and settings.SKILL_LEARNING_ENABLED:
-        task = asyncio.create_task(
-            _store_skill_background(
-                messages=messages,
-                subagent_id=subagent_id,
-                session_id=session_id,
-            ),
-            name="skill_memory",
-        )
-        tasks_spawned.append(task)
-
-    # 2. USER MEMORY (requires user_id for namespace)
     if user_id:
         task = asyncio.create_task(
             _store_user_memory_background(
