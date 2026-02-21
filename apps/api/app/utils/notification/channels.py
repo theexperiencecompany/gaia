@@ -253,7 +253,7 @@ class TelegramChannelAdapter(ChannelAdapter):
                 error_message="telegram not linked",
             )
 
-        chat_id = telegram_info.get("id")
+        chat_id = telegram_info.get("platformUserId")
         if not chat_id:
             return ChannelDeliveryStatus(
                 channel_type=self.channel_type,
@@ -334,7 +334,7 @@ class DiscordChannelAdapter(ChannelAdapter):
                 error_message="discord not linked",
             )
 
-        discord_user_id = discord_info.get("id")
+        discord_user_id = discord_info.get("platformUserId")
         if not discord_user_id:
             return ChannelDeliveryStatus(
                 channel_type=self.channel_type,

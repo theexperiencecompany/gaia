@@ -646,7 +646,7 @@ export default function WorkflowModal({
 
                   <div className="border-t border-zinc-800" />
 
-                  <div className="space-y-4">
+                  <div className="space-y-4 flex-1 h-full">
                     <WorkflowDescriptionField
                       control={control}
                       errors={errors}

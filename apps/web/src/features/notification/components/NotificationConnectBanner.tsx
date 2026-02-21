@@ -60,33 +60,35 @@ export function NotificationConnectBanner({
 
   if (variant === "compact") {
     return (
-      <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-900/80 mx-3 px-3 py-2 text-xs">
-        <div className="flex items-center gap-6">
-          <div className="-space-x-2 flex">
-            {unconnectedPlatforms.map((p, index) => (
-              <Image
-                key={p}
-                src={PLATFORM_ICONS[p]}
-                alt={NOTIFICATION_PLATFORM_LABELS[p]}
-                width={30}
-                height={30}
-                className={` ${index % 2 === 0 ? "-rotate-12" : "rotate-12"} rounded-md`}
-              />
-            ))}
+      <div className="w-full px-3">
+        <div className="flex items-center justify-between gap-2 rounded-xl bg-zinc-900/80 px-3 py-2 text-xs w-full">
+          <div className="flex items-center gap-1">
+            <div className="-space-x-2 flex">
+              {unconnectedPlatforms.map((p, index) => (
+                <Image
+                  key={p}
+                  src={PLATFORM_ICONS[p]}
+                  alt={NOTIFICATION_PLATFORM_LABELS[p]}
+                  width={30}
+                  height={30}
+                  className={` ${index % 2 === 0 ? "-rotate-12" : "rotate-12"} rounded-md`}
+                />
+              ))}
+            </div>
+            <span className="text-zinc-400">
+              Connect {platformList} for notifications!
+            </span>
           </div>
-          <span className="text-zinc-400">
-            Connect {platformList} for notifications!
-          </span>
+          <Button
+            size="sm"
+            variant="flat"
+            color="primary"
+            className="shrink-0 text-xs"
+            onPress={() => router.push("/settings?section=linked-accounts")}
+          >
+            Connect
+          </Button>
         </div>
-        <Button
-          size="sm"
-          variant="flat"
-          color="primary"
-          className="shrink-0 text-xs"
-          onPress={() => router.push("/settings?section=linked-accounts")}
-        >
-          Connect
-        </Button>
       </div>
     );
   }

@@ -235,7 +235,10 @@ async def execute_workflow_by_id(
         return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
 
     except Exception as e:
-        logger.error(f"Error executing workflow {workflow_id}: {str(e)}", exc_info=True)
+        error_str = str(e)
+        logger.error(
+            "Error executing workflow %s: %s" % (workflow_id, error_str), exc_info=True
+        )
 
         # Complete execution record with failure
         if execution_id:
@@ -243,10 +246,10 @@ async def execute_workflow_by_id(
                 await complete_execution(
                     execution_id=execution_id,
                     status="failed",
-                    error_message=str(e),
+                    error_message=error_str,
                 )
             except Exception as e2:
-                logger.debug(f"Failed to complete execution record: {e2}")
+                logger.debug("Failed to complete execution record: %s" % e2)
 
         # Track failed execution
         if workflow:
@@ -255,7 +258,7 @@ async def execute_workflow_by_id(
                     workflow_id, workflow.user_id, is_successful=False
                 )
             except Exception as e2:
-                logger.debug(f"Failed to update workflow stats: {e2}")
+                logger.debug("Failed to update workflow stats: %s" % e2)
 
         # Try to store error messages if any were generated
         if execution_messages and workflow:
@@ -264,9 +267,49 @@ async def execute_workflow_by_id(
                     workflow, execution_messages, workflow.user_id
                 )
             except Exception as e2:
-                logger.debug(f"Failed to create notification: {e2}")
+                logger.debug("Failed to create notification: %s" % e2)
 
-        return f"Error executing workflow {workflow_id}: {str(e)}"
+        # Send failure notification so the user knows the workflow failed
+        if workflow:
+            try:
+                from app.api.v1.middleware.tiered_rate_limiter import (
+                    RateLimitExceededException,
+                )
+
+                if isinstance(e, RateLimitExceededException):
+                    title = f"Workflow Failed: {workflow.title}"
+                    body = (
+                        f"Your workflow '{workflow.title}' could not run because "
+                        f"scheduled workflow executions are not available on your current plan. "
+                        f"Upgrade to Pro to enable automatic workflow runs."
+                    )
+                else:
+                    title = f"Workflow Failed: {workflow.title}"
+                    body = f"Your workflow '{workflow.title}' encountered an error and could not complete."
+
+                await notification_service.create_notification(
+                    NotificationRequest(
+                        user_id=workflow.user_id,
+                        source=NotificationSourceEnum.BACKGROUND_JOB,
+                        content=NotificationContent(
+                            title=title,
+                            body=body,
+                        ),
+                        channels=[
+                            ChannelConfig(
+                                channel_type="inapp", enabled=True, priority=1
+                            )
+                        ],
+                        metadata={
+                            "workflow_id": workflow.id,
+                            "error_type": type(e).__name__,
+                        },
+                    )
+                )
+            except Exception as notify_err:
+                logger.debug("Failed to send failure notification: %s" % notify_err)
+
+        return "Error executing workflow %s: %s" % (workflow_id, error_str)
 
     finally:
         if scheduler:
