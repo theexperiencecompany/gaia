@@ -3,6 +3,9 @@ Skill Installer - Install skills from GitHub repos or create them inline.
 
 Handles fetching skill content from external sources, parsing SKILL.md,
 writing files to VFS, and registering in the MongoDB skill registry.
+
+VFS stores body-only content (no frontmatter). Metadata lives in MongoDB
+as flat fields on the Skill document.
 """
 
 import os
@@ -11,7 +14,7 @@ from typing import List, Optional, Tuple
 
 import httpx
 
-from app.agents.skills.models import InstalledSkill, SkillSource
+from app.agents.skills.models import Skill, SkillSource
 from app.agents.skills.parser import (
     generate_skill_md,
     parse_skill_md,
@@ -132,8 +135,11 @@ async def install_from_github(
     repo_url: str,
     skill_path: Optional[str] = None,
     target_override: Optional[str] = None,
-) -> InstalledSkill:
+) -> Skill:
     """Install a skill from a GitHub repository.
+
+    Downloads SKILL.md, parses frontmatter for metadata, writes body-only
+    to VFS, and registers flat metadata in MongoDB.
 
     Args:
         user_id: Owner user ID
@@ -188,24 +194,23 @@ async def install_from_github(
     if errors:
         raise ValueError(f"Invalid SKILL.md: {'; '.join(errors)}")
 
-    # Parse
+    # Parse frontmatter → metadata + body
     metadata, body = parse_skill_md(skill_md_content)
 
     # Apply target override
-    if target_override:
-        metadata.target = target_override
+    target = target_override if target_override else metadata.target
 
     # Determine VFS path
-    vfs_dir = get_custom_skill_path(user_id, metadata.target, metadata.name)
+    vfs_dir = get_custom_skill_path(user_id, target, metadata.name)
 
     # Download all files in the skill directory
     vfs = await _get_vfs()
     file_list: List[str] = []
 
-    # Write SKILL.md
+    # Write body-only SKILL.md to VFS (metadata lives in MongoDB)
     await vfs.write(
         f"{vfs_dir}/SKILL.md",
-        skill_md_content,
+        body,
         user_id,
         metadata={"source": "github", "source_url": source_url},
     )
@@ -224,20 +229,27 @@ async def install_from_github(
         source_url=source_url,
     )
 
-    # Register in MongoDB
+    # Register flat metadata in MongoDB
     installed = await install_skill(
         user_id=user_id,
-        skill_metadata=metadata,
+        name=metadata.name,
+        description=metadata.description,
+        target=target,
         vfs_path=vfs_dir,
         source=SkillSource.GITHUB,
         source_url=source_url,
         body_content=body,
         files=file_list,
+        auto_invoke=metadata.auto_invoke,
+        license=metadata.license,
+        compatibility=metadata.compatibility,
+        metadata=metadata.metadata,
+        allowed_tools=metadata.allowed_tools,
     )
 
     logger.info(
         f"[skills] Installed '{metadata.name}' from GitHub "
-        f"({len(file_list)} files, target={metadata.target})"
+        f"({len(file_list)} files, target={target})"
     )
     return installed
 
@@ -295,26 +307,26 @@ async def install_from_inline(
     name: str,
     description: str,
     instructions: str,
-    target: str = "global",
+    target: str = "executor",
     extra_metadata: Optional[dict[str, str]] = None,
-) -> InstalledSkill:
+) -> Skill:
     """Create and install a skill from inline components.
 
-    Generates a SKILL.md from the provided components, writes it to VFS,
-    and registers in the skill registry.
+    Generates a SKILL.md from the provided components, validates it,
+    writes body-only to VFS, and registers flat metadata in MongoDB.
 
     Args:
         user_id: Owner user ID
         name: Skill name (kebab-case)
         description: What the skill does
         instructions: Markdown body instructions
-        target: Where to make it available
+        target: Target agent (default: executor)
         extra_metadata: Optional additional metadata key-values
 
     Returns:
         The installed skill
     """
-    # Generate SKILL.md content
+    # Generate SKILL.md content (with frontmatter for validation)
     skill_md_content = generate_skill_md(
         name=name,
         description=description,
@@ -328,27 +340,34 @@ async def install_from_inline(
     if errors:
         raise ValueError(f"Invalid skill: {'; '.join(errors)}")
 
-    # Parse back to get validated metadata
+    # Parse back to get validated metadata + body
     metadata, body = parse_skill_md(skill_md_content)
 
-    # Write to VFS
+    # Write body-only to VFS (metadata lives in MongoDB)
     vfs_dir = get_custom_skill_path(user_id, metadata.target, metadata.name)
     vfs = await _get_vfs()
     await vfs.write(
         f"{vfs_dir}/SKILL.md",
-        skill_md_content,
+        body,
         user_id,
         metadata={"source": "inline"},
     )
 
-    # Register
+    # Register flat metadata in MongoDB
     installed = await install_skill(
         user_id=user_id,
-        skill_metadata=metadata,
+        name=metadata.name,
+        description=metadata.description,
+        target=metadata.target,
         vfs_path=vfs_dir,
         source=SkillSource.INLINE,
         body_content=body,
         files=["SKILL.md"],
+        auto_invoke=metadata.auto_invoke,
+        license=metadata.license,
+        compatibility=metadata.compatibility,
+        metadata=metadata.metadata,
+        allowed_tools=metadata.allowed_tools,
     )
 
     logger.info(f"[skills] Created inline skill '{name}' (target={target})")

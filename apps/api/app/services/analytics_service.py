@@ -13,6 +13,7 @@ from app.core.lazy_loader import providers
 # Event name constants for consistent tracking
 class AnalyticsEvents:
     """Analytics event names matching frontend conventions."""
+
     # Keep only backend-relevant events (auth signup, payments, subscriptions)
     USER_SIGNED_UP = "user:signed_up"
 
@@ -213,6 +214,7 @@ def track_payment_event(
     event_properties = {k: v for k, v in event_properties.items() if v is not None}
 
     capture_event(user_id, event_type, event_properties)
+
 
 def flush_events() -> None:
     """Flush any pending events to PostHog."""

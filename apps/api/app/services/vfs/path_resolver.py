@@ -93,40 +93,36 @@ def get_user_root(user_id: str) -> str:
     return f"/users/{user_id}/global"
 
 
-def get_skills_path(user_id: str, skill_type: str = "learned") -> str:
+def get_skills_path(user_id: str) -> str:
     """
-    Get the path to a user's skills folder.
+    Get the root path to a user's skills folder.
+
+    Flat structure: /users/{user_id}/skills/{agent_name}/{skill_name}/
 
     Args:
         user_id: The user ID
-        skill_type: Either "learned" or "custom"
 
     Returns:
-        Path to the skills subfolder
+        Root path to the user's skills folder
     """
-    if skill_type not in ("learned", "custom"):
-        raise ValueError(
-            f"Invalid skill_type: {skill_type}. Must be 'learned' or 'custom'"
-        )
-
-    return f"/users/{user_id}/global/skills/{skill_type}"
+    return f"/users/{user_id}/skills"
 
 
 def get_system_skills_path() -> str:
     """
-    Get the path to system-wide bundled skills.
+    Get the path to system-wide skills.
 
     System skills are stored at /system/skills/ and are read-only,
     available to all users without duplication.
 
     Structure:
         /system/skills/
-        ├── github/
+        ├── github_agent/
         │   └── create-pr/
         │       └── SKILL.md
-        ├── twitter/
+        ├── twitter_agent/
         │   └── send-dm/
-        └── notion/
+        └── notion_agent/
             └── find-items/
 
     Returns:
@@ -140,7 +136,7 @@ def get_system_skill_path(target: str, skill_name: str) -> str:
     Get the VFS path for a system skill.
 
     Args:
-        target: Skill target scope (github, twitter, notion, etc.)
+        target: Target agent_name (github_agent, gmail_agent, etc.)
         skill_name: The skill name (kebab-case)
 
     Returns:
@@ -157,16 +153,13 @@ def get_custom_skill_path(
     skill_name: str,
 ) -> str:
     """
-    Get the VFS path for an installable custom skill.
+    Get the VFS path for a user-installed custom skill.
 
-    Skills are scoped by target:
-      /users/{user_id}/global/skills/custom/global/{skill_name}/
-      /users/{user_id}/global/skills/custom/executor/{skill_name}/
-      /users/{user_id}/global/skills/custom/subagents/{agent_name}/{skill_name}/
+    Flat structure: /users/{user_id}/skills/{agent_name}/{skill_name}/
 
     Args:
         user_id: The user ID
-        target: Skill target scope (global, executor, or subagent ID)
+        target: Target agent_name (executor, gmail_agent, github_agent, etc.)
         skill_name: The skill name (kebab-case)
 
     Returns:
@@ -174,14 +167,7 @@ def get_custom_skill_path(
     """
     safe_name = _sanitize_name(skill_name)
     safe_target = _sanitize_name(target)
-
-    if safe_target in ("global", "executor"):
-        return f"/users/{user_id}/global/skills/custom/{safe_target}/{safe_name}"
-    else:
-        # Subagent-scoped: target is the subagent ID (gmail, github, slack, etc.)
-        return (
-            f"/users/{user_id}/global/skills/custom/subagents/{safe_target}/{safe_name}"
-        )
+    return f"/users/{user_id}/skills/{safe_target}/{safe_name}"
 
 
 def get_session_path(user_id: str, conversation_id: str) -> str:
@@ -330,6 +316,12 @@ def parse_path(path: str) -> dict:
 
     result["user_id"] = parts[1]
 
+    # Check for /users/{id}/skills/ (flat skills path)
+    if len(parts) >= 3 and parts[2] == "skills":
+        result["folder_type"] = "skills"
+        result["remaining"] = parts[3:]
+        return result
+
     if len(parts) < 3 or parts[2] != "global":
         result["remaining"] = parts[2:] if len(parts) > 2 else []
         return result
@@ -342,11 +334,7 @@ def parse_path(path: str) -> dict:
     # Determine what's at the third level
     level3 = parts[3]
 
-    if level3 == "skills":
-        result["folder_type"] = "skills"
-        result["remaining"] = parts[4:]
-
-    elif level3 == "executor":
+    if level3 == "executor":
         result["agent_name"] = "executor"
         if len(parts) > 4:
             level4 = parts[4]
@@ -399,7 +387,7 @@ def build_path(
         Constructed VFS path
     """
     if folder_type == "skills":
-        path = f"/users/{user_id}/global/skills"
+        path = f"/users/{user_id}/skills"
     elif agent_name:
         path = get_agent_root(user_id, agent_name)
         if folder_type:

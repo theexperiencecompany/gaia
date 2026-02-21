@@ -1,7 +1,7 @@
 ---
 name: gmail-draft-send
 description: Create and send Gmail emails using draft-first workflow. Always draft first, get user approval, then send.
-subagent_id: gmail
+target: gmail_agent
 ---
 
 # Gmail Draft & Send

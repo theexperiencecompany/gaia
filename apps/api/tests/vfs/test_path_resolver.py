@@ -4,8 +4,6 @@ Tests for VFS Path Resolver - Pure function tests with no external dependencies.
 These tests verify path normalization, validation, and path building functions.
 """
 
-import pytest
-
 from app.services.vfs.path_resolver import (
     EXECUTOR_AGENT,
     RESERVED_NAMES,
@@ -92,21 +90,12 @@ class TestGetUserRoot:
 class TestGetSkillsPath:
     """Tests for get_skills_path function."""
 
-    def test_learned_skills(self):
-        assert (
-            get_skills_path("user123", "learned")
-            == "/users/user123/global/skills/learned"
-        )
+    def test_returns_flat_skills_path(self):
+        assert get_skills_path("user123") == "/users/user123/skills"
 
-    def test_custom_skills(self):
-        assert (
-            get_skills_path("user123", "custom")
-            == "/users/user123/global/skills/custom"
-        )
-
-    def test_invalid_skill_type_raises(self):
-        with pytest.raises(ValueError, match="Invalid skill_type"):
-            get_skills_path("user123", "invalid")
+    def test_with_different_user_ids(self):
+        assert get_skills_path("abc") == "/users/abc/skills"
+        assert get_skills_path("123-456") == "/users/123-456/skills"
 
 
 class TestGetSessionPath:
@@ -229,12 +218,12 @@ class TestParsePath:
         assert result["folder_type"] == "notes"
 
     def test_parse_skills_path(self):
-        path = "/users/user123/global/skills/learned/skill1.json"
+        path = "/users/user123/skills/github_agent/create-pr/SKILL.md"
         result = parse_path(path)
 
         assert result["user_id"] == "user123"
-        assert result["is_global"] is True
         assert result["folder_type"] == "skills"
+        assert result["remaining"] == ["github_agent", "create-pr", "SKILL.md"]
 
     def test_parse_minimal_path(self):
         path = "/users/user123"
@@ -285,7 +274,7 @@ class TestBuildPath:
 
     def test_build_skills_path(self):
         result = build_path("user123", folder_type="skills")
-        assert result == "/users/user123/global/skills"
+        assert result == "/users/user123/skills"
 
 
 class TestHelperFunctions:

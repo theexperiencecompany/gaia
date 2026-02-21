@@ -818,12 +818,12 @@ async def create_vfs_indexes():
 
 async def create_installed_skills_indexes():
     """
-    Create indexes for installed_skills collection.
+    Create indexes for skills collection (flat schema).
 
     Query patterns:
-    - User's installed skills listing
-    - Skills for a specific agent (by target)
-    - Duplicate detection (user + name + target)
+    - Duplicate detection: user_id + name + target (unique)
+    - Agent skills: enabled + target + $or[user_id, "system"] (get_skills_for_agent)
+    - User listing: user_id + installed_at (list_skills)
     """
     try:
         await asyncio.gather(
@@ -832,21 +832,22 @@ async def create_installed_skills_indexes():
                 skills_collection,
                 [
                     ("user_id", 1),
-                    ("skill_metadata.name", 1),
-                    ("skill_metadata.target", 1),
+                    ("name", 1),
+                    ("target", 1),
                 ],
                 unique=True,
                 name="user_skill_name_target_unique",
             ),
-            # List skills for an agent: user + enabled + target (for $in query)
+            # Skills for an agent: target + enabled + user_id
+            # Supports the unified $or query in get_skills_for_agent
             _create_index_safe(
                 skills_collection,
                 [
-                    ("user_id", 1),
+                    ("target", 1),
                     ("enabled", 1),
-                    ("skill_metadata.target", 1),
+                    ("user_id", 1),
                 ],
-                name="user_enabled_target",
+                name="target_enabled_user",
             ),
             # List all user skills sorted by install date
             _create_index_safe(

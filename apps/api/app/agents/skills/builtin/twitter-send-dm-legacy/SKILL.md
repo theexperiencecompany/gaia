@@ -1,8 +1,7 @@
 ---
 name: send-dm
 description: Send direct messages on X (Twitter) - compose and send DMs to users, handle multi-part messages for longer content
-target: twitter
-auto_invoke: true
+target: twitter_agent
 ---
 
 # X (Twitter) Direct Message Guide

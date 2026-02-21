@@ -58,10 +58,6 @@ def parse_skill_md(content: str) -> Tuple[SkillMetadata, str]:
         elif isinstance(tools_raw, list):
             frontmatter["allowed_tools"] = tools_raw
 
-    # Map auto_invoke from frontmatter
-    if "auto_invoke" in frontmatter:
-        frontmatter["auto_invoke"] = bool(frontmatter["auto_invoke"])
-
     # Map subagent_id to target (GAIA-specific extension)
     if "subagent_id" in frontmatter:
         frontmatter["target"] = frontmatter.pop("subagent_id")
@@ -75,6 +71,28 @@ def parse_skill_md(content: str) -> Tuple[SkillMetadata, str]:
     metadata = SkillMetadata(**frontmatter)
 
     return metadata, body
+
+
+def strip_frontmatter(content: str) -> str:
+    """Strip YAML frontmatter from SKILL.md content, returning only the body.
+
+    Used when writing to VFS — we store body-only in VFS since metadata
+    lives in MongoDB.
+
+    Args:
+        content: Raw SKILL.md file content (with or without frontmatter)
+
+    Returns:
+        Body content without frontmatter delimiters
+    """
+    if not content:
+        return ""
+
+    match = FRONTMATTER_PATTERN.match(content)
+    if not match:
+        return content.strip()
+
+    return match.group(2).strip()
 
 
 def validate_skill_content(content: str) -> List[str]:
@@ -155,7 +173,7 @@ def generate_skill_md(
     name: str,
     description: str,
     instructions: str,
-    target: str = "global",
+    target: str = "executor",
     metadata: dict[str, str] | None = None,
 ) -> str:
     """Generate a SKILL.md file from components.
@@ -164,7 +182,7 @@ def generate_skill_md(
         name: Skill name (kebab-case)
         description: What the skill does
         instructions: Markdown body instructions
-        target: Skill target scope
+        target: Target agent (default: executor)
         metadata: Optional additional metadata
 
     Returns:

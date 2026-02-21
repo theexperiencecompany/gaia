@@ -1,7 +1,7 @@
 ---
 name: gmail-find-contacts
-description: Find contacts in Gmail - search for specific people or get full contact list from email history.
-subagent_id: gmail
+description: Find contacts in Gmail - search for specific people or email addresses from email history.
+target: gmail_agent
 ---
 
 # Gmail Find Contacts

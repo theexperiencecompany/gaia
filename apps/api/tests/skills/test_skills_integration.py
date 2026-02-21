@@ -1,175 +1,143 @@
 """
-Integration tests for skills prompt injection.
+Integration tests for skills prompt injection (Phase 3 flat schema).
 
 These tests verify that skills are correctly injected into executor and subagent prompts.
-They test the full flow from skills storage to prompt injection.
+They test the full flow from skills storage to prompt injection using the
+flat schema and unified $or query.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from app.agents.skills.models import InstalledSkill, SkillMetadata, SkillSource
+from app.agents.skills.discovery import _format_skills, get_available_skills_text
+from app.agents.skills.models import Skill, SkillSource
+
+
+def _make_skill(
+    name: str = "test-skill",
+    description: str = "A test skill",
+    target: str = "executor",
+    user_id: str = "user123",
+    files: list[str] | None = None,
+    vfs_path: str | None = None,
+) -> Skill:
+    """Helper to create a Skill instance with flat fields."""
+    return Skill(
+        id=f"skill_{name}",
+        user_id=user_id,
+        name=name,
+        description=description,
+        target=target,
+        vfs_path=vfs_path or f"/users/{user_id}/skills/{target}/{name}",
+        source=SkillSource.INLINE,
+        files=files or ["SKILL.md"],
+    )
 
 
 class TestSkillsIntegrationFlow:
     """Integration tests for skills from DB to prompt injection."""
 
     @pytest.mark.asyncio
-    async def test_executor_gets_skills_from_db_and_vfs(self):
-        """Executor should get skills from both MongoDB and VFS system skills."""
-        user_skill = InstalledSkill(
-            id="skill_1",
-            user_id="user123",
-            skill_metadata=SkillMetadata(
-                name="my-executor-skill",
-                description="User's custom executor skill",
-                target="executor",
-            ),
-            vfs_path="/users/user123/global/skills/custom/executor/my-executor-skill",
-            source=SkillSource.INLINE,
-            files=["SKILL.md"],
+    async def test_executor_gets_skills_from_unified_query(self):
+        """Executor should get skills via single unified $or query."""
+        user_skill = _make_skill(
+            name="my-executor-skill",
+            description="User's custom executor skill",
+            target="executor",
         )
-
-        system_skill = {
-            "name": "github-pr",
-            "description": "System GitHub PR skill",
-            "target": "github",
-            "location": "/system/skills/github/github-pr/SKILL.md",
-        }
-
-        with patch(
-            "app.agents.skills.discovery.get_skills_for_agent", new_callable=AsyncMock
-        ) as mock_user:
-            with patch(
-                "app.agents.skills.discovery.get_system_skills_for_agent",
-                new_callable=AsyncMock,
-            ) as mock_system:
-                mock_user.return_value = [user_skill]
-                mock_system.return_value = [system_skill]
-
-                from app.agents.skills.discovery import get_available_skills_xml
-
-                result = await get_available_skills_xml("user123", "executor")
-
-                assert "my-executor-skill" in result
-                assert "github-pr" in result
-                assert "<available_skills>" in result
-
-    @pytest.mark.asyncio
-    async def test_subagent_gets_own_skills_plus_global(self):
-        """Subagent should get its own skills plus global skills."""
-        gmail_skill = InstalledSkill(
-            id="skill_1",
-            user_id="user123",
-            skill_metadata=SkillMetadata(
-                name="gmail-compose",
-                description="Compose Gmail emails",
-                target="gmail",
-            ),
-            vfs_path="/users/user123/global/skills/custom/gmail/gmail-compose",
-            source=SkillSource.INLINE,
-            files=["SKILL.md"],
-        )
-
-        global_skill = InstalledSkill(
-            id="skill_2",
-            user_id="user123",
-            skill_metadata=SkillMetadata(
-                name="common-helper",
-                description="Available to all agents",
-                target="global",
-            ),
-            vfs_path="/users/user123/global/skills/custom/global/common-helper",
-            source=SkillSource.INLINE,
-            files=["SKILL.md"],
+        system_skill = _make_skill(
+            name="system-skill",
+            description="System skill",
+            target="executor",
+            user_id="system",
+            vfs_path="/system/skills/executor/system-skill",
         )
 
         with patch(
             "app.agents.skills.discovery.get_skills_for_agent", new_callable=AsyncMock
         ) as mock_get:
-            mock_get.return_value = [gmail_skill, global_skill]
+            mock_get.return_value = [user_skill, system_skill]
 
-            from app.agents.skills.discovery import get_available_skills_xml
+            result = await get_available_skills_text("user123", "executor")
 
-            result = await get_available_skills_xml("user123", "gmail")
-
-            assert "gmail-compose" in result
-            assert "common-helper" in result
+            assert "my-executor-skill" in result
+            assert "system-skill" in result
+            assert "Available Skills:" in result
+            # Verify single call (no separate system skills query)
+            mock_get.assert_called_once_with("user123", "executor")
 
     @pytest.mark.asyncio
-    async def test_skills_xml_has_correct_format(self):
-        """Skills XML should have the correct format for agent consumption."""
-        skill = InstalledSkill(
-            id="skill_1",
-            user_id="user123",
-            skill_metadata=SkillMetadata(
-                name="test-skill",
-                description="Test skill description",
-                target="executor",
-            ),
-            vfs_path="/users/user123/global/skills/custom/executor/test-skill",
-            source=SkillSource.INLINE,
+    async def test_subagent_gets_only_own_target_skills(self):
+        """Subagent should get only skills with its exact target agent_name."""
+        gmail_skill = _make_skill(
+            name="gmail-compose",
+            description="Compose Gmail emails",
+            target="gmail_agent",
+        )
+
+        with patch(
+            "app.agents.skills.discovery.get_skills_for_agent", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = [gmail_skill]
+
+            result = await get_available_skills_text("user123", "gmail_agent")
+
+            assert "gmail-compose" in result
+            mock_get.assert_called_once_with("user123", "gmail_agent")
+
+    @pytest.mark.asyncio
+    async def test_skills_text_format_plain_text(self):
+        """Skills text should be plain text (not XML) with name, description, location."""
+        skill = _make_skill(
+            name="test-skill",
+            description="Test skill description",
             files=["SKILL.md", "scripts/run.py"],
         )
 
-        from app.agents.skills.discovery import _format_skills_xml
+        result = _format_skills([skill])
 
-        result = _format_skills_xml([skill])
-
-        assert "<available_skills>" in result
-        assert "</available_skills>" in result
-        assert "<skill>" in result
-        assert "</skill>" in result
-        assert "<name>test-skill</name>" in result
-        assert "<description>Test skill description</description>" in result
+        assert "Available Skills:" in result
+        assert "- test-skill: Test skill description" in result
+        assert "Location:" in result
         assert "SKILL.md" in result
+        assert "Resources: scripts/run.py" in result
+        # Should NOT contain XML tags
+        assert "<" not in result
+        assert ">" not in result
+
+    @pytest.mark.asyncio
+    async def test_no_target_field_in_skill_output(self):
+        """Output descriptions should NOT include the target field."""
+        skill = _make_skill(name="github-pr", target="github_agent")
+
+        result = _format_skills([skill])
+
+        # "Target:" should not appear in the output
+        assert "Target:" not in result
 
     @pytest.mark.asyncio
     async def test_context_message_building_includes_skills(self):
-        """Context message builder should include skills XML section."""
-        skills_xml = """<available_skills>
-  <skill>
-    <name>test-skill</name>
-    <description>A test skill</description>
-    <location>/users/user123/global/skills/custom/executor/test-skill/SKILL.md</location>
-  </skill>
-</available_skills>"""
+        """Context message builder should include skills text section."""
+        skill = _make_skill(name="test-skill")
 
         with patch(
-            "app.agents.skills.discovery.get_available_skills_xml",
-            new_callable=AsyncMock,
-        ) as mock_xml:
-            mock_xml.return_value = skills_xml
+            "app.agents.skills.discovery.get_skills_for_agent", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = [skill]
 
-            from app.agents.skills.discovery import get_available_skills_xml
-
-            result = await get_available_skills_xml("user123", "executor")
+            result = await get_available_skills_text("user123", "executor")
 
             assert "test-skill" in result
-            assert "<available_skills>" in result
+            assert "Available Skills:" in result
 
 
 class TestSkillsFilteringByAgent:
     """Tests for skills filtering based on agent type."""
 
     @pytest.mark.asyncio
-    async def test_executor_target_skills_included_for_executor(self):
-        """Skills with target='executor' should be included for executor."""
-        with patch(
-            "app.agents.skills.discovery.get_available_skills_xml",
-            new_callable=AsyncMock,
-        ) as mock:
-            mock.return_value = "<available_skills><skill><name>executor-only</name></skill></available_skills>"
-
-            from app.agents.skills.discovery import get_available_skills_xml
-
-            result = await get_available_skills_xml("user123", "executor")
-            assert "executor-only" in result
-
-    @pytest.mark.asyncio
-    async def test_subagent_target_skills_not_included_for_executor(self):
-        """Skills with target='gmail' should NOT be included for executor."""
+    async def test_exact_agent_name_matching(self):
+        """Query should use exact agent_name, no normalization."""
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
@@ -182,54 +150,37 @@ class TestSkillsFilteringByAgent:
         ):
             from app.agents.skills.registry import get_skills_for_agent
 
-            skills = await get_skills_for_agent("user123", "executor")
-
-            assert not any(s.skill_metadata.name == "gmail-only" for s in skills)
-
-    @pytest.mark.asyncio
-    async def test_gmail_agent_gets_gmail_and_global_skills(self):
-        """Gmail agent should get both gmail and global target skills."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(return_value=[])
-        mock_cursor.sort = MagicMock(return_value=mock_cursor)
-
-        mock_collection = AsyncMock()
-        mock_collection.find = MagicMock(return_value=mock_cursor)
-
-        with patch(
-            "app.agents.skills.registry._get_collection", return_value=mock_collection
-        ):
-            from app.agents.skills.registry import get_skills_for_agent
-
-            await get_skills_for_agent("user123", "gmail")
+            await get_skills_for_agent("user123", "gmail_agent")
 
             call_query = mock_collection.find.call_args[0][0]
-            assert "skill_metadata.target" in call_query
-            assert "$in" in call_query["skill_metadata.target"]
-
-
-class TestSkillsEdgeCases:
-    """Edge case tests for skills system."""
+            # Exact match on "target" field (flat schema)
+            assert call_query["target"] == "gmail_agent"
+            # No $in, no "skill_metadata.target"
+            assert "skill_metadata.target" not in call_query
 
     @pytest.mark.asyncio
-    async def test_empty_user_id_returns_empty_skills(self):
-        """Empty user ID should return empty skills string."""
-        from app.agents.skills.discovery import get_available_skills_xml
+    async def test_no_global_skills_leak(self):
+        """Query should never include 'global' target — global skills are dead."""
+        mock_cursor = AsyncMock()
+        mock_cursor.to_list = AsyncMock(return_value=[])
+        mock_cursor.sort = MagicMock(return_value=mock_cursor)
 
-        result = await get_available_skills_xml("", "executor")
-        assert result == ""
+        mock_collection = AsyncMock()
+        mock_collection.find = MagicMock(return_value=mock_cursor)
 
-    @pytest.mark.asyncio
-    async def test_none_user_id_returns_empty_skills(self):
-        """None user ID should return empty skills string."""
-        from app.agents.skills.discovery import get_available_skills_xml
+        with patch(
+            "app.agents.skills.registry._get_collection", return_value=mock_collection
+        ):
+            from app.agents.skills.registry import get_skills_for_agent
 
-        result = await get_available_skills_xml(None, "executor")  # type: ignore
-        assert result == ""
+            await get_skills_for_agent("user123", "github_agent")
+
+            call_query = mock_collection.find.call_args[0][0]
+            assert "global" not in str(call_query)
 
     @pytest.mark.asyncio
     async def test_disabled_skills_not_returned(self):
-        """Disabled skills should be filtered out."""
+        """Disabled skills should be filtered out by the query."""
         mock_cursor = AsyncMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
         mock_cursor.sort = MagicMock(return_value=mock_cursor)
@@ -246,3 +197,39 @@ class TestSkillsEdgeCases:
 
             call_query = mock_collection.find.call_args[0][0]
             assert call_query.get("enabled") is True
+
+
+class TestSkillsEdgeCases:
+    """Edge case tests for skills system."""
+
+    @pytest.mark.asyncio
+    async def test_empty_user_id_returns_empty(self):
+        """Empty user ID should return empty skills string."""
+        result = await get_available_skills_text("", "executor")
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_none_user_id_returns_empty(self):
+        """None user ID should return empty skills string."""
+        result = await get_available_skills_text(None, "executor")  # type: ignore
+        assert result == ""
+
+    @pytest.mark.asyncio
+    async def test_multiple_skills_same_agent(self):
+        """Multiple skills for the same agent should all appear."""
+        skills = [
+            _make_skill(name="skill-a", target="github_agent"),
+            _make_skill(name="skill-b", target="github_agent"),
+            _make_skill(name="skill-c", target="github_agent"),
+        ]
+
+        with patch(
+            "app.agents.skills.discovery.get_skills_for_agent", new_callable=AsyncMock
+        ) as mock_get:
+            mock_get.return_value = skills
+
+            result = await get_available_skills_text("user123", "github_agent")
+
+            assert "skill-a" in result
+            assert "skill-b" in result
+            assert "skill-c" in result

@@ -38,8 +38,8 @@ async def install_skill_from_github(
     ] = "",
     target: Annotated[
         str,
-        "Where to make the skill available: 'global' (all agents), 'executor', "
-        "or a subagent ID like 'gmail', 'github', 'slack'. "
+        "Where to make the skill available: 'executor', "
+        "or a subagent agent_name like 'gmail_agent', 'github_agent', 'slack_agent'. "
         "Leave empty to use the target from SKILL.md.",
     ] = "",
 ) -> str:
@@ -51,7 +51,7 @@ async def install_skill_from_github(
     Examples:
       install_skill_from_github("anthropics/skills", "skills/pdf-processing")
       install_skill_from_github("https://github.com/user/repo/tree/main/my-skill")
-      install_skill_from_github("owner/repo/skills/email-templates", target="gmail")
+      install_skill_from_github("owner/repo/skills/email-templates", target="gmail_agent")
     """
     from app.agents.skills.installer import install_from_github
 
@@ -69,9 +69,9 @@ async def install_skill_from_github(
             f" ({len(installed.files)} files)" if len(installed.files) > 1 else ""
         )
         return (
-            f"Installed skill '{installed.skill_metadata.name}' successfully{files_info}.\n"
-            f"- Target: {installed.skill_metadata.target}\n"
-            f"- Description: {installed.skill_metadata.description}\n"
+            f"Installed skill '{installed.name}' successfully{files_info}.\n"
+            f"- Target: {installed.target}\n"
+            f"- Description: {installed.description}\n"
             f"- Location: {installed.vfs_path}/SKILL.md\n"
             f"- Source: {installed.source_url}"
         )
@@ -102,9 +102,9 @@ async def create_skill(
     ],
     target: Annotated[
         str,
-        "Where to make the skill available: 'global' (all agents), 'executor', "
-        "or a subagent ID like 'gmail', 'github', 'slack'.",
-    ] = "global",
+        "Where to make the skill available: 'executor', "
+        "or a subagent agent_name like 'gmail_agent', 'github_agent', 'slack_agent'.",
+    ] = "executor",
 ) -> str:
     """Create a new custom skill from scratch.
 
@@ -116,9 +116,9 @@ async def create_skill(
 
     Examples:
       create_skill("standup-format", "Format daily standup messages...",
-                    "# Daily Standup\\n1. What I did yesterday...", target="slack")
+                    "# Daily Standup\\n1. What I did yesterday...", target="slack_agent")
       create_skill("code-review", "Review PRs following team guidelines...",
-                    "# Code Review Checklist\\n...", target="github")
+                    "# Code Review Checklist\\n...", target="github_agent")
     """
     from app.agents.skills.installer import install_from_inline
 
@@ -134,11 +134,10 @@ async def create_skill(
         )
 
         return (
-            f"Created skill '{installed.skill_metadata.name}' successfully.\n"
-            f"- Target: {installed.skill_metadata.target}\n"
+            f"Created skill '{installed.name}' successfully.\n"
+            f"- Target: {installed.target}\n"
             f"- Location: {installed.vfs_path}/SKILL.md\n"
-            f"- The skill is now active and will be available to "
-            f"{'all agents' if target == 'global' else f'the {target} agent'}."
+            f"- The skill is now active and will be available to the {target} agent."
         )
     except ValueError as e:
         return f"Failed to create skill: {e}"
@@ -152,7 +151,7 @@ async def list_installed_skills(
     config: RunnableConfig,
     target: Annotated[
         str,
-        "Filter by target: 'global', 'executor', or a subagent ID. "
+        "Filter by target: 'executor', or a subagent agent_name. "
         "Leave empty to show all skills.",
     ] = "",
 ) -> str:
@@ -177,13 +176,12 @@ async def list_installed_skills(
 
         lines = [f"Installed skills ({len(skills)}):"]
         for skill in skills:
-            meta = skill.skill_metadata
             status = "enabled" if skill.enabled else "disabled"
             source = skill.source.value
             lines.append(
-                f"\n- **{meta.name}** [{status}]\n"
-                f"  Description: {meta.description}\n"
-                f"  Target: {meta.target} | Source: {source}\n"
+                f"\n- **{skill.name}** [{status}]\n"
+                f"  Description: {skill.description}\n"
+                f"  Target: {skill.target} | Source: {source}\n"
                 f"  Location: {skill.vfs_path}/SKILL.md"
             )
             if skill.source_url:

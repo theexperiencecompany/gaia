@@ -1,7 +1,7 @@
 ---
 name: twitter-send-dm
 description: Send Twitter/X DMs - find user, verify identity, then send message.
-subagent_id: twitter
+target: twitter_agent
 ---
 
 # Twitter Send DM

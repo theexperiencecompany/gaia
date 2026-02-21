@@ -3,40 +3,29 @@ Skill Discovery from GitHub - Discover available skills in remote repos.
 
 This module provides functionality to:
 - List available skills in a GitHub repository
-- Recursively search for skills (following Vercel skills CLI pattern)
+- Efficiently search for skills using Git Tree API
 - Install skills without knowing the exact path
 
 Based on Vercel skills CLI patterns (https://github.com/vercel-labs/skills)
 """
 
-import os
-import re
-from typing import List, Optional, Set, Tuple
+import asyncio
+from typing import List, Optional, Tuple
 
 import httpx
-
 from app.agents.skills.parser import parse_skill_md
+from app.agents.skills.utils import (
+    GITHUB_API_BASE,
+    GITHUB_RAW_BASE,
+    MAX_SKILLS_PER_REPO,
+    check_tree_truncated,
+    find_skill_files,
+    get_folder_path,
+    get_folder_priority,
+    get_github_headers,
+    parse_github_url,
+)
 from app.config.loggers import app_logger as logger
-
-GITHUB_API_BASE = "https://api.github.com"
-GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
-
-MAX_RECURSION_DEPTH = 5
-MAX_SKILLS_PER_REPO = 100
-
-
-def _get_github_token() -> Optional[str]:
-    """Get GitHub token from environment for API rate limit relief."""
-    return os.environ.get("GITHUB_TOKEN")
-
-
-def _get_headers() -> dict:
-    """Get headers for GitHub API requests."""
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    token = _get_github_token()
-    if token:
-        headers["Authorization"] = f"token {token}"
-    return headers
 
 
 class DiscoveredSkill:
@@ -66,70 +55,114 @@ class DiscoveredSkill:
         }
 
 
-def _parse_github_url(url: str) -> Tuple[str, str]:
-    """Parse GitHub URL into owner and repo."""
-    url = url.strip().rstrip("/")
-
-    github_match = re.match(
-        r"https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$",
-        url,
-    )
-    if github_match:
-        return github_match.group(1), github_match.group(2)
-
-    parts = url.split("/")
-    if len(parts) >= 2:
-        return parts[0], parts[1]
-
-    raise ValueError(f"Invalid GitHub URL: {url}")
-
-
-async def _fetch_github_contents(
+async def _fetch_git_tree(
     owner: str,
     repo: str,
-    path: str,
     branch: str = "main",
-) -> List[dict]:
-    """Fetch directory contents from GitHub API."""
-    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
-    params = {"ref": branch}
+) -> Tuple[List[dict], str]:
+    """Fetch entire repository tree using Git Tree API.
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, params=params, headers=_get_headers())
+    Uses recursive=1 to get all files in a single API call.
+    Returns (tree_entries, resolved_branch).
 
-        if resp.status_code == 404:
-            if branch == "main":
-                return await _fetch_github_contents(owner, repo, path, "master")
-            return []
+    Args:
+        owner: Repository owner
+        repo: Repository name
+        branch: Branch to fetch (default: main)
+
+    Returns:
+        Tuple of (list of tree entries, resolved branch name)
+    """
+    url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/git/trees/{branch}"
+    params = {"recursive": "1"}
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        resp = await client.get(url, params=params, headers=get_github_headers())
+
+        # Try master if main branch not found
+        if resp.status_code == 404 and branch == "main":
+            return await _fetch_git_tree(owner, repo, "master")
 
         if resp.status_code == 403:
             logger.warning(
                 "[skills] GitHub rate limited. Set GITHUB_TOKEN for higher limits"
             )
-            return []
+            return [], branch
 
         resp.raise_for_status()
         data = resp.json()
 
-        if isinstance(data, dict):
-            return [data]
-        return data
+        # Handle truncated trees (very large repos)
+        check_tree_truncated(data, owner, repo)
+
+        return data.get("tree", []), branch
 
 
-async def _fetch_file_content(
-    owner: str, repo: str, path: str, branch: str = "main"
-) -> Optional[str]:
-    """Fetch raw file content from GitHub."""
+async def _fetch_single_file_content(
+    owner: str,
+    repo: str,
+    path: str,
+    branch: str,
+) -> Optional[Tuple[str, str]]:
+    """Fetch raw file content from GitHub.
+
+    Args:
+        owner: Repository owner
+        repo: Repository name
+        path: File path
+        branch: Branch name
+
+    Returns:
+        Tuple of (file_path, content) or None if failed
+    """
     url = f"{GITHUB_RAW_BASE}/{owner}/{repo}/{branch}/{path}"
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, headers=_get_headers())
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            resp = await client.get(url, headers=get_github_headers())
 
-        if resp.status_code == 404:
-            return None
+            if resp.status_code == 404:
+                logger.debug(f"[skills] File not found: {path}")
+                return None
 
-        resp.raise_for_status()
-        return resp.text
+            resp.raise_for_status()
+            return path, resp.text
+
+    except Exception as e:
+        logger.debug(f"[skills] Failed to fetch {path}: {e}")
+        return None
+
+
+async def _fetch_file_contents_batch(
+    owner: str,
+    repo: str,
+    paths: List[str],
+    branch: str,
+) -> List[Tuple[str, str]]:
+    """Fetch multiple file contents in parallel.
+
+    Args:
+        owner: Repository owner
+        repo: Repository name
+        paths: List of file paths to fetch
+        branch: Branch name
+
+    Returns:
+        List of (path, content) tuples for successful fetches
+    """
+    tasks = [_fetch_single_file_content(owner, repo, path, branch) for path in paths]
+
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    contents: List[Tuple[str, str]] = []
+    for result in results:
+        if isinstance(result, BaseException):
+            logger.debug(f"[skills] Exception fetching file: {result}")
+            continue
+        if result is not None:
+            contents.append(result)
+
+    return contents
 
 
 async def _parse_skill_from_content(
@@ -152,87 +185,14 @@ async def _parse_skill_from_content(
         return None
 
 
-async def _find_skill_in_folder(
-    owner: str,
-    repo: str,
-    folder_path: str,
-    repo_url: str,
-) -> Optional[DiscoveredSkill]:
-    """Check if a folder contains a SKILL.md and parse it."""
-    skill_md_path = f"{folder_path}/SKILL.md"
-
-    try:
-        content = await _fetch_file_content(owner, repo, skill_md_path)
-    except Exception:
-        return None
-
-    if not content:
-        return None
-
-    return await _parse_skill_from_content(content, folder_path, repo_url)
-
-
-async def _recursive_search_skills(
-    owner: str,
-    repo: str,
-    current_path: str,
-    repo_url: str,
-    depth: int,
-    visited: Set[str],
-    found_skills: List[DiscoveredSkill],
-) -> None:
-    """Recursively search for skills in a repository."""
-    if depth > MAX_RECURSION_DEPTH:
-        return
-
-    if len(found_skills) >= MAX_SKILLS_PER_REPO:
-        return
-
-    if current_path in visited:
-        return
-    visited.add(current_path)
-
-    try:
-        contents = await _fetch_github_contents(owner, repo, current_path)
-    except Exception:
-        return
-
-    if not contents:
-        return
-
-    for entry in contents:
-        if entry.get("type") != "dir":
-            continue
-
-        folder_path = entry.get("path", "")
-
-        skill = await _find_skill_in_folder(owner, repo, folder_path, repo_url)
-        if skill:
-            found_skills.append(skill)
-            logger.debug(f"[skills] Found skill: {skill.name} in {folder_path}")
-            continue
-
-        await _recursive_search_skills(
-            owner,
-            repo,
-            folder_path,
-            repo_url,
-            depth + 1,
-            visited,
-            found_skills,
-        )
-
-
 async def discover_skills_from_repo(
     repo_url: str,
     branch: str = "main",
 ) -> List[DiscoveredSkill]:
     """Discover all available skills in a GitHub repository.
 
-    Algorithm (following Vercel skills CLI):
-    1. First check if root has SKILL.md
-    2. Then search common standard folders
-    3. Finally do recursive search if no skills found
+    Uses Git Tree API for efficient discovery in a single API call,
+    then batches content fetches using raw URLs.
 
     Args:
         repo_url: GitHub repo (owner/repo or full URL)
@@ -241,49 +201,55 @@ async def discover_skills_from_repo(
     Returns:
         List of DiscoveredSkill objects
     """
-    owner, repo = _parse_github_url(repo_url)
+    owner, repo = parse_github_url(repo_url)
     full_repo_url = f"https://github.com/{owner}/{repo}"
     logger.info(f"[skills] Discovering skills in {owner}/{repo}")
 
+    # Step 1: Fetch entire repo tree in one API call
+    tree_entries, resolved_branch = await _fetch_git_tree(owner, repo, branch)
+
+    if not tree_entries:
+        logger.warning(f"[skills] No tree entries found in {owner}/{repo}")
+        return []
+
+    logger.info(
+        f"[skills] Fetched tree with {len(tree_entries)} entries from "
+        f"{owner}/{repo} ({resolved_branch})"
+    )
+
+    # Step 2: Find all SKILL.md files in the tree
+    skill_files = find_skill_files(tree_entries)
+
+    if not skill_files:
+        logger.info(f"[skills] No SKILL.md files found in {owner}/{repo}")
+        return []
+
+    logger.info(f"[skills] Found {len(skill_files)} potential skill files")
+
+    # Step 3: Sort by priority (standard folders first)
+    skill_files.sort(key=get_folder_priority)
+
+    # Step 4: Batch fetch all skill file contents
+    contents = await _fetch_file_contents_batch(
+        owner, repo, skill_files, resolved_branch
+    )
+
+    # Step 5: Parse each skill file
     all_skills: List[DiscoveredSkill] = []
-    visited: Set[str] = set()
 
-    root_skill = await _find_skill_in_folder(owner, repo, "", full_repo_url)
-    if root_skill:
-        all_skills.append(root_skill)
-        logger.info(f"[skills] Found skill in root: {root_skill.name}")
+    for file_path, content in contents:
+        folder_path = get_folder_path(file_path)
 
-    standard_folders = [
-        "skills",
-        ".claude/skills",
-        ".cursor/skills",
-        ".windsurf/skills",
-        ".agents/skills",
-        ".claude",
-    ]
-
-    for folder in standard_folders:
-        if len(all_skills) >= MAX_SKILLS_PER_REPO:
-            break
-
-        skill = await _find_skill_in_folder(owner, repo, folder, full_repo_url)
+        skill = await _parse_skill_from_content(content, folder_path, full_repo_url)
         if skill:
             all_skills.append(skill)
-            logger.debug(f"[skills] Found skill in {folder}: {skill.name}")
+            logger.debug(f"[skills] Parsed skill: {skill.name} from {folder_path}")
 
-    if not all_skills:
-        logger.debug("[skills] No skills in standard folders, doing recursive search")
-        await _recursive_search_skills(
-            owner,
-            repo,
-            "",
-            full_repo_url,
-            0,
-            visited,
-            all_skills,
-        )
+        if len(all_skills) >= MAX_SKILLS_PER_REPO:
+            logger.warning(f"[skills] Reached max skills limit ({MAX_SKILLS_PER_REPO})")
+            break
 
-    logger.info(f"[skills] Found {len(all_skills)} skills in {owner}/{repo}")
+    logger.info(f"[skills] Found {len(all_skills)} valid skills in {owner}/{repo}")
     return all_skills
 
 
@@ -294,6 +260,8 @@ async def get_skill_from_repo(
 ) -> Optional[DiscoveredSkill]:
     """Get a specific skill by name from a GitHub repository.
 
+    Uses the same efficient tree-based discovery as discover_skills_from_repo.
+
     Args:
         repo_url: GitHub repo (owner/repo or full URL)
         skill_name: Name of the skill to find
@@ -302,12 +270,32 @@ async def get_skill_from_repo(
     Returns:
         DiscoveredSkill if found, None otherwise
     """
-    skills = await discover_skills_from_repo(repo_url, branch)
+    owner, repo = parse_github_url(repo_url)
+    full_repo_url = f"https://github.com/{owner}/{repo}"
+    logger.info(f"[skills] Looking for skill '{skill_name}' in {owner}/{repo}")
 
-    for skill in skills:
-        if skill.name == skill_name:
+    # Fetch tree and find skill files
+    tree_entries, resolved_branch = await _fetch_git_tree(owner, repo, branch)
+
+    if not tree_entries:
+        return None
+
+    skill_files = find_skill_files(tree_entries)
+
+    # Batch fetch and parse until we find the matching skill
+    contents = await _fetch_file_contents_batch(
+        owner, repo, skill_files, resolved_branch
+    )
+
+    for file_path, content in contents:
+        folder_path = get_folder_path(file_path)
+
+        skill = await _parse_skill_from_content(content, folder_path, full_repo_url)
+        if skill and skill.name == skill_name:
+            logger.info(f"[skills] Found skill '{skill_name}' at {folder_path}")
             return skill
 
+    logger.info(f"[skills] Skill '{skill_name}' not found in {owner}/{repo}")
     return None
 
 

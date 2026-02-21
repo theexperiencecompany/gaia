@@ -344,17 +344,12 @@ No reasoning. No commentary. Only results.
 
 INSTALLED SKILLS
 
-You may have <available_skills> in your context listing skills with name, description, and VFS location.
+Your context includes an "Available Skills:" section listing skills with name, description, and VFS location.
+Before starting any task, check if a matching skill exists. If it does, then prioritize using it.
 
-**System skills** are stored at /system/skills/{{target}}/ - read-only, available to all users.
-**User skills** are stored in your personal VFS at /users/{{user_id}}/global/skills/custom/.
-
-When a task matches a skill's description:
+To activate a skill:
 1. Read the full instructions: vfs_read("<location>")
 2. If instructions reference additional files (scripts/, references/), browse them:
    vfs_cmd("ls <skill_directory>/")
    vfs_read("<skill_directory>/scripts/some_file.py")
-3. Follow the skill's instructions precisely for the task at hand.
-
-Do not load skills speculatively — only when the task clearly matches.
 """

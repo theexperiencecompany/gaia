@@ -18,9 +18,8 @@ from app.agents.skills.installer import (
     uninstall_skill_full,
 )
 from app.agents.skills.models import (
-    InstalledSkill,
+    Skill,
     SkillInlineCreateRequest,
-    SkillInstallRequest,
     SkillListResponse,
 )
 from app.agents.skills.registry import (
@@ -82,7 +81,7 @@ async def get_recommended_skills():
 
 @router.post(
     "/install/github",
-    response_model=InstalledSkill,
+    response_model=Skill,
     status_code=http_status.HTTP_201_CREATED,
 )
 async def install_skill_with_auto_discover(
@@ -94,7 +93,7 @@ async def install_skill_with_auto_discover(
         None, description="Explicit path to skill folder"
     ),
     target: Optional[str] = Query(
-        None, description="Override target (global, executor, or subagent ID)"
+        None, description="Override target (executor or subagent agent_name)"
     ),
     user: dict = Depends(get_current_user),
 ):
@@ -155,43 +154,9 @@ async def install_skill_with_auto_discover(
         )
 
 
-@tiered_rate_limit("skill_operations")
-async def install_from_github_endpoint(
-    request: SkillInstallRequest,
-    user: dict = Depends(get_current_user),
-):
-    """Install a skill from a GitHub repository."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=http_status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated",
-        )
-
-    try:
-        installed = await install_from_github(
-            user_id=user_id,
-            repo_url=request.repo_url,
-            skill_path=request.skill_path,
-            target_override=request.target,
-        )
-        return installed
-    except ValueError as e:
-        raise HTTPException(
-            status_code=http_status.HTTP_400_BAD_REQUEST,
-            detail=str(e),
-        )
-    except Exception as e:
-        logger.error(f"Error installing skill from GitHub: {e}")
-        raise HTTPException(
-            status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to install skill from GitHub",
-        )
-
-
 @router.post(
     "/install/inline",
-    response_model=InstalledSkill,
+    response_model=Skill,
     status_code=http_status.HTTP_201_CREATED,
 )
 @tiered_rate_limit("skill_operations")
@@ -233,7 +198,7 @@ async def create_inline_skill_endpoint(
 async def list_skills_endpoint(
     user: dict = Depends(get_current_user),
     target: Optional[str] = Query(
-        None, description="Filter by target (global, executor, or subagent ID)"
+        None, description="Filter by target (executor or subagent agent_name)"
     ),
     enabled_only: bool = Query(False, description="Only return enabled skills"),
 ):
@@ -260,7 +225,7 @@ async def list_skills_endpoint(
         )
 
 
-@router.get("/{skill_id}", response_model=InstalledSkill)
+@router.get("/{skill_id}", response_model=Skill)
 async def get_skill_endpoint(
     skill_id: str,
     user: dict = Depends(get_current_user),

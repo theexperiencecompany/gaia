@@ -9,11 +9,10 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.agents.memory.skill_learning.service import get_skill_learning_service
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
+from app.agents.skills.discovery import get_available_skills_text
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
-from app.config.settings import settings
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage
@@ -204,48 +203,21 @@ async def create_agent_context_message(
         except Exception as e:
             logger.warning(f"Error retrieving memories for subagent: {e}")
 
-    # Search for relevant skills (only for subagents, and only if skill learning is enabled)
-    skills_section = ""
-    if subagent_id and query and settings.SKILL_LEARNING_ENABLED:
-        try:
-            skill_service = get_skill_learning_service()
-            result = await skill_service.search_skills(
-                query=query,
-                agent_id=subagent_id,
-                limit=3,
-            )
-            if result.skills:
-                skills_section = skill_service.format_skills_for_prompt(
-                    result.skills, subagent_id
-                )
-                logger.info(
-                    f"Added {len(result.skills)} skills to {subagent_id} context"
-                )
-        except Exception as e:
-            logger.warning(f"Error retrieving skills for {subagent_id}: {e}")
-
-    # Inject installable skills metadata (available_skills XML)
+    # Inject installable skills metadata
     installable_skills_section = ""
     if user_id:
         try:
-            from app.agents.skills.discovery import get_available_skills_xml
-
             agent_for_skills = subagent_id or "executor"
-            skills_xml = await get_available_skills_xml(
+            skills_text = await get_available_skills_text(
                 user_id=user_id,
                 agent_name=agent_for_skills,
             )
-            if skills_xml:
-                installable_skills_section = f"\n\n{skills_xml}"
-                logger.info(f"Injected installable skills XML for {agent_for_skills}")
+            if skills_text:
+                installable_skills_section = f"\n\n{skills_text}"
+                logger.info(f"Injected installable skills for {agent_for_skills}")
         except Exception as e:
             logger.warning(f"Error injecting installable skills: {e}")
 
-    content = (
-        "\n".join(context_parts)
-        + memories_section
-        + skills_section
-        + installable_skills_section
-    )
+    content = "\n".join(context_parts) + memories_section + installable_skills_section
 
     return SystemMessage(content=content, memory_message=True)

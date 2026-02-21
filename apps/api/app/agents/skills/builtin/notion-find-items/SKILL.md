@@ -1,8 +1,7 @@
 ---
 name: find-items
 description: Find pages and databases in Notion - search, list, query database contents with filters
-target: notion
-auto_invoke: true
+target: notion_agent
 ---
 
 # Notion Discovery Tools

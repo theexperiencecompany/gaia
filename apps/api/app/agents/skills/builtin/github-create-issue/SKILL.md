@@ -1,7 +1,7 @@
 ---
 name: github-create-issue
 description: Create GitHub issues with proper formatting, labels, and details.
-subagent_id: github
+target: github_agent
 ---
 
 # GitHub Create Issue

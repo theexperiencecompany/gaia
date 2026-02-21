@@ -1,8 +1,7 @@
 ---
 name: create-pr
 description: Create GitHub pull requests following team best practices - proper title format, description template, reviewers, labels, and linked issues
-target: github
-auto_invoke: true
+target: github_agent
 ---
 
 # GitHub Pull Request Best Practices
