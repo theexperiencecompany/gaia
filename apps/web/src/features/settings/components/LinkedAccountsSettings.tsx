@@ -4,13 +4,13 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import {
   SettingsPage,
   SettingsRow,
   SettingsSection,
 } from "@/features/settings/components/ui";
 import { apiService } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import type { PlatformLink } from "@/types/platform";
 
 interface PlatformConfig {

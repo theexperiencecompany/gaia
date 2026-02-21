@@ -16,10 +16,10 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
+import { toast } from "@/lib/toast";
 
 import type { UploadedFilePreview } from "./FilePreview";
 

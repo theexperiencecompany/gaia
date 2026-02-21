@@ -1,7 +1,7 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect } from "react";
-import { toast } from "sonner";
 import { useUser } from "@/features/auth/hooks/useUser";
+import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket";
 import { batchSyncConversations } from "@/services/syncService";
 import { useNotificationStore } from "@/stores/notificationStore";

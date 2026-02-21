@@ -4,7 +4,7 @@ import { type ReactNode, Suspense } from "react";
 
 import { ElectronRouteGuard } from "@/components/electron";
 import KeyboardShortcutsProvider from "@/components/providers/KeyboardShortcutsProvider";
-import { Toaster } from "@/components/ui/sonner";
+import { Toaster } from "@/components/ui/Toaster";
 import LoginModal from "@/features/auth/components/LoginModal";
 import { GlobalIntegrationModal } from "@/features/integrations/components/GlobalIntegrationModal";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
@@ -37,7 +37,7 @@ export default function ProvidersLayout({ children }: { children: ReactNode }) {
           </Suspense>
           <GlobalInterceptor />
           {/* <HydrationManager /> */}
-          <Toaster closeButton richColors position="top-right" theme="dark" />
+          <Toaster />
           <LoginModal />
           <GlobalIntegrationModal />
           <ElectronRouteGuard>

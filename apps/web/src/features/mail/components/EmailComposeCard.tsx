@@ -9,10 +9,10 @@ import { Cancel01Icon, PencilEdit01Icon, PlusSignIcon } from "@icons";
 import DOMPurify from "dompurify";
 import type React from "react";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { z } from "zod";
 import { Gmail, Separator } from "@/components";
 import { mailApi } from "@/features/mail/api/mailApi";
+import { toast } from "@/lib/toast";
 
 // Email validation schema
 const emailComposeSchema = z.object({

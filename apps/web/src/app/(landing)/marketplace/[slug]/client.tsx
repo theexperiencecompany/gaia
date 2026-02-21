@@ -16,7 +16,6 @@ import { formatDistanceToNow } from "date-fns";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { RaisedButton } from "@/components";
 import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
@@ -25,6 +24,7 @@ import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
+import { toast } from "@/lib/toast";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;

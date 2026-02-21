@@ -6,13 +6,13 @@ import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { toast } from "sonner";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { toast } from "@/lib/toast";
 
 interface LogoWithContextMenuProps {
   className?: string;

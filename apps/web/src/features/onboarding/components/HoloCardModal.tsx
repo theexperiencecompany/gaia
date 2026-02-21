@@ -7,7 +7,6 @@ import { Rocket01Icon } from "@icons";
 import confetti from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { TwitterShareButton } from "react-share";
-import { toast } from "sonner";
 import { TwitterIcon } from "@/components";
 import {
   type HoloCardDisplayData,
@@ -20,6 +19,7 @@ import {
   usePersonalization,
 } from "@/features/onboarding/hooks/usePersonalization";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
+import { toast } from "@/lib/toast";
 
 interface FeatureModalProps {
   isOpen: boolean;

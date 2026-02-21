@@ -1,6 +1,5 @@
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
 import { useRef } from "react";
-import { toast } from "sonner";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
@@ -13,6 +12,7 @@ import {
 } from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
+import { toast } from "@/lib/toast";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";

@@ -14,10 +14,10 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Comment01Icon, HelpCircleIcon, PencilEdit01Icon } from "@icons";
 import type React from "react";
 import { useState } from "react";
-import { toast } from "sonner";
 import { z } from "zod";
 import { Separator } from "@/components";
 import { supportApi } from "@/features/support/api/supportApi";
+import { toast } from "@/lib/toast";
 import type { SupportTicketData } from "@/types/features/supportTypes";
 
 // Support ticket validation schema

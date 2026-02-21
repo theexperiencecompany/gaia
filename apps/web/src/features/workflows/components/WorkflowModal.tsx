@@ -5,10 +5,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useCallback, useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { useHotkeys } from "react-hotkeys-hook";
-import { toast } from "sonner";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 
 import { type Workflow, workflowApi } from "../api/workflowApi";

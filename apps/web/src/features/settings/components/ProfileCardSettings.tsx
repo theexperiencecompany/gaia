@@ -5,7 +5,6 @@ import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
 import { Copy01Icon, LinkSquare02Icon } from "@icons";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import {
   type HoloCardDisplayData,
   HoloCardEditor,
@@ -16,6 +15,7 @@ import {
   holoCardApi,
 } from "@/features/onboarding/api/holoCardApi";
 import { SettingsPage } from "@/features/settings/components/ui";
+import { toast } from "@/lib/toast";
 
 export default function ProfileCardSettings() {
   const [holoCardData, setHoloCardData] = useState<HoloCardData | null>(null);

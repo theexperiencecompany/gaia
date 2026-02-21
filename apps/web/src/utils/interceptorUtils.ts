@@ -1,12 +1,11 @@
 import type { AxiosError } from "axios";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { toast } from "sonner";
-
 import {
   showFeatureRestrictedToast,
   showRateLimitToast,
   showTokenLimitToast,
 } from "@/components/shared/RateLimitToast";
+import { toast } from "@/lib/toast";
 import { useLoginModalStore } from "@/stores/loginModalStore";
 
 // Types

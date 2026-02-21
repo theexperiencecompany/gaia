@@ -1,7 +1,5 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { useFetchIntegrationStatus } from "@/features/integrations";
@@ -11,6 +9,7 @@ import {
   trackOnboardingComplete,
   trackOnboardingStep,
 } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 import { batchSyncConversations } from "@/services/syncService";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";

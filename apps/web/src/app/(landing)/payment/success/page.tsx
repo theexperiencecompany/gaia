@@ -5,11 +5,10 @@ import { Card, CardBody } from "@heroui/card";
 import { Spinner } from "@heroui/spinner";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
-
 import { SubscriptionSuccessModal } from "@/features/pricing/components/SubscriptionSuccessModal";
 import { usePricing } from "@/features/pricing/hooks/usePricing";
 import { trackSubscription } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 
 export default function PaymentSuccessPage() {
   const router = useRouter();

@@ -2,8 +2,8 @@ import { Button } from "@heroui/button";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { CalendarAdd01Icon, Tick02Icon } from "@icons";
 import { useMemo, useState } from "react";
-import { toast } from "sonner";
 import { calendarApi } from "@/features/calendar/api/calendarApi";
+import { toast } from "@/lib/toast";
 import type {
   CalendarEvent,
   SameDayEvent,

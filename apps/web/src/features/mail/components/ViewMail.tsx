@@ -20,12 +20,12 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import he from "he";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { Drawer } from "vaul";
 import Spinner from "@/components/ui/spinner";
 import GmailBody from "@/features/mail/components/GmailBody";
 import { useEmailSummary } from "@/features/mail/hooks/useEmailAnalysis";
 import { parseEmail } from "@/features/mail/utils/mailUtils";
+import { toast } from "@/lib/toast";
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import type {
   EmailData,

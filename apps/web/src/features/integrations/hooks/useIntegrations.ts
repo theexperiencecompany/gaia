@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import { toast } from "sonner";
-
 import { trackIntegration } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 
 import { integrationsApi } from "../api/integrationsApi";
 import type {

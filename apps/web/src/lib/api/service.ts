@@ -1,5 +1,5 @@
-import { toast } from "sonner";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 import { apiauth } from "./client";
 
 interface ApiOptions {

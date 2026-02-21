@@ -8,7 +8,6 @@ import {
   Textarea,
 } from "@heroui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { CustomResponseStyleInput } from "@/features/settings/components/CustomResponseStyleInput";
@@ -18,6 +17,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "@/features/settings/components/ui";
+import { toast } from "@/lib/toast";
 import {
   getCurrentBrowserTimezone,
   getTimezoneList,

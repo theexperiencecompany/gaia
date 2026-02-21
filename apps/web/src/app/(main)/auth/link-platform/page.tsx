@@ -3,8 +3,6 @@
 import { Button } from "@heroui/button";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
-
 import {
   DiscordIcon,
   SlackIcon,
@@ -13,6 +11,7 @@ import {
 } from "@/components/shared/icons";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { apiService } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 const PLATFORM_CONFIG: Record<
   string,

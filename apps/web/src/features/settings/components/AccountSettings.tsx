@@ -11,7 +11,6 @@ import {
 import Image from "next/image";
 import type React from "react";
 import { useRef, useState } from "react";
-import { toast } from "sonner";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import {
@@ -19,6 +18,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "@/features/settings/components/ui";
+import { toast } from "@/lib/toast";
 import type { ModalAction } from "./SettingsMenu";
 
 export default function AccountSection({

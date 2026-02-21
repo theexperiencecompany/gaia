@@ -12,8 +12,8 @@ import {
 } from "@heroui/modal";
 import { Cancel01Icon } from "@icons";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { mailApi as EmailsAPI } from "@/features/mail/api/mailApi";
+import { toast } from "@/lib/toast";
 
 import { NotificationsAPI } from "../../../services/api/notifications";
 

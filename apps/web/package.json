@@ -184,7 +184,7 @@
     "remark-smartypants": "^3.0.2",
     "remark-supersub": "^1.0.0",
     "sharp": "^0.33.5",
-    "sonner": "^2.0.7",
+    "sileo": "latest",
     "string-similarity": "^4.0.4",
     "styled-components": "^6.1.19",
     "tailwind-merge": "^3.3.1",
