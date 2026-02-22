@@ -64,7 +64,7 @@ class NotificationOrchestrator:
         """Register default adapters, handlers, and sources"""
         # Channel adapters
         self.register_channel_adapter(InAppChannelAdapter())
-        self.register_channel_adapter(adapter=EmailChannelAdapter())
+        self.register_channel_adapter(EmailChannelAdapter())
         self.register_channel_adapter(TelegramChannelAdapter())
         self.register_channel_adapter(DiscordChannelAdapter())
 
