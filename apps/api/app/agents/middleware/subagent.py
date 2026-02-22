@@ -14,10 +14,9 @@ from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_SYSTEM_PROMPT,
 )
 from app.agents.tools.core.retrieval import (
-    RetrieveToolsResult,
     get_retrieve_tools_function,
 )
-from app.agents.tools.vfs_tools import vfs_read
+from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.loggers import app_logger as logger
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -29,13 +28,9 @@ from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
+from langgraph.prebuilt import InjectedState
 from langgraph.store.base import BaseStore
 from langgraph.types import Command
-
-# VFS tools that spawned subagents always get direct access to.
-# This is critical because VFS compaction middleware stores large tool outputs
-# in VFS and instructs the agent to use spawn_subagent to read them.
-_VFS_TOOLS: list[BaseTool] = [vfs_read]
 
 _RETRIEVE_TOOLS_NAME = "retrieve_tools"
 
@@ -61,6 +56,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         excluded_tool_names: set[str] | None = None,
         tool_space: str = "general",
         store: BaseStore | None = None,
+        tool_runtime_config: ToolRuntimeConfig | None = None,
     ):
         super().__init__()
         self._llm = llm
@@ -72,6 +68,15 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         self._excluded_tools.add("spawn_subagent")
         self._tool_space = tool_space
         self._store: BaseStore | None = store
+        self._tool_runtime_config = (
+            tool_runtime_config
+            if tool_runtime_config
+            else ToolRuntimeConfig(
+                initial_tool_names=["vfs_read"],
+                enable_retrieve_tools=True,
+                include_subagents_in_retrieve=False,
+            )
+        )
 
         self.tools = [self._create_spawn_subagent_tool()]
 
@@ -82,6 +87,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         async def spawn_subagent(
             task: str,
             tool_call_id: Annotated[str, InjectedToolCallId],
+            selected_tool_ids: Annotated[list[str], InjectedState("selected_tool_ids")],
             config: RunnableConfig,
             context: str = "",
         ) -> Command[Any]:
@@ -100,7 +106,12 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 )
 
             try:
-                result = await middleware._execute_subagent(task, context, config)
+                result = await middleware._execute_subagent(
+                    task,
+                    context,
+                    config,
+                    inherited_tool_names=selected_tool_ids,
+                )
                 return Command(
                     update={
                         "messages": [
@@ -135,19 +146,19 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         Returns None if store is not configured.
         """
-        if self._store is None:
+        if not self._tool_runtime_config.enable_retrieve_tools or self._store is None:
             return None
 
         store = self._store
         inner_fn = get_retrieve_tools_function(
             tool_space=self._tool_space,
-            include_subagents=False,
+            include_subagents=self._tool_runtime_config.include_subagents_in_retrieve,
         )
 
         async def retrieve_tools(
             query: Optional[str] = None,
             exact_tool_names: Optional[list[str]] = None,
-        ) -> RetrieveToolsResult:
+        ):
             return await inner_fn(
                 store=store,
                 config=config,
@@ -171,9 +182,11 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 tools.append(t)
 
         if self._tool_registry:
-            for name, t in self._tool_registry.items():
-                if name not in self._excluded_tools and isinstance(t, BaseTool):
-                    tools.append(t)
+            for name, registry_tool in self._tool_registry.items():
+                if name not in self._excluded_tools and isinstance(
+                    registry_tool, BaseTool
+                ):
+                    tools.append(registry_tool)
 
         return tools
 
@@ -204,6 +217,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         task: str,
         context: str,
         config: RunnableConfig,
+        inherited_tool_names: Optional[list[str]] = None,
     ) -> str:
         """Run a lightweight tool-calling loop for the subagent."""
         if self._llm is None:
@@ -211,28 +225,11 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         llm = self._llm
 
-        # Decide mode: dynamic binding (retrieve_tools) vs static (all tools upfront)
-        retrieve_tool = self._build_retrieve_tool(config)
-        dynamic = retrieve_tool is not None and self._tool_registry is not None
-
-        if dynamic:
-            tools_by_name: dict[str, BaseTool] = {
-                _RETRIEVE_TOOLS_NAME: retrieve_tool,  # type: ignore[dict-item]
-            }
-            bound_tool_names: set[str] = set()
-        else:
-            all_tools = self._collect_tools()
-            tools_by_name = {t.name: t for t in all_tools}
-            bound_tool_names = set(tools_by_name.keys())
-
-        # Always inject VFS tools so subagents can read compacted tool outputs.
-        # The VFS compaction middleware stores large outputs in VFS and instructs
-        # the agent to use spawn_subagent to read them, so the spawned subagent
-        # must always have direct access to vfs_read regardless of tool_space scoping.
-        for vfs_tool in _VFS_TOOLS:
-            if vfs_tool.name not in tools_by_name:
-                tools_by_name[vfs_tool.name] = vfs_tool
-                bound_tool_names.add(vfs_tool.name)
+        tools_by_name, dynamic, retrieve_tool = self._build_child_toolset(
+            config=config,
+            inherited_tool_names=inherited_tool_names,
+        )
+        bound_tool_names: set[str] = set(tools_by_name.keys())
 
         llm_with_tools = (
             llm.bind_tools(list(tools_by_name.values()))  # type: ignore[union-attr, attr-defined]
@@ -266,9 +263,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     and retrieve_tool is not None
                 ):
                     try:
-                        result: RetrieveToolsResult = await retrieve_tool.ainvoke(
-                            tc["args"]
-                        )
+                        result = await retrieve_tool.ainvoke(tc["args"])
                         newly_bound = self._bind_tools_from_registry(
                             result.get("tools_to_bind", []),
                             tools_by_name,
@@ -337,6 +332,43 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             return str(final.content)
         return str(final) if final else "Max turns reached."
 
+    def _build_child_toolset(
+        self,
+        config: RunnableConfig,
+        inherited_tool_names: Optional[list[str]] = None,
+    ) -> tuple[dict[str, BaseTool], bool, StructuredTool | None]:
+        """Build child subagent tool map from runtime config and parent state."""
+        retrieve_tool = self._build_retrieve_tool(config)
+        dynamic = retrieve_tool is not None and self._tool_registry is not None
+
+        tools_by_name: dict[str, BaseTool] = {}
+        bound_tool_names: set[str] = set()
+
+        # Bind configured initial tools first (regular tools, not special behavior tools).
+        self._bind_tools_from_registry(
+            self._tool_runtime_config.initial_tool_names,
+            tools_by_name,
+            bound_tool_names,
+        )
+
+        # Inherit tools currently bound by the parent agent in this turn.
+        if inherited_tool_names:
+            self._bind_tools_from_registry(
+                inherited_tool_names,
+                tools_by_name,
+                bound_tool_names,
+            )
+
+        if dynamic and retrieve_tool is not None:
+            tools_by_name[_RETRIEVE_TOOLS_NAME] = retrieve_tool  # type: ignore[assignment]
+
+        # If nothing resolved (defensive fallback), bind all eligible tools.
+        if not tools_by_name:
+            all_tools = self._collect_tools()
+            tools_by_name = {t.name: t for t in all_tools}
+
+        return tools_by_name, dynamic, retrieve_tool
+
     def set_llm(self, llm: LanguageModelLike) -> None:
         self._llm = llm
 
@@ -349,6 +381,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         registry: Mapping[str, BaseTool | Callable[..., Any]] | None = None,
         excluded_tool_names: set[str] | None = None,
         tool_space: str | None = None,
+        tool_runtime_config: ToolRuntimeConfig | None = None,
     ) -> None:
         if tools is not None:
             self._available_tools = tools
@@ -359,3 +392,5 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             self._excluded_tools.add("spawn_subagent")
         if tool_space is not None:
             self._tool_space = tool_space
+        if tool_runtime_config is not None:
+            self._tool_runtime_config = tool_runtime_config

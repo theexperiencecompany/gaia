@@ -18,7 +18,8 @@ context into the latest non-memory SystemMessage before each LLM call.
 """
 
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal
+from collections.abc import Callable
+from typing import Annotated, Any, Literal, cast
 from uuid import uuid4
 
 from app.agents.prompts.todo_prompts import (
@@ -29,11 +30,14 @@ from app.agents.prompts.todo_prompts import (
 )
 from app.config.loggers import app_logger as logger
 from langchain.tools import InjectedToolCallId
+from langchain_core.runnables import RunnableConfig
 from langchain_core.messages import SystemMessage, ToolMessage
 from langchain_core.tools import BaseTool, tool
 from langgraph.config import get_stream_writer
 from langgraph.prebuilt import InjectedState
+from langgraph.store.base import BaseStore
 from langgraph.types import Command
+from langgraph_bigtool.graph import State
 from typing_extensions import TypedDict
 
 
@@ -210,7 +214,9 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
     return [plan_tasks, mark_task, add_task]
 
 
-def create_todo_pre_model_hook(source: str = "executor"):
+def create_todo_pre_model_hook(
+    source: str = "executor",
+) -> Callable[[State, RunnableConfig, BaseStore], State]:
     """Create a pre-model hook that injects task context into system messages.
 
     Runs after manage_system_prompts_node. Reads todos from graph state
@@ -224,7 +230,9 @@ def create_todo_pre_model_hook(source: str = "executor"):
         Hook function with signature (State, RunnableConfig, BaseStore) -> State
     """
 
-    def todo_pre_model_hook(state, config, store):
+    def todo_pre_model_hook(
+        state: State, config: RunnableConfig, store: BaseStore
+    ) -> State:
         todos = state.get("todos", [])
 
         messages = list(state.get("messages", []))
@@ -262,6 +270,6 @@ def create_todo_pre_model_hook(source: str = "executor"):
             additional_kwargs=sys_msg.additional_kwargs,
         )
 
-        return {**state, "messages": messages}
+        return cast(State, {**state, "messages": messages})
 
     return todo_pre_model_hook

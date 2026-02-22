@@ -14,6 +14,7 @@ Both are stored in separate mem0 namespaces and don't interfere.
 """
 
 import asyncio
+from typing import cast
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes import (
@@ -22,14 +23,20 @@ from app.agents.core.nodes import (
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
-from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
+from app.agents.tools.core.tool_runtime_config import (
+    build_child_tool_runtime_config,
+    build_create_agent_tool_kwargs,
+    build_provider_parent_tool_runtime_config,
+)
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.vfs_tools import vfs_read
 from app.config.loggers import langchain_logger as logger
 from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.hooks import HookType
 from langchain_core.language_models import LanguageModelLike
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 
 
@@ -106,16 +113,15 @@ class SubAgentFactory:
         )
 
         # Create todo tools and register them in the scoped tool registry
-        todo_tools = create_todo_tools(source=provider)
+        todo_tools: list[BaseTool] = create_todo_tools(source=provider)
         todo_hook = create_todo_pre_model_hook(source=provider)
-        todo_tool_names = []
-        for t in todo_tools:
-            scoped_tool_dict[t.name] = t
-            todo_tool_names.append(t.name)
+        todo_tool_names: list[str] = []
+        for todo_tool in todo_tools:
+            scoped_tool_dict[todo_tool.name] = todo_tool
+            todo_tool_names.append(todo_tool.name)
 
         for mw in middleware:
             if isinstance(mw, SubagentMiddleware):
-                mw.set_tools(registry=full_tool_dict)
                 mw.set_store(store)
                 break
 
@@ -125,46 +131,60 @@ class SubAgentFactory:
             "agent_name": name,
             "middleware": middleware,
             "pre_model_hooks": [
-                filter_messages_node,
+                cast(HookType, filter_messages_node),
                 manage_system_prompts_node,
                 todo_hook,
             ],
             "end_graph_hooks": [memory_node],
         }
 
-        if use_direct_tools:
-            common_kwargs.update(
-                {
-                    "initial_tool_ids": initial_tool_ids
-                    + todo_tool_names
-                    + [vfs_read.name],
-                    "disable_retrieve_tools": disable_retrieve_tools,
-                }
+        valid_auto_bind = (
+            [
+                tool_name
+                for tool_name in auto_bind_tools
+                if tool_name in scoped_tool_dict
+            ]
+            if auto_bind_tools
+            else None
+        )
+        if valid_auto_bind and not disable_retrieve_tools:
+            logger.info(
+                f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
             )
-        else:
-            base_initial_tools = [search_memory.name, vfs_read.name] + todo_tool_names
 
-            if auto_bind_tools and not disable_retrieve_tools:
-                valid_auto_bind = [
-                    tool_name
-                    for tool_name in auto_bind_tools
-                    if tool_name in scoped_tool_dict
-                ]
-                if valid_auto_bind:
-                    base_initial_tools.extend(valid_auto_bind)
-                    logger.info(
-                        f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
-                    )
-
-            common_kwargs.update(
-                {
-                    "retrieve_tools_coroutine": get_retrieve_tools_function(
-                        tool_space=tool_space,
-                        include_subagents=False,
-                    ),
-                    "initial_tool_ids": base_initial_tools,
-                }
+        parent_tool_runtime = build_provider_parent_tool_runtime_config(
+            provider_tool_names=initial_tool_ids,
+            todo_tool_names=todo_tool_names,
+            auto_bind_tool_names=valid_auto_bind,
+            use_direct_tools=use_direct_tools,
+            disable_retrieve_tools=disable_retrieve_tools,
+        )
+        common_kwargs.update(
+            build_create_agent_tool_kwargs(
+                parent_tool_runtime,
+                tool_space=tool_space,
             )
+        )
+
+        child_tool_runtime = build_child_tool_runtime_config(
+            parent_tool_runtime,
+            use_direct_tools=use_direct_tools,
+            disable_retrieve_tools=disable_retrieve_tools,
+        )
+        spawn_seed_tools = [
+            scoped_tool_dict[name]
+            for name in child_tool_runtime.initial_tool_names
+            if name in scoped_tool_dict
+        ]
+
+        for mw in middleware:
+            if isinstance(mw, SubagentMiddleware):
+                mw.set_tools(
+                    registry=full_tool_dict,
+                    tools=spawn_seed_tools,
+                    tool_runtime_config=child_tool_runtime,
+                )
+                break
 
         builder = create_agent(**common_kwargs)  # type: ignore[arg-type]
 

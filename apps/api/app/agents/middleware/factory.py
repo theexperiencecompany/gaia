@@ -14,6 +14,7 @@ from collections.abc import Callable, Mapping
 from typing import Any, Optional
 
 from app.agents.middleware.subagent import SubagentMiddleware
+from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
 from app.config.loggers import app_logger as logger
@@ -25,7 +26,7 @@ from app.constants.summarization import (
     SUMMARIZATION_MODEL,
     SUMMARIZATION_TRIGGER_FRACTION,
 )
-from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 
@@ -67,11 +68,12 @@ def create_middleware_stack(
     enable_summarization: bool = True,
     enable_compaction: bool = True,
     enable_subagent: bool = False,
-    subagent_llm: Optional[BaseChatModel] = None,
+    subagent_llm: Optional[LanguageModelLike] = None,
     subagent_tools: Optional[list[BaseTool]] = None,
     subagent_registry: Optional[Mapping[str, BaseTool | Callable[..., Any]]] = None,
     subagent_excluded_tools: Optional[set[str]] = None,
     subagent_tool_space: str = "general",
+    subagent_tool_runtime_config: Optional[ToolRuntimeConfig] = None,
     summarization_trigger: tuple = ("fraction", SUMMARIZATION_TRIGGER_FRACTION),
     summarization_keep: tuple = ("tokens", SUMMARIZATION_KEEP_TOKENS),
     compaction_threshold: float = COMPACTION_THRESHOLD,
@@ -79,7 +81,7 @@ def create_middleware_stack(
     vfs_enabled: bool = True,
     compaction_excluded_tools: Optional[set[str]] = None,
     summarization_excluded_tools: Optional[set[str]] = None,
-) -> list:
+) -> list[Any]:
     """
     Create the standard middleware stack for agents.
 
@@ -108,7 +110,7 @@ def create_middleware_stack(
     Returns:
         List of AgentMiddleware instances in execution order
     """
-    middleware = []
+    middleware: list[Any] = []
 
     # SubagentMiddleware - spawn_subagent tool for parallel/focused work
     if enable_subagent:
@@ -118,6 +120,7 @@ def create_middleware_stack(
             tool_registry=subagent_registry,
             excluded_tool_names=subagent_excluded_tools,
             tool_space=subagent_tool_space,
+            tool_runtime_config=subagent_tool_runtime_config,
         )
         middleware.append(subagent)
         logger.debug("SubagentMiddleware enabled with spawn_subagent tool")
@@ -161,11 +164,12 @@ def create_default_middleware() -> list:
 
 def create_executor_middleware(
     *,
-    subagent_llm: Optional[BaseChatModel] = None,
+    subagent_llm: Optional[LanguageModelLike] = None,
     subagent_tools: Optional[list[BaseTool]] = None,
     subagent_registry: Optional[Mapping[str, BaseTool | Callable[..., Any]]] = None,
     subagent_excluded_tools: Optional[set[str]] = None,
-) -> list:
+    subagent_tool_runtime_config: Optional[ToolRuntimeConfig] = None,
+) -> list[Any]:
     """
     Create middleware stack for the executor agent.
 
@@ -192,11 +196,12 @@ def create_executor_middleware(
         subagent_tools=subagent_tools,
         subagent_registry=subagent_registry,
         subagent_excluded_tools=subagent_excluded_tools,
+        subagent_tool_runtime_config=subagent_tool_runtime_config,
         compaction_excluded_tools=VFS_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
     )
 
 
-def create_comms_middleware() -> list:
+def create_comms_middleware() -> list[Any]:
     """
     Create middleware stack for the comms agent.
 
@@ -215,12 +220,13 @@ def create_comms_middleware() -> list:
 def create_subagent_middleware(
     *,
     todo_source: str = "subagent",
-    subagent_llm: Optional[BaseChatModel] = None,
+    subagent_llm: Optional[LanguageModelLike] = None,
     subagent_tools: Optional[list[BaseTool]] = None,
     subagent_registry: Optional[Mapping[str, BaseTool | Callable[..., Any]]] = None,
     subagent_excluded_tools: Optional[set[str]] = None,
     subagent_tool_space: str = "general",
-) -> list:
+    subagent_tool_runtime_config: Optional[ToolRuntimeConfig] = None,
+) -> list[Any]:
     """
     Create middleware stack for provider subagents.
 
@@ -251,4 +257,5 @@ def create_subagent_middleware(
         subagent_registry=subagent_registry,
         subagent_excluded_tools=subagent_excluded_tools,
         subagent_tool_space=subagent_tool_space,
+        subagent_tool_runtime_config=subagent_tool_runtime_config,
     )
