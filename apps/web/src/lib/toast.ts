@@ -37,6 +37,9 @@ function translate(message: string, opts?: ToastOptions): SileoOptions {
   // Sonner action → Sileo button
   if (opts?.action) {
     out.button = { title: opts.action.label, onClick: opts.action.onClick };
+    // Sileo only auto-expands the content panel when a `description` is set.
+    // Without autopilot, a button-only panel stays hidden until hover.
+    out.autopilot = true;
   }
 
   return out;

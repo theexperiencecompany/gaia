@@ -10,8 +10,7 @@ export function Toaster() {
     <SileoToaster
       position="top-right"
       options={{
-        fill: "#171717",
-        roundness: 16,
+        fill: "#262626",
         styles: {
           title: "text-white!",
           description: "text-white/75!",

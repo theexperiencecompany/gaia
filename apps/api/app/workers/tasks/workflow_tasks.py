@@ -268,15 +268,6 @@ async def execute_workflow_by_id(
             except Exception as e2:
                 logger.debug("Failed to update workflow stats: %s" % e2)
 
-        # Try to store error messages if any were generated
-        if execution_messages and workflow:
-            try:
-                await create_workflow_completion_notification(
-                    workflow, execution_messages, workflow.user_id
-                )
-            except Exception as e2:
-                logger.debug("Failed to create notification: %s" % e2)
-
         # Send failure notification so the user knows the workflow failed
         if workflow:
             try:
@@ -286,28 +277,29 @@ async def execute_workflow_by_id(
                     plan_required = detail.get("plan_required", "pro").upper()
                     reset_time_str = detail.get("reset_time", "")
 
-                    # Build human-readable reset hint from the reset timestamp
                     if reset_time_str:
+                        # Quota exhausted — show when the limit resets
                         try:
                             reset_dt = datetime.fromisoformat(reset_time_str)
-                            formatted_reset = reset_dt.strftime("%I:%M %p UTC")
+                            formatted_reset = reset_dt.strftime("%b %d at %I:%M %p UTC")
                             body = (
-                                f"Your workflow '{workflow.title}' could not run - "
-                                f"you've reached your workflow execution limit for today. "
-                                f"Limit resets at {formatted_reset}. "
-                                f"Upgrade to {plan_required} for higher limits."
+                                f"'{workflow.title}' couldn't run — "
+                                f"you've used all your workflow executions for today. "
+                                f"Resets {formatted_reset}. "
+                                f"Upgrade to {plan_required} for higher daily limits."
                             )
                         except Exception:
                             body = (
-                                f"Your workflow '{workflow.title}' could not run - "
-                                f"you've reached your workflow execution limit. "
-                                f"Upgrade to {plan_required} for higher limits."
+                                f"'{workflow.title}' couldn't run — "
+                                f"you've used all your workflow executions for today. "
+                                f"Upgrade to {plan_required} for higher daily limits."
                             )
                     else:
+                        # Plan-gated — feature isn't available on their plan at all
                         body = (
-                            f"Your workflow '{workflow.title}' could not run - "
-                            f"you've reached your workflow execution limit. "
-                            f"Upgrade to {plan_required} for higher limits."
+                            f"'{workflow.title}' couldn't run — "
+                            f"automated workflow execution is not available on your current plan. "
+                            f"Upgrade to {plan_required} to unlock this feature."
                         )
 
                     upgrade_action = NotificationAction(
@@ -316,7 +308,7 @@ async def execute_workflow_by_id(
                         style=ActionStyle.PRIMARY,
                         config=ActionConfig(
                             redirect=RedirectConfig(
-                                url="/subscription",
+                                url="/settings?section=subscription",
                                 open_in_new_tab=False,
                                 close_notification=True,
                             )

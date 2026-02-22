@@ -226,7 +226,9 @@ export default function SettingsMenu({
       title: "Settings",
       showDivider: true,
       items: [
-        ...settingsPageItems.filter((item) => item.key !== "subscription"),
+        ...settingsPageItems.filter((item) =>
+          ["profile", "preferences", "memory"].includes(item.key),
+        ),
         {
           key: "keyboard_shortcuts",
           label: "Keyboard Shortcuts",

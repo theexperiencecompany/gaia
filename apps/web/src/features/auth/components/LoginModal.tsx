@@ -20,7 +20,6 @@ const NON_DISMISSABLE_ROUTE_PREFIXES = [
   "/onboarding",
   "/settings",
   "/pins",
-  "/subscription",
   "/redirect",
   "/notifications",
   "/goals",
