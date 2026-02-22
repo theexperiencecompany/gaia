@@ -48,14 +48,14 @@ class ChannelAdapter(ABC):
     def _error(self, message: str) -> ChannelDeliveryStatus:
         return ChannelDeliveryStatus(
             channel_type=self.channel_type,
-            status=NotificationStatus.PENDING,
+            status=NotificationStatus.FAILED,
             error_message=message,
         )
 
     def _skipped(self, message: str) -> ChannelDeliveryStatus:
         return ChannelDeliveryStatus(
             channel_type=self.channel_type,
-            status=NotificationStatus.PENDING,
+            status=NotificationStatus.FAILED,
             skipped=True,
             error_message=message,
         )

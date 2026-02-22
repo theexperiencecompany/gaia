@@ -66,6 +66,9 @@ class ExternalPlatformAdapter(ChannelAdapter):
     # -- Shared implementations ---------------------------------------------
 
     def can_handle(self, notification: NotificationRequest) -> bool:
+        # External adapters are auto-injected by the orchestrator regardless of the
+        # explicit channel list, so they always report they can handle a notification.
+        # The orchestrator's preference-check and platform-link lookup are the real guards.
         return True
 
     def _split_text(self, text: str, limit: int) -> List[str]:
@@ -156,7 +159,9 @@ class ExternalPlatformAdapter(ChannelAdapter):
                         return self._error(f"{name} message error: {err}")
 
             if content.get("footer"):
-                await send_fn(content["footer"])
+                err = await send_fn(content["footer"])
+                if err:
+                    return self._error(f"{name} footer error: {err}")
 
             return self._success()
 

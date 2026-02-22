@@ -27,7 +27,6 @@ from app.utils.notification.actions import (
 from app.utils.notification.channels import (
     ChannelAdapter,
     DiscordChannelAdapter,
-    EmailChannelAdapter,
     InAppChannelAdapter,
     TelegramChannelAdapter,
 )
@@ -51,8 +50,8 @@ class NotificationOrchestrator:
     - Status management
     """
 
-    def __init__(self, storage=MongoDBNotificationStorage()) -> None:
-        self.storage = storage
+    def __init__(self, storage=None) -> None:
+        self.storage = storage or MongoDBNotificationStorage()
         self.channel_adapters: Dict[str, ChannelAdapter] = {}
         self.action_handlers: Dict[str, ActionHandler] = {}
 
@@ -64,7 +63,6 @@ class NotificationOrchestrator:
         """Register default adapters, handlers, and sources"""
         # Channel adapters
         self.register_channel_adapter(InAppChannelAdapter())
-        self.register_channel_adapter(EmailChannelAdapter())
         self.register_channel_adapter(TelegramChannelAdapter())
         self.register_channel_adapter(DiscordChannelAdapter())
 
@@ -163,20 +161,38 @@ class NotificationOrchestrator:
                 elif isinstance(result, Exception):
                     logger.error(f"Delivery failed: {result}")
 
+            # Compute overall status: DELIVERED only if at least one channel
+            # actually succeeded (i.e. not failed and not skipped).
+            delivered_channels = [
+                s
+                for s in channel_statuses
+                if s.status == NotificationStatus.DELIVERED and not s.skipped
+            ]
+            overall_status = (
+                NotificationStatus.DELIVERED
+                if delivered_channels
+                else NotificationStatus.FAILED
+            )
+            now = datetime.now(timezone.utc)
+
             # Update the notification record with delivery results
             await self.storage.update_notification(
                 notification.id,
                 {
                     "channels": [status.model_dump() for status in channel_statuses],
-                    "status": NotificationStatus.DELIVERED,
-                    "delivered_at": datetime.now(timezone.utc),
+                    "status": overall_status.value,
+                    "delivered_at": now
+                    if overall_status == NotificationStatus.DELIVERED
+                    else None,
                 },
             )
 
             # Update the local notification object for broadcasting
             notification.channels = channel_statuses
-            notification.status = NotificationStatus.DELIVERED
-            notification.delivered_at = datetime.now(timezone.utc)
+            notification.status = overall_status
+            notification.delivered_at = (
+                now if overall_status == NotificationStatus.DELIVERED else None
+            )
 
             # Broadcast real-time update to user
             await websocket_manager.broadcast_to_user(
@@ -197,8 +213,10 @@ class NotificationOrchestrator:
                 "discord": prefs.get("discord", True),
             }
         except Exception as e:
+            # Default to all DISABLED on error — better to skip delivery than
+            # to spam users who have opted out when the DB is unavailable.
             logger.warning(f"Failed to fetch channel prefs for {user_id}: {e}")
-            return DEFAULT_CHANNEL_PREFERENCES.copy()
+            return {k: False for k in DEFAULT_CHANNEL_PREFERENCES}
 
     async def _deliver_via_channel(
         self, notification: NotificationRecord, adapter: ChannelAdapter
@@ -317,30 +335,7 @@ class NotificationOrchestrator:
                 },
             )
 
-        # Handle follow-up actions if any
-        if result.next_actions:
-            await self._handle_follow_up_actions(result.next_actions, user_id)
-
         return result
-
-    def _find_action_in_notification(
-        self, notification: NotificationRecord, action_id: str
-    ):
-        """Find a specific action within a notification."""
-        for action in notification.original_request.content.actions or []:
-            if action.id == action_id:
-                return action
-        return None
-
-    async def _handle_follow_up_actions(
-        self, next_actions: List[Any], user_id: str
-    ) -> None:
-        """Handle any follow-up actions that need to be executed."""
-        for next_action in next_actions:
-            # Create new notification with next action
-            # Implementation depends on specific requirements
-            logger.info(f"Processing follow-up action for user {user_id}")
-            pass
 
     # NOTIFICATION STATUS MANAGEMENT
     async def mark_as_read(
@@ -404,7 +399,7 @@ class NotificationOrchestrator:
         await self.storage.update_notification(
             notification_id,
             {
-                "status": NotificationStatus.ARCHIVED,
+                "status": NotificationStatus.ARCHIVED.value,
                 "archived_at": datetime.now(timezone.utc),
             },
         )
@@ -520,11 +515,6 @@ class NotificationOrchestrator:
             "read_at": (
                 notification.read_at.isoformat() if notification.read_at else None
             ),
-            "snoozed_until": (
-                notification.snoozed_until.isoformat()
-                if notification.snoozed_until
-                else None
-            ),
             "content": {
                 "title": notification.original_request.content.title,
                 "body": notification.original_request.content.body,
@@ -555,6 +545,7 @@ class NotificationOrchestrator:
                 {
                     "channel_type": ch.channel_type,
                     "status": ch.status.value,
+                    "skipped": ch.skipped,
                     "delivered_at": (
                         ch.delivered_at.isoformat() if ch.delivered_at else None
                     ),

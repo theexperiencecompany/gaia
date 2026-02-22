@@ -1,6 +1,5 @@
 from app.utils.notification.channels.base import ChannelAdapter, SendFn
 from app.utils.notification.channels.discord import DiscordChannelAdapter
-from app.utils.notification.channels.email import EmailChannelAdapter
 from app.utils.notification.channels.external import ExternalPlatformAdapter
 from app.utils.notification.channels.inapp import InAppChannelAdapter
 from app.utils.notification.channels.telegram import TelegramChannelAdapter
@@ -10,7 +9,6 @@ __all__ = [
     "SendFn",
     "ExternalPlatformAdapter",
     "InAppChannelAdapter",
-    "EmailChannelAdapter",
     "TelegramChannelAdapter",
     "DiscordChannelAdapter",
 ]
