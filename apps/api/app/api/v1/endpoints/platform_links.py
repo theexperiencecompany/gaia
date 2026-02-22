@@ -169,7 +169,7 @@ async def initiate_platform_connect(
             f"&state={state}"
         )
         return InitiatePlatformConnectResponse(
-            auth_url=auth_url, auth_type="oauth", instructions=None
+            auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
         )
 
     # Slack OAuth flow
@@ -188,7 +188,7 @@ async def initiate_platform_connect(
             f"&state={state}"
         )
         return InitiatePlatformConnectResponse(
-            auth_url=auth_url, auth_type="oauth", instructions=None
+            auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
         )
 
     # Telegram manual flow (no OAuth)
