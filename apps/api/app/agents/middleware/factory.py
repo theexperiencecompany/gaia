@@ -10,13 +10,13 @@ This module consolidates middleware creation to:
 - Make it easy to modify middleware behavior globally
 """
 
-from collections.abc import Callable, Mapping
-from typing import Any, Optional
+from collections.abc import Mapping
+from typing import Any
 
 from app.agents.middleware.subagent import SubagentMiddleware
-from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
+from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.loggers import app_logger as logger
 from app.config.settings import settings
 from app.constants.summarization import (
@@ -30,13 +30,13 @@ from langchain_core.language_models import BaseChatModel, LanguageModelLike
 from langchain_core.tools import BaseTool
 from langchain_google_genai import ChatGoogleGenerativeAI
 
-VFS_TOOL_NAMES = {"vfs_read", "vfs_write", "vfs_analyze", "vfs_cmd"}
+VFS_TOOL_NAMES = {"vfs_read", "vfs_write", "vfs_cmd"}
 SPAWN_SUBAGENT_TOOL = {"spawn_subagent"}
 
-_summarization_llm: Optional[BaseChatModel] = None
+_summarization_llm: BaseChatModel | None = None
 
 
-def get_summarization_llm() -> Optional[BaseChatModel]:
+def get_summarization_llm() -> BaseChatModel | None:
     """
     Get the LLM instance for summarization.
 
@@ -68,19 +68,19 @@ def create_middleware_stack(
     enable_summarization: bool = True,
     enable_compaction: bool = True,
     enable_subagent: bool = False,
-    subagent_llm: Optional[LanguageModelLike] = None,
-    subagent_tools: Optional[list[BaseTool]] = None,
-    subagent_registry: Optional[Mapping[str, BaseTool | Callable[..., Any]]] = None,
-    subagent_excluded_tools: Optional[set[str]] = None,
+    subagent_llm: LanguageModelLike | None = None,
+    subagent_tools: list[BaseTool] | None = None,
+    subagent_registry: Mapping[str, BaseTool] | None = None,
+    subagent_excluded_tools: set[str] | None = None,
     subagent_tool_space: str = "general",
-    subagent_tool_runtime_config: Optional[ToolRuntimeConfig] = None,
+    subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
     summarization_trigger: tuple = ("fraction", SUMMARIZATION_TRIGGER_FRACTION),
     summarization_keep: tuple = ("tokens", SUMMARIZATION_KEEP_TOKENS),
     compaction_threshold: float = COMPACTION_THRESHOLD,
     max_output_chars: int = MAX_OUTPUT_CHARS,
     vfs_enabled: bool = True,
-    compaction_excluded_tools: Optional[set[str]] = None,
-    summarization_excluded_tools: Optional[set[str]] = None,
+    compaction_excluded_tools: set[str] | None = None,
+    summarization_excluded_tools: set[str] | None = None,
 ) -> list[Any]:
     """
     Create the standard middleware stack for agents.
@@ -164,11 +164,11 @@ def create_default_middleware() -> list:
 
 def create_executor_middleware(
     *,
-    subagent_llm: Optional[LanguageModelLike] = None,
-    subagent_tools: Optional[list[BaseTool]] = None,
-    subagent_registry: Optional[Mapping[str, BaseTool | Callable[..., Any]]] = None,
-    subagent_excluded_tools: Optional[set[str]] = None,
-    subagent_tool_runtime_config: Optional[ToolRuntimeConfig] = None,
+    subagent_llm: LanguageModelLike | None = None,
+    subagent_tools: list[BaseTool] | None = None,
+    subagent_registry: Mapping[str, BaseTool] | None = None,
+    subagent_excluded_tools: set[str] | None = None,
+    subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
 ) -> list[Any]:
     """
     Create middleware stack for the executor agent.
@@ -220,12 +220,12 @@ def create_comms_middleware() -> list[Any]:
 def create_subagent_middleware(
     *,
     todo_source: str = "subagent",
-    subagent_llm: Optional[LanguageModelLike] = None,
-    subagent_tools: Optional[list[BaseTool]] = None,
-    subagent_registry: Optional[Mapping[str, BaseTool | Callable[..., Any]]] = None,
-    subagent_excluded_tools: Optional[set[str]] = None,
+    subagent_llm: LanguageModelLike | None = None,
+    subagent_tools: list[BaseTool] | None = None,
+    subagent_registry: Mapping[str, BaseTool] | None = None,
+    subagent_excluded_tools: set[str] | None = None,
     subagent_tool_space: str = "general",
-    subagent_tool_runtime_config: Optional[ToolRuntimeConfig] = None,
+    subagent_tool_runtime_config: ToolRuntimeConfig | None = None,
 ) -> list[Any]:
     """
     Create middleware stack for provider subagents.

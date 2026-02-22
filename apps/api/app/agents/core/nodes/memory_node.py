@@ -16,11 +16,11 @@ from typing import Dict, List, Optional
 
 from app.config.loggers import llm_logger as logger
 from app.config.oauth_config import get_memory_extraction_prompt
+from app.override.langgraph_bigtool.utils import State
 from app.services.memory_service import memory_service
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
 
 MAX_TOOL_OUTPUT_SIZE = 500
 

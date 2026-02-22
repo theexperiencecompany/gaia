@@ -241,7 +241,7 @@ USE for every task with 2+ steps:
 1. Call plan_tasks at the start to create your task list
 2. Mark each task in_progress when starting, completed immediately when done
 3. Use add_task if you discover additional work mid-execution
-4. Complete the current task before moving to the next
+4. Complete tasks in order unless independent subtasks are intentionally parallelized with spawn_subagent
 
 This is not optional. Always plan before executing.
 
@@ -290,9 +290,10 @@ UNKNOWN PROVIDERS: use retrieve_tools first to discover.
 A lightweight clone of you (same tools minus handoff/spawn_subagent, max 5 turns, no streaming).
 
 When to use:
+- Parallelizable work: multiple independent/repeated subtasks can run concurrently via multiple spawn_subagent calls (multi tool calling)
+- Token-expensive work: offload long files, large outputs, and heavy extraction/summarization to spawned agents to protect main context
 - Large VFS outputs: When a tool output was stored to VFS (you'll see "[Full output stored at: ...]"),
   spawn a subagent to read and extract what you need without polluting your context
-- Independent subtasks that don't need provider-specific tools
 - Context isolation for processing-heavy work
 
 When NOT to use:

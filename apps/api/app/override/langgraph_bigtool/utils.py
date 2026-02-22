@@ -4,10 +4,23 @@ Utility functions for LangGraph bigtool agent.
 Contains helper functions for tool selection formatting and type definitions.
 """
 
-from typing import TypedDict
+from collections.abc import Sequence
+from typing import Annotated, TypedDict
 
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import BaseTool
+from langgraph_bigtool.graph import State as _BigtoolState
+
+
+def _replace_todos(left: list, right: list) -> list:
+    """Last-write-wins reducer for the todos channel."""
+    return right
+
+
+class State(_BigtoolState):
+    """Extended state with todos channel for agent task management."""
+
+    todos: Annotated[list, _replace_todos]
 
 
 class RetrieveToolsResult(TypedDict):
@@ -20,6 +33,36 @@ class RetrieveToolsResult(TypedDict):
 
     tools_to_bind: list[str]
     response: list[str]
+
+
+def dedupe_str_list(items: Sequence[str]) -> list[str]:
+    """Deduplicate strings while preserving first-seen order."""
+    seen: set[str] = set()
+    deduped: list[str] = []
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
+
+def _tool_binding_key(tool: BaseTool) -> tuple[str, str | int]:
+    """Build a stable key for tool binding de-duplication."""
+    return ("name", tool.name)
+
+
+def dedupe_tool_bindings(tools: Sequence[BaseTool]) -> list[BaseTool]:
+    """Deduplicate tools for model binding while preserving order."""
+    seen: set[tuple[str, str | int]] = set()
+    deduped: list[BaseTool] = []
+    for tool in tools:
+        key = _tool_binding_key(tool)
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(tool)
+    return deduped
 
 
 def format_selected_tools(

@@ -6,7 +6,7 @@ When a tool_registry + store are configured, subagents get `retrieve_tools`
 for dynamic discovery instead of binding all tools upfront.
 """
 
-from collections.abc import Callable, Mapping
+from collections.abc import Mapping
 from typing import Annotated, Any, Optional
 
 from app.agents.prompts.spawn_subagent_prompts import (
@@ -50,7 +50,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         self,
         llm: LanguageModelLike | None = None,
         available_tools: list[BaseTool] | None = None,
-        tool_registry: Mapping[str, BaseTool | Callable[..., Any]] | None = None,
+        tool_registry: Mapping[str, BaseTool] | None = None,
         max_turns: int = 5,
         system_prompt: str = SPAWN_SUBAGENT_SYSTEM_PROMPT,
         excluded_tool_names: set[str] | None = None,
@@ -123,7 +123,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     }
                 )
             except Exception as e:
-                logger.error(f"Subagent execution failed: {e}")
+                logger.error("Subagent execution failed: {}", str(e))
                 return Command(
                     update={
                         "messages": [
@@ -183,9 +183,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         if self._tool_registry:
             for name, registry_tool in self._tool_registry.items():
-                if name not in self._excluded_tools and isinstance(
-                    registry_tool, BaseTool
-                ):
+                if name not in self._excluded_tools:
                     tools.append(registry_tool)
 
         return tools
@@ -205,7 +203,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             if name in bound_tool_names or name in self._excluded_tools:
                 continue
             tool_instance = self._tool_registry.get(name)
-            if isinstance(tool_instance, BaseTool):
+            if tool_instance is not None:
                 tools_by_name[name] = tool_instance
                 bound_tool_names.add(name)
                 newly_bound.append(name)
@@ -278,7 +276,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                             "\n".join(result.get("response", [])) or "No tools found."
                         )
                     except Exception as e:
-                        logger.error(f"Subagent retrieve_tools error: {e}")
+                        logger.error("Subagent retrieve_tools error: {}", str(e))
                         content = f"retrieve_tools error: {e}"
 
                     messages.append(
@@ -378,7 +376,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
     def set_tools(
         self,
         tools: list[BaseTool] | None = None,
-        registry: Mapping[str, BaseTool | Callable[..., Any]] | None = None,
+        registry: Mapping[str, BaseTool] | None = None,
         excluded_tool_names: set[str] | None = None,
         tool_space: str | None = None,
         tool_runtime_config: ToolRuntimeConfig | None = None,

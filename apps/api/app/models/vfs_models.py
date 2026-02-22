@@ -117,46 +117,6 @@ class VFSTreeNode(BaseModel):
 VFSTreeNode.model_rebuild()
 
 
-class VFSAnalysisResult(BaseModel):
-    """
-    Result of deep file analysis (for vfs_analyze tool).
-
-    Provides comprehensive metadata about file contents,
-    especially useful for JSON files.
-    """
-
-    path: str
-    file_type: str = Field(description="Detected file type (json, text, csv, etc.)")
-
-    # Size metrics
-    size_bytes: int
-    size_human: str = Field(description="Human-readable size (e.g., '2.5 KB')")
-    character_count: int
-    line_count: int
-
-    # JSON-specific analysis (when applicable)
-    json_schema: Optional[Dict[str, Any]] = Field(
-        default=None, description="Inferred JSON schema"
-    )
-    array_lengths: Optional[Dict[str, int]] = Field(
-        default=None, description="Lengths of arrays in JSON"
-    )
-    nested_depth: int = Field(default=0, description="Maximum nesting depth")
-    field_count: int = Field(default=0, description="Number of unique fields")
-
-    # Content analysis
-    sample_values: Optional[Dict[str, List[Any]]] = Field(
-        default=None, description="Sample values for each field"
-    )
-    value_types: Optional[Dict[str, str]] = Field(
-        default=None, description="Detected types for each field"
-    )
-
-    # Text-specific analysis
-    word_count: Optional[int] = None
-    encoding: Optional[str] = None
-
-
 class VFSSearchResult(BaseModel):
     """Result of a file search operation."""
 

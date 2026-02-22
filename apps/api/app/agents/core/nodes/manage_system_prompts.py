@@ -5,10 +5,25 @@ This module provides functionality to keep only the latest non-memory system pro
 while preserving all memory system messages in their original order.
 """
 
+from typing import cast
+
 from app.config.loggers import chat_logger as logger
+from app.override.langgraph_bigtool.utils import State
+from langchain_core.messages import AnyMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
+
+
+def _is_memory_system_message(msg: AnyMessage) -> bool:
+    """Return whether a system message is marked as memory context."""
+    additional_is_memory = bool(msg.additional_kwargs.get("memory_message", False))
+    model_extra = getattr(msg, "model_extra", None)
+    model_extra_is_memory = bool(
+        model_extra.get("memory_message", False)
+        if isinstance(model_extra, dict)
+        else False
+    )
+    return additional_is_memory or model_extra_is_memory
 
 
 def manage_system_prompts_node(
@@ -45,9 +60,7 @@ def manage_system_prompts_node(
 
         for idx, msg in enumerate(messages):
             if msg.type == "system":
-                is_memory = msg.additional_kwargs.get(
-                    "memory_message", False
-                ) or msg.model_extra.get("memory_message", False)
+                is_memory = _is_memory_system_message(msg)
                 # Track the latest non-memory system prompt index
                 if not is_memory:
                     latest_non_memory_system_prompt_idx = idx
@@ -56,9 +69,7 @@ def manage_system_prompts_node(
         filtered_messages = []
         for idx, msg in enumerate(messages):
             if msg.type == "system":
-                is_memory = msg.additional_kwargs.get(
-                    "memory_message", False
-                ) or msg.model_extra.get("memory_message", False)
+                is_memory = _is_memory_system_message(msg)
                 # Keep memory messages always
                 if is_memory:
                     filtered_messages.append(msg)
@@ -70,7 +81,7 @@ def manage_system_prompts_node(
                 # Keep all non-system messages
                 filtered_messages.append(msg)
 
-        return {**state, "messages": filtered_messages}
+        return cast(State, {**state, "messages": filtered_messages})
 
     except Exception as e:
         logger.error(f"Error in manage system prompts node: {e}")

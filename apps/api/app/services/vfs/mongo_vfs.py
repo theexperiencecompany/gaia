@@ -16,12 +16,10 @@ from typing import Any, Dict, Optional
 from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import _get_mongodb_instance, vfs_nodes_collection
 from app.models.vfs_models import (
-    VFSAnalysisResult,
     VFSListResponse,
     VFSNodeResponse,
     VFSNodeType,
     VFSSearchResult,
-    VFSSessionInfo,
     VFSTreeNode,
 )
 from app.services.vfs.path_resolver import (
@@ -876,121 +874,6 @@ class MongoVFS:
         metadata["copied_from"] = source
 
         return await self.write(dest, content, user_id, metadata)
-
-    # ==================== Analysis Operations ====================
-
-    async def analyze(
-        self,
-        path: str,
-        user_id: str,
-        include_schema: bool = True,
-        include_stats: bool = True,
-        sample_size: int = 3,
-    ) -> VFSAnalysisResult:
-        """
-        Analyze file content and return structured metadata.
-
-        Args:
-            path: File path to analyze
-            user_id: The user ID (REQUIRED for security)
-            include_schema: Whether to infer JSON schema
-            include_stats: Whether to include size stats
-            sample_size: Number of sample values to include
-
-        Returns:
-            VFSAnalysisResult with analysis data
-
-        Raises:
-            VFSAccessError: If user doesn't have access to the path
-        """
-        path = self._auto_prefix_path(path, user_id)
-        path = self._validate_access(path, user_id)
-
-        content = await self.read(path, user_id)
-
-        if content is None:
-            raise FileNotFoundError(f"File not found: {path}")
-
-        ext = get_extension(path)
-        file_type = self._classify_file_type(ext, content)
-
-        result = VFSAnalysisResult(
-            path=path,
-            file_type=file_type,
-            size_bytes=len(content.encode("utf-8")),
-            size_human=self._format_size(len(content.encode("utf-8"))),
-            character_count=len(content),
-            line_count=content.count("\n") + 1,
-        )
-
-        if file_type == "json" and include_schema:
-            try:
-                data = json.loads(content)
-                schema_info = self._analyze_json(data, sample_size)
-                result.json_schema = schema_info.get("schema")
-                result.array_lengths = schema_info.get("array_lengths")
-                result.nested_depth = schema_info.get("nested_depth", 0)
-                result.field_count = schema_info.get("field_count", 0)
-                result.sample_values = schema_info.get("sample_values")
-                result.value_types = schema_info.get("value_types")
-            except json.JSONDecodeError:
-                pass
-
-        if file_type == "text" and include_stats:
-            result.word_count = len(content.split())
-
-        return result
-
-    async def get_session_info(
-        self, user_id: str, conversation_id: str
-    ) -> VFSSessionInfo:
-        """
-        Get information about a conversation session's files.
-
-        Args:
-            user_id: The user ID (REQUIRED for security)
-            conversation_id: The conversation ID
-
-        Returns:
-            VFSSessionInfo with session file details
-        """
-        if not user_id:
-            raise ValueError("user_id is required for VFS operations")
-
-        from app.services.vfs.path_resolver import get_session_path
-
-        session_path = get_session_path(user_id, conversation_id)
-
-        # Query MUST include user_id for security
-        query = {
-            "path": {"$regex": f"^{session_path}/"},
-            "node_type": VFSNodeType.FILE.value,
-            "user_id": user_id,  # CRITICAL: Always filter by user
-        }
-        cursor = vfs_nodes_collection.find(query, {"path": 1, "size_bytes": 1})
-        files = await cursor.to_list(length=1000)
-
-        # Extract unique agent names
-        agents = set()
-        total_size = 0
-        for f in files:
-            # Path format: .../sessions/{conv_id}/{agent_name}/...
-            path_parts = f["path"].split("/")
-            try:
-                session_idx = path_parts.index("sessions")
-                if len(path_parts) > session_idx + 2:
-                    agents.add(path_parts[session_idx + 2])
-            except ValueError:
-                pass
-            total_size += f.get("size_bytes", 0)
-
-        return VFSSessionInfo(
-            conversation_id=conversation_id,
-            path=session_path,
-            agents=sorted(agents),
-            file_count=len(files),
-            total_size_bytes=total_size,
-        )
 
     # ==================== Helper Methods ====================
 

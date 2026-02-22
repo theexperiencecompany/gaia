@@ -4,8 +4,9 @@ Pytest fixtures for VFS (Virtual Filesystem) tests.
 Provides shared fixtures for mocking MongoDB, VFS, LLM, and other dependencies.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+import pytest
 
 
 @pytest.fixture
@@ -25,7 +26,6 @@ def mock_vfs_collection():
 def mock_vfs_service():
     """Create a mock VFS service for tool tests."""
     from app.models.vfs_models import (
-        VFSAnalysisResult,
         VFSListResponse,
         VFSNodeResponse,
         VFSNodeType,
@@ -80,21 +80,6 @@ def mock_vfs_service():
             total_count=1,
             pattern="*.json",
             base_path="/users/user123/global",
-        )
-    )
-
-    mock.analyze = AsyncMock(
-        return_value=VFSAnalysisResult(
-            path="/users/user123/global/data.json",
-            file_type="json",
-            size_bytes=100,
-            size_human="100 B",
-            character_count=100,
-            line_count=5,
-            json_schema={"type": "object"},
-            array_lengths={"items": 3},
-            nested_depth=2,
-            field_count=5,
         )
     )
 

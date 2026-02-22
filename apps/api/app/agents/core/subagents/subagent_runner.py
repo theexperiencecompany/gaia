@@ -203,7 +203,7 @@ async def prepare_subagent_execution(
         configurable=configurable,
         task=task,
         user_id=user_id,
-        subagent_id=integration.id,  # Pass for skill retrieval
+        subagent_id=agent_name,
     )
 
     initial_state = {"messages": messages, "todos": []}

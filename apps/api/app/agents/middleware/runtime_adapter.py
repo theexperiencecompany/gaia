@@ -6,24 +6,45 @@ This module creates adapters that provide the expected interface while working
 with our langgraph_bigtool-based agent state.
 """
 
-from dataclasses import dataclass, field
-from typing import Any, Optional
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
 
+from app.override.langgraph_bigtool.utils import State
 from langchain.agents.middleware.types import (
+    AgentState,
     ModelRequest,
     ToolCallRequest,
 )
+from langchain.tools import ToolRuntime
 from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AnyMessage, SystemMessage
+from langchain_core.messages import SystemMessage
 from langchain_core.messages.tool import ToolCall
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
+from langgraph.runtime import Runtime
 from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
+from langgraph.types import StreamWriter
 
 
-@dataclass
-class BigtoolRuntime:
+def _noop_stream_writer(_: object) -> None:
+    """Default stream writer used when graph stream writer is unavailable."""
+    return None
+
+
+def to_agent_state(state: State | dict[str, Any]) -> AgentState[Any]:
+    """Convert graph state into LangChain AgentState-compatible shape."""
+    agent_state: AgentState[Any] = AgentState(messages=list(state.get("messages", [])))
+    jump_to = state.get("jump_to")
+    if jump_to in {"tools", "model", "end"}:
+        agent_state["jump_to"] = jump_to
+    if "structured_response" in state:
+        agent_state["structured_response"] = state["structured_response"]
+    return agent_state
+
+
+@dataclass(frozen=True)
+class BigtoolRuntime(Runtime[Any]):
     """
     Runtime adapter for langgraph_bigtool integration.
 
@@ -38,29 +59,29 @@ class BigtoolRuntime:
         config: The RunnableConfig from the graph invocation
     """
 
-    context: Any = None
-    store: Optional[BaseStore] = None
-    stream_writer: Any = None
-    previous: Any = None
-    config: Optional[RunnableConfig] = None
+    config: RunnableConfig | None = None
 
     @classmethod
     def from_graph_context(
         cls,
         config: RunnableConfig,
-        store: Optional[BaseStore] = None,
+        store: BaseStore | None = None,
         context: Any = None,
+        stream_writer: StreamWriter = _noop_stream_writer,
+        previous: Any = None,
     ) -> "BigtoolRuntime":
         """Create runtime from graph invocation context."""
         return cls(
             context=context,
             store=store,
+            stream_writer=stream_writer,
+            previous=previous,
             config=config,
         )
 
 
 @dataclass
-class BigtoolToolRuntime:
+class BigtoolToolRuntime(ToolRuntime[None, dict[str, Any]]):
     """
     Tool-specific runtime adapter for wrap_tool_call middleware.
 
@@ -73,46 +94,37 @@ class BigtoolToolRuntime:
         tool_name: Name of the tool being executed
     """
 
-    context: Any = None
-    store: Optional[BaseStore] = None
-    config: Optional[RunnableConfig] = None
-    tool_name: Optional[str] = None
-
-
-@dataclass
-class BigtoolAgentState:
-    """
-    AgentState adapter for langgraph_bigtool State.
-
-    Wraps our State TypedDict to provide the interface expected by
-    LangChain middleware's AgentState.
-    """
-
-    messages: list[AnyMessage] = field(default_factory=list)
-    selected_tool_ids: list[str] = field(default_factory=list)
+    tool_name: str | None = None
 
     @classmethod
-    def from_state(cls, state: State) -> "BigtoolAgentState":
-        """Create from langgraph_bigtool State."""
+    def from_graph_context(
+        cls,
+        config: RunnableConfig,
+        store: BaseStore | None = None,
+        tool_name: str | None = None,
+        state: dict[str, Any] | None = None,
+        context: None = None,
+        stream_writer: StreamWriter = _noop_stream_writer,
+        tool_call_id: str | None = None,
+    ) -> "BigtoolToolRuntime":
+        """Create tool runtime with defaults suitable for middleware wrappers."""
         return cls(
-            messages=list(state.get("messages", [])),
-            selected_tool_ids=list(state.get("selected_tool_ids", [])),
+            state={} if state is None else state,
+            context=context,
+            config=config,
+            stream_writer=stream_writer,
+            tool_call_id=tool_call_id,
+            store=store,
+            tool_name=tool_name,
         )
-
-    def to_state_update(self) -> dict[str, Any]:
-        """Convert back to State update dict."""
-        return {
-            "messages": self.messages,
-            "selected_tool_ids": self.selected_tool_ids,
-        }
 
 
 def create_model_request(
     model: BaseChatModel,
     state: State,
     runtime: BigtoolRuntime,
-    tools: list[BaseTool],
-    system_message: Optional[SystemMessage] = None,
+    tools: Sequence[BaseTool | dict[str, Any]],
+    system_message: SystemMessage | None = None,
 ) -> ModelRequest:
     """
     Create a ModelRequest from langgraph_bigtool context.
@@ -144,15 +156,16 @@ def create_model_request(
     # Use provided system_message or extracted one
     final_system = system_message or extracted_system
 
-    # Create state wrapper — pass full state so middleware can access all channels
-    agent_state = dict(state)  # type: ignore[arg-type]
+    # ModelRequest.state follows LangChain's AgentState schema.
+    agent_state = to_agent_state(state)
+    tools_for_request: list[BaseTool | dict[str, Any]] = [tool for tool in tools]
 
     return ModelRequest(
         model=model,
         messages=non_system_messages if final_system else messages,
         system_message=final_system,
         tool_choice=None,
-        tools=tools,
+        tools=tools_for_request,
         response_format=None,
         state=agent_state,
         runtime=runtime,
@@ -162,7 +175,7 @@ def create_model_request(
 
 def create_tool_call_request(
     tool_call: dict[str, Any],
-    tool: Optional[BaseTool],
+    tool: BaseTool | None,
     state: State,
     runtime: BigtoolToolRuntime,
 ) -> ToolCallRequest:

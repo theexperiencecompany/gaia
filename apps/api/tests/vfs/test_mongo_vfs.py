@@ -5,12 +5,10 @@ These tests use mocked MongoDB collections to test VFS operations
 without requiring a real database connection.
 """
 
-import json
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from app.models.vfs_models import VFSNodeType
 
 
@@ -418,67 +416,6 @@ class TestMongoVFSSearch:
             assert result.pattern == "*.json"
 
 
-class TestMongoVFSAnalyze:
-    """Tests for MongoVFS analyze operation."""
-
-    @pytest.mark.asyncio
-    async def test_analyze_json_file(self, mock_vfs_collection):
-        """Analyze extracts JSON schema and structure."""
-        json_content = json.dumps(
-            {"users": [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}]}
-        )
-        mock_vfs_collection.find_one = AsyncMock(
-            return_value={
-                "path": "/users/user123/global/data.json",
-                "node_type": "file",
-                "content": json_content,
-                "gridfs_id": None,
-            }
-        )
-
-        with patch(
-            "app.services.vfs.mongo_vfs.vfs_nodes_collection", mock_vfs_collection
-        ):
-            from app.services.vfs.mongo_vfs import MongoVFS
-
-            vfs = MongoVFS()
-            result = await vfs.analyze(
-                "/users/user123/global/data.json", user_id="user123"
-            )
-
-            assert result.file_type == "json"
-            assert result.json_schema is not None
-            assert "users" in result.array_lengths
-            assert result.array_lengths["users"] == 2
-
-    @pytest.mark.asyncio
-    async def test_analyze_text_file(self, mock_vfs_collection):
-        """Analyze counts words for text files."""
-        text_content = "Hello world this is a test file with some words"
-        mock_vfs_collection.find_one = AsyncMock(
-            return_value={
-                "path": "/users/user123/global/doc.txt",
-                "node_type": "file",
-                "content": text_content,
-                "gridfs_id": None,
-            }
-        )
-
-        with patch(
-            "app.services.vfs.mongo_vfs.vfs_nodes_collection", mock_vfs_collection
-        ):
-            from app.services.vfs.mongo_vfs import MongoVFS
-
-            vfs = MongoVFS()
-            result = await vfs.analyze(
-                "/users/user123/global/doc.txt", user_id="user123"
-            )
-
-            assert result.file_type == "text"
-            assert result.word_count == 10
-            assert result.line_count == 1
-
-
 class TestMongoVFSMove:
     """Tests for MongoVFS move operation."""
 
@@ -611,39 +548,3 @@ class TestMongoVFSAppend:
             call_args = mock_vfs_collection.update_one.call_args
             update_doc = call_args[0][1]["$set"]
             assert update_doc["content"] == "Line 1\nLine 2\n"
-
-
-class TestMongoVFSGetSessionInfo:
-    """Tests for MongoVFS get_session_info operation."""
-
-    @pytest.mark.asyncio
-    async def test_get_session_info(self, mock_vfs_collection):
-        """Get session info returns file counts and agent list."""
-        mock_cursor = AsyncMock()
-        mock_cursor.to_list = AsyncMock(
-            return_value=[
-                {
-                    "path": "/users/user123/global/executor/sessions/conv1/gmail/tc_001_send_email.json",
-                    "size_bytes": 1000,
-                },
-                {
-                    "path": "/users/user123/global/executor/sessions/conv1/github/tc_002_create_pr.json",
-                    "size_bytes": 2000,
-                },
-            ]
-        )
-        mock_vfs_collection.find = MagicMock(return_value=mock_cursor)
-
-        with patch(
-            "app.services.vfs.mongo_vfs.vfs_nodes_collection", mock_vfs_collection
-        ):
-            from app.services.vfs.mongo_vfs import MongoVFS
-
-            vfs = MongoVFS()
-            result = await vfs.get_session_info("user123", "conv1")
-
-            assert result.conversation_id == "conv1"
-            assert result.file_count == 2
-            assert result.total_size_bytes == 3000
-            assert "gmail" in result.agents
-            assert "github" in result.agents

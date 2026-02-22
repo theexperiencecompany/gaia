@@ -8,7 +8,6 @@ be organized into notes, free-form files, and session-specific outputs.
 Tool Summary:
   - vfs_read: Read file content
   - vfs_write: Write/append content to files
-  - vfs_analyze: Analyze file structure (especially JSON)
   - vfs_cmd: Execute shell-like commands (ls, tree, find, grep, etc.)
 
 Folder Structure (per user):
@@ -181,69 +180,6 @@ async def vfs_write(
 
 
 @tool
-async def vfs_analyze(
-    config: RunnableConfig,
-    path: Annotated[str, "File path to analyze"],
-) -> str:
-    """
-    Analyze a file's structure and content.
-
-    Especially useful for understanding JSON files - returns schema,
-    array lengths, nesting depth, and field types.
-
-    For text files, returns line count, word count, and character count.
-
-    Examples:
-      vfs_analyze("sessions/abc123/gmail/emails.json")
-      vfs_analyze("notes/long_document.txt")
-    """
-    from app.services.vfs import get_vfs
-
-    ctx = _get_context(config)
-    if not ctx["user_id"]:
-        return "Error: User ID not found in configuration"
-
-    try:
-        vfs = await get_vfs()
-        resolved_path = _resolve_path(path, ctx["user_id"], ctx["agent_name"])
-        analysis = await vfs.analyze(resolved_path, user_id=ctx["user_id"])
-
-        lines = [
-            f"File: {analysis.path}",
-            f"Type: {analysis.file_type}",
-            f"Size: {analysis.size_human} ({analysis.size_bytes} bytes)",
-            f"Lines: {analysis.line_count}",
-            f"Characters: {analysis.character_count}",
-        ]
-
-        if analysis.word_count:
-            lines.append(f"Words: {analysis.word_count}")
-
-        if analysis.json_schema:
-            lines.append("\nJSON Analysis:")
-            lines.append(f"  Nesting depth: {analysis.nested_depth}")
-            lines.append(f"  Field count: {analysis.field_count}")
-
-            if analysis.array_lengths:
-                lines.append("  Arrays:")
-                for path_key, length in list(analysis.array_lengths.items())[:5]:
-                    lines.append(f"    {path_key}: {length} items")
-
-            if analysis.value_types:
-                lines.append("  Field types:")
-                for field, vtype in list(analysis.value_types.items())[:10]:
-                    lines.append(f"    {field}: {vtype}")
-
-        return "\n".join(lines)
-
-    except FileNotFoundError:
-        return f"File not found: {path}"
-    except Exception as e:
-        logger.error(f"VFS analyze error: {e}")
-        return f"Error analyzing file: {str(e)}"
-
-
-@tool
 async def vfs_cmd(
     config: RunnableConfig,
     command: Annotated[
@@ -297,6 +233,5 @@ async def vfs_cmd(
 tools = [
     vfs_read,
     vfs_write,
-    vfs_analyze,
     vfs_cmd,
 ]

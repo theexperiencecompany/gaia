@@ -10,8 +10,8 @@ from typing import Awaitable, Callable, Union
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
 
+from app.override.langgraph_bigtool.utils import State
 
 HookType = Union[
     Callable[[State, RunnableConfig, BaseStore], State],

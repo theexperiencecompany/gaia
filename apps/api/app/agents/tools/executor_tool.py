@@ -75,7 +75,7 @@ async def call_executor(
         logger.info("Executor call cancelled")
         return "Task was cancelled"
     except Exception as e:
-        logger.error(f"Error calling executor: {e}", exc_info=True)
+        logger.error("Error calling executor: {}", str(e), exc_info=True)
         return f"Error executing task: {str(e)}"
 
 

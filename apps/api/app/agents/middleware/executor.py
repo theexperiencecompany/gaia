@@ -14,27 +14,26 @@ It handles executing middleware hooks at appropriate points:
 import inspect
 from typing import Any, Awaitable, Callable, Optional
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, ToolMessage
-from langchain_core.runnables import RunnableConfig
-from langchain_core.tools import BaseTool
-from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
-
+from app.agents.middleware.runtime_adapter import (
+    BigtoolRuntime,
+    BigtoolToolRuntime,
+    create_model_request,
+    create_tool_call_request,
+    to_agent_state,
+)
+from app.config.loggers import app_logger as logger
+from app.override.langgraph_bigtool.utils import State
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import (
     ModelRequest,
     ModelResponse,
     ToolCallRequest,
 )
-
-from app.agents.middleware.runtime_adapter import (
-    BigtoolRuntime,
-    BigtoolToolRuntime,
-    create_model_request,
-    create_tool_call_request,
-)
-from app.config.loggers import app_logger as logger
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
+from langgraph.store.base import BaseStore
 
 
 def _has_override(mw: AgentMiddleware, method_name: str) -> bool:
@@ -112,7 +111,7 @@ class MiddlewareExecutor:
         tool_name: Optional[str] = None,
     ) -> BigtoolToolRuntime:
         """Create a BigtoolToolRuntime for tool execution."""
-        return BigtoolToolRuntime(
+        return BigtoolToolRuntime.from_graph_context(
             config=config,
             store=store,
             tool_name=tool_name,
@@ -142,17 +141,16 @@ class MiddlewareExecutor:
             return state
 
         runtime = self._create_runtime(config, store)
-        current_state = dict(state)
+        current_state: dict[str, Any] = dict(state)
 
         for mw in self.middleware:
             try:
+                middleware_state = to_agent_state(current_state)
                 # Try async version first
                 if _has_override(mw, "abefore_model"):
-                    result = await mw.abefore_model(current_state, runtime)
+                    result = await mw.abefore_model(middleware_state, runtime)
                 elif _has_override(mw, "before_model"):
-                    result = mw.before_model(current_state, runtime)
-                    if inspect.iscoroutine(result):
-                        result = await result
+                    result = mw.before_model(middleware_state, runtime)
                 else:
                     continue
 
@@ -164,7 +162,7 @@ class MiddlewareExecutor:
                     f"Middleware {mw.__class__.__name__}.before_model failed: {e}"
                 )
 
-        return current_state  # type: ignore
+        return State(**current_state)
 
     async def execute_after_model(
         self,
@@ -190,17 +188,16 @@ class MiddlewareExecutor:
             return state
 
         runtime = self._create_runtime(config, store)
-        current_state = dict(state)
+        current_state: dict[str, Any] = dict(state)
 
         for mw in self.middleware:
             try:
+                middleware_state = to_agent_state(current_state)
                 # Try async version first
                 if _has_override(mw, "aafter_model"):
-                    result = await mw.aafter_model(current_state, runtime)
+                    result = await mw.aafter_model(middleware_state, runtime)
                 elif _has_override(mw, "after_model"):
-                    result = mw.after_model(current_state, runtime)
-                    if inspect.iscoroutine(result):
-                        result = await result
+                    result = mw.after_model(middleware_state, runtime)
                 else:
                     continue
 
@@ -212,7 +209,7 @@ class MiddlewareExecutor:
                     f"Middleware {mw.__class__.__name__}.after_model failed: {e}"
                 )
 
-        return current_state  # type: ignore
+        return State(**current_state)
 
     async def wrap_model_invocation(
         self,
@@ -220,7 +217,7 @@ class MiddlewareExecutor:
         state: State,
         config: RunnableConfig,
         store: Optional[BaseStore],
-        tools: list[BaseTool],
+        tools: list[BaseTool | dict[str, Any]],
         invoke_fn: Callable[..., Awaitable[AIMessage]],
     ) -> AIMessage:
         """
@@ -283,12 +280,16 @@ class MiddlewareExecutor:
         # Execute the chain
         try:
             result = await current_handler(request)
-            # ModelResponse.result is list[BaseMessage]; extract the AIMessage
-            if hasattr(result, "result") and isinstance(result.result, list):
-                return result.result[0]  # type: ignore[return-value]
-            return result  # type: ignore[return-value]
+            if not result.result:
+                raise ValueError("Model middleware returned empty result list")
+
+            message = result.result[0]
+            if isinstance(message, AIMessage):
+                return message
+
+            return AIMessage(content=str(getattr(message, "content", message)))
         except Exception as e:
-            logger.error(f"Middleware wrap_model_call chain failed: {e}")
+            logger.error("Middleware wrap_model_call chain failed: {}", str(e))
             # Fallback to direct invocation
             return await invoke_fn(state.get("messages", []))
 
@@ -356,7 +357,11 @@ class MiddlewareExecutor:
         try:
             return await current_handler(request)
         except Exception as e:
-            logger.error(f"Middleware wrap_tool_call chain failed for {tool_name}: {e}")
+            logger.error(
+                "Middleware wrap_tool_call chain failed for {}: {}",
+                tool_name,
+                str(e),
+            )
             # Fallback to direct invocation
             return await invoke_fn(tool_call)
 

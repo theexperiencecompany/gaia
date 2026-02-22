@@ -27,7 +27,7 @@ NOTE: Type/linting errors in this file are expected since it's copied from exter
 """
 
 from collections.abc import Mapping, Sequence
-from typing import Annotated, Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import LanguageModelLike
@@ -35,11 +35,10 @@ from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
-from langgraph.store.base import BaseStore
 from langgraph.prebuilt.tool_node import ToolCallWithContext
+from langgraph.store.base import BaseStore
 from langgraph.types import Send
 from langgraph.utils.runnable import RunnableCallable
-from langgraph_bigtool.graph import State as _BigtoolState
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
 from app.agents.middleware.executor import MiddlewareExecutor
@@ -52,30 +51,24 @@ from app.override.langgraph_bigtool.hooks import (
 )
 from app.override.langgraph_bigtool.utils import (
     RetrieveToolsResult,
+    State,
+    dedupe_str_list,
+    dedupe_tool_bindings,
     format_selected_tools,
 )
 
-
-def _replace_todos(left: list, right: list) -> list:
-    """Last-write-wins reducer for the todos channel."""
-    return right
-
-
-class State(_BigtoolState):
-    """Extended state with todos channel for agent task management."""
-
-    todos: Annotated[list, _replace_todos]
+RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
 def create_agent(
     llm: LanguageModelLike,
-    tool_registry: Mapping[str, BaseTool | Callable],
+    tool_registry: Mapping[str, BaseTool],
     *,
     limit: int = 2,
     filter: dict[str, Any] | None = None,
     namespace_prefix: tuple[str, ...] = ("tools",),
-    retrieve_tools_function: Callable[..., RetrieveToolsResult] | None = None,
-    retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResult]]
+    retrieve_tools_function: Callable[..., RetrieveToolsResponse] | None = None,
+    retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResponse]]
     | None = None,
     initial_tool_ids: list[str] | None = None,
     disable_retrieve_tools: bool = False,
@@ -93,7 +86,7 @@ def create_agent(
 
     Args:
         llm: Language model to use for the agent.
-        tool_registry: a dict mapping string IDs to tools or callables.
+        tool_registry: a dict mapping string IDs to BaseTool instances.
         limit: Maximum number of tools to retrieve with each tool selection step.
         filter: Optional key-value pairs with which to filter results.
         namespace_prefix: Hierarchical path prefix to search within the Store. Defaults
@@ -151,12 +144,13 @@ def create_agent(
         _llm = llm.with_config(configurable=model_configurations)
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
         initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        tools_to_bind: list[Any] = []
+        tools_to_bind: list[BaseTool] = []
         if retrieve_tools is not None:
             tools_to_bind.append(retrieve_tools)
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
         tools_to_bind.extend(middleware_tools)
+        tools_to_bind = dedupe_tool_bindings(tools_to_bind)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         response = llm_with_tools.invoke(state["messages"])
 
@@ -182,21 +176,25 @@ def create_agent(
 
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
         initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        tools_to_bind: list[Any] = []
+        tools_to_bind: list[BaseTool] = []
         if retrieve_tools is not None:
             tools_to_bind.append(retrieve_tools)
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
         tools_to_bind.extend(middleware_tools)
+        tools_to_bind = dedupe_tool_bindings(tools_to_bind)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
+            middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [
+                tool for tool in tools_to_bind
+            ]
             response = await middleware_executor.wrap_model_invocation(
-                model=_llm,
+                model=_llm,  # type: ignore[arg-type]
                 state=state,
                 config=config,
                 store=store,
-                tools=tools_to_bind,
+                tools=middleware_tools_for_request,
                 invoke_fn=llm_with_tools.ainvoke,
             )
         else:
@@ -221,7 +219,7 @@ def create_agent(
         # Return partial state update: new message + any keys added by
         # after_model (e.g. todos). Messages use an append reducer, so only
         # return the new response — not the full list.
-        result: dict[str, Any] = {"messages": [response]}
+        result: dict[str, object] = {"messages": [response]}
         base_keys = {"messages", "selected_tool_ids"}
         for key, value in updated_state.items():
             if key not in base_keys:
@@ -251,10 +249,22 @@ def create_agent(
 
             # Handle both RetrieveToolsResult dict and plain list
             if isinstance(result, dict):
-                tools_to_bind = result.get("tools_to_bind", [])
-                response = result.get("response", [])
+                tools_to_bind = [
+                    tool_id
+                    for tool_id in result.get("tools_to_bind", [])
+                    if isinstance(tool_id, str)
+                ]
+                response = [
+                    tool_id
+                    for tool_id in result.get("response", [])
+                    if isinstance(tool_id, str)
+                ]
             else:
-                tools_to_bind = result if isinstance(result, list) else []
+                tools_to_bind = [
+                    tool_id
+                    for tool_id in (result if isinstance(result, list) else [])
+                    if isinstance(tool_id, str)
+                ]
                 response = tools_to_bind
 
             # Filter out subagent: prefixed tools from binding
@@ -263,8 +273,8 @@ def create_agent(
                 for tool_id in tools_to_bind
                 if not tool_id.startswith("subagent:")
             ]
-            selected_tools[tool_call["id"]] = filtered_bind
-            response_tools[tool_call["id"]] = response
+            selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
+            response_tools[tool_call["id"]] = dedupe_str_list(response)
 
         tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
         _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
@@ -293,10 +303,22 @@ def create_agent(
 
             # Handle both RetrieveToolsResult dict and plain list
             if isinstance(result, dict):
-                tools_to_bind = result.get("tools_to_bind", [])
-                response = result.get("response", [])
+                tools_to_bind = [
+                    tool_id
+                    for tool_id in result.get("tools_to_bind", [])
+                    if isinstance(tool_id, str)
+                ]
+                response = [
+                    tool_id
+                    for tool_id in result.get("response", [])
+                    if isinstance(tool_id, str)
+                ]
             else:
-                tools_to_bind = result if isinstance(result, list) else []
+                tools_to_bind = [
+                    tool_id
+                    for tool_id in (result if isinstance(result, list) else [])
+                    if isinstance(tool_id, str)
+                ]
                 response = tools_to_bind
 
             # Filter out subagent: prefixed tools from binding
@@ -305,8 +327,8 @@ def create_agent(
                 for tool_id in tools_to_bind
                 if not tool_id.startswith("subagent:")
             ]
-            selected_tools[tool_call["id"]] = filtered_bind
-            response_tools[tool_call["id"]] = response
+            selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
+            response_tools[tool_call["id"]] = dedupe_str_list(response)
 
         tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
         _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]

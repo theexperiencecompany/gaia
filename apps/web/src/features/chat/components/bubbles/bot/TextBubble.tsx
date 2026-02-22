@@ -498,8 +498,9 @@ export default function TextBubble({
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (!typedData) return null;
 
+        const keyId = entry.timestamp || index;
         return (
-          <React.Fragment key={`${baseId}-tool-${toolName}}`}>
+          <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );

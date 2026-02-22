@@ -1,12 +1,12 @@
 """
 Tests for VFS Tools - New focused tool set.
 
-Tests the 4 VFS tools: vfs_read, vfs_write, vfs_analyze, vfs_cmd
+Tests the 4 VFS tools: vfs_read, vfs_write, vfs_cmd
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
+import pytest
 from langchain_core.runnables import RunnableConfig
 
 
@@ -140,74 +140,6 @@ class TestVfsWrite:
             )
 
             assert "Error" in result
-
-
-# ==================== vfs_analyze Tests ====================
-
-
-class TestVfsAnalyze:
-    """Tests for vfs_analyze tool."""
-
-    @pytest.mark.asyncio
-    async def test_analyze_json_file(self, mock_config, mock_vfs):
-        """Analyze tool returns JSON analysis."""
-        mock_analysis = MagicMock()
-        mock_analysis.path = "/users/user123/global/executor/files/data.json"
-        mock_analysis.file_type = "json"
-        mock_analysis.size_human = "1.2KB"
-        mock_analysis.size_bytes = 1234
-        mock_analysis.line_count = 50
-        mock_analysis.character_count = 1234
-        mock_analysis.word_count = None
-        mock_analysis.json_schema = {"type": "object"}
-        mock_analysis.nested_depth = 3
-        mock_analysis.field_count = 10
-        mock_analysis.array_lengths = {"items": 5}
-        mock_analysis.value_types = {"name": "string", "age": "number"}
-
-        mock_vfs.analyze = AsyncMock(return_value=mock_analysis)
-
-        with patch("app.services.vfs.get_vfs", return_value=mock_vfs):
-            from app.agents.tools.vfs_tools import vfs_analyze
-
-            result = await vfs_analyze.ainvoke(
-                {"path": "data.json"},
-                config=mock_config,
-            )
-
-            assert "json" in result.lower()
-            assert "1234 bytes" in result
-            assert "Nesting depth: 3" in result
-
-    @pytest.mark.asyncio
-    async def test_analyze_text_file(self, mock_config, mock_vfs):
-        """Analyze tool returns text analysis."""
-        mock_analysis = MagicMock()
-        mock_analysis.path = "/users/user123/global/executor/notes/doc.txt"
-        mock_analysis.file_type = "text"
-        mock_analysis.size_human = "500B"
-        mock_analysis.size_bytes = 500
-        mock_analysis.line_count = 10
-        mock_analysis.character_count = 500
-        mock_analysis.word_count = 100
-        mock_analysis.json_schema = None
-        mock_analysis.nested_depth = None
-        mock_analysis.field_count = None
-        mock_analysis.array_lengths = None
-        mock_analysis.value_types = None
-
-        mock_vfs.analyze = AsyncMock(return_value=mock_analysis)
-
-        with patch("app.services.vfs.get_vfs", return_value=mock_vfs):
-            from app.agents.tools.vfs_tools import vfs_analyze
-
-            result = await vfs_analyze.ainvoke(
-                {"path": "notes/doc.txt"},
-                config=mock_config,
-            )
-
-            assert "text" in result.lower()
-            assert "Words: 100" in result
 
 
 # ==================== vfs_cmd Tests ====================
@@ -408,5 +340,4 @@ class TestToolExports:
         names = [t.name for t in tools]
         assert "vfs_read" in names
         assert "vfs_write" in names
-        assert "vfs_analyze" in names
         assert "vfs_cmd" in names

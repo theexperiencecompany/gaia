@@ -424,7 +424,7 @@ async def handoff(
             configurable=new_configurable,
             task=task,
             user_id=user_id,
-            subagent_id=int_id,
+            subagent_id=agent_name,
         )
 
         # Create execution context with stream_id for cancellation
@@ -468,5 +468,5 @@ async def handoff(
         )
 
     except Exception as e:
-        logger.error(f"Error in handoff to {subagent_id}: {e}")
+        logger.error("Error in handoff to {}: {}", subagent_id, str(e))
         return f"Error executing task: {str(e)}"
