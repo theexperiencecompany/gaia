@@ -133,20 +133,12 @@ const handleForbiddenError = (
 
     toast.error(integrationDetail.message || "Integration required.", {
       duration: Infinity,
-      classNames: {
-        actionButton: "bg-red-500/30! py-4! px-3!",
-      },
       action: {
         label: "Connect",
         onClick: () => {
-          // Clear from active toasts when action is clicked
           activeIntegrationToasts.delete(toastKey);
           router.push("/integrations");
         },
-      },
-      onDismiss: () => {
-        // Clear from active toasts when dismissed
-        activeIntegrationToasts.delete(toastKey);
       },
     });
   } else {

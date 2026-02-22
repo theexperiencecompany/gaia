@@ -66,7 +66,6 @@ export function useNotificationWebSocket() {
                   description:
                     message.notification.content.body ||
                     "New notification received",
-                  dismissible: true,
                   duration:
                     notifType === NotificationType.ERROR ? 15000 : 10000,
                   action: redirectAction
