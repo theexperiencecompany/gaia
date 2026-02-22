@@ -187,6 +187,29 @@ async def _connect_with_bearer_token(
         )
 
 
+
+async def connect_super_connector(
+    user_id: str,
+    integration_id: str,
+    redirect_path: str,
+) -> ConnectIntegrationResponse:
+    """Handle super-connector connection via Composio's unified OAuth config."""
+    integration = get_integration_by_id(integration_id)
+    if not integration or not integration.provider:
+        return ConnectIntegrationResponse(
+            status="error",
+            integration_id=integration_id,
+            error=f"Super-connector {integration_id} not configured",
+        )
+
+    return await connect_composio_integration(
+        user_id=user_id,
+        integration_id=integration_id,
+        provider=integration.provider,
+        redirect_path=redirect_path,
+    )
+
+
 async def connect_composio_integration(
     user_id: str,
     integration_id: str,
@@ -256,6 +279,42 @@ async def connect_self_integration(
         name=integration_name,
         redirect_url=auth_url,
         message="OAuth authentication required",
+    )
+
+
+async def disconnect_super_connector(
+    user_id: str, integration_id: str, included_integrations: list[str]
+) -> IntegrationSuccessResponse:
+    """Disconnect a super-connector and its child integrations."""
+    integration = get_integration_by_id(integration_id)
+    if not integration or not integration.provider:
+        raise ValueError(f"Super-connector {integration_id} not configured")
+
+    # Disconnect the super-connector's own Composio account
+    composio_service = get_composio_service()
+    await composio_service.delete_connected_account(
+        user_id=user_id, provider=integration.provider
+    )
+
+    # Best-effort cleanup of any individually-connected children
+    failures = []
+    for child_id in included_integrations:
+        try:
+            await disconnect_integration(user_id, child_id)
+        except Exception as e:
+            logger.warning(f"Failed to disconnect child {child_id}: {e}")
+            failures.append(child_id)
+
+    await _invalidate_caches(user_id, integration_id, "composio")
+
+    if failures and len(failures) == len(included_integrations):
+        raise ValueError(
+            f"Failed to disconnect any child integrations for {integration_id}"
+        )
+
+    return IntegrationSuccessResponse(
+        message=f"Successfully disconnected {integration_id} services",
+        integration_id=integration_id,
     )
 
 

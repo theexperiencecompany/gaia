@@ -124,9 +124,22 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
     }
   };
 
+  const superConnectorChildIds = new Set(
+    integrations
+      .filter((i) => i.isSpecial && i.includedIntegrations?.length)
+      .flatMap((sc) => sc.includedIntegrations || []),
+  );
+
   const connectedCount = integrations.filter(
-    (i) => i.status === "connected",
+    (i) =>
+      i.status === "connected" &&
+      !i.isSpecial &&
+      !superConnectorChildIds.has(i.id),
   ).length;
+
+  const visibleIntegrations = integrations.filter(
+    (i) => !superConnectorChildIds.has(i.id),
+  );
 
   const statusOrder = {
     created: 0,
@@ -159,7 +172,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
                     Integrations
                   </span>
                   <span className="text-xs font-light text-zinc-400">
-                    {connectedCount}/{integrations.length}
+                    {connectedCount}/{visibleIntegrations.length}
                   </span>
                 </div>
               </div>
@@ -168,7 +181,7 @@ export const IntegrationsCard: React.FC<IntegrationsCardProps> = ({
         >
           <div onClick={(e) => e.stopPropagation()}>
             <div className="grid grid-cols-2 gap-2 pl-1">
-              {[...integrations]
+              {[...visibleIntegrations]
                 .sort((a, b) => {
                   // Connected first, then alphabetically
                   const aOrder = statusOrder[a.status] ?? 99;
