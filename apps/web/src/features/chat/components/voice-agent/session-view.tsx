@@ -6,8 +6,6 @@ import {
 import type { TextStreamReader } from "livekit-client";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
-import { toast } from "sonner";
-
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
 import { AgentControlBar } from "@/features/chat/components/voice-agent/agent-control-bar";
 import useChatAndTranscription from "@/features/chat/components/voice-agent/hooks/useChatAndTranscription";
@@ -17,6 +15,7 @@ import {
   trackFeatureDiscovery,
 } from "@/lib/analytics";
 import { db, type IConversation } from "@/lib/db/chatDb";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
 
 function isAgentAvailable(agentState: AgentState) {

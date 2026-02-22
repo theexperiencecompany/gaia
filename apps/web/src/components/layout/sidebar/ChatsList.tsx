@@ -51,7 +51,7 @@ const timeFramePriority = (timeFrame: string): number => {
 export default function ChatsList() {
   const { conversations: apiConversations } = useConversationList();
   const { initialSyncCompleted } = useSyncStatus();
-  const { loadMoreConversations, isLoadingMore, hasMore } =
+  const { loadMoreConversations, isLoadingMore, hasMore, totalPages } =
     useInfiniteConversations();
 
   // Sentinel element ref for IntersectionObserver
@@ -335,10 +335,10 @@ export default function ChatsList() {
             </div>
           )}
 
-          {/* End of list indicator */}
-          {!hasMore && conversations.length > 0 && (
+          {/* End of list indicator - only show when there were multiple pages */}
+          {!hasMore && totalPages > 1 && conversations.length > 0 && (
             <div className="py-4 text-center text-xs text-zinc-500">
-              No more conversations
+              You&apos;re all caught up
             </div>
           )}
         </>

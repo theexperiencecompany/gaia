@@ -7,24 +7,18 @@ import {
   type SharedSelection,
   Textarea,
 } from "@heroui/react";
-import {
-  Delete02Icon,
-  MessageMultiple02Icon,
-  PencilEdit01Icon,
-  UserCircle02Icon,
-} from "@icons";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import { CustomResponseStyleInput } from "@/features/settings/components/CustomResponseStyleInput";
-import { LabeledField } from "@/features/settings/components/FormField";
-import { SettingsCard } from "@/features/settings/components/SettingsCard";
-import { SettingsCardSimple } from "@/features/settings/components/SettingsCardSimple";
-import { SettingsOption } from "@/features/settings/components/SettingsOption";
 import { StatusIndicator } from "@/features/settings/components/StatusIndicator";
 import {
-  formatTimezoneDisplay,
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+} from "@/features/settings/components/ui";
+import { toast } from "@/lib/toast";
+import {
   getCurrentBrowserTimezone,
   getTimezoneList,
   normalizeTimezone,
@@ -272,21 +266,61 @@ export default function PreferencesSettings({
   }, [user.onboarding?.preferences, user.timezone]);
 
   return (
-    <div className="w-full space-y-6">
-      <SettingsCard
-        icon={<UserCircle02Icon className="h-5 w-5 text-zinc-400" />}
-        title="Personal"
-      >
-        <div className="space-y-3">
-          <LabeledField label="Profession">
+    <SettingsPage>
+      <SettingsSection title="Identity">
+        <SettingsRow label="Profession" stacked>
+          <Select
+            placeholder="Select your profession"
+            selectedKeys={
+              preferences.profession
+                ? new Set([preferences.profession])
+                : new Set()
+            }
+            onSelectionChange={handleProfessionChange}
+            isDisabled={isUpdating}
+            classNames={{
+              trigger:
+                "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
+              popoverContent: "bg-zinc-800 z-50",
+              listbox: "bg-zinc-800",
+              value: "text-white text-sm",
+            }}
+          >
+            {professionOptions.map((profession) => (
+              <SelectItem key={profession.value} textValue={profession.label}>
+                {profession.label}
+              </SelectItem>
+            ))}
+          </Select>
+        </SettingsRow>
+
+        <SettingsRow
+          label="Timezone"
+          description={
+            getCurrentBrowserTimezone().currentTime
+              ? `Current time: ${getCurrentBrowserTimezone().currentTime}`
+              : undefined
+          }
+          stacked
+        >
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="flat"
+              onPress={handleAutoDetectTimezone}
+              isDisabled={isUpdating}
+              className="border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50"
+            >
+              Auto Detect
+            </Button>
             <Select
-              placeholder="Select your profession"
+              placeholder="Select your timezone"
               selectedKeys={
-                preferences.profession
-                  ? new Set([preferences.profession])
-                  : new Set()
+                preferences.timezone
+                  ? new Set([preferences.timezone])
+                  : new Set(["UTC"])
               }
-              onSelectionChange={handleProfessionChange}
+              onSelectionChange={handleTimezoneChange}
               isDisabled={isUpdating}
               classNames={{
                 trigger:
@@ -296,115 +330,58 @@ export default function PreferencesSettings({
                 value: "text-white text-sm",
               }}
             >
-              {professionOptions.map((profession) => (
-                <SelectItem key={profession.value} textValue={profession.label}>
-                  {profession.label}
+              {timezoneOptions.map((timezone) => (
+                <SelectItem key={timezone.value} textValue={timezone.label}>
+                  {timezone.label}
                 </SelectItem>
               ))}
             </Select>
-          </LabeledField>
+          </div>
+        </SettingsRow>
+      </SettingsSection>
 
-          <LabeledField label="Timezone">
-            <div className="space-y-3">
-              <Select
-                placeholder="Select your timezone"
-                selectedKeys={
-                  preferences.timezone
-                    ? new Set([preferences.timezone])
-                    : new Set(["UTC"])
+      <SettingsSection title="Conversation">
+        <SettingsRow label="Response Style" stacked>
+          <Select
+            placeholder="Select response style"
+            selectedKeys={
+              preferences.response_style
+                ? responseStyleOptions.some(
+                    (option) => option.value === preferences.response_style,
+                  )
+                  ? new Set([preferences.response_style])
+                  : new Set(["other"])
+                : new Set()
+            }
+            disallowEmptySelection={false}
+            onSelectionChange={handleResponseStyleChange}
+            isDisabled={isUpdating}
+            classNames={{
+              trigger:
+                "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
+              popoverContent: "bg-zinc-800 z-50",
+              listbox: "bg-zinc-800",
+              value: "text-white text-sm",
+            }}
+          >
+            {responseStyleOptions.map((style) => (
+              <SelectItem
+                key={style.value}
+                textValue={
+                  style.value.charAt(0).toUpperCase() + style.value.slice(1)
                 }
-                onSelectionChange={handleTimezoneChange}
-                isDisabled={isUpdating}
-                classNames={{
-                  trigger:
-                    "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-                  popoverContent: "bg-zinc-800 z-50",
-                  listbox: "bg-zinc-800",
-                  value: "text-white text-sm",
-                }}
               >
-                {timezoneOptions.map((timezone) => (
-                  <SelectItem key={timezone.value} textValue={timezone.label}>
-                    {timezone.label}
-                  </SelectItem>
-                ))}
-              </Select>
-
-              {/* Auto-detect button and current timezone display in the same row */}
-              <div className="flex items-center justify-between gap-3">
-                <Button
-                  size="sm"
-                  variant="flat"
-                  onPress={handleAutoDetectTimezone}
-                  isDisabled={isUpdating}
-                  className="border-zinc-700 bg-zinc-800/50 text-zinc-300 hover:bg-zinc-700/50"
-                >
-                  Auto Detect
-                </Button>
-
-                <div className="flex items-center gap-2 text-xs text-zinc-400">
-                  <span className="font-mono text-zinc-300">
-                    {formatTimezoneDisplay(getCurrentBrowserTimezone().value)}
-                  </span>
-                  <span className="text-zinc-500">
-                    {getCurrentBrowserTimezone().currentTime}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </LabeledField>
-        </div>
-      </SettingsCard>
-
-      <SettingsCard
-        icon={<MessageMultiple02Icon className="h-5 w-5 text-zinc-400" />}
-        title="Communication Style"
-      >
-        <div className="space-y-3">
-          <LabeledField label="Response Style">
-            <Select
-              placeholder="Select response style"
-              selectedKeys={
-                preferences.response_style
-                  ? responseStyleOptions.some(
-                      (option) => option.value === preferences.response_style,
-                    )
-                    ? new Set([preferences.response_style])
-                    : new Set(["other"])
-                  : new Set()
-              }
-              disallowEmptySelection={false}
-              onSelectionChange={handleResponseStyleChange}
-              isDisabled={isUpdating}
-              classNames={{
-                trigger:
-                  "bg-zinc-800/50 hover:bg-zinc-700/50 cursor-pointer min-h-[36px]",
-                popoverContent: "bg-zinc-800 z-50",
-                listbox: "bg-zinc-800",
-                value: "text-white text-sm",
-              }}
-            >
-              {responseStyleOptions.map((style) => (
-                <SelectItem
-                  key={style.value}
-                  textValue={
-                    style.value.charAt(0).toUpperCase() + style.value.slice(1)
-                  }
-                >
-                  <div>
-                    <div className="text-sm font-medium">
-                      {style.value.charAt(0).toUpperCase() +
-                        style.value.slice(1)}
-                    </div>
-                    <div className="text-xs text-zinc-500">
-                      {style.label.split(" - ")[1]}
-                    </div>
+                <div>
+                  <div className="text-sm font-medium">
+                    {style.value.charAt(0).toUpperCase() + style.value.slice(1)}
                   </div>
-                </SelectItem>
-              ))}
-            </Select>
-          </LabeledField>
-
+                  <div className="text-xs text-zinc-500">
+                    {style.label.split(" - ")[1]}
+                  </div>
+                </div>
+              </SelectItem>
+            ))}
+          </Select>
           {preferences.response_style &&
             !responseStyleOptions.some(
               (option) => option.value === preferences.response_style,
@@ -415,14 +392,13 @@ export default function PreferencesSettings({
                 isDisabled={isUpdating}
               />
             )}
-        </div>
-      </SettingsCard>
+        </SettingsRow>
 
-      <SettingsCard
-        icon={<PencilEdit01Icon className="h-6 w-6 text-zinc-400" />}
-        title="Custom Instructions"
-      >
-        <div className="space-y-1">
+        <SettingsRow
+          label="Custom Instructions"
+          description="These instructions will be included in every conversation."
+          stacked
+        >
           <Textarea
             placeholder="Add any specific instructions for how GAIA should assist you..."
             value={preferences.custom_instructions || ""}
@@ -434,34 +410,29 @@ export default function PreferencesSettings({
               inputWrapper: "bg-zinc-800/50 hover:bg-zinc-700/50",
             }}
           />
-          <p className="text-xs text-zinc-500">
-            These instructions will be included in every conversation to
-            personalize GAIA's responses.
-          </p>
-        </div>
-      </SettingsCard>
+        </SettingsRow>
+      </SettingsSection>
 
-      <SettingsCardSimple>
-        <SettingsOption
-          icon={<Delete02Icon className="h-5 w-5 text-red-500" />}
-          title="Clear Chat History"
+      <SettingsSection>
+        <SettingsRow
+          label="Clear Chat History"
           description="Permanently delete all your conversations and chat history"
-          action={
-            <Button
-              variant="flat"
-              color="danger"
-              onPress={() => setModalAction("clear_chats")}
-            >
-              Clear All
-            </Button>
-          }
-        />
-      </SettingsCardSimple>
+          variant="danger"
+        >
+          <Button
+            variant="flat"
+            color="danger"
+            onPress={() => setModalAction("clear_chats")}
+          >
+            Clear All
+          </Button>
+        </SettingsRow>
+      </SettingsSection>
 
       <StatusIndicator
         isUpdating={isUpdating}
         hasUnsavedChanges={hasUnsavedChanges}
       />
-    </div>
+    </SettingsPage>
   );
 }

@@ -11,9 +11,9 @@ import { CalendarIcon, File01Icon, UserCircle02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
-import { toast } from "sonner";
 import { z } from "zod";
 import { type TeamMember, teamApi } from "@/features/team/api/teamApi";
+import { toast } from "@/lib/toast";
 
 import { blogApi } from "../api/blogApi";
 import { MarkdownPreview } from "./MarkdownPreview";

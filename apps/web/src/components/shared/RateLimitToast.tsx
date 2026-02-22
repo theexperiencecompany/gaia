@@ -2,7 +2,7 @@
 
 import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
 import type { ReactNode } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 interface ToastConfig {
   duration: number;

@@ -13,7 +13,7 @@ import { Select, SelectItem } from "@heroui/select";
 import { Cancel01Icon, Upload01Icon } from "@icons";
 import Image from "next/image";
 import { useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/lib/toast";
 
 import {
   ALLOWED_FILE_TYPES,

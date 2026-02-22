@@ -7,6 +7,7 @@ import { ConfirmActionDialog } from "@/components/shared/ConfirmActionDialog";
 import AccountSettings from "@/features/settings/components/AccountSettings";
 import LinkedAccountsSettings from "@/features/settings/components/LinkedAccountsSettings";
 import MemorySettings from "@/features/settings/components/MemorySettings";
+import NotificationSettings from "@/features/settings/components/NotificationSettings";
 import PreferencesSettings from "@/features/settings/components/PreferencesSettings";
 import ProfileCardSettings from "@/features/settings/components/ProfileCardSettings";
 import type { ModalAction } from "@/features/settings/components/SettingsMenu";
@@ -42,6 +43,8 @@ export default function SettingsPage() {
         return <PreferencesSettings setModalAction={setModalAction} />;
       case "memory":
         return <MemorySettings />;
+      case "notifications":
+        return <NotificationSettings />;
       default:
         return <ProfileCardSettings />;
     }

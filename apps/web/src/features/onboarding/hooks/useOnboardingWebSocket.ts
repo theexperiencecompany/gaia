@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-
 import { apiService } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 

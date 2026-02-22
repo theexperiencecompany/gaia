@@ -30,13 +30,22 @@ class AIProactiveNotificationSource:
     """
 
     @staticmethod
-    def create_calendar_event_notification(
+    async def create_calendar_event_notification(
         user_id: str,
         notification_data: List[EventCreateRequest],
+        send: bool = True,
     ) -> List[NotificationRequest]:
-        """Create notification for AI-generated calendar events"""
+        """Create (and optionally send) notifications for AI-generated calendar events.
+
+        Args:
+            user_id: Target user.
+            notification_data: List of events to notify about.
+            send: If True (default), dispatch each notification immediately via the
+                notification service.  Set to False to return the requests without
+                sending (useful for testing or batch handling).
+        """
         try:
-            return [
+            requests = [
                 NotificationRequest(
                     user_id=user_id,
                     source=NotificationSourceEnum.AI_CALENDAR_EVENT,
@@ -76,6 +85,12 @@ class AIProactiveNotificationSource:
                 )
                 for notification in notification_data
             ]
+
+            if send:
+                for request in requests:
+                    await notification_service.create_notification(request)
+
+            return requests
         except Exception as e:
             logger.error(f"Failed to create calendar event notification: {e}")
             return []

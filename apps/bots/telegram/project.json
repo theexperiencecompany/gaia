@@ -63,7 +63,7 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build -f apps/bots/telegram/Dockerfile -t bot-telegram -t ghcr.io/theexperiencecompany/gaia-bot-telegram:latest .",
+        "command": "docker build -f apps/bots/telegram/Dockerfile -t apps-bots-telegram -t bot-telegram -t ghcr.io/theexperiencecompany/gaia-bot-telegram:latest .",
         "cwd": "."
       },
       "cache": true,

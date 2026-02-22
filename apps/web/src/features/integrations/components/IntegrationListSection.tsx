@@ -7,11 +7,11 @@ import { Tooltip } from "@heroui/tooltip";
 import { ArrowRight02Icon, ConnectIcon, InformationCircleIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "sonner";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi, useIntegrations } from "@/features/integrations";
 import type { SuggestedIntegration } from "@/features/integrations/types";
+import { toast } from "@/lib/toast";
 
 interface IntegrationListSectionProps {
   suggestedIntegrations?: SuggestedIntegration[];

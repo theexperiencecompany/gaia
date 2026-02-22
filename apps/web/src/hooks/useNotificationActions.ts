@@ -1,8 +1,7 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "sonner";
-
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
   type ActionResult,

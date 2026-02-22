@@ -478,7 +478,7 @@ async def execute_graph_silent(
 
             if chunk and isinstance(chunk, AIMessageChunk):
                 content = chunk.text if hasattr(chunk, "text") else str(chunk.content)
-                if content:
+                if content and metadata.get("agent_name") == "comms_agent":
                     complete_message += content
 
         elif stream_mode == "custom":

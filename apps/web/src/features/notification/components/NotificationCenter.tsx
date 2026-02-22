@@ -11,6 +11,7 @@ import { SidebarHeaderButton } from "@/components/";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { NotificationStatus } from "../../../types/features/notificationTypes";
+import { NotificationConnectBanner } from "./NotificationConnectBanner";
 import { NotificationItem } from "./NotificationItem";
 
 interface NotificationCenterProps {
@@ -108,15 +109,13 @@ export function NotificationCenter({
           </Tabs>
 
           {/* Notifications list */}
-          <ScrollArea
-            className={`${filteredNotifications.length === 0 ? "h-[30vh]" : "h-[70vh]"} w-full`}
-          >
+          <ScrollArea className="w-full" viewportClassName="max-h-[70vh]">
             {loading ? (
               <div className="flex items-center justify-center p-8">
                 <div className="h-5 w-5 animate-spin rounded-full border-2 border-zinc-700 border-t-zinc-50" />
               </div>
             ) : filteredNotifications.length === 0 ? (
-              <div className="flex h-full flex-col items-center justify-center p-8 text-center">
+              <div className="flex flex-col items-center justify-center p-8 text-center">
                 <NotificationIcon className="mb-4 h-10 w-10 text-zinc-600" />
                 <p className="font-medium text-zinc-300">
                   {activeTab === "unread"
@@ -141,6 +140,8 @@ export function NotificationCenter({
               </div>
             )}
           </ScrollArea>
+
+          <NotificationConnectBanner variant="compact" />
 
           {/* Footer */}
           <div className="flex w-full items-center justify-evenly gap-3 p-3">

@@ -17,6 +17,7 @@ export interface IConversation {
   isSystemGenerated?: boolean;
   systemPurpose?: SystemPurpose | null;
   isUnread?: boolean;
+  source?: string; // ConversationSource from backend (web, telegram, discord, etc.)
   createdAt: Date;
   updatedAt: Date;
 }

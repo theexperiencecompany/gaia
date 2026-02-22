@@ -19,7 +19,6 @@ import {
 } from "@icons";
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   type Memory,
@@ -29,6 +28,7 @@ import {
 import AddMemoryModal from "@/features/memory/components/AddMemoryModal";
 import MemoryGraph from "@/features/memory/components/MemoryGraph";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { toast } from "@/lib/toast";
 
 export interface MemoryManagementProps {
   className?: string;

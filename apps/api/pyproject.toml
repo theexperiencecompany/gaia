@@ -125,6 +125,7 @@ backend = [
   "docx2txt>=0.9",
   "pypandoc>=1.15",
   "markdown2>=2.5.3",
+  "telegramify-markdown>=1.0.0rc1",
   "pytesseract>=0.3.13",
   "pillow==12.0.0",
   "pandas>=2.3.0",
@@ -189,6 +190,9 @@ explicit = true
 [tool.uv.sources]
 gaia-shared = { workspace = true }
 torch = [{ index = "pytorch-cpu" }]
+
+[tool.uv]
+prerelease = "allow"
 
 [project.urls]
 Homepage = "https://heygaia.io"

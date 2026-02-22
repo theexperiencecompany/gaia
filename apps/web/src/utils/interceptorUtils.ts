@@ -1,12 +1,11 @@
 import type { AxiosError } from "axios";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { toast } from "sonner";
-
 import {
   showFeatureRestrictedToast,
   showRateLimitToast,
   showTokenLimitToast,
 } from "@/components/shared/RateLimitToast";
+import { toast } from "@/lib/toast";
 import { useLoginModalStore } from "@/stores/loginModalStore";
 
 // Types
@@ -134,20 +133,12 @@ const handleForbiddenError = (
 
     toast.error(integrationDetail.message || "Integration required.", {
       duration: Infinity,
-      classNames: {
-        actionButton: "bg-red-500/30! py-4! px-3!",
-      },
       action: {
         label: "Connect",
         onClick: () => {
-          // Clear from active toasts when action is clicked
           activeIntegrationToasts.delete(toastKey);
           router.push("/integrations");
         },
-      },
-      onDismiss: () => {
-        // Clear from active toasts when dismissed
-        activeIntegrationToasts.delete(toastKey);
       },
     });
   } else {

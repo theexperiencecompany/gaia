@@ -6,13 +6,13 @@ import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { toast } from "sonner";
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { toast } from "@/lib/toast";
 
 interface LogoWithContextMenuProps {
   className?: string;
@@ -163,7 +163,7 @@ export function LogoWithContextMenu({
       id: "experience-company",
       type: "link",
       label: "by The Experience Company",
-      href: "https://exprience.heygaia.io",
+      href: "https://experience.heygaia.io",
       icon: (
         <Image
           src="/images/logos/experience_logo.svg"

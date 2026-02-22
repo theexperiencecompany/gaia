@@ -169,7 +169,7 @@ async def initiate_platform_connect(
             f"&state={state}"
         )
         return InitiatePlatformConnectResponse(
-            auth_url=auth_url, auth_type="oauth", instructions=None
+            auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
         )
 
     # Slack OAuth flow
@@ -188,7 +188,7 @@ async def initiate_platform_connect(
             f"&state={state}"
         )
         return InitiatePlatformConnectResponse(
-            auth_url=auth_url, auth_type="oauth", instructions=None
+            auth_url=auth_url, auth_type="oauth", instructions=None, action_link=None
         )
 
     # Telegram manual flow (no OAuth)
@@ -198,6 +198,7 @@ async def initiate_platform_connect(
             auth_url=None,
             auth_type="manual",
             instructions=f"Open Telegram and message @{bot_username} with /auth to link your account.",
+            action_link=f"https://t.me/{bot_username}",
         )
 
     raise HTTPException(status_code=501, detail=f"{platform} OAuth not configured")

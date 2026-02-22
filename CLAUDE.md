@@ -292,6 +292,10 @@ nx docker:build voice-agent
 
 When creating implementation plans, store them in `.agents/plans/` directory. This folder is gitignored and used for planning documents before execution.
 
+## Git Conventions
+
+- **Never add Claude as a co-author in commits.** Do not include `Co-Authored-By: Claude` or any similar line in commit messages.
+
 ## Common Issues
 
 - If Python dependencies are not resolving, run `nx run api:sync` or `nx run voice-agent:sync`

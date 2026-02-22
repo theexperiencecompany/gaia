@@ -4,11 +4,14 @@ from typing import Optional
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.config.loggers import notification_logger as logger
 from app.constants.notifications import EXPO_TOKEN_PATTERN, MAX_DEVICES_PER_USER
+from app.db.mongodb.collections import users_collection
 from app.models.device_token_models import (
     DeviceTokenRequest,
     DeviceTokenResponse,
 )
 from app.models.notification.notification_models import (
+    ChannelPreferences,
+    ChannelPreferencesUpdate,
     NotificationStatus,
 )
 from app.models.notification.request_models import (
@@ -18,6 +21,7 @@ from app.models.notification.request_models import (
 )
 from app.services.device_token_service import get_device_token_service
 from app.services.notification_service import notification_service
+from bson import ObjectId
 from fastapi import (
     APIRouter,
     Body,
@@ -300,4 +304,64 @@ async def unregister_device_token(
         raise
     except Exception as e:
         logger.error(f"Failed to unregister device token: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/notifications/preferences/channels", response_model=ChannelPreferences)
+async def get_channel_preferences(
+    current_user: dict = Depends(get_current_user),
+) -> ChannelPreferences:
+    """Get user's notification channel preferences."""
+    user_id = current_user.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="User not authenticated or user_id not found"
+        )
+
+    try:
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        prefs = (user or {}).get("notification_channel_prefs", {})
+        return ChannelPreferences(
+            telegram=prefs.get("telegram", True),
+            discord=prefs.get("discord", True),
+        )
+    except Exception as e:
+        logger.error(f"Failed to get channel preferences: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/notifications/preferences/channels", response_model=ChannelPreferences)
+async def update_channel_preferences(
+    preferences: ChannelPreferencesUpdate = Body(...),
+    current_user: dict = Depends(get_current_user),
+) -> ChannelPreferences:
+    """Update user's notification channel preferences."""
+    user_id = current_user.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=401, detail="User not authenticated or user_id not found"
+        )
+
+    try:
+        updates: dict = {}
+        if preferences.telegram is not None:
+            updates["notification_channel_prefs.telegram"] = preferences.telegram
+        if preferences.discord is not None:
+            updates["notification_channel_prefs.discord"] = preferences.discord
+
+        if updates:
+            await users_collection.update_one(
+                {"_id": ObjectId(user_id)},
+                {"$set": updates},
+                upsert=True,
+            )
+
+        user = await users_collection.find_one({"_id": ObjectId(user_id)})
+        prefs = (user or {}).get("notification_channel_prefs", {})
+        return ChannelPreferences(
+            telegram=prefs.get("telegram", True),
+            discord=prefs.get("discord", True),
+        )
+    except Exception as e:
+        logger.error(f"Failed to update channel preferences: {e}")
         raise HTTPException(status_code=500, detail=str(e))

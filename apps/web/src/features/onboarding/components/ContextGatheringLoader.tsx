@@ -4,7 +4,6 @@ import { Spinner } from "@heroui/spinner";
 import { Cancel01Icon } from "@icons";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { RaisedButton } from "@/components";
 import { useUser } from "@/features/auth/hooks/useUser";
 import type {
@@ -17,6 +16,7 @@ import {
   isPersonalizationProgressMessage,
 } from "@/features/onboarding/types/websocket";
 import { apiService } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket";
 import {
   OnboardingPhase,

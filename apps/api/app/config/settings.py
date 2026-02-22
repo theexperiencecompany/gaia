@@ -291,7 +291,7 @@ class ProductionSettings(CommonSettings):
     DISCORD_OAUTH_CLIENT_SECRET: Optional[str] = None
     SLACK_OAUTH_CLIENT_ID: Optional[str] = None
     SLACK_OAUTH_CLIENT_SECRET: Optional[str] = None
-    TELEGRAM_BOT_USERNAME: Optional[str] = None
+    TELEGRAM_BOT_USERNAME: Optional[str] = "heygaia_bot"
 
     # ----------------------------------------------
     # Bot Session Token Configuration
@@ -455,7 +455,7 @@ class DevelopmentSettings(CommonSettings):
     DISCORD_OAUTH_CLIENT_SECRET: Optional[str] = None
     SLACK_OAUTH_CLIENT_ID: Optional[str] = None
     SLACK_OAUTH_CLIENT_SECRET: Optional[str] = None
-    TELEGRAM_BOT_USERNAME: Optional[str] = None
+    TELEGRAM_BOT_USERNAME: Optional[str] = "heygaia_bot"
 
     # ----------------------------------------------
     # Bot Session Token Configuration

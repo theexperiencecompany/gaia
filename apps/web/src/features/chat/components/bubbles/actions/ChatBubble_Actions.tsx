@@ -9,10 +9,10 @@ import {
   ThumbsUpIcon,
 } from "@icons";
 import { useParams } from "next/navigation";
-import { toast } from "sonner";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 
 interface ChatBubbleActionsProps {

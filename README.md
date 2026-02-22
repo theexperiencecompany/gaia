@@ -20,20 +20,18 @@
 
 <b>[GAIA](https://heygaia.io)</b> is your proactive, personal AI assistant designed to increase your productivity.
 
-It's designed to help users manage their digital lives by automating tasks, handling communication, and increasing productivity - going beyond traditional assistants like Siri, Google Assistant and ChatGPT.
-
+<!-- 
 
 ## Table of Contents
-
 
 - [GAIA - Your Personal AI Assistant](#gaia---your-personal-ai-assistant)
   - [Table of Contents](#table-of-contents)
   - [The Problem](#the-problem)
   - [Features](#features)
   - [Getting Started](#getting-started)
-    - [**Cloud (zero setup):**](#cloud-zero-setup)
-    - [**Self-host**](#self-host)
-    - [**Develop or contribute:**](#develop-or-contribute)
+    - [Cloud (zero setup)](#cloud-zero-setup)
+    - [Self-host](#self-host)
+    - [Self-host or Develop](#self-host-or-develop)
   - [Chat with GAIA on Your Favorite Platforms](#chat-with-gaia-on-your-favorite-platforms)
   - [Monorepo Structure](#monorepo-structure)
   - [Documentation](#documentation)
@@ -42,29 +40,34 @@ It's designed to help users manage their digital lives by automating tasks, hand
   - [Tools We Love](#tools-we-love)
   - [License](#license)
   - [Contact](#contact)
-  - [Star History](#star-history)
+  - [Star History](#star-history) -->
 
-## The Problem
+## Why GAIA?
 
-We all drown in tools. Gmail, Calendar, Todos, Docs, Slack, Linear, WhatsApp, and the list keeps growing. Every person has a different stack, but the problem is the same. Our days are filled with small repetitive actions. Every calendar event we create is a few minutes gone. Every mail you draft, every todo you try to complete, every email you read that is not useful and just bullshit adds up. Every little task and chore you do in the tools you use every day, just to maintain your digital life and keep everything structured and clean, is a burden. Most of this is not real work. It is maintenance. Each task feels small in isolation, but together they are mentally tolling. They pile up day after day, quietly draining focus and motivation.
+<!-- Your day shouldn't start with triage. But it does; emails that need replies, todos that have rotted, calendar invites to action, Slack threads to catch up on, messages across five different apps. None of it is real work. It's maintenance. And it compounds. By the time you've processed enough of it to feel on top of things, your focus is already gone.
 
-Over time, inboxes get cluttered, todo lists rot, messages pile up, and important things slip through. This slow accumulation is what pushes people into jobs they hate, doing things they do not enjoy, not because the work itself is meaningless, but because their mental bandwidth is constantly consumed by noise. That is exactly how this started for us. We missed a time sensitive email because everything looked equally urgent and we were already mentally exhausted.
+Automation was supposed to fix this, but it just moved the burden. You still have to explain your context, your tone, your preferences, every time, for every tool. A real assistant shouldn't need that. It should already know how you work, what matters to you, and what can be ignored. That's what GAIA is built to be. -->
 
-Automation should fix this, but it does not. Most tools are rigid, technical, and built for power users. Even with LLMs, the burden is still on the user. You have to explain context, explain your style, explain your preferences, again and again, even for simple tasks like sending an email. That is wasted effort. A personal assistant should already know you. It should understand how you write, what you care about, what you usually ignore, and how your day actually flows.
+We all drown in tools. Gmail, Calendar, Todos, Docs, Slack, Linear, WhatsApp. Different stacks, same problem. Our days are eaten by small repetitive actions. Creating events, drafting emails, managing todos, reading useless messages. This is not real work. It is maintenance. Each task feels small, but together they drain focus and energy. Over time inboxes clog, todo lists rot, messages pile up, and important things slip through. This constant noise burns people out and pushes them into work they hate, not because the work is meaningless, but because their mental bandwidth is gone. This is how it started for us. We missed a time sensitive email because everything looked urgent and we were already exhausted.
 
-Our goal with Gaia is to remove this mental load entirely. One assistant that understands your entire digital life, remembers everything, and quietly handles the boring, repetitive work for you. Not reactive, but proactive. The real problem we are solving is time, energy, and cognitive overload. People should open one dashboard and instantly understand their day without thinking. Everything else should just happen.
+Automation should solve this, but it does not. Most tools are rigid and built for power users. Even with LLMs, the burden stays on the user. You still explain context, preferences, and writing style again and again. That is wasted effort. A real personal assistant should already know you. It should understand how you write, what you care about, what you ignore, and how your day flows. Gaia removes this mental load. One assistant that understands your entire digital life, remembers everything, and proactively handles boring repetitive work. The real problem is time, energy, and cognitive overload. Open one dashboard, understand your day instantly. Everything else should just happen.
 
 ## Features
 
-- **Truly Proactive AI**: Doesn't wait for commands - acts ahead of time on your upcoming deadlines, important emails, and tasks
-- **Automated Workflows**: Create multi-step workflows to eliminate repetitive tasks - from email triage to research to document creation
-- **Smart Todo Management**: Your todos become mini-workflows - GAIA researches, drafts, and handles the work automatically
-- **Unified Productivity Hub**: All your tasks, emails, calendar, and goals in one dashboard at a glance
-- **Graph-Based Memory**: Builds a living knowledge graph of your work - tasks link to projects, meetings link to documents, everything connects
-- **Integration Marketplace**: Choose from hundreds of integrations, built by us and the community, to connect GAIA with your favorite tools like Gmail, Slack, Notion, Linear, GitHub, and more!
-- **Multi-Platform**: Web | Desktop - macOS, Windows, Linux  | Mobile
-- **Messaging Platform Integrations**: Talk to GAIA on Discord, Slack, and Telegram
-- **Open Source & Self-Hostable**: Full transparency with the ability to self-host on your own infrastructure
+<img src="apps/web/public/images/screenshots/dashboard.png" alt="GAIA Dashboard" style="width:100%; border-radius:12px;">
+
+<br />
+<br />
+
+- **Truly Proactive AI**: Acts before you ask — deadlines, emails, tasks handled
+- **Automated Workflows**: Eliminate repetitive work with multi-step automation
+- **Smart Todo Management**: Todos that research, draft, and execute themselves
+- **Unified Productivity Hub**: Tasks, email, calendar, and goals — one view
+- **Graph-Based Memory**: Everything connected — tasks, projects, meetings, documents
+- **Integration Marketplace**: Hundreds of integrations with Gmail, Slack, Notion, and more
+- **Multi-Platform**: Web, Desktop (macOS, Windows, Linux), and Mobile
+- **Message from anywhere**: Access GAIA on Discord, Slack, and Telegram
+- **Open Source & Self-Hostable**: Full transparency, runs on your own infrastructure
 <!-- 
 <div align="center">
   <table>
@@ -89,35 +92,40 @@ Our goal with Gaia is to remove this mental load entirely. One assistant that un
 
 ## Getting Started
 
-### **Cloud (zero setup):**
+### Cloud (zero setup)
 
 <a href="https://heygaia.io">
-<img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA Web App" style="width:400px; border-radius:12px;">
+  <img src="apps/web/public/images/screenshots/website_tab.png" alt="GAIA Web App" style="width:500px; border-radius:12px;">
 </a>
-<br/>
 
-- Visit **[heygaia.io](https://heygaia.io)** to get started instantly.
+Visit **[heygaia.io](https://heygaia.io)** to get started instantly — no installation required.
 
-### **Self-host**
-- Install the CLI and run the setup wizard:
+### Self-host or Develop
 
-```
+<a href="https://heygaia.io/install">
+  <img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" style="width:500px; border-radius:12px;">
+</a>
+
+**Prerequisites:** [Node.js](https://nodejs.org) 18+, [Docker](https://docs.docker.com/get-docker/)
+
+Start with the CLI — it handles setup for both self-hosters and local dev:
+
+```bash
 npm install -g @heygaia/cli@latest
-
 gaia init
 ```
 
-__OR__
+Or use the install script:
 
 ```bash
 curl -fsSL https://heygaia.io/install.sh | sh
 gaia init
 ```
 
-See the [Self-Hosting Guide](https://docs.heygaia.io/self-hosting/overview) for more.
+`gaia init` will ask whether you want a **production deployment** or a **local dev environment** and configure everything accordingly.
 
-### **Develop or contribute:**
-- Follow the [Developer Docs](https://docs.heygaia.io/developers/development-setup).
+- Self-hosters → [Self-Hosting Guide](https://docs.heygaia.io/self-hosting/overview)
+- Contributors → [Developer Setup](https://docs.heygaia.io/developers/development-setup)
 
 
 ## Chat with GAIA on Your Favorite Platforms
@@ -162,6 +170,8 @@ gaia
     └── docker           → Docker Compose configs (dev + prod)
 ```
 
+For a deeper look at how the pieces connect, see the [Architecture Overview](https://docs.heygaia.io/developers/introduction) in the docs.
+
 ## Documentation
 
 Our comprehensive documentation is available at [docs.heygaia.io](https://docs.heygaia.io):
@@ -185,11 +195,18 @@ Join our growing community of users and contributors:
   <img src="https://contrib.rocks/image?repo=theexperiencecompany/gaia" />
 </a>
 
-We welcome contributions of all kinds, from bug fixes and new features to documentation and testing.
+We welcome contributions of all kinds — bug fixes, features, docs, and tests.
 
-AI and vibe-coded PRs are welcome! Just say so in the PR description. 🤖
+> 🤖 **AI & vibe-coded PRs are welcome!** Built it with Claude, Cursor, or any AI tool? That's great — just mention it in the PR description.
 
-Please read our [Contributing Guidelines](https://docs.heygaia.io/developers/contributing) to get started.
+**Where to start:**
+- [Contributing Guidelines](https://docs.heygaia.io/developers/contributing) — how we work and what we're looking for
+- [Development Setup](https://docs.heygaia.io/developers/development-setup) — get your local environment running
+- [Code Style Guide](https://docs.heygaia.io/configuration/code-style) — linting, formatting, and conventions
+- [Conventional Commits](https://docs.heygaia.io/configuration/conventional-commits) — commit message format
+- [Pull Request Guide](https://docs.heygaia.io/configuration/pull-requests) — how to open a great PR
+
+For bugs and feature requests, [open an issue](https://github.com/theexperiencecompany/gaia/issues).
 
 ## Tools We Love
 

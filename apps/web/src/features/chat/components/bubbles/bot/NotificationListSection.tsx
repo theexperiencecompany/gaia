@@ -4,8 +4,8 @@ import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
 import { NotificationIcon } from "@icons";
 import { useState } from "react";
-import { toast } from "sonner";
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
+import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
   type NotificationRecord,

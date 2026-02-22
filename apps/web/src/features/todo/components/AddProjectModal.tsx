@@ -11,9 +11,8 @@ import {
 } from "@heroui/modal";
 import { Radio, RadioGroup } from "@heroui/radio";
 import { useState } from "react";
-import { toast } from "sonner";
-
 import { todoApi } from "@/features/todo/api/todoApi";
+import { toast } from "@/lib/toast";
 import type { ProjectCreate } from "@/types/features/todoTypes";
 
 interface AddProjectModalProps {

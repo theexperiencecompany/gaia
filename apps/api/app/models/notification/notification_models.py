@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional
 from uuid import uuid4
 
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -16,6 +16,7 @@ class NotificationType(str, Enum):
 class NotificationStatus(str, Enum):
     PENDING = "pending"
     DELIVERED = "delivered"
+    FAILED = "failed"
     READ = "read"
     ARCHIVED = "archived"
 
@@ -28,12 +29,13 @@ class NotificationSourceEnum(str, Enum):
     AI_TODO_ADDED = "ai_todo_added"
     EMAIL_TRIGGER = "email_trigger"
     BACKGROUND_JOB = "background_job"
+    WORKFLOW_COMPLETED = "workflow_completed"
+    WORKFLOW_FAILED = "workflow_failed"
 
 
 class ActionType(str, Enum):
     REDIRECT = "redirect"
     API_CALL = "api_call"
-    WORKFLOW = "workflow"
     MODAL = "modal"
 
 
@@ -59,11 +61,6 @@ class ApiCallConfig(BaseModel):
     is_internal: Optional[bool] = False
 
 
-class WorkflowConfig(BaseModel):
-    workflow_id: str
-    parameters: Dict[str, Any] = Field(default_factory=dict)
-
-
 class ModalConfig(BaseModel):
     component: str
     props: Dict[str, Any] = Field(default_factory=dict)
@@ -72,35 +69,17 @@ class ModalConfig(BaseModel):
 class ActionConfig(BaseModel):
     redirect: Optional[RedirectConfig] = None
     api_call: Optional[ApiCallConfig] = None
-    workflow: Optional[WorkflowConfig] = None
     modal: Optional[ModalConfig] = None
 
     @model_validator(mode="after")
     def validate_single_config(self):
         """Ensure only one action config is set"""
-        configs = [
-            self.redirect,
-            self.api_call,
-            self.workflow,
-            self.modal,
-        ]
+        configs = [self.redirect, self.api_call, self.modal]
         non_none_configs = [c for c in configs if c is not None]
 
         if len(non_none_configs) > 1:
             raise ValueError("Only one action config should be specified")
         return self
-
-
-class NotificationSource(str, Enum):
-    """Enumeration of notification sources"""
-
-    AI_EMAIL_DRAFT = "ai_email_draft"
-    AI_CALENDAR_EVENT = "ai_calendar_event"
-    AI_TODO_SUGGESTION = "ai_todo_suggestion"
-    AI_REMINDER = "ai_reminder"
-    AI_TODO_ADDED = "ai_todo_added"
-    EMAIL_TRIGGER = "email_trigger"
-    BACKGROUND_JOB = "background_job"
 
 
 class NotificationAction(BaseModel):
@@ -125,12 +104,10 @@ class NotificationAction(BaseModel):
         """Check if this action can be executed"""
         if self.disabled:
             return False
-
-        # For API calls, check if already executed
+        # For API calls, prevent double-execution
         if self.type == ActionType.API_CALL:
             return not self.executed
-
-        # Other action types may be executed multiple times
+        # Redirect / Modal actions may be triggered multiple times
         return True
 
 
@@ -138,11 +115,11 @@ class NotificationContent(BaseModel):
     title: str
     body: str
     actions: Optional[List[NotificationAction]] = None
-    rich_content: Optional[Dict[str, Any]] = None  # For HTML, markdown, etc.
+    rich_content: Optional[Dict[str, Any]] = None
 
 
 class ChannelConfig(BaseModel):
-    channel_type: str  # 'inapp', 'email', 'push', etc.
+    channel_type: str  # 'inapp', 'telegram', 'discord'
     enabled: bool = True
     priority: int = 1  # 1 highest
     template: Optional[str] = None
@@ -174,6 +151,7 @@ class ChannelDeliveryStatus(BaseModel):
     delivered_at: Optional[datetime] = None
     error_message: Optional[str] = None
     retry_count: int = 0
+    skipped: bool = False
 
 
 class NotificationRecord(BaseModel):
@@ -183,29 +161,15 @@ class NotificationRecord(BaseModel):
     created_at: datetime
     delivered_at: Optional[datetime] = None
     read_at: Optional[datetime] = None
-    snoozed_until: Optional[datetime] = None
     archived_at: Optional[datetime] = None
     channels: List[ChannelDeliveryStatus] = Field(default_factory=list)
     original_request: NotificationRequest
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
-    def mark_as_read(self) -> None:
-        """Mark notification as read"""
-        self.status = NotificationStatus.READ
-        self.read_at = datetime.now(timezone.utc)
-        self.updated_at = datetime.now(timezone.utc)
-
-    def archive(self) -> None:
-        """Archive notification"""
-        self.status = NotificationStatus.ARCHIVED
-        self.archived_at = datetime.now(timezone.utc)
-        self.updated_at = datetime.now(timezone.utc)
-
     def mark_action_as_executed(self, action_id: str) -> bool:
         """Mark a specific action as executed"""
         if not self.original_request.content.actions:
             return False
-
         for action in self.original_request.content.actions:
             if action.id == action_id:
                 action.mark_as_executed()
@@ -217,7 +181,6 @@ class NotificationRecord(BaseModel):
         """Get a specific action by ID"""
         if not self.original_request.content.actions:
             return None
-
         for action in self.original_request.content.actions:
             if action.id == action_id:
                 return action
@@ -237,36 +200,17 @@ class ActionResult(BaseModel):
 class BulkActions(str, Enum):
     MARK_READ = "mark_read"
     ARCHIVE = "archive"
-    DELETE = "delete"
 
 
-class UserNotificationPreferences(BaseModel):
-    user_id: str
-    channel_preferences: Dict[str, Dict[str, Union[bool, int]]] = Field(
-        default_factory=dict
-    )
-    # Format: {source: {channel_type: enabled, priority: int}}
-    snooze_settings: Dict[str, Any] = Field(default_factory=dict)
-    quiet_hours: Optional[Dict[str, str]] = None  # {'start': '22:00', 'end': '08:00'}
-    max_notifications_per_hour: int = 50
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+class ChannelPreferences(BaseModel):
+    """User notification channel preferences."""
 
-    def is_channel_enabled(
-        self, source: NotificationSourceEnum, channel_type: str
-    ) -> bool:
-        """Check if a channel is enabled for a source"""
-        return bool(self.channel_preferences.get(source, {}).get(channel_type, True))
+    telegram: bool = True
+    discord: bool = True
 
-    def is_in_quiet_hours(self) -> bool:
-        """Check if current time is in quiet hours"""
-        if not self.quiet_hours:
-            return False
 
-        now = datetime.now().time()
-        start = datetime.strptime(self.quiet_hours["start"], "%H:%M").time()
-        end = datetime.strptime(self.quiet_hours["end"], "%H:%M").time()
+class ChannelPreferencesUpdate(BaseModel):
+    """Request body for updating channel preferences."""
 
-        if start <= end:
-            return start <= now <= end
-        else:
-            return now >= start or now <= end
+    telegram: Optional[bool] = None
+    discord: Optional[bool] = None

@@ -70,7 +70,7 @@
     "docker:build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker build -f apps/bots/discord/Dockerfile -t bot-discord -t ghcr.io/theexperiencecompany/gaia-bot-discord:latest .",
+        "command": "docker build -f apps/bots/discord/Dockerfile -t apps-bots-discord -t bot-discord -t ghcr.io/theexperiencecompany/gaia-bot-discord:latest .",
         "cwd": "."
       },
       "cache": true,

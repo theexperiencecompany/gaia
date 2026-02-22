@@ -3,9 +3,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useRef } from "react";
-import { toast } from "sonner";
-
 import { useSendMessage } from "@/hooks/useSendMessage";
+import { toast } from "@/lib/toast";
 
 // Module-level Set to track which OAuth callbacks we've already processed
 // This persists across React Strict Mode double-mounts

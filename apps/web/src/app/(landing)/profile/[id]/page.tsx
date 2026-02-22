@@ -6,12 +6,12 @@ import { Tooltip } from "@heroui/tooltip";
 import { Share08Icon } from "@icons";
 import { useParams } from "next/navigation";
 import { Suspense, useEffect, useState } from "react";
-import { toast } from "sonner";
 import { HoloCard, type HoloCardDisplayData } from "@/components/ui/holo-card";
 import {
   holoCardApi,
   type PublicHoloCardData,
 } from "@/features/onboarding/api/holoCardApi";
+import { toast } from "@/lib/toast";
 
 export default function ProfilePage() {
   const params = useParams();

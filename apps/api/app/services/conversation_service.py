@@ -78,14 +78,20 @@ async def get_conversations(user: dict, page: int = 1, limit: int = 10) -> dict:
         "is_system_generated": 1,
         "system_purpose": 1,
         "is_unread": 1,
+        "source": 1,
         "createdAt": 1,
         "updatedAt": 1,
     }
 
-    starred_filter = {"user_id": user_id, "starred": True}
+    # Exclude conversations originating from bots (they are accessible via direct URL)
+    _BOT_SOURCES = ["telegram", "discord", "slack", "whatsapp"]
+    _source_filter = {"source": {"$nin": _BOT_SOURCES}}
+
+    starred_filter = {"user_id": user_id, "starred": True, **_source_filter}
     non_starred_filter = {
         "user_id": user_id,
         "$or": [{"starred": {"$exists": False}}, {"starred": False}],
+        **_source_filter,
     }
     skip = (page - 1) * limit
 

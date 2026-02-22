@@ -9,10 +9,9 @@ import { Room } from "livekit-client";
 import { m } from "motion/react";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
-import { toast } from "sonner";
-
 import useConnectionDetails from "@/features/chat/components/voice-agent/hooks/useConnectionDetails";
 import { SessionView } from "@/features/chat/components/voice-agent/session-view";
+import { toast } from "@/lib/toast";
 
 const MotionSessionView = m.create(SessionView);
 
