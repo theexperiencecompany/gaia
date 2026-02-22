@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import { useEffect, useState } from "react";
+import { TelegramIcon } from "@/components";
 import {
   SettingsPage,
   SettingsRow,
@@ -90,6 +91,7 @@ export default function LinkedAccountsSettings() {
       const data = await apiService.get<{
         auth_url?: string;
         instructions?: string;
+        action_link?: string;
         auth_type: string;
       }>(`/platform-links/${platformId}/connect`, { silent: true });
 
@@ -113,7 +115,17 @@ export default function LinkedAccountsSettings() {
           }
         }, 500);
       } else if (data.instructions && platformId === "telegram") {
-        toast.info(data.instructions, { duration: 8000 });
+        toast.info("Connect Bot", {
+          description: data.instructions,
+          duration: 10000,
+          icon: <TelegramIcon />,
+          ...(data.action_link && {
+            action: {
+              label: "Open Bot",
+              onClick: () => window.open(data.action_link, "_blank"),
+            },
+          }),
+        });
         setConnectingPlatform(null);
       } else {
         setConnectingPlatform(null);

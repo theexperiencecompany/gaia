@@ -69,3 +69,6 @@ class InitiatePlatformConnectResponse(BaseModel):
     instructions: Optional[str] = Field(
         None, description="Manual linking instructions (if manual auth)"
     )
+    action_link: Optional[str] = Field(
+        None, description="Optional deep-link for manual auth (e.g. Telegram bot URL)"
+    )

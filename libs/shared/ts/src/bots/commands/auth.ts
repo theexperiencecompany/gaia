@@ -31,11 +31,14 @@ export const authCommand: BotCommand = {
         ctx.platformUserId,
         ctx.profile,
       );
+      // NOTE: Avoid _italic_ markers here — underscores in the URL token
+      // pair with them and break Telegram's legacy Markdown parser.
+      // And the bare URL is auto-linked by Telegram on real domains (not localhost).
       await target.sendEphemeral(
         "🔗 **Link your account to GAIA**\n\n" +
-          "Click the link below to sign in with GAIA and link your account:\n" +
+          "Tap the link below to sign in and link your account:\n" +
           `${authUrl}\n\n` +
-          "_After linking, you'll be able to use all GAIA commands!_",
+          "After linking, you'll be able to use all GAIA commands!",
       );
     } catch {
       await target.sendEphemeral(

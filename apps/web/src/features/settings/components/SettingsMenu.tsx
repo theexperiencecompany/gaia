@@ -227,7 +227,9 @@ export default function SettingsMenu({
       showDivider: true,
       items: [
         ...settingsPageItems.filter((item) =>
-          ["profile", "preferences", "memory"].includes(item.key),
+          ["profile", "preferences", "memory", "linked-accounts"].includes(
+            item.key,
+          ),
         ),
         {
           key: "keyboard_shortcuts",
