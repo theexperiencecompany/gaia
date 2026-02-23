@@ -116,3 +116,5 @@ postman/
 .wwebjs_auth/
 .wwebjs_cache/
 /config.json
+
+docs/plans/
