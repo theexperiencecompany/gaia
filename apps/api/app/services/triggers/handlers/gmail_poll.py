@@ -14,7 +14,6 @@ rather than fire on every single incoming email.
 from typing import Any, Dict, List, Set
 
 from app.config.loggers import general_logger as logger
-from app.db.mongodb.collections import workflows_collection
 from app.models.trigger_configs import GmailPollInboxConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.triggers.base import TriggerHandler
@@ -100,22 +99,10 @@ class GmailPollTriggerHandler(TriggerHandler):
                 "trigger_config.enabled": True,
                 "trigger_config.composio_trigger_ids": trigger_id,
             }
-
-            cursor = workflows_collection.find(query)
-            workflows: List[Workflow] = []
-
-            async for workflow_doc in cursor:
-                try:
-                    workflow_doc["id"] = workflow_doc.get("_id")
-                    if "_id" in workflow_doc:
-                        del workflow_doc["_id"]
-                    workflow = Workflow(**workflow_doc)
-                    workflows.append(workflow)
-                except Exception as e:
-                    logger.error(f"Error processing workflow document: {e}")
-                    continue
-
-            return workflows
+            return await self._load_workflows_from_query(
+                query,
+                log_context=f"gmail_poll trigger_id={trigger_id}",
+            )
 
         except Exception as e:
             logger.error(
