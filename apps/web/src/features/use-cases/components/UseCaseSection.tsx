@@ -1,22 +1,16 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { AnimatePresence, motion } from "framer-motion";
+import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import {
-  ChevronUp,
-  StarAward01Icon,
-  WorkflowCircle03Icon,
-} from "@/components/shared/icons";
+import { ChevronUp } from "@/components/shared/icons";
 import type { UseCase } from "@/features/use-cases/types";
-import {
-  type Workflow,
-  workflowApi,
-} from "@/features/workflows/api/workflowApi";
+import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import { useWorkflows } from "@/features/workflows/hooks/useWorkflows";
+import { useExploreWorkflows, useWorkflows } from "@/features/workflows/hooks";
 
 // Register GSAP plugin
 gsap.registerPlugin(ScrollTrigger);
@@ -29,6 +23,11 @@ export default function UseCaseSection({
   setShowUseCases,
   showDescriptionAsTooltip,
   useBlurEffect,
+  disableCentering = false,
+  slicePerTab,
+  hideAllCategory = false,
+  rows,
+  columns = 4,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
@@ -37,62 +36,50 @@ export default function UseCaseSection({
   setShowUseCases?: React.Dispatch<React.SetStateAction<boolean>>;
   showDescriptionAsTooltip?: boolean;
   useBlurEffect?: boolean;
+  disableCentering?: boolean;
+  slicePerTab?: number;
+  hideAllCategory?: boolean;
+  rows?: number;
+  columns?: number;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
   );
 
-  // Only fetch user workflows if we need to show them
+  // Fetch user workflows if needed
   const { workflows, isLoading: isLoadingWorkflows } = useWorkflows(
     !hideUserWorkflows,
   );
 
-  // Local state for fetching explore workflows if not provided as props
-  const [localExploreWorkflows, setLocalExploreWorkflows] = useState<UseCase[]>(
-    [],
+  // Fetch explore workflows from centralized store (skip if provided via props)
+  const { workflows: storeExploreWorkflows } = useExploreWorkflows(
+    !propExploreWorkflows || propExploreWorkflows.length === 0,
   );
-  const [hasFetchedLocal, setHasFetchedLocal] = useState(false);
 
-  // Fetch explore workflows only if not provided as props and not already fetched
-  useEffect(() => {
-    // Skip if props are provided or already fetched
-    if (propExploreWorkflows && propExploreWorkflows.length > 0) return;
-    if (hasFetchedLocal) return;
+  // Convert store workflows to UseCase format
+  const convertedExploreWorkflows: UseCase[] = storeExploreWorkflows.map(
+    (w) => ({
+      title: w.title,
+      description: w.description,
+      action_type: "workflow" as const,
+      integrations:
+        w.steps
+          ?.map((s) => s.category)
+          .filter((v, i, a) => a.indexOf(v) === i) || [],
+      categories: w.categories || ["featured"],
+      published_id: w.id,
+      slug: w.id,
+      steps: w.steps,
+      creator: w.creator,
+      total_executions: w.total_executions || 0,
+    }),
+  );
 
-    const fetchExploreWorkflows = async () => {
-      try {
-        setHasFetchedLocal(true);
-        const resp = await workflowApi.getExploreWorkflows(50, 0);
-        const converted = resp.workflows.map((w) => ({
-          title: w.title,
-          description: w.description,
-          action_type: "workflow" as const,
-          integrations:
-            w.steps
-              ?.map((s) => s.category)
-              .filter((v, i, a) => a.indexOf(v) === i) || [],
-          categories: w.categories || ["featured"],
-          published_id: w.id,
-          slug: w.id,
-          steps: w.steps,
-          creator: w.creator,
-          total_executions: w.total_executions || 0,
-        }));
-        setLocalExploreWorkflows(converted);
-      } catch (error) {
-        console.error("Error fetching explore workflows:", error);
-      }
-    };
-
-    fetchExploreWorkflows();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Use provided explore workflows or local ones
+  // Use provided explore workflows or converted store workflows
   const exploreWorkflows =
     propExploreWorkflows && propExploreWorkflows.length > 0
       ? propExploreWorkflows
-      : localExploreWorkflows;
+      : convertedExploreWorkflows;
 
   // Generate categories dynamically from the actual data
   const dynamicCategories = Array.from(
@@ -100,7 +87,7 @@ export default function UseCaseSection({
   ).sort();
 
   const allCategories = [
-    "all",
+    ...(hideAllCategory ? [] : ["all"]),
     "featured",
     ...(hideUserWorkflows ? [] : ["workflows"]),
     ...dynamicCategories.filter((cat) => cat !== "featured"),
@@ -220,7 +207,7 @@ export default function UseCaseSection({
         className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
       >
         {allCategories.map((category, index) => (
-          <motion.div
+          <m.div
             key={category as string}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -252,11 +239,11 @@ export default function UseCaseSection({
                     ? "Your Workflows"
                     : (category as string)}
             </Chip>
-          </motion.div>
+          </m.div>
         ))}
 
         {setShowUseCases && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{
@@ -276,7 +263,7 @@ export default function UseCaseSection({
             >
               <ChevronUp />
             </Button>
-          </motion.div>
+          </m.div>
         )}
       </div>
 
@@ -285,66 +272,70 @@ export default function UseCaseSection({
         {filteredUseCases.length > 0 &&
           selectedCategory !== null &&
           selectedCategory !== "workflows" && (
-            <motion.div
+            <m.div
               key={selectedCategory}
-              className={`mx-auto grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
-              {filteredUseCases
-                .slice(0, 8)
-                .map((useCase: UseCase, index: number) => (
-                  <motion.div
-                    key={useCase.published_id || index}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                      duration: 0.3,
-                      delay: index * 0.05, // Stagger animation
-                      ease: "easeOut",
-                    }}
-                  >
-                    <UnifiedWorkflowCard
-                      showDescriptionAsTooltip={showDescriptionAsTooltip}
-                      title={useCase.title || ""}
-                      description={useCase.description || ""}
-                      actionType={useCase.action_type || "prompt"}
-                      prompt={useCase.prompt}
-                      slug={useCase.slug}
-                      steps={useCase.steps}
-                      totalExecutions={useCase.total_executions || 0}
-                      showExecutions={true}
-                      useBlurEffect={useBlurEffect}
-                      variant="explore"
-                      primaryAction={
-                        useCase.action_type === "prompt"
-                          ? "insert-prompt"
-                          : "create"
-                      }
-                    />
-                  </motion.div>
-                ))}
-            </motion.div>
+              {(slicePerTab || rows
+                ? filteredUseCases.slice(
+                    0,
+                    slicePerTab || (rows ? rows * columns : undefined),
+                  )
+                : filteredUseCases
+              ).map((useCase: UseCase, index: number) => (
+                <m.div
+                  key={useCase.published_id || index}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.3,
+                    delay: index * 0.05, // Stagger animation
+                    ease: "easeOut",
+                  }}
+                >
+                  <UnifiedWorkflowCard
+                    showDescriptionAsTooltip={showDescriptionAsTooltip}
+                    title={useCase.title || ""}
+                    description={useCase.description || ""}
+                    actionType={useCase.action_type || "prompt"}
+                    prompt={useCase.prompt}
+                    slug={useCase.slug}
+                    steps={useCase.steps}
+                    totalExecutions={useCase.total_executions || 0}
+                    showExecutions={true}
+                    useBlurEffect={useBlurEffect}
+                    variant="explore"
+                    primaryAction={
+                      useCase.action_type === "prompt"
+                        ? "insert-prompt"
+                        : "create"
+                    }
+                  />
+                </m.div>
+              ))}
+            </m.div>
           )}
 
         {/* Render User Workflows */}
         {selectedCategory === "workflows" &&
           !isLoadingWorkflows &&
           workflows.length > 0 && (
-            <motion.div
+            <m.div
               key="workflows"
-              className={`mx-auto grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
               {workflows
-                .slice(0, 8)
+                // .slice(0, 8)
                 .map((workflow: Workflow, index: number) => (
-                  <motion.div
+                  <m.div
                     key={workflow.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -361,9 +352,9 @@ export default function UseCaseSection({
                       primaryAction="run"
                       useBlurEffect={useBlurEffect}
                     />
-                  </motion.div>
+                  </m.div>
                 ))}
-            </motion.div>
+            </m.div>
           )}
       </AnimatePresence>
 

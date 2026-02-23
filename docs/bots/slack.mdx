@@ -1,0 +1,126 @@
+---
+title: "Slack"
+description: "Bring GAIA into your Slack workspace"
+icon: "slack"
+---
+
+# GAIA on Slack
+
+Use GAIA directly inside Slack — chat, manage todos, and run workflows from any channel or DM. The Slack bot runs via Socket Mode so no public URL or port forwarding is required.
+
+## Getting Started (Users)
+
+If the GAIA Slack app has been installed in your workspace, you can start using it immediately.
+
+### 1. Link Your GAIA Account
+
+```
+/auth
+```
+
+You'll receive a link — click it, log in to your GAIA account, and your Slack identity will be connected.
+
+### 2. Start Chatting
+
+```
+/gaia What should I focus on today?
+```
+
+You can also `@mention` GAIA in any channel it's been added to.
+
+For the full list of available commands, see the [Commands Reference](/bots/commands).
+
+### Notes
+
+- All responses are **ephemeral** (only visible to you)
+- Works in DMs and any channel the bot has been invited to
+- Slash commands must be configured in the Slack app dashboard (see developer setup below)
+
+---
+
+## Developer Setup
+
+This section is for developers who want to self-host the GAIA Slack bot.
+
+### Prerequisites
+
+- Node.js 18+ and pnpm
+- A Slack workspace where you have **admin access**
+- GAIA API running (see [Self-Hosting Guide](/self-hosting/overview))
+
+### Step 1: Create a Slack App
+
+1. Go to [api.slack.com/apps](https://api.slack.com/apps)
+2. Click **Create New App → From scratch**
+3. Give your app a name and select your workspace
+
+### Step 2: Enable Socket Mode
+
+1. In the sidebar, go to **Socket Mode**
+2. Toggle **Enable Socket Mode** on
+3. Generate an **App-Level Token** with the `connections:write` scope
+4. Copy the token — it starts with `xapp-`
+
+### Step 3: Configure Bot Permissions
+
+1. Go to **OAuth & Permissions**
+2. Under **Bot Token Scopes**, add:
+   - `chat:write`
+   - `commands`
+   - `im:history`
+   - `im:read`
+   - `im:write`
+3. Under **User Token Scopes**, add:
+   - `identity.basic`
+4. Under **Redirect URLs**, add:
+   ```
+   http://localhost:8000/api/v1/platform-auth/slack/callback
+   https://your-api-domain.com/api/v1/platform-auth/slack/callback
+   ```
+5. Click **Install App to Workspace** (or **Reinstall** if already installed)
+6. Copy the **Bot User OAuth Token** (starts with `xoxb-`)
+7. Copy the **Client ID** and **Client Secret** from **Basic Information**
+8. Copy the **Signing Secret** from **Basic Information**
+
+### Step 4: Register Slash Commands
+
+Go to **Slash Commands** and create each command listed in the [Commands Reference](/bots/commands). Request URL can be left blank in Socket Mode.
+
+### Step 5: Configure Environment Variables
+
+Create a `.env` file in `apps/bots/slack/`:
+
+```bash
+SLACK_BOT_TOKEN=xoxb-your-bot-token
+SLACK_APP_TOKEN=xapp-your-app-token
+SLACK_SIGNING_SECRET=your-signing-secret
+GAIA_API_URL=http://localhost:8000
+GAIA_BOT_API_KEY=your_secure_bot_api_key
+```
+
+For OAuth account linking, also add to `apps/api/.env`:
+
+```bash
+SLACK_OAUTH_CLIENT_ID=your_client_id
+SLACK_OAUTH_CLIENT_SECRET=your_client_secret
+```
+
+These enable users to link their Slack account from the GAIA web app settings page.
+
+### Step 6: Start the Bot
+
+```bash
+# Development (hot reload)
+nx dev bot-slack
+
+# Production
+nx build bot-slack && nx start bot-slack
+```
+
+### Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| Bot doesn't respond | Check Socket Mode is enabled and all tokens are correct |
+| Command not found | Verify slash commands are created in the Slack app dashboard, then reinstall the app |
+| Authentication fails | Ensure `GAIA_BOT_API_KEY` matches the API config |

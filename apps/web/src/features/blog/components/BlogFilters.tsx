@@ -2,9 +2,8 @@
 
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
+import { SearchIcon } from "@icons";
 import { useCallback, useMemo, useState } from "react";
-
-import { SearchIcon } from "@/icons";
 import type { BlogPost } from "@/lib/blog";
 
 interface BlogFiltersProps {

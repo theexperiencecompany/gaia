@@ -3,30 +3,32 @@ Favicon fetching utilities with Redis caching.
 
 Strategy:
 1. Check Redis cache by root domain (e.g., smithery.ai)
-2. Try 'favicon' library (parses HTML for link tags) - runs in thread pool
-3. Try standard /favicon.ico path
-4. Parse HTML for link[rel=icon] tags
-5. Cache result in Redis for 180 days
+2. Try Google's favicon service (fastest, most reliable)
+3. Try 'favicon' library (parses HTML for link tags) - runs in thread pool
+4. Try standard /favicon.ico path
+5. Parse HTML for link[rel=icon] tags
+6. Cache result in Redis for 180 days
 """
 
 import asyncio
-import re
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urljoin
 
 import httpx
 import favicon
 import tldextract
+from bs4 import BeautifulSoup
 
 from app.config.loggers import app_logger as logger
+from app.constants.cache import FAVICON_CACHE_TTL
 from app.db.redis import get_cache, set_cache
-
-# Cache favicon URLs for 180 days (favicons rarely change)
-FAVICON_CACHE_TTL = 180 * 24 * 3600
 
 # HTTP client settings
 HTTP_TIMEOUT = 3.0
 FAVICON_LIB_TIMEOUT = 3
+
+# Google Favicon Service - fast and reliable
+GOOGLE_FAVICON_URL = "https://www.google.com/s2/favicons?domain={domain}&sz=256"
 
 # Known favicon extensions that don't need validation
 KNOWN_FAVICON_EXTENSIONS = (".ico", ".png", ".svg", ".webp")
@@ -105,15 +107,7 @@ def _make_absolute_url(href: str, base_url: str) -> str:
     """Convert relative URL to absolute."""
     if href.startswith("data:"):
         return ""
-    if href.startswith("//"):
-        return f"https:{href}"
-    if href.startswith("/"):
-        parsed = urlparse(base_url)
-        return f"{parsed.scheme}://{parsed.netloc}{href}"
-    if not href.startswith("http"):
-        parsed = urlparse(base_url)
-        return f"{parsed.scheme}://{parsed.netloc}/{href}"
-    return href
+    return urljoin(base_url, href)
 
 
 def _parse_favicon_size(sizes_attr: str) -> int:
@@ -123,37 +117,32 @@ def _parse_favicon_size(sizes_attr: str) -> int:
     max_size = 0
     for size in sizes_attr.split():
         if "x" in size.lower():
-            try:
-                w, h = size.lower().split("x")
-                max_size = max(max_size, int(w), int(h))
-            except ValueError:
-                pass
+            parts = size.lower().split("x")
+            if len(parts) == 2:
+                try:
+                    max_size = max(max_size, int(parts[0]), int(parts[1]))
+                except ValueError:
+                    pass
     return max_size
 
 
 def _parse_icons_from_html(html: str, base_url: str) -> list[dict]:
-    """Parse HTML to extract all link[rel=icon] entries."""
-    link_pattern = re.compile(
-        r'<link[^>]+rel=["\'][^"\']*icon[^"\']*["\'][^>]*>',
-        re.IGNORECASE,
-    )
-    href_pattern = re.compile(r'href=["\']([^"\']+)["\']', re.IGNORECASE)
-    sizes_pattern = re.compile(r'sizes=["\']([^"\']+)["\']', re.IGNORECASE)
-
-    matches = link_pattern.findall(html)
+    """Parse HTML to extract all link[rel=icon] entries using BeautifulSoup."""
+    soup = BeautifulSoup(html, "lxml")
     icons = []
 
-    for link_tag in matches:
-        href_match = href_pattern.search(link_tag)
-        if not href_match:
-            continue
-
-        href = _make_absolute_url(href_match.group(1), base_url)
+    # Find all link tags with rel containing "icon"
+    for link in soup.find_all("link", rel=lambda x: x and "icon" in x.lower()):
+        href = link.get("href")
         if not href:
             continue
 
-        sizes_match = sizes_pattern.search(link_tag)
-        size = _parse_favicon_size(sizes_match.group(1) if sizes_match else "")
+        href = _make_absolute_url(href, base_url)
+        if not href:
+            continue
+
+        sizes = link.get("sizes", "")
+        size = _parse_favicon_size(sizes)
 
         href_lower = href.lower()
         if ".png" in href_lower:
@@ -187,8 +176,8 @@ async def _validate_favicon_url(url: str) -> bool:
             response = await client.head(url, follow_redirects=True)
             if response.status_code != 200:
                 return False
-            content_type = response.headers.get("content-type", "")
-            return "image" in content_type or not content_type
+            content_type = response.headers.get("content-type", "").lower()
+            return "image" in content_type
     except Exception as e:
         logger.debug(f"Favicon validation failed for {url}: {e}")
         return False
@@ -199,7 +188,6 @@ async def _try_standard_favicon(url: str) -> str | None:
     parsed = urlparse(url)
     favicon_url = f"{parsed.scheme}://{parsed.netloc}/favicon.ico"
 
-    # Skip validation for .ico - known format
     if await _validate_favicon_url(favicon_url):
         return favicon_url
     return None
@@ -221,17 +209,63 @@ async def _try_html_link_parsing(url: str) -> str | None:
     return None
 
 
+async def _try_google_favicon_service(domain: str) -> str | None:
+    """
+    Try Google's favicon service - fast and reliable.
+
+    Returns the Google favicon URL if it returns a valid image.
+    Google returns a default globe icon for missing favicons,
+    so we check content-length to detect that.
+    """
+    favicon_url = GOOGLE_FAVICON_URL.format(domain=domain)
+
+    try:
+        async with httpx.AsyncClient(timeout=HTTP_TIMEOUT) as client:
+            response = await client.head(favicon_url, follow_redirects=True)
+            if response.status_code != 200:
+                return None
+
+            content_type = response.headers.get("content-type", "").lower()
+            if "image" not in content_type:
+                return None
+
+            # Google returns a small default globe icon (~318 bytes at sz=128)
+            # Real favicons are typically larger. Skip if too small.
+            content_length = response.headers.get("content-length", "")
+            if content_length and int(content_length) < 400:
+                logger.debug(f"Google favicon too small for {domain}, likely default")
+                return None
+
+            return favicon_url
+
+    except Exception as e:
+        logger.debug(f"Google favicon service failed for {domain}: {e}")
+    return None
+
+
 async def _fetch_favicon_impl(server_url: str) -> str | None:
     """
     Fetch favicon from external sources.
 
     Uses root domain only. Strategy:
-    1. favicon library (thread pool, with timeout)
-    2. Standard /favicon.ico path
-    3. Parse HTML for link[rel=icon]
+    1. Google's favicon service (fastest, most reliable)
+    2. favicon library (thread pool, with timeout)
+    3. Standard /favicon.ico path
+    4. Parse HTML for link[rel=icon]
     """
     url = _get_root_domain_url(server_url)
-    logger.debug(f"Fetching favicon from root domain: {url}")
+    extracted = tldextract.extract(server_url)
+    domain = extracted.top_domain_under_public_suffix
+    logger.debug(f"Fetching favicon for domain: {domain}")
+
+    # For non-Smithery domains, just return Google S2 URL directly - no need to fetch
+    if domain != "smithery.ai":
+        return GOOGLE_FAVICON_URL.format(domain=domain)
+
+    # Try Google's favicon service first (fastest)
+    result = await _try_google_favicon_service(domain)
+    if result:
+        return result
 
     # Try favicon library (runs in thread pool)
     result = await _try_favicon_library(url)

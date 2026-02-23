@@ -1,25 +1,26 @@
 "use client";
 
-import { Spinner } from "@heroui/spinner";
+import { AnimatePresence } from "motion/react";
 import { useParams, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import CreatedByGAIABanner from "@/features/chat/components/banners/CreatedByGAIABanner";
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import SearchedImageDialog from "@/features/chat/components/bubbles/bot/SearchedImageDialog";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
 import GeneratedImageSheet from "@/features/chat/components/image/GeneratedImageSheet";
+import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import MemoryModal from "@/features/chat/components/memory/MemoryModal";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useConversationList } from "@/features/chat/hooks/useConversationList";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
+import { useRetryMessage } from "@/features/chat/hooks/useRetryMessage";
 import {
   filterEmptyMessagePairs,
   isBotMessageEmpty,
 } from "@/features/chat/utils/messageContentUtils";
 import { getMessageProps } from "@/features/chat/utils/messagePropsUtils";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import type {
   ChatBubbleBotProps,
   SetImageDataType,
@@ -41,9 +42,10 @@ export default function ChatRenderer({
   const searchParams = useSearchParams();
   const messageId = searchParams.get("messageId");
   const { isLoading } = useLoading();
-  const { loadingText, toolInfo } = useLoadingText();
+  const { loadingText, loadingTextKey, toolInfo } = useLoadingText();
   const { id: convoIdParam } = useParams<{ id: string }>();
   const scrolledToMessageRef = useRef<string | null>(null);
+  const { retryMessage, isRetrying } = useRetryMessage();
   const [imageData, setImageData] = useState<SetImageDataType>({
     src: "",
     prompt: "",
@@ -56,18 +58,32 @@ export default function ChatRenderer({
     );
   }, [conversations, convoIdParam]);
 
+  // Handle retry callback
+  const handleRetry = useCallback(
+    (msgId: string) => {
+      if (!convoIdParam) return;
+      retryMessage(convoIdParam, msgId);
+    },
+    [convoIdParam, retryMessage],
+  );
+
   // Create options object for getMessageProps
-  const messagePropsOptions = {
-    conversation: conversation
-      ? {
-          is_system_generated: conversation.is_system_generated,
-          system_purpose: conversation.system_purpose ?? undefined,
-        }
-      : undefined,
-    setImageData,
-    setOpenGeneratedImage,
-    setOpenMemoryModal,
-  };
+  const messagePropsOptions = useMemo(
+    () => ({
+      conversation: conversation
+        ? {
+            is_system_generated: conversation.is_system_generated,
+            system_purpose: conversation.system_purpose ?? undefined,
+          }
+        : undefined,
+      setImageData,
+      setOpenGeneratedImage,
+      setOpenMemoryModal,
+      onRetry: handleRetry,
+      isRetrying,
+    }),
+    [conversation, handleRetry, isRetrying],
+  );
 
   // Filter out empty message pairs
   const filteredMessages = useMemo(() => {
@@ -84,16 +100,65 @@ export default function ChatRenderer({
     conversation?.system_purpose,
   ]);
 
+  // Deduplicate tool calls across all messages in the conversation
+  const messagesWithDeduplicatedToolCalls = useMemo(() => {
+    const seenToolCallIds = new Set<string>();
+
+    return filteredMessages.map((message) => {
+      // Only process bot messages with tool_data
+      if (message.type !== "bot" || !message.tool_data) {
+        return message;
+      }
+
+      // Filter out tool calls that have already been shown in previous messages
+      const deduplicatedToolData = message.tool_data
+        .map((entry) => {
+          // Only deduplicate tool_calls_data entries
+          if (entry.tool_name !== "tool_calls_data") {
+            return entry;
+          }
+
+          // Filter the tool calls array within this entry
+          // Cast to unknown[] since we know tool_calls_data contains objects with tool_call_id
+          const toolCallsArray = (
+            Array.isArray(entry.data) ? entry.data : [entry.data]
+          ) as Array<{ tool_call_id?: string }>;
+          const filteredCalls = toolCallsArray.filter((call) => {
+            const toolCallId = call?.tool_call_id;
+            if (!toolCallId) return true; // Keep calls without IDs
+            if (seenToolCallIds.has(toolCallId)) return false; // Skip duplicates
+            seenToolCallIds.add(toolCallId);
+            return true;
+          });
+
+          // If all calls were filtered out, return null to remove this entry
+          if (filteredCalls.length === 0) return null;
+
+          // Return the entry with filtered calls
+          return {
+            ...entry,
+            data: filteredCalls,
+          };
+        })
+        .filter((entry) => entry !== null);
+
+      return {
+        ...message,
+        tool_data: deduplicatedToolData,
+      } as MessageType;
+    });
+  }, [filteredMessages]);
+
   useEffect(() => {
     if (
       messageId &&
-      filteredMessages.length > 0 &&
+      messagesWithDeduplicatedToolCalls.length > 0 &&
       scrolledToMessageRef.current !== messageId
     ) {
       scrollToMessage(messageId);
       scrolledToMessageRef.current = messageId;
     }
-  }, [messageId, filteredMessages]);
+  }, [messageId, messagesWithDeduplicatedToolCalls]);
 
   const scrollToMessage = (messageId: string) => {
     if (!messageId) return;
@@ -122,63 +187,59 @@ export default function ChatRenderer({
             ?.description || "New chat"
         } | GAIA`}
       </title>
-
       <GeneratedImageSheet
         imageData={imageData}
         openImage={openGeneratedImage}
         setOpenImage={setOpenGeneratedImage}
       />
-
       <MemoryModal
         isOpen={openMemoryModal}
         onClose={() => setOpenMemoryModal(false)}
       />
-
       <SearchedImageDialog />
       <CreatedByGAIABanner show={conversation?.is_system_generated === true} />
+      {messagesWithDeduplicatedToolCalls?.map(
+        (message: MessageType, index: number) => {
+          let messageProps = null;
 
-      {filteredMessages?.map((message: MessageType, index: number) => {
-        let messageProps = null;
+          if (message.type === "bot")
+            messageProps = getMessageProps(message, "bot", messagePropsOptions);
+          else if (message.type === "user")
+            messageProps = getMessageProps(
+              message,
+              "user",
+              messagePropsOptions,
+            );
 
-        if (message.type === "bot")
-          messageProps = getMessageProps(message, "bot", messagePropsOptions);
-        else if (message.type === "user")
-          messageProps = getMessageProps(message, "user", messagePropsOptions);
+          if (!messageProps) return null;
 
-        if (!messageProps) return null; // Skip rendering if messageProps is null
+          if (
+            message.type === "bot" &&
+            !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
+          )
+            return (
+              <ChatBubbleBot
+                key={message.message_id || index}
+                {...getMessageProps(message, "bot", messagePropsOptions)}
+              />
+            );
 
-        if (
-          message.type === "bot" &&
-          !isBotMessageEmpty(messageProps as ChatBubbleBotProps)
-        )
           return (
-            <ChatBubbleBot
+            <ChatBubbleUser
               key={message.message_id || index}
-              {...getMessageProps(message, "bot", messagePropsOptions)}
+              {...messageProps}
             />
           );
-
-        return (
-          <ChatBubbleUser key={message.message_id || index} {...messageProps} />
-        );
-      })}
+        },
+      )}
       {isLoading && (
-        <div className="flex items-center gap-4 pl-12 text-sm font-medium">
-          {toolInfo?.toolCategory &&
-            getToolCategoryIcon(toolInfo.toolCategory, {
-              size: 18,
-              width: 18,
-              height: 18,
-              iconOnly: true,
-            })}
-          <span>
-            {toolInfo?.showCategory !== false && toolInfo?.toolCategory
-              ? `${toolInfo.toolCategory.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}: `
-              : ""}
-            {loadingText || "GAIA is thinking..."}
-          </span>
-          <Spinner variant="dots" color="primary" />
-        </div>
+        <AnimatePresence>
+          <LoadingIndicator
+            loadingText={loadingText}
+            loadingTextKey={loadingTextKey}
+            toolInfo={toolInfo}
+          />
+        </AnimatePresence>
       )}
     </>
   );

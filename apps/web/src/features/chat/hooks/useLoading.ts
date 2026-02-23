@@ -21,11 +21,10 @@ export const useLoading = () => {
     [],
   );
 
-  const stopStream = useCallback(() => {
-    // Trigger the save before aborting the stream
-    streamController.triggerSave();
-
-    const aborted = streamController.abort();
+  // stopStream is now async to properly await the save callback before aborting
+  // The UI will still update correctly because setLoadingState is called after await
+  const stopStream = useCallback(async () => {
+    const aborted = await streamController.abort();
     if (aborted) {
       setLoadingState(false);
     }

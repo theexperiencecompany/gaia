@@ -2,11 +2,10 @@ import { Accordion, AccordionItem } from "@heroui/react";
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { ScrollShadow } from "@heroui/scroll-shadow";
+import { NotificationIcon } from "@icons";
 import { useState } from "react";
-import { toast } from "sonner";
-
 import { NotificationItem } from "@/features/notification/components/NotificationItem";
-import { NotificationIcon } from "@/icons";
+import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
   type NotificationRecord,

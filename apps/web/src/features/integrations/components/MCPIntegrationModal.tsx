@@ -11,23 +11,24 @@ import {
   ModalHeader,
   Textarea,
 } from "@heroui/react";
-import { useCallback, useEffect, useMemo } from "react";
-import { toast } from "sonner";
+import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { ConnectIcon, KeyIcon, PuzzleIcon } from "@/icons";
+import { toast } from "@/lib/toast";
 import { useIntegrations } from "../hooks/useIntegrations";
 
 interface MCPIntegrationModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onIntegrationCreated?: (integrationId: string) => void;
 }
 
 interface MCPFormData {
   name: string;
   description: string;
   server_url: string;
-  api_key: string;
+  bearer_token: string;
   requires_auth: boolean;
   auth_type: "none" | "oauth" | "bearer";
   is_public: boolean;
@@ -37,16 +38,21 @@ interface MCPFormData {
 export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
   isOpen,
   onClose,
+  onIntegrationCreated,
 }) => {
   const { isMac, modifierKeyName } = usePlatform();
-  const { createCustomIntegration, refetch } = useIntegrations();
+  const { createCustomIntegration } = useIntegrations();
+
+  // Use ref to always get latest callback (avoids stale closure in useModalForm)
+  const onIntegrationCreatedRef = useRef(onIntegrationCreated);
+  onIntegrationCreatedRef.current = onIntegrationCreated;
 
   const initialData = useMemo<MCPFormData>(
     () => ({
       name: "",
       description: "",
       server_url: "",
-      api_key: "",
+      bearer_token: "",
       requires_auth: false,
       auth_type: "none",
       is_public: false,
@@ -55,7 +61,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
   );
 
   const { formData, loading, handleSubmit, updateField, resetForm } =
-    useModalForm<MCPFormData>({
+    useModalForm<MCPFormData, string>({
       initialData,
       validate: [
         { field: "name", required: true, message: "Name is required" },
@@ -77,9 +83,10 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
           name: data.name,
           description: data.description?.trim() || undefined,
           server_url: data.server_url,
-          requires_auth: !!data.api_key,
-          auth_type: data.api_key ? "bearer" : "none",
+          requires_auth: !!data.bearer_token,
+          auth_type: data.bearer_token ? "bearer" : "none",
           is_public: false,
+          bearer_token: data.bearer_token || undefined,
         });
 
         // Handle auto-connection result
@@ -103,10 +110,14 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
           toast.success("Custom integration created successfully!");
         }
 
-        refetch();
+        // Return the integration ID to be passed to onSuccess
+        return result.integrationId;
       },
-      onSuccess: () => {
+      onSuccess: (integrationId?: string) => {
         handleClose();
+        if (integrationId) {
+          onIntegrationCreatedRef.current?.(integrationId);
+        }
       },
       resetOnSuccess: true,
     });
@@ -145,11 +156,13 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
       size="lg"
       className="shadow-none rounded-2xl"
       backdrop="blur"
+      isDismissable={!loading}
+      isKeyboardDismissDisabled={loading}
     >
       <ModalContent>
         <ModalHeader className="flex flex-col gap-1">
           <h2 className="text-xl font-semibold">New Integration</h2>
-          <p className="text-sm font-normal text-foreground-400">
+          <p className="text-sm font-normal text-zinc-400">
             Use the Model Context Protocol to extend GAIA&apos;s capabilities
             with external data and tools
           </p>
@@ -186,12 +199,12 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
             />
 
             <Input
-              label="API Key (optional)"
-              placeholder="sk-..."
-              value={formData.api_key || ""}
-              onValueChange={(v) => updateField("api_key", v)}
+              label="API Key / Bearer Token (optional)"
+              placeholder="sk-... or your API token"
+              value={formData.bearer_token || ""}
+              onValueChange={(v) => updateField("bearer_token", v)}
               type="password"
-              description="If provided, API key authentication will be used. Leave empty to automatically detect OAuth requirements."
+              description="If provided, API key auth will be used. Leave empty for OAuth."
               startContent={<KeyIcon width={16} height={16} />}
             />
           </div>

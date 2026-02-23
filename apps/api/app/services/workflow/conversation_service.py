@@ -48,16 +48,17 @@ async def get_or_create_workflow_conversation(
         system_purpose=SystemPurpose.WORKFLOW_EXECUTION,
     )
 
-    # Add workflow metadata to conversation
+    # Add workflow metadata and source tag to conversation
     await conversations_collection.update_one(
         {"conversation_id": conversation["conversation_id"]},
         {
             "$set": {
+                "source": "workflow_system",
                 "metadata": {
                     "workflow_id": workflow_id,
                     "workflow_title": workflow_title,
                     "created_by": "workflow_system",
-                }
+                },
             }
         },
     )

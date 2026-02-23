@@ -1,14 +1,12 @@
+import { Mail01Icon, SquareLock01Icon, WavingHand01Icon } from "@icons";
 import {
   DiscordIcon,
   Github,
   LinkedinIcon,
-  Mail01Icon,
-  SquareLock01Icon,
   TwitterIcon,
-  WavingHand01Icon,
   WhatsappIcon,
   YoutubeIcon,
-} from "@/icons";
+} from "@/components/shared/icons";
 
 const emailLinks = [
   {
@@ -51,7 +49,7 @@ const socialLinks = [
   },
   {
     ariaLabel: "YouTube",
-    href: "https://youtube.com/@heygaia_io",
+    href: "https://youtube.com/@theexperiencecompany",
     Icon: YoutubeIcon,
   },
   {

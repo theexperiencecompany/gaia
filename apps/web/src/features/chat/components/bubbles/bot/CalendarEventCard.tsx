@@ -1,7 +1,6 @@
 import { Button } from "@heroui/button";
+import { Tick02Icon } from "@icons";
 import type { ReactNode } from "react";
-
-import { Tick02Icon } from "@/icons";
 
 export type EventStatus = "idle" | "loading" | "completed";
 export type EventVariant = "display" | "action";

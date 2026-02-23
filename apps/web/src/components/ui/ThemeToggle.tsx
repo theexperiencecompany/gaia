@@ -9,7 +9,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
-import { ComputerIcon, MoonIcon, Sun03Icon as SunIcon } from "../shared/icons";
+import { ComputerIcon, Moon02Icon as MoonIcon, Sun03Icon as SunIcon } from "@icons";
 
 interface ThemeToggleProps {
   variant?: "icon" | "dropdown";

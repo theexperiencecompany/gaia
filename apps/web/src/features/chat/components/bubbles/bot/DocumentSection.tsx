@@ -1,9 +1,8 @@
 import { Button } from "@heroui/button";
 import { Card, CardBody } from "@heroui/card";
 import { Chip } from "@heroui/chip";
+import { Download01Icon, File01Icon } from "@icons";
 import type React from "react";
-
-import { Download01Icon, File01Icon } from "@/icons";
 import type { DocumentData } from "@/types/features/convoTypes";
 
 interface DocumentSectionProps {

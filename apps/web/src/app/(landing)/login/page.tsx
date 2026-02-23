@@ -4,8 +4,6 @@ import { RedirectLoader } from "@/components/shared/RedirectLoader";
 import { apiauth } from "@/lib";
 import { generatePageMetadata } from "@/lib/seo";
 
-// import LoginForm from "@/features/auth/components/LoginForm";
-
 export const metadata: Metadata = generatePageMetadata({
   title: "Login",
   description:
@@ -14,13 +12,17 @@ export const metadata: Metadata = generatePageMetadata({
   keywords: ["GAIA Login", "Sign In", "Account Access", "User Login"],
 });
 
-// Redirect to the OAuth login endpoint directly
-export default function LoginPage() {
-  // return <LoginForm />;
+export default async function LoginPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ return_url?: string }>;
+}) {
+  const { return_url: returnUrl } = await searchParams;
+  const oauthUrl = `${apiauth.getUri()}oauth/login/workos${returnUrl ? `?return_url=${encodeURIComponent(returnUrl)}` : ""}`;
 
   return (
     <div className="h-screen">
-      <RedirectLoader url={`${apiauth.getUri()}oauth/login/workos`} replace />
+      <RedirectLoader url={oauthUrl} replace />
     </div>
   );
 }

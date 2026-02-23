@@ -1,10 +1,18 @@
 import { Button, ButtonGroup } from "@heroui/button";
 import { Input } from "@heroui/input";
+import {
+  AiSearch02Icon,
+  AlertCircleIcon,
+  ArrowDown01Icon,
+  BrushIcon,
+  Sent02Icon,
+  SentIcon,
+  Tick02Icon,
+} from "@icons";
 import { EditorContent } from "@tiptap/react";
 import { TagInput } from "emblor";
 import Image from "next/image";
 import { Drawer } from "vaul";
-
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   DropdownMenu,
@@ -14,15 +22,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useEmailComposition } from "@/features/mail/hooks/useEmailComposition";
-import {
-  AiSearch02Icon,
-  AlertCircleIcon,
-  ArrowDown01Icon,
-  BrushIcon,
-  Sent02Icon,
-  SentIcon,
-  Tick02Icon,
-} from "@/icons";
 
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import { Button as ShadcnButton } from "../../../components/ui/button";

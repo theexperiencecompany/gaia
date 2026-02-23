@@ -2,7 +2,7 @@ import {
   TOOLS_MESSAGE_KEYS,
   type ToolDataEntry,
 } from "@/config/registries/toolRegistry";
-import { posthog } from "@/lib/posthog";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { MessageType } from "@/types/features/convoTypes";
 
 export function parseStreamData(
@@ -26,7 +26,7 @@ export function parseStreamData(
         // Track each new tool usage in PostHog
         newEntries.forEach((entry) => {
           if (entry?.tool_name) {
-            posthog.capture("tool:used", {
+            trackEvent(ANALYTICS_EVENTS.TOOL_USED, {
               tool_name: entry.tool_name,
               tool_category: entry.tool_category || "unknown",
               timestamp: entry.timestamp || new Date().toISOString(),

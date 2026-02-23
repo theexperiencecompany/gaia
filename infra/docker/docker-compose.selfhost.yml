@@ -1,0 +1,204 @@
+name: gaia-selfhost
+
+services:
+  # ─── Infrastructure ───
+
+  chromadb:
+    image: chromadb/chroma:1.0.0
+    container_name: chromadb
+    volumes:
+      - chroma_data:/chroma/chroma
+    environment:
+      - PERSIST_DIRECTORY=/chroma/chroma
+      - CHROMA_SERVER_HOST=0.0.0.0
+      - CHROMA_SERVER_PORT=8000
+    ports:
+      - "${CHROMADB_HOST_PORT:-8080}:8000"
+    restart: on-failure
+    healthcheck:
+      test:
+        ["CMD", "/bin/bash", "-c", "cat < /dev/null > /dev/tcp/localhost/8000"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - gaia_network
+
+  postgres:
+    image: postgres:alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres # pragma: allowlist secret
+      POSTGRES_DB: langgraph
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - gaia_network
+
+  redis:
+    image: redis:alpine
+    container_name: redis
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    restart: on-failure
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - gaia_network
+
+  mongo:
+    image: mongo:latest
+    container_name: mongo
+    volumes:
+      - mongo_data:/data/db
+    restart: on-failure
+    ports:
+      - "${MONGO_HOST_PORT:-27017}:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+    networks:
+      - gaia_network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: rabbitmq
+    ports:
+      - "${RABBITMQ_HOST_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: always
+    healthcheck:
+      test: ["CMD", "rabbitmqctl", "status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - gaia_network
+
+  # ─── Application ───
+
+  gaia-backend:
+    container_name: gaia-backend
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - ../../apps/api/.env
+    environment:
+      PYTHONUNBUFFERED: 1
+      FORCE_COLOR: 1
+      WORKER_TYPE: main_app
+      PYTHONPATH: /app/apps/api
+    ports:
+      - "${API_HOST_PORT:-8000}:8000"
+    restart: on-failure
+    tty: true
+    stdin_open: true
+    depends_on:
+      chromadb:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  gaia-web:
+    container_name: gaia-web
+    image: ${GAIA_WEB_IMAGE:-ghcr.io/theexperiencecompany/gaia-web:latest}
+    build:
+      context: ../..
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1/}
+    ports:
+      - "${WEB_HOST_PORT:-3000}:3000"
+    restart: on-failure
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  arq_worker:
+    container_name: arq_worker
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - ../../apps/api/.env
+    environment:
+      WORKER_TYPE: arq_worker
+      PYTHONPATH: /app/apps/api
+    command: ["uv", "run", "python", "-m", "arq", "app.worker.WorkerSettings"]
+    restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  seed-models:
+    container_name: seed-models
+    build:
+      context: ../..
+      dockerfile: apps/api/Dockerfile
+    env_file:
+      - ../../apps/api/.env
+    environment:
+      PYTHONPATH: /app/apps/api
+    command: ["uv", "run", "python", "scripts/seed_models.py", "--force"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - gaia_network
+
+volumes:
+  chroma_data:
+  pgdata:
+  redis_data:
+  mongo_data:
+  rabbitmq_data:
+
+networks:
+  gaia_network:
+    driver: bridge

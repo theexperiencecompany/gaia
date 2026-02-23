@@ -4,7 +4,9 @@
   "files": {
     "includes": [
       "**/*.{js,jsx,ts,tsx,json,md,mdx,yml,yaml,html,css,scss,sass}",
-      "!public"
+      "!public",
+      "!src/config/iconPaths.generated.ts",
+      "!src/config/iconPaths.generated.json"
     ]
   },
   "linter": {

@@ -1,0 +1,40 @@
+# Python
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.egg-info
+.pytest_cache
+.mypy_cache
+.ruff_cache
+
+# Node
+**/node_modules
+.pnpm-store
+
+# Build outputs
+**/.next
+**/dist
+**/build
+**/out
+.nx
+
+# Docker
+infra/docker/data
+
+# Git
+.git
+
+# IDE
+.idea
+.vscode
+*.swp
+
+# Misc
+.DS_Store
+*.log
+coverage
+.nyc_output
+.env
+.env.*
+!.env.example

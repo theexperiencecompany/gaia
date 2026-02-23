@@ -123,7 +123,11 @@ async def update_user_selected_model(
         plan_enum = PlanType(user_plan.lower())
         if plan_enum.value not in model.available_in_plans:
             raise HTTPException(
-                status_code=403, detail=f"Model not available for {user_plan} plan"
+                status_code=403,
+                detail={
+                    "message": f"Model not available for {user_plan} plan",
+                    "error_code": "UPGRADE_REQUIRED",
+                },
             )
 
         # Update user's selected model

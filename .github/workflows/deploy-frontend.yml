@@ -1,30 +1,39 @@
 name: Deploy Frontend
 
+# Syncs master to the private frontend deployment repository (Vercel auto-deploy source).
 on:
+  # External dispatch from build workflow.
   repository_dispatch:
     types: [deploy-frontend]
+  # Manual operator trigger.
   workflow_dispatch:
+  # Reusable invocation from other workflows.
   workflow_call:
 
 concurrency:
+  # Prevent overlapping frontend syncs for the same ref.
   group: deploy-frontend-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
+  # Read-only repository access is enough for this workflow.
   contents: read
 
 jobs:
   sync_and_deploy:
-    runs-on: ubuntu-latest
+    # This job only syncs code; frontend hosting platform handles actual rollout.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     environment: production
 
     steps:
+      # Checkout repo so metadata and commit context are available.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Mirror master branch to private fork consumed by production hosting.
       - name: Sync master to private fork
         uses: TobKed/github-forks-sync-action@master
         with:
@@ -35,6 +44,7 @@ jobs:
           target_branch: master
           force: true
 
+      # Always send deploy outcome to Discord for visibility.
       - name: Notify Discord of deployment
         if: always()
         uses: appleboy/discord-action@v1.2.0

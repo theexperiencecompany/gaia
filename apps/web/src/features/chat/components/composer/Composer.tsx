@@ -1,3 +1,4 @@
+import { useRouter } from "next/navigation";
 import type React from "react";
 import {
   useCallback,
@@ -15,11 +16,10 @@ import FilePreview, {
 import FileUpload from "@/features/chat/components/files/FileUpload";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
-import { useLoadingText } from "@/features/chat/hooks/useLoadingText";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import { useSendMessage } from "@/hooks/useSendMessage";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   useComposerFiles,
   useComposerModeSelection,
@@ -51,7 +51,7 @@ interface MainSearchbarProps {
   onDroppedFilesProcessed?: () => void;
   hasMessages: boolean;
   conversationId?: string;
-  // voiceModeActive: () => void;
+  voiceModeActive: () => void;
 }
 
 const Composer: React.FC<MainSearchbarProps> = ({
@@ -63,8 +63,9 @@ const Composer: React.FC<MainSearchbarProps> = ({
   onDroppedFilesProcessed,
   hasMessages,
   conversationId,
-  // voiceModeActive,
+  voiceModeActive,
 }) => {
+  const router = useRouter();
   const [currentHeight, setCurrentHeight] = useState<number>(24);
   const composerInputRef = useRef<ComposerInputRef>(null);
   const inputText = useInputText();
@@ -101,12 +102,18 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   const sendMessage = useSendMessage();
   const { isLoading, setIsLoading } = useLoading();
-  const { setContextualLoading } = useLoadingText();
   const { integrations, isLoading: integrationsLoading } = useIntegrations();
   const currentMode = useMemo(
     () => Array.from(selectedMode)[0],
     [selectedMode],
   );
+
+  // Look up the icon URL for the selected tool's integration
+  const selectedToolIconUrl = useMemo(() => {
+    if (!selectedToolCategory) return null;
+    const integration = integrations.find((i) => i.id === selectedToolCategory);
+    return integration?.iconUrl ?? null;
+  }, [selectedToolCategory, integrations]);
 
   // Ref to prevent duplicate execution in StrictMode
   const autoSendExecutedRef = useRef(false);
@@ -225,11 +232,10 @@ const Composer: React.FC<MainSearchbarProps> = ({
     ) {
       return;
     }
-    // Use contextual loading with user's message for similarity-based loading text
-    setContextualLoading(true, inputText);
+    // Note: Loading state is now set in useSendMessage AFTER user message is persisted
+    // This ensures the loading indicator appears AFTER the user message in the UI
 
-    // Track message send event with PostHog
-    posthog.capture("chat:message_sent", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_SENT, {
       has_text: !!inputText,
       has_files: uploadedFiles.length > 0,
       file_count: uploadedFiles.length,
@@ -281,6 +287,11 @@ const Composer: React.FC<MainSearchbarProps> = ({
         event.preventDefault();
         clearSelectedWorkflow();
       }
+      // If there's a reply-to message, clear it
+      else if (replyToMessage) {
+        event.preventDefault();
+        clearReplyToMessage();
+      }
     }
   };
 
@@ -321,8 +332,19 @@ const Composer: React.FC<MainSearchbarProps> = ({
     setSelectedToolCategory(null);
   };
 
+  // Handle clicking on an integration in the slash command dropdown
+  const handleIntegrationClick = useCallback(
+    (integrationId: string) => {
+      // Close the dropdown first
+      composerInputRef.current?.toggleSlashCommandDropdown();
+      setIsSlashCommandDropdownOpen(false);
+      // Navigate to integrations page with id param
+      router.push(`/integrations?id=${encodeURIComponent(integrationId)}`);
+    },
+    [router, setIsSlashCommandDropdownOpen],
+  );
+
   const handleToggleSlashCommandDropdown = () => {
-    console.log("test");
     // Focus the input first - this will naturally trigger slash command detection
     if (inputRef.current) {
       inputRef.current.focus();
@@ -449,7 +471,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
 
   return (
     <div className="searchbar_container relative flex w-full flex-col justify-center pb-1">
-      <div className="searchbar relative transition-all rounded-3xl dark:bg-surface-200 bg-surface-100 px-1 pt-1 pb-2 z-1">
+      <div className="searchbar relative transition-all z-2 rounded-3xl bg-zinc-800 px-1 pt-1 pb-2">
         <IntegrationsBanner
           integrations={integrations}
           isLoading={integrationsLoading}
@@ -460,6 +482,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
         <SelectedToolIndicator
           toolName={selectedTool}
           toolCategory={selectedToolCategory}
+          iconUrl={selectedToolIconUrl}
           onRemove={handleRemoveSelectedTool}
         />
         <SelectedWorkflowIndicator
@@ -501,6 +524,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
           inputRef={inputRef}
           hasMessages={hasMessages}
           onSlashCommandSelect={handleSlashCommandSelect}
+          onIntegrationClick={handleIntegrationClick}
         />
         <ComposerToolbar
           selectedMode={selectedMode}
@@ -511,7 +535,7 @@ const Composer: React.FC<MainSearchbarProps> = ({
           selectedTool={selectedTool}
           onToggleSlashCommandDropdown={handleToggleSlashCommandDropdown}
           isSlashCommandDropdownOpen={isSlashCommandDropdownOpen}
-          // voiceModeActive={voiceModeActive}
+          voiceModeActive={voiceModeActive}
         />
       </div>
       <FileUpload

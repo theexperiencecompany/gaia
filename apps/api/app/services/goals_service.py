@@ -54,7 +54,7 @@ async def generate_roadmap_with_llm_stream(title: str):
 
         async for chunk in llm.astream(messages):
             chunk_count += 1
-            content = chunk if isinstance(chunk, str) else chunk.text()
+            content = chunk if isinstance(chunk, str) else chunk.text
 
             if content:
                 complete_response += str(content)

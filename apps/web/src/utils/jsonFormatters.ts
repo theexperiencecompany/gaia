@@ -13,6 +13,21 @@ export function isPlainObject(
 }
 
 /**
+ * Check if an object is a TextContent-like object (has type="text" and text property)
+ * This is more specific than just checking for a "text" property to avoid
+ * incorrectly extracting text from objects that happen to have a "text" field
+ * (e.g., Twitter DM inputs with { text: "message", recipient_id: "..." })
+ */
+function isTextContentObject(value: Record<string, unknown>): boolean {
+  return (
+    "type" in value &&
+    value.type === "text" &&
+    "text" in value &&
+    typeof value.text === "string"
+  );
+}
+
+/**
  * Safely parse JSON string, returns null if invalid
  */
 export function safeJsonParse(value: string): unknown | null {
@@ -131,11 +146,11 @@ export function normalizeValue(value: unknown): {
     if (value.length === 0) {
       return { data: [], isStructured: true };
     }
-    // Check if it's an array of TextContent-like objects with 'text' property
-    if (isPlainObject(value[0]) && "text" in value[0]) {
+    // Check if it's an array of TextContent-like objects (must have type="text" AND text property)
+    if (isPlainObject(value[0]) && isTextContentObject(value[0])) {
       const texts = value
         .map((item) =>
-          isPlainObject(item) && "text" in item
+          isPlainObject(item) && isTextContentObject(item)
             ? String(item.text)
             : String(item),
         )
@@ -157,14 +172,14 @@ export function normalizeValue(value: unknown): {
 
   // Handle plain objects
   if (isPlainObject(value)) {
-    // If it has a 'text' property, extract it (TextContent-like)
-    if ("text" in value && typeof value.text === "string") {
-      const parsed = safeJsonParse(value.text);
+    // If it's a TextContent-like object (type="text" + text property), extract the text
+    if (isTextContentObject(value)) {
+      const parsed = safeJsonParse(value.text as string);
       if (parsed !== null && (isPlainObject(parsed) || Array.isArray(parsed))) {
         return { data: parsed, isStructured: true };
       }
       // Even if not valid JSON, if it looks like JSON, show as preformatted
-      if (looksLikeJson(value.text)) {
+      if (looksLikeJson(value.text as string)) {
         return { data: value.text, isStructured: true };
       }
       return { data: value.text, isStructured: false };

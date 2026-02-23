@@ -3,11 +3,10 @@
 import { Button } from "@heroui/button";
 import { Modal, ModalContent } from "@heroui/modal";
 import { Skeleton } from "@heroui/skeleton";
+import { Rocket01Icon } from "@icons";
 import confetti from "canvas-confetti";
 import { useEffect, useRef, useState } from "react";
 import { TwitterShareButton } from "react-share";
-import { toast } from "sonner";
-
 import { TwitterIcon } from "@/components";
 import {
   type HoloCardDisplayData,
@@ -20,7 +19,7 @@ import {
   usePersonalization,
 } from "@/features/onboarding/hooks/usePersonalization";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import { Rocket01Icon } from "@/icons";
+import { toast } from "@/lib/toast";
 
 interface FeatureModalProps {
   isOpen: boolean;
@@ -140,7 +139,7 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
       backdrop="blur"
       scrollBehavior="inside"
     >
-      <ModalContent className="flex border-0! bg-surface-100/50 shadow-none outline-0!">
+      <ModalContent className="flex border-0! bg-zinc-900/50 shadow-none outline-0!">
         <div className="grid h-full flex-1 grid-cols-1 items-center lg:grid-cols-3">
           <div className="col-span-2 space-y-4 p-10 pr-0!">
             <SimpleChatBubbleBot>
@@ -211,14 +210,14 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
                 >
                   {/* Shimmer Card Placeholder */}
                   <div
-                    className="relative overflow-hidden rounded-2xl shadow-2xl bg-linear-to-br from-surface-200 to-surface-400"
+                    className="relative overflow-hidden rounded-2xl shadow-2xl bg-linear-to-br from-zinc-800 to-zinc-600"
                     style={{
                       height: "470px",
                       width: "330px",
                     }}
                   >
                     {/* Shimmer effect */}
-                    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-linear-to-r from-transparent via-surface-950/10 to-transparent" />
+                    <div className="absolute inset-0 -translate-x-full animate-shimmer bg-linear-to-r from-transparent via-white/10 to-transparent" />
 
                     {/* Card content skeleton */}
                     <div className="flex h-full flex-col justify-between p-6">
@@ -248,25 +247,25 @@ export default function FeatureModal({ isOpen, onClose }: FeatureModalProps) {
 
                   {/* Click to Reveal Text */}
                   <div className="absolute inset-0 flex flex-col items-center justify-center gap-3">
-                    <div className="rounded-full bg-surface-950/20 p-4 px-8 backdrop-blur-md animate-pulse">
-                      <p className="font-serif text-2xl font-bold text-foreground-50">
+                    <div className="rounded-full bg-white/20 p-4 px-8 backdrop-blur-md animate-pulse">
+                      <p className="font-serif text-2xl text-white">
                         Click to Reveal
                       </p>
                     </div>
-                    <p className="text-sm text-foreground-400">
+                    <p className="text-sm text-zinc-400">
                       Your GAIA Card awaits ✨
                     </p>
                   </div>
                 </button>
 
-                <p className="text-center text-xs text-foreground-500">
+                <p className="text-center text-xs text-zinc-500">
                   Tap the card to unveil your personalized GAIA experience
                 </p>
               </div>
             ) : (
               // Revealed Card State
               <div className="relative flex flex-col items-center gap-4 animate-scale-in">
-                <div className="text-sm text-foreground-400">Click to flip card</div>
+                <div className="text-sm text-zinc-400">Click to flip card</div>
                 <HoloCardEditor
                   initialData={holoCardData}
                   height={470}

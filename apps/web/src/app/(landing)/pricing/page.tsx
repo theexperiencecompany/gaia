@@ -4,9 +4,11 @@ import JsonLd from "@/components/seo/JsonLd";
 import type { Plan } from "@/features/pricing/api/pricingApi";
 import PricingPage from "@/features/pricing/components/PricingPage";
 import { getPlansServer } from "@/features/pricing/lib/serverPricingApi";
-import { getFAQSchema } from "@/lib/faq";
+import { faqData } from "@/lib/faq";
+import { pricingFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
+  generateFAQSchema,
   generatePageMetadata,
   generateProductSchema,
   generateWebPageSchema,
@@ -18,6 +20,7 @@ export const metadata: Metadata = generatePageMetadata({
   description:
     "Compare GAIA's pricing plans and find the best AI assistant plan for your needs. Choose between free, monthly, and yearly subscriptions. Transparent pricing for every productivity level.",
   path: "/pricing",
+  image: "/api/og/pricing",
   keywords: [
     "GAIA Pricing",
     "AI Assistant Pricing",
@@ -48,7 +51,7 @@ export default async function Pricing() {
     { name: "Pricing", url: `${siteConfig.url}/pricing` },
   ]);
 
-  const faqSchema = getFAQSchema();
+  const combinedFaqSchema = generateFAQSchema([...pricingFAQs, ...faqData]);
 
   // Fetch plans data server-side for SSR + ISR
   let initialPlans: Plan[] = [];
@@ -62,7 +65,12 @@ export default async function Pricing() {
   return (
     <>
       <JsonLd
-        data={[productSchema, webPageSchema, breadcrumbSchema, faqSchema]}
+        data={[
+          productSchema,
+          webPageSchema,
+          breadcrumbSchema,
+          combinedFaqSchema,
+        ]}
       />
       <PricingPage initialPlans={initialPlans} />
     </>

@@ -1,5 +1,6 @@
 {
   "name": "gaia",
+  "scripts": {},
   "dependencies": {
     "@react-navigation/native": "^7.1.25",
     "@react-navigation/native-stack": "^7.8.6",
@@ -12,7 +13,9 @@
   "devDependencies": {
     "@nx/docker": "^22.2.3",
     "@nx/next": "22.2.3",
-    "nx": "22.2.3"
+    "nx": "22.2.3",
+    "knip": "^5",
+    "tsx": "^4.21.0"
   },
   "pnpm": {
     "ignoredBuiltDependencies": [
@@ -22,17 +25,13 @@
       "@heroui/shared-utils",
       "@parcel/watcher",
       "@sentry/cli",
-      "@tailwindcss/oxide",
-      "@vercel/speed-insights",
+      "@swc/core",
       "canvas",
       "core-js",
       "electron",
       "esbuild",
-      "heapdump",
       "nx",
-      "oxc-resolver",
-      "sharp",
-      "unrs-resolver"
+      "sharp"
     ],
     "overrides": {
       "react": "19.1.0",

@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-
 import UseCasesPageClient from "@/app/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
+import { wallpapers } from "@/config/wallpapers";
 import {
   type CommunityWorkflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
+import { useCasesFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
+  generateFAQSchema,
   generateItemListSchema,
   generatePageMetadata,
   generateWebPageSchema,
@@ -20,6 +22,7 @@ export const metadata: Metadata = generatePageMetadata({
   description:
     "Explore powerful workflows and use cases for GAIA. Discover how others are using AI to automate tasks, manage emails, schedule meetings, and boost productivity with community-built workflows.",
   path: "/use-cases",
+  image: "/api/og/use-cases",
   keywords: [
     "GAIA workflows",
     "AI automation workflows",
@@ -27,7 +30,6 @@ export const metadata: Metadata = generatePageMetadata({
     "use cases",
     "automation examples",
     "community workflows",
-    "workflow templates",
     "AI task automation",
   ],
 });
@@ -66,19 +68,23 @@ export default async function UseCasesPage() {
     "Article",
   );
 
+  const faqSchema = generateFAQSchema(useCasesFAQs);
+
   return (
-    <div className="relative h-fit min-h-screen pt-110">
-      <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
-      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-[100%]">
+    <div className="relative h-fit min-h-screen pt-90">
+      <JsonLd
+        data={[webPageSchema, breadcrumbSchema, itemListSchema, faqSchema]}
+      />
+      <div className="absolute inset-0 top-0 z-0 h-[70vh] w-full">
         <Image
-          src={"/images/wallpapers/meadow.webp"}
+          src={wallpapers.useCases.webp}
           alt="GAIA Use-Cases Wallpaper"
           sizes="100vw"
           priority
           fill
           className="aspect-video object-cover object-center opacity-80"
         />
-        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-gradient-to-t from-background to-transparent" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 h-[40vh] bg-linear-to-t from-background to-transparent" />
       </div>
 
       <UseCasesPageClient communityWorkflows={communityWorkflows} />

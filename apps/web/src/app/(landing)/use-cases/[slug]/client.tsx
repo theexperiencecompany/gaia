@@ -1,9 +1,12 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
+import { UserCircle02Icon } from "@icons";
 import { PlayIcon } from "@theexperiencecompany/gaia-icons/solid-standard";
 import Image from "next/image";
 import { useState } from "react";
+import { wallpapers } from "@/config/wallpapers";
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
@@ -15,8 +18,7 @@ import type { UseCase } from "@/features/use-cases/types";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
-import { getTriggerDisplay } from "@/features/workflows/utils/triggerDisplay";
-import { UserCircle02Icon } from "@/icons";
+import { getTriggerDisplayInfo } from "@/features/workflows/triggers";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;
@@ -34,7 +36,16 @@ export default function UseCaseDetailClient({
   const { selectWorkflow } = useWorkflowSelection();
   const { integrations } = useIntegrations();
 
+  // Auth check
+  const { isAuthenticated, openLoginModal } = useAuth();
+
   const handleCreateWorkflow = async () => {
+    // Check authentication first - open login modal if not authenticated
+    if (!isAuthenticated) {
+      openLoginModal();
+      return;
+    }
+
     const title = useCase?.title || communityWorkflow?.title;
     const description = useCase?.description || communityWorkflow?.description;
     const existingSteps = useCase?.steps || communityWorkflow?.steps;
@@ -135,7 +146,7 @@ export default function UseCaseDetailClient({
 
   // Prepare trigger info (only for community workflows)
   const triggerInfo = communityWorkflow
-    ? getTriggerDisplay(communityWorkflow, integrations)
+    ? getTriggerDisplayInfo(communityWorkflow, integrations)
     : null;
   const shouldShowTrigger =
     communityWorkflow && communityWorkflow.trigger_config.type !== "manual";
@@ -154,7 +165,7 @@ export default function UseCaseDetailClient({
   return (
     <div className="relative">
       <Image
-        src={"/images/wallpapers/meadow.webp"}
+        src={wallpapers.useCases.webp}
         alt="GAIA Use-Cases Wallpaper"
         priority
         fill
@@ -163,7 +174,7 @@ export default function UseCaseDetailClient({
       <UseCaseDetailLayout
         breadcrumbs={breadcrumbs}
         title={title}
-        slug={currentSlug}
+        id={currentSlug}
         isCreating={isCreating}
         onCreateWorkflow={handleCreateWorkflow}
         metaInfo={
@@ -176,7 +187,7 @@ export default function UseCaseDetailClient({
                     name={creatorName}
                     size="sm"
                     fallback={
-                      <UserCircle02Icon className="h-8 w-8 text-foreground-300" />
+                      <UserCircle02Icon className="h-8 w-8 text-zinc-300" />
                     }
                   />
                 }
@@ -190,7 +201,7 @@ export default function UseCaseDetailClient({
 
             {/* Run Count */}
             <MetaInfoCard
-              icon={<PlayIcon className="h-7 w-7 text-foreground-400" />}
+              icon={<PlayIcon className="h-7 w-7 text-zinc-400" />}
               label="Ran"
               value={runCountText}
             />
@@ -223,8 +234,8 @@ export default function UseCaseDetailClient({
         steps={
           steps && steps.length > 0 ? (
             <div className="w-fit shrink-0">
-              <div className="sticky top-8 rounded-3xl bg-surface-100 px-6 pt-4 pb-2">
-                <div className="text-sm font-medium text-foreground-500">
+              <div className="sticky top-8 rounded-3xl bg-zinc-900 px-6 pt-4 pb-2">
+                <div className="text-sm font-medium text-zinc-500 mb-3">
                   Workflow Steps:
                 </div>
                 <WorkflowSteps steps={stepsFormatted || []} size="large" />

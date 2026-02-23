@@ -1,7 +1,7 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { Download01Icon } from "@/components";
+import { Download01Icon } from "@icons";
 
 export function DownloadAll() {
   const handleDownloadAll = () => {

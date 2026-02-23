@@ -1,8 +1,6 @@
 "use client";
 
 import { Kbd } from "@heroui/kbd";
-import { Fragment } from "react";
-
 import {
   BubbleChatAddIcon,
   Calendar03Icon,
@@ -12,7 +10,8 @@ import {
   MessageMultiple02Icon,
   Target02Icon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { Fragment } from "react";
 
 /**
  * Keyboard shortcut definition

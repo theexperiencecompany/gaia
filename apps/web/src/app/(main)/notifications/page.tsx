@@ -1,14 +1,14 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
-
+import { useCallback, useEffect, useRef, useState } from "react";
 import NotificationsHeader from "@/components/layout/headers/NotificationsHeader";
 import { EmailPreviewModal } from "@/features/mail/components/EmailPreviewModal";
+import { NotificationConnectBanner } from "@/features/notification/components/NotificationConnectBanner";
 import { NotificationsList } from "@/features/notification/components/NotificationsList";
 import { useAllNotifications } from "@/features/notification/hooks/useAllNotifications";
 import { useNotifications } from "@/features/notification/hooks/useNotifications";
 import { useHeader } from "@/hooks/layout/useHeader";
+import { toast } from "@/lib/toast";
 import { NotificationsAPI } from "@/services/api/notifications";
 import {
   type ModalConfig,
@@ -90,10 +90,15 @@ export default function NotificationsPage() {
     refreshNotifications();
   };
 
-  // Memoize the mark all as read handler to prevent recreating it on every render
   const handleMarkAllAsRead = useCallback(async () => {
     await handleBulkMarkAsRead(unreadNotifications.map((n) => n.id));
   }, [unreadNotifications, handleBulkMarkAsRead]);
+
+  // Keep a ref so the header's onMarkAllAsRead always calls the latest version
+  // without adding handleMarkAllAsRead to the setHeader effect's dep array
+  // (which would cause an infinite loop via setHeader → re-render → new callback → setHeader…)
+  const handleMarkAllAsReadRef = useRef(handleMarkAllAsRead);
+  handleMarkAllAsReadRef.current = handleMarkAllAsRead;
 
   // Set the header with tab state
   useEffect(() => {
@@ -102,18 +107,19 @@ export default function NotificationsPage() {
         selectedTab={selectedTab}
         onTabChange={setSelectedTab}
         unreadCount={unreadNotifications.length}
-        onMarkAllAsRead={handleMarkAllAsRead}
+        onMarkAllAsRead={() => handleMarkAllAsReadRef.current()}
       />,
     );
 
     return () => {
       setHeader(null);
     };
-  }, [selectedTab, unreadNotifications.length, handleMarkAllAsRead]);
+  }, [selectedTab, unreadNotifications.length, setHeader]);
 
   return (
     <div className="flex h-full w-full flex-col overflow-hidden bg-primary-bg">
       <div className="max-h-[calc(100vh-120px)] overflow-y-auto px-6 pt-6">
+        <NotificationConnectBanner variant="full" />
         {selectedTab === "unread" ? (
           <NotificationsList
             notifications={unreadNotifications}

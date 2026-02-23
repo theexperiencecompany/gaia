@@ -11,7 +11,6 @@ import Sidebar from "@/components/layout/sidebar/MainSidebar";
 import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import LoginModal from "@/features/auth/components/LoginModal";
 import { useOnboardingGuard } from "@/features/auth/hooks/useOnboardingGuard";
 import { useUser } from "@/features/auth/hooks/useUser";
 import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
@@ -20,6 +19,7 @@ import { isOnboardingPhaseUpdateMessage } from "@/features/onboarding/types/webs
 import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
+import { useOAuthSuccessToast } from "@/hooks/useOAuthSuccessToast";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { apiService } from "@/lib/api";
 import { wsManager } from "@/lib/websocket";
@@ -34,7 +34,7 @@ import { useUIStoreSidebar } from "@/stores/uiStore";
 
 const HeaderSidebarTrigger = () => {
   return (
-    <div className="pt-1">
+    <div className="">
       <CustomSidebarTrigger />
     </div>
   );
@@ -63,6 +63,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync();
+  useOAuthSuccessToast(); // Global OAuth success/error toast handling
 
   // Determine visibility of onboarding UI elements:
   const hasCompletedInitialOnboarding = user.onboarding?.completed === true;
@@ -182,8 +183,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
         onOpenChange={handleOpenChange}
         defaultOpen={defaultOpen}
       >
-        <LoginModal />
-
         <div
           className="relative flex min-h-screen w-full"
           style={{ touchAction: "pan-y" }}
@@ -193,7 +192,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
             <Sidebar />
           </SidebarLayout>
 
-          <SidebarInset className="flex h-screen flex-col bg-primary-bg">
+          <SidebarInset className="flex h-screen min-w-0 w-auto flex-col bg-primary-bg">
             <header
               className="flex shrink-0 items-center justify-between p-2"
               onClick={closeOnTouch}

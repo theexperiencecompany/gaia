@@ -98,9 +98,9 @@ async def authenticate_workos_session(
 
             # Prepare user info for return
             user_info = {
-                "user_id": str(user_data.get("_id")),
                 "auth_provider": "workos",
                 **user_data,
+                "user_id": str(user_data.get("_id")),
             }
 
             user_info.pop("_id", None)

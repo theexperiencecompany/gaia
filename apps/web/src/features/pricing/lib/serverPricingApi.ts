@@ -3,7 +3,7 @@ import axios from "axios";
 import type { Plan } from "../api/pricingApi";
 
 const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
+  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1/";
 
 export async function getPlansServer(activeOnly = true): Promise<Plan[]> {
   const headers: Record<string, string> = {
@@ -11,7 +11,7 @@ export async function getPlansServer(activeOnly = true): Promise<Plan[]> {
   };
 
   try {
-    const response = await axios.get<Plan[]>(`${API_BASE_URL}/payments/plans`, {
+    const response = await axios.get<Plan[]>(`${API_BASE_URL}payments/plans`, {
       headers,
       params: { active_only: activeOnly },
       timeout: 10000, // 10 second timeout

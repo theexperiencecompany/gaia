@@ -42,6 +42,10 @@ export interface UserMessageData extends BaseMessageData {
   text?: string;
   file?: File | null | string;
   filename?: string;
+
+  // Retry callbacks
+  onRetry?: () => void;
+  isRetrying?: boolean;
 }
 
 // Bot-specific message data with UI callbacks
@@ -57,6 +61,10 @@ export interface BotMessageData extends BaseMessageData {
   setOpenImage: React.Dispatch<React.SetStateAction<boolean>>;
   setImageData: Dispatch<React.SetStateAction<SetImageDataType>>;
   onOpenMemoryModal?: () => void;
+
+  // Retry callbacks
+  onRetry?: () => void;
+  isRetrying?: boolean;
 }
 
 // Message type for conversations (combines user and bot data)

@@ -1,6 +1,6 @@
 "use client";
 
-import { InboxIcon } from "@/icons";
+import { InboxIcon } from "@icons";
 
 import HeaderComponent from "./HeaderComponent";
 

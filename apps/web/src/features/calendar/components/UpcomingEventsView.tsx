@@ -1,9 +1,9 @@
+import { CalendarUpload01Icon } from "@icons";
 import type React from "react";
 import { useMemo } from "react";
-
+import { GoogleCalendarIcon } from "@/components/shared/icons";
 import { getEventColor } from "@/features/calendar/utils/eventColors";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
-import { CalendarUpload01Icon, GoogleCalendarIcon } from "@/icons";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 import { formatDate } from "@/utils";
@@ -116,7 +116,7 @@ const UpcomingEventsView: React.FC<UpcomingEventsViewProps> = ({
       emptyMessage="No upcoming events"
       errorMessage="Failed to load upcoming events"
       isConnected={isConnected}
-      connectIntegrationId="google_calendar"
+      connectIntegrationId="googlecalendar"
       onConnect={onConnect}
       connectButtonText="Connect"
       connectTitle="Connect Your Calendar"

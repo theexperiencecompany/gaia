@@ -1,15 +1,15 @@
 "use client";
 
 import { Kbd } from "@heroui/kbd";
+import { MessageMultiple02Icon, SearchIcon } from "@icons";
 import { Command } from "cmdk";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { useRouter } from "next/navigation";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-
 import { getLinkByLabel } from "@/config/appConfig";
+import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { MessageMultiple02Icon, SearchIcon } from "@/icons";
 
 import { type ComprehensiveSearchResponse, searchApi } from "../api/searchApi";
 import {
@@ -103,6 +103,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
 
   // Action handlers
   const handleNewChat = useCallback(() => {
+    prepareNewChat();
     router.push("/c");
     onOpenChange(false);
   }, [router, onOpenChange]);
@@ -176,14 +177,14 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
       {open && (
         <div className={COMMAND_MENU_STYLES.modalWrapper}>
           {/* Backdrop */}
-          <motion.div
+          <m.div
             {...ANIMATION_CONFIG.backdrop}
             className={COMMAND_MENU_STYLES.backdrop}
             onClick={() => onOpenChange(false)}
           />
 
           {/* Command Menu */}
-          <motion.div
+          <m.div
             {...ANIMATION_CONFIG.container}
             className={COMMAND_MENU_STYLES.container}
           >
@@ -330,7 +331,7 @@ export default function CommandMenu({ open, onOpenChange }: CommandMenuProps) {
                 </p>
               </div>
             </Command>
-          </motion.div>
+          </m.div>
         </div>
       )}
     </AnimatePresence>

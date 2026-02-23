@@ -4,4 +4,5 @@
  * Shared utilities for GAIA TypeScript/JavaScript applications.
  */
 
-export {};
+export * from "./bots";
+export * from "./cli";

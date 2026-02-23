@@ -1,0 +1,16 @@
+{
+  "name": "bots-e2e",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "root": "apps/bots",
+  "sourceRoot": "apps/bots",
+  "projectType": "application",
+  "targets": {
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "pnpm vitest run --config vitest.config.ts",
+        "cwd": "{projectRoot}"
+      }
+    }
+  }
+}

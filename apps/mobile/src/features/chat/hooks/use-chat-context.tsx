@@ -1,9 +1,17 @@
-import { createContext, type ReactNode, useContext, useState } from "react";
+import {
+  createContext,
+  type ReactNode,
+  useCallback,
+  useContext,
+  useMemo,
+} from "react";
+import { useChatStore } from "@/stores/chat-store";
 
 interface ChatContextValue {
   activeChatId: string | null;
   setActiveChatId: (chatId: string | null) => void;
   createNewChat: () => string;
+  clearActiveMessages: () => void;
 }
 
 const ChatContext = createContext<ChatContextValue | undefined>(undefined);
@@ -13,21 +21,43 @@ interface ChatProviderProps {
 }
 
 export function ChatProvider({ children }: ChatProviderProps) {
-  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const activeChatId = useChatStore((state) => state.activeChatId);
 
-  const createNewChat = (): string => {
+  const setActiveChatId = useCallback((chatId: string | null) => {
+    useChatStore.getState().setActiveChatId(chatId);
+  }, []);
+
+  const createNewChat = useCallback((): string => {
     const newChatId = `chat-${Date.now()}`;
-    setActiveChatId(newChatId);
+    useChatStore.getState().setActiveChatId(newChatId);
     return newChatId;
-  };
+  }, []);
 
-  return (
-    <ChatContext.Provider
-      value={{ activeChatId, setActiveChatId, createNewChat }}
-    >
-      {children}
-    </ChatContext.Provider>
+  const clearActiveMessages = useCallback(() => {
+    const store = useChatStore.getState();
+    const currentChatId = store.activeChatId;
+    if (currentChatId) {
+      store.clearMessages(currentChatId);
+    }
+    store.setStreamingState({
+      isTyping: false,
+      isStreaming: false,
+      conversationId: null,
+      progress: null,
+    });
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      activeChatId,
+      setActiveChatId,
+      createNewChat,
+      clearActiveMessages,
+    }),
+    [activeChatId, setActiveChatId, createNewChat, clearActiveMessages],
   );
+
+  return <ChatContext.Provider value={value}>{children}</ChatContext.Provider>;
 }
 
 export function useChatContext(): ChatContextValue {

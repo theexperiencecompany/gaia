@@ -1,10 +1,33 @@
 name: Docker Build & Push
 
+# Build/publish Docker images, then decide which production deploy workflows to trigger.
 on:
+  # External trigger from another workflow/job.
   repository_dispatch:
     types: [build]
+  # Manual trigger with deploy-mode overrides for operators.
   workflow_dispatch:
+    inputs:
+      # `auto` follows Nx affected for backend, and always syncs frontend on master.
+      deployment_mode:
+        description: "Manual deploy mode"
+        required: false
+        default: auto
+        type: choice
+        options:
+          - auto
+          - backend-only
+          - frontend-only
+          - both
+          - none
+  # Reusable workflow entrypoint used by main quality workflow.
   workflow_call:
+    inputs:
+      deployment_mode:
+        description: "Deploy mode override for called workflow"
+        required: false
+        type: string
+        default: auto
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -12,12 +35,17 @@ concurrency:
 
 jobs:
   docker-release:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
       packages: write
+      actions: read
+    outputs:
+      api_affected: ${{ steps.affected.outputs.api }}
+      bots_affected: ${{ steps.affected.outputs.bots }}
 
     steps:
+      # Prepare repository + tooling so Nx can calculate affected projects.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
@@ -49,34 +77,48 @@ jobs:
 
       - name: Sync Python dependencies (Nx cached)
         run: npx nx sync api
-        env:
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+        # env:
+        #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
-      - name: Check if api is affected
+      # Map affected project list to deployable backend scopes.
+      - name: Check affected projects
         id: affected
         run: |
-          AFFECTED=$(npx nx show projects --affected --type=app 2>/dev/null || echo "")
-          if echo "$AFFECTED" | grep -qE "(api|voice-agent)"; then
-            echo "api=true" >> $GITHUB_OUTPUT
-          else
-            echo "api=false" >> $GITHUB_OUTPUT
-          fi
-          echo "Affected projects: $AFFECTED"
+          AFFECTED_RAW="$(npx nx show projects --affected 2>/dev/null || true)"
+          AFFECTED="$(printf '%s\n' "$AFFECTED_RAW" | tr ' ' '\n' | sed '/^$/d')"
 
+          echo "Affected projects:"
+          echo "$AFFECTED"
+
+          api=false
+          bots=false
+
+          if echo "$AFFECTED" | grep -qx "api" || echo "$AFFECTED" | grep -qx "voice-agent"; then
+            api=true
+          fi
+
+          if echo "$AFFECTED" | grep -qx "bot-discord" || echo "$AFFECTED" | grep -qx "bot-slack" || echo "$AFFECTED" | grep -qx "bot-telegram"; then
+            bots=true
+          fi
+
+          echo "api=$api" >> "$GITHUB_OUTPUT"
+          echo "bots=$bots" >> "$GITHUB_OUTPUT"
+
+      # Login/build tooling only when a backend image release is needed.
       - name: Log in to GHCR
-        if: steps.affected.outputs.api == 'true'
+        if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
-        if: steps.affected.outputs.api == 'true'
-        uses: docker/setup-buildx-action@v3
+        if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
 
       - name: Determine version scheme
-        if: steps.affected.outputs.api == 'true'
+        if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
         id: version
         run: |
           if [ "${{ github.ref }}" = "refs/heads/master" ]; then
@@ -85,24 +127,196 @@ jobs:
             echo "scheme=develop" >> $GITHUB_OUTPUT
           fi
 
-      - name: Release Docker images
+      # Publish API image tags when API-related scope changed.
+      - name: Release apps Docker images
         if: steps.affected.outputs.api == 'true'
         run: npx nx release --group=apps --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
+
+      # Publish bot image tags when bot scope changed.
+      - name: Release bots Docker images
+        if: steps.affected.outputs.bots == 'true'
+        run: npx nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
+
+      # Discord command sync is only meaningful for production bot deploys.
+      - name: Register Discord slash commands
+        if: steps.affected.outputs.bots == 'true' && github.ref == 'refs/heads/master'
+        working-directory: apps/bots/discord
         env:
-          NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CLIENT_ID: ${{ secrets.DISCORD_CLIENT_ID }}
+        run: pnpm deploy-commands
 
       - name: Skip notification
-        if: steps.affected.outputs.api != 'true'
-        run: echo "API not affected, skipping Docker build"
+        if: steps.affected.outputs.api != 'true' && steps.affected.outputs.bots != 'true'
+        run: echo "No affected API/bot Docker projects, skipping build"
 
+  docker-web:
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      packages: write
+      actions: read
+
+    steps:
+      # Prepare repository + tooling for affected check and optional image build.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set Nx SHAs
+        uses: nrwl/nx-set-shas@v4
+        with:
+          main-branch-name: master
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.17.1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.15.1"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Convert Nx affected output into a simple boolean consumed by downstream jobs.
+      - name: Check if web is affected
+        id: web-affected
+        run: |
+          AFFECTED_RAW="$(npx nx show projects --affected 2>/dev/null || true)"
+          AFFECTED="$(printf '%s\n' "$AFFECTED_RAW" | tr ' ' '\n' | sed '/^$/d')"
+          if echo "$AFFECTED" | grep -qx "web"; then
+            echo "web=true" >> $GITHUB_OUTPUT
+          else
+            echo "web=false" >> $GITHUB_OUTPUT
+          fi
+          echo "Affected projects: $AFFECTED"
+
+      # Registry/buildx setup is only needed when web image should be rebuilt.
+      - name: Log in to GHCR
+        if: steps.web-affected.outputs.web == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+        if: steps.web-affected.outputs.web == 'true'
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
+
+      - name: Determine image tag
+        if: steps.web-affected.outputs.web == 'true'
+        id: tag
+        run: |
+          if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            echo "tag=latest" >> $GITHUB_OUTPUT
+          else
+            SHORT_SHA=$(echo "${{ github.sha }}" | cut -c1-7)
+            echo "tag=dev-${SHORT_SHA}" >> $GITHUB_OUTPUT
+          fi
+
+      # Build and push web image tags for deploy workflow to consume.
+      - name: Build and push web Docker image
+        if: steps.web-affected.outputs.web == 'true'
+        uses: useblacksmith/build-push-action@v2
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/gaia-web:${{ steps.tag.outputs.tag }}
+            ghcr.io/${{ github.repository_owner }}/gaia-web:${{ github.sha }}
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1/
+
+      - name: Skip notification
+        if: steps.web-affected.outputs.web != 'true'
+        run: echo "Web not affected, skipping Docker build"
+
+  deployment-plan:
+    # Keep deploy planning behind both build lanes so trigger jobs never race ahead.
+    needs: [docker-release, docker-web]
+    runs-on: ubuntu-latest
+    outputs:
+      backend_deploy: ${{ steps.plan.outputs.backend_deploy }}
+      frontend_deploy: ${{ steps.plan.outputs.frontend_deploy }}
+    steps:
+      # Single decision point that translates backend affected + manual mode into deploy booleans.
+      - name: Compute deploy plan
+        id: plan
+        env:
+          REF: ${{ github.ref }}
+          EVENT_NAME: ${{ github.event_name }}
+          MANUAL_MODE_INPUT: ${{ inputs.deployment_mode || '' }}
+          MANUAL_MODE_EVENT: ${{ github.event.inputs.deployment_mode || '' }}
+          API_AFFECTED: ${{ needs.docker-release.outputs.api_affected || 'false' }}
+          BOTS_AFFECTED: ${{ needs.docker-release.outputs.bots_affected || 'false' }}
+        run: |
+          set -euo pipefail
+
+          backend_deploy=false
+          frontend_deploy=false
+          manual_mode="${MANUAL_MODE_INPUT:-}"
+
+          if [ -z "$manual_mode" ]; then
+            manual_mode="${MANUAL_MODE_EVENT:-}"
+          fi
+          if [ -z "$manual_mode" ]; then
+            manual_mode="auto"
+          fi
+
+          if [ "$REF" != "refs/heads/master" ]; then
+            echo "Not on master; deploy jobs disabled."
+          elif [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            case "$manual_mode" in
+              auto)
+                if [ "$API_AFFECTED" = "true" ] || [ "$BOTS_AFFECTED" = "true" ]; then
+                  backend_deploy=true
+                fi
+                # Frontend sync to Vercel source repo is always allowed on master.
+                frontend_deploy=true
+                ;;
+              backend-only)
+                backend_deploy=true
+                ;;
+              frontend-only)
+                frontend_deploy=true
+                ;;
+              both)
+                backend_deploy=true
+                frontend_deploy=true
+                ;;
+              none)
+                ;;
+              *)
+                echo "::error::Invalid deployment_mode '$manual_mode'. Use auto, backend-only, frontend-only, both, or none."
+                exit 1
+                ;;
+            esac
+          else
+            if [ "$API_AFFECTED" = "true" ] || [ "$BOTS_AFFECTED" = "true" ]; then
+              backend_deploy=true
+            fi
+            frontend_deploy=true
+          fi
+
+          echo "backend_deploy=$backend_deploy" >> "$GITHUB_OUTPUT"
+          echo "frontend_deploy=$frontend_deploy" >> "$GITHUB_OUTPUT"
+          echo "Deploy plan => backend: $backend_deploy, frontend: $frontend_deploy"
+
+  # Trigger backend production deploy only when deploy plan allows it.
   trigger-deploy:
-    needs: [docker-release]
-    if: github.ref == 'refs/heads/master'
+    needs: [deployment-plan]
+    if: needs.deployment-plan.outputs.backend_deploy == 'true'
     uses: ./.github/workflows/deploy.yml
     secrets: inherit
 
+  # Trigger web production deploy only when deploy plan allows it.
   trigger-web:
-    needs: [docker-release]
-    if: github.ref == 'refs/heads/master'
+    needs: [deployment-plan]
+    if: needs.deployment-plan.outputs.frontend_deploy == 'true'
     uses: ./.github/workflows/deploy-frontend.yml
     secrets: inherit

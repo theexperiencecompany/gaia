@@ -1,0 +1,276 @@
+---
+title: "Commands Reference"
+description: "Complete reference for all GAIA CLI commands"
+icon: "rectangle-terminal"
+---
+
+## Overview
+
+The GAIA CLI provides commands for setup, running, logs, health checks, and shutdown.
+
+```bash
+gaia init          # Full setup from scratch
+gaia setup         # Configure existing repo
+gaia start         # Start self-host services
+gaia dev           # Developer mode (Nx TUI)
+gaia dev full      # Developer mode + workers (Nx TUI)
+gaia logs          # Stream logs
+gaia stop          # Stop services
+gaia status        # Check service health
+gaia --version     # Show CLI version
+gaia --help        # Show all commands
+```
+
+## All Commands
+
+| Command | Description |
+|---------|-------------|
+| `gaia init` | Full setup from scratch — clone repo, configure env, and initialize services |
+| `gaia setup` | Configure an existing repository |
+| `gaia start` | Start GAIA services in self-host mode |
+| `gaia dev` | Run developer mode in Nx TUI (`mise dev`) |
+| `gaia dev full` | Run developer mode + workers in Nx TUI (`mise dev:full`) |
+| `gaia logs` | Stream logs for currently running services |
+| `gaia stop` | Stop running GAIA services |
+| `gaia status` | Check health and latency of GAIA services |
+| `gaia --version` | Display the current CLI version |
+| `gaia --help` | Show help and available commands |
+
+---
+
+## `gaia init`
+
+Complete first-time setup.
+
+```bash
+gaia init
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--branch <name>` | Clone a specific branch |
+
+```bash
+gaia init --branch develop
+```
+
+The wizard walks through:
+
+1. Prerequisites (Git and Docker; Mise only for developer mode)
+2. Port conflict checks and alternatives
+3. Repository setup
+4. Environment setup (manual or Infisical)
+5. Project setup
+
+---
+
+## `gaia setup`
+
+Configure an existing GAIA repository.
+
+```bash
+cd /path/to/gaia
+gaia setup
+```
+
+Use this when you need to reconfigure environment variables, change setup mode, or refresh setup.
+
+---
+
+## `gaia start`
+
+Start GAIA services in **self-host mode**.
+
+```bash
+gaia start
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--build` | Rebuild Docker images before starting |
+| `--pull` | Pull latest base images before starting |
+
+`gaia start --build --pull`
+
+<Note>
+In developer mode, use `gaia dev` or `gaia dev full` instead of `gaia start`.
+</Note>
+
+---
+
+## `gaia dev`
+
+Run developer mode in Nx TUI (foreground).
+
+```bash
+gaia dev
+```
+
+Equivalent underlying command: `mise dev`
+
+## `gaia dev full`
+
+Run developer mode + workers in Nx TUI (foreground).
+
+```bash
+gaia dev full
+```
+
+Equivalent underlying command: `mise dev:full`
+
+---
+
+## `gaia logs`
+
+Stream logs for currently running services.
+
+```bash
+gaia logs
+```
+
+- Self-host mode: streams Docker service logs.
+- Developer mode: streams Docker logs and, when available, app logs.
+
+---
+
+## `gaia stop`
+
+Stop running GAIA services.
+
+```bash
+gaia stop
+```
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--force-ports` | Aggressively stop listeners on API/Web ports (may affect non-GAIA processes) |
+
+```bash
+gaia stop --force-ports
+```
+
+By default, `gaia stop` runs in safe mode and only targets GAIA-managed processes.
+
+---
+
+## `gaia status`
+
+Check health and latency of GAIA services.
+
+```bash
+gaia status
+```
+
+---
+
+## Port Conflict Handling
+
+If required ports are in use, the CLI:
+
+1. Detects the conflicting process
+2. Suggests alternative ports
+3. Writes overrides to `infra/docker/.env`
+
+Overrides persist across restarts and are reused by `gaia start`, `gaia logs`, and `gaia status`.
+
+---
+
+## Upgrading
+
+### Updating GAIA
+
+```bash
+cd /path/to/gaia
+git pull
+gaia setup
+```
+
+### Updating the CLI
+
+<CodeGroup>
+
+```bash npm
+npm install -g @heygaia/cli
+```
+
+```bash pnpm
+pnpm add -g @heygaia/cli
+```
+
+```bash bun
+bun add -g @heygaia/cli
+```
+
+</CodeGroup>
+
+---
+
+## Uninstalling
+
+1. Stop all services: `gaia stop`
+2. Delete the repository directory
+3. Remove CLI metadata: `rm -rf ~/.gaia`
+4. Uninstall CLI:
+
+<CodeGroup>
+
+```bash npm
+npm uninstall -g @heygaia/cli
+```
+
+```bash pnpm
+pnpm remove -g @heygaia/cli
+```
+
+```bash bun
+bun remove -g @heygaia/cli
+```
+
+</CodeGroup>
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="command not found: gaia">
+    Reinstall globally and open a new terminal session:
+
+    <CodeGroup>
+
+    ```bash npm
+    npm install -g @heygaia/cli
+    gaia --help
+    ```
+
+    ```bash pnpm
+    pnpm add -g @heygaia/cli
+    gaia --help
+    ```
+
+    ```bash bun
+    bun add -g @heygaia/cli
+    gaia --help
+    ```
+
+    </CodeGroup>
+  </Accordion>
+
+  <Accordion title="Raw mode is not supported">
+    The CLI requires an interactive terminal. Don’t run it in a non-TTY context.
+  </Accordion>
+
+  <Accordion title="Python 3 not found during setup">
+    Install Python through Mise:
+
+    ```bash
+    mise install python
+    ```
+  </Accordion>
+</AccordionGroup>

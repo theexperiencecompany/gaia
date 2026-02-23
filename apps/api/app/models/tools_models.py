@@ -10,11 +10,9 @@ class ToolInfo(BaseModel):
     """Model for individual tool information."""
 
     name: str
-    category: str
-    category_display_name: Optional[str] = None  # Human-readable name for display
-    integration_name: Optional[str] = None  # Human-readable integration name
-    required_integration: Optional[str] = None
-    icon_url: Optional[str] = None  # For custom integrations with dynamic icons
+    category: str  # Integration ID (e.g., "gmail", UUID for custom)
+    display_name: str  # REQUIRED - human-readable name, never null
+    icon_url: Optional[str] = None
 
 
 class ToolsListResponse(BaseModel):

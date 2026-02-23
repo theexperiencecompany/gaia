@@ -20,7 +20,7 @@ export const isOnlyEmojis = (text: string | null | undefined): boolean => {
   // Note: Inside [], property escapes are allowed in modern JS engines (V8).
   // But let's use a robust pattern.
   const emojiRegex =
-    /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\u200d|\ufe0f|\u20e3|\s)+$/u;
+    /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3|\s)+$/u;
 
   // Exclude strings that are just digits/punctuation without being emoji sequences
   return (
@@ -39,15 +39,22 @@ export const getEmojiCount = (text: string | null | undefined): number => {
 
   try {
     const segmenter = new Intl.Segmenter("en", { granularity: "grapheme" });
+    const emojiRegex =
+      /^(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3)+$/u;
     let count = 0;
     for (const { segment } of segmenter.segment(text)) {
-      if (segment.trim().length > 0) {
+      // Only count if the segment matches emoji patterns
+      if (emojiRegex.test(segment)) {
         count++;
       }
     }
     return count;
   } catch {
-    // Fallback if Intl is not available
-    return Array.from(text).filter((c) => c.trim().length > 0).length;
+    // Fallback if Intl.Segmenter is not available
+    // Use regex to match emoji sequences
+    const emojiRegex =
+      /(?:\p{Extended_Pictographic}|\p{Emoji_Presentation}|\p{Emoji_Modifier_Base}|\p{Emoji_Modifier}|\u200d|\ufe0f|\u20e3)+/gu;
+    const matches = text.match(emojiRegex);
+    return matches ? matches.length : 0;
   }
 };

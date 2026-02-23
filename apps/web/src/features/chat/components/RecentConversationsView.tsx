@@ -1,28 +1,20 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
+import { Calendar03Icon, MessageMultiple02Icon } from "@icons";
 import { useRouter } from "next/navigation";
-import { memo, useCallback, useEffect, useMemo, useRef } from "react";
-
-import { Calendar03Icon, MessageMultiple02Icon } from "@/components";
+import { memo, useCallback, useMemo } from "react";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
-import {
-  useConversationList,
-  useFetchConversations,
-} from "@/features/chat/hooks/useConversationList";
+import { useConversationList } from "@/features/chat/hooks/useConversationList";
+import { useSyncStatus } from "@/hooks/useBackgroundSync";
 
 const RecentConversationsView = memo(() => {
   const router = useRouter();
-  const { conversations, loading, error } = useConversationList();
-  const fetchConversations = useFetchConversations();
-  const hasLoadedRef = useRef(false);
+  const { conversations } = useConversationList();
+  const { initialSyncCompleted, syncError } = useSyncStatus();
 
-  useEffect(() => {
-    if (!hasLoadedRef.current && conversations.length === 0 && !loading) {
-      hasLoadedRef.current = true;
-      fetchConversations(1, 10);
-    }
-  }, [conversations.length, loading, fetchConversations]);
+  // Only show loading when no cache AND initial sync hasn't completed
+  const isLoading = conversations.length === 0 && !initialSyncCompleted;
 
   const displayConversations = useMemo(() => {
     return conversations.slice(0, 20);
@@ -42,11 +34,11 @@ const RecentConversationsView = memo(() => {
   return (
     <BaseCardView
       title="Recent Conversations"
-      icon={<MessageMultiple02Icon className="h-6 w-6 text-foreground-500" />}
-      isFetching={loading}
-      isEmpty={displayConversations.length === 0}
+      icon={<MessageMultiple02Icon className="h-6 w-6 text-zinc-500" />}
+      isFetching={isLoading}
+      isEmpty={displayConversations.length === 0 && !isLoading}
       emptyMessage="No recent conversations"
-      errorMessage={error ?? "Failed to load conversations"}
+      errorMessage={syncError ?? undefined}
       path="/chat"
       onRefresh={handleViewAll}
     >
@@ -57,12 +49,12 @@ const RecentConversationsView = memo(() => {
             onClick={() =>
               handleConversationClick(conversation.conversation_id)
             }
-            className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-surface-300/30"
+            className="flex cursor-pointer items-start gap-3 p-4 transition-colors hover:bg-zinc-700/30"
           >
             <div className="min-w-0 flex-1 flex justify-between">
               <div>
                 <div className="flex items-start justify-between gap-2">
-                  <h4 className="text-base font-medium text-foreground-900 line-clamp-1">
+                  <h4 className="text-base font-medium text-white line-clamp-1">
                     {conversation.title}
                   </h4>
                   {conversation.starred && (
@@ -70,7 +62,7 @@ const RecentConversationsView = memo(() => {
                   )}
                 </div>
                 {conversation.description && (
-                  <p className="mt-1 text-xs text-foreground-400 line-clamp-2">
+                  <p className="mt-1 text-xs text-zinc-400 line-clamp-2">
                     {conversation.description}
                   </p>
                 )}
@@ -79,7 +71,7 @@ const RecentConversationsView = memo(() => {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-foreground-400 px-1"
+                  className="text-zinc-400 px-1"
                   radius="sm"
                   startContent={
                     <MessageMultiple02Icon
@@ -96,7 +88,7 @@ const RecentConversationsView = memo(() => {
                 <Chip
                   size="sm"
                   variant="flat"
-                  className="text-foreground-400 px-1"
+                  className="text-zinc-400 px-1"
                   radius="sm"
                   startContent={
                     <Calendar03Icon width={15} height={15} className="mx-1" />

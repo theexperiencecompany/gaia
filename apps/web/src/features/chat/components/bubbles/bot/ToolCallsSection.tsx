@@ -1,14 +1,14 @@
 "use client";
 
-import { Accordion, AccordionItem } from "@heroui/react";
+import { Accordion, AccordionItem } from "@heroui/accordion";
+import { ToolsIcon } from "@icons";
 import { useMemo, useState } from "react";
-
+import { ChevronDown } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { ChevronDown, ToolsIcon } from "@/icons";
 
 interface ToolCallsSectionProps {
   tool_calls_data: ToolCallEntry[];
@@ -77,40 +77,41 @@ export default function ToolCallsSection({
 
     return (
       <div className="flex min-h-8 items-center -space-x-2">
-        {displayIcons.map((call, index) => {
-          const IconComponent = getToolCategoryIcon(
-            call.tool_category || "general",
-            {
-              width: 21,
-              height: 21,
-            },
-            getIconUrl(call),
-          ) || (
-            <div className="p-1 bg-surface-200 rounded-lg text-foreground-400 backdrop-blur">
-              <ToolsIcon width={21} height={21} />
-            </div>
-          );
+        {displayIcons.length > 1 &&
+          displayIcons.map((call, index) => {
+            const IconComponent = getToolCategoryIcon(
+              call.tool_category || "general",
+              {
+                width: 21,
+                height: 21,
+              },
+              getIconUrl(call),
+            ) || (
+              <div className="p-1 bg-zinc-800 rounded-lg text-zinc-400 backdrop-blur">
+                <ToolsIcon width={21} height={21} />
+              </div>
+            );
 
-          return IconComponent ? (
-            <div
-              key={`${call.tool_name}-${index}`}
-              className="relative flex min-w-8 items-center justify-center"
-              style={{
-                rotate:
-                  displayIcons.length > 1
-                    ? index % 2 === 0
-                      ? "8deg"
-                      : "-8deg"
-                    : "0deg",
-                zIndex: index,
-              }}
-            >
-              {IconComponent}
-            </div>
-          ) : null;
-        })}
+            return IconComponent ? (
+              <div
+                key={`${call.tool_name}-${index}`}
+                className="relative flex min-w-8 items-center justify-center"
+                style={{
+                  rotate:
+                    displayIcons.length > 1
+                      ? index % 2 === 0
+                        ? "8deg"
+                        : "-8deg"
+                      : "0deg",
+                  zIndex: index,
+                }}
+              >
+                {IconComponent}
+              </div>
+            ) : null;
+          })}
         {uniqueIcons.length > SHOWICONS && (
-          <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-surface-300/60 text-xs text-foreground-500 font-normal">
+          <div className="z-0 flex size-7 min-h-7 min-w-7 items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500 font-normal">
             +{uniqueIcons.length - SHOWICONS}
           </div>
         )}
@@ -132,33 +133,38 @@ export default function ToolCallsSection({
         }}
         style={{ padding: 0 }}
         itemClasses={{
-          trigger: "cursor-pointer ",
+          trigger: "cursor-pointer py-0",
         }}
       >
         <AccordionItem
           key="tools"
           title={
-            <div className="flex items-center gap-2 hover:text-foreground-800 text-foreground-500">
+            <div className="flex items-center hover:text-white text-zinc-500">
               {renderStackedIcons()}
               <span className="text-xs font-medium transition-all duration-200">
                 Used {tool_calls_data.length} tool
                 {tool_calls_data.length > 1 ? "s" : ""}
               </span>
               <ChevronDown
-                className={`${isExpanded ? "rotate-180" : ""} transition-all duration-200`}
+                className={`${isExpanded ? "rotate-180" : ""} ml-2 transition-all duration-200`}
                 width={18}
                 height={18}
               />
             </div>
           }
         >
-          <div className="space-y-0">
+          <div className="space-y-0 py-2">
             {tool_calls_data.map((call, index) => {
               const hasCategoryText =
                 call.show_category !== false &&
                 call.tool_category &&
                 call.tool_category !== "unknown";
-              const hasDetails = call.inputs || call.output;
+              const hasInputs =
+                call.inputs &&
+                typeof call.inputs === "object" &&
+                Object.keys(call.inputs).length > 0;
+              const hasOutput = call.output && call.output.trim().length > 0;
+              const hasDetails = hasInputs || hasOutput;
               const isCallExpanded = expandedCalls.has(index);
 
               return (
@@ -177,7 +183,7 @@ export default function ToolCallsSection({
                         },
                         getIconUrl(call),
                       ) || (
-                        <div className="p-1 bg-surface-200 rounded-lg">
+                        <div className="p-1 bg-zinc-800 rounded-lg">
                           <ToolsIcon width={21} height={21} />
                         </div>
                       )}
@@ -194,13 +200,13 @@ export default function ToolCallsSection({
                       onClick={() => hasDetails && toggleCallExpansion(index)}
                     >
                       <p
-                        className={`text-xs text-foreground-400 font-medium ${hasDetails ? "group-hover/parent:text-foreground-800 " : ""}`}
+                        className={`text-xs text-zinc-400 font-medium ${hasDetails ? "group-hover/parent:text-white " : ""}`}
                       >
                         {call.message || formatToolName(call.tool_name)}
                       </p>
                       {hasDetails && (
                         <ChevronDown
-                          className={`text-foreground-500 transition-transform ${isCallExpanded ? "rotate-180" : ""}`}
+                          className={`text-zinc-500 transition-transform ${isCallExpanded ? "rotate-180" : ""}`}
                           width={14}
                           height={14}
                         />
@@ -222,18 +228,18 @@ export default function ToolCallsSection({
                     )}
 
                     {isCallExpanded && hasDetails && (
-                      <div className="mt-2 space-y-2 text-[11px] bg-surface-200/50 rounded-xl p-3 mb-3 w-fit ">
-                        {call.inputs && Object.keys(call.inputs).length > 0 && (
+                      <div className="mt-2 space-y-2 text-[11px] bg-zinc-800/50 rounded-xl p-3 mb-3 w-fit ">
+                        {hasInputs && (
                           <div className="flex flex-col">
-                            <span className="text-foreground-500 font-medium mb-1">
+                            <span className="text-zinc-500 font-medium mb-1">
                               Input
                             </span>
                             <CompactMarkdown content={call.inputs} />
                           </div>
                         )}
-                        {call.output && (
+                        {hasOutput && (
                           <div className="flex flex-col">
-                            <span className="text-foreground-500 font-medium mb-1">
+                            <span className="text-zinc-500 font-medium mb-1">
                               Output
                             </span>
                             <CompactMarkdown content={call.output} />

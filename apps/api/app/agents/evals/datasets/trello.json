@@ -1,0 +1,149 @@
+{
+  "name": "Trello Capabilities",
+  "description": "Evaluation dataset for Trello subagent capabilities including board management, card operations, lists, and checklists. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "trello_agent",
+  "integration_id": "trello",
+  "items": [
+    {
+      "input": "create board called 'Project Alpha'",
+      "expected_output": "Create new Trello board with name 'Project Alpha'.",
+      "context": "User wants new board",
+      "tags": ["board", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get all my boards",
+      "expected_output": "Get member's boards.",
+      "context": "User wants to see boards",
+      "tags": ["board", "list"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "add list 'To Do' to project board",
+      "expected_output": "1. Find project board. 2. Add new list named 'To Do'.",
+      "context": "User wants to add list",
+      "tags": ["list", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create card 'Review PR' in To Do list",
+      "expected_output": "1. Find board. 2. Find 'To Do' list. 3. Create card.",
+      "context": "User wants to create card",
+      "tags": ["card", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "move card to Done list",
+      "expected_output": "1. Find card. 2. Find 'Done' list. 3. Update card position.",
+      "context": "User wants to move card",
+      "tags": ["card", "move", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add checklist to card about deployment",
+      "expected_output": "1. Find card about deployment. 2. Add checklist to card.",
+      "context": "User wants checklist",
+      "tags": ["checklist", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add label 'urgent' to card",
+      "expected_output": "1. Find card. 2. Add label to card.",
+      "context": "User wants to label card",
+      "tags": ["card", "label", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create label 'bug' with red color on board",
+      "expected_output": "1. Find board. 2. Create label with name and color.",
+      "context": "User wants new label",
+      "tags": ["label", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "assign card to john",
+      "expected_output": "1. Find card. 2. Find member john. 3. Add member to card.",
+      "context": "User wants to assign card",
+      "tags": ["card", "member", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "set due date for card to next friday",
+      "expected_output": "1. Find card. 2. Update card with due date.",
+      "context": "User wants deadline",
+      "tags": ["card", "update", "due", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "archive the completed card",
+      "expected_output": "1. Find completed card. 2. Archive card.",
+      "context": "User wants to archive",
+      "tags": ["card", "archive", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete board old-project",
+      "expected_output": "1. Find old-project board. 2. Request confirmation. 3. Delete board.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["board", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get cards in In Progress list",
+      "expected_output": "1. Find In Progress list. 2. Get cards from list.",
+      "context": "User wants list cards",
+      "tags": ["card", "list", "get"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add comment to card about fix",
+      "expected_output": "1. Find card. 2. Add comment to card.",
+      "context": "User wants to comment",
+      "tags": ["card", "comment", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create trelo board for Q4",
+      "expected_output": "1. Recognize 'trelo' as typo for 'trello'. 2. Create board named Q4.",
+      "context": "User made typo",
+      "tags": ["board", "create", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "star my favorite board",
+      "expected_output": "1. Find favorite board. 2. Add board star.",
+      "context": "User wants to star board",
+      "tags": ["board", "star", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get board members",
+      "expected_output": "1. Find board. 2. Get board members.",
+      "context": "User wants member list",
+      "tags": ["board", "members", "get", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "add power-up to board",
+      "expected_output": "1. Find board. 2. Add power-up.",
+      "context": "User wants power-up",
+      "tags": ["board", "powerup", "add", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "copy card to another list",
+      "expected_output": "1. Find source card. 2. Find destination list. 3. Copy card.",
+      "context": "User wants to copy card",
+      "tags": ["card", "copy", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update card description with requirements",
+      "expected_output": "1. Find card. 2. Update card description.",
+      "context": "User wants to update card",
+      "tags": ["card", "update", "description", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

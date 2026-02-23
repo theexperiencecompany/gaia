@@ -7,11 +7,14 @@ This module defines Pydantic models for:
 - API request/response schemas
 """
 
-from datetime import datetime
-from typing import List, Literal, Optional, cast
+from datetime import datetime, timezone
+from typing import Dict, List, Literal, Optional, TypedDict, cast
 
-from app.models.oauth_models import MCPConfig
-from pydantic import BaseModel, Field
+from app.models.mcp_config import MCPConfig
+from app.models.oauth_models import OAuthIntegration
+from app.helpers.integration_helpers import generate_integration_slug
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic.alias_generators import to_camel
 
 # Type alias for auth_type
 AuthType = Literal["none", "oauth", "bearer"]
@@ -62,6 +65,16 @@ class Integration(BaseModel):
         None, description="User ID for custom integrations"
     )
 
+    # Publishing metadata
+    published_at: Optional[datetime] = Field(
+        None, description="When integration was published to marketplace"
+    )
+    clone_count: int = Field(
+        0, description="Number of times this integration was cloned"
+    )
+    # Note: cloned_from, slug, og_title, og_description, creator_name, creator_picture
+    # have been removed. Creator info is now fetched from users collection at runtime.
+
     # Configuration (one of these based on managed_by)
     mcp_config: Optional[MCPConfig] = None
     composio_config: Optional[ComposioConfigDoc] = None
@@ -77,8 +90,14 @@ class Integration(BaseModel):
     is_featured: bool = Field(False, description="Show in featured section")
 
     # Timestamps
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: Optional[datetime] = None
+
+    @field_validator("clone_count", mode="before")
+    @classmethod
+    def coerce_clone_count(cls, v):
+        """Coerce None to 0 for clone_count."""
+        return v if v is not None else 0
 
     class Config:
         json_encoders = {datetime: lambda v: v.isoformat()}
@@ -98,7 +117,7 @@ class UserIntegration(BaseModel):
         "created",
         description="'created' = added but not authenticated, 'connected' = ready to use",
     )
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     connected_at: Optional[datetime] = Field(
         None, description="When OAuth/auth was completed"
     )
@@ -122,7 +141,8 @@ class CreateCustomIntegrationRequest(BaseModel):
     server_url: str = Field(..., description="MCP server URL")
     requires_auth: bool = Field(False)
     auth_type: Optional[Literal["none", "oauth", "bearer"]] = Field(None)
-    is_public: bool = Field(False, description="Make visible in marketplace")
+    is_public: bool = Field(False)
+    bearer_token: Optional[str] = Field(None)
 
 
 class UpdateCustomIntegrationRequest(BaseModel):
@@ -138,6 +158,8 @@ class UpdateCustomIntegrationRequest(BaseModel):
 
 class IntegrationResponse(BaseModel):
     """Integration details for API responses."""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
     integration_id: str
     name: str
@@ -162,6 +184,19 @@ class IntegrationResponse(BaseModel):
     is_public: Optional[bool] = None
     created_by: Optional[str] = None
 
+    # Publishing metadata (for public integrations)
+    published_at: Optional[datetime] = None
+    clone_count: int = 0
+    slug: Optional[str] = None
+    # Creator info (populated via aggregation from users collection)
+    creator: Optional[Dict[str, Optional[str]]] = None
+
+    @field_validator("clone_count", mode="before")
+    @classmethod
+    def coerce_clone_count(cls, v):
+        """Coerce None to 0 for clone_count."""
+        return v if v is not None else 0
+
     @classmethod
     def from_integration(cls, integration: Integration) -> "IntegrationResponse":
         """Convert Integration model to response."""
@@ -173,6 +208,13 @@ class IntegrationResponse(BaseModel):
             auth_type = integration.mcp_config.auth_type or (
                 "oauth" if requires_auth else "none"
             )
+
+        # Compute slug at runtime (not stored in DB)
+        slug = generate_integration_slug(
+            name=integration.name,
+            category=integration.category,
+            integration_id=integration.integration_id,
+        )
 
         return cls(
             integration_id=integration.integration_id,
@@ -189,10 +231,15 @@ class IntegrationResponse(BaseModel):
             icon_url=integration.icon_url,
             is_public=integration.is_public,
             created_by=integration.created_by,
+            published_at=integration.published_at,
+            clone_count=integration.clone_count or 0,
+            slug=slug,
         )
 
     @classmethod
-    def from_oauth_integration(cls, oauth_int) -> "IntegrationResponse":
+    def from_oauth_integration(
+        cls, oauth_int: OAuthIntegration
+    ) -> "IntegrationResponse":
         """Convert OAuthIntegration from config to response."""
         requires_auth = False
         auth_type = None
@@ -216,11 +263,14 @@ class IntegrationResponse(BaseModel):
             requires_auth=requires_auth,
             auth_type=cast(AuthType, auth_type) if auth_type else None,
             tools=[],  # Platform tools are loaded live, not stored
+            slug=oauth_int.id,  # Platform integrations use ID as slug
         )
 
 
 class UserIntegrationResponse(BaseModel):
     """User integration with hydrated integration details."""
+
+    model_config = ConfigDict(populate_by_name=True, alias_generator=to_camel)
 
     integration_id: str
     status: Literal["created", "connected"]
@@ -253,6 +303,7 @@ class ConnectIntegrationRequest(BaseModel):
         default="/integrations",
         description="Frontend path to redirect after OAuth completes",
     )
+    bearer_token: Optional[str] = Field(None)
 
 
 class ConnectIntegrationResponse(BaseModel):
@@ -277,3 +328,37 @@ class ConnectIntegrationResponse(BaseModel):
 
     # For status="error"
     error: Optional[str] = None
+
+
+# TypedDicts for integration tool LLM responses
+
+
+class IntegrationInfo(TypedDict):
+    """Integration information returned to LLM for context."""
+
+    id: str
+    name: str
+    description: str
+    category: str
+    connected: bool
+
+
+class SuggestedIntegration(TypedDict):
+    """Suggested public integration from marketplace search."""
+
+    id: str
+    name: str
+    description: str
+    category: str
+    icon_url: Optional[str]
+    auth_type: Optional[str]
+    relevance_score: float
+    slug: str
+
+
+class ListIntegrationsResult(TypedDict):
+    """Result from list_integrations tool for LLM context."""
+
+    connected: List[IntegrationInfo]
+    available: List[IntegrationInfo]
+    suggested: List[SuggestedIntegration]

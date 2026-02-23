@@ -45,9 +45,9 @@ class CheckpointerManager:
             max_size=self.max_pool_size,
             kwargs=connection_kwargs,
             open=False,
-            timeout=5,
+            timeout=30,
         )
-        await self.pool.open(wait=True, timeout=5)
+        await self.pool.open(wait=True, timeout=30)
 
         self.checkpointer = AsyncPostgresSaver(conn=self.pool)  # type: ignore[call-arg]
         await self.checkpointer.setup()

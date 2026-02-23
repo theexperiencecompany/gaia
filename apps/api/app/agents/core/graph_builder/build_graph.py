@@ -6,14 +6,15 @@ from app.agents.core.graph_builder.checkpointer_manager import (
     get_checkpointer_manager,
 )
 from app.agents.core.nodes import (
-    create_delete_system_messages_node,
     follow_up_actions_node,
+    manage_system_prompts_node,
     trim_messages_node,
 )
-from app.agents.core.nodes.filter_messages import create_filter_messages_node
+from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.llm.client import init_llm
+from app.agents.tools import memory_tools
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
@@ -49,14 +50,9 @@ async def build_executor_graph(
         retrieve_tools_coroutine=get_retrieve_tools_function(),
         initial_tool_ids=["handoff"],
         pre_model_hooks=[
-            create_filter_messages_node(
-                agent_name="executor_agent",
-                allow_memory_system_messages=True,
-            ),
+            filter_messages_node,
+            manage_system_prompts_node,
             trim_messages_node,
-        ],
-        end_graph_hooks=[
-            create_delete_system_messages_node(),
         ],
     )
 
@@ -100,7 +96,11 @@ async def build_comms_graph(
     if chat_llm is None:
         chat_llm = init_llm()
 
-    tool_registry = {"call_executor": call_executor}
+    tool_registry = {
+        "call_executor": call_executor,
+        "add_memory": memory_tools.add_memory,
+        "search_memory": memory_tools.search_memory,
+    }
     store = await get_tools_store()
 
     builder = create_agent(
@@ -108,17 +108,14 @@ async def build_comms_graph(
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
-        initial_tool_ids=["call_executor"],
+        initial_tool_ids=["call_executor", "add_memory", "search_memory"],
         pre_model_hooks=[
-            create_filter_messages_node(
-                agent_name="comms_agent",
-                allow_memory_system_messages=True,
-            ),
+            filter_messages_node,
+            manage_system_prompts_node,
             trim_messages_node,
         ],
         end_graph_hooks=[
             follow_up_actions_node,
-            create_delete_system_messages_node(),
         ],
     )
 

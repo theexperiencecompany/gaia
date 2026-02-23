@@ -103,8 +103,8 @@ async def handle_dodo_webhook(
         # Parse webhook data
         webhook_data = json.loads(payload)
 
-        # Process the webhook
-        result = await payment_webhook_service.process_webhook(webhook_data)
+        # Process the webhook with idempotency check using webhook_id
+        result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
 
         logger.info(f"Webhook processed: {result.event_type} - {result.status}")
         return {

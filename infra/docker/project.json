@@ -5,7 +5,7 @@
     "docker:up": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker compose up -d",
+        "command": "docker compose $(test -f .env && echo '--env-file .env') up -d",
         "cwd": "{projectRoot}"
       },
       "cache": false,
@@ -14,7 +14,7 @@
     "docker:down": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker compose down",
+        "command": "docker compose $(test -f .env && echo '--env-file .env') down",
         "cwd": "{projectRoot}"
       },
       "cache": false,
@@ -23,7 +23,7 @@
     "docker:restart": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker compose restart",
+        "command": "docker compose $(test -f .env && echo '--env-file .env') restart",
         "cwd": "{projectRoot}"
       },
       "cache": false,
@@ -32,7 +32,7 @@
     "docker:logs": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker compose logs -f",
+        "command": "docker compose $(test -f .env && echo '--env-file .env') logs -f",
         "cwd": "{projectRoot}"
       },
       "cache": false,
@@ -41,7 +41,7 @@
     "docker:ps": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "docker compose ps",
+        "command": "docker compose $(test -f .env && echo '--env-file .env') ps",
         "cwd": "{projectRoot}"
       },
       "cache": false,

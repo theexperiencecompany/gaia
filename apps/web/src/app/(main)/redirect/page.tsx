@@ -2,9 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
-import { toast } from "sonner";
-
 import Spinner from "@/components/ui/spinner";
+import { toast } from "@/lib/toast";
 
 export default function RedirectPage() {
   const router = useRouter();

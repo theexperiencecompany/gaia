@@ -26,6 +26,9 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
       console.log("useWorkflowCreation: API response:", response);
 
       setCreatedWorkflow(response.workflow);
+      // Note: Store updates are handled by the caller (WorkflowModal)
+      // to avoid duplicate additions
+
       return { success: true, workflow: response.workflow };
     } catch (err) {
       console.error("useWorkflowCreation: API call failed:", err);
@@ -34,7 +37,7 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
       const error = err as Error & {
         response?: {
           status?: number;
-          data?: { workflow?: Workflow };
+          data?: { workflow?: Workflow; detail?: string };
         };
       };
       const statusCode = error?.response?.status;
@@ -50,11 +53,27 @@ export const useWorkflowCreation = (): UseWorkflowCreationReturn => {
           "Workflow was created despite error status, treating as success",
         );
         setCreatedWorkflow(responseData.workflow);
+        // Note: Store updates are handled by the caller (WorkflowModal)
+
         return { success: true, workflow: responseData.workflow };
       }
 
-      const errorMessage =
-        error instanceof Error ? error.message : "Failed to create workflow";
+      // Extract error detail from API response
+      // FastAPI returns {detail: "..."} or {detail: {message: "..."}} for 429 errors
+      let errorMessage = "Failed to create workflow";
+      if (responseData?.detail) {
+        if (typeof responseData.detail === "string") {
+          errorMessage = responseData.detail;
+        } else if (
+          typeof responseData.detail === "object" &&
+          responseData.detail !== null
+        ) {
+          const detail = responseData.detail as { message?: string };
+          errorMessage = detail.message || errorMessage;
+        }
+      } else if (error instanceof Error) {
+        errorMessage = error.message;
+      }
       setError(errorMessage);
       return { success: false };
     } finally {

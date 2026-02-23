@@ -2,19 +2,28 @@
  * Integration system types and interfaces
  */
 
+/**
+ * Integration category values - synced with backend INTEGRATION_CATEGORIES
+ * (apps/api/app/services/integrations/category_inference_service.py)
+ */
+export type IntegrationCategoryValue =
+  | "productivity"
+  | "communication"
+  | "developer"
+  | "analytics"
+  | "finance"
+  | "ai-ml"
+  | "education"
+  | "personal"
+  | "capabilities"
+  | "other";
+
 export interface Integration {
   id: string;
   name: string;
   description: string;
-  category:
-    | "productivity"
-    | "communication"
-    | "developer"
-    | "social"
-    | "business"
-    | "custom";
+  category: IntegrationCategoryValue;
   status: "connected" | "not_connected" | "created" | "error";
-  // New properties for unified integrations
   isSpecial?: boolean;
   displayPriority?: number;
   includedIntegrations?: string[];
@@ -22,14 +31,17 @@ export interface Integration {
   managedBy?: "self" | "composio" | "mcp" | "internal";
   available?: boolean;
   authType?: "oauth" | "bearer" | "none";
-  // Marketplace properties
   source?: "platform" | "custom";
   requiresAuth?: boolean;
   isPublic?: boolean;
   createdBy?: string;
   tools?: Array<{ name: string; description?: string }>;
-  // Custom integration icon (favicon from MCP server)
   iconUrl?: string;
+  creator?: {
+    name: string | null;
+    picture: string | null;
+  } | null;
+  slug: string;
 }
 
 export interface IntegrationStatus {
@@ -74,9 +86,21 @@ export interface MarketplaceIntegration {
   iconUrl?: string;
   isPublic?: boolean;
   createdBy?: string;
+  // Publishing metadata
+  publishedAt?: string;
+  cloneCount?: number;
+  slug: string; // Always provided by backend
+  // Creator info (populated from users collection)
+  creator?: {
+    name: string | null;
+    picture: string | null;
+  } | null;
 }
 
 // Matches backend UserIntegrationResponse with camelCase aliases
+// Note: status is restricted to "created" | "connected" because this represents
+// the database record state. The broader Integration.status ("not_connected" | "error")
+// is derived at the API layer based on whether a UserIntegration record exists.
 export interface UserIntegration {
   integrationId: string;
   status: "created" | "connected";
@@ -98,6 +122,7 @@ export interface CreateCustomIntegrationRequest {
   requires_auth?: boolean;
   auth_type?: "none" | "oauth" | "bearer";
   is_public?: boolean;
+  bearer_token?: string;
 }
 
 /**
@@ -138,10 +163,71 @@ export interface IntegrationInfo {
   description: string;
   category: string;
   connected: boolean;
+  iconUrl?: string | null;
+  source?: string;
 }
 
 export interface IntegrationListData {
   integrations: IntegrationInfo[];
   total_count: number;
   connected_count: number;
+}
+
+/**
+ * Suggested public integration from search
+ */
+export interface SuggestedIntegration {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  iconUrl?: string | null;
+  authType?: string | null;
+  relevanceScore: number;
+  slug: string;
+}
+
+/**
+ * Data streamed from integration_list_data tool
+ */
+export interface IntegrationListStreamData {
+  hasSuggestions?: boolean;
+  suggested?: SuggestedIntegration[];
+}
+
+/**
+ * Community/Public Marketplace Types
+ */
+
+export interface CommunityIntegrationCreator {
+  name: string | null;
+  picture: string | null;
+}
+
+export interface CommunityIntegration {
+  integrationId: string;
+  slug: string;
+  name: string;
+  description: string;
+  category: string;
+  iconUrl: string | null;
+  cloneCount: number;
+  toolCount: number;
+  tools: Array<{ name: string; description: string | null }>;
+  publishedAt: string;
+  creator: CommunityIntegrationCreator | null;
+}
+
+export interface CommunityIntegrationsResponse {
+  integrations: CommunityIntegration[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface PublicIntegrationResponse extends CommunityIntegration {
+  mcpConfig?: {
+    serverUrl: string;
+    requiresAuth: boolean;
+    authType: string | null;
+  };
 }

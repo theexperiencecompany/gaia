@@ -1,8 +1,7 @@
 import { ScrollShadow } from "@heroui/scroll-shadow";
-
+import { Call02Icon, Mail01Icon } from "@icons";
 import { Gmail } from "@/components";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
-import { Call02Icon, Mail01Icon } from "@/icons";
 import type { ContactData } from "@/types/features/mailTypes";
 
 interface ContactListCardProps {

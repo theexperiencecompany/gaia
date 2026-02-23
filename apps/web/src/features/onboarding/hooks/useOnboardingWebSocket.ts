@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-
 import { apiService } from "@/lib/api";
+import { toast } from "@/lib/toast";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";
 
@@ -40,11 +39,14 @@ export const useOnboardingWebSocket = (
   useEffect(() => {
     if (!enabled || personalizationData) return;
 
-    const WS_URL =
-      process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:8000/api/v1";
+    const apiBaseUrl =
+      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1/";
+    const wsUrl =
+      apiBaseUrl.replace("http://", "ws://").replace("https://", "wss://") +
+      "ws/connect";
 
     try {
-      const ws = new WebSocket(`${WS_URL}/ws/connect`);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {

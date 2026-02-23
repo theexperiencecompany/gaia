@@ -1,49 +1,98 @@
-import { Image, TextInput, TouchableOpacity, View } from "react-native";
+import { Button } from "heroui-native";
+import { Image, Text, TextInput, View } from "react-native";
 import {
   HugeiconsIcon,
   PencilEdit02Icon,
   Search01Icon,
 } from "@/components/icons";
-import { Text } from "@/components/ui/text";
+import { useResponsive } from "@/lib/responsive";
 
 interface SidebarHeaderProps {
   onNewChat: () => void;
 }
 
 export function SidebarHeader({ onNewChat }: SidebarHeaderProps) {
+  const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
+
   return (
-    <View className="px-6 py-4 pt-6">
-      {/* Brand Header */}
-      <View className="flex-row items-center gap-3 mb-6 px-1">
+    <View
+      style={{
+        paddingHorizontal: spacing.md,
+        paddingTop: spacing.lg,
+        paddingBottom: spacing.md,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: moderateScale(12, 0.5),
+          marginBottom: spacing.lg,
+          paddingHorizontal: spacing.xs,
+        }}
+      >
         <Image
-          source={require("@/assets/logo/logo.webp")}
-          className="w-7 h-7"
+          source={require("@shared/assets/logo/logo.webp")}
+          style={{
+            width: moderateScale(28, 0.5),
+            height: moderateScale(28, 0.5),
+          }}
           resizeMode="contain"
         />
-        <Text className="text-xl font-bold tracking-tight text-foreground">
+        <Text
+          style={{
+            fontSize: fontSize.xl,
+            fontWeight: "bold",
+            letterSpacing: -0.5,
+            color: "#ffffff",
+          }}
+        >
           GAIA
         </Text>
       </View>
 
-      <View className="flex-row items-center gap-4">
-        {/* Search Bar */}
-        <View className="flex-1 flex-row items-center bg-secondary/20 rounded-xl px-3 h-10 border border-border/30">
-          <HugeiconsIcon icon={Search01Icon} size={16} color="#8e8e93" />
+      <View style={{ flexDirection: "row", alignItems: "center" }}>
+        <View
+          style={{
+            flex: 1,
+            flexDirection: "row",
+            alignItems: "center",
+            backgroundColor: "#1c1c1e",
+            borderRadius: moderateScale(12, 0.5),
+            paddingHorizontal: moderateScale(12, 0.5),
+            paddingVertical: spacing.sm,
+          }}
+        >
+          <HugeiconsIcon
+            icon={Search01Icon}
+            size={iconSize.sm}
+            color="#8e8e93"
+          />
           <TextInput
-            className="flex-1 ml-2 text-foreground text-sm"
             placeholder="Search"
-            placeholderTextColor="#666666"
+            placeholderTextColor="#8e8e93"
+            style={{
+              flex: 1,
+              marginLeft: spacing.sm,
+              fontSize: fontSize.sm,
+              color: "#ffffff",
+            }}
           />
         </View>
 
-        {/* New Chat Button */}
-        <TouchableOpacity
+        <Button
+          variant="secondary"
+          size="sm"
+          style={{ marginLeft: spacing.sm }}
+          isIconOnly
           onPress={onNewChat}
-          className="h-10 w-10 items-center justify-center rounded-xl bg-secondary/20 border border-border/30"
-          activeOpacity={0.7}
         >
-          <HugeiconsIcon icon={PencilEdit02Icon} size={18} color="#ffffff" />
-        </TouchableOpacity>
+          <HugeiconsIcon
+            icon={PencilEdit02Icon}
+            size={iconSize.sm}
+            color="#ffffff"
+          />
+        </Button>
       </View>
     </View>
   );

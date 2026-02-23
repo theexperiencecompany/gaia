@@ -31,7 +31,7 @@ export const useSharedCalendar = () => {
   const { getIntegrationStatus } = useIntegrations();
 
   // Check if calendar integration is connected
-  const calendarStatus = getIntegrationStatus("google_calendar");
+  const calendarStatus = getIntegrationStatus("googlecalendar");
   const isCalendarConnected = calendarStatus?.connected || false;
 
   // Fetch calendar preferences from backend (syncs to store automatically)

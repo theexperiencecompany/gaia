@@ -1,13 +1,13 @@
 "use client";
 
 import { Kbd } from "@heroui/kbd";
+import { BubbleChatAddIcon, PinIcon, SearchIcon } from "@icons";
 import Link from "next/link";
-
 import { SidebarHeaderButton } from "@/components";
 import ModelPickerButton from "@/features/chat/components/composer/ModelPickerButton";
+import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { BubbleChatAddIcon, PinIcon, SearchIcon } from "@/icons";
 
 export default function ChatHeader() {
   const { isMac, modifierKeyName } = usePlatform();
@@ -49,7 +49,7 @@ export default function ChatHeader() {
             <PinIcon className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
         </Link>
-        <Link href={"/c"}>
+        <Link href={"/c"} onClick={prepareNewChat}>
           <SidebarHeaderButton
             aria-label="Create new chat"
             tooltip="Create new chat"

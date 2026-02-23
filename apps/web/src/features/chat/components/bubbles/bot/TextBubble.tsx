@@ -13,6 +13,7 @@ function getTypedData<K extends ToolName>(
 }
 
 import { Chip } from "@heroui/chip";
+import { Alert01Icon } from "@icons";
 import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
@@ -35,10 +36,14 @@ import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations";
-import type { IntegrationConnectionData } from "@/features/integrations/types";
+import type {
+  IntegrationConnectionData,
+  IntegrationListStreamData,
+} from "@/features/integrations/types";
 import EmailListCard from "@/features/mail/components/EmailListCard";
 import { WeatherCard } from "@/features/weather/components/WeatherCard";
-import { Alert01Icon } from "@/icons";
+import WorkflowCreatedCard from "@/features/workflows/components/WorkflowCreatedCard";
+import WorkflowDraftCard from "@/features/workflows/components/WorkflowDraftCard";
 import type {
   CalendarDeleteOptions,
   CalendarEditOptions,
@@ -54,6 +59,8 @@ import type {
   SearchResults,
   TodoToolData,
   WeatherData,
+  WorkflowCreatedData,
+  WorkflowDraftData,
 } from "@/types";
 import type {
   CalendarFetchData,
@@ -75,7 +82,10 @@ import type {
   RedditSearchData,
 } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
-
+import type {
+  TwitterSearchData,
+  TwitterUserData,
+} from "@/types/features/twitterTypes";
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
@@ -96,6 +106,8 @@ import RedditPostSection from "./RedditPostSection";
 import RedditSearchSection from "./RedditSearchSection";
 import SupportTicketSection from "./SupportTicketSection";
 import TodoSection from "./TodoSection";
+import TwitterSearchSection from "./TwitterSearchSection";
+import TwitterUserSection from "./TwitterUserSection";
 
 // Map of tool_name -> renderer function for unified tool_data rendering
 type RendererMap = {
@@ -273,20 +285,77 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
   integration_connection_required: (data, index) => {
+    // Data can be a single item or an array (when grouped)
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as IntegrationConnectionData[];
+    // De-duplicate by integration_id
+    const seen = new Set<string>();
+    const uniqueItems = items.filter((item) => {
+      if (seen.has(item.integration_id)) return false;
+      seen.add(item.integration_id);
+      return true;
+    });
     return (
-      <IntegrationConnectionPrompt
-        key={`tool-integration-connection-${index}`}
-        integration_connection_required={data as IntegrationConnectionData}
+      <>
+        {uniqueItems.map((item) => (
+          <IntegrationConnectionPrompt
+            key={`tool-integration-connection-${index}-${item.integration_id}`}
+            integration_connection_required={item}
+          />
+        ))}
+      </>
+    );
+  },
+
+  integration_list_data: (data, index) => {
+    // Handle grouped data (array of IntegrationListStreamData)
+    const items = (
+      Array.isArray(data) ? data : [data]
+    ) as IntegrationListStreamData[];
+
+    // Merge all suggested integrations and de-duplicate by id
+    const seen = new Set<string>();
+    const mergedSuggested = items
+      .flatMap((item) => item.suggested || [])
+      .filter((s) => {
+        if (seen.has(s.id)) return false;
+        seen.add(s.id);
+        return true;
+      });
+
+    return (
+      <IntegrationListSection
+        key={`tool-integration-list-${index}`}
+        suggestedIntegrations={mergedSuggested}
       />
     );
   },
 
-  integration_list_data: (_data, index) => {
-    return <IntegrationListSection key={`tool-integration-list-${index}`} />;
-  },
+  // Twitter
+  twitter_search_data: (data, index) => (
+    <TwitterSearchSection
+      key={`tool-twitter-search-${index}`}
+      twitter_search_data={data as TwitterSearchData}
+    />
+  ),
+  twitter_user_data: (data, index) => (
+    <TwitterUserSection
+      key={`tool-twitter-users-${index}`}
+      twitter_user_data={
+        (Array.isArray(data) ? data : [data]) as TwitterUserData[]
+      }
+    />
+  ),
 
   tool_calls_data: (data, index) => {
-    const calls = (Array.isArray(data) ? data : [data]) as ToolCallEntry[];
+    // When grouped, data is ToolCallEntry[][] (array of arrays)
+    // Flatten to ToolCallEntry[] using flat(1)
+    // Deduplication is handled at the ChatRenderer level
+    const calls = (
+      Array.isArray(data) ? data.flat(1) : [data]
+    ) as ToolCallEntry[];
+
     return (
       <ToolCallsSection key={`tool-calls-${index}`} tool_calls_data={calls} />
     );
@@ -338,6 +407,20 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       </>
     );
   },
+
+  workflow_draft: (data, index) => (
+    <WorkflowDraftCard
+      key={`tool-workflow-draft-${index}`}
+      draft={data as WorkflowDraftData}
+    />
+  ),
+
+  workflow_created: (data, index) => (
+    <WorkflowCreatedCard
+      key={`tool-workflow-created-${index}`}
+      workflow={data as WorkflowCreatedData}
+    />
+  ),
 };
 
 function renderTool<K extends ToolName>(
@@ -465,26 +548,7 @@ export default function TextBubble({
 
                 let bubbleClassName = "imessage-bubble imessage-from-them";
 
-                if (isEmojiOnly) {
-                  if (emojiCount === 1) {
-                    bubbleClassName = "select-none"; // No background, no padding
-                    groupedClasses = ""; // Remove grouping/tail classes
-                    // We need to ensure font size is applied. renderBubbleContent uses MarkdownRenderer.
-                    // MarkdownRenderer might wrap in <p>. We can pass a class or wrap it.
-                    // Actually, if it's 1 emoji, we might just render it directly to avoid markdown overhead/styling or styling issues?
-                    // But MarkdownRenderer handles streaming.
-                    // If streaming is done, we can just render text.
-                    // If loading, markdown might be better.
-                    // Let's assume for 1 emoji we can just style the container and MarkdownRenderer handles text size via inheritance or utility class on container?
-                    // MarkdownRenderer usually resets typography.
-                    // Let's try applying text size to container.
-                    // But `imessage-bubble` has padding.
-                  } else if (emojiCount === 2) {
-                    // Medium large
-                  }
-                }
-
-                // Construct styles
+                // Construct styles for emoji-only messages
                 let textClass = "";
 
                 if (isEmojiOnly) {

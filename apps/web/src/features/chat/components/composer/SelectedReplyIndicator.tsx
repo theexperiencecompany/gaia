@@ -1,10 +1,11 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { AnimatePresence, motion } from "framer-motion";
+import { Cancel01Icon, LinkBackwardIcon } from "@icons";
+import { AnimatePresence, m } from "motion/react";
 import type React from "react";
 import { useEffect } from "react";
-import { Cancel01Icon, LinkBackwardIcon } from "@/icons";
+import { useComposerUI } from "@/stores/composerStore";
 import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
 
 interface SelectedReplyIndicatorProps {
@@ -34,7 +35,7 @@ const ReplyConnectorLine: React.FC = () => (
       height="20"
       viewBox="0 0 14 20"
       fill="none"
-      className="text-foreground-300"
+      className="text-zinc-700"
     >
       <title>Reply Connector Line</title>
       <path
@@ -55,12 +56,15 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
   onNavigate,
   isDisplayOnly = false,
 }) => {
+  const { isSlashCommandDropdownOpen } = useComposerUI();
+
   // Handle Escape key to close the indicator
   useEffect(() => {
     if (!replyToMessage || !onRemove) return;
 
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
+      // Only handle escape if slash command dropdown is NOT open
+      if (e.key === "Escape" && !isSlashCommandDropdownOpen) {
         e.preventDefault();
         onRemove();
       }
@@ -68,7 +72,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [replyToMessage, onRemove]);
+  }, [replyToMessage, onRemove, isSlashCommandDropdownOpen]);
 
   const handleClick = () => {
     if (replyToMessage && onNavigate) {
@@ -81,18 +85,18 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
     return (
       <div className="relative mr-6">
         <div
-          className="flex items-center gap-2 cursor-pointer px-2.5 py-1.5 rounded-2xl border-surface-300 border-2 hover:bg-surface-300/50 transition-colors max-w-70"
+          className="flex items-center gap-2 cursor-pointer px-2.5 py-1.5 rounded-2xl border-zinc-700 border-2 hover:bg-zinc-700/50 transition-colors max-w-70"
           onClick={handleClick}
         >
-          <div className="shrink-0 text-foreground-400">
+          <div className="shrink-0 text-zinc-400">
             <LinkBackwardIcon width={19} height={19} />
           </div>
 
           <div className="flex flex-col gap-0.5 overflow-hidden">
-            <span className="text-xs text-foreground-400 font-semibold">
+            <span className="text-xs text-zinc-400 font-semibold">
               {replyToMessage.role === "user" ? "You" : "GAIA"}
             </span>
-            <span className="truncate text-sm text-foreground-200">
+            <span className="truncate text-sm text-zinc-200">
               {truncateContent(replyToMessage.content, 40)}
             </span>
           </div>
@@ -106,7 +110,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
     <div className="px-2">
       <AnimatePresence>
         {replyToMessage && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, scale: 0.9, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             // exit={{ opacity: 0, scale: 0.9, y: 10 }}
@@ -116,25 +120,25 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
               stiffness: 300,
               duration: 0.2,
             }}
-            className="flex mt-2 w-full items-center cursor-pointer justify-between rounded-2xl px-3 py-2 transition-all hover:bg-surface-300 border-dashed border-surface-500 border-1.5 group"
+            className="relative flex mt-2 w-full items-center cursor-pointer justify-between rounded-2xl px-3 py-2 hover:bg-zinc-700/70 border-dashed border-zinc-500 bg-zinc-700/40 border-1.5 group overflow-hidden"
             onClick={handleClick}
           >
             <div className="flex items-center gap-2">
-              <div className="shrink-0 text-foreground-400">
+              <div className="shrink-0 text-zinc-400">
                 <LinkBackwardIcon width={18} height={18} />
               </div>
 
               <div className="flex flex-col gap-0.5 overflow-hidden w-fit">
-                <span className="text-xs text-foreground-400 font-semibold">
+                <span className="text-xs text-zinc-400 font-semibold">
                   {replyToMessage.role === "user" ? "You" : "GAIA"}
                 </span>
-                <span className="truncate text-sm text-foreground-200 w-fit">
+                <span className="truncate text-sm text-zinc-200 w-fit">
                   {truncateContent(replyToMessage.content)}
                 </span>
               </div>
             </div>
 
-            <div>
+            <div className="absolute right-2">
               {onRemove && (
                 <Button
                   type="button"
@@ -147,7 +151,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
                 </Button>
               )}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

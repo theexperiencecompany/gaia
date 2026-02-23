@@ -1,7 +1,6 @@
 import { Button } from "@heroui/button";
+import { Download01Icon } from "@icons";
 import type React from "react";
-
-import { Download01Icon } from "@/icons";
 
 interface DownloadButtonProps {
   content: string;

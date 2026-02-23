@@ -1,12 +1,17 @@
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect } from "react";
-import { toast } from "sonner";
-
 import { useUser } from "@/features/auth/hooks/useUser";
+import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket";
+import { batchSyncConversations } from "@/services/syncService";
+import { useNotificationStore } from "@/stores/notificationStore";
 import type {
   NotificationRecord,
   NotificationUpdate,
-  UseNotificationWebSocketOptions,
+} from "@/types/features/notificationTypes";
+import {
+  ActionType,
+  NotificationType,
 } from "@/types/features/notificationTypes";
 
 interface WebSocketMessage {
@@ -23,78 +28,94 @@ interface WebSocketMessage {
   message?: string;
 }
 
-export function useNotificationWebSocket(
-  options: UseNotificationWebSocketOptions = {},
-) {
+export function useNotificationWebSocket() {
   const user = useUser();
   const isAuthenticated = !!user?.email;
+  const { addNotification, updateNotification } = useNotificationStore();
+  const router = useRouter();
 
   const handleMessage = useCallback(
     (msg: unknown) => {
       const message = msg as WebSocketMessage;
       switch (message.type) {
         case "notification.delivered":
-          if (message.notification && options.onNotification) {
-            options.onNotification(message.notification);
+          if (message.notification) {
+            addNotification(message.notification);
 
-            // Skip showing toast for test notifications to avoid duplicates
             const isTestNotification =
               message.notification.metadata?.test === true;
 
             if (!isTestNotification) {
-              // Check if notification data structure is complete before showing toast
               if (message.notification.content?.title) {
-                toast.info(message.notification.content.title, {
+                const actions = message.notification.content.actions ?? [];
+                const redirectAction = actions.find(
+                  (a) => a.type === ActionType.REDIRECT,
+                );
+
+                const notifType = message.notification.type as NotificationType;
+                const toastFn =
+                  notifType === NotificationType.ERROR
+                    ? toast.error
+                    : notifType === NotificationType.SUCCESS
+                      ? toast.success
+                      : notifType === NotificationType.WARNING
+                        ? toast.warning
+                        : toast.info;
+
+                toastFn(message.notification.content.title, {
                   description:
                     message.notification.content.body ||
                     "New notification received",
-                  dismissible: true,
-                  duration: 10000,
+                  duration:
+                    notifType === NotificationType.ERROR ? 15000 : 10000,
+                  action: redirectAction
+                    ? {
+                        label: redirectAction.label,
+                        onClick: () => {
+                          const url = redirectAction.config?.redirect?.url;
+                          if (url) router.push(url);
+                        },
+                      }
+                    : undefined,
                 });
               } else {
-                // Fallback if content is missing
                 toast.info("New notification", {
                   description: "You have received a new notification",
                 });
               }
             }
+
+            // Sync chats when a workflow completion notification arrives
+            if (message.notification.metadata?.conversation_id) {
+              batchSyncConversations();
+            }
           }
           break;
 
         case "notification.updated":
-          if (message.notification && options.onUpdate) {
-            options.onUpdate(message.notification);
+          if (message.notification) {
+            updateNotification(message.notification);
           }
           break;
 
         case "error":
           console.error("WebSocket error message:", message.message);
-          if (options.onError) {
-            options.onError(new Error(message.message || "WebSocket error"));
-          }
           break;
 
         default:
           console.warn("Unknown notification message type:", message.type);
       }
     },
-    [options],
+    [addNotification, updateNotification],
   );
 
-  const handleError = useCallback(
-    (error: Error) => {
-      if (options.onError) {
-        options.onError(error);
-      }
-    },
-    [options],
-  );
+  const handleError = useCallback((error: Error) => {
+    console.error("WebSocket connection error:", error);
+  }, []);
 
-  // Subscribe to notification messages
   useEffect(() => {
     if (!isAuthenticated) return;
 
-    // Listen for all notification.* messages
     wsManager.on("notification.delivered", handleMessage);
     wsManager.on("notification.updated", handleMessage);
     wsManager.on("error", handleMessage);

@@ -1,13 +1,12 @@
 "use client";
 
+import { ArrowRight01Icon, BubbleChatAddIcon, Target02Icon } from "@icons";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-
 import { SidebarHeaderButton } from "@/components/layout/headers/HeaderManager";
 import { goalsApi } from "@/features/goals/api/goalsApi";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
-import { ArrowRight01Icon, BubbleChatAddIcon, Target02Icon } from "@/icons";
 import type { Goal } from "@/types/api/goalsApiTypes";
 
 export default function GoalHeader() {
@@ -26,7 +25,7 @@ export default function GoalHeader() {
 
   return (
     <div className="flex w-full items-center justify-between">
-      <div className="flex items-center gap-2 pl-2 text-foreground-500">
+      <div className="flex items-center gap-2 pl-0 text-zinc-500">
         <Link href={"/goals"} className="flex items-center gap-2">
           <Target02Icon width={20} height={20} />
           <span>Goals</span>
@@ -34,7 +33,7 @@ export default function GoalHeader() {
         {goal?.title && (
           <>
             <ArrowRight01Icon width={18} height={17} />
-            <span className="text-foreground-300">{goal.title}</span>
+            <span className="text-zinc-300">{goal.title}</span>
           </>
         )}
       </div>
@@ -45,7 +44,7 @@ export default function GoalHeader() {
             aria-label="Create new chat"
             tooltip="Create new chat"
           >
-            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-foreground-400 transition-all group-hover:text-primary" />
+            <BubbleChatAddIcon className="min-h-[20px] min-w-[20px] text-zinc-400 transition-all group-hover:text-primary" />
           </SidebarHeaderButton>
         </Link>
         <NotificationCenter />

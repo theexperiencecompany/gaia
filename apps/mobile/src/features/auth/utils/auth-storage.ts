@@ -1,13 +1,11 @@
 import * as SecureStore from "expo-secure-store";
+import type { UserInfo } from "@/features/auth/types";
 
 const AUTH_TOKEN_KEY = "gaia_auth_token";
 const USER_INFO_KEY = "gaia_user_info";
 
-export interface UserInfo {
-  name: string;
-  email: string;
-  picture?: string;
-}
+// Re-export for backwards compatibility
+export type { UserInfo } from "@/features/auth/types";
 export async function storeAuthToken(token: string): Promise<void> {
   try {
     await SecureStore.setItemAsync(AUTH_TOKEN_KEY, token);

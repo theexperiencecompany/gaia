@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { useState } from "react";
 
 import { formatToolName } from "@/features/chat/utils/chatUtils";
@@ -34,7 +34,7 @@ export default function ToolsList({ tools }: ToolsListProps) {
       <AnimatePresence mode="wait">
         {!isExpanded ? (
           // Collapsed state - single card showing count and icons
-          <motion.div
+          <m.div
             key="collapsed"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -70,10 +70,10 @@ export default function ToolsList({ tools }: ToolsListProps) {
             <span className="text-sm font-medium whitespace-nowrap text-foreground">
               {tools.length} {tools.length === 1 ? "Tool" : "Tools"}
             </span>
-          </motion.div>
+          </m.div>
         ) : (
           // Expanded state - stacked list of all tools
-          <motion.div
+          <m.div
             key="expanded"
             initial={{ opacity: 0, height: 0 }}
             animate={{ opacity: 1, height: "auto" }}
@@ -88,7 +88,7 @@ export default function ToolsList({ tools }: ToolsListProps) {
               });
 
               return (
-                <motion.div
+                <m.div
                   key={tool.name}
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -101,10 +101,10 @@ export default function ToolsList({ tools }: ToolsListProps) {
                       {formatToolName(tool.name)}
                     </span>
                   </div>
-                </motion.div>
+                </m.div>
               );
             })}
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

@@ -1,4 +1,4 @@
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -39,9 +39,9 @@ class SelectedCalendarEventData(BaseModel):
 class ReplyToMessageData(BaseModel):
     """Data for the message being replied to."""
 
-    id: str  # Message ID being replied to
-    content: str  # Preview of the message content (truncated)
-    role: str  # "user" or "assistant"
+    id: str
+    content: str
+    role: str
 
 
 class MessageRequestWithHistory(BaseModel):
@@ -50,28 +50,11 @@ class MessageRequestWithHistory(BaseModel):
     messages: List[MessageDict]
     fileIds: Optional[List[str]] = []
     fileData: Optional[List[FileData]] = []
-    selectedTool: Optional[str] = None  # Tool selected via slash commands
-    toolCategory: Optional[str] = None  # Category of the selected tool
-    selectedWorkflow: Optional[SelectedWorkflowData] = (
-        None  # Workflow selected for execution
-    )
-    selectedCalendarEvent: Optional[SelectedCalendarEventData] = (
-        None  # Calendar event selected for context
-    )
-    replyToMessage: Optional[ReplyToMessageData] = None  # Message being replied to
-
-
-class SaveIncompleteConversationRequest(BaseModel):
-    message: str
-    conversation_id: Optional[str] = None
-    fileIds: Optional[List[str]] = []
-    fileData: Optional[List[FileData]] = []
     selectedTool: Optional[str] = None
     toolCategory: Optional[str] = None
     selectedWorkflow: Optional[SelectedWorkflowData] = None
     selectedCalendarEvent: Optional[SelectedCalendarEventData] = None
-    replyToMessage: Optional[ReplyToMessageData] = None
-    incomplete_response: str = ""  # The partial response from the bot
+    replyToMessage: Optional[ReplyToMessageData] = None  # Message being replied to
 
 
 class MessageRequest(BaseModel):

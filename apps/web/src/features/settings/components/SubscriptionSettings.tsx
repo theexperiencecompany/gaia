@@ -4,239 +4,311 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
-
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import {
   convertToUSDCents,
   formatUSDFromCents,
 } from "@/features/pricing/utils/currencyConverter";
-import { SettingsCard } from "@/features/settings/components/SettingsCard";
-import { CreditCardIcon } from "@/icons";
+import {
+  SettingsPage,
+  SettingsRow,
+  SettingsSection,
+} from "@/features/settings/components/ui";
+
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return "N/A";
+  try {
+    return new Date(dateString).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "long",
+      day: "numeric",
+    });
+  } catch {
+    return "N/A";
+  }
+};
+
+const getDaysUntil = (dateString?: string): number | null => {
+  if (!dateString) return null;
+  try {
+    const diff = new Date(dateString).getTime() - Date.now();
+    const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+    return days > 0 ? days : 0;
+  } catch {
+    return null;
+  }
+};
+
+type ChipColor = "success" | "warning" | "danger" | "default";
+
+function getStatusColor(status: string): ChipColor {
+  switch (status.toLowerCase()) {
+    case "active":
+      return "success";
+    case "created":
+    case "on_hold":
+      return "warning";
+    case "cancelled":
+    case "expired":
+      return "danger";
+    default:
+      return "default";
+  }
+}
+
+function getStatusText(status: string): string {
+  switch (status.toLowerCase()) {
+    case "created":
+      return "Activating";
+    case "active":
+      return "Active";
+    case "cancelled":
+      return "Cancelled";
+    case "expired":
+      return "Expired";
+    case "on_hold":
+      return "On Hold";
+    default:
+      return status;
+  }
+}
 
 export function SubscriptionSettings() {
-  const { data: subscriptionStatus, isLoading } = useUserSubscriptionStatus();
+  const { data: status, isLoading } = useUserSubscriptionStatus();
   const router = useRouter();
 
-  const handleUpgrade = () => {
-    router.push("/pricing");
-  };
+  const handleUpgrade = () => router.push("/pricing");
 
   if (isLoading) {
     return (
-      <SettingsCard
-        icon={<CreditCardIcon className="h-5 w-5 text-blue-400" />}
-        title="Subscription"
-      >
-        <div className="space-y-4">
-          <Skeleton className="h-4 w-32" />
-          <Skeleton className="h-4 w-64" />
-          <Skeleton className="h-16 w-full" />
-        </div>
-      </SettingsCard>
+      <SettingsPage>
+        <SettingsSection title="Plan">
+          <div className="space-y-3 px-4 py-3.5">
+            <Skeleton className="h-4 w-32 rounded-lg" />
+            <Skeleton className="h-4 w-64 rounded-lg" />
+            <Skeleton className="h-4 w-48 rounded-lg" />
+          </div>
+        </SettingsSection>
+      </SettingsPage>
     );
   }
 
-  // Free plan display
-  if (!subscriptionStatus?.is_subscribed || !subscriptionStatus.current_plan) {
+  if (!status?.is_subscribed) {
     return (
-      <SettingsCard
-        icon={<CreditCardIcon className="h-5 w-5 text-primary" />}
-        title="Subscription"
-      >
-        <div className="flex flex-col items-start gap-4 sm:flex-row">
-          <div className="relative w-full flex-1 overflow-hidden rounded-2xl bg-surface-200/40 p-6 backdrop-blur-xl">
-            <div className="flex h-full w-full flex-col gap-4">
-              {/* Header */}
-              <div className="flex flex-row items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-semibold text-foreground-900">
-                    Free
-                  </span>
-                  <Chip
-                    className="flex items-center gap-[2px] text-xs"
-                    color="success"
-                    variant="flat"
-                  >
-                    <span>Current Plan</span>
-                  </Chip>
-                </div>
-              </div>
-
-              {/* Price Section */}
-              <div className="flex flex-col gap-2">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-5xl font-bold text-foreground-900">$0</span>
-                  <span className="text-2xl text-foreground-400">USD</span>
-                </div>
-                <span className="min-h-5 text-sm font-normal text-foreground-400">
-                  Forever free
-                </span>
-              </div>
-
-              {/* Plan Information */}
-              <div className="mt-2 flex-1 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-foreground-400">Status</span>
-                  <span className="font-sm text-sm text-foreground-900">Active</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-foreground-400">Billing</span>
-                  <span className="font-sm text-sm text-foreground-900">None</span>
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <div className="space-y-3">
-                <Button
-                  color="primary"
-                  className="w-full font-semibold text-primary-foreground"
-                  onPress={handleUpgrade}
-                >
-                  Upgrade to Pro
-                </Button>
-              </div>
+      <SettingsPage>
+        {/* Plan summary header */}
+        <div className="rounded-2xl bg-zinc-900/60 px-5 py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+                Current Plan
+              </p>
+              <p className="mt-1 text-2xl font-semibold text-white">Free</p>
             </div>
+            <Chip color="success" variant="flat" size="sm" className="text-xs">
+              Active
+            </Chip>
           </div>
-          <div className="relative h-76 w-full flex-1 overflow-hidden rounded-2xl bg-surface-200/40 p-0 backdrop-blur-xl">
-            <Image
-              fill
-              src="/images/wallpapers/field.webp"
-              alt="Subscription illustration"
-              className="h-full w-full object-cover"
-            />
-          </div>
+          <p className="mt-1 text-sm text-zinc-500">
+            Forever free · No billing
+          </p>
         </div>
-      </SettingsCard>
-    );
-  }
 
-  const plan = subscriptionStatus.current_plan;
-  const subscription = subscriptionStatus.subscription;
-
-  // Convert price to USD for display
-  const priceInUSDCents = convertToUSDCents(plan.amount, plan.currency);
-  const priceFormatted = formatUSDFromCents(priceInUSDCents);
-
-  const getStatusColor = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "active":
-        return "success";
-      case "created":
-        return "warning";
-      case "cancelled":
-      case "expired":
-        return "danger";
-      default:
-        return "default";
-    }
-  };
-
-  const getStatusText = (status: string) => {
-    switch (status.toLowerCase()) {
-      case "created":
-        return "Activating";
-      case "active":
-        return "Active";
-      case "cancelled":
-        return "Cancelled";
-      case "expired":
-        return "Expired";
-      default:
-        return status;
-    }
-  };
-
-  return (
-    <SettingsCard
-      icon={<CreditCardIcon className="h-5 w-5 text-blue-400" />}
-      title="Subscription"
-    >
-      <div className="relative w-full overflow-hidden rounded-2xl bg-surface-200/40 p-6 backdrop-blur-xl">
-        <div className="flex h-full flex-col gap-4">
-          {/* Header */}
-          <div className="flex flex-row items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-2xl font-semibold text-foreground-900">
-                {plan.name}
-              </span>
-              <Chip
-                color={getStatusColor(subscription?.status || "unknown")}
-                variant="flat"
-                size="sm"
-                className="text-xs"
-              >
-                {getStatusText(subscription?.status || "unknown")}
-              </Chip>
-            </div>
-          </div>
-
-          {/* Price Section */}
-          <div className="flex flex-col gap-0">
-            <div className="flex items-baseline gap-2">
-              <span className="text-5xl font-bold text-foreground-900">
-                {priceFormatted}
-              </span>
-              <span className="text-2xl text-foreground-400">USD</span>
-            </div>
-            <span className="min-h-5 text-sm font-normal text-foreground-400">
-              / per {plan.duration}
-            </span>
-          </div>
-
-          {/* Plan Information */}
-          <div className="mt-2 flex-1 space-y-3">
-            {plan.description && (
-              <div className="mb-3 text-sm text-foreground-300">
-                {plan.description}
-              </div>
-            )}
-
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-foreground-400">Billing Cycle</span>
-              <span className="font-medium text-foreground-900 capitalize">
-                {plan.duration}
-              </span>
-            </div>
-
-            {subscriptionStatus.days_remaining !== undefined &&
-              subscriptionStatus.days_remaining !== null && (
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-foreground-400">Days Remaining</span>
-                  <span className="font-medium text-foreground-900">
-                    {subscriptionStatus.days_remaining} days
-                  </span>
-                </div>
-              )}
-          </div>
-
-          {/* Action Buttons */}
-          <div className="space-y-3">
+        <SettingsSection title="Upgrade to Pro">
+          <div className="px-4 py-4 space-y-3">
+            <p className="text-sm text-zinc-400">
+              Unlock unlimited usage and all features. Get 25–250× higher
+              limits, priority support, and private Discord channels.
+            </p>
             <Button
               color="primary"
-              variant="flat"
+              className="w-full font-semibold text-black"
+              size="sm"
               onPress={handleUpgrade}
-              className="w-full"
             >
-              View Plans
+              View plans
             </Button>
+          </div>
+        </SettingsSection>
+      </SettingsPage>
+    );
+  }
 
-            {subscription?.status === "active" && (
-              <Tooltip content="Please contact support to cancel your subscription for now">
-                <Button
-                  color="danger"
-                  variant="light"
-                  isDisabled
-                  className="w-full"
-                >
-                  Cancel Subscription
-                </Button>
-              </Tooltip>
+  const plan = status.current_plan;
+  const subscription = status.subscription;
+
+  const priceFormatted = (() => {
+    if (plan) {
+      return formatUSDFromCents(convertToUSDCents(plan.amount, plan.currency));
+    }
+    if (subscription?.recurring_pre_tax_amount) {
+      return formatUSDFromCents(subscription.recurring_pre_tax_amount);
+    }
+    return "$0";
+  })();
+
+  const billingCycle = (() => {
+    if (plan?.duration) return plan.duration;
+    const interval = subscription?.payment_frequency_interval?.toLowerCase();
+    if (interval === "month") return "monthly";
+    if (interval === "year") return "yearly";
+    return interval || "monthly";
+  })();
+
+  const planName =
+    plan?.name || (status.plan_type === "pro" ? "GAIA Pro" : "GAIA Free");
+
+  const daysUntilNextBilling = getDaysUntil(subscription?.next_billing_date);
+  const statusColor = getStatusColor(subscription?.status || "unknown");
+  const statusText = getStatusText(subscription?.status || "unknown");
+
+  const nextBillingLabel = (() => {
+    if (daysUntilNextBilling === null) return null;
+    if (daysUntilNextBilling === 0) return "due today";
+    if (daysUntilNextBilling === 1) return "tomorrow";
+    return `in ${daysUntilNextBilling} days`;
+  })();
+
+  return (
+    <SettingsPage>
+      {/* Plan summary header */}
+      <div className="rounded-2xl bg-zinc-900/60 px-5 py-4">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-zinc-500">
+              Current Plan
+            </p>
+            <p className="mt-1 text-2xl font-semibold text-white">{planName}</p>
+            {plan?.description && (
+              <p className="mt-0.5 text-sm text-zinc-500">{plan.description}</p>
             )}
           </div>
+          <Chip
+            color={statusColor}
+            variant="flat"
+            size="sm"
+            className="mt-1 text-xs"
+          >
+            {statusText}
+          </Chip>
         </div>
+        <p className="mt-3 text-sm text-zinc-400">
+          {priceFormatted}{" "}
+          <span className="text-zinc-600">/ {billingCycle}</span>
+          {nextBillingLabel && (
+            <span className="ml-3 text-xs text-zinc-600">
+              Next billing {nextBillingLabel}
+            </span>
+          )}
+        </p>
       </div>
-    </SettingsCard>
+
+      {/* Billing details */}
+      <SettingsSection title="Billing">
+        <SettingsRow label="Billing cycle">
+          <span className="text-sm capitalize text-zinc-300">
+            {billingCycle}
+          </span>
+        </SettingsRow>
+
+        {subscription?.next_billing_date && (
+          <SettingsRow
+            label="Next billing date"
+            description={nextBillingLabel ?? undefined}
+          >
+            <span className="text-sm text-zinc-300">
+              {formatDate(subscription.next_billing_date)}
+            </span>
+          </SettingsRow>
+        )}
+
+        {subscription?.previous_billing_date && (
+          <SettingsRow label="Last payment">
+            <span className="text-sm text-zinc-300">
+              {formatDate(subscription.previous_billing_date)}
+            </span>
+          </SettingsRow>
+        )}
+
+        {subscription?.created_at && (
+          <SettingsRow label="Subscribed since">
+            <span className="text-sm text-zinc-300">
+              {formatDate(subscription.created_at)}
+            </span>
+          </SettingsRow>
+        )}
+
+        {subscription?.cancelled_at && (
+          <SettingsRow label="Cancelled on">
+            <span className="text-sm text-red-400">
+              {formatDate(subscription.cancelled_at)}
+            </span>
+          </SettingsRow>
+        )}
+
+        {subscription?.dodo_subscription_id && (
+          <SettingsRow
+            label="Subscription ID"
+            description="For support queries"
+          >
+            <span
+              className="font-mono text-sm text-zinc-500"
+              title={subscription.dodo_subscription_id}
+            >
+              ···{subscription.dodo_subscription_id.slice(-8)}
+            </span>
+          </SettingsRow>
+        )}
+      </SettingsSection>
+
+      {/* Plan features */}
+      {plan?.features && plan.features.length > 0 && (
+        <SettingsSection title="What's included">
+          <div className="px-4 py-3.5">
+            <ul className="space-y-2">
+              {plan.features.map((feature) => (
+                <li
+                  key={feature}
+                  className="flex items-start gap-2 text-sm text-zinc-400"
+                >
+                  <span className="mt-0.5 text-emerald-400">✓</span>
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </SettingsSection>
+      )}
+
+      {/* Actions */}
+      <SettingsSection title="Actions">
+        <div className="space-y-2 px-4 py-3.5">
+          <Button
+            color="primary"
+            variant="flat"
+            onPress={handleUpgrade}
+            size="sm"
+            className="w-full"
+          >
+            View plans
+          </Button>
+
+          {subscription?.status === "active" && (
+            <Tooltip content="Please contact support to cancel your subscription for now">
+              <Button
+                color="danger"
+                variant="light"
+                isDisabled
+                size="sm"
+                className="w-full"
+              >
+                Cancel subscription
+              </Button>
+            </Tooltip>
+          )}
+        </div>
+      </SettingsSection>
+    </SettingsPage>
   );
 }

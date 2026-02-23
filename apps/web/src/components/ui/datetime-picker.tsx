@@ -4,6 +4,12 @@
 "use client";
 
 import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  CalendarIcon,
+  Cancel01Icon,
+} from "@icons";
+import {
   addHours,
   endOfDay,
   endOfHour,
@@ -21,7 +27,6 @@ import {
 import type * as React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DayPicker, type Matcher } from "react-day-picker";
-
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Popover,
@@ -29,12 +34,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  CalendarIcon,
-  Cancel01Icon,
-} from "@/icons";
 import { cn } from "@/lib/utils";
 
 export type CalendarProps = Omit<

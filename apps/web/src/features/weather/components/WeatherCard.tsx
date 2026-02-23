@@ -1,19 +1,8 @@
-import { Accordion, AccordionItem } from "@heroui/react";
+import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Switch } from "@heroui/switch";
-import type React from "react";
-import { useMemo, useState } from "react";
-
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import {
   CloudAngledRainIcon,
   CloudAngledZapIcon,
-  CloudFogIcon,
   CloudIcon,
   CloudLittleRainIcon,
   CloudSnowIcon,
@@ -27,7 +16,17 @@ import {
   ThermometerWarmIcon,
   Tornado02Icon,
   VisionIcon,
-} from "@/icons";
+} from "@icons";
+import type React from "react";
+import { useMemo, useState } from "react";
+import { CloudFogIcon } from "@/components/shared/icons";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import type { WeatherData } from "@/types/features/convoTypes";
 
 import { WeatherDetailItem } from "./WeatherDetailItem";
@@ -244,7 +243,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
               color="#D4D4D8"
             />
           ),
-          gradient: "bg-linear-to-br from-surface-400/80 to-surface-200/80",
+          gradient: "bg-linear-to-br from-zinc-600/80 to-zinc-800/80",
           colorCode: "#D4D4D8", // zinc-300
         };
       } else if (weatherId === 771) {
@@ -359,7 +358,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
             <DropdownMenuTrigger asChild>
               <button
                 type="button"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-surface-50/10 p-1 text-white hover:bg-surface-50/20"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/10 p-1 text-white hover:bg-white/20"
                 aria-label="Temperature settings"
               >
                 <ThermometerWarmIcon className="h-5 w-5" />
@@ -367,10 +366,10 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
             </DropdownMenuTrigger>
             <DropdownMenuContent
               align="end"
-              className="w-40 border-surface-300 bg-surface-200 text-foreground"
+              className="w-40 border-zinc-700 bg-zinc-800 text-white"
             >
               <DropdownMenuLabel>Temperature Unit</DropdownMenuLabel>
-              <DropdownMenuSeparator className="bg-surface-300" />
+              <DropdownMenuSeparator className="bg-zinc-700" />
               <div className="px-2 py-2">
                 <div className="flex items-center justify-between">
                   <span className="text-sm">°F</span>
@@ -450,7 +449,7 @@ export const WeatherCard: React.FC<WeatherCardProps> = ({ weatherData }) => {
                 return (
                   <div
                     key={dayTemp + nightTemp}
-                    className="flex items-center justify-start rounded-xl bg-surface-50/15 px-2 py-1 text-white"
+                    className="flex items-center justify-start rounded-xl bg-black/15 px-2 py-1 text-white"
                   >
                     <div className="flex w-full flex-1 items-center justify-start gap-2">
                       <div className="flex items-center justify-center">

@@ -1,9 +1,8 @@
 "use client";
 
+import { CheckmarkCircle02Icon, CreditCardIcon, Timer02Icon } from "@icons";
 import { useEffect, useState } from "react";
-
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
-import { CheckmarkCircle02Icon, CreditCardIcon, Timer02Icon } from "@/icons";
 
 export function SubscriptionActivationBanner() {
   const { data: subscriptionStatus } = useUserSubscriptionStatus();

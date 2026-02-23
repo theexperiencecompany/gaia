@@ -12,9 +12,6 @@ python = "3.12"
 [env]
 PROJECT_NAME = "{{ config_root | basename }}"
 
-[settings]
-python.uv_venv_auto = true
-
 [tasks.dev]
 description = "Run development server with hot reload"
 run = "uv run --group backend uvicorn app.main:app --port 8000 --reload --reload-dir app --log-level info"

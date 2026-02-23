@@ -1,0 +1,149 @@
+{
+  "name": "Google Meet Capabilities",
+  "description": "Evaluation dataset for Google Meet subagent capabilities including space management, conference records, recordings, and transcripts. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "google_meet_agent",
+  "integration_id": "googlemeet",
+  "items": [
+    {
+      "input": "create a meet room",
+      "expected_output": "Create new Google Meet space/room.",
+      "context": "User wants instant meeting room",
+      "tags": ["meet", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "start a google meet now",
+      "expected_output": "Create new Meet space immediately and return join link.",
+      "context": "User wants immediate meeting",
+      "tags": ["meet", "create", "instant"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get meeting details for space ABC123",
+      "expected_output": "Get Meet space details by space ID/name.",
+      "context": "User wants meeting info",
+      "tags": ["meet", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "end the active meeting",
+      "expected_output": "1. Get active conference. 2. End active conference in space.",
+      "context": "User wants to terminate meeting",
+      "tags": ["meet", "end", "active"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list my past conferences",
+      "expected_output": "List conference records for past meetings.",
+      "context": "User wants meeting history",
+      "tags": ["conference", "list", "history"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get recording for yesterday's standup",
+      "expected_output": "1. List conference records. 2. Find standup from yesterday. 3. Get recordings by conference record ID.",
+      "context": "User wants specific recording",
+      "tags": ["recording", "get", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "show participants from the team meeting",
+      "expected_output": "1. List conference records. 2. Find team meeting. 3. List participant sessions.",
+      "context": "User wants attendance info",
+      "tags": ["participant", "list", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get transcripts from the client call",
+      "expected_output": "1. List conference records. 2. Find client call. 3. Get transcripts by conference record ID.",
+      "context": "User wants meeting transcript",
+      "tags": ["transcript", "get", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "who joined the budget review meeting",
+      "expected_output": "1. List conference records. 2. Find budget review meeting. 3. List participant sessions.",
+      "context": "User wants to see attendees",
+      "tags": ["participant", "list", "search"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get conference record for meeting XYZ",
+      "expected_output": "Get conference record details by conference record ID.",
+      "context": "User wants specific conference info",
+      "tags": ["conference", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "create google meet with restricted access",
+      "expected_output": "Create Meet space with access type configured for restricted access.",
+      "context": "User wants secure meeting",
+      "tags": ["meet", "create", "secure"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "update meeting space settings",
+      "expected_output": "1. Get current space. 2. Update space settings.",
+      "context": "User wants to modify meeting settings",
+      "tags": ["meet", "update", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "list recordings from this week",
+      "expected_output": "1. List conference records from this week. 2. Get recordings for each.",
+      "context": "User wants recent recordings",
+      "tags": ["recording", "list", "filter"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get participant session for john in last meeting",
+      "expected_output": "1. List conference records. 2. Find last meeting. 3. Get participant session for john.",
+      "context": "User wants specific participant info",
+      "tags": ["participant", "get", "lazy"],
+      "metadata": { "difficulty": "hard" }
+    },
+    {
+      "input": "create gogle meet room",
+      "expected_output": "1. Recognize 'gogle' as typo for 'google'. 2. Create new Meet space.",
+      "context": "User made typo in 'google'",
+      "tags": ["meet", "create", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "show all transcripts",
+      "expected_output": "List conference records and their available transcripts.",
+      "context": "User wants to see all transcripts",
+      "tags": ["transcript", "list"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "end conference in meeting room ABC",
+      "expected_output": "1. Get space ABC. 2. End active conference in that space.",
+      "context": "User wants to end specific meeting",
+      "tags": ["meet", "end", "detailed"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "how long was the interview meeting",
+      "expected_output": "1. List conference records. 2. Find interview meeting. 3. Calculate duration from start/end times.",
+      "context": "User wants meeting duration",
+      "tags": ["conference", "get", "duration", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get all recordings for conference record 12345",
+      "expected_output": "Get recordings by conference record ID.",
+      "context": "User wants recordings for specific conference",
+      "tags": ["recording", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "when did the sprint planning meeting happen",
+      "expected_output": "1. List conference records. 2. Find sprint planning meeting. 3. Return start time.",
+      "context": "User wants meeting time",
+      "tags": ["conference", "get", "search", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    }
+  ]
+}

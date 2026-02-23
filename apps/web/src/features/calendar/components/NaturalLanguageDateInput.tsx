@@ -1,9 +1,9 @@
 "use client";
 
 import { Input } from "@heroui/input";
+import { CalendarIcon } from "@icons";
 import { parseDate } from "chrono-node";
 import React, { useId } from "react";
-
 import { Calendar } from "@/components/ui/calendar";
 import {
   Popover,
@@ -11,7 +11,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { CalendarIcon } from "@/icons";
 import { cn } from "@/lib/utils";
 import {
   formatDateLocal,

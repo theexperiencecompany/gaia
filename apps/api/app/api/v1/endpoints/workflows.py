@@ -28,7 +28,12 @@ from app.models.workflow_models import (
     WorkflowResponse,
     WorkflowStatusResponse,
 )
+from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.services.workflow import WorkflowService
+from app.services.workflow.execution_service import (
+    get_workflow_executions as get_executions,
+)
+from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import transform_workflow_document
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
@@ -52,6 +57,12 @@ async def create_workflow(
             workflow=workflow, message="Workflow created successfully"
         )
 
+    except TriggerRegistrationError as e:
+        # Specific error for trigger registration failures
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
@@ -105,6 +116,35 @@ async def execute_workflow(
         )
 
 
+@router.get(
+    "/workflows/{workflow_id}/executions", response_model=WorkflowExecutionsResponse
+)
+@limiter.limit("100/minute")
+async def get_workflow_executions(
+    request: Request,
+    workflow_id: str,
+    limit: int = 10,
+    offset: int = 0,
+    user: dict = Depends(get_current_user),
+):
+    """Get execution history for a workflow."""
+    try:
+        limit = min(limit, 100)
+        result = await get_executions(
+            workflow_id=workflow_id,
+            user_id=user["user_id"],
+            limit=limit,
+            offset=offset,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error getting executions for workflow {workflow_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get workflow executions",
+        )
+
+
 @router.get("/workflows/{workflow_id}/status", response_model=WorkflowStatusResponse)
 async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current_user)):
     """Get the current status of a workflow (for polling)."""
@@ -145,6 +185,12 @@ async def activate_workflow(
             workflow=workflow, message="Workflow activated successfully"
         )
 
+    except TriggerRegistrationError as e:
+        # Specific error for trigger registration failures
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except HTTPException:
         raise
     except Exception as e:
@@ -269,7 +315,6 @@ async def create_workflow_from_todo(
 
 
 @router.post("/workflows/{workflow_id}/publish", response_model=PublishWorkflowResponse)
-@tiered_rate_limit("workflow_operations")
 async def publish_workflow(
     workflow_id: str,
     user: dict = Depends(get_current_user),
@@ -316,7 +361,6 @@ async def publish_workflow(
 
 
 @router.post("/workflows/{workflow_id}/unpublish")
-@tiered_rate_limit("workflow_operations")
 async def unpublish_workflow(
     workflow_id: str,
     user: dict = Depends(get_current_user),
@@ -480,6 +524,12 @@ async def update_workflow(
             workflow=workflow, message="Workflow updated successfully"
         )
 
+    except TriggerRegistrationError as e:
+        # Specific error for trigger registration failures
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e),
+        )
     except HTTPException:
         raise
     except Exception as e:

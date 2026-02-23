@@ -1,12 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
+import { CheckmarkCircle02Icon, Loading02Icon } from "@icons";
 import { memo, useCallback, useMemo, useState } from "react";
-
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import TodoItem from "@/features/todo/components/TodoItem";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
-import { CheckmarkCircle02Icon, Loading02Icon } from "@/icons";
 import type { Todo, TodoUpdate } from "@/types/features/todoTypes";
 
 interface InboxTodosViewProps {
@@ -14,7 +12,6 @@ interface InboxTodosViewProps {
 }
 
 const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
-  const router = useRouter();
   const [selectedTodo, setSelectedTodo] = useState<string | null>(null);
 
   // Stable filters object using useMemo
@@ -38,8 +35,7 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
 
   const handleTodoClick = useCallback((todo: Todo) => {
     setSelectedTodo(todo.id);
-    router.push(`/todos?todo=${todo.id}`);
-  }, [router]);
+  }, []);
 
   const handleRefresh = useCallback(() => {
     refresh();
@@ -51,7 +47,7 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
   return (
     <BaseCardView
       title="Inbox Todos"
-      icon={<CheckmarkCircle02Icon className="h-6 w-6 text-foreground-500" />}
+      icon={<CheckmarkCircle02Icon className="h-6 w-6 text-zinc-500" />}
       isFetching={loading}
       isEmpty={isEmpty}
       emptyMessage="No todos in your inbox"
@@ -61,7 +57,7 @@ const InboxTodosView: React.FC<InboxTodosViewProps> = memo(({ onRefresh }) => {
     >
       {loading ? (
         <div className="flex h-full items-center justify-center">
-          <Loading02Icon className="h-8 w-8 animate-spin text-foreground-500" />
+          <Loading02Icon className="h-8 w-8 animate-spin text-zinc-500" />
         </div>
       ) : (
         <div className="space-y-0">

@@ -1,9 +1,9 @@
 "use client";
 
+import { ArrowDown01Icon } from "@icons";
 import { formatDateRange } from "little-date";
 import { useState } from "react";
 import type { DateRange } from "react-day-picker";
-
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "@/components/ui/popover";
-import { ArrowDown01Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 interface DateRangePickerProps {

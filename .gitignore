@@ -106,4 +106,13 @@ out
 **/logs
 
 /tmp
-.kiro/
+
+.postman
+postman/
+
+.agents/plans/
+
+# whatsapp-web.js
+.wwebjs_auth/
+.wwebjs_cache/
+/config.json

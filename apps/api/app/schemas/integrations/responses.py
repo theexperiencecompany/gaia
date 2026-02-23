@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import List, Literal, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_validator
 from pydantic.alias_generators import to_camel
 
 from app.schemas.common import SuccessResponse
@@ -15,6 +15,16 @@ class CamelModel(BaseModel):
         populate_by_name=True,
         alias_generator=to_camel,
     )
+
+
+class CloneCountMixin(BaseModel):
+    """Mixin to handle clone_count None -> 0 coercion."""
+
+    @field_validator("clone_count", mode="before", check_fields=False)
+    @classmethod
+    def coerce_clone_count(cls, v):
+        """Coerce None to 0 for clone_count."""
+        return v if v is not None else 0
 
 
 class IntegrationConfigItem(CamelModel):
@@ -31,6 +41,7 @@ class IntegrationConfigItem(CamelModel):
     managed_by: Literal["self", "composio", "mcp", "internal"]
     auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
     source: Literal["platform"] = "platform"
+    slug: str  # For platform integrations, this is the same as id
 
 
 class IntegrationsConfigResponse(BaseModel):
@@ -73,7 +84,9 @@ class IntegrationTool(BaseModel):
     description: Optional[str] = None
 
 
-class IntegrationResponse(CamelModel):
+class IntegrationResponse(CamelModel, CloneCountMixin):
+    """Integration details for API responses."""
+
     integration_id: str
     name: str
     description: str
@@ -88,6 +101,13 @@ class IntegrationResponse(CamelModel):
     icon_url: Optional[str] = None
     is_public: Optional[bool] = None
     created_by: Optional[str] = None
+
+    # Publishing fields
+    published_at: Optional[datetime] = None
+    clone_count: int = 0
+    slug: Optional[str] = None  # Computed at runtime via generate_integration_slug
+    # Creator info (populated via aggregation from users collection)
+    creator: Optional["CommunityIntegrationCreator"] = None
 
 
 class UserIntegrationResponse(CamelModel):
@@ -112,7 +132,114 @@ class UserIntegrationsListResponse(BaseModel):
 class ConnectIntegrationResponse(CamelModel):
     status: Literal["connected", "redirect", "error"]
     integration_id: str
+    name: str
     message: Optional[str] = None
     tools_count: Optional[int] = None
     redirect_url: Optional[str] = None
     error: Optional[str] = None
+
+
+class PublishIntegrationResponse(SuccessResponse, CamelModel):
+    integration_id: str
+    public_url: str
+
+
+class UnpublishIntegrationResponse(SuccessResponse, CamelModel):
+    integration_id: str
+
+
+class CommunityIntegrationCreator(CamelModel):
+    """Creator info for community integration display."""
+
+    name: Optional[str] = None
+    picture: Optional[str] = None
+
+
+class CommunityIntegrationItem(CamelModel, CloneCountMixin):
+    """Integration item for community marketplace listing."""
+
+    integration_id: str
+    slug: str
+    name: str
+    description: str
+    category: str
+    icon_url: Optional[str] = None
+    clone_count: int = 0
+    tool_count: int = 0
+    tools: List[IntegrationTool] = []
+    published_at: Optional[datetime] = None
+    creator: Optional[CommunityIntegrationCreator] = None
+
+
+class CommunityListResponse(BaseModel):
+    """Response for community marketplace listing."""
+
+    integrations: List[CommunityIntegrationItem] = []
+    total: int = 0
+    has_more: bool = False
+
+
+class MCPConfigDetail(CamelModel):
+    """MCP config for public display."""
+
+    server_url: Optional[str] = None
+    requires_auth: bool = False
+    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+
+
+class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
+    """Full public integration details for public pages (SEO/sharing)."""
+
+    integration_id: str
+    slug: str
+    name: str
+    description: str
+    category: str
+    icon_url: Optional[str] = None
+
+    # Creator info (nested object populated via aggregation from users collection)
+    creator: Optional[CommunityIntegrationCreator] = None
+
+    # MCP config for public display (nested object for frontend compatibility)
+    mcp_config: Optional[MCPConfigDetail] = None
+
+    # Tools list
+    tools: List[IntegrationTool] = []
+
+    # Stats
+    clone_count: int = 0
+    tool_count: int = 0
+    published_at: Optional[datetime] = None
+
+
+class AddIntegrationResponse(CamelModel):
+    """Response for adding a public integration to user's workspace."""
+
+    integration_id: str
+    name: str
+    status: Literal["connected", "redirect", "error"]
+    message: str = "Integration added successfully"
+    redirect_url: Optional[str] = None
+    tools_count: Optional[int] = None
+    error: Optional[str] = None
+
+
+class SearchIntegrationItem(CamelModel, CloneCountMixin):
+    """Integration item in search results."""
+
+    integration_id: str
+    slug: str
+    name: str
+    description: str
+    category: str
+    relevance_score: float
+    clone_count: int = 0
+    tool_count: int = 0
+    icon_url: Optional[str] = None
+
+
+class SearchIntegrationsResponse(BaseModel):
+    """Response for semantic search of integrations."""
+
+    integrations: List[SearchIntegrationItem] = []
+    query: str

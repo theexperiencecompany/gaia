@@ -1,14 +1,14 @@
-import { AnimatePresence, motion } from "framer-motion";
+import { Cancel01Icon } from "@icons";
+import { AnimatePresence, m } from "motion/react";
 import type React from "react";
 import { useEffect } from "react";
-
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Cancel01Icon } from "@/icons";
 import { useComposerUI } from "@/stores/composerStore";
 
 interface SelectedToolIndicatorProps {
   toolName: string | null;
   toolCategory?: string | null;
+  iconUrl?: string | null;
   onRemove?: () => void;
 }
 
@@ -25,6 +25,7 @@ const formatToolName = (toolName: string): string => {
 const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   toolName,
   toolCategory,
+  iconUrl,
   onRemove,
 }) => {
   const { isSlashCommandDropdownOpen } = useComposerUI();
@@ -48,7 +49,7 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
   return (
     <AnimatePresence>
       {toolName && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0, scale: 0.9, y: 10 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           // exit={{ opacity: 0, scale: 0.9, y: 10 }}
@@ -61,24 +62,28 @@ const SelectedToolIndicator: React.FC<SelectedToolIndicatorProps> = ({
           className="mx-3 mt-2 mb-1 flex w-fit items-center gap-2 rounded-xl bg-surface-300 px-2 py-1"
         >
           <div>
-            {getToolCategoryIcon(toolCategory || "general", {
-              size: 17,
-            })}
+            {getToolCategoryIcon(
+              toolCategory || "general",
+              {
+                size: 17,
+              },
+              iconUrl,
+            )}
           </div>
           <span className="text-sm font-light text-foreground-200">
             {formatToolName(toolName)}
           </span>
           {onRemove && (
-            <motion.button
+            <m.button
               onClick={onRemove}
               whileHover={{ scale: 1.1 }}
               whileTap={{ scale: 0.9 }}
               className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-md text-foreground-400 transition-colors hover:bg-surface-400 hover:text-foreground-200"
             >
               <Cancel01Icon size={15} />
-            </motion.button>
+            </m.button>
           )}
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

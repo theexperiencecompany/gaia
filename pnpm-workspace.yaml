@@ -1,7 +1,9 @@
 packages:
   - apps/*
+  - apps/bots/*
   - packages/*
   - libs/*
+  - libs/shared/*
 
 onlyBuiltDependencies:
   - "@heroui/shared-utils"

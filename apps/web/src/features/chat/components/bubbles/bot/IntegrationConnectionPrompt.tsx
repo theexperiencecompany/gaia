@@ -1,11 +1,10 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-
+import { AlertCircleIcon } from "@icons";
 import CollapsibleListWrapper from "@/components/shared/CollapsibleListWrapper";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations";
 import type { IntegrationConnectionData } from "@/features/integrations/types";
-import { AlertCircleIcon } from "@/icons";
 
 interface IntegrationConnectionPromptProps {
   integration_connection_required: IntegrationConnectionData;
@@ -35,7 +34,7 @@ export default function IntegrationConnectionPrompt({
   };
 
   const content = (
-    <div className="w-full max-w-2xl rounded-3xl bg-surface-200 p-4 text-white">
+    <div className="w-fit max-w-lg rounded-3xl bg-zinc-800/50 p-4 text-white">
       <div className="flex flex-col gap-3">
         <div className="flex items-start gap-3">
           <div className="shrink-0 pt-0.5">
@@ -61,37 +60,33 @@ export default function IntegrationConnectionPrompt({
               )}
             </div>
 
-            <p className="text-xs font-light text-foreground-400">
+            <p className="text-xs font-light text-zinc-400">
               {integration.description}
             </p>
           </div>
         </div>
 
-        {!isConnected && (
-          <div className="flex items-start gap-2 rounded-lg bg-warning-100/10 p-3">
-            <AlertCircleIcon
-              className="mt-0.5 shrink-0 text-warning-500"
-              size={16}
-            />
-            <p className="text-xs text-warning-700 dark:text-warning-400">
-              {message}
-            </p>
+        {!isConnected && isAvailable && (
+          <div className="flex gap-2 w-full">
+            {!isConnected && (
+              <div className="flex gap-2 rounded-xl items-center bg-warning-100/10 p-3">
+                <AlertCircleIcon
+                  className="mt-0.5 shrink-0 text-warning-500"
+                  size={16}
+                />
+                <p className="text-xs text-warning-700 dark:text-warning-400">
+                  {message}
+                </p>
+              </div>
+            )}
+
+            {isAvailable && !isConnected && (
+              <Button color="primary" onPress={handleConnect}>
+                Connect
+              </Button>
+            )}
           </div>
         )}
-
-        <div className="flex gap-2">
-          {isAvailable && !isConnected && (
-            <Button
-              size="sm"
-              variant="flat"
-              color="primary"
-              className="text-xs"
-              onPress={handleConnect}
-            >
-              Connect
-            </Button>
-          )}
-        </div>
       </div>
     </div>
   );

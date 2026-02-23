@@ -17,9 +17,9 @@ Each workflow uses REAL tools from:
 
 Usage:
   cd backend
-  python scripts/seed_explore_workflows_fixed.py
-  python scripts/seed_explore_workflows_fixed.py --dry-run
-  python scripts/seed_explore_workflows_fixed.py --force --clear-existing
+  python scripts/seed_explore_workflows.py
+  python scripts/seed_explore_workflows.py --dry-run
+  python scripts/seed_explore_workflows.py --force --clear-existing
 """
 
 import argparse
@@ -37,7 +37,11 @@ backend_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(backend_dir))
 
 from app.db.mongodb.collections import workflows_collection  # noqa: E402
-from app.models.workflow_models import TriggerConfig, TriggerType, WorkflowStep  # noqa: E402
+from app.models.workflow_models import (  # noqa: E402
+    TriggerConfig,
+    TriggerType,
+    WorkflowStep,
+)
 
 
 def generate_run_count() -> tuple[int, int]:
@@ -80,7 +84,12 @@ def get_productivity_workflows() -> list[dict[str, Any]]:
             "title": "Smart Inbox Triage & Auto-Reply",
             "description": "Automatically classify incoming emails, draft intelligent replies for routine messages, schedule follow-ups for important items, and flag high-priority emails.",
             "categories": ["Productivity", "featured"],
-            "trigger_config": {"type": "email", "enabled": True},
+            "trigger_config": {
+                "type": "integration",
+                "enabled": True,
+                "trigger_name": "gmail_new_message",
+                "trigger_data": {"trigger_name": "gmail_new_message"},
+            },
             "steps": [
                 create_step(
                     1,
@@ -97,7 +106,7 @@ def get_productivity_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Create Follow-up Tasks",
-                    "productivity",
+                    "todos",
                     "Create prioritized todo items for emails requiring action",
                 ),
             ],
@@ -122,13 +131,13 @@ def get_productivity_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Fetch Today's Tasks",
-                    "productivity",
+                    "todos",
                     "Retrieve all todos and tasks due today or overdue",
                 ),
                 create_step(
                     2,
                     "Check Calendar Events",
-                    "google_calendar",
+                    "googlecalendar",
                     "Review today's calendar events",
                 ),
                 create_step(
@@ -175,7 +184,12 @@ def get_productivity_workflows() -> list[dict[str, Any]]:
             "title": "Email to Task Converter",
             "description": "Transform important unread emails into actionable tasks. Extracts key information from emails and creates structured todos.",
             "categories": ["Productivity", "featured"],
-            "trigger_config": {"type": "email", "enabled": True},
+            "trigger_config": {
+                "type": "integration",
+                "enabled": True,
+                "trigger_name": "gmail_new_message",
+                "trigger_data": {"trigger_name": "gmail_new_message"},
+            },
             "steps": [
                 create_step(
                     1,
@@ -186,7 +200,7 @@ def get_productivity_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Create Structured Tasks",
-                    "productivity",
+                    "todos",
                     "Generate detailed todos from email content",
                 ),
             ],
@@ -201,7 +215,12 @@ def get_productivity_workflows() -> list[dict[str, Any]]:
             "title": "Weekly Email Summary Digest",
             "description": "Summarize long email threads and extract action items automatically. Cuts through lengthy conversations to surface key decisions.",
             "categories": ["Productivity"],
-            "trigger_config": {"type": "email", "enabled": True},
+            "trigger_config": {
+                "type": "integration",
+                "enabled": True,
+                "trigger_name": "gmail_new_message",
+                "trigger_data": {"trigger_name": "gmail_new_message"},
+            },
             "steps": [
                 create_step(
                     1,
@@ -212,7 +231,7 @@ def get_productivity_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Extract Action Items",
-                    "productivity",
+                    "todos",
                     "Parse email content and create todos for action items",
                 ),
             ],
@@ -288,7 +307,7 @@ def get_engineering_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Create Review Priority List",
-                    "productivity",
+                    "todos",
                     "Generate prioritized review tasks based on PR size and age",
                 ),
             ],
@@ -472,13 +491,13 @@ def get_founders_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Review Today's Calendar",
-                    "google_calendar",
+                    "googlecalendar",
                     "Fetch all meetings and events scheduled for today",
                 ),
                 create_step(
                     2,
                     "Check Pending Tasks",
-                    "productivity",
+                    "todos",
                     "Get all todos with upcoming deadlines",
                 ),
                 create_step(
@@ -584,7 +603,7 @@ def get_founders_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Create Interview Todo",
-                    "productivity",
+                    "todos",
                     "Set up follow-up task to review candidate submission",
                 ),
             ],
@@ -685,7 +704,7 @@ def get_marketing_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Create Content Tasks",
-                    "productivity",
+                    "todos",
                     "Generate content brief tasks with keyword targets and outlines",
                 ),
             ],
@@ -710,7 +729,7 @@ def get_marketing_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Check Upcoming Events",
-                    "google_calendar",
+                    "googlecalendar",
                     "Review company events, launches, and marketing milestones",
                 ),
                 create_step(
@@ -811,7 +830,7 @@ def get_marketing_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Create Response Tasks",
-                    "productivity",
+                    "todos",
                     "Generate response tasks for mentions requiring engagement",
                 ),
             ],
@@ -880,7 +899,7 @@ def get_knowledge_worker_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Fetch Completed Tasks",
-                    "productivity",
+                    "todos",
                     "Get all tasks completed this week across your todo lists",
                 ),
                 create_step(
@@ -937,7 +956,7 @@ def get_knowledge_worker_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Get Today's Meetings",
-                    "google_calendar",
+                    "googlecalendar",
                     "Fetch all meetings scheduled for today with attendee information",
                 ),
                 create_step(
@@ -964,7 +983,12 @@ def get_knowledge_worker_workflows() -> list[dict[str, Any]]:
             "title": "Email Thread to Structured Tasks",
             "description": "When long emails arrive, automatically summarize them and extract action items into your todo list. Cuts time reading lengthy threads.",
             "categories": ["Knowledge Workers"],
-            "trigger_config": {"type": "email", "enabled": True},
+            "trigger_config": {
+                "type": "integration",
+                "enabled": True,
+                "trigger_name": "gmail_new_message",
+                "trigger_data": {"trigger_name": "gmail_new_message"},
+            },
             "steps": [
                 create_step(
                     1,
@@ -975,7 +999,7 @@ def get_knowledge_worker_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Create Action Tasks",
-                    "productivity",
+                    "todos",
                     "Extract and create todos for action items found in the email thread",
                 ),
             ],
@@ -1001,7 +1025,7 @@ def get_knowledge_worker_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Create Follow-up Tasks",
-                    "productivity",
+                    "todos",
                     "Generate action items based on the documented idea",
                 ),
             ],
@@ -1059,13 +1083,13 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Check Today's Classes",
-                    "google_calendar",
+                    "googlecalendar",
                     "Get all classes and study sessions scheduled for today",
                 ),
                 create_step(
                     2,
                     "Review Pending Tasks",
-                    "productivity",
+                    "todos",
                     "Fetch assignments and study tasks with upcoming deadlines",
                 ),
                 create_step(
@@ -1122,13 +1146,13 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     1,
                     "Check Assignment Deadlines",
-                    "google_calendar",
+                    "googlecalendar",
                     "Get all assignment deadlines for the next two weeks",
                 ),
                 create_step(
                     2,
                     "Create Assignment Tasks",
-                    "productivity",
+                    "todos",
                     "Generate prioritized tasks for each assignment with milestone dates",
                 ),
             ],
@@ -1169,7 +1193,12 @@ def get_student_workflows() -> list[dict[str, Any]]:
             "title": "Professor Email Task Extractor",
             "description": "When emails from professors arrive, automatically extract deadlines, requirements, and create corresponding tasks.",
             "categories": ["Students"],
-            "trigger_config": {"type": "email", "enabled": True},
+            "trigger_config": {
+                "type": "integration",
+                "enabled": True,
+                "trigger_name": "gmail_new_message",
+                "trigger_data": {"trigger_name": "gmail_new_message"},
+            },
             "steps": [
                 create_step(
                     1,
@@ -1180,13 +1209,13 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     2,
                     "Create Class Tasks",
-                    "productivity",
+                    "todos",
                     "Generate tasks from extracted deadlines and requirements with due dates",
                 ),
                 create_step(
                     3,
                     "Add to Calendar",
-                    "google_calendar",
+                    "googlecalendar",
                     "Schedule study blocks and deadline reminders",
                 ),
             ],
@@ -1249,7 +1278,7 @@ def get_student_workflows() -> list[dict[str, Any]]:
                 create_step(
                     3,
                     "Schedule Review Session",
-                    "google_calendar",
+                    "googlecalendar",
                     "Block time for reviewing the revision pack",
                 ),
             ],
@@ -1385,6 +1414,13 @@ async def seed_explore_workflows(
         if response.lower() != "y":
             print("❌ Cancelled.")
             return
+
+    if existing_explore > 0 and not clear_existing and not force:
+        clear_response = input(
+            f"\n❓ Found {existing_explore} existing explore workflows. Clear and re-seed them? (y/N): "
+        )
+        if clear_response.lower() == "y":
+            clear_existing = True
 
     if backup:
         await create_backup()

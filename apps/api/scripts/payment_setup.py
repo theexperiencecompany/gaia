@@ -136,7 +136,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "dodo_product_id": monthly_product_id,  # Monthly plan
             "name": "Pro",
             "description": "A boost of extra access, because you deserve it",
-            "amount": 1500,  # $15.00 in cents
+            "amount": 3000,  # $30.00 in cents
             "currency": "USD",
             "duration": "monthly",
             "max_users": 1,
@@ -152,7 +152,7 @@ async def setup_payment_plans(monthly_product_id: str, yearly_product_id: str):
             "dodo_product_id": yearly_product_id,  # Yearly plan
             "name": "Pro",
             "description": "A boost of extra access, because you deserve it",
-            "amount": 13500,  # $135.00 in cents (3 months free)
+            "amount": 27000,  # $270.00 in cents (3 months free, 25% discount)
             "currency": "USD",
             "duration": "yearly",
             "max_users": 1,

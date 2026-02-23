@@ -1,15 +1,13 @@
 "use client";
 
 import { Spinner } from "@heroui/spinner";
+import { NotificationIcon } from "@icons";
 import { useMemo } from "react";
-
 import type {
   ModalConfig,
   NotificationRecord,
 } from "@/types/features/notificationTypes";
 import { groupNotificationsByTimezone } from "@/utils";
-
-import { NotificationIcon } from "../../../components/shared/icons";
 import { EnhancedNotificationCard } from "./EnhancedNotificationCard";
 
 interface NotificationListProps {

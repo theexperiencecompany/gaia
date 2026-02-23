@@ -1,18 +1,18 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/react";
-import { useParams } from "next/navigation";
-import { toast } from "sonner";
-
-import { chatApi } from "@/features/chat/api/chatApi";
-import { useConversation } from "@/features/chat/hooks/useConversation";
 import {
   Copy01Icon,
   LinkBackwardIcon,
   PinIcon,
+  RedoIcon,
   ThumbsDownIcon,
   ThumbsUpIcon,
-} from "@/icons";
-import { posthog } from "@/lib";
+} from "@icons";
+import { useParams } from "next/navigation";
+import { chatApi } from "@/features/chat/api/chatApi";
+import { useConversation } from "@/features/chat/hooks/useConversation";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 import { useReplyToMessage } from "@/stores/replyToMessageStore";
 
 interface ChatBubbleActionsProps {
@@ -21,6 +21,8 @@ interface ChatBubbleActionsProps {
   pinned?: boolean;
   message_id: string;
   messageRole?: "user" | "assistant";
+  onRetry?: () => void;
+  isRetrying?: boolean;
 }
 
 export default function ChatBubble_Actions({
@@ -29,6 +31,8 @@ export default function ChatBubble_Actions({
   text,
   pinned = false,
   messageRole = "assistant",
+  onRetry,
+  isRetrying = false,
 }: ChatBubbleActionsProps) {
   const { id: convoIdParam } = useParams<{ id: string }>();
   const { updateConvoMessages } = useConversation();
@@ -88,8 +92,7 @@ export default function ChatBubble_Actions({
   };
 
   const handleThumbsUp = () => {
-    // Track message feedback with full message content
-    posthog.capture("chat:message_feedback", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_FEEDBACK, {
       message_id,
       message_role: messageRole,
       message_content: text,
@@ -101,8 +104,7 @@ export default function ChatBubble_Actions({
   };
 
   const handleThumbsDown = () => {
-    // Track message feedback with full message content
-    posthog.capture("chat:message_feedback", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_MESSAGE_FEEDBACK, {
       message_id,
       message_role: messageRole,
       message_content: text,
@@ -187,6 +189,25 @@ export default function ChatBubble_Actions({
                   className={`cursor-pointer`}
                   height="20"
                   width="20"
+                />
+              </Button>
+            </Tooltip>
+          )}
+
+          {onRetry && (
+            <Tooltip content="Retry" placement="bottom">
+              <Button
+                isIconOnly
+                isDisabled={isRetrying}
+                className="aspect-square size-7.5 min-w-7.5 rounded-md p-0! text-zinc-500 hover:text-zinc-300"
+                variant="light"
+                radius="lg"
+                onPress={onRetry}
+              >
+                <RedoIcon
+                  className={`cursor-pointer ${isRetrying ? "animate-spin" : ""}`}
+                  height="18"
+                  width="18"
                 />
               </Button>
             </Tooltip>

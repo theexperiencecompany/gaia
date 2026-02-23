@@ -1,8 +1,7 @@
 // components/mail/EmailChip.tsx
 import { Chip } from "@heroui/chip";
+import { Cancel01Icon } from "@icons";
 import type React from "react";
-
-import { Cancel01Icon } from "@/icons";
 
 export interface EmailSuggestion {
   id: string;

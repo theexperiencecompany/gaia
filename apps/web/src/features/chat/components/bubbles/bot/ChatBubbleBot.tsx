@@ -36,6 +36,8 @@ export default function ChatBubbleBot(
     isLastMessage,
     disableActions = false,
     children,
+    onRetry,
+    isRetrying,
   } = props;
   const { isLoading } = useLoading();
 
@@ -73,7 +75,7 @@ export default function ChatBubbleBot(
   // Let ChatRenderer's loading indicator handle it
   if (loading && !hasContent) return null;
 
-  const itshouldShowTextBubble = shouldShowTextBubble(
+  const itShouldShowTextBubble = shouldShowTextBubble(
     text,
     isConvoSystemGenerated,
     systemPurpose,
@@ -89,7 +91,7 @@ export default function ChatBubbleBot(
       >
         <div className="flex items-end gap-1">
           <div className="relative bottom-0 min-w-10 shrink-0">
-            {itshouldShowTextBubble && (
+            {itShouldShowTextBubble && (
               <Image
                 alt="GAIA Logo"
                 src={"/images/logos/logo.webp"}
@@ -113,7 +115,7 @@ export default function ChatBubbleBot(
           </div>
         </div>
 
-        {itshouldShowTextBubble && (
+        {itShouldShowTextBubble && (
           <div className="ml-10.75 flex flex-col">
             {!!follow_up_actions && follow_up_actions?.length > 0 && (
               <FollowUpActions
@@ -131,7 +133,7 @@ export default function ChatBubbleBot(
               }}
             >
               {date && !disableActions && (
-                <span className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-foreground-400 select-text">
+                <span className="text-opacity-40 flex flex-col p-1 py-2 text-xs text-nowrap text-zinc-400 select-text">
                   {parseDate(date)}
                 </span>
               )}
@@ -146,6 +148,8 @@ export default function ChatBubbleBot(
                     pinned={pinned}
                     text={text}
                     messageRole="assistant"
+                    onRetry={onRetry}
+                    isRetrying={isRetrying}
                   />
                 ))}
             </div>

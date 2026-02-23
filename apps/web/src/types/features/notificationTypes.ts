@@ -363,6 +363,7 @@ export interface NotificationRecord {
   id: string;
   user_id: string;
   status: NotificationStatus;
+  type: NotificationType;
   created_at: string;
   delivered_at?: string;
   read_at?: string;
@@ -539,10 +540,4 @@ export interface UseNotificationsOptions {
   limit?: number;
   offset?: number;
   channel_type?: string;
-}
-
-export interface UseNotificationWebSocketOptions {
-  onNotification?: (notification: NotificationRecord) => void;
-  onUpdate?: (notification: NotificationRecord) => void;
-  onError?: (error: Error) => void;
 }

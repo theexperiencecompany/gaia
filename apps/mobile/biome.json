@@ -2,12 +2,13 @@
   "$schema": "https://biomejs.dev/schemas/2.3.7/schema.json",
   "extends": "//",
   "files": {
-    "includes": ["**/*.{js,jsx,ts,tsx,json}", "!.expo"]
+    "includes": ["**/*.{js,jsx,ts,tsx,json,css}", "!.expo"]
   },
   "linter": {
     "rules": {
       "suspicious": {
-        "noUnknownAtRules": "off"
+        "noUnknownAtRules": "off",
+        "noDuplicateCustomProperties": "off"
       }
     }
   }

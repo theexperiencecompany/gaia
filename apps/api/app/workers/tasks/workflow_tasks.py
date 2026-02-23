@@ -3,15 +3,18 @@ Workflow worker functions for ARQ task processing.
 Contains all workflow-related background tasks and execution logic.
 """
 
-from datetime import datetime, timezone
-from typing import Optional, Tuple
+from datetime import datetime, timedelta, timezone
+from typing import Optional
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
 from app.agents.prompts.workflow_prompts import TODO_WORKFLOW_DESCRIPTION_TEMPLATE
-from app.api.v1.middleware.tiered_rate_limiter import tiered_rate_limit
+from app.api.v1.middleware.tiered_rate_limiter import (
+    RateLimitExceededException,
+    tiered_rate_limit,
+)
 from app.config.loggers import worker_logger as logger
-from app.config.token_repository import token_repository
+
 from app.core.websocket_manager import get_websocket_manager
 from app.db.mongodb.collections import todos_collection
 from app.models.chat_models import MessageModel
@@ -28,6 +31,7 @@ from app.models.notification.notification_models import (
     NotificationContent,
     NotificationRequest,
     NotificationSourceEnum,
+    NotificationType,
     RedirectConfig,
 )
 from app.models.workflow_models import (
@@ -47,55 +51,6 @@ from app.services.workflow.scheduler import WorkflowScheduler
 from app.services.workflow.service import WorkflowService
 from bson import ObjectId
 from langchain_core.callbacks import UsageMetadataCallbackHandler
-
-
-async def get_user_authentication_tokens(
-    user_id: str,
-) -> Tuple[Optional[str], Optional[str]]:
-    """
-    Retrieve user authentication tokens for workflow execution.
-
-    This wrapper function handles token retrieval and refresh for background workflow execution,
-    following the same pattern as chat streams to ensure consistent authentication.
-
-    Args:
-        user_id: The user ID to get tokens for
-
-    Returns:
-        Tuple of (access_token, refresh_token) or (None, None) if not available
-    """
-    try:
-        token = await token_repository.get_token(
-            str(user_id), "google", renew_if_expired=True
-        )
-        if token:
-            access_token = (
-                str(token.get("access_token", ""))
-                if token.get("access_token")
-                else None
-            )
-            refresh_token = (
-                str(token.get("refresh_token", ""))
-                if token.get("refresh_token")
-                else None
-            )
-            if access_token and refresh_token:
-                logger.info(
-                    f"Successfully retrieved authentication tokens for user {user_id}"
-                )
-                return access_token, refresh_token
-            else:
-                logger.warning(
-                    f"Tokens found but empty for user {user_id} - access_token: {bool(access_token)}, refresh_token: {bool(refresh_token)}"
-                )
-                return None, None
-        else:
-            logger.warning(f"No authentication tokens found for user {user_id}")
-            return None, None
-
-    except Exception as e:
-        logger.error(f"Error retrieving authentication tokens for user {user_id}: {e}")
-        return None, None
 
 
 async def process_workflow_generation_task(
@@ -230,6 +185,13 @@ async def execute_workflow_by_id(
     scheduler = WorkflowScheduler()
     workflow = None
     execution_messages = []
+    execution_id = None
+
+    # Import execution service
+    from app.services.workflow.execution_service import (
+        complete_execution,
+        create_execution,
+    )
 
     try:
         await scheduler.initialize()
@@ -237,6 +199,17 @@ async def execute_workflow_by_id(
 
         if not workflow:
             return f"Workflow {workflow_id} not found"
+
+        # Determine trigger type from context
+        trigger_type = context.get("trigger_type", "manual") if context else "manual"
+
+        # Create execution record at start
+        execution = await create_execution(
+            workflow_id=workflow_id,
+            user_id=workflow.user_id,
+            trigger_type=trigger_type,
+        )
+        execution_id = execution.execution_id
 
         # Execute the workflow
         execution_messages = await execute_workflow_as_chat(
@@ -249,14 +222,42 @@ async def execute_workflow_by_id(
         )
 
         # Store messages and send notification
-        await create_workflow_completion_notification(
+        conversation = await create_workflow_completion_notification(
             workflow, execution_messages, workflow.user_id
+        )
+
+        # Complete execution record with success
+        summary = f"Executed {len(execution_messages)} steps successfully"
+        conversation_id = conversation.get("conversation_id") if conversation else None
+        await complete_execution(
+            execution_id=execution_id,
+            status="success",
+            summary=summary,
+            conversation_id=conversation_id,
         )
 
         return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
 
     except Exception as e:
-        logger.error(f"Error executing workflow {workflow_id}: {str(e)}", exc_info=True)
+        error_str = str(e)
+        # Escape curly braces so Loguru's .format() doesn't trip on dict-like
+        # exception messages (e.g. RateLimitExceededException contains {'error': ...})
+        safe_error_str = error_str.replace("{", "{{").replace("}", "}}")
+        logger.error(
+            "Error executing workflow %s: %s" % (workflow_id, safe_error_str),
+            exc_info=True,
+        )
+
+        # Complete execution record with failure
+        if execution_id:
+            try:
+                await complete_execution(
+                    execution_id=execution_id,
+                    status="failed",
+                    error_message=error_str,
+                )
+            except Exception as e2:
+                logger.debug("Failed to complete execution record: %s" % e2)
 
         # Track failed execution
         if workflow:
@@ -265,25 +266,93 @@ async def execute_workflow_by_id(
                     workflow_id, workflow.user_id, is_successful=False
                 )
             except Exception as e2:
-                logger.debug(f"Failed to update workflow stats: {e2}")
+                logger.debug("Failed to update workflow stats: %s" % e2)
 
-        # Try to store error messages if any were generated
-        if execution_messages and workflow:
+        # Send failure notification so the user knows the workflow failed
+        if workflow:
             try:
-                await create_workflow_completion_notification(
-                    workflow, execution_messages, workflow.user_id
-                )
-            except Exception as e2:
-                logger.debug(f"Failed to create notification: {e2}")
+                if isinstance(e, RateLimitExceededException):
+                    title = f"Workflow Failed: {workflow.title}"
+                    detail: dict[str, str] = (
+                        e.detail if isinstance(e.detail, dict) else {}
+                    )
+                    plan_required = detail.get("plan_required", "pro").upper()
+                    reset_time_str = detail.get("reset_time", "")
 
-        return f"Error executing workflow {workflow_id}: {str(e)}"
+                    if reset_time_str:
+                        # Quota exhausted — show when the limit resets
+                        try:
+                            reset_dt = datetime.fromisoformat(reset_time_str)
+                            formatted_reset = reset_dt.strftime("%b %d at %I:%M %p UTC")
+                            body = (
+                                f"'{workflow.title}' couldn't run — "
+                                f"you've used all your workflow executions for today. "
+                                f"Resets {formatted_reset}. "
+                                f"Upgrade to {plan_required} for higher daily limits."
+                            )
+                        except Exception:
+                            body = (
+                                f"'{workflow.title}' couldn't run — "
+                                f"you've used all your workflow executions for today. "
+                                f"Upgrade to {plan_required} for higher daily limits."
+                            )
+                    else:
+                        # Plan-gated — feature isn't available on their plan at all
+                        body = (
+                            f"'{workflow.title}' couldn't run — "
+                            f"automated workflow execution is not available on your current plan. "
+                            f"Upgrade to {plan_required} to unlock this feature."
+                        )
+
+                    upgrade_action = NotificationAction(
+                        type=ActionType.REDIRECT,
+                        label=f"Upgrade to {plan_required}",
+                        style=ActionStyle.PRIMARY,
+                        config=ActionConfig(
+                            redirect=RedirectConfig(
+                                url="/settings?section=subscription",
+                                open_in_new_tab=False,
+                                close_notification=True,
+                            )
+                        ),
+                    )
+                else:
+                    title = f"Workflow Failed: {workflow.title}"
+                    body = f"Your workflow '{workflow.title}' encountered an error and could not complete."
+                    upgrade_action = None
+
+                await notification_service.create_notification(
+                    NotificationRequest(
+                        user_id=workflow.user_id,
+                        source=NotificationSourceEnum.WORKFLOW_FAILED,
+                        type=NotificationType.ERROR,
+                        content=NotificationContent(
+                            title=title,
+                            body=body,
+                            actions=[upgrade_action] if upgrade_action else None,
+                        ),
+                        channels=[
+                            ChannelConfig(
+                                channel_type="inapp", enabled=True, priority=1
+                            )
+                        ],
+                        metadata={
+                            "workflow_id": workflow.id,
+                            "error_type": type(e).__name__,
+                        },
+                    )
+                )
+            except Exception as notify_err:
+                logger.debug("Failed to send failure notification: %s" % notify_err)
+
+        return "Error executing workflow %s: %s" % (workflow_id, error_str)
 
     finally:
         if scheduler:
             await scheduler.close()
 
 
-@tiered_rate_limit("email_workflow_executions")
+@tiered_rate_limit("trigger_workflow_executions")
 async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
     """
     Execute workflow as a single chat session, just like normal user chat.
@@ -308,18 +377,6 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         logger.info(
             f"Executing workflow {workflow.id} as chat session for user {user_id}"
         )
-
-        # Get user tokens for authentication (same as chat stream)
-        access_token, refresh_token = await get_user_authentication_tokens(user_id)
-
-        if not access_token:
-            logger.error(
-                f"No access token available for user {user_id} - workflow tools requiring authentication will fail"
-            )
-        else:
-            logger.info(
-                f"Access token available for user {user_id} - tools can authenticate"
-            )
 
         # Get user data and create timezone-aware datetime
         try:
@@ -396,21 +453,27 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
         # Create execution messages with proper tool data
         execution_messages = []
 
+        # Capture base timestamp to ensure proper message ordering
+        base_timestamp = datetime.now(timezone.utc)
+
         # Create a simple user message showing workflow execution (like frontend)
+        # This message gets the base timestamp to ensure it appears first
         user_message = MessageModel(
             type="user",
             response="",
-            date=datetime.now(timezone.utc).isoformat(),
+            date=base_timestamp.isoformat(),
             message_id=str(uuid4()),
             selectedWorkflow=selected_workflow_data,
         )
         execution_messages.append(user_message)
 
         # Create the bot message with complete response and tool data
+        # Add 1 second to timestamp to ensure it appears after the workflow card
+        bot_timestamp = base_timestamp + timedelta(seconds=1)
         bot_message = MessageModel(
             type="bot",
             response=complete_message,
-            date=datetime.now(timezone.utc).isoformat(),
+            date=bot_timestamp.isoformat(),
             message_id=str(uuid4()),
             # metadata=token_metadata,  # Include token usage metadata
             **tool_data,  # Include all captured tool data
@@ -572,13 +635,29 @@ async def create_workflow_completion_notification(
 
     # Send notification (best effort - don't fail if this breaks)
     try:
+        # Extract final bot response for external channel delivery
+        bot_messages = (
+            [m for m in execution_messages if m.type == "bot"]
+            if execution_messages
+            else []
+        )
+        bot_response = bot_messages[-1].response if bot_messages else ""
+        message_parts = [
+            p.strip() for p in bot_response.split("<NEW_MESSAGE_BREAK>") if p.strip()
+        ]
+
+        # Format completion timestamp
+        completed_at = datetime.now(timezone.utc)
+        formatted_time = completed_at.strftime("%I:%M %p UTC, %b %d")
+
         await notification_service.create_notification(
             NotificationRequest(
                 user_id=user_id,
-                source=NotificationSourceEnum.BACKGROUND_JOB,
+                source=NotificationSourceEnum.WORKFLOW_COMPLETED,
+                type=NotificationType.SUCCESS,
                 content=NotificationContent(
                     title=f"Workflow Completed: {workflow.title}",
-                    body=f"Your workflow '{workflow.title}' has completed successfully.",
+                    body=f"Completed at {formatted_time}",
                     actions=[
                         NotificationAction(
                             type=ActionType.REDIRECT,
@@ -593,6 +672,12 @@ async def create_workflow_completion_notification(
                             ),
                         )
                     ],
+                    rich_content={
+                        "type": "workflow_execution",
+                        "messages": message_parts,
+                        "workflow_id": workflow.id,
+                        "conversation_id": conversation["conversation_id"],
+                    },
                 ),
                 channels=[
                     ChannelConfig(channel_type="inapp", enabled=True, priority=1)
@@ -606,3 +691,5 @@ async def create_workflow_completion_notification(
         logger.info(f"Notification sent for workflow {workflow.id}")
     except Exception as e:
         logger.error(f"Failed to send notification for workflow {workflow.id}: {e}")
+
+    return conversation

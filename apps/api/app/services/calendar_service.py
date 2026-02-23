@@ -1,11 +1,9 @@
-import asyncio
 from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Union, cast
+from typing import Any, Dict, List, Optional, Union
 
 import httpx
 from app.config.loggers import calendar_logger as logger
-from app.config.token_repository import token_repository
-from app.db.mongodb.collections import calendars_collection
+from app.db.mongodb.collections import get_sync_collection
 from app.models.calendar_models import (
     EventCreateRequest,
     EventDeleteRequest,
@@ -14,10 +12,14 @@ from app.models.calendar_models import (
 )
 from fastapi import HTTPException
 
-http_async_client = httpx.AsyncClient()
+# Sync HTTP client for all calendar operations
+http_client = httpx.Client(timeout=30)
+
+# Sync MongoDB collection for calendar preferences
+calendars_collection = get_sync_collection("calendar")
 
 
-async def fetch_calendar_list(access_token: str, short: bool = False) -> Any:
+def fetch_calendar_list(access_token: str, short: bool = False) -> Any:
     """
     Fetch the list of calendars for the authenticated user.
 
@@ -32,7 +34,7 @@ async def fetch_calendar_list(access_token: str, short: bool = False) -> Any:
     headers = {"Authorization": f"Bearer {access_token}"}
 
     try:
-        response = await httpx.AsyncClient().get(url, headers=headers)
+        response = http_client.get(url, headers=headers)
         response.raise_for_status()
         data = response.json()
 
@@ -87,7 +89,7 @@ def filter_events(events: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     ]
 
 
-async def fetch_calendar_events(
+def fetch_calendar_events(
     calendar_id: str,
     access_token: str,
     page_token: Optional[str] = None,
@@ -125,7 +127,7 @@ async def fetch_calendar_events(
         params["pageToken"] = page_token
 
     try:
-        response = await http_async_client.get(url, headers=headers, params=params)
+        response = http_client.get(url, headers=headers, params=params)
         if response.status_code == 200:
             return response.json()
         else:
@@ -137,7 +139,7 @@ async def fetch_calendar_events(
         raise HTTPException(status_code=500, detail=f"HTTP request failed: {e}")
 
 
-async def fetch_all_calendar_events(
+def fetch_all_calendar_events(
     calendar_id: str,
     access_token: str,
     time_min: Optional[str] = None,
@@ -164,7 +166,7 @@ async def fetch_all_calendar_events(
     max_pages = 20  # Safety limit: 20 pages * 250 events = 5000 events max
 
     while page_count < max_pages:
-        page_data = await fetch_calendar_events(
+        page_data = fetch_calendar_events(
             calendar_id=calendar_id,
             access_token=access_token,
             page_token=next_page_token,
@@ -203,7 +205,7 @@ async def fetch_all_calendar_events(
     }
 
 
-async def list_calendars(access_token: str, short=False) -> Optional[Dict[str, Any]]:
+def list_calendars(access_token: str, short=False) -> Optional[Dict[str, Any]]:
     """
     Retrieve the user's calendar list. If the access token is invalid,
     it will get a new token from the token repository.
@@ -217,10 +219,10 @@ async def list_calendars(access_token: str, short=False) -> Optional[Dict[str, A
         Optional[Dict[str, Any]]: Calendar list data or None if retrieval fails.
     """
     # Token refresh will be handled by the decorator if needed
-    return await fetch_calendar_list(access_token, short)
+    return fetch_calendar_list(access_token, short)
 
 
-async def initialize_calendar_preferences(
+def initialize_calendar_preferences(
     user_id: str,
     access_token: str,
 ) -> None:
@@ -234,7 +236,7 @@ async def initialize_calendar_preferences(
     """
     try:
         # Check if user already has calendar preferences
-        existing_preferences = await calendars_collection.find_one({"user_id": user_id})
+        existing_preferences = calendars_collection.find_one({"user_id": user_id})
         if existing_preferences and existing_preferences.get("selected_calendars"):
             logger.info(
                 f"User {user_id} already has calendar preferences, skipping initialization"
@@ -242,7 +244,7 @@ async def initialize_calendar_preferences(
             return
 
         # Fetch all available calendars
-        calendar_data = await fetch_calendar_list(access_token)
+        calendar_data = fetch_calendar_list(access_token)
         calendars = calendar_data.get("items", [])
 
         if not calendars:
@@ -253,7 +255,7 @@ async def initialize_calendar_preferences(
         all_calendar_ids = [cal["id"] for cal in calendars]
 
         # Save preferences to database
-        await calendars_collection.update_one(
+        calendars_collection.update_one(
             {"user_id": user_id},
             {"$set": {"selected_calendars": all_calendar_ids}},
             upsert=True,
@@ -271,7 +273,7 @@ async def initialize_calendar_preferences(
         )
 
 
-async def get_calendar_metadata_map(
+def get_calendar_metadata_map(
     access_token: str,
 ) -> tuple[Dict[str, str], Dict[str, str]]:
     """
@@ -283,7 +285,7 @@ async def get_calendar_metadata_map(
     Returns:
         tuple: (calendar_color_map, calendar_name_map)
     """
-    calendars = await list_calendars(access_token=access_token, short=True)
+    calendars = list_calendars(access_token=access_token, short=True)
 
     color_map: Dict[str, str] = {}
     name_map: Dict[str, str] = {}
@@ -369,13 +371,13 @@ def extract_unique_dates(calendar_options: List[Dict[str, Any]]) -> Dict[str, st
     return event_dates_info
 
 
-async def fetch_same_day_events(
+def fetch_same_day_events(
     event_dates_info: Dict[str, str],
     access_token: str,
     user_id: str,
 ) -> List[Dict[str, Any]]:
     """
-    Fetch events for each unique date in parallel.
+    Fetch events for each unique date.
 
     Args:
         event_dates_info: Dict mapping date strings to timezone offsets
@@ -385,29 +387,26 @@ async def fetch_same_day_events(
     Returns:
         List of events across all specified dates
     """
-    fetch_tasks = []
+    same_day_events = []
     for event_date, tz_offset in event_dates_info.items():
         time_min = f"{event_date}T00:00:00{tz_offset}"
         time_max = f"{event_date}T23:59:59{tz_offset}"
-        fetch_tasks.append(
-            get_calendar_events(
+        try:
+            result = get_calendar_events(
                 access_token=access_token,
                 user_id=user_id,
                 time_min=time_min,
                 time_max=time_max,
             )
-        )
-
-    results = await asyncio.gather(*fetch_tasks, return_exceptions=True)
-    same_day_events = []
-    for result in results:
-        if isinstance(result, dict) and "events" in result:
-            same_day_events.extend(result["events"])
+            if isinstance(result, dict) and "events" in result:
+                same_day_events.extend(result["events"])
+        except Exception as e:
+            logger.error(f"Error fetching events for {event_date}: {e}")
 
     return same_day_events
 
 
-async def enrich_calendar_options_with_metadata(
+def enrich_calendar_options_with_metadata(
     calendar_options: List[Dict[str, Any]],
     access_token: str,
     user_id: str,
@@ -423,7 +422,7 @@ async def enrich_calendar_options_with_metadata(
     Returns:
         Enriched calendar options with metadata
     """
-    color_map, name_map = await get_calendar_metadata_map(access_token)
+    color_map, name_map = get_calendar_metadata_map(access_token)
 
     for option in calendar_options:
         calendar_id = option.get("calendar_id", "primary")
@@ -431,9 +430,7 @@ async def enrich_calendar_options_with_metadata(
         option["calendar_name"] = name_map.get(calendar_id, "Calendar")
 
     event_dates_info = extract_unique_dates(calendar_options)
-    same_day_events = await fetch_same_day_events(
-        event_dates_info, access_token, user_id
-    )
+    same_day_events = fetch_same_day_events(event_dates_info, access_token, user_id)
 
     for event in same_day_events:
         calendar_id = event.get("calendarId") or ""
@@ -445,9 +442,9 @@ async def enrich_calendar_options_with_metadata(
     return calendar_options
 
 
-async def get_calendar_events(
+def get_calendar_events(
     user_id: str,
-    access_token: Optional[str] = None,
+    access_token: str,
     page_token: Optional[str] = None,
     selected_calendars: Optional[List[str]] = None,
     time_min: Optional[str] = None,
@@ -476,21 +473,8 @@ async def get_calendar_events(
             - has_more: Boolean indicating if any calendar was truncated
             - calendars_truncated: List of calendar IDs that hit limits
     """
-    # Get valid access token if not provided
-    if not access_token:
-        token = await token_repository.get_token(
-            user_id, "google", renew_if_expired=True
-        )
-
-        access_token = str(token.get("access_token", ""))
-
-        if not access_token:
-            raise HTTPException(
-                status_code=401, detail="No valid access token available"
-            )
-
     # Fetch the calendar list - token refresh will be handled by the decorator if needed
-    calendar_data = await fetch_calendar_list(access_token)
+    calendar_data = fetch_calendar_list(access_token)
 
     calendars = calendar_data.get("items", [])
 
@@ -499,19 +483,19 @@ async def get_calendar_events(
     user_selected_calendars: List[str] = []
     if selected_calendars is not None:
         user_selected_calendars = selected_calendars
-        await calendars_collection.update_one(
+        calendars_collection.update_one(
             {"user_id": user_id},
             {"$set": {"selected_calendars": user_selected_calendars}},
             upsert=True,
         )
     else:
-        preferences = await calendars_collection.find_one({"user_id": user_id})
+        preferences = calendars_collection.find_one({"user_id": user_id})
         if preferences and preferences.get("selected_calendars"):
             user_selected_calendars = preferences["selected_calendars"]
         else:
             # Default: select all available calendars
             user_selected_calendars = [cal["id"] for cal in calendars]
-            await calendars_collection.update_one(
+            calendars_collection.update_one(
                 {"user_id": user_id},
                 {"$set": {"selected_calendars": user_selected_calendars}},
                 upsert=True,
@@ -527,59 +511,60 @@ async def get_calendar_events(
     # Otherwise, fetch up to max_results per calendar
     token_str = access_token
 
+    all_events = []
+    seen_event_ids = set()  # Track unique event IDs for deduplication
+    calendars_truncated = []  # Track which calendars hit limits
+
     if fetch_all or not max_results:
         # Full fetch mode: Get ALL events in date range for each calendar
         logger.info(
             f"Fetching ALL events for {len(selected_cal_objs)} calendars in date range"
         )
-        tasks = [
-            fetch_all_calendar_events(cal["id"], token_str, time_min, time_max)
-            for cal in selected_cal_objs
-        ]
+        for cal in selected_cal_objs:
+            try:
+                result = fetch_all_calendar_events(
+                    cal["id"], token_str, time_min, time_max
+                )
+                events = result.get("items", [])
+
+                # Track if this calendar was truncated
+                if result.get("truncated", False):
+                    calendars_truncated.append(cal["id"])
+                    logger.warning(
+                        f"Calendar {cal['id']} ({cal.get('summary', 'Unknown')}) was truncated"
+                    )
+
+                for event in events:
+                    event_id = event.get("id")
+                    if event_id and event_id in seen_event_ids:
+                        continue
+                    if event_id:
+                        seen_event_ids.add(event_id)
+                    event["calendarId"] = cal["id"]
+                    event["calendarTitle"] = cal.get("summary", "")
+                all_events.extend(filter_events(events))
+            except Exception as e:
+                logger.error(f"Error fetching events for calendar {cal['id']}: {e}")
     else:
         # Limited fetch mode: Get up to max_results per calendar
-        tasks = [
-            fetch_calendar_events(
-                cal["id"], token_str, None, time_min, time_max, max_results
-            )
-            for cal in selected_cal_objs
-        ]
+        for cal in selected_cal_objs:
+            try:
+                result = fetch_calendar_events(
+                    cal["id"], token_str, None, time_min, time_max, max_results
+                )
+                events = result.get("items", [])
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
-    all_events = []
-    seen_event_ids = set()  # Track unique event IDs for deduplication
-    calendars_truncated = []  # Track which calendars hit limits
-
-    # Process results from all tasks.
-    for cal, result in zip(selected_cal_objs, results):
-        if isinstance(result, Exception):
-            logger.error(f"Error fetching events for calendar {cal['id']}: {result}")
-            continue
-
-        # Cast result to a dictionary explicitly
-        result_dict = cast(Dict[str, Any], result)
-
-        events = result_dict.get("items", [])
-
-        # Track if this calendar was truncated
-        if result_dict.get("truncated", False):
-            calendars_truncated.append(cal["id"])
-            logger.warning(
-                f"Calendar {cal['id']} ({cal.get('summary', 'Unknown')}) was truncated"
-            )
-
-        for event in events:
-            # Deduplicate events by ID (important for shared calendars)
-            event_id = event.get("id")
-            if event_id and event_id in seen_event_ids:
-                continue
-            if event_id:
-                seen_event_ids.add(event_id)
-
-            event["calendarId"] = cal["id"]
-            event["calendarTitle"] = cal.get("summary", "")
-        all_events.extend(filter_events(events))
+                for event in events:
+                    event_id = event.get("id")
+                    if event_id and event_id in seen_event_ids:
+                        continue
+                    if event_id:
+                        seen_event_ids.add(event_id)
+                    event["calendarId"] = cal["id"]
+                    event["calendarTitle"] = cal.get("summary", "")
+                all_events.extend(filter_events(events))
+            except Exception as e:
+                logger.error(f"Error fetching events for calendar {cal['id']}: {e}")
 
     # Sort all events by start time for consistent ordering
     all_events.sort(
@@ -600,7 +585,7 @@ async def get_calendar_events(
     }
 
 
-async def get_calendar_events_by_id(
+def get_calendar_events_by_id(
     calendar_id: str,
     access_token: str,
     page_token: Optional[str] = None,
@@ -621,7 +606,7 @@ async def get_calendar_events_by_id(
     Returns:
         dict: A dictionary containing the events and a nextPageToken if available.
     """
-    events_data = await fetch_calendar_events(
+    events_data = fetch_calendar_events(
         calendar_id, access_token, page_token, time_min, time_max
     )
 
@@ -632,7 +617,7 @@ async def get_calendar_events_by_id(
     }
 
 
-async def find_event_for_action(
+def find_event_for_action(
     access_token: str,
     event_lookup_data: EventLookupRequest,
     user_id: str,
@@ -645,7 +630,7 @@ async def find_event_for_action(
     Raises HTTPException for invalid input.
     """
     if event_lookup_data.query:
-        search_results = await search_calendar_events_native(
+        search_results = search_calendar_events_native(
             query=event_lookup_data.query,
             user_id=user_id,
             access_token=access_token,
@@ -657,14 +642,13 @@ async def find_event_for_action(
     else:
         url = f"https://www.googleapis.com/calendar/v3/calendars/{event_lookup_data.calendar_id}/events/{event_lookup_data.event_id}"
         headers = {"Authorization": f"Bearer {access_token}"}
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, headers=headers)
+        response = http_client.get(url, headers=headers)
         if response.status_code == 200:
             return response.json()
         return None
 
 
-async def create_calendar_event(
+def create_calendar_event(
     event: EventCreateRequest,
     access_token: str,
     user_id: Optional[str] = None,
@@ -790,10 +774,11 @@ async def create_calendar_event(
         except Exception as e:
             raise HTTPException(
                 status_code=400, detail=f"Invalid recurrence rule format: {str(e)}"
-            )  # Send request to create the event
+            )
+
+    # Send request to create the event
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(url, headers=headers, json=event_payload)
+        response = http_client.post(url, headers=headers, json=event_payload)
 
         # Handle response
         if response.status_code in (200, 201):
@@ -822,11 +807,13 @@ async def create_calendar_event(
             raise HTTPException(status_code=response.status_code, detail=error_detail)
     except httpx.RequestError as e:
         raise HTTPException(status_code=500, detail=f"Failed to create event: {str(e)}")
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Unexpected error: {str(e)}")
 
 
-async def get_user_calendar_preferences(user_id: str) -> Dict[str, List[str]]:
+def get_user_calendar_preferences(user_id: str) -> Dict[str, List[str]]:
     """
     Retrieve the user's selected calendar preferences from the database.
 
@@ -839,14 +826,14 @@ async def get_user_calendar_preferences(user_id: str) -> Dict[str, List[str]]:
     Raises:
         HTTPException: If preferences are not found for the user.
     """
-    preferences = await calendars_collection.find_one({"user_id": user_id})
+    preferences = calendars_collection.find_one({"user_id": user_id})
     if preferences and "selected_calendars" in preferences:
         return {"selectedCalendars": preferences["selected_calendars"]}
     else:
         raise HTTPException(status_code=404, detail="Calendar preferences not found")
 
 
-async def update_user_calendar_preferences(
+def update_user_calendar_preferences(
     user_id: str, selected_calendars: List[str]
 ) -> Dict[str, str]:
     """
@@ -859,7 +846,7 @@ async def update_user_calendar_preferences(
     Returns:
         Dict[str, str]: A message indicating the result of the update operation.
     """
-    result = await calendars_collection.update_one(
+    result = calendars_collection.update_one(
         {"user_id": user_id},
         {"$set": {"selected_calendars": selected_calendars}},
         upsert=True,
@@ -870,7 +857,7 @@ async def update_user_calendar_preferences(
         return {"message": "No changes made to calendar preferences"}
 
 
-async def search_calendar_events_native(
+def search_calendar_events_native(
     query: str,
     user_id: str,
     access_token: str,
@@ -885,7 +872,6 @@ async def search_calendar_events_native(
         query (str): Search query string
         user_id (str): User identifier
         access_token (str): Access token
-        refresh_token (Optional[str]): Refresh token
         time_min (Optional[str]): Start time filter
         time_max (Optional[str]): End time filter
 
@@ -894,13 +880,13 @@ async def search_calendar_events_native(
     """
 
     # Get user's selected calendars - token refresh will be handled by the decorator
-    calendar_list_data = await fetch_calendar_list(access_token)
+    calendar_list_data = fetch_calendar_list(access_token)
     valid_token = access_token
     calendars = calendar_list_data.get("items", [])
 
     # Get user's calendar preferences
     user_selected_calendars: List[str] = []
-    preferences = await calendars_collection.find_one({"user_id": user_id})
+    preferences = calendars_collection.find_one({"user_id": user_id})
     if preferences and preferences.get("selected_calendars"):
         user_selected_calendars = preferences["selected_calendars"]
         logger.info(f"User has calendar preferences: {user_selected_calendars}")
@@ -925,45 +911,33 @@ async def search_calendar_events_native(
         logger.info("No selected calendars found, searching all available calendars")
         selected_cal_objs = calendars
 
-    # Create tasks for searching events concurrently across selected calendars
-    async def search_events_for_calendar(cal_id: str):
-        return await search_events_in_calendar(
-            cal_id, query, valid_token, time_min, time_max
-        )
-
-    tasks = [search_events_for_calendar(cal["id"]) for cal in selected_cal_objs]
-    results = await asyncio.gather(*tasks, return_exceptions=True)
-
     all_matching_events = []
     total_events_searched = 0
 
-    # Process results from all calendars
-    for cal, result in zip(selected_cal_objs, results):
-        if isinstance(result, Exception):
-            logger.error(f"Error searching events in calendar {cal['id']}: {result}")
-            continue
+    # Search each calendar sequentially
+    for cal in selected_cal_objs:
+        try:
+            result = search_events_in_calendar(
+                cal["id"], query, valid_token, time_min, time_max
+            )
+            events = result.get("items", [])
+            logger.info(
+                f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'"
+            )
 
-        # Cast result to a dictionary explicitly
-        result_dict = cast(Dict[str, Any], result)
+            for event in events:
+                event["calendarId"] = cal["id"]
+                event["calendarTitle"] = cal.get("summary", "")
 
-        events = result_dict.get("items", [])
-        logger.info(
-            f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'"
-        )
+            filtered_events = filter_events(events)
+            logger.info(
+                f"After filtering: {len(filtered_events)} events in calendar '{cal.get('summary', cal['id'])}'"
+            )
 
-        for event in events:
-            event["calendarId"] = cal["id"]
-            event["calendarTitle"] = cal.get("summary", "")
-
-        filtered_events = filter_events(events)
-        logger.info(
-            f"After filtering: {len(filtered_events)} events in calendar '{cal.get('summary', cal['id'])}'"
-        )
-
-        all_matching_events.extend(filtered_events)
-
-        # Add to total count for statistics
-        total_events_searched += len(filtered_events)
+            all_matching_events.extend(filtered_events)
+            total_events_searched += len(filtered_events)
+        except Exception as e:
+            logger.error(f"Error searching events in calendar {cal['id']}: {e}")
 
     logger.info(
         f"Total matching events across all calendars: {len(all_matching_events)}"
@@ -973,42 +947,27 @@ async def search_calendar_events_native(
     if not all_matching_events and selected_cal_objs != calendars:
         logger.info("No events found in selected calendars, searching all calendars...")
 
-        # Search all calendars
-        async def search_events_for_calendar(cal_id: str):
-            return await search_events_in_calendar(
-                cal_id, query, valid_token, time_min, time_max
-            )
-
-        all_calendar_tasks = [
-            search_events_for_calendar(cal["id"]) for cal in calendars
-        ]
-        all_calendar_results = await asyncio.gather(
-            *all_calendar_tasks, return_exceptions=True
-        )
-
-        # Process results from all calendars
-        for cal, result in zip(calendars, all_calendar_results):
-            if isinstance(result, Exception):
-                logger.error(
-                    f"Error searching events in calendar {cal['id']}: {result}"
+        for cal in calendars:
+            try:
+                result = search_events_in_calendar(
+                    cal["id"], query, valid_token, time_min, time_max
                 )
-                continue
+                events = result.get("items", [])
 
-            result_dict = cast(Dict[str, Any], result)
-            events = result_dict.get("items", [])
+                if events:
+                    logger.info(
+                        f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'"
+                    )
 
-            if events:
-                logger.info(
-                    f"Found {len(events)} events in calendar '{cal.get('summary', cal['id'])}'"
-                )
+                    for event in events:
+                        event["calendarId"] = cal["id"]
+                        event["calendarTitle"] = cal.get("summary", "")
 
-                for event in events:
-                    event["calendarId"] = cal["id"]
-                    event["calendarTitle"] = cal.get("summary", "")
-
-                filtered_events = filter_events(events)
-                all_matching_events.extend(filtered_events)
-                total_events_searched += len(filtered_events)
+                    filtered_events = filter_events(events)
+                    all_matching_events.extend(filtered_events)
+                    total_events_searched += len(filtered_events)
+            except Exception as e:
+                logger.error(f"Error searching events in calendar {cal['id']}: {e}")
 
     return {
         "query": query,
@@ -1019,7 +978,7 @@ async def search_calendar_events_native(
     }
 
 
-async def search_events_in_calendar(
+def search_events_in_calendar(
     calendar_id: str,
     query: str,
     access_token: str,
@@ -1059,7 +1018,7 @@ async def search_events_in_calendar(
         logger.info(
             f"Searching calendar {calendar_id} with query '{query}' and params: {params}"
         )
-        response = await http_async_client.get(url, headers=headers, params=params)
+        response = http_client.get(url, headers=headers, params=params)
         if response.status_code == 200:
             result = response.json()
             event_count = len(result.get("items", []))
@@ -1078,7 +1037,7 @@ async def search_events_in_calendar(
         raise HTTPException(status_code=500, detail=f"HTTP search request failed: {e}")
 
 
-async def delete_calendar_event(
+def delete_calendar_event(
     event: EventDeleteRequest,
     access_token: str,
     user_id: Optional[str] = None,
@@ -1103,8 +1062,7 @@ async def delete_calendar_event(
     headers = {"Authorization": f"Bearer {access_token}"}
 
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.delete(url, headers=headers)
+        response = http_client.delete(url, headers=headers)
 
         if response.status_code == 204:
             return {"success": True, "message": "Event deleted successfully"}
@@ -1133,7 +1091,7 @@ async def delete_calendar_event(
         raise HTTPException(status_code=500, detail=f"Failed to delete event: {str(e)}")
 
 
-async def update_calendar_event(
+def update_calendar_event(
     event: EventUpdateRequest,
     access_token: str,
     user_id: Optional[str] = None,
@@ -1162,10 +1120,9 @@ async def update_calendar_event(
 
     # First, get the existing event to preserve fields that weren't updated
     try:
-        async with httpx.AsyncClient() as client:
-            get_response = await client.get(
-                url, headers={"Authorization": f"Bearer {access_token}"}
-            )
+        get_response = http_client.get(
+            url, headers={"Authorization": f"Bearer {access_token}"}
+        )
 
         if get_response.status_code != 200:
             raise HTTPException(
@@ -1298,8 +1255,7 @@ async def update_calendar_event(
 
     # Send request to update the event
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.put(url, headers=headers, json=event_payload)
+        response = http_client.put(url, headers=headers, json=event_payload)
 
         if response.status_code == 200:
             updated_event = response.json()

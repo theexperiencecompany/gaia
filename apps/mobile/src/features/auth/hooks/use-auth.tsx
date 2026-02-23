@@ -1,23 +1,19 @@
-/**
- * Auth Hook
- * Manages authentication state and provides auth utilities
- */
-
-import { useRouter } from "expo-router";
 import {
   createContext,
   type ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useState,
 } from "react";
+import type { UserInfo } from "@/features/auth/types";
 import {
   getAuthToken,
   getUserInfo,
   removeAuthToken,
   removeUserInfo,
-  type UserInfo,
 } from "@/features/auth/utils/auth-storage";
+import { unregisterDeviceOnLogout } from "@/features/notifications/utils/notification-storage";
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -29,17 +25,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+interface AuthProviderProps {
+  children: ReactNode;
+}
+
+export function AuthProvider({ children }: AuthProviderProps) {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState<UserInfo | null>(null);
-  const router = useRouter();
 
-  useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
+  const checkAuthStatus = useCallback(async () => {
     try {
       const token = await getAuthToken();
       const userInfo = await getUserInfo();
@@ -52,9 +47,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
-  const refreshAuth = async () => {
+  useEffect(() => {
+    checkAuthStatus();
+  }, [checkAuthStatus]);
+
+  const refreshAuth = useCallback(async () => {
     try {
       const token = await getAuthToken();
       const userInfo = await getUserInfo();
@@ -65,19 +64,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setIsAuthenticated(false);
       setUser(null);
     }
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     try {
+      // Unregister device token from push notifications
+      await unregisterDeviceOnLogout();
+
+      // Clear auth data
       await removeAuthToken();
       await removeUserInfo();
       setIsAuthenticated(false);
       setUser(null);
-      router.replace("/login");
     } catch (error) {
       console.error("Error signing out:", error);
     }
-  };
+  }, []);
 
   return (
     <AuthContext.Provider
@@ -88,10 +90,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useAuth() {
+export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
   if (context === undefined) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }
+
+export type { UserInfo } from "@/features/auth/types";

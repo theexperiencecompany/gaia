@@ -1,12 +1,11 @@
 "use client";
 
+import { Delete02Icon } from "@icons";
 import {
   LeadingActions,
   SwipeAction,
   TrailingActions,
 } from "react-swipeable-list";
-
-import { Delete02Icon } from "@/icons";
 import type { Notification } from "@/types/notifications";
 import { getActionColor, getActionIcon } from "@/utils/notifications";
 

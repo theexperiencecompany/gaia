@@ -10,14 +10,16 @@ Configuration comes from oauth_config.py OAUTH_INTEGRATIONS.
 Tools are registered on-demand when subagent is first created.
 """
 
-from typing import Optional
+import asyncio
+from typing import Any, Optional
 
 from app.agents.llm.client import init_llm
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.core.lazy_loader import providers
-from app.services.mcp.mcp_client import get_mcp_client
+from app.db.mongodb.collections import integrations_collection
+from app.helpers.namespace_utils import derive_integration_namespace
 
 from .base_subagent import SubAgentFactory
 
@@ -61,6 +63,9 @@ async def create_subagent(integration_id: str):
                 f"{integration_id} requires authentication - use create_subagent_for_user"
             )
         elif category_name not in tool_registry._categories:
+            # Lazy import to avoid circular dependency
+            from app.services.mcp.mcp_client import get_mcp_client
+
             mcp_client = await get_mcp_client(user_id="_system")
             tools = await mcp_client.connect(integration.id)
             if tools:
@@ -112,7 +117,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     Uses cached tools when available to avoid reconnecting to MCP server.
 
     Args:
-        integration_id: The integration ID from oauth_config or custom_* ID
+        integration_id: The integration ID from oauth_config or custom MCP ID (12-char hex)
         user_id: The user's ID for token lookup
 
     Returns:
@@ -121,11 +126,12 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     integration = get_integration_by_id(integration_id)
 
     # Handle custom MCPs from MongoDB (not in OAUTH_INTEGRATIONS)
-    if not integration and integration_id.startswith("custom_"):
+    # Custom MCPs can have either "custom_" prefix or 12-char hex IDs
+    if not integration:
         return await _create_custom_mcp_subagent(integration_id, user_id)
 
     # Platform integration validation
-    if not integration or not integration.subagent_config:
+    if not integration.subagent_config:
         logger.error(f"{integration_id} integration or subagent config not found")
         return None
 
@@ -140,22 +146,15 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     category_name = f"mcp_{integration.id}_{user_id}"
 
     if category_name not in tool_registry._categories:
+        # Lazy import to avoid circular dependency
+        from app.services.mcp.mcp_client import get_mcp_client
+
         mcp_client = await get_mcp_client(user_id=user_id)
 
-        # get_all_connected_tools uses cached tools when available
-        all_tools = await mcp_client.get_all_connected_tools()
-
-        # Defensive check - all_tools should be dict
-        if not isinstance(all_tools, dict):
-            logger.error(
-                f"get_all_connected_tools returned {type(all_tools).__name__} instead of dict"
-            )
-            all_tools = {}
-
-        tools = all_tools.get(integration.id)
-
-        if not tools:
-            # Try direct connect as fallback
+        # Fast path: connect ONLY the needed integration instead of all
+        if integration.id in mcp_client._tools:
+            tools = mcp_client._tools[integration.id]
+        else:
             try:
                 tools = await mcp_client.connect(integration.id)
             except Exception as e:
@@ -165,6 +164,9 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
         if not tools:
             logger.error(f"No tools available for {integration_id}")
             return None
+
+        # Background: warm up other integrations for future handoffs
+        asyncio.create_task(mcp_client.get_all_connected_tools())
 
         tool_registry._add_category(
             name=category_name,
@@ -210,8 +212,6 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
     Returns:
         Compiled subagent graph, or None if creation fails
     """
-    from app.db.mongodb.collections import integrations_collection
-
     # Fetch custom integration from MongoDB
     custom_doc = await integrations_collection.find_one(
         {"integration_id": integration_id}
@@ -224,23 +224,18 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
 
     # Use user-specific category name to avoid conflicts
     category_name = f"mcp_{integration_id}_{user_id}"
+    tools: list[Any] | None = None  # Track tools for count-based strategy decision
 
     if category_name not in tool_registry._categories:
+        # Lazy import to avoid circular dependency
+        from app.services.mcp.mcp_client import get_mcp_client
+
         mcp_client = await get_mcp_client(user_id=user_id)
 
-        # get_all_connected_tools uses cached tools when available
-        all_tools = await mcp_client.get_all_connected_tools()
-
-        if not isinstance(all_tools, dict):
-            logger.error(
-                f"get_all_connected_tools returned {type(all_tools).__name__} instead of dict"
-            )
-            all_tools = {}
-
-        tools = all_tools.get(integration_id)
-
-        if not tools:
-            # Try direct connect as fallback
+        # Fast path: connect ONLY the needed integration instead of all
+        if integration_id in mcp_client._tools:
+            tools = mcp_client._tools[integration_id]
+        else:
             try:
                 tools = await mcp_client.connect(integration_id)
             except Exception as e:
@@ -251,28 +246,55 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
             logger.error(f"No tools available for {integration_id}")
             return None
 
-        # Use integration_id as both space and category for custom MCPs
+        # Background: warm up other integrations for future handoffs
+        asyncio.create_task(mcp_client.get_all_connected_tools())
+
+        # Get URL domain namespace from mcp_config to match indexing in mcp_client.py
+        mcp_config = custom_doc.get("mcp_config", {})
+        server_url = mcp_config.get("server_url", "")
+        tool_namespace = derive_integration_namespace(
+            integration_id, server_url, is_custom=True
+        )
+
         tool_registry._add_category(
             name=category_name,
             tools=tools,
-            space=integration_id,
+            space=tool_namespace,  # Use URL domain to match mcp_client.py indexing
             integration_name=integration_id,
         )
         await tool_registry._index_category_tools(category_name)
-        logger.info(f"Registered {len(tools)} custom MCP tools for {integration_id}")
+        logger.info(
+            f"Registered {len(tools)} custom MCP tools for {integration_id} in namespace '{tool_namespace}'"
+        )
+    else:
+        # Category exists - get tool count from registry
+        category = tool_registry.get_category(category_name)
+        if category:
+            tools = category.tools
 
     llm = init_llm()
     agent_name = f"custom_mcp_{integration_id}"
 
     logger.info(f"Creating custom MCP subagent {agent_name} for user {user_id}")
 
+    # Check tool count to decide binding strategy
+    # For small MCPs (<= 5 tools): bind all directly for lower latency
+    # For larger MCPs: use retrieve_tools to avoid context pollution
+    tool_count = len(tools) if tools else 0
+    use_direct = tool_count <= 5
+
+    logger.info(
+        f"Custom MCP {integration_id} has {tool_count} tools - "
+        f"using {'direct binding' if use_direct else 'retrieve_tools'}"
+    )
+
     graph = await SubAgentFactory.create_provider_subagent(
         provider=integration_id,
         llm=llm,
-        tool_space=integration_id,
+        tool_space=tool_namespace,
         name=agent_name,
-        use_direct_tools=True,  # Custom MCPs use direct tools
-        disable_retrieve_tools=True,  # No nested retrieval needed
+        use_direct_tools=use_direct,
+        disable_retrieve_tools=use_direct,  # Only disable if using direct binding
     )
 
     logger.info(f"Custom MCP subagent {agent_name} created successfully")

@@ -7,9 +7,10 @@ PKCE generation, tool wrapping, and schema handling.
 
 import base64
 import hashlib
+import inspect
 import secrets
 from functools import wraps
-from typing import Any, Union
+from typing import Any, Callable, Literal, Optional, Union
 
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
@@ -29,7 +30,24 @@ def generate_pkce_pair() -> tuple[str, str]:
     return code_verifier, code_challenge
 
 
-def wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
+_CONNECTION_ERROR_PATTERNS = (
+    "timeout",
+    "connection reset",
+    "broken pipe",
+    "unexpected eof",
+    "eof error",
+    "eoferror",
+    "connection refused",
+    "connection closed",
+    "server disconnected",
+    "connect call failed",
+)
+
+
+def wrap_tool_with_null_filter(
+    tool: BaseTool,
+    on_connection_error: Optional[Callable[[], None]] = None,
+) -> BaseTool:
     """
     Wrap a LangChain tool to filter out None values before MCP invocation.
 
@@ -39,6 +57,12 @@ def wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
         "Expected string, received null"
 
     This wrapper intercepts the _arun call and filters out None values.
+
+    Error handling:
+    - Auth errors (401/unauthorized) are RE-RAISED so the orchestrator can handle
+      token refresh. This is critical for proper OAuth flow.
+    - Connection errors trigger on_connection_error callback to evict stale sessions.
+    - Other errors are returned as user-friendly messages.
     """
     original_arun = tool._arun
 
@@ -48,28 +72,79 @@ def wrap_tool_with_null_filter(tool: BaseTool) -> BaseTool:
         logger.debug(
             f"MCP tool '{tool.name}': original args={kwargs}, filtered={filtered_kwargs}"
         )
-        return await original_arun(**filtered_kwargs)
+        try:
+            result = await original_arun(**filtered_kwargs)
+            return result
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"MCP tool '{tool.name}' failed: {error_msg}")
+
+            # CRITICAL: Re-raise auth errors so orchestrator can handle token refresh.
+            # Previously these were swallowed, preventing automatic token refresh.
+            if "401" in error_msg or "unauthorized" in error_msg.lower():
+                raise
+
+            # On connection-type errors, evict the stale session so next call reconnects
+            error_lower = error_msg.lower()
+            if on_connection_error and any(
+                pat in error_lower for pat in _CONNECTION_ERROR_PATTERNS
+            ):
+                if inspect.iscoroutinefunction(on_connection_error):
+                    raise TypeError(
+                        "on_connection_error must be a synchronous callable, not a coroutine function"
+                    )
+                logger.warning(
+                    f"MCP tool '{tool.name}' hit connection error, evicting session"
+                )
+                on_connection_error()
+
+            # Provide helpful error message for common MCP errors
+            if "Cannot read properties of undefined" in error_msg:
+                return f"The MCP server encountered an internal error while processing your request. This is typically a bug in the MCP server implementation. Error: {error_msg}"
+            elif "timeout" in error_lower:
+                return f"The MCP server timed out. Please try again. Error: {error_msg}"
+            else:
+                return f"MCP tool error: {error_msg}"
 
     tool._arun = filtered_arun  # type: ignore[method-assign]
     return tool
 
 
-def wrap_tools_with_null_filter(tools: list[BaseTool]) -> list[BaseTool]:
+def wrap_tools_with_null_filter(
+    tools: list[BaseTool],
+    on_connection_error: Any = None,
+) -> list[BaseTool]:
     """Wrap all tools with null value filtering."""
-    return [wrap_tool_with_null_filter(t) for t in tools]
+    return [
+        wrap_tool_with_null_filter(t, on_connection_error=on_connection_error)
+        for t in tools
+    ]
 
 
-def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
+def extract_type_from_field(field_info: dict) -> tuple[Any, Any, bool]:
     """
     Extract Python type from JSON Schema field info.
 
     MCP tools use JSON Schema with nullable types via anyOf:
     {"anyOf": [{"type": "number"}, {"type": "null"}], "default": 50}
 
+    Also handles enums by returning Literal types:
+    {"type": "string", "enum": ["low", "medium", "high"]}
+    -> Literal["low", "medium", "high"]
+
     Returns: (python_type, default_value, is_optional)
     """
     default_val = field_info.get("default")
     is_optional = False
+    python_type: Any = str  # Default type, will be reassigned
+
+    # Check for enum first - this takes priority over type
+    enum_values = field_info.get("enum")
+    if enum_values and isinstance(enum_values, list) and len(enum_values) > 0:
+        # Create a Literal type from enum values
+        # Literal requires a tuple of values
+        python_type = Literal[tuple(enum_values)]  # type: ignore[valid-type]
+        return python_type, default_val, is_optional
 
     any_of = field_info.get("anyOf", [])
     if any_of:
@@ -78,6 +153,10 @@ def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
         for option in any_of:
             if isinstance(option, dict) and option.get("type") != "null":
                 json_type = option.get("type", "string")
+                # Also check for enum in anyOf option
+                if option.get("enum"):
+                    python_type = Literal[tuple(option["enum"])]  # type: ignore[valid-type]
+                    return python_type, default_val, is_optional
                 break
     else:
         json_type = field_info.get("type", "string")
@@ -85,7 +164,7 @@ def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
             is_optional = "null" in json_type
             json_type = next((t for t in json_type if t != "null"), "string")
 
-    type_map = {
+    type_map: dict[str, type] = {
         "string": str,
         "integer": int,
         "number": float,
@@ -96,7 +175,7 @@ def extract_type_from_field(field_info: dict) -> tuple[type, Any, bool]:
     python_type = type_map.get(json_type, Any)
 
     if is_optional and default_val is None:
-        python_type = Union[python_type, None]  # type: ignore[assignment]
+        python_type = Union[python_type, None]
 
     return python_type, default_val, is_optional
 
@@ -112,7 +191,7 @@ def serialize_args_schema(tool: BaseTool) -> dict | None:
         if not isinstance(args_schema, type) or not issubclass(args_schema, BaseModel):
             logger.debug(f"Tool {tool.name} args_schema is not a BaseModel")
             return None
-        schema = args_schema.model_json_schema()
+        schema = args_schema.model_json_schema()  # type: ignore[attr-defined]
         result = {
             "properties": schema.get("properties", {}),
             "required": schema.get("required", []),

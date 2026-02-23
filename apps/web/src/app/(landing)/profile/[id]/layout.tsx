@@ -13,16 +13,13 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   try {
     const cardId = params.id;
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL;
+    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
 
-    const response = await fetch(
-      `${backendUrl}/api/v1/user/holo-card/${cardId}`,
-      {
-        headers: {
-          "Content-Type": "application/json",
-        },
+    const response = await fetch(`${apiBaseUrl}user/holo-card/${cardId}`, {
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+    });
 
     if (!response.ok) throw new Error("Failed to fetch profile data");
 

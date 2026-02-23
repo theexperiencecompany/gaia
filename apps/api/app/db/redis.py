@@ -19,8 +19,6 @@ Pattern deletion:
     await delete_cache("user:*")  # Delete all user keys
 """
 
-import json
-from datetime import datetime
 from typing import Any, Optional
 
 import redis.asyncio as redis
@@ -91,23 +89,6 @@ def deserialize_any(json_str: str, model: Optional[type] = None) -> Any:
     """
     adapter: TypeAdapterType[Any] = TypeAdapter(model or Any)
     return adapter.validate_json(json_str)
-
-
-class DateTimeEncoder(json.JSONEncoder):
-    """
-    Custom JSON encoder for datetime objects.
-
-    Converts datetime objects to ISO 8601 format strings during JSON serialization.
-    Used as fallback for objects that can't be serialized by Pydantic TypeAdapter.
-
-    Note: This is primarily kept for backward compatibility. Pydantic TypeAdapter
-    handles most serialization needs including datetime objects.
-    """
-
-    def default(self, o):
-        if isinstance(o, datetime):
-            return o.isoformat()
-        return super().default(o)
 
 
 class RedisCache:

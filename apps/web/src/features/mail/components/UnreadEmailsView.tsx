@@ -1,8 +1,8 @@
+import { InboxUnreadIcon, Loading02Icon } from "@icons";
 import type React from "react";
-
+import { Gmail } from "@/components/shared/icons";
 import BaseCardView from "@/features/chat/components/interface/BaseCardView";
 import EmailListCard from "@/features/mail/components/EmailListCard";
-import { Gmail, InboxUnreadIcon, Loading02Icon } from "@/icons";
 import type { EmailData, EmailFetchData } from "@/types/features/mailTypes";
 
 interface UnreadEmailsViewProps {
@@ -50,7 +50,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
       connectTitle="Connect Your Gmail"
       connectDescription="Access and manage your emails"
       connectIcon={<Gmail width={32} height={32} />}
-      path="/mail"
+      // path="/mail"
     >
       {isLoading ? (
         <div className="flex h-full items-center justify-center">

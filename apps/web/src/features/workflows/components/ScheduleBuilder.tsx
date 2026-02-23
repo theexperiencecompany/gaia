@@ -76,6 +76,20 @@ const initializeCustomCron = (cronExpression?: string): string => {
     : "";
 };
 
+// Helper to convert 24h to 12h for display
+const to12Hour = (hour24: number): { hour12: number; ampm: "AM" | "PM" } => {
+  if (hour24 === 0) return { hour12: 12, ampm: "AM" };
+  if (hour24 === 12) return { hour12: 12, ampm: "PM" };
+  if (hour24 < 12) return { hour12: hour24, ampm: "AM" };
+  return { hour12: hour24 - 12, ampm: "PM" };
+};
+
+// Helper to convert 12h to 24h for storage
+const to24Hour = (hour12: number, ampm: "AM" | "PM"): number => {
+  if (ampm === "AM") return hour12 === 12 ? 0 : hour12;
+  return hour12 === 12 ? 12 : hour12 + 12;
+};
+
 export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
   // Initialize state using pure functions - much faster and cleaner
   const [simpleSchedule, setSimpleSchedule] = useState<SimpleSchedule>(() =>
@@ -142,6 +156,22 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
   const handleCustomCronChange = (cron: string) => {
     setCustomCron(cron);
     onChange(cron);
+  };
+
+  // Get 12-hour display values from 24-hour stored value
+  const hour24 = parseInt(simpleSchedule.hour, 10) || 0;
+  const { hour12, ampm } = to12Hour(hour24);
+
+  // Handle 12-hour time changes
+  const handleHour12Change = (newHour12: string) => {
+    const h12 = parseInt(newHour12, 10) || 1;
+    const h24 = to24Hour(h12, ampm);
+    handleSimpleScheduleChange({ hour: h24.toString() });
+  };
+
+  const handleAmpmChange = (newAmpm: "AM" | "PM") => {
+    const h24 = to24Hour(hour12, newAmpm);
+    handleSimpleScheduleChange({ hour: h24.toString() });
   };
 
   return (
@@ -269,12 +299,10 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
               <Input
                 size="sm"
                 type="number"
-                min="0"
-                max="23"
-                value={simpleSchedule.hour}
-                onChange={(e) =>
-                  handleSimpleScheduleChange({ hour: e.target.value })
-                }
+                min="1"
+                max="12"
+                value={hour12.toString()}
+                onChange={(e) => handleHour12Change(e.target.value)}
                 className="w-16"
               />
               <span>:</span>
@@ -289,6 +317,22 @@ export const ScheduleBuilder = ({ value, onChange }: ScheduleBuilderProps) => {
                 }
                 className="w-16"
               />
+              <Select
+                aria-label="Select AM or PM"
+                size="sm"
+                selectedKeys={new Set([ampm])}
+                onSelectionChange={(keys) =>
+                  handleAmpmChange(Array.from(keys)[0] as "AM" | "PM")
+                }
+                className="w-22"
+              >
+                <SelectItem key="AM" textValue="AM">
+                  AM
+                </SelectItem>
+                <SelectItem key="PM" textValue="PM">
+                  PM
+                </SelectItem>
+              </Select>
             </div>
           </>
         )}

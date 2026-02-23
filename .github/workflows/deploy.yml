@@ -1,31 +1,41 @@
 name: Deploy to GCP
 
+# Deploys the production backend stack (core services + bots profile) on GCP VM.
 on:
+  # External dispatch from build workflow.
   repository_dispatch:
     types: [deploy]
+  # Manual operator trigger.
   workflow_dispatch:
+  # Reusable invocation from other workflows.
   workflow_call:
 
 concurrency:
+  # Prevent overlapping production deploys on the same ref.
   group: deploy-gcp-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
+  # Workflow reads repository metadata and updates status checks.
   contents: read
   statuses: write
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     environment: production
+    env:
+      # Compose file and profile are centralized so deploy/verify use identical scope.
+      COMPOSE_FILE: infra/docker/docker-compose.prod.yml
+      COMPOSE_PROFILE: bots
 
-    # Needed for OIDC → WIF
+    # Needed for OIDC -> Workload Identity Federation auth.
     permissions:
       contents: "read"
       id-token: "write"
 
     steps:
-      # Keyless authentication using Workload Identity Federation (no service account keys needed)
+      # Authenticate keylessly (no long-lived JSON service account key).
       - name: Authenticate to Google Cloud via Workload Identity Federation
         uses: google-github-actions/auth@v2
         with:
@@ -33,14 +43,17 @@ jobs:
           workload_identity_provider: ${{ secrets.GCP_WIF_PROVIDER }}
           service_account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 
+      # Install gcloud CLI for SSH and registry auth commands.
       - name: Set up gcloud CLI
         uses: google-github-actions/setup-gcloud@v3
         with:
           project_id: ${{ secrets.GCP_PROJECT_ID }}
 
+      # Configure runner Docker client auth for gcr/gar use if needed.
       - name: Configure Docker to use gcloud as credential helper
         run: gcloud auth configure-docker
 
+      # Authenticate runner to GHCR (used by any local image operations in workflow).
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
@@ -48,7 +61,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # SSH into GCP VM and deploy: pull latest code + images, restart containers
+      # SSH into VM: sync repo, pull images, and recreate changed containers in-place.
       - name: Deploy application on GCP VM
         env:
           GCP_ZONE: ${{ secrets.GCP_ZONE }}
@@ -56,49 +69,83 @@ jobs:
           gcloud compute ssh ubuntu@gaia-backend \
             --zone=$GCP_ZONE \
             --command="
-              set -e
+              set -euo pipefail
               cd /home/aryan/gaia
+              COMPOSE_FILE='${{ env.COMPOSE_FILE }}'
+              COMPOSE_PROFILE='${{ env.COMPOSE_PROFILE }}'
+              # Intentionally deploy full production stack: core services (always
+              # active) + bots profile.
+              compose_cmd() { docker compose -f \"\$COMPOSE_FILE\" --profile \"\$COMPOSE_PROFILE\" \"\$@\"; }
 
-              # Discard any local changes (production should always match repo)
-              git reset --hard HEAD
-              git clean -fd
-
-              git fetch origin
+              git fetch origin master
               git checkout master
-              git pull origin master
+              git pull --ff-only origin master
 
-              # Stop all containers before pulling to avoid volume mount issues
-              docker compose -f infra/docker/docker-compose.prod.yml down
+              # Pull updated images first, then do in-place rolling recreation.
+              compose_cmd pull
 
-              docker compose -f infra/docker/docker-compose.prod.yml pull
-
-              # Recreate services with updated images (respecting dependencies)
-              docker compose -f infra/docker/docker-compose.prod.yml up -d --remove-orphans
+              # Recreate only what changed while keeping the stack online.
+              compose_cmd up -d --remove-orphans
               docker image prune -f
             "
 
+      # Validate that every expected compose service is running and healthy.
       - name: Verify deployment
         env:
           GCP_ZONE: ${{ secrets.GCP_ZONE }}
         run: |
-          # Check if containers are running properly
           output=$(gcloud compute ssh ubuntu@gaia-backend \
             --zone=$GCP_ZONE \
             --command="
+              set -euo pipefail
               cd /home/aryan/gaia
-              docker compose -f infra/docker/docker-compose.prod.yml ps
+              COMPOSE_FILE='${{ env.COMPOSE_FILE }}'
+              COMPOSE_PROFILE='${{ env.COMPOSE_PROFILE }}'
+              compose_cmd() { docker compose -f \"\$COMPOSE_FILE\" --profile \"\$COMPOSE_PROFILE\" \"\$@\"; }
+
+              expected_services=\$(compose_cmd config --services)
+              running_services=\$(compose_cmd ps --status running --services)
+
+              echo 'Expected services:'
+              echo \"\$expected_services\"
+              echo
+              echo 'Running services:'
+              echo \"\$running_services\"
+              echo
+
+              for svc in \$expected_services; do
+                if ! echo \"\$running_services\" | grep -qx \"\$svc\"; then
+                  echo \"Service not running: \$svc\"
+                  exit 1
+                fi
+
+                cid=\$(compose_cmd ps -q \"\$svc\")
+                if [ -z \"\$cid\" ]; then
+                  echo \"Missing container id for service: \$svc\"
+                  exit 1
+                fi
+
+                status=\$(docker inspect -f '{{.State.Status}}' \"\$cid\")
+                health=\$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \"\$cid\")
+                echo \"\$svc => status=\$status health=\$health\"
+
+                if [ \"\$status\" != \"running\" ]; then
+                  echo \"Service not in running state: \$svc\"
+                  exit 1
+                fi
+
+                if [ \"\$health\" != \"none\" ] && [ \"\$health\" != \"healthy\" ]; then
+                  echo \"Service health check failed: \$svc (\$health)\"
+                  exit 1
+                fi
+              done
             ")
 
           echo "$output"
 
-          # Fail if any containers are not in 'running' state
-          if echo "$output" | grep -E '(Exit|Restarting|Dead)'; then
-            echo "❌ Some containers are not healthy"
-            exit 1
-          fi
+          echo "✅ All expected services are running and healthy"
 
-          echo "✅ All containers are running"
-
+      # Reclaim disk space from dangling artifacts on the VM.
       - name: Docker Cleanup
         env:
           GCP_ZONE: ${{ secrets.GCP_ZONE }}
@@ -120,6 +167,7 @@ jobs:
               echo '✅ Docker cleanup completed.'
             "
 
+      # Always emit deploy status to Discord for ops visibility.
       - name: Notify to Discord
         if: always()
         uses: appleboy/discord-action@v1.2.0
@@ -134,5 +182,6 @@ jobs:
             **Branch:** ${{ github.ref_name }}
             **Commit:** ${{ github.sha }}
             **Status:** ${{ job.status }}
+            **Deploy Scope:** api-and-bots
             **Deployed by:** ${{ github.actor }}
             **Timestamp:** ${{ github.run_id }}

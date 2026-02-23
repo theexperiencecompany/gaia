@@ -2,7 +2,6 @@
 Service for managing todo counts and ensuring consistency.
 """
 
-
 from bson import ObjectId
 
 from app.config.loggers import todos_logger

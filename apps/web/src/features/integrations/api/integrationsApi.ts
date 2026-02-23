@@ -1,11 +1,39 @@
 import { apiService } from "@/lib/api";
 
 import type {
+  CommunityIntegrationsResponse,
   CreateCustomIntegrationRequest,
   CreateCustomIntegrationResponse,
   Integration,
+  PublicIntegrationResponse,
   UserIntegrationsResponse,
 } from "../types";
+
+/**
+ * Sanitizes a redirect URL to prevent XSS attacks.
+ * Only allows http: and https: protocols.
+ * Blocks dangerous schemes like javascript:, data:, vbscript:, etc.
+ *
+ * @param url - The URL to sanitize
+ * @returns The sanitized URL if safe, null if dangerous
+ */
+function sanitizeRedirectUrl(url: string): string | null {
+  try {
+    const parsed = new URL(url);
+
+    // Only allow http and https protocols
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      console.warn(`Blocked redirect to unsafe URL scheme: ${parsed.protocol}`);
+      return null;
+    }
+
+    return url;
+  } catch {
+    // Invalid URL format
+    console.warn(`Blocked redirect to malformed URL: ${url}`);
+    return null;
+  }
+}
 
 export interface IntegrationStatusResponse {
   integrations: Array<{
@@ -67,8 +95,10 @@ export const integrationsApi = {
    */
   connectIntegration: async (
     integrationId: string,
-  ): Promise<{ status: string; toolsCount?: number }> => {
-    if (typeof window === "undefined") return { status: "error" };
+    bearerToken?: string,
+  ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
+    if (typeof window === "undefined")
+      return { status: "error", name: "Unknown" };
 
     const redirectPath = window.location.pathname + window.location.search;
 
@@ -76,10 +106,12 @@ export const integrationsApi = {
       `/integrations/connect/${integrationId}`,
       {
         redirect_path: redirectPath,
+        bearer_token: bearerToken,
       },
     )) as {
       status: "connected" | "redirect" | "error";
       integrationId: string;
+      name: string;
       message?: string;
       toolsCount?: number;
       redirectUrl?: string;
@@ -87,8 +119,12 @@ export const integrationsApi = {
     };
 
     if (response.status === "redirect" && response.redirectUrl) {
-      window.location.href = response.redirectUrl;
-      return { status: "redirecting" };
+      const safeUrl = sanitizeRedirectUrl(response.redirectUrl);
+      if (!safeUrl) {
+        throw new Error("Invalid redirect URL received from server");
+      }
+      window.location.href = safeUrl;
+      return { status: "redirecting", name: response.name };
     }
 
     if (response.status === "error") {
@@ -97,6 +133,7 @@ export const integrationsApi = {
 
     return {
       status: response.status,
+      name: response.name,
       toolsCount: response.toolsCount ?? undefined,
     };
   },
@@ -214,5 +251,167 @@ export const integrationsApi = {
       );
       throw error;
     }
+  },
+
+  /**
+   * Publish a custom integration to the community marketplace
+   */
+  publishIntegration: async (
+    integrationId: string,
+  ): Promise<{
+    message: string;
+    integrationId: string;
+    publicUrl: string;
+  }> => {
+    const response = await apiService.post(
+      `/integrations/custom/${integrationId}/publish`,
+      {},
+    );
+    return response as {
+      message: string;
+      integrationId: string;
+      publicUrl: string;
+    };
+  },
+
+  /**
+   * Unpublish a custom integration from the marketplace
+   */
+  unpublishIntegration: async (
+    integrationId: string,
+  ): Promise<{
+    message: string;
+    integrationId: string;
+  }> => {
+    const response = await apiService.post(
+      `/integrations/custom/${integrationId}/unpublish`,
+      {},
+    );
+    return response as {
+      message: string;
+      integrationId: string;
+    };
+  },
+
+  /**
+   * Get community integrations for the public marketplace
+   */
+  getCommunityIntegrations: async (params?: {
+    sort?: "popular" | "recent" | "name";
+    category?: string;
+    limit?: number;
+    offset?: number;
+    search?: string;
+  }): Promise<CommunityIntegrationsResponse> => {
+    const searchParams = new URLSearchParams();
+    if (params?.sort) searchParams.set("sort", params.sort);
+    if (params?.category) searchParams.set("category", params.category);
+    if (params?.limit) searchParams.set("limit", params.limit.toString());
+    if (params?.offset) searchParams.set("offset", params.offset.toString());
+    if (params?.search) searchParams.set("search", params.search);
+
+    const query = searchParams.toString();
+    const response = await apiService.get(
+      `/integrations/community${query ? `?${query}` : ""}`,
+    );
+    return response as CommunityIntegrationsResponse;
+  },
+
+  /**
+   * Get public integration details by integration ID (no auth required)
+   */
+  getPublicIntegration: async (
+    integrationId: string,
+  ): Promise<PublicIntegrationResponse> => {
+    const response = await apiService.get(
+      `/integrations/public/${integrationId}`,
+    );
+    return response as PublicIntegrationResponse;
+  },
+
+  /**
+   * Add a public integration to user's workspace and trigger OAuth if needed
+   */
+  addIntegration: async (
+    integrationId: string,
+    bearerToken?: string,
+  ): Promise<{
+    status:
+      | "connected"
+      | "redirect"
+      | "redirecting"
+      | "bearer_required"
+      | "error";
+    integrationId: string;
+    name: string;
+    message: string;
+    toolsCount?: number;
+    redirectUrl?: string;
+    error?: string;
+  }> => {
+    if (typeof window === "undefined") {
+      return {
+        status: "error",
+        integrationId,
+        name: "",
+        message: "Cannot add integration on server",
+      };
+    }
+
+    const redirectPath = `/integrations?id=${integrationId}&refresh=true`;
+
+    const response = (await apiService.post(
+      `/integrations/public/${integrationId}/add`,
+      {
+        redirect_path: redirectPath,
+        bearer_token: bearerToken,
+      },
+    )) as {
+      status: "connected" | "redirect" | "error";
+      integrationId: string;
+      name: string;
+      message: string;
+      toolsCount?: number;
+      redirectUrl?: string;
+      error?: string;
+    };
+
+    if (response.status === "redirect" && response.redirectUrl) {
+      const safeUrl = sanitizeRedirectUrl(response.redirectUrl);
+      if (!safeUrl) {
+        throw new Error("Invalid redirect URL received from server");
+      }
+      window.location.href = safeUrl;
+      return { ...response, status: "redirecting" };
+    }
+
+    // Return bearer_required as a special status instead of throwing
+    if (response.status === "error" && response.error === "bearer_required") {
+      return { ...response, status: "bearer_required" };
+    }
+
+    if (response.status === "error") {
+      throw new Error(response.error || "Failed to add integration");
+    }
+
+    return response;
+  },
+
+  /**
+   * Search public integrations using semantic search
+   */
+  searchIntegrations: async (
+    query: string,
+  ): Promise<{
+    integrations: PublicIntegrationResponse[];
+    query: string;
+  }> => {
+    const response = await apiService.get(
+      `/integrations/search?q=${encodeURIComponent(query)}`,
+    );
+    return response as {
+      integrations: PublicIntegrationResponse[];
+      query: string;
+    };
   },
 };

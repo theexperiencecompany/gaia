@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter, useSearchParams } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { VoiceApp } from "@/features/chat/components/composer/VoiceModeOverlay";
@@ -8,6 +9,7 @@ import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useDragAndDrop } from "@/hooks/ui/useDragAndDrop";
 import { db } from "@/lib/db/chatDb";
+import { syncSingleConversation } from "@/services";
 import { useChatStore } from "@/stores/chatStore";
 import {
   useComposerTextActions,
@@ -26,6 +28,10 @@ const ChatPage = React.memo(function MainChat() {
   const setActiveConversationId = useChatStore(
     (state) => state.setActiveConversationId,
   );
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const shouldSync = searchParams.get("sync") === "true";
+  const queryParam = searchParams.get("q");
 
   // Fetching status on chat-page to resolve caching issues when new integration is connected
   useFetchIntegrationStatus({
@@ -62,6 +68,8 @@ const ChatPage = React.memo(function MainChat() {
         // Fire API call (don't await to avoid blocking)
         chatApi.markAsRead(convoIdParam).catch(console.error);
       }
+
+      syncSingleConversation(convoIdParam);
     }
 
     // Clear optimistic message when navigating to a different conversation
@@ -72,6 +80,7 @@ const ChatPage = React.memo(function MainChat() {
   }, [
     convoIdParam,
     setActiveConversationId,
+    shouldSync,
     // NOTE: Not including conversations or upsertConversation in deps
     // to avoid re-triggering when manually toggling read/unread status
   ]);
@@ -102,6 +111,16 @@ const ChatPage = React.memo(function MainChat() {
       clearPendingPrompt();
     }
   }, [pendingPrompt, clearPendingPrompt, appendToInputRef]);
+
+  // Handle ?q= query parameter for external app deep linking
+  useEffect(() => {
+    if (queryParam && appendToInputRef.current) {
+      appendToInputRef.current(queryParam);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("q");
+      router.replace(url.pathname + url.search, { scroll: false });
+    }
+  }, [queryParam, appendToInputRef, router]);
 
   // Common composer props
   const composerProps = {

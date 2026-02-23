@@ -1,12 +1,11 @@
 "use client";
 
 import { Input } from "@heroui/input";
+import { PinIcon } from "@icons";
 import { useEffect, useState } from "react";
-
 import Spinner from "@/components/ui/spinner";
 import { PinCard } from "@/features/pins/components/PinCard";
 import { usePins } from "@/features/pins/hooks/usePins";
-import { PinIcon } from "@/icons";
 import type { PinCardProps } from "@/types/features/pinTypes";
 
 export default function Pins() {

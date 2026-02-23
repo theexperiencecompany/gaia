@@ -114,13 +114,5 @@ async def construct_langchain_messages(
     ):
         content += f"\n\n{files_str}"
 
-    visible_to = {
-        "comms": "comms_agent",
-        "executor": "executor_agent",
-        "main": "main_agent",
-    }.get(agent_type, "comms_agent")
-
-    human_msg = HumanMessage(
-        content=content, additional_kwargs={"visible_to": {visible_to}}
-    )
+    human_msg = HumanMessage(content=content)
     return [*chain_msgs, human_msg]

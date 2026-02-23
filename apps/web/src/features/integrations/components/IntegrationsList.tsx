@@ -3,7 +3,9 @@ import { Chip } from "@heroui/chip";
 import type React from "react";
 import { useMemo } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { useIntegrationModalStore } from "@/stores/integrationModalStore";
 import { useIntegrationsStore } from "@/stores/integrationsStore";
+import { useUserStore } from "@/stores/userStore";
 import {
   getCategoryLabel,
   getUniqueCategories,
@@ -13,6 +15,7 @@ import { useIntegrationSearch } from "../hooks/useIntegrationSearch";
 import { useIntegrations } from "../hooks/useIntegrations";
 import type { Integration } from "../types";
 import { CategoryFilter } from "./CategoryFilter";
+import { MarketplaceBanner } from "./MarketplaceBanner";
 
 const IntegrationRow: React.FC<{
   integration: Integration;
@@ -29,7 +32,7 @@ const IntegrationRow: React.FC<{
 
   return (
     <div
-      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-surface-200/0 px-4 py-3 hover:bg-surface-200 transition-all duration-200"
+      className="flex min-h-16 cursor-pointer items-center gap-4 overflow-hidden rounded-2xl bg-zinc-800/0 px-4 py-3 hover:bg-zinc-800 transition-all duration-200"
       onClick={handleClick}
     >
       <div className="shrink-0">
@@ -47,7 +50,7 @@ const IntegrationRow: React.FC<{
 
       <div className="flex min-w-0 flex-1 flex-col gap-0.5">
         <div className="font-medium">{integration.name}</div>
-        <div className="truncate text-sm font-light text-foreground-500">
+        <div className="truncate text-sm font-light text-zinc-400">
           {integration.description}
         </div>
       </div>
@@ -118,6 +121,7 @@ const IntegrationSection: React.FC<IntegrationSectionProps> = ({
 export const IntegrationsList: React.FC<{
   onIntegrationClick?: (integrationId: string) => void;
 }> = ({ onIntegrationClick }) => {
+  const openModal = useIntegrationModalStore((state) => state.openModal);
   const { integrations, connectIntegration } = useIntegrations();
 
   // Get state from store
@@ -129,6 +133,7 @@ export const IntegrationsList: React.FC<{
     (state) => state.setSelectedCategory,
   );
   const clearFilters = useIntegrationsStore((state) => state.clearFilters);
+  const currentUserId = useUserStore((state) => state.userId);
 
   const { filteredIntegrations } = useIntegrationSearch(integrations);
 
@@ -144,18 +149,20 @@ export const IntegrationsList: React.FC<{
   const availableCategories = useMemo(() => {
     const uniqueCategories = getUniqueCategories(integrations);
     const sorted = sortCategories(uniqueCategories);
-    // Add "created_by_you" at the start if user has custom integrations
-    const hasCreatedByYou = integrations.some((i) => i.createdBy);
+    // Add "created_by_you" at the start if user has custom integrations they created
+    const hasCreatedByYou = integrations.some(
+      (i) => i.createdBy === currentUserId,
+    );
     if (hasCreatedByYou) {
       return ["created_by_you", ...sorted];
     }
     return sorted;
-  }, [integrations]);
+  }, [integrations, currentUserId]);
 
-  // Integrations created by the user
+  // Integrations created by the current user
   const createdByYouIntegrations = useMemo(() => {
-    return filteredIntegrations.filter((i) => i.createdBy);
-  }, [filteredIntegrations]);
+    return filteredIntegrations.filter((i) => i.createdBy === currentUserId);
+  }, [filteredIntegrations, currentUserId]);
 
   // Separate featured integrations
   const featuredIntegrations = useMemo(() => {
@@ -196,7 +203,11 @@ export const IntegrationsList: React.FC<{
 
   return (
     <div>
-      {/* Category Filter */}
+      {/* Marketplace Banner */}
+      <div className="my-8">
+        <MarketplaceBanner onCreateCustomIntegration={openModal} />
+      </div>
+
       <div className="mb-6">
         <CategoryFilter
           categories={availableCategories}
@@ -208,7 +219,7 @@ export const IntegrationsList: React.FC<{
       {/* No Results State */}
       {!hasResults && (searchQuery || selectedCategory !== "all") && (
         <div className="py-16 text-center space-y-2">
-          <p className="text-sm text-foreground-400">
+          <p className="text-sm text-zinc-400">
             {searchQuery
               ? `No integrations found for "${searchQuery}"`
               : `No ${getCategoryLabel(selectedCategory).toLowerCase()} integrations found`}
@@ -226,8 +237,8 @@ export const IntegrationsList: React.FC<{
 
       {!hasResults && !searchQuery && integrations.length === 0 && (
         <div className="py-16 text-center">
-          <p className="text-sm text-foreground-400">No integrations available</p>
-          <p className="mt-1 text-xs text-foreground-500">
+          <p className="text-sm text-zinc-400">No integrations available</p>
+          <p className="mt-1 text-xs text-zinc-500">
             Check back later for new integrations
           </p>
         </div>
@@ -246,21 +257,20 @@ export const IntegrationsList: React.FC<{
           />
         )}
 
-      {/* Created by You Section */}
-      {createdByYouIntegrations.length > 0 &&
-        !searchQuery &&
-        selectedCategory === "all" && (
-          <IntegrationSection
-            title="Created by You"
-            integrations={createdByYouIntegrations}
-            // chipColor="primary"
-            onConnect={handleConnect}
-            onIntegrationClick={onIntegrationClick}
-          />
-        )}
+      {createdByYouIntegrations.length > 0 && selectedCategory === "all" && (
+        <IntegrationSection
+          title="Created by You"
+          integrations={createdByYouIntegrations}
+          onConnect={handleConnect}
+          onIntegrationClick={onIntegrationClick}
+        />
+      )}
 
-      {/* Category Sections */}
       {selectedCategory === "all" ? (
+        // Exclude "created_by_you" virtual category (shown above) and "custom" category.
+        // Custom integrations with createdBy set are shown in "Created by You" section.
+        // Note: This assumes all user-created integrations have createdBy property set.
+        // If createdBy is missing, the integration would appear in duplicate sections.
         availableCategories
           .filter((cat) => cat !== "created_by_you" && cat !== "custom")
           .map((category) => {

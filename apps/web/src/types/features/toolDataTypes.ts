@@ -169,3 +169,38 @@ export type GoogleDocsData = {
   message: string;
   type: string;
 };
+
+// Define workflow draft data structure for workflow creation
+export type WorkflowDraftData = {
+  /** Suggested title for the workflow */
+  suggested_title: string;
+  /** Short description for display in cards/UI (1-2 sentences) */
+  suggested_description: string;
+  /** Detailed prompt/instructions for the workflow execution */
+  prompt: string;
+  /** Trigger type: manual, scheduled, or integration */
+  trigger_type: "manual" | "scheduled" | "integration";
+  /** Trigger slug for integration triggers (e.g., GMAIL_NEW_GMAIL_MESSAGE) */
+  trigger_slug?: string | null;
+  /** Cron expression for scheduled triggers */
+  cron_expression?: string | null;
+};
+
+// Define workflow created data for when a workflow is automatically created
+export type WorkflowCreatedData = {
+  /** Workflow ID for navigation/editing */
+  id: string;
+  /** Workflow title */
+  title: string;
+  /** Workflow description */
+  description: string;
+  /** Trigger configuration */
+  trigger_config: {
+    type: "manual" | "scheduled" | "integration";
+    cron_expression?: string | null;
+    trigger_name?: string | null;
+    enabled?: boolean;
+  };
+  /** Whether workflow is activated */
+  activated: boolean;
+};

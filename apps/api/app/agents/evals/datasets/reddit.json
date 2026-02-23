@@ -1,0 +1,114 @@
+{
+  "name": "Reddit Capabilities",
+  "description": "Evaluation dataset for Reddit subagent capabilities including posting, commenting, and subreddit browsing. Includes lazy queries, intentional mistakes, and ambiguous items.",
+  "version": "1.0.0",
+  "subagent": "reddit_agent",
+  "integration_id": "reddit",
+  "items": [
+    {
+      "input": "create a post in r/programming about my new library",
+      "expected_output": "Create Reddit post in r/programming subreddit.",
+      "context": "User wants to post to subreddit",
+      "tags": ["post", "create"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get hot posts from r/technology",
+      "expected_output": "Retrieve hot posts from r/technology subreddit.",
+      "context": "User wants to browse subreddit",
+      "tags": ["post", "list", "subreddit"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "comment on the post about Python",
+      "expected_output": "1. Find post about Python. 2. Post comment on it.",
+      "context": "User wants to comment",
+      "tags": ["comment", "create", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "reply to comment about best practices",
+      "expected_output": "1. Find comment about best practices. 2. Post reply comment.",
+      "context": "User wants to reply to comment",
+      "tags": ["comment", "reply", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get comments for the top post",
+      "expected_output": "1. Get top/hot posts. 2. Retrieve comments for that post.",
+      "context": "User wants post comments",
+      "tags": ["comment", "list", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "edit my comment to fix typo",
+      "expected_output": "1. Find user's comment. 2. Edit comment content.",
+      "context": "User wants to edit comment",
+      "tags": ["comment", "edit", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "delete my post about the mistake",
+      "expected_output": "1. Find user's post about mistake. 2. Request confirmation. 3. Delete post.",
+      "context": "User wants to delete - needs consent",
+      "tags": ["post", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "post link to article in r/webdev",
+      "expected_output": "Create link post in r/webdev subreddit.",
+      "context": "User wants link post",
+      "tags": ["post", "create", "link"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "get my reddit flair for r/gaming",
+      "expected_output": "Get user flair for r/gaming subreddit.",
+      "context": "User wants flair info",
+      "tags": ["flair", "get"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "post on redit about new feature",
+      "expected_output": "1. Recognize 'redit' as typo for 'reddit'. 2. Ask which subreddit. 3. Create post.",
+      "context": "User made typo",
+      "tags": ["post", "create", "mistake", "robustness"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "delete my comment that was wrong",
+      "expected_output": "1. Find user's wrong comment. 2. Request confirmation. 3. Delete comment.",
+      "context": "User wants to delete comment - needs consent",
+      "tags": ["comment", "delete", "lazy", "destructive"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "get specific post by ID abc123",
+      "expected_output": "Retrieve specific comment or post by ID.",
+      "context": "User wants specific post",
+      "tags": ["post", "get", "detailed"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "view posts in r/startups",
+      "expected_output": "Retrieve posts from r/startups subreddit.",
+      "context": "User wants to browse",
+      "tags": ["post", "list", "subreddit"],
+      "metadata": { "difficulty": "easy" }
+    },
+    {
+      "input": "update my post with new information",
+      "expected_output": "1. Find user's post. 2. Edit post body with new info.",
+      "context": "User wants to edit post",
+      "tags": ["post", "edit", "lazy"],
+      "metadata": { "difficulty": "medium" }
+    },
+    {
+      "input": "create discussion post in r/askreddit",
+      "expected_output": "Create text post in r/askreddit subreddit.",
+      "context": "User wants discussion post",
+      "tags": ["post", "create", "text"],
+      "metadata": { "difficulty": "easy" }
+    }
+  ]
+}

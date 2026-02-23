@@ -4,6 +4,16 @@ This is an [Expo](https://expo.dev) project created with [`create-expo-app`](htt
 
 ## Get started
 
+### Firebase Setup (Required for Android Push Notifications)
+
+1. Download `google-services.json` from [Firebase Console](https://console.firebase.google.com/) → Project Settings → Your Android App
+2. Place it in the mobile app root: `apps/mobile/google-services.json`
+3. For FCM v1 credentials, upload via EAS: `eas credentials` or Expo Dashboard → Credentials
+
+> **Note**: See `google-services.json.template` for the required structure.
+
+### Install & Run
+
 1. Install dependencies
 
    ```bash

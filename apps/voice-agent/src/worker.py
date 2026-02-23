@@ -79,6 +79,7 @@ class CustomLLM(LLM):
         self.base_url = base_url
         self.agent_token: Optional[str] = None
         self.conversation_id: Optional[str] = None
+        self.conversation_description: Optional[str] = None
         self.request_timeout_s = request_timeout_s
         self.room = room
 
@@ -96,6 +97,17 @@ class CustomLLM(LLM):
                 )
             except Exception as e:
                 logger.error(f"Failed to send conversation ID: {e}")
+
+    async def set_conversation_description(self, description: Optional[str]):
+        """Store and broadcast conversation description to room participants."""
+        self.conversation_description = description
+        if self.room and self.room.local_participant:
+            try:
+                await self.room.local_participant.send_text(
+                    description, topic="conversation-description"
+                )
+            except Exception as e:
+                logger.error(f"Failed to send conversation description: {e}")
 
     @asynccontextmanager
     async def chat(self, chat_ctx: ChatContext, **kwargs):  # type: ignore[override]
@@ -155,6 +167,12 @@ class CustomLLM(LLM):
                         conv_id = payload.get("conversation_id")
                         if isinstance(conv_id, str) and conv_id:
                             await self.set_conversation_id(conv_id)
+                            continue
+
+                        # Handle conversation description (title)
+                        conv_desc = payload.get("conversation_description")
+                        if isinstance(conv_desc, str) and conv_desc:
+                            await self.set_conversation_description(conv_desc)
                             continue
 
                         piece = payload.get("response", "")

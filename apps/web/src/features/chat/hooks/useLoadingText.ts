@@ -4,12 +4,15 @@ import { useLoadingStore } from "@/stores/loadingStore";
 interface ToolInfo {
   toolName?: string;
   toolCategory?: string;
+  integrationName?: string;
+  iconUrl?: string;
   showCategory?: boolean;
 }
 
 export const useLoadingText = () => {
   const {
     loadingText,
+    loadingTextKey,
     toolInfo,
     setLoadingText,
     resetLoadingText,
@@ -34,6 +37,7 @@ export const useLoadingText = () => {
 
   return {
     loadingText,
+    loadingTextKey,
     toolInfo,
     setLoadingText: updateLoadingText,
     setContextualLoading,

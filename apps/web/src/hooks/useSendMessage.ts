@@ -3,10 +3,12 @@ import { v4 as uuidv4 } from "uuid";
 
 import type { SelectedCalendarEventData } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useChatStream } from "@/features/chat/hooks/useChatStream";
+import { trackFirstMessageIfNeeded } from "@/lib/analytics";
 import { db, type IMessage } from "@/lib/db/chatDb";
 import { useCalendarEventSelectionStore } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
+import { useLoadingStore } from "@/stores/loadingStore";
 import {
   type ReplyToMessageData,
   useReplyToMessageStore,
@@ -66,6 +68,9 @@ export const useSendMessage = () => {
         return;
       }
 
+      // Track first message milestone (only fires once per user)
+      trackFirstMessageIfNeeded();
+
       const isoTimestamp = fetchDate();
       const createdAt = new Date(isoTimestamp);
       const optimisticId = uuidv4();
@@ -101,6 +106,10 @@ export const useSendMessage = () => {
           toolCategory: selectedToolCategory,
           workflowId: selectedWorkflow?.id ?? null,
         });
+
+        // Set loading state AFTER user message is in store
+        // This ensures the loading indicator appears AFTER the user message in the UI
+        useLoadingStore.getState().setLoadingWithContext(true, trimmedContent);
 
         await fetchChatStream(
           trimmedContent,
@@ -140,6 +149,9 @@ export const useSendMessage = () => {
       };
       try {
         await db.putMessage(optimisticMessage);
+
+        // Set loading state AFTER user message is persisted
+        useLoadingStore.getState().setLoadingWithContext(true, trimmedContent);
 
         const streamingUserMessage: MessageType = {
           ...userMessage,

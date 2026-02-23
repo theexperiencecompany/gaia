@@ -1,11 +1,16 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-
 import { authApi } from "@/features/auth/api/authApi";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
-import { useFetchConversations } from "@/features/chat/hooks/useConversationList";
 import { useFetchIntegrationStatus } from "@/features/integrations";
+import {
+  ANALYTICS_EVENTS,
+  trackEvent,
+  trackOnboardingComplete,
+  trackOnboardingStep,
+} from "@/lib/analytics";
+import { toast } from "@/lib/toast";
+import { batchSyncConversations } from "@/services/syncService";
 
 import { FIELD_NAMES, professionOptions, questions } from "../constants";
 import type { Message, OnboardingResponse, OnboardingState } from "../types";
@@ -18,7 +23,7 @@ export const useOnboarding = () => {
   const user = useUser();
   const { setUser } = useUserActions();
   const [isInitialized, setIsInitialized] = useState(false);
-  const fetchConversations = useFetchConversations();
+  const onboardingStartTracked = useRef(false);
 
   // Force integration status refresh on this page to show connected state immediately
   const { refetch: refetchIntegrationStatus } = useFetchIntegrationStatus({
@@ -65,6 +70,16 @@ export const useOnboarding = () => {
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
+
+  // Track onboarding start (only once per session)
+  useEffect(() => {
+    if (!onboardingStartTracked.current) {
+      trackEvent(ANALYTICS_EVENTS.ONBOARDING_STARTED, {
+        has_saved_state: onboardingState.messages.length > 0,
+      });
+      onboardingStartTracked.current = true;
+    }
+  }, []);
 
   // Persist state to sessionStorage whenever it changes
   useEffect(() => {
@@ -154,6 +169,16 @@ export const useOnboarding = () => {
         return;
 
       const currentQuestion = questions[onboardingState.currentQuestionIndex];
+
+      // Track step completion
+      trackOnboardingStep(
+        onboardingState.currentQuestionIndex + 1,
+        currentQuestion.fieldName,
+        {
+          response_value: rawValue ?? responseText,
+          question_id: currentQuestion.id,
+        },
+      );
 
       // First, add user message and update state
       setOnboardingState((prev) => {
@@ -257,6 +282,10 @@ export const useOnboarding = () => {
       );
       if (selectedChip) {
         if (chipValue === "skip") {
+          trackEvent(ANALYTICS_EVENTS.ONBOARDING_SKIPPED, {
+            step: onboardingState.currentQuestionIndex,
+            question_id: questionId,
+          });
           submitResponse("Skipped", "");
         } else if (chipValue === "none") {
           submitResponse("No special instructions", "");
@@ -392,6 +421,12 @@ export const useOnboarding = () => {
       }
 
       if (response?.success) {
+        // Track onboarding completion
+        trackOnboardingComplete({
+          profession: onboardingState.userResponses.profession,
+          totalSteps: questions.length + 1, // questions + connections step
+        });
+
         // Clear saved onboarding state since we're done
         if (typeof window !== "undefined") {
           sessionStorage.removeItem(ONBOARDING_STORAGE_KEY);
@@ -400,6 +435,7 @@ export const useOnboarding = () => {
         // Sync user store with the updated user data from backend
         if (response.user) {
           setUser({
+            userId: response.user.user_id,
             name: response.user.name,
             email: response.user.email,
             profilePicture: response.user.picture,
@@ -411,10 +447,10 @@ export const useOnboarding = () => {
 
         // Fetch conversations to populate sidebar with seeded data
         try {
-          await fetchConversations(1, 20);
+          await batchSyncConversations();
         } catch (error) {
-          console.error("Failed to fetch conversations:", error);
-          // Don't block navigation if conversation fetch fails
+          console.error("Failed to sync conversations:", error);
+          // Don't block navigation if conversation sync fails
         }
 
         // Navigate to the main chat page

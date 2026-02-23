@@ -3,6 +3,7 @@ import { del } from "idb-keyval";
 import { useRouter } from "next/navigation";
 import { useCallback } from "react";
 import { db } from "@/lib";
+import { ANALYTICS_EVENTS, resetUser, trackEvent } from "@/lib/analytics";
 import { authApi } from "../api/authApi";
 
 export const useLogout = () => {
@@ -63,6 +64,10 @@ export const useLogout = () => {
                 // Still resolve because we tried
                 resolve();
               };
+
+              request.onsuccess = () => {
+                resolve();
+              };
             }),
         );
 
@@ -73,7 +78,13 @@ export const useLogout = () => {
   }, [queryClient]);
 
   const logout = useCallback(async () => {
-    router.push("/");
+    // Track logout event before clearing storage (so we still have user context)
+    trackEvent(ANALYTICS_EVENTS.USER_LOGGED_OUT);
+
+    await clearAllStorage();
+
+    // Reset PostHog user identity
+    resetUser();
 
     try {
       await authApi.logout();
@@ -81,7 +92,10 @@ export const useLogout = () => {
       console.error("Logout API error:", error);
     }
 
-    await clearAllStorage();
+    // Redirection will be handled by the authApi.logout method
+    // but in case it doesn't (for example, if there's no logout_url),
+    // we redirect to the homepage
+    router.push("/");
   }, [clearAllStorage, router]);
 
   return { logout };

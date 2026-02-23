@@ -1,8 +1,7 @@
+import { SquareLock01Icon } from "@icons";
 import type React from "react";
-
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { SquareLock01Icon } from "@/icons";
 
 import type { EnhancedToolInfo } from "../../types/enhancedTools";
 
@@ -28,7 +27,7 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
         <div className="flex items-center gap-2">
           {/* Icon */}
           <div className="flex-shrink-0 blur-[2px] brightness-50 transition group-hover:blur-[0px] group-hover:brightness-100">
-            {getToolCategoryIcon(tool.category, {}, tool.integration?.iconUrl)}
+            {getToolCategoryIcon(tool.category, {}, tool.iconUrl)}
           </div>
 
           {/* Content */}
@@ -42,12 +41,10 @@ export const LockedToolItem: React.FC<LockedToolItemProps> = ({
                 <SquareLock01Icon
                   width={15}
                   height={15}
-                  className="text-foreground-500"
+                  className="text-zinc-500"
                 />
-                <span className="rounded-full bg-surface-200 px-2 py-0.5 text-xs text-foreground-400 outline-1 outline-surface-300">
-                  {formatToolName(
-                    tool.integration?.integrationName || tool.category,
-                  )}
+                <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
+                  {tool.displayName}
                 </span>
               </div>
             </div>

@@ -5,14 +5,14 @@ repos:
       - id: check-yaml
         priority: 0
       - id: check-json
-        exclude: ^(apps/web/.*tsconfig.*\.json|\.vscode/.*\.json)$
+        exclude: ^(apps/web/.*tsconfig.*\.json|\.vscode/.*\.json|packages/cli/.*tsconfig.*\.json)$
         priority: 0
       - id: check-toml
         priority: 0
       - id: check-merge-conflict
         priority: 0
       - id: check-added-large-files
-        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock)$
+        exclude: ^(mcp\.txt|pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|apps/api/uv.lock|uv.lock|apps/web/public/|.*\.(png|jpg|jpeg|gif|webp|svg))$
         priority: 0
       - id: check-ast
         exclude: ^(mcp\.txt|apps/web/pnpm-lock\.yaml|apps/api/uv.lock)$
@@ -28,5 +28,5 @@ repos:
     rev: v1.4.0
     hooks:
       - id: detect-secrets
-        exclude: ^(pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|.*\.env\.example|docs/configuration/environment-variables\.mdx|apps/docs/configuration/environment-variables\.mdx|nx\.json|\.github/workflows/build\.yml|apps/api/pyproject\.toml)$
+        exclude: ^(pnpm-lock\.yaml|apps/web/pnpm-lock\.yaml|.*\.env\.example|docs/configuration/environment-variables\.mdx|docs/configuration/environment-variables\.mdx|nx\.json|\.github/workflows/build\.yml|apps/api/pyproject\.toml)$
         priority: 0

@@ -3,22 +3,30 @@ Clean and lean workflow models for GAIA workflow system.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime
+from datetime import timezone as dt_timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from app.config.loggers import general_logger as logger
 from app.models.scheduler_models import BaseScheduledTask
-from pydantic import BaseModel, Field, field_validator
+from app.models.trigger_configs import TriggerConfigData
+from app.utils.cron_utils import get_next_run_time, parse_timezone
 
 
 class TriggerType(str, Enum):
-    """Type of workflow trigger."""
+    """Type of workflow trigger.
+
+    - MANUAL: Triggered by user action
+    - SCHEDULE: Triggered by cron schedule
+    - INTEGRATION: Triggered by external service (calendar, email, github, etc.)
+    """
 
     MANUAL = "manual"
     SCHEDULE = "schedule"
-    EMAIL = "email"
-    CALENDAR = "calendar"
+    INTEGRATION = "integration"
 
 
 class WorkflowStep(BaseModel):
@@ -51,12 +59,38 @@ class GeneratedWorkflow(BaseModel):
 
 
 class TriggerConfig(BaseModel):
-    """Configuration for workflow triggers."""
+    """Configuration for workflow triggers.
+
+    Uses a discriminated union pattern for type-safe provider configs.
+    Provider-specific data is stored in `trigger_data` field.
+    """
+
+    # Allow extra fields to be stored (e.g., calendar_ids from frontend)
+    model_config = ConfigDict(extra="allow")
 
     type: TriggerType = Field(description="Type of trigger")
     enabled: bool = Field(default=True, description="Whether the trigger is enabled")
 
-    # Schedule configuration
+    # Specific trigger slug (e.g., "calendar_event_created", "github_commit_event")
+    # Used by frontend to identify which trigger is selected
+    trigger_name: Optional[str] = Field(
+        default=None,
+        description="Specific trigger slug for identification",
+    )
+
+    # Type-safe provider config using discriminated union
+    trigger_data: Optional[TriggerConfigData] = Field(
+        default=None,
+        description="Provider-specific trigger configuration",
+    )
+
+    # Composio trigger tracking
+    composio_trigger_ids: Optional[List[str]] = Field(
+        default=None,
+        description="List of Composio trigger IDs registered for this workflow",
+    )
+
+    # Schedule configuration (generic, not provider-specific)
     cron_expression: Optional[str] = Field(
         default=None, description="Cron expression for scheduled workflows"
     )
@@ -65,11 +99,6 @@ class TriggerConfig(BaseModel):
     )
     next_run: Optional[datetime] = Field(
         default=None, description="Next scheduled execution time"
-    )
-
-    # Calendar trigger configuration
-    calendar_patterns: Optional[List[str]] = Field(
-        default=None, description="Calendar event patterns"
     )
 
     def calculate_next_run(
@@ -81,6 +110,7 @@ class TriggerConfig(BaseModel):
         Args:
             base_time: Base time for calculation (defaults to current UTC)
             user_timezone: User's timezone for cron calculation (defaults to trigger config timezone)
+                          Supports both IANA names (e.g., "America/New_York") and offset strings (e.g., "+05:30")
 
         Returns:
             Next run time in UTC
@@ -88,22 +118,12 @@ class TriggerConfig(BaseModel):
         if self.type != TriggerType.SCHEDULE or not self.cron_expression:
             return None
 
-        from datetime import timezone as dt_timezone
-        from typing import Union
-
-        import pytz
-        from app.utils.cron_utils import get_next_run_time
-
         try:
             # Use user_timezone parameter, fallback to trigger config timezone, then UTC
             tz_name = user_timezone or self.timezone or "UTC"
 
-            # Convert timezone name to timezone object
-            tz: Union[dt_timezone, pytz.BaseTzInfo]
-            if tz_name == "UTC":
-                tz = dt_timezone.utc
-            else:
-                tz = pytz.timezone(tz_name)
+            # Convert timezone name/offset to timezone object using the unified parser
+            tz = parse_timezone(tz_name)
 
             # If base_time is provided, convert it to the user's timezone for cron calculation
             if base_time:
@@ -114,10 +134,7 @@ class TriggerConfig(BaseModel):
                     base_time = base_time.astimezone(tz)
             else:
                 # Current time in user's timezone
-                if tz_name == "UTC":
-                    base_time = datetime.now(dt_timezone.utc)
-                else:
-                    base_time = datetime.now(tz)
+                base_time = datetime.now(tz)
 
             # Calculate next run time using timezone-aware base_time
             next_run = get_next_run_time(self.cron_expression, base_time, tz_name)
@@ -265,7 +282,7 @@ class Workflow(BaseScheduledTask):
 
         # Set default scheduled_at if still not provided
         if "scheduled_at" not in data:
-            data["scheduled_at"] = datetime.now(timezone.utc)
+            data["scheduled_at"] = datetime.now(dt_timezone.utc)
 
         super().__init__(**data)
 

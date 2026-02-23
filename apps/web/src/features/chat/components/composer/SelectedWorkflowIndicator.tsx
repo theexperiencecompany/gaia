@@ -1,12 +1,11 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { motion } from "framer-motion";
+import { Cancel01Icon } from "@icons";
+import { m } from "motion/react";
 import { useRouter } from "next/navigation";
-
 import type { SelectedWorkflowData } from "@/features/chat/hooks/useWorkflowSelection";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
-import { Cancel01Icon } from "@/icons";
 
 interface SelectedWorkflowIndicatorProps {
   workflow: SelectedWorkflowData | null;
@@ -31,7 +30,7 @@ export default function SelectedWorkflowIndicator({
   };
 
   return (
-    <motion.div
+    <m.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.3 }}
@@ -62,6 +61,6 @@ export default function SelectedWorkflowIndicator({
           </Button>
         </div>
       )}
-    </motion.div>
+    </m.div>
   );
 }

@@ -1,13 +1,12 @@
+import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
+import { GlobalIcon } from "@icons";
 import Image from "next/image";
 import { memo, type ReactNode, useEffect, useRef, useState } from "react";
-
-import Spinner from "@/components/ui/spinner";
 import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
-import { GlobalIcon } from "@/icons";
 
 // Global set to track failed image URLs across all instances
 const globalFailedUrls = new Set<string>();
@@ -24,6 +23,7 @@ const CustomAnchor = memo(
   }) => {
     const elementRef = useRef<HTMLAnchorElement>(null);
     const [isInView, setIsInView] = useState(false);
+    const [imageLoading, setImageLoading] = useState(true);
 
     // Only fetch when element is in view
     const {
@@ -82,11 +82,31 @@ const CustomAnchor = memo(
     return (
       <Tooltip
         showArrow
-        className="relative max-w-[280px] border border-surface-200 bg-surface-100 p-3 text-foreground-50 shadow-sm rounded-2xl"
+        className="relative max-w-[280px] min-w-[280px] border-2 border-zinc-800 bg-secondary-bg p-3 text-white shadow-lg"
         content={
           isLoading ? (
-            <div className="flex justify-center p-5">
-              <Spinner />
+            <div className="flex w-full flex-col gap-2">
+              {/* Website Image Skeleton */}
+              <Skeleton className="relative aspect-video w-full rounded-lg" />
+
+              {/* Website Name & Favicon Skeleton */}
+              <div className="flex items-center gap-2">
+                <Skeleton className="h-5 w-5 rounded-full" />
+                <Skeleton className="h-4 w-32 rounded" />
+              </div>
+
+              {/* Title Skeleton */}
+              <Skeleton className="h-4 w-full rounded" />
+
+              {/* Description Skeleton (3 lines) */}
+              <div className="flex flex-col gap-1">
+                <Skeleton className="h-3 w-full rounded" />
+                <Skeleton className="h-3 w-full rounded" />
+                <Skeleton className="h-3 w-3/4 rounded" />
+              </div>
+
+              {/* URL Link Skeleton */}
+              <Skeleton className="h-3 w-48 rounded" />
             </div>
           ) : error ? (
             <div className="flex items-center gap-2 p-3 text-red-400">
@@ -99,7 +119,10 @@ const CustomAnchor = memo(
               {!isStreaming &&
                 metadata.website_image &&
                 !failedUrls.has(metadata.website_image) && (
-                  <div className="relative aspect-video w-full overflow-hidden rounded-xl">
+                  <div className="relative aspect-video w-full overflow-hidden rounded-lg">
+                    {imageLoading && (
+                      <Skeleton className="absolute inset-0 z-10 h-full w-full rounded-lg" />
+                    )}
                     <Image
                       src={metadata.website_image}
                       alt="Website Image"
@@ -107,8 +130,12 @@ const CustomAnchor = memo(
                       width={280}
                       height={157}
                       objectFit="cover"
-                      className="rounded-xl"
-                      onError={() => handleImageError(metadata.website_image!)}
+                      className="rounded-lg"
+                      onLoadingComplete={() => setImageLoading(false)}
+                      onError={() => {
+                        setImageLoading(false);
+                        handleImageError(metadata.website_image!);
+                      }}
                     />
                   </div>
                 )}
@@ -131,7 +158,7 @@ const CustomAnchor = memo(
                       onError={() => handleImageError(metadata.favicon!)}
                     />
                   ) : (
-                    <GlobalIcon className="h-5 w-5 text-foreground-400" />
+                    <GlobalIcon className="h-5 w-5 text-gray-400" />
                   )}
                   {metadata.website_name && (
                     <div className="truncate text-sm font-semibold">
@@ -143,14 +170,14 @@ const CustomAnchor = memo(
 
               {/* Title */}
               {metadata.title && (
-                <div className="truncate text-sm font-medium text-foreground-50">
+                <div className="truncate text-sm font-medium text-white">
                   {metadata.title}
                 </div>
               )}
 
               {/* Description */}
               {metadata.description && (
-                <div className="line-clamp-3 text-xs text-foreground-400">
+                <div className="line-clamp-3 text-xs text-gray-400">
                   {metadata.description}
                 </div>
               )}
@@ -167,8 +194,8 @@ const CustomAnchor = memo(
             </div>
           ) : (
             <div className="flex items-center gap-2 p-3">
-              <GlobalIcon className="h-4 w-4 text-foreground-400" />
-              <span className="text-sm text-foreground-400">
+              <GlobalIcon className="h-4 w-4 text-gray-400" />
+              <span className="text-sm text-gray-400">
                 No preview available
               </span>
             </div>
@@ -178,7 +205,7 @@ const CustomAnchor = memo(
         <a
           ref={elementRef}
           href={href}
-          className="inline-flex cursor-pointer items-center gap-1 rounded-sm bg-primary/20 px-1 text-sm font-medium text-primary transition-all hover:text-foreground-50 hover:underline"
+          className="inline-flex cursor-pointer items-center gap-1 rounded-sm bg-primary/20 px-1 text-sm font-medium text-primary transition-all hover:text-white hover:underline"
           rel="noopener noreferrer"
           target="_blank"
           onMouseEnter={handleMouseEnter}

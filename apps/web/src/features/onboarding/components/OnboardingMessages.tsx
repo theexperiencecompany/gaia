@@ -1,4 +1,4 @@
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 
 import ChatBubbleBot from "@/features/chat/components/bubbles/bot/ChatBubbleBot";
 import ChatBubbleUser from "@/features/chat/components/bubbles/user/ChatBubbleUser";
@@ -20,7 +20,7 @@ export const OnboardingMessages = ({
   return (
     <>
       {messages.map((message, index) => (
-        <motion.div
+        <m.div
           key={message.id}
           className="mb-4"
           initial={{ opacity: 0, y: 15 }}
@@ -54,7 +54,7 @@ export const OnboardingMessages = ({
               {...message}
             >
               {isOnboardingComplete && index === messages.length - 1 && (
-                <motion.div
+                <m.div
                   className="ml-[43px]"
                   initial={{ opacity: 0, y: 15 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -65,7 +65,7 @@ export const OnboardingMessages = ({
                   }}
                 >
                   <OnboardingIntegrationButtons />
-                </motion.div>
+                </m.div>
               )}
             </ChatBubbleBot>
           ) : (
@@ -88,7 +88,7 @@ export const OnboardingMessages = ({
               disableActions={true}
             />
           )}
-        </motion.div>
+        </m.div>
       ))}
 
       <div ref={messagesEndRef} />

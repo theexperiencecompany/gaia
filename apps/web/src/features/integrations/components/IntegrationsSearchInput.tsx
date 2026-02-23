@@ -1,7 +1,6 @@
 import { Input } from "@heroui/input";
+import { SearchIcon } from "@icons";
 import { forwardRef, type KeyboardEvent } from "react";
-
-import { SearchIcon } from "@/icons";
 
 interface IntegrationsSearchInputProps {
   value: string;

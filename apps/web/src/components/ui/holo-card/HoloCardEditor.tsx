@@ -10,23 +10,20 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { Slider } from "@heroui/slider";
 import { Tooltip } from "@heroui/tooltip";
-import { toPng } from "html-to-image";
-import { useCallback, useEffect, useRef, useState } from "react";
-import ColorPicker from "react-best-gradient-color-picker";
-import { TwitterShareButton } from "react-share";
-import { toast } from "sonner";
-
-import { TwitterIcon } from "@/components";
-import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
 import {
   Copy01Icon,
-  Dices,
-  Download01Icon,
   LinkSquare02Icon,
   PaintBoardIcon,
   ReloadIcon,
   Share08Icon,
-} from "@/icons";
+} from "@icons";
+import { useCallback, useEffect, useRef, useState } from "react";
+import ColorPicker from "react-best-gradient-color-picker";
+import { TwitterShareButton } from "react-share";
+import { TwitterIcon } from "@/components";
+import { Dices } from "@/components/shared/icons";
+import { holoCardApi } from "@/features/onboarding/api/holoCardApi";
+import { toast } from "@/lib/toast";
 
 import { HoloCard } from "./HoloCard";
 import type { HoloCardDisplayData } from "./types";
@@ -110,22 +107,22 @@ export const HoloCardEditor = ({
 
   const cardRef = useRef<HTMLDivElement>(null);
 
-  const handleDownload = useCallback(async () => {
-    if (cardRef.current === null) {
-      return;
-    }
+  // const handleDownload = useCallback(async () => {
+  //   if (cardRef.current === null) {
+  //     return;
+  //   }
 
-    try {
-      const dataUrl = await toPng(cardRef.current, { cacheBust: true });
-      const link = document.createElement("a");
-      link.download = `holo-card-${data.name || "user"}.png`;
-      link.href = dataUrl;
-      link.click();
-    } catch (err) {
-      console.error("Failed to download image", err);
-      toast.error("Failed to download image");
-    }
-  }, [data.name]);
+  //   try {
+  //     const dataUrl = await toPng(cardRef.current, { cacheBust: true });
+  //     const link = document.createElement("a");
+  //     link.download = `holo-card-${data.name || "user"}.png`;
+  //     link.href = dataUrl;
+  //     link.click();
+  //   } catch (err) {
+  //     console.error("Failed to download image", err);
+  //     toast.error("Failed to download image");
+  //   }
+  // }, [data.name]);
 
   const handleShare = (platform: "twitter" | "linkedin" | "copy") => {
     if (!data.holo_card_id && typeof window !== "undefined") {
@@ -302,7 +299,7 @@ export const HoloCardEditor = ({
       </div>
 
       <ButtonGroup className="mt-2">
-        <Tooltip content="Download your card" placement="top">
+        {/* <Tooltip content="Download your card" placement="top">
           <Button
             isIconOnly
             variant="flat"
@@ -311,7 +308,7 @@ export const HoloCardEditor = ({
           >
             <Download01Icon size={20} />
           </Button>
-        </Tooltip>
+        </Tooltip> */}
 
         <Tooltip content="Share your card" placement="top">
           <Dropdown placement="top">

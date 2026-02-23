@@ -1,6 +1,14 @@
-import Image from "next/image";
+/**
+ * Tool Icons - React UI Layer
+ *
+ * This file provides React components for rendering tool/category icons.
+ * It imports configuration from toolIconConfig.ts (the single source of truth)
+ * and maps icon names to actual React components.
+ *
+ * For OG images (Edge runtime), see: iconPaths.generated.ts
+ * For icon configuration: src/config/toolIconConfig.ts
+ */
 
-import { useIconColorDetection } from "@/features/chat/hooks/useIconColorDetection";
 import {
   AlarmClockIcon,
   Brain02Icon,
@@ -16,7 +24,14 @@ import {
   SquareArrowUpRight02Icon,
   Target02Icon,
   ToolsIcon,
-} from "@/icons";
+} from "@icons";
+import { m } from "motion/react";
+import Image from "next/image";
+import {
+  iconAliases,
+  normalizeCategoryName,
+  toolIconConfigs,
+} from "@/config/toolIconConfig";
 
 interface IconProps {
   size?: number;
@@ -26,6 +41,7 @@ interface IconProps {
   className?: string;
   showBackground?: boolean;
   iconOnly?: boolean; // When true, renders just the icon without background wrapper
+  pulsating?: boolean; // When true, animates the background with a pulsating effect
 }
 
 interface IconConfig {
@@ -35,312 +51,40 @@ interface IconConfig {
   isImage?: boolean;
 }
 
-/**
- * Normalize a category/integration name for icon lookup
- * - Converts to lowercase
- * - Replaces spaces, dashes, and multiple underscores with single underscore
- */
-const normalizeCategoryName = (name: string): string => {
-  if (!name) return "general";
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/[\s-]+/g, "_") // Replace spaces and dashes with underscore
-    .replace(/_+/g, "_") // Replace multiple underscores with single underscore
-    .replace(/^_|_$/g, ""); // Remove leading/trailing underscores
+/** Map icon component names to actual React components */
+const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
+  CheckListIcon,
+  AlarmClockIcon,
+  FileEmpty02Icon,
+  SourceCodeCircleIcon,
+  Brain02Icon,
+  Image02Icon,
+  Target02Icon,
+  NotificationIcon,
+  InformationCircleIcon,
+  ToolsIcon,
+  ConnectIcon,
+  SquareArrowUpRight02Icon,
+  PackageOpenIcon,
+  ComputerTerminal01Icon,
 };
 
-// Alias mapping for backwards compatibility and category-to-integration mapping
-const iconAliases: Record<string, string> = {
-  calendar: "google_calendar", // Map old category name to integration name
-};
+/** Build runtime icon configs from shared config */
+const iconConfigs: Record<string, IconConfig> = Object.fromEntries(
+  Object.entries(toolIconConfigs).map(([key, config]) => [
+    key,
+    {
+      icon: config.isImage
+        ? config.icon
+        : iconComponentMap[config.icon] || ToolsIcon,
+      bgColor: config.bgColor,
+      iconColor: config.iconColor,
+      isImage: config.isImage,
+    },
+  ]),
+);
 
-const iconConfigs: Record<string, IconConfig> = {
-  gmail: {
-    icon: "/images/icons/gmail.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  todos: {
-    icon: CheckListIcon,
-    bgColor: "bg-emerald-500/20 backdrop-blur",
-    iconColor: "text-emerald-400",
-  },
-  reminders: {
-    icon: AlarmClockIcon,
-    bgColor: "bg-blue-500/20 backdrop-blur",
-    iconColor: "text-blue-400",
-  },
-  documents: {
-    icon: FileEmpty02Icon,
-    bgColor: "bg-orange-500/20 backdrop-blur",
-    iconColor: "text-[#FF4500]",
-  },
-  google_docs: {
-    icon: "/images/icons/google_docs.webp",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  googlesheets: {
-    icon: "/images/icons/googlesheets.webp",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  development: {
-    icon: SourceCodeCircleIcon,
-    bgColor: "bg-cyan-500/20 backdrop-blur",
-    iconColor: "text-cyan-400",
-  },
-  search: {
-    icon: "/images/icons/google.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  memory: {
-    icon: Brain02Icon,
-    bgColor: "bg-indigo-500/20 backdrop-blur",
-    iconColor: "text-indigo-400",
-  },
-  creative: {
-    icon: Image02Icon,
-    bgColor: "bg-pink-500/20 backdrop-blur",
-    iconColor: "text-pink-400",
-  },
-  weather: {
-    icon: "/images/icons/weather.webp",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  goal_tracking: {
-    icon: Target02Icon,
-    bgColor: "bg-emerald-500/20 backdrop-blur",
-    iconColor: "text-emerald-400",
-  },
-  notion: {
-    icon: "/images/icons/notion.webp",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  twitter: {
-    icon: "/images/icons/twitter.webp",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  linkedin: {
-    icon: "/images/icons/linkedin.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  notifications: {
-    icon: NotificationIcon,
-    bgColor: "bg-yellow-500/20 backdrop-blur",
-    iconColor: "text-yellow-400",
-  },
-  webpage: {
-    icon: InformationCircleIcon,
-    bgColor: "bg-purple-500/20 backdrop-blur",
-    iconColor: "text-purple-400",
-  },
-  support: {
-    icon: InformationCircleIcon,
-    bgColor: "bg-blue-500/20 backdrop-blur",
-    iconColor: "text-blue-400",
-  },
-  general: {
-    icon: ToolsIcon,
-    bgColor: "bg-surface-500/20 backdrop-blur",
-    iconColor: "text-foreground-400",
-  },
-  // Integration icons
-  google_calendar: {
-    icon: "/images/icons/googlecalendar.webp",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  github: {
-    icon: "/images/icons/github.png",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  reddit: {
-    icon: "/images/icons/reddit.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  airtable: {
-    icon: "/images/icons/airtable.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  linear: {
-    icon: "/images/icons/linear.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  slack: {
-    icon: "/images/icons/slack.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  hubspot: {
-    icon: "/images/icons/hubspot.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  googletasks: {
-    icon: "/images/icons/googletasks.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  todoist: {
-    icon: "/images/icons/todoist.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  microsoft_teams: {
-    icon: "/images/icons/microsoft_teams.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  googlemeet: {
-    icon: "/images/icons/googlemeet.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  zoom: {
-    icon: "/images/icons/zoom.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  google_maps: {
-    icon: "/images/icons/google_maps.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  asana: {
-    icon: "/images/icons/asana.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  trello: {
-    icon: "/images/icons/trello.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  instagram: {
-    icon: "/images/icons/instagram.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  clickup: {
-    icon: "/images/icons/clickup.svg",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  deepwiki: {
-    icon: "/images/icons/deepwiki.webp",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-
-  context7: {
-    icon: "/images/icons/context7.png",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  hackernews: {
-    icon: "/images/icons/hackernews.png",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  instacart: {
-    icon: "/images/icons/instacart.png",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  yelp: {
-    icon: "/images/icons/yelp.png",
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-    isImage: true,
-  },
-  vercel: {
-    icon: "/images/icons/vercel.svg",
-    bgColor: "bg-surface-200",
-    iconColor: "text-white",
-    isImage: true,
-  },
-  perplexity: {
-    icon: "/images/icons/perplexity.png",
-    bgColor: "bg-surface-200",
-    iconColor: "text-white",
-    isImage: true,
-  },
-  figma: {
-    icon: "/images/icons/figma.svg",
-    bgColor: "bg-surface-200",
-    iconColor: "text-white",
-    isImage: true,
-  },
-  integrations: {
-    isImage: false,
-    icon: ConnectIcon,
-    bgColor: "bg-surface-300",
-    iconColor: "text-foreground-200",
-  },
-  // Special categories for agent tool calls
-  handoff: {
-    icon: SquareArrowUpRight02Icon,
-    bgColor: "bg-sky-500/20 backdrop-blur",
-    iconColor: "text-sky-400",
-  },
-  retrieve_tools: {
-    icon: PackageOpenIcon,
-    bgColor: "bg-indigo-500/20 backdrop-blur",
-    iconColor: "text-indigo-400",
-  },
-  executor: {
-    icon: ComputerTerminal01Icon,
-    bgColor: "bg-teal-500/20 backdrop-blur",
-    iconColor: "text-teal-400",
-  },
-  unknown: {
-    icon: ToolsIcon,
-    bgColor: "bg-surface-500/20 backdrop-blur",
-    iconColor: "text-foreground-400",
-  },
-};
-
-// Component that auto-detects and inverts dark/light icons based on theme
+// Component that auto-detects and inverts dark icons
 const AutoInvertIcon: React.FC<{
   src: string;
   alt: string;
@@ -349,16 +93,35 @@ const AutoInvertIcon: React.FC<{
   height?: number;
   className?: string;
 }> = ({ src, alt, size, width, height, className }) => {
-  const { shouldInvert } = useIconColorDetection(src);
+  // const { shouldInvert } = useIconColorDetection(src);
+  const imgWidth = width || size || 20;
+  const imgHeight = height || size || 20;
+  const imgClassName = `${className} aspect-square object-contain`;
+
+  // Use regular img tag for SVG URLs to avoid Next.js Image optimization issues
+  const isSvg = src.toLowerCase().endsWith(".svg");
+  if (isSvg) {
+    return (
+      // biome-ignore lint/performance/noImgElement: Using img for SVG to avoid Next.js Image optimization issues with SVG
+      <img
+        alt={alt}
+        width={imgWidth}
+        height={imgHeight}
+        className={imgClassName}
+        src={src}
+      />
+    );
+  }
 
   return (
     <Image
       alt={alt}
-      width={width || size || 20}
-      height={height || size || 20}
-      className={`${className} aspect-square object-contain ${shouldInvert ? "invert" : ""}`}
+      width={imgWidth}
+      height={imgHeight}
+      className={imgClassName}
       src={src}
     />
+    //  ${shouldInvert ? "invert" : ""} commented out temporarily
   );
 };
 
@@ -367,7 +130,12 @@ export const getToolCategoryIcon = (
   iconProps: IconProps = {},
   iconUrl?: string | null,
 ) => {
-  const { showBackground = true, iconOnly = false, ...restProps } = iconProps;
+  const {
+    showBackground = true,
+    iconOnly = false,
+    pulsating = false,
+    ...restProps
+  } = iconProps;
 
   const defaultProps = {
     size: restProps.size || 16,
@@ -380,7 +148,7 @@ export const getToolCategoryIcon = (
   // Normalize the input category name
   const normalizedCategory = normalizeCategoryName(category);
 
-  // Resolve aliases first (e.g., 'calendar' -> 'google_calendar')
+  // Resolve aliases first (e.g., 'calendar' -> 'googlecalendar')
   const aliasedCategory =
     iconAliases[normalizedCategory] ||
     iconAliases[category] ||
@@ -417,7 +185,22 @@ export const getToolCategoryIcon = (
         />
       );
       return showBackground ? (
-        <div className="rounded-lg p-1 bg-surface-300">{iconElement}</div>
+        <div className="relative rounded-lg p-1">
+          <m.div
+            className="absolute inset-0 rounded-lg bg-zinc-700"
+            animate={pulsating ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 1 }}
+            transition={
+              pulsating
+                ? {
+                    duration: 2,
+                    repeat: Number.POSITIVE_INFINITY,
+                    ease: "easeInOut",
+                  }
+                : undefined
+            }
+          />
+          <div className="relative">{iconElement}</div>
+        </div>
       ) : (
         iconElement
       );
@@ -450,7 +233,22 @@ export const getToolCategoryIcon = (
   // iconOnly: when true, image icons skip background for minimal display (e.g., loading messages)
   const shouldShowBackground = showBackground && !(iconOnly && config.isImage);
   return shouldShowBackground ? (
-    <div className={`rounded-lg p-1 ${config.bgColor}`}>{iconElement}</div>
+    <div className="relative rounded-lg p-1">
+      <m.div
+        className={`absolute inset-0 rounded-lg ${config.bgColor}`}
+        animate={pulsating ? { opacity: [0.4, 0.8, 0.4] } : { opacity: 1 }}
+        transition={
+          pulsating
+            ? {
+                duration: 2,
+                repeat: Number.POSITIVE_INFINITY,
+                ease: "easeInOut",
+              }
+            : undefined
+        }
+      />
+      <div className="relative">{iconElement}</div>
+    </div>
   ) : (
     iconElement
   );

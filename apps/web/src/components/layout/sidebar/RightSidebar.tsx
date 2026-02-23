@@ -1,9 +1,8 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Cancel01Icon } from "@icons";
 import { type ReactNode, useEffect } from "react";
-
-import { Cancel01Icon } from "@/icons";
 import {
   type RightSidebarVariant,
   useRightSidebar,
@@ -41,7 +40,7 @@ export default function RightSidebar({
   if (variant === "sidebar") {
     return (
       <aside
-        className="relative flex flex-col bg-secondary-bg transition-all duration-300 ease-in-out "
+        className="relative flex shrink-0 flex-col bg-secondary-bg transition-all duration-300 ease-in-out"
         style={{
           width: isOpen ? "350px" : "0px",
           minWidth: isOpen ? "350px" : "0px",

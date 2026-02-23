@@ -1,28 +1,22 @@
 "use client";
 
-import { Button } from "@heroui/button";
+import { Login02Icon, MessageMultiple02Icon } from "@icons";
 import AnimatedNumber from "animated-number-react";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-
 import MobileMenu from "@/components/navigation/MobileMenu";
-import { useTheme } from "@/components/providers/ThemeProvider";
+import { ChevronDown, StarFilledIcon } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
-import {
-  ChevronDown,
-  Login02Icon,
-  MessageMultiple02Icon,
-  StarFilledIcon,
-} from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import { Github } from "../shared";
+import { LogoWithContextMenu } from "../shared/LogoWithContextMenu";
+import { Button } from "../ui";
 import { RaisedButton } from "../ui/raised-button";
 import { NavbarMenu } from "./NavbarMenu";
 
@@ -33,15 +27,8 @@ export default function Navbar() {
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
   const [isScrolled, setIsScrolled] = useState(false);
   const { data: repoData } = useGitHubStars("theexperiencecompany/gaia");
-  const { resolvedTheme } = useTheme();
 
   const user = useUser();
-
-  // Theme-aware logo
-  const logoSrc =
-    resolvedTheme === "dark"
-      ? "/images/logos/text_w_logo_white.webp"
-      : "/images/logos/text_w_logo_black.webp";
 
   // Handle scroll to change navbar appearance
   useEffect(() => {
@@ -117,21 +104,13 @@ export default function Navbar() {
         <div
           className={`navbar_content flex h-14 w-full items-center justify-between px-3 transition-all duration-300 ${
             activeDropdown
-              ? "rounded-t-2xl bg-surface-100"
+              ? "rounded-t-2xl bg-zinc-900"
               : isScrolled
-                ? "rounded-2xl bg-surface-200/30 backdrop-blur-md"
+                ? "rounded-2xl bg-zinc-900/30 backdrop-blur-md"
                 : "rounded-2xl border-transparent bg-transparent"
           }`}
         >
-          <Button as={Link} href={"/"} variant="light" className="px-2">
-            <Image
-              src={logoSrc}
-              alt="GAIA Logo"
-              width={100}
-              height={30}
-              className="object-contain"
-            />
-          </Button>
+          <LogoWithContextMenu className="px-2" />
 
           <div className="hidden items-center gap-1 sm:flex">
             {appConfig.links.main
@@ -143,7 +122,7 @@ export default function Navbar() {
                   className={`text-sm font-medium ${
                     pathname === href
                       ? "text-primary"
-                      : "text-foreground-300 hover:text-foreground-900"
+                      : "text-zinc-300 hover:text-zinc-100"
                   }`}
                   href={href}
                   startContent={icon}
@@ -163,10 +142,10 @@ export default function Navbar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm transition-colors hover:bg-surface-200/40 ${
+                    className={`relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm transition-colors hover:bg-zinc-800/40 ${
                       pathname === item.href
                         ? "text-primary"
-                        : "text-foreground-700 hover:text-foreground-900"
+                        : "text-zinc-300 hover:text-zinc-100"
                     }`}
                     onMouseEnter={() => {
                       setHoveredItem(item.label.toLowerCase());
@@ -174,10 +153,13 @@ export default function Navbar() {
                       toggleBackdrop(false);
                     }}
                     onClick={() => {
-                      posthog.capture("navigation:navbar_link_clicked", {
-                        label: item.label,
-                        href: item.href,
-                      });
+                      trackEvent(
+                        ANALYTICS_EVENTS.NAVIGATION_NAVBAR_LINK_CLICKED,
+                        {
+                          label: item.label,
+                          href: item.href,
+                        },
+                      );
                     }}
                   >
                     <span className="relative z-10">{item.label}</span>
@@ -186,16 +168,19 @@ export default function Navbar() {
                   <button
                     type="button"
                     key={item.menu}
-                    className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-foreground-700 capitalize transition-colors hover:text-foreground-900"
+                    className="relative flex h-9 cursor-pointer items-center rounded-xl px-4 py-2 text-sm text-zinc-200 capitalize transition-colors hover:text-zinc-100"
                     onMouseEnter={() => {
                       handleMouseEnter(item.menu);
-                      posthog.capture("navigation:navbar_dropdown_opened", {
-                        menu: item.menu,
-                      });
+                      trackEvent(
+                        ANALYTICS_EVENTS.NAVIGATION_NAVBAR_DROPDOWN_OPENED,
+                        {
+                          menu: item.menu,
+                        },
+                      );
                     }}
                   >
                     {hoveredItem === item.menu && (
-                      <div className="absolute inset-0 h-full w-full rounded-xl bg-surface-200 font-medium! transition-all duration-300 ease-out" />
+                      <div className="absolute inset-0 h-full w-full rounded-xl bg-zinc-800 font-medium! transition-all duration-300 ease-out" />
                     )}
                     <div className="relative z-10 flex items-center gap-2">
                       <span>
@@ -226,16 +211,12 @@ export default function Navbar() {
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => {
-                  posthog.capture("navigation:github_clicked", {
+                  trackEvent(ANALYTICS_EVENTS.NAVIGATION_GITHUB_CLICKED, {
                     source: "navbar",
                   });
                 }}
               >
-                <RaisedButton
-                  size={"sm"}
-                  className="group rounded-xl border-0!"
-                  color="#1c1c1c"
-                >
+                <Button className="group rounded-xl border-0! bg-black/60 hover:bg-black/40 text-white">
                   <div className="flex items-center">
                     <Github className="mr-1 size-4 fill-white" />
                     <span className="ml-1 lg:hidden">Star</span>
@@ -252,7 +233,7 @@ export default function Navbar() {
                       />
                     </span>
                   </div>
-                </RaisedButton>
+                </Button>
               </a>
               <Link href={user.email ? "/c" : "/signup"}>
                 <RaisedButton
@@ -260,7 +241,7 @@ export default function Navbar() {
                   className="rounded-xl text-black!"
                   color="#00bbff"
                   onClick={() => {
-                    posthog.capture("navigation:cta_clicked", {
+                    trackEvent(ANALYTICS_EVENTS.NAVIGATION_CTA_CLICKED, {
                       is_logged_in: !!user.email,
                       destination: user.email ? "/c" : "/signup",
                     });

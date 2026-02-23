@@ -82,6 +82,20 @@ class CreateReminderRequest(BaseModel):
             raise ValueError(f"Invalid cron expression: {v}")
         return v
 
+    @field_validator("scheduled_at")
+    @classmethod
+    def check_scheduled_at_future(cls, v):
+        if v is not None:
+            # Ensure timezone-aware datetime
+            if v.tzinfo is None:
+                v = v.replace(tzinfo=timezone.utc)
+
+            if v <= datetime.now(timezone.utc):
+                raise ValueError(
+                    "scheduled_at must be in the future. The provided time has already passed."
+                )
+        return v
+
     @field_validator("max_occurrences")
     @classmethod
     def check_max_occurrences(cls, v):

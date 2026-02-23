@@ -6,15 +6,17 @@ import {
 import type { TextStreamReader } from "livekit-client";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
-import { toast } from "sonner";
-
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
 import { AgentControlBar } from "@/features/chat/components/voice-agent/agent-control-bar";
 import useChatAndTranscription from "@/features/chat/components/voice-agent/hooks/useChatAndTranscription";
 import { MediaTiles } from "@/features/chat/components/voice-agent/media-tiles";
-import { db, type IMessage } from "@/lib/db/chatDb";
+import {
+  trackConversationCreated,
+  trackFeatureDiscovery,
+} from "@/lib/analytics";
+import { db, type IConversation } from "@/lib/db/chatDb";
+import { toast } from "@/lib/toast";
 import { cn } from "@/lib/utils";
-import type { MessageType } from "@/types/features/convoTypes";
 
 function isAgentAvailable(agentState: AgentState) {
   return (
@@ -41,6 +43,9 @@ export const SessionView = ({
   const { messages } = useChatAndTranscription();
   const room = useRoomContext();
   const [conversationId, setConversationId] = useState<string | null>(null);
+  const [conversationDescription, setConversationDescription] = useState<
+    string | null
+  >(null);
   const router = useRouter();
 
   useEffect(() => {
@@ -54,9 +59,22 @@ export const SessionView = ({
           try {
             const text = await reader.readAll();
             setConversationId(text);
-            console.log(`Received conversation ID via text stream: ${text}`);
           } catch (err) {
             console.error("Failed to read text stream:", err);
+          }
+        };
+        handleStream();
+      }
+    };
+
+    const conversationDescriptionHandler = (reader: TextStreamReader) => {
+      if (reader.info.topic === "conversation-description") {
+        const handleStream = async () => {
+          try {
+            const text = await reader.readAll();
+            setConversationDescription(text);
+          } catch (err) {
+            console.error("Failed to read conversation description:", err);
           }
         };
         handleStream();
@@ -66,12 +84,16 @@ export const SessionView = ({
     const registerHandler = () => {
       try {
         room.unregisterTextStreamHandler("conversation-id");
+        room.unregisterTextStreamHandler("conversation-description");
       } catch {
         // Ignore error if no handler was registered
       }
 
       room.registerTextStreamHandler("conversation-id", conversationIdHandler);
-      console.log("Registered conversation-id text stream handler.");
+      room.registerTextStreamHandler(
+        "conversation-description",
+        conversationDescriptionHandler,
+      );
     };
 
     room.on("connected", registerHandler);
@@ -84,43 +106,72 @@ export const SessionView = ({
       room.off("connected", registerHandler);
       try {
         room.unregisterTextStreamHandler("conversation-id");
+        room.unregisterTextStreamHandler("conversation-description");
       } catch {
         // Ignore error if no handler was registered
       }
     };
   }, [room]);
 
-  const handleEndCall = React.useCallback(async () => {
-    // Persist voice mode messages to IndexedDB
-    if (conversationId && messages.length > 0) {
-      const messagesToPersist: IMessage[] = messages
-        .filter((msg: MessageType) => msg.message_id) // Only persist messages with valid IDs
-        .map((msg: MessageType) => ({
-          id: msg.message_id!,
-          conversationId: conversationId,
-          content: msg.response ?? "",
-          role:
-            msg.type === "user" ? ("user" as const) : ("assistant" as const),
-          status: "sent" as const,
-          createdAt: msg.date ? new Date(msg.date) : new Date(),
-          updatedAt: new Date(),
-          messageId: msg.message_id!,
-        }));
-
-      try {
-        await db.putMessagesBulk(messagesToPersist);
-      } catch (error) {
-        console.error("Failed to persist voice messages to IndexedDB:", error);
-      }
+  // Create conversation in sidebar when we have both ID and description
+  useEffect(() => {
+    if (!conversationId || !conversationDescription) {
+      return;
     }
 
+    const createConversationInSidebar = async () => {
+      try {
+        // Check if conversation already exists
+        const existingConversation = await db.getConversation(conversationId);
+
+        if (existingConversation) {
+          // Update description if it changed
+          if (existingConversation.description !== conversationDescription) {
+            const updatedConversation: IConversation = {
+              ...existingConversation,
+              title: conversationDescription,
+              description: conversationDescription,
+              updatedAt: new Date(),
+            };
+            await db.putConversation(updatedConversation);
+          }
+        } else {
+          // Create new conversation
+          const newConversation: IConversation = {
+            id: conversationId,
+            title: conversationDescription,
+            description: conversationDescription,
+            starred: false,
+            isSystemGenerated: false,
+            systemPurpose: null,
+            isUnread: false,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          };
+          await db.putConversation(newConversation);
+
+          // Track voice conversation creation and feature discovery
+          trackConversationCreated({ conversationId, source: "voice_agent" });
+          trackFeatureDiscovery("voice_agent");
+        }
+      } catch (error) {
+        console.error("Failed to create conversation in sidebar:", error);
+      }
+    };
+
+    createConversationInSidebar();
+  }, [conversationId, conversationDescription]);
+
+  const handleEndCall = React.useCallback(async () => {
+    // Navigate to the conversation page and trigger sync to fetch messages from backend
+    // This avoids duplicate saves to IndexedDB
     if (conversationId) {
-      router.push(`/c/${conversationId}`);
+      router.push(`/c/${conversationId}?sync=true`);
     } else {
-      console.log("No conversationId found, staying on current page.");
+      // No conversationId found, staying on current page
     }
     onEndCall();
-  }, [onEndCall, conversationId, router, messages]);
+  }, [onEndCall, conversationId, router]);
 
   useEffect(() => {
     if (sessionStarted) {

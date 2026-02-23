@@ -1,19 +1,17 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
+import { Cancel01Icon, GridIcon, SearchIcon } from "@icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 import { usePathname } from "next/navigation";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
-
 import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
-import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { Cancel01Icon, GridIcon, SearchIcon } from "@/icons";
-import { posthog } from "@/lib/posthog";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 
 import { CategoryIntegrationStatus } from "./CategoryIntegrationStatus";
@@ -44,6 +42,7 @@ interface VirtualizedItemProps {
   onClose: () => void;
   measureElement: (element: HTMLElement | null) => void;
   categoryDisplayMap: Record<string, { displayName: string; iconUrl?: string }>;
+  onIntegrationClick?: (integrationId: string) => void;
 }
 
 const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
@@ -57,6 +56,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
   onClose,
   measureElement,
   categoryDisplayMap,
+  onIntegrationClick,
 }) => {
   const baseStyle = {
     transform: `translateY(${virtualRow.start}px)`,
@@ -71,7 +71,11 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
         className="absolute top-0 left-0 w-full"
         style={baseStyle}
       >
-        <IntegrationsCard onClose={onClose} size="small" />
+        <IntegrationsCard
+          onClose={onClose}
+          size="small"
+          onIntegrationClick={onIntegrationClick}
+        />
       </div>
     );
   }
@@ -90,10 +94,10 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
       >
         <div
           className={`relative mx-2 mb-1 cursor-pointer rounded-xl border-none transition-all duration-150 ${
-            isSelected ? "bg-surface-300/40" : "hover:bg-white/5"
+            isSelected ? "bg-zinc-700/40" : "hover:bg-white/5"
           }`}
           onClick={() => {
-            posthog.capture("chat:slash_command_selected", {
+            trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_SELECTED, {
               tool_name: match.tool.name,
               tool_category: match.tool.category,
               opened_via_button: openedViaButton,
@@ -119,7 +123,7 @@ const VirtualizedItem: React.FC<VirtualizedItemProps> = ({
                   {formatToolName(match.tool.name)}
                 </span>
                 {selectedCategory === "all" && (
-                  <span className="rounded-full bg-surface-200 px-2 py-0.5 text-xs text-foreground-400 outline-1 outline-surface-300">
+                  <span className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-400 outline-1 outline-zinc-700">
                     {formatToolName(
                       categoryDisplayMap[match.tool.category]?.displayName ||
                         match.tool.category,
@@ -189,6 +193,7 @@ interface SlashCommandDropdownProps {
   onCategoryChange?: (category: string) => void;
   onNavigateUp?: () => void;
   onNavigateDown?: () => void;
+  onIntegrationClick?: (integrationId: string) => void;
 }
 
 const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
@@ -204,6 +209,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   onCategoryChange,
   onNavigateUp,
   onNavigateDown,
+  onIntegrationClick,
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -226,9 +232,6 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     useState<string>("all");
   const selectedCategory = externalSelectedCategory ?? internalSelectedCategory;
 
-  // Get integrations to look up custom names/icons
-  const { integrations } = useIntegrations();
-
   // Focus the dropdown when it becomes visible (only when opened via button)
   useEffect(() => {
     if (isVisible && openedViaButton && dropdownRef.current) {
@@ -247,7 +250,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   }, [searchQuery, isIntegrationsExpanded, setIntegrationsExpanded]);
 
   const handleCategoryChange = (category: string) => {
-    posthog.capture("chat:slash_command_category_changed", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_SLASH_COMMAND_CATEGORY_CHANGED, {
       category,
       previous_category: selectedCategory,
     });
@@ -356,23 +359,14 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     const map: Record<string, { displayName: string; iconUrl?: string }> = {};
     matches.forEach((match) => {
       if (!map[match.tool.category]) {
-        // First try to find matching integration if tool requires one (which custom MCPs do)
-        const integrationId =
-          match.tool.required_integration || match.tool.category;
-        const integration = integrations?.find((i) => i.id === integrationId);
-
         map[match.tool.category] = {
-          displayName:
-            integration?.name ||
-            match.tool.integration_name ||
-            match.tool.category_display_name ||
-            match.tool.category,
-          iconUrl: integration?.iconUrl || match.tool.icon_url,
+          displayName: match.tool.display_name, // Single source of truth from backend
+          iconUrl: match.tool.icon_url,
         };
       }
     });
     return map;
-  }, [matches, integrations]);
+  }, [matches]);
 
   // Filter matches based on selected category and search query
   const filteredMatches = useMemo(() => {
@@ -391,7 +385,8 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
       return filtered.filter(
         (match) =>
           formatToolName(match.tool.name).toLowerCase().includes(query) ||
-          match.tool.category.toLowerCase().includes(query),
+          match.tool.category.toLowerCase().includes(query) ||
+          match.tool.display_name?.toLowerCase().includes(query),
       );
     }
 
@@ -458,22 +453,15 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
     // Add locked categories with their tools
     Object.entries(lockedCategories).forEach(([category, categoryMatches]) => {
       const firstTool = categoryMatches[0];
-      const requiredIntegration = firstTool.tool.required_integration;
 
-      if (!requiredIntegration) return;
-
-      const integrationName =
-        firstTool.enhancedTool?.integration?.integrationName ||
-        requiredIntegration;
-
-      // Add category header
+      // Add category header - use display_name directly from backend
       items.push({
         type: "locked-category-header",
         category,
         tools: categoryMatches,
         requiredIntegration: {
-          id: requiredIntegration,
-          name: integrationName,
+          id: firstTool.tool.category,
+          name: firstTool.tool.display_name, // Single source of truth
         },
       });
 
@@ -549,7 +537,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
   return (
     <AnimatePresence>
       {isVisible && matches.length > 0 && (
-        <motion.div
+        <m.div
           ref={dropdownRef}
           initial={{ opacity: 0, y: -8, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -558,7 +546,7 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
             duration: 0.2,
             ease: [0.19, 1, 0.22, 1],
           }}
-          className="slash-command-dropdown fixed z-200 overflow-hidden rounded-3xl border-1 border-surface-200 bg-surface-100/70 outline-0! backdrop-blur-xl"
+          className="slash-command-dropdown fixed z-200 overflow-hidden rounded-3xl border-1 border-zinc-800 bg-zinc-900/70 outline-0! backdrop-blur-xl"
           style={{
             ...(position.top !== undefined && { top: 0, height: position.top }),
             ...(position.bottom !== undefined && {
@@ -584,7 +572,6 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                   placeholder="Search tools..."
                   value={searchQuery}
                   radius="full"
-                  classNames={{inputWrapper:"shadow-none!"}}
                   startContent={<SearchIcon size={16} />}
                   onChange={(e) => setSearchQuery(e.target.value)}
                 />
@@ -617,15 +604,15 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                     }}
                     className={`flex cursor-pointer items-center gap-1.5 rounded-xl px-3 py-1.5 text-xs font-medium whitespace-nowrap transition-all ${
                       selectedCategory === category
-                        ? "bg-surface-300/40 text-foreground-900"
-                        : "text-foreground-500 hover:bg-surface-200/40 hover:text-foreground-700"
+                        ? "bg-zinc-700/40 text-white"
+                        : "text-zinc-400 hover:bg-white/10 hover:text-zinc-300"
                     }`}
                   >
                     {category === "all" ? (
                       <GridIcon
                         size={16}
                         strokeWidth={2}
-                        className="text-foreground-400"
+                        className="text-gray-400"
                       />
                     ) : (
                       getToolCategoryIcon(
@@ -680,13 +667,14 @@ const SlashCommandDropdown: React.FC<SlashCommandDropdownProps> = ({
                       onClose={onClose}
                       measureElement={rowVirtualizer.measureElement}
                       categoryDisplayMap={categoryDisplayMap}
+                      onIntegrationClick={onIntegrationClick}
                     />
                   );
                 })}
               </div>
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

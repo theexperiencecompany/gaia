@@ -1,8 +1,7 @@
 import { Chip } from "@heroui/chip";
+import { SquareLock01Icon } from "@icons";
 import type React from "react";
-
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { SquareLock01Icon } from "@/icons";
 
 import { useToolsWithIntegrations } from "../../hooks/useToolsWithIntegrations";
 
@@ -24,12 +23,9 @@ export const CategoryIntegrationStatus: React.FC<
 
   if (totalCount === 0) return null;
 
-  // Check if any tool requires an integration and get its status
-  const toolWithIntegration = categoryTools.find(
-    (tool) => tool.integration?.requiredIntegration,
-  );
+  // Check integration status using category as integration ID
   const integration = integrations?.find(
-    (i) => i.id === toolWithIntegration?.integration?.requiredIntegration,
+    (i) => i.id.toLowerCase() === category.toLowerCase(),
   );
 
   // Show green dot if connected

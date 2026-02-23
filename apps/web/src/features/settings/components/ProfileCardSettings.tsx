@@ -3,22 +3,24 @@
 import { Button, ButtonGroup } from "@heroui/button";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
+import { Copy01Icon, LinkSquare02Icon } from "@icons";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
-
 import {
   type HoloCardDisplayData,
   HoloCardEditor,
 } from "@/components/ui/holo-card";
+import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import {
   type HoloCardData,
   holoCardApi,
 } from "@/features/onboarding/api/holoCardApi";
-import { Copy01Icon, LinkSquare02Icon } from "@/icons";
+import { SettingsPage } from "@/features/settings/components/ui";
+import { toast } from "@/lib/toast";
 
 export default function ProfileCardSettings() {
   const [holoCardData, setHoloCardData] = useState<HoloCardData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const { connectIntegration, getIntegrationStatus } = useIntegrations();
 
   useEffect(() => {
     const fetchData = async () => {
@@ -48,10 +50,16 @@ export default function ProfileCardSettings() {
     window.open(url, "_blank");
   };
 
-  const handleConnectGmail = () => {
-    // TODO: Implement Gmail OAuth flow or redirect to integrations page
-    toast("Redirecting to Gmail connection...");
-    window.location.href = "/integrations?connect=gmail";
+  const handleConnectGmail = async () => {
+    try {
+      await connectIntegration("gmail");
+      // Refetch HoloCard data after successful connection
+      const data = await holoCardApi.getMyHoloCard();
+      setHoloCardData(data);
+    } catch (error) {
+      // Error handling is done in the hook
+      console.error("Failed to connect Gmail:", error);
+    }
   };
 
   const displayData: HoloCardDisplayData | null = holoCardData
@@ -69,11 +77,12 @@ export default function ProfileCardSettings() {
     : null;
 
   return (
-    <div className="w-full space-y-4">
+    <SettingsPage>
+      {/* Header row with actions */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold text-foreground-900">Your GAIA Card</h3>
-          <p className="text-sm text-foreground-400">A tiny window into you</p>
+          <h3 className="text-sm font-medium text-white">Your GAIA Card</h3>
+          <p className="mt-0.5 text-xs text-zinc-500">A tiny window into you</p>
         </div>
         <ButtonGroup>
           <Tooltip content="Copy profile link">
@@ -99,6 +108,7 @@ export default function ProfileCardSettings() {
         </ButtonGroup>
       </div>
 
+      {/* Card preview — centered, visual, no row structure needed */}
       <div className="flex justify-center py-4">
         {isLoading ? (
           <Skeleton className="h-[400px] w-[280px] rounded-2xl" />
@@ -111,7 +121,9 @@ export default function ProfileCardSettings() {
             />
             {displayData.user_bio &&
               (displayData.user_bio.startsWith("Connect your Gmail") ||
-                displayData.user_bio.startsWith("Processing")) && (
+                displayData.user_bio.startsWith("Processing")) &&
+              // Only show button if Gmail is not connected
+              getIntegrationStatus("gmail")?.connected !== true && (
                 <Button color="primary" onPress={handleConnectGmail}>
                   Connect Gmail for a more personalized bio
                 </Button>
@@ -119,6 +131,6 @@ export default function ProfileCardSettings() {
           </div>
         ) : null}
       </div>
-    </div>
+    </SettingsPage>
   );
 }

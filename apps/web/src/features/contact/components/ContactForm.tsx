@@ -10,7 +10,7 @@ import {
   SUPPORT_REQUEST_TYPES,
 } from "@/features/support/constants/supportConstants";
 import { useContactSupport } from "@/features/support/hooks/useContactSupport";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 type Props = React.ComponentProps<"form">;
 
@@ -21,8 +21,7 @@ export default function ContactForm(props: Props) {
   async function onSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
 
-    // Track contact form submission
-    posthog.capture("support:form_submitted", {
+    trackEvent(ANALYTICS_EVENTS.SUPPORT_FORM_SUBMITTED, {
       request_type: formData.type,
       title_length: formData.title.length,
       description_length: formData.description.length,

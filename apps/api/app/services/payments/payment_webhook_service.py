@@ -9,6 +9,7 @@ from typing import Any, Dict
 from app.config.loggers import general_logger as logger
 from app.config.settings import settings
 from app.db.mongodb.collections import (
+    processed_webhooks_collection,
     subscriptions_collection,
     users_collection,
 )
@@ -16,6 +17,11 @@ from app.models.webhook_models import (
     DodoWebhookEvent,
     DodoWebhookEventType,
     DodoWebhookProcessingResult,
+)
+from app.services.analytics_service import (
+    AnalyticsEvents,
+    track_payment_event,
+    track_subscription_event,
 )
 from app.utils.email_utils import send_pro_subscription_email
 from bson import ObjectId
@@ -96,23 +102,75 @@ class PaymentWebhookService:
             logger.warning(f"Webhook signature verification failed: {e}")
             return False
 
-    async def process_webhook(
-        self, webhook_data: Dict[str, Any]
-    ) -> DodoWebhookProcessingResult:
-        """Process Dodo payment webhook."""
+    async def _is_webhook_processed(self, webhook_id: str) -> bool:
+        """Check if webhook has already been processed."""
+        processed = await processed_webhooks_collection.find_one(
+            {"webhook_id": webhook_id}
+        )
+        return processed is not None
+
+    async def _mark_webhook_as_processed(
+        self, webhook_id: str, event_type: str, result: DodoWebhookProcessingResult
+    ) -> None:
+        """Store webhook ID as processed in database."""
         try:
+            await processed_webhooks_collection.insert_one(
+                {
+                    "webhook_id": webhook_id,
+                    "event_type": event_type,
+                    "status": result.status,
+                    "message": result.message,
+                    "payment_id": result.payment_id,
+                    "subscription_id": result.subscription_id,
+                    "processed_at": datetime.now(timezone.utc),
+                }
+            )
+        except Exception as e:
+            logger.error(f"Failed to store processed webhook ID: {e}")
+
+    async def process_webhook(
+        self, webhook_data: Dict[str, Any], webhook_id: str
+    ) -> DodoWebhookProcessingResult:
+        """
+        Process Dodo payment webhook with idempotency check.
+
+        Args:
+            webhook_data: The webhook payload
+            webhook_id: Unique webhook ID from webhook-id header for idempotency
+
+        Returns:
+            Processing result
+        """
+        try:
+            # Check if webhook has already been processed
+            if await self._is_webhook_processed(webhook_id):
+                logger.info(f"Webhook {webhook_id} already processed, skipping")
+                return DodoWebhookProcessingResult(
+                    event_type=webhook_data.get("type", "unknown"),
+                    status="ignored",
+                    message="Webhook already processed",
+                )
+
             event = DodoWebhookEvent(**webhook_data)
 
             handler = self.handlers.get(event.type)
             if not handler:
-                return DodoWebhookProcessingResult(
+                result = DodoWebhookProcessingResult(
                     event_type=event.type.value,
                     status="ignored",
                     message=f"No handler for {event.type}",
                 )
+                # Store even ignored webhooks to prevent reprocessing
+                await self._mark_webhook_as_processed(
+                    webhook_id, event.type.value, result
+                )
+                return result
 
             result = await handler(event)
             logger.info(f"Webhook processed: {event.type} - {result.status}")
+
+            # Store webhook as processed after successful handler execution
+            await self._mark_webhook_as_processed(webhook_id, event.type.value, result)
             return result
 
         except Exception as e:
@@ -122,6 +180,17 @@ class PaymentWebhookService:
                 status="failed",
                 message=f"Processing error: {str(e)}",
             )
+
+    async def _get_user_email_from_metadata(
+        self, metadata: Dict[str, Any]
+    ) -> str | None:
+        """Get user email from metadata or database lookup."""
+        user_id = metadata.get("user_id")
+        if user_id:
+            user = await users_collection.find_one({"_id": ObjectId(user_id)})
+            if user:
+                return user.get("email")
+        return None
 
     # Payment event handlers
     async def _handle_payment_succeeded(
@@ -133,6 +202,19 @@ class PaymentWebhookService:
             raise ValueError("Invalid payment data")
 
         logger.info(f"Payment succeeded: {payment_data.payment_id}")
+
+        # Track payment success in PostHog
+        user_email = await self._get_user_email_from_metadata(payment_data.metadata)
+        if user_email:
+            track_payment_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.PAYMENT_SUCCEEDED,
+                payment_id=payment_data.payment_id,
+                amount=payment_data.total_amount / 100
+                if payment_data.total_amount
+                else None,
+                currency=payment_data.currency,
+            )
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -151,6 +233,19 @@ class PaymentWebhookService:
             raise ValueError("Invalid payment data")
 
         logger.warning(f"Payment failed: {payment_data.payment_id}")
+
+        # Track payment failure in PostHog
+        user_email = await self._get_user_email_from_metadata(payment_data.metadata)
+        if user_email:
+            track_payment_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.PAYMENT_FAILED,
+                payment_id=payment_data.payment_id,
+                amount=payment_data.total_amount / 100
+                if payment_data.total_amount
+                else None,
+                currency=payment_data.currency,
+            )
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -217,8 +312,9 @@ class PaymentWebhookService:
 
         # Find user by email or metadata
         user_id = sub_data.metadata.get("user_id")
+        user_email = sub_data.customer.email
         if not user_id:
-            user = await users_collection.find_one({"email": sub_data.customer.email})
+            user = await users_collection.find_one({"email": user_email})
             if not user:
                 logger.error(
                     f"User not found for subscription: {sub_data.subscription_id}"
@@ -254,6 +350,19 @@ class PaymentWebhookService:
         result = await subscriptions_collection.insert_one(subscription_doc)
         if not result.inserted_id:
             raise Exception("Failed to create subscription record")
+
+        # Track subscription activation in PostHog
+        if user_email:
+            track_subscription_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.SUBSCRIPTION_ACTIVATED,
+                subscription_id=sub_data.subscription_id,
+                plan_name="Pro",
+                amount=sub_data.recurring_pre_tax_amount / 100
+                if sub_data.recurring_pre_tax_amount
+                else None,
+                currency=sub_data.currency,
+            )
 
         # Send welcome email
         await self._send_welcome_email(user_id)
@@ -291,6 +400,16 @@ class PaymentWebhookService:
             logger.warning(
                 f"Subscription not found for renewal: {sub_data.subscription_id}"
             )
+        else:
+            # Track subscription renewal in PostHog
+            user_email = sub_data.customer.email if sub_data.customer else None
+            if user_email:
+                track_subscription_event(
+                    user_id=user_email,
+                    event_type=AnalyticsEvents.SUBSCRIPTION_RENEWED,
+                    subscription_id=sub_data.subscription_id,
+                    currency=sub_data.currency,
+                )
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
@@ -320,6 +439,15 @@ class PaymentWebhookService:
             {"$set": update_data},
         )
 
+        # Track subscription cancellation in PostHog
+        user_email = sub_data.customer.email if sub_data.customer else None
+        if user_email:
+            track_subscription_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.SUBSCRIPTION_CANCELLED,
+                subscription_id=sub_data.subscription_id,
+            )
+
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
             status="processed",
@@ -344,6 +472,15 @@ class PaymentWebhookService:
                 }
             },
         )
+
+        # Track subscription expiration in PostHog
+        user_email = sub_data.customer.email if sub_data.customer else None
+        if user_email:
+            track_subscription_event(
+                user_id=user_email,
+                event_type=AnalyticsEvents.SUBSCRIPTION_EXPIRED,
+                subscription_id=sub_data.subscription_id,
+            )
 
         return DodoWebhookProcessingResult(
             event_type=event.type.value,

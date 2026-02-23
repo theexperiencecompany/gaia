@@ -35,6 +35,7 @@ const TestimonialCard = ({
           className="aspect-square rounded-full bg-surface-200"
           width="35"
           height="35"
+          loading="lazy"
           alt={`${name} avatar`}
           src={img}
         />

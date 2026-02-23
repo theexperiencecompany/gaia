@@ -33,11 +33,12 @@ import inspect
 from collections.abc import Mapping
 from typing import Any, Awaitable, Callable, TypedDict, Union
 
+from typing import TYPE_CHECKING
+
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
-from langgraph.config import get_stream_writer
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 from langgraph.store.base import BaseStore
@@ -45,6 +46,9 @@ from langgraph.types import Send
 from langgraph.utils.runnable import RunnableCallable
 from langgraph_bigtool.graph import State
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
+
+if TYPE_CHECKING:
+    from langgraph.runtime import Runtime
 
 from app.constants.general import NEW_MESSAGE_BREAKER
 
@@ -73,14 +77,23 @@ class DynamicToolNode(ToolNode):
         # Fall back to parent's tools_by_name
         return self.tools_by_name.get(name)
 
-    async def _afunc(self, input, config, **kwargs):
+    def _func(self, input, config, runtime: "Runtime"):
         """Override to inject dynamically added tools before execution."""
         # Sync tools_by_name with current registry state before execution
         for name in self._tool_registry:
             if name not in self.tools_by_name:
-                self.tools_by_name[name] = self._tool_registry[name]
+                self.tools_by_name[name] = self._tool_registry[name]  # type: ignore[assignment]
 
-        return await super()._afunc(input, config, **kwargs)
+        return super()._func(input, config, runtime)
+
+    async def _afunc(self, input, config, runtime: "Runtime"):
+        """Override to inject dynamically added tools before execution."""
+        # Sync tools_by_name with current registry state before execution
+        for name in self._tool_registry:
+            if name not in self.tools_by_name:
+                self.tools_by_name[name] = self._tool_registry[name]  # type: ignore[assignment]
+
+        return await super()._afunc(input, config, runtime)
 
 
 class RetrieveToolsResult(TypedDict):
@@ -268,7 +281,6 @@ def create_agent(
         if isinstance(response.content, str) and agent_name == "comms_agent":
             response.content = response.content + NEW_MESSAGE_BREAKER
 
-        response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 
     async def acall_model(
@@ -299,7 +311,6 @@ def create_agent(
         if isinstance(response.content, str) and agent_name == "comms_agent":
             response.content = response.content + NEW_MESSAGE_BREAKER
 
-        response.additional_kwargs = {"visible_to": {agent_name}}
         return {"messages": [response]}  # type: ignore[return-value]
 
     # Use DynamicToolNode to support tools added after graph compilation
@@ -313,24 +324,9 @@ def create_agent(
                 "retrieve_tools is disabled and select_tools should not be called"
             )
 
-        # Get stream writer to emit tool_inputs events
-        writer = get_stream_writer()
-
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
-            # Emit tool_inputs immediately since we have complete args
-            # This fixes the race condition where args may be incomplete during streaming
-            if writer is not None and tool_call.get("args"):
-                writer(
-                    {
-                        "tool_inputs": {
-                            "tool_call_id": tool_call.get("id"),
-                            "inputs": tool_call.get("args"),
-                        }
-                    }
-                )
-
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
@@ -373,22 +369,9 @@ def create_agent(
                 "retrieve_tools is disabled and aselect_tools should not be called"
             )
 
-        writer = get_stream_writer()
         selected_tools = {}
         response_tools = {}
         for tool_call in tool_calls:
-            # Emit tool_inputs immediately since we have complete args
-            # This fixes the race condition where args may be incomplete during streaming
-            if writer is not None and tool_call.get("args"):
-                writer(
-                    {
-                        "tool_inputs": {
-                            "tool_call_id": tool_call.get("id"),
-                            "inputs": tool_call.get("args"),
-                        }
-                    }
-                )
-
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
@@ -434,9 +417,7 @@ def create_agent(
                 if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                     destinations.append(Send("select_tools", [call]))
                 else:
-                    # tool_call = tool_node._inject_tool_args(call, state, store)  # type: ignore[arg-type]
-                    # destinations.append(Send("tools", [tool_call]))
-                    # Tool args injection is now handled internally by ToolNode during execution
+                    # Tool args injection handled internally by ToolNode during execution
                     destinations.append(Send("tools", [call]))
 
             return destinations

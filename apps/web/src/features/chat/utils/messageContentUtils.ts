@@ -3,7 +3,6 @@ import {
   BASE_MESSAGE_SCHEMA,
   type BaseMessageData,
 } from "@/config/registries/baseMessageRegistry";
-import { TOOLS_MESSAGE_KEYS } from "@/config/registries/toolRegistry";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
 import type { ChatBubbleBotProps } from "@/types/features/chatBubbleTypes";
 import type {
@@ -40,21 +39,35 @@ export const isBotMessageEmpty = (props: ChatBubbleBotProps): boolean => {
   // Loading messages are considered not empty
   if (loading) return false;
 
-  // Check if any tool-specific content exists
-  const hasToolContent = TOOLS_MESSAGE_KEYS.some((key) => {
-    const value = props[key];
-    return value != null && value !== undefined;
-  });
+  // Convert ChatBubbleBotProps to MessageType for hasMessageContent check
+  const message: MessageType = {
+    type: "bot",
+    response: text,
+    message_id: props.message_id,
+    tool_data: props.tool_data,
+    follow_up_actions: props.follow_up_actions,
+    image_data: props.image_data,
+    memory_data: props.memory_data,
+    fileData: props.fileData,
+  };
 
-  // Check if text content is meaningful
+  // Use hasMessageContent for the main check, but override response check
+  // with shouldShowTextBubble which handles system-generated conversations
+  const hasNonTextContent =
+    (message.tool_data && message.tool_data.length > 0) ||
+    (message.follow_up_actions && message.follow_up_actions.length > 0) ||
+    message.image_data ||
+    message.memory_data ||
+    (message.fileData && message.fileData.length > 0);
+
   const hasTextContent = shouldShowTextBubble(
     text,
     isConvoSystemGenerated,
     systemPurpose,
   );
 
-  // Message is empty only if it has neither tool content nor meaningful text
-  return !hasToolContent && !hasTextContent;
+  // Message is empty only if it has no content at all
+  return !hasNonTextContent && !hasTextContent;
 };
 
 /**
@@ -95,8 +108,10 @@ export const filterEmptyMessagePairs = (
           isConvoSystemGenerated,
         };
 
+        // Always include the user message
+        filteredMessages.push(currentMessage);
+        // Only include bot message if it has content
         if (!isBotMessageEmpty(botProps)) {
-          filteredMessages.push(currentMessage);
           filteredMessages.push(nextMessage);
         }
         i++;

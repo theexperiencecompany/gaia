@@ -3,10 +3,10 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
+import { BubbleChatAddIcon } from "@icons";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Suspense } from "react";
-
 import ChatsList from "@/components/layout/sidebar/ChatsList";
 import CalendarSidebar from "@/components/layout/sidebar/variants/CalendarSidebar";
 import GoalsSidebar from "@/components/layout/sidebar/variants/GoalsSidebar";
@@ -16,7 +16,7 @@ import SettingsSidebar from "@/components/layout/sidebar/variants/SettingsSideba
 import TodoSidebar from "@/components/layout/sidebar/variants/TodoSidebar";
 import WorkflowsSidebar from "@/components/layout/sidebar/variants/WorkflowsSidebar";
 import SuspenseLoader from "@/components/shared/SuspenseLoader";
-import { BubbleChatAddIcon } from "@/icons";
+import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -63,6 +63,7 @@ export default function Sidebar() {
             fullWidth
             as={Link}
             href="/c"
+            onClick={prepareNewChat}
             className="mb-4 flex justify-start text-sm font-medium text-primary"
             variant="flat"
             data-keyboard-shortcut="create-chat"

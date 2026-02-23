@@ -1,12 +1,11 @@
 import type { AxiosError } from "axios";
 import type { AppRouterInstance } from "next/dist/shared/lib/app-router-context.shared-runtime";
-import { toast } from "sonner";
-
 import {
   showFeatureRestrictedToast,
   showRateLimitToast,
   showTokenLimitToast,
 } from "@/components/shared/RateLimitToast";
+import { toast } from "@/lib/toast";
 import { useLoginModalStore } from "@/stores/loginModalStore";
 
 // Types
@@ -17,7 +16,7 @@ interface ErrorHandlerDependencies {
 // Track active integration toasts to prevent duplicates
 const activeIntegrationToasts = new Set<string>();
 
-// Constants
+// Constants - Routes where we skip auto-opening login modal on 401
 const LANDING_ROUTES = [
   "/",
   "/terms",
@@ -28,11 +27,23 @@ const LANDING_ROUTES = [
   "/manifesto",
   "/blog",
   "/pricing",
+  "/use-cases",
+  "/marketplace",
+  "/profile",
+  "/desktop-login",
 ];
 
 // Utility functions
 export const isOnLandingRoute = (pathname: string): boolean => {
-  return LANDING_ROUTES.includes(pathname) || pathname.startsWith("/blog/");
+  // Exact matches
+  if (LANDING_ROUTES.includes(pathname)) return true;
+  // Prefix matches for nested routes
+  return (
+    pathname.startsWith("/blog/") ||
+    pathname.startsWith("/use-cases/") ||
+    pathname.startsWith("/marketplace/") ||
+    pathname.startsWith("/profile/")
+  );
 };
 
 // Main error processor
@@ -92,6 +103,16 @@ const handleForbiddenError = (
       ? (errorData as { detail: unknown }).detail
       : undefined;
 
+  // Skip if this is an UPGRADE_REQUIRED error (handled by model selection)
+  if (
+    typeof detail === "object" &&
+    detail !== null &&
+    "error_code" in detail &&
+    (detail as { error_code: string }).error_code === "UPGRADE_REQUIRED"
+  ) {
+    return;
+  }
+
   // Handle integration errors with redirect action
   if (
     typeof detail === "object" &&
@@ -112,20 +133,12 @@ const handleForbiddenError = (
 
     toast.error(integrationDetail.message || "Integration required.", {
       duration: Infinity,
-      classNames: {
-        actionButton: "bg-red-500/30! py-4! px-3!",
-      },
       action: {
         label: "Connect",
         onClick: () => {
-          // Clear from active toasts when action is clicked
           activeIntegrationToasts.delete(toastKey);
           router.push("/integrations");
         },
-      },
-      onDismiss: () => {
-        // Clear from active toasts when dismissed
-        activeIntegrationToasts.delete(toastKey);
       },
     });
   } else {

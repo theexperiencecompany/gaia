@@ -1,0 +1,23 @@
+# Slack Bot mise.toml for GAIA
+# This file defines tasks for the GAIA Slack bot.
+#
+# Quick Start:
+#   mise dev             # Start Slack bot in dev mode
+#   mise build           # Build bot
+#   mise tasks           # List all available commands
+
+[tasks.dev]
+description = "Run Slack bot in dev mode with watch"
+run = "pnpm tsx watch src/index.ts"
+
+[tasks.build]
+description = "Build Slack bot"
+run = "pnpm tsc"
+
+[tasks.test]
+description = "Run Slack bot tests"
+run = "pnpm vitest run --config ../vitest.config.ts"
+
+[tasks.deps]
+description = "Install dependencies"
+run = "pnpm install"

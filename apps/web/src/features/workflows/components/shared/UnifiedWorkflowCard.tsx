@@ -2,15 +2,14 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
+import { PlayIcon, ZapIcon } from "@icons";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { toast } from "sonner";
-
+import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { PlayIcon, ZapIcon } from "@/icons";
-import { posthog } from "@/lib";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 import { useAppendToInput } from "@/stores/composerStore";
 import type {
   CommunityWorkflow,
@@ -18,15 +17,15 @@ import type {
   Workflow,
 } from "@/types/features/workflowTypes";
 import { formatRunCount } from "@/utils/formatters";
-
 import { useWorkflowCreation } from "../../hooks/useWorkflowCreation";
-import { getTriggerDisplay } from "../../utils/triggerDisplay";
+import { getTriggerDisplayInfo } from "../../triggers";
 import {
   ActivationStatus,
   CreatorAvatar,
   getNextRunDisplay,
   TriggerDisplay,
 } from "./WorkflowCardComponents";
+import WorkflowIcons from "./WorkflowIcons";
 
 type WorkflowVariant = "user" | "community" | "explore" | "suggestion";
 type ActionType = "run" | "create" | "insert-prompt" | "navigate" | "none";
@@ -87,6 +86,9 @@ export default function UnifiedWorkflowCard({
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
 
+  // Auth check
+  const { isAuthenticated, openLoginModal } = useAuth();
+
   const { selectWorkflow } = useWorkflowSelection();
   const { createWorkflow } = useWorkflowCreation();
   const { integrations } = useIntegrations();
@@ -119,7 +121,7 @@ export default function UnifiedWorkflowCard({
 
   // Get trigger info for user workflows
   const triggerDisplay = workflow
-    ? getTriggerDisplay(workflow, integrations)
+    ? getTriggerDisplayInfo(workflow, integrations)
     : null;
   const nextRunText = workflow ? getNextRunDisplay(workflow) : null;
 
@@ -139,6 +141,13 @@ export default function UnifiedWorkflowCard({
 
   const handleCreateWorkflow = async () => {
     if (isLoading) return;
+
+    // Check authentication first - open login modal if not authenticated
+    if (!isAuthenticated) {
+      openLoginModal();
+      return;
+    }
+
     setIsLoading(true);
     const toastId = toast.loading("Creating workflow...");
 
@@ -184,7 +193,7 @@ export default function UnifiedWorkflowCard({
 
   const handleInsertPrompt = () => {
     if (prompt) {
-      posthog.capture("use_cases:prompt_inserted", { title });
+      trackEvent(ANALYTICS_EVENTS.USE_CASES_PROMPT_INSERTED, { title });
       appendToInput(prompt);
       router.push("/c");
       onActionComplete?.();
@@ -194,7 +203,10 @@ export default function UnifiedWorkflowCard({
   const handleNavigate = () => {
     const targetSlug = slug || communityWorkflow?.id || workflow?.id;
     if (targetSlug) {
-      posthog.capture("workflow_card:navigate", { slug: targetSlug, variant });
+      trackEvent(ANALYTICS_EVENTS.WORKFLOW_CARD_NAVIGATE, {
+        slug: targetSlug,
+        variant,
+      });
       router.push(`/use-cases/${targetSlug}`);
     }
   };
@@ -241,55 +253,21 @@ export default function UnifiedWorkflowCard({
     propActionType,
   );
 
-  // Render tool icons
-  const renderToolIcons = () => {
-    const categories = [...new Set(steps.map((step) => step.category))];
-    const displayIcons = categories.slice(0, 3);
-
-    return (
-      <div className="flex min-h-8 items-center -space-x-1.5">
-        {displayIcons.map((category, index) => {
-          const IconComponent = getToolCategoryIcon(category, {
-            width: 25,
-            height: 25,
-          });
-          return IconComponent ? (
-            <div
-              key={category}
-              className="relative flex min-w-8 items-center justify-center"
-              style={{
-                rotate:
-                  displayIcons.length > 1
-                    ? index % 2 === 0
-                      ? "8deg"
-                      : "-8deg"
-                    : "0deg",
-                zIndex: index,
-              }}
-            >
-              {IconComponent}
-            </div>
-          ) : null;
-        })}
-        {categories.length > 3 && (
-          <div className="z-0 flex size-[34px] min-h-[34px] min-w-[34px] items-center justify-center rounded-lg bg-surface-300/60 text-sm text-foreground-500">
-            +{categories.length - 3}
-          </div>
-        )}
-      </div>
-    );
-  };
+  // Render tool icons using the shared component
+  const renderToolIcons = () => (
+    <WorkflowIcons steps={steps} iconSize={25} maxIcons={3} />
+  );
 
   const isClickable = onCardClick || resolvedAction !== "none";
 
   const cardContent = (
     <div
-      className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl ${
+      className={`group relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 ${
         useBlurEffect
-          ? "dark:bg-surface-200/40 backdrop-blur-lg bg-surface-100"
-          : "dark:bg-surface-200 bg-surface-100"
+          ? "bg-zinc-800/40 outline-zinc-800/50 backdrop-blur-lg"
+          : "bg-zinc-800 outline-zinc-800/70"
       } p-4 transition-all select-none ${
-        isClickable ? "cursor-pointer hover:bg-surface-300/70" : ""
+        isClickable ? "cursor-pointer hover:bg-zinc-700/50" : ""
       }`}
       onClick={handleCardClick}
     >
@@ -303,7 +281,7 @@ export default function UnifiedWorkflowCard({
       <div>
         <h3 className="line-clamp-2 text-lg font-medium">{title}</h3>
         {!showDescriptionAsTooltip && (
-          <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-foreground-500">
+          <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-500">
             {description}
           </div>
         )}
@@ -329,11 +307,11 @@ export default function UnifiedWorkflowCard({
             )}
 
             {showExecutions && totalExecutions > 0 && (
-              <div className="flex items-center gap-1 text-xs text-foreground-500">
+              <div className="flex items-center gap-1 text-xs text-zinc-500">
                 <PlayIcon
                   width={15}
                   height={15}
-                  className="w-4 text-foreground-500"
+                  className="w-4 text-zinc-500"
                 />
                 <span className="text-nowrap">
                   {formatRunCount(totalExecutions)}
@@ -368,9 +346,9 @@ export default function UnifiedWorkflowCard({
       className="max-w-xs"
       showArrow
       classNames={{
-        content: "bg-surface-200 p-4 rounded-3xl",
+        content: "bg-zinc-800 p-4 rounded-3xl",
       }}
-      delay={0}
+      delay={200}
       closeDelay={0}
     >
       {cardContent}

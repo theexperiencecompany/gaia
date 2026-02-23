@@ -2,13 +2,22 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
+import {
+  Archive01Icon,
+  Cancel01Icon,
+  CheckmarkSquare03Icon,
+  Delete02Icon,
+  SparklesIcon,
+  SquareIcon,
+  StarIcon,
+  Timer02Icon,
+} from "@icons";
 import { useCallback, useMemo, useState } from "react";
 import {
   FixedSizeList as List,
   type ListChildComponentProps,
 } from "react-window";
 import InfiniteLoader from "react-window-infinite-loader";
-
 import Spinner from "@/components/ui/spinner";
 import { EmailFrom } from "@/features/mail/components/MailFrom";
 import ViewEmail from "@/features/mail/components/ViewMail";
@@ -21,16 +30,6 @@ import { useEmailViewer } from "@/features/mail/hooks/useEmailViewer";
 import { useInfiniteEmails } from "@/features/mail/hooks/useInfiniteEmails";
 import { formatTime } from "@/features/mail/utils/mailUtils";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
-import {
-  Archive01Icon,
-  Cancel01Icon,
-  CheckmarkSquare03Icon,
-  Delete02Icon,
-  SparklesIcon,
-  SquareIcon,
-  StarIcon,
-  Timer02Icon,
-} from "@/icons";
 import type { EmailData } from "@/types/features/mailTypes";
 
 function AIAnalysisIndicator({ hasAnalysis }: { hasAnalysis: boolean }) {

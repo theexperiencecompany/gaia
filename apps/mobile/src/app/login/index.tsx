@@ -1,4 +1,5 @@
 import { useRouter } from "expo-router";
+import { Button, PressableFeedback } from "heroui-native";
 import { useState } from "react";
 import {
   ActivityIndicator,
@@ -9,7 +10,6 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { Button } from "@/components/ui/button";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import {
@@ -20,30 +20,23 @@ import {
   storeAuthToken,
   storeUserInfo,
 } from "@/features/auth/utils/auth-storage";
+import { useResponsive } from "@/lib/responsive";
 
 export default function LoginScreen() {
   const router = useRouter();
   const { refreshAuth } = useAuth();
   const [isLoading, setIsLoading] = useState(false);
+  const { spacing, fontSize, moderateScale, width } = useResponsive();
 
   const handleLogin = async () => {
     setIsLoading(true);
 
     try {
-      // Start OAuth flow and get token
       const token = await startOAuthFlow();
-
-      // Store the authentication token
       await storeAuthToken(token);
-
-      // Fetch and store user information
       const userInfo = await fetchUserInfo(token);
       await storeUserInfo(userInfo);
-
-      // Refresh auth state to trigger navigation
       await refreshAuth();
-
-      // Navigate to main app
       router.replace("/");
     } catch (error) {
       console.error("Login error:", error);
@@ -63,91 +56,170 @@ export default function LoginScreen() {
     router.push("/signup");
   };
 
+  // Card max width adapts to screen size
+  const cardMaxWidth = Math.min(width * 0.9, 400);
+  const logoSize = moderateScale(48, 0.5);
+  const logoContainerSize = moderateScale(72, 0.5);
+
   return (
-    <View className="flex-1 bg-[#0a1929]">
+    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
       {/* Full Background Image */}
       <Image
         source={require("@/assets/background/login.webp")}
-        className="absolute w-full h-full"
+        style={{ position: "absolute", width: "100%", height: "100%" }}
         resizeMode="cover"
         blurRadius={0.5}
-        fadeDuration={300}
       />
 
       {/* Dark Overlay */}
-      <View className="absolute w-full h-full bg-black/50" />
+      <View
+        style={{
+          position: "absolute",
+          width: "100%",
+          height: "100%",
+          backgroundColor: "rgba(0,0,0,0.5)",
+        }}
+      />
 
-      <SafeAreaView className="flex-1">
+      <SafeAreaView style={{ flex: 1 }}>
         <KeyboardAvoidingView
-          className="flex-1 justify-center items-center px-6"
+          style={{
+            flex: 1,
+            justifyContent: "center",
+            alignItems: "center",
+            paddingHorizontal: spacing.lg,
+          }}
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Login Card */}
-          <View className="w-full max-w-[450px] bg-[#1a1a1a]/95 rounded-[20px] px-8 py-10 border border-white/10 shadow-2xl elevation-20">
+          <View
+            style={{
+              width: "100%",
+              maxWidth: cardMaxWidth,
+              backgroundColor: "rgba(28,28,30,0.95)",
+              borderRadius: moderateScale(24, 0.5),
+              paddingHorizontal: spacing.xl,
+              paddingVertical: moderateScale(40, 0.5),
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.1)",
+            }}
+          >
             {/* Logo and Title */}
-            <View className="items-center mb-8">
-              <View className="w-[70px] h-[70px] rounded-full bg-[#16c1ff]/15 items-center justify-center mb-4">
+            <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
+              <View
+                style={{
+                  width: logoContainerSize,
+                  height: logoContainerSize,
+                  borderRadius: logoContainerSize / 2,
+                  backgroundColor: "rgba(0,187,255,0.15)",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginBottom: spacing.md,
+                }}
+              >
                 <Image
-                  source={require("@/assets/logo/logo.webp")}
-                  className="w-[50px] h-[50px]"
+                  source={require("@shared/assets/logo/logo.webp")}
+                  style={{ width: logoSize, height: logoSize }}
                   resizeMode="contain"
                 />
               </View>
-              <Text className="text-2xl font-bold text-white text-center">
-                Let&apos;s Get You Back In
+              <Text
+                style={{
+                  fontSize: fontSize["2xl"],
+                  fontWeight: "bold",
+                  textAlign: "center",
+                }}
+              >
+                Let's Get You Back In
               </Text>
             </View>
 
             {/* Login Form */}
-            <View className="w-full">
+            <View style={{ width: "100%" }}>
               {/* Login Button */}
               <Button
                 size="lg"
-                className="bg-[#16c1ff] rounded-xl mb-4 shadow-lg shadow-[#16c1ff]/40 elevation-8 min-h-[48px]"
+                className="bg-accent"
+                isDisabled={isLoading}
                 onPress={handleLogin}
-                disabled={isLoading}
               >
                 {isLoading ? (
-                  <ActivityIndicator color="#000000" />
+                  <ActivityIndicator colorClassName="accent-black" />
                 ) : (
-                  <Text className="text-base font-semibold text-black">
-                    Continue with WorkOS
-                  </Text>
+                  <Button.Label>Continue with WorkOS</Button.Label>
                 )}
               </Button>
 
               {/* Sign Up Link */}
-              <View className="flex-row items-center justify-center mt-4">
-                <Text className="text-base text-zinc-400">
-                  Don&apos;t have an account?{" "}
+              <View
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  marginTop: spacing.md,
+                }}
+              >
+                <Text style={{ fontSize: fontSize.base, color: "#8e8e93" }}>
+                  Don't have an account?{" "}
                 </Text>
-                <Button
-                  variant="link"
-                  size="sm"
+                <PressableFeedback
                   onPress={handleSignUp}
-                  disabled={isLoading}
-                  className="p-0 h-auto"
+                  isDisabled={isLoading}
                 >
-                  <Text className="text-base text-[#16c1ff] font-semibold">
+                  <Text
+                    style={{
+                      fontSize: fontSize.base,
+                      color: "#00bbff",
+                      fontWeight: "600",
+                    }}
+                  >
                     Sign up
                   </Text>
-                </Button>
+                </PressableFeedback>
               </View>
             </View>
 
             {/* Footer */}
-            <View className="flex-row items-center justify-center mt-6 flex-wrap">
-              <Button variant="link" size="sm" className="p-0 h-auto">
-                <Text className="text-sm text-zinc-400 underline">
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                marginTop: spacing.lg,
+                flexWrap: "wrap",
+              }}
+            >
+              <PressableFeedback>
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    color: "#8e8e93",
+                    textDecorationLine: "underline",
+                  }}
+                >
                   Terms of Service
                 </Text>
-              </Button>
-              <Text className="text-sm text-zinc-400 mx-1"> and </Text>
-              <Button variant="link" size="sm" className="p-0 h-auto">
-                <Text className="text-sm text-zinc-400 underline">
+              </PressableFeedback>
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  color: "#8e8e93",
+                  marginHorizontal: spacing.xs,
+                }}
+              >
+                and
+              </Text>
+              <PressableFeedback>
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    color: "#8e8e93",
+                    textDecorationLine: "underline",
+                  }}
+                >
                   Privacy Policy
                 </Text>
-              </Button>
+              </PressableFeedback>
             </View>
           </View>
         </KeyboardAvoidingView>

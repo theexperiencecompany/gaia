@@ -8,6 +8,7 @@ import type {
   CommunityWorkflow,
   CommunityWorkflowsResponse,
   CreateWorkflowRequest,
+  TriggerSchema,
   Workflow,
   WorkflowExecutionRequest,
   WorkflowExecutionResponse,
@@ -15,6 +16,7 @@ import type {
   WorkflowResponse,
   WorkflowStatusResponse,
 } from "@/types/features/workflowTypes";
+import type { WorkflowExecutionsResponse } from "../types/workflowExecutionTypes";
 
 // Re-export types for convenience
 export type { CommunityWorkflow, CreateWorkflowRequest, Workflow };
@@ -25,7 +27,7 @@ export const workflowApi = {
     request: CreateWorkflowRequest,
   ): Promise<WorkflowResponse> => {
     return apiService.post<WorkflowResponse>("/workflows", request, {
-      errorMessage: "Failed to create workflow",
+      silent: true, // useWorkflowCreation hook handles error display
     });
   },
 
@@ -148,7 +150,21 @@ export const workflowApi = {
     return apiService.get<WorkflowStatusResponse>(
       `/workflows/${workflowId}/status`,
       {
-        silent: true, // Don't show success/error toasts for polling
+        silent: true,
+      },
+    );
+  },
+
+  // Get workflow execution history
+  getWorkflowExecutions: async (
+    workflowId: string,
+    limit: number = 10,
+    offset: number = 0,
+  ): Promise<WorkflowExecutionsResponse> => {
+    return apiService.get<WorkflowExecutionsResponse>(
+      `/workflows/${workflowId}/executions?limit=${limit}&offset=${offset}`,
+      {
+        silent: true,
       },
     );
   },
@@ -232,5 +248,43 @@ export const workflowApi = {
     return apiService.get<WorkflowResponse>(`/workflows/public/${workflowId}`, {
       errorMessage: "Failed to fetch public workflow",
     });
+  },
+
+  // Get available trigger schemas
+  getTriggerSchemas: async (): Promise<TriggerSchema[]> => {
+    return apiService.get<TriggerSchema[]>("/triggers/schema", {
+      errorMessage: "Failed to fetch trigger schemas",
+    });
+  },
+
+  // Get dynamic options for trigger configuration field
+  getTriggerOptions: async (
+    integrationId: string,
+    triggerSlug: string,
+    fieldName: string,
+    queryParams?: Record<string, string | number | boolean>,
+  ): Promise<{ value: string; label: string }[]> => {
+    const params = new URLSearchParams({
+      integration_id: integrationId,
+      trigger_slug: triggerSlug,
+      field_name: fieldName,
+    });
+
+    if (queryParams) {
+      Object.entries(queryParams).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          params.append(key, String(value));
+        }
+      });
+    }
+
+    const response = await apiService.get<{
+      options: { value: string; label: string }[];
+    }>(`/triggers/options?${params.toString()}`, {
+      errorMessage: "Failed to fetch trigger options",
+      silent: true, // Fail silently if options not available
+    });
+
+    return response.options || [];
   },
 };

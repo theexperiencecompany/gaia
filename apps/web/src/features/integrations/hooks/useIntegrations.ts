@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useMemo } from "react";
-import { toast } from "sonner";
+import { trackIntegration } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 
 import { integrationsApi } from "../api/integrationsApi";
 import type {
@@ -30,9 +31,11 @@ export interface UseIntegrationsReturn {
     request: CreateCustomIntegrationRequest,
   ) => Promise<CreateCustomIntegrationResponse>;
   deleteCustomIntegration: (integrationId: string) => Promise<void>;
+  publishIntegration: (integrationId: string) => Promise<void>;
+  unpublishIntegration: (integrationId: string) => Promise<void>;
 
   // Refresh
-  refetch: () => void;
+  refetch: () => Promise<void>;
 }
 
 type UseFetchIntegrationStatusParams = {
@@ -74,12 +77,14 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   } = useQuery({
     queryKey: ["integrations", "user"],
     queryFn: integrationsApi.getUserIntegrations,
+    staleTime: 0, // Always refetch - user integrations are mutable state
   });
 
   // Query for platform integration status
   const { data: statusData, isLoading: statusLoading } = useQuery({
     queryKey: ["integrations", "status"],
     queryFn: integrationsApi.getIntegrationStatus,
+    staleTime: 0, // Always refetch - status can change externally (OAuth callbacks)
   });
 
   // Merge platform integrations with user's custom integrations
@@ -103,6 +108,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
       iconUrl: ui.integration.iconUrl ?? undefined,
       isPublic: ui.integration.isPublic ?? undefined,
       createdBy: ui.integration.createdBy ?? undefined,
+      creator: ui.integration.creator ?? undefined,
+      slug: ui.integration.slug, // Always provided by backend
     }));
 
     // Get IDs of integrations user already has
@@ -122,7 +129,29 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         };
       });
 
-    return [...userIntegrationsList, ...availablePlatformIntegrations];
+    // Sort by status: pending (created) first, then connected, then not_connected
+    // Within each status group, sort alphabetically by name
+    const statusPriority: Record<string, number> = {
+      created: 0,
+      connected: 1,
+      not_connected: 2,
+    };
+
+    const allIntegrations = [
+      ...userIntegrationsList,
+      ...availablePlatformIntegrations,
+    ];
+
+    return allIntegrations.sort((a, b) => {
+      const priorityA = statusPriority[a.status] ?? 3;
+      const priorityB = statusPriority[b.status] ?? 3;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      return a.name.localeCompare(b.name);
+    });
   }, [configData, userIntegrationsData, statusData]);
 
   // Get status for a specific integration
@@ -139,19 +168,23 @@ export const useIntegrations = (): UseIntegrationsReturn => {
   const connectIntegration = useCallback(
     async (
       integrationId: string,
-    ): Promise<{ status: string; toolsCount?: number }> => {
+    ): Promise<{ status: string; name?: string; toolsCount?: number }> => {
       const integration = integrations.find(
         (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
       );
-      const integrationName = integration?.name || integrationId;
+      const integrationName = integration?.name || "Integration";
 
       const toastId = toast.loading(`Connecting to ${integrationName}...`);
 
       try {
         const result = await integrationsApi.connectIntegration(integrationId);
+        // Track integration connection attempt
+        trackIntegration("connected", integrationId, {
+          source: "integration_settings",
+        });
 
         if (result.status === "connected") {
-          toast.success(`Connected to ${integrationName}`, { id: toastId });
+          toast.success(`Connected to ${result.name}`, { id: toastId });
           // Refetch all data
           await Promise.all([
             queryClient.refetchQueries({ queryKey: ["integrations"] }),
@@ -171,6 +204,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
           `Failed to connect: ${error instanceof Error ? error.message : "Unknown error"}`,
           { id: toastId },
         );
+        trackIntegration("error", integrationId, {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
         throw error;
       }
     },
@@ -182,6 +218,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     async (integrationId: string): Promise<void> => {
       try {
         await integrationsApi.disconnectIntegration(integrationId);
+        // Track integration disconnection
+        trackIntegration("disconnected", integrationId);
         toast.success("Integration disconnected");
         // Refetch all data
         await queryClient.refetchQueries({ queryKey: ["integrations"] });
@@ -189,6 +227,9 @@ export const useIntegrations = (): UseIntegrationsReturn => {
         toast.error(
           `Failed to disconnect: ${error instanceof Error ? error.message : "Unknown error"}`,
         );
+        trackIntegration("error", integrationId, {
+          error: error instanceof Error ? error.message : "Unknown error",
+        });
         throw error;
       }
     },
@@ -229,9 +270,66 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     [deleteMutation],
   );
 
+  // Publish custom integration
+  const publishIntegration = useCallback(
+    async (integrationId: string): Promise<void> => {
+      const integration = integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      const integrationName = integration?.name || integrationId;
+
+      const toastId = toast.loading(`Publishing ${integrationName}...`);
+
+      try {
+        await integrationsApi.publishIntegration(integrationId);
+        toast.success(`${integrationName} published to community`, {
+          id: toastId,
+        });
+        await queryClient.refetchQueries({ queryKey: ["integrations"] });
+
+        if (typeof window !== "undefined") {
+          // Navigate to marketplace with refresh parameter to show published integration
+          window.location.href = "/marketplace?refresh=true";
+        }
+      } catch (error) {
+        toast.error(
+          `Failed to publish: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { id: toastId },
+        );
+        throw error;
+      }
+    },
+    [queryClient, integrations],
+  );
+
+  // Unpublish custom integration
+  const unpublishIntegration = useCallback(
+    async (integrationId: string): Promise<void> => {
+      const integration = integrations.find(
+        (i) => i.id.toLowerCase() === integrationId.toLowerCase(),
+      );
+      const integrationName = integration?.name || integrationId;
+
+      const toastId = toast.loading(`Unpublishing ${integrationName}...`);
+
+      try {
+        await integrationsApi.unpublishIntegration(integrationId);
+        toast.success(`${integrationName} unpublished`, { id: toastId });
+        await queryClient.refetchQueries({ queryKey: ["integrations"] });
+      } catch (error) {
+        toast.error(
+          `Failed to unpublish: ${error instanceof Error ? error.message : "Unknown error"}`,
+          { id: toastId },
+        );
+        throw error;
+      }
+    },
+    [queryClient, integrations],
+  );
+
   // Simple refetch all
-  const refetch = useCallback(() => {
-    queryClient.refetchQueries({ queryKey: ["integrations"] });
+  const refetch = useCallback(async () => {
+    await queryClient.refetchQueries({ queryKey: ["integrations"] });
   }, [queryClient]);
 
   return {
@@ -243,6 +341,8 @@ export const useIntegrations = (): UseIntegrationsReturn => {
     disconnectIntegration,
     createCustomIntegration,
     deleteCustomIntegration,
+    publishIntegration,
+    unpublishIntegration,
     refetch,
   };
 };

@@ -39,6 +39,8 @@ export function FeatureCard({
           <Image
             fill
             src={imageSrc}
+            sizes="(max-width: 768px) 100vw, 50vw"
+            loading="lazy"
             className={`${imageClassName} `}
             alt={imageAlt}
           />

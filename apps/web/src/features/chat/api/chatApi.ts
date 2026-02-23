@@ -30,6 +30,16 @@ export enum SystemPurpose {
   OTHER = "other", // Add more purposes as needed
 }
 
+export enum ConversationSource {
+  WEB = "web",
+  MOBILE = "mobile",
+  TELEGRAM = "telegram",
+  DISCORD = "discord",
+  SLACK = "slack",
+  WHATSAPP = "whatsapp",
+  WORKFLOW_SYSTEM = "workflow_system",
+}
+
 export interface Conversation {
   _id: string;
   user_id: string;
@@ -39,6 +49,7 @@ export interface Conversation {
   is_system_generated?: boolean;
   system_purpose?: SystemPurpose;
   is_unread?: boolean;
+  source?: ConversationSource;
   createdAt: string;
   updatedAt?: string;
 }
@@ -207,35 +218,6 @@ export const chatApi = {
   // Mark conversation as unread
   markAsUnread: async (conversationId: string): Promise<void> => {
     return apiService.patch(`/conversations/${conversationId}/unread`, {});
-  },
-
-  // Save incomplete conversation when stream is cancelled
-  saveIncompleteConversation: async (
-    inputText: string,
-    conversationId: string | null,
-    incompleteResponse: string,
-    fileData: FileData[] = [],
-    selectedTool: string | null = null,
-    toolCategory: string | null = null,
-    selectedWorkflow: WorkflowData | null = null,
-    selectedCalendarEvent: SelectedCalendarEventData | null = null,
-  ): Promise<{ success: boolean; conversation_id: string }> => {
-    const fileIds = fileData.map((file) => file.fileId);
-
-    return apiService.post<{ success: boolean; conversation_id: string }>(
-      "/save-incomplete-conversation",
-      {
-        conversation_id: conversationId,
-        message: inputText,
-        fileIds,
-        fileData,
-        selectedTool,
-        toolCategory,
-        selectedWorkflow,
-        selectedCalendarEvent,
-        incomplete_response: incompleteResponse,
-      },
-    );
   },
 
   // Fetch chat stream

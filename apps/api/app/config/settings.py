@@ -32,6 +32,7 @@ class BaseAppSettings(BaseSettings):
     """Base configuration settings for the application."""
 
     ENV: Literal["production", "development"] = "production"
+
     SHOW_MISSING_KEY_WARNINGS: bool = True
 
     model_config = SettingsConfigDict(
@@ -48,14 +49,19 @@ class BaseAppSettings(BaseSettings):
             return cls(**kwargs)
         except Exception as e:
             logger.warning(f"Error creating settings: {str(e)}")
-            # Create a minimal instance with empty strings for required fields
+            # Create a minimal instance with empty strings for required fields,
+            # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
-            defaults = {
-                field_name: ""
-                for field_name in fields
-                if field_name not in kwargs
-                and "str" in str(fields[field_name].annotation)
-            }
+            defaults = {}
+            for field_name, field_info in fields.items():
+                if field_name in kwargs:
+                    continue
+                if os.getenv(field_name) is not None:
+                    continue
+                if field_info.default is not None:
+                    continue
+                if "str" in str(field_info.annotation):
+                    defaults[field_name] = ""
             return cls(**defaults, **kwargs)
 
 
@@ -88,6 +94,11 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     ENABLE_PROFILING: bool = False  # Must be explicitly enabled via .env
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
+
+    # ----------------------------------------------
+    # Skill Learning (Agent Memory)
+    # ----------------------------------------------
+    SKILL_LEARNING_ENABLED: bool = False  # Disabled until ready for production
 
     # ----------------------------------------------
     # Computed Properties
@@ -123,6 +134,18 @@ class CommonSettings(BaseAppSettings):
     def GOOGLE_CALLBACK_URL(self) -> str:
         """Google OAuth callback URL."""
         return f"{self.HOST}/api/v1/oauth/google/callback"
+
+    @computed_field  # type: ignore
+    @property
+    def DISCORD_OAUTH_REDIRECT_URI(self) -> str:
+        """Discord OAuth callback URL."""
+        return f"{self.HOST}/api/v1/platform-auth/discord/callback"
+
+    @computed_field  # type: ignore
+    @property
+    def SLACK_OAUTH_REDIRECT_URI(self) -> str:
+        """Slack OAuth callback URL."""
+        return f"{self.HOST}/api/v1/platform-auth/slack/callback"
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -249,6 +272,34 @@ class ProductionSettings(CommonSettings):
     # Debug Config
     # ----------------------------------------------
     DEBUG_EMAIL_PROCESSING: bool = False
+
+    # ----------------------------------------------
+    # Bot Configuration
+    # ----------------------------------------------
+    GAIA_BOT_API_KEY: Optional[str] = None
+    DISCORD_BOT_TOKEN: Optional[str] = None
+    DISCORD_CLIENT_ID: Optional[str] = None
+    SLACK_BOT_TOKEN: Optional[str] = None
+    SLACK_SIGNING_SECRET: Optional[str] = None
+    SLACK_APP_TOKEN: Optional[str] = None
+    TELEGRAM_BOT_TOKEN: Optional[str] = None
+
+    # ----------------------------------------------
+    # Bot OAuth Configuration (Optional)
+    # ----------------------------------------------
+    DISCORD_OAUTH_CLIENT_ID: Optional[str] = None
+    DISCORD_OAUTH_CLIENT_SECRET: Optional[str] = None
+    SLACK_OAUTH_CLIENT_ID: Optional[str] = None
+    SLACK_OAUTH_CLIENT_SECRET: Optional[str] = None
+    TELEGRAM_BOT_USERNAME: Optional[str] = "heygaia_bot"
+
+    # ----------------------------------------------
+    # Bot Session Token Configuration
+    # ----------------------------------------------
+    BOT_SESSION_TOKEN_SECRET: (
+        str  # Required: min 32 chars - DO NOT reuse GAIA_BOT_API_KEY
+    )
+    BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
@@ -385,6 +436,38 @@ class DevelopmentSettings(CommonSettings):
 
     # Default to show warnings in development environment
     SHOW_MISSING_KEY_WARNINGS: bool = True
+
+    # ----------------------------------------------
+    # Bot Configuration
+    # ----------------------------------------------
+    GAIA_BOT_API_KEY: Optional[str] = None
+    DISCORD_BOT_TOKEN: Optional[str] = None
+    DISCORD_CLIENT_ID: Optional[str] = None
+    SLACK_BOT_TOKEN: Optional[str] = None
+    SLACK_SIGNING_SECRET: Optional[str] = None
+    SLACK_APP_TOKEN: Optional[str] = None
+    TELEGRAM_BOT_TOKEN: Optional[str] = None
+
+    # ----------------------------------------------
+    # Bot OAuth Configuration (Optional)
+    # ----------------------------------------------
+    DISCORD_OAUTH_CLIENT_ID: Optional[str] = None
+    DISCORD_OAUTH_CLIENT_SECRET: Optional[str] = None
+    SLACK_OAUTH_CLIENT_ID: Optional[str] = None
+    SLACK_OAUTH_CLIENT_SECRET: Optional[str] = None
+    TELEGRAM_BOT_USERNAME: Optional[str] = "heygaia_bot"
+
+    # ----------------------------------------------
+    # Bot Session Token Configuration
+    # ----------------------------------------------
+    BOT_SESSION_TOKEN_SECRET: Optional[str] = None  # Falls back to GAIA_BOT_API_KEY
+    BOT_SESSION_TOKEN_EXPIRY_MINUTES: int = 15
+
+    @computed_field  # type: ignore
+    @property
+    def SLACK_OAUTH_REDIRECT_URI(self) -> str:
+        """Slack OAuth callback URL using redirectmeto proxy for local development."""
+        return "https://redirectmeto.com/http://localhost:8000/api/v1/platform-auth/slack/callback"
 
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",

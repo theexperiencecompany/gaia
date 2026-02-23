@@ -1,25 +1,24 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
-
+import { ArrowUp02Icon, StopIcon } from "@icons";
 import { useCalendarEventSelection } from "@/features/chat/hooks/useCalendarEventSelection";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
-import { ArrowUp02Icon, StopIcon } from "@/icons";
 import { useComposerFiles } from "@/stores/composerStore";
 
 interface RightSideProps {
   handleFormSubmit: (e?: React.FormEvent<HTMLFormElement>) => void;
   searchbarText: string | null | undefined;
   selectedTool?: string | null;
-  // setvoiceModeActive: () => void;
+  setvoiceModeActive: () => void;
 }
 
 export default function RightSide({
   handleFormSubmit,
   searchbarText,
   selectedTool,
-  // setvoiceModeActive,
+  setvoiceModeActive: _setvoiceModeActive,
 }: RightSideProps) {
   const { isLoading, stopStream } = useLoading();
   const { selectedWorkflow } = useWorkflowSelection();
@@ -81,7 +80,7 @@ export default function RightSide({
     return (
       <div className="flex items-center gap-2">
         Send Message
-        <Kbd className="text-foreground-400" keys={["enter"]}></Kbd>
+        <Kbd className="text-zinc-400" keys={["enter"]} />
       </div>
     );
   };
@@ -94,12 +93,6 @@ export default function RightSide({
     }
   };
 
-
-  const isAvailable = hasText ||
-                  hasSelectedTool ||
-                  hasSelectedWorkflow ||
-                  hasFiles ||
-                  hasSelectedCalendarEvent ;
   return (
     <div className="ml-2 flex items-center gap-2">
       {/* <Tooltip content="Voice Mode" placement="left" color="primary" showArrow>
@@ -112,7 +105,7 @@ export default function RightSide({
           type="button"
           onPress={() => setvoiceModeActive()}
         >
-          <AudioWaveIcon className="text-foreground-400" />
+          <AiVoiceIcon className="text-zinc-400" />
         </Button>
       </Tooltip> */}
 
@@ -125,11 +118,15 @@ export default function RightSide({
         <Button
           isIconOnly
           aria-label={isLoading ? "Stop generation" : "Send message"}
-          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isAvailable ? "bg-primary" : "bg-surface-200 dark:bg-surface-300"} ${isLoading ? "cursor-pointer bg-surface-200 dark:bg-surface-300" : ""}`}
+          className={`h-9 min-h-9 w-9 max-w-9 min-w-9 ${isLoading ? "cursor-pointer" : ""}`}
           color={
             isLoading
               ? "default"
-              : isAvailable
+              : hasText ||
+                  hasSelectedTool ||
+                  hasSelectedWorkflow ||
+                  hasFiles ||
+                  hasSelectedCalendarEvent
                 ? "primary"
                 : "default"
           }
@@ -140,20 +137,21 @@ export default function RightSide({
         >
           {isLoading ? (
             <StopIcon
-              className="text-foreground-600"
+              color="lightgray"
               width={20}
               height={20}
+              fill="lightgray"
             />
           ) : (
             <ArrowUp02Icon
-              className={
+              color={
                 hasText ||
                 hasSelectedTool ||
                 hasSelectedWorkflow ||
                 hasFiles ||
                 hasSelectedCalendarEvent
-                  ? "text-surface-50"
-                  : "text-foreground-600"
+                  ? "black"
+                  : "gray"
               }
             />
           )}

@@ -6,7 +6,7 @@ import {
   CheckmarkSquare03Icon,
   Mail01Icon,
   NotificationIcon,
-} from "@/icons";
+} from "@icons";
 import type { NotificationSource } from "@/types/notifications";
 
 export const getNotificationIcon = (type: NotificationSource) => {

@@ -1,5 +1,6 @@
+import { PressableFeedback } from "heroui-native";
 import { useEffect, useRef, useState } from "react";
-import { Animated, Pressable, TextInput, View } from "react-native";
+import { Animated, TextInput, View } from "react-native";
 import { HugeiconsIcon, PlusSignIcon, SentIcon } from "@/components/icons";
 
 export function ChatInput({
@@ -21,7 +22,7 @@ export function ChatInput({
       toValue: canSubmit ? 1 : 0.9,
       useNativeDriver: true,
     }).start();
-  }, [canSubmit]);
+  }, [canSubmit, scaleAnim]);
 
   const handleSend = () => {
     if (!canSubmit) return;
@@ -30,16 +31,13 @@ export function ChatInput({
   };
 
   return (
-    <View className="flex-row items-end rounded-[28px] bg-surface-2 px-3 py-2 border border-border/10 shadow-lg">
-      {/* Plus Button */}
-      <Pressable
-        className="h-10 w-10 items-center justify-center rounded-full active:bg-white/5"
-        onPress={() => console.log("Attach pressed")}
-      >
-        <HugeiconsIcon icon={PlusSignIcon} size={20} color="#8e8e93" />
-      </Pressable>
+    <View className="flex-row items-end rounded-3xl bg-surface-2 px-3 py-2 border border-border/10 shadow-lg">
+      <PressableFeedback onPress={() => {}}>
+        <View className="h-10 w-10 items-center justify-center rounded-full">
+          <HugeiconsIcon icon={PlusSignIcon} size={20} color="#8e8e93" />
+        </View>
+      </PressableFeedback>
 
-      {/* Input */}
       <TextInput
         value={value}
         onChangeText={setValue}
@@ -47,11 +45,10 @@ export function ChatInput({
         placeholderTextColor="#666666"
         multiline
         editable={!disabled}
-        className="flex-1 text-[15px] leading-[22px] text-white px-2 py-2 max-h-32 text-left"
+        className="flex-1 text-base leading-6 text-foreground px-2 py-2 max-h-32"
         style={{ textAlignVertical: "bottom" }}
       />
 
-      {/* Send */}
       <Animated.View
         style={{
           transform: [{ scale: scaleAnim }],
@@ -59,19 +56,19 @@ export function ChatInput({
         }}
         className="pb-0.5"
       >
-        <Pressable
-          onPress={handleSend}
-          disabled={!canSubmit}
-          className={`h-9 w-9 rounded-full items-center justify-center ${
-            canSubmit ? "bg-primary" : "bg-surface-3"
-          }`}
-        >
-          <HugeiconsIcon
-            icon={SentIcon}
-            size={18}
-            color={canSubmit ? "#000000" : "#666666"}
-          />
-        </Pressable>
+        <PressableFeedback onPress={handleSend} isDisabled={!canSubmit}>
+          <View
+            className={`h-9 w-9 rounded-full items-center justify-center ${
+              canSubmit ? "bg-accent" : "bg-surface-3"
+            }`}
+          >
+            <HugeiconsIcon
+              icon={SentIcon}
+              size={18}
+              color={canSubmit ? "#000000" : "#666666"}
+            />
+          </View>
+        </PressableFeedback>
       </Animated.View>
     </View>
   );

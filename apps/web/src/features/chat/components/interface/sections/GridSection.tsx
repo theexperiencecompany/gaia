@@ -8,7 +8,7 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import UnreadEmailsView from "@/features/mail/components/UnreadEmailsView";
 import InboxTodosView from "@/features/todo/components/InboxTodosView";
 import WorkflowListView from "@/features/workflows/components/WorkflowListView";
-import { posthog } from "@/lib/posthog";
+import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { Goal } from "@/types/api/goalsApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
@@ -37,9 +37,8 @@ export const GridSection = ({
   const router = useRouter();
   const { connectIntegration } = useIntegrations();
 
-  // Handle connection flow
   const handleConnect = async (integrationId: string) => {
-    posthog.capture("chat:grid_integration_connect_clicked", {
+    trackEvent(ANALYTICS_EVENTS.CHAT_GRID_INTEGRATION_CONNECT_CLICKED, {
       integration_id: integrationId,
       source: "new_chat_grid",
     });
@@ -53,7 +52,7 @@ export const GridSection = ({
 
   return (
     <div className="relative flex h-fit w-full snap-start flex-col items-center justify-center">
-      <div className="mb-20 grid min-h-screen w-full max-w-7xl grid-cols-1 grid-rows-1  sm:grid-cols-2 sm:space-y-0">
+      <div className="mb-20 grid min-h-screen w-full grid-cols-1 grid-rows-1  sm:grid-cols-2 sm:space-y-0">
         <UnreadEmailsView
           emails={unreadEmails}
           isConnected={isGmailConnected}

@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import { useId, useRef } from "react";
 
 import { useIntersectionObserver } from "@/hooks/ui/useIntersectionObserver";
@@ -78,10 +78,14 @@ const SplitTextBlur = ({
   const shouldAnimate = disableIntersectionObserver || isVisible;
   const baseId = useId();
 
-  const MotionComponent = motion[as] as typeof motion.div;
+  const MotionComponent = m[as] as typeof m.div;
+
+  const gradientStyle = {
+    "--split-gradient": gradient,
+  } as React.CSSProperties;
 
   return (
-    <div className="relative">
+    <div className="relative" style={gradientStyle}>
       <MotionComponent
         ref={ref}
         initial="hidden"
@@ -89,15 +93,14 @@ const SplitTextBlur = ({
         variants={containerVariants}
         className={`${cn(className)} z-[10]`}
         style={{
-          willChange: "transform, opacity, filter",
-          background: gradient,
+          background: "var(--split-gradient)",
           WebkitBackgroundClip: "text",
           WebkitTextFillColor: "transparent",
           backgroundClip: "text",
         }}
       >
         {words.map((word, index) => (
-          <motion.span
+          <m.span
             // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
             key={baseId + word + index}
             variants={wordVariants}
@@ -111,14 +114,14 @@ const SplitTextBlur = ({
               backgroundClip: "inherit",
               paddingBottom: "7px",
             }}
-            className="font-serif"
+            className="font-serif p-[5px] pl-0"
           >
             {word}
-          </motion.span>
+          </m.span>
         ))}
       </MotionComponent>
       {showGlowTextBg && (
-        <motion.div
+        <m.div
           ref={ref}
           initial="hidden"
           animate={shouldAnimate ? "visible" : "hidden"}
@@ -126,7 +129,7 @@ const SplitTextBlur = ({
           className={`${cn(className)} text-white blur-md absolute top-0 z-[-1]`}
         >
           {words.map((word, index) => (
-            <motion.span
+            <m.span
               // biome-ignore lint/suspicious/noArrayIndexKey: mapping with word and base id and index
               key={baseId + word + index}
               variants={wordVariants}
@@ -143,9 +146,9 @@ const SplitTextBlur = ({
               className="font-serif"
             >
               {word}
-            </motion.span>
+            </m.span>
           ))}
-        </motion.div>
+        </m.div>
       )}
     </div>
   );

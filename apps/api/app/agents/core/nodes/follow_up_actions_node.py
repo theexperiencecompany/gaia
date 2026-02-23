@@ -5,10 +5,14 @@ This module provides functionality to suggest contextual follow-up actions
 to users based on the conversation context and tool usage patterns.
 """
 
-from typing import List
+from typing import List, cast
 
-from app.agents.llm.client import init_llm
+from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
+from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import chat_logger as logger
+from app.services.integrations.user_integrations import (
+    get_user_integration_capabilities,
+)
 from app.templates.docstrings.follow_up_actions_tool_docs import (
     SUGGEST_FOLLOW_UP_ACTIONS,
 )
@@ -41,8 +45,6 @@ async def follow_up_actions_node(
     Returns:
         Empty dict indicating successful completion (follow-up actions are streamed, not stored in state)
     """
-    from app.agents.tools.core.registry import get_tool_registry
-
     # Send completion marker as soon as follow-up actions start
     writer = get_stream_writer()
     try:
@@ -54,8 +56,7 @@ async def follow_up_actions_node(
         )
         return state
 
-    tool_registry = await get_tool_registry()
-    llm = init_llm(use_free=True)
+    llm_chain = get_free_llm_chain()
 
     try:
         messages = state.get("messages", [])
@@ -68,25 +69,36 @@ async def follow_up_actions_node(
                 logger.debug(f"Stream closed when sending empty actions: {e}")
             return state
 
+        # Get user-specific integration capabilities (cached)
+        user_id = config.get("configurable", {}).get("user_id")
+        if user_id:
+            capabilities = await get_user_integration_capabilities(user_id)
+            tool_names = capabilities.get("tool_names", [])
+        else:
+            # Fallback to all tools if user_id not available
+            tool_registry = await get_tool_registry()
+            tool_names = tool_registry.get_tool_names()
+
         # Set up structured output parsing
         parser = PydanticOutputParser(pydantic_object=FollowUpActions)
         recent_messages = messages[-4:] if len(messages) > 4 else messages
 
         prompt = SUGGEST_FOLLOW_UP_ACTIONS.format(
             conversation_summary=recent_messages,
-            tool_names=tool_registry.get_tool_names(),
+            tool_names=tool_names,
             format_instructions=parser.get_format_instructions(),
         )
 
-        result = await llm.ainvoke(
-            input=[
+        result = await invoke_with_fallback(
+            llm_chain,
+            [
                 SystemMessage(content=prompt),
                 HumanMessage(content=_pretty_print_messages(recent_messages)),
             ],
-            config={**config, "silent": True},  # type: ignore
+            config=cast(RunnableConfig, {**config, "silent": True}),
         )
         try:
-            actions = parser.parse(result if isinstance(result, str) else result.text())
+            actions = parser.parse(result if isinstance(result, str) else result.text)
         except Exception:
             try:
                 writer({"follow_up_actions": []})

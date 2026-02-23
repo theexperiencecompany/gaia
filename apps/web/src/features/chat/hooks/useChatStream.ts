@@ -1,18 +1,22 @@
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
-import { useRouter } from "next/navigation";
 import { useRef } from "react";
 import type { ToolDataEntry } from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
 import { streamController } from "@/features/chat/utils/streamController";
+import {
+  ANALYTICS_EVENTS,
+  trackConversationCreated,
+  trackEvent,
+} from "@/lib/analytics";
 import { db, type IConversation, type IMessage } from "@/lib/db/chatDb";
 import { streamState } from "@/lib/streamState";
+import { toast } from "@/lib/toast";
 import type { SelectedCalendarEventData } from "@/stores/calendarEventSelectionStore";
 import { useChatStore } from "@/stores/chatStore";
 import { useComposerStore } from "@/stores/composerStore";
 import type { MessageType } from "@/types/features/convoTypes";
-import type { ToolProgressData } from "@/types/features/toolDataTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared";
 import fetchDate from "@/utils/date/dateUtils";
@@ -21,7 +25,6 @@ import { useLoadingText } from "./useLoadingText";
 import { parseStreamData } from "./useStreamDataParser";
 
 export const useChatStream = () => {
-  const router = useRouter();
   const { setIsLoading, setAbortController } = useLoading();
   const { convoMessages } = useConversation();
   const { setLoadingText, resetLoadingText } = useLoadingText();
@@ -61,7 +64,8 @@ export const useChatStream = () => {
     streamController.clear();
     setAbortController(null);
 
-    // Clear any remaining optimistic message (error/abort scenarios)
+    // Clear streaming indicator and any remaining optimistic message
+    useChatStore.getState().setStreamingConversationId(null);
     useChatStore.getState().clearOptimisticMessage();
   };
 
@@ -90,6 +94,9 @@ export const useChatStream = () => {
 
       try {
         await db.putConversation(newConversation);
+
+        // Track new conversation creation
+        trackConversationCreated({ conversationId, source: "chat" });
       } catch (error) {
         console.error("Failed to save conversation to IndexedDB:", error);
       }
@@ -111,30 +118,6 @@ export const useChatStream = () => {
     }
   };
 
-  const saveIncompleteConversation = async () => {
-    if (!refs.current.botMessage || !refs.current.accumulatedResponse) return;
-
-    try {
-      const response = await chatApi.saveIncompleteConversation(
-        refs.current.userPrompt,
-        refs.current.newConversation.id || null,
-        refs.current.accumulatedResponse,
-        refs.current.botMessage.fileData || [],
-        refs.current.botMessage.selectedTool || null,
-        refs.current.botMessage.toolCategory || null,
-        refs.current.botMessage.selectedWorkflow || null,
-        refs.current.botMessage.selectedCalendarEvent || null,
-      );
-
-      // Handle navigation for incomplete conversations
-      if (response.conversation_id && !refs.current.newConversation.id) {
-        router.replace(`/c/${response.conversation_id}`);
-      }
-    } catch (saveError) {
-      console.error("Failed to save incomplete conversation:", saveError);
-    }
-  };
-
   const createIMessage = (
     messageId: string,
     conversationId: string,
@@ -143,13 +126,19 @@ export const useChatStream = () => {
     status: IMessage["status"],
     sourceMessage: MessageType,
   ): IMessage => {
+    // Preserve original timestamp from sourceMessage to maintain correct ordering
+    // This is critical: messages must be ordered by their creation time, not persist time
+    const createdAt = sourceMessage.date
+      ? new Date(sourceMessage.date)
+      : new Date();
+
     return {
       id: messageId,
       conversationId,
       content,
       role,
       status,
-      createdAt: new Date(),
+      createdAt,
       updatedAt: new Date(),
       messageId,
       fileIds: sourceMessage.fileIds,
@@ -170,45 +159,81 @@ export const useChatStream = () => {
     };
   };
 
-  const handleProgressUpdate = (progressData: string | ToolProgressData) => {
-    if (typeof progressData === "string") {
-      setLoadingText(progressData);
-    } else if (typeof progressData === "object" && progressData.message) {
-      // Update loading indicator
-      setLoadingText(progressData.message, {
-        toolName: progressData.tool_name,
-        toolCategory: progressData.tool_category,
-        showCategory: progressData.show_category ?? true,
-      });
+  const handleToolData = (toolData: ToolDataEntry) => {
+    // Append tool_data entry to botMessage.tool_data
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    updateBotMessage({
+      tool_data: [...existingToolData, toolData],
+    });
 
-      // Accumulate into tool_data for ToolCallsSection
-      const existingToolData = refs.current.botMessage?.tool_data ?? [];
-      const toolEntry: ToolDataEntry = {
-        tool_name: "tool_calls_data",
-        tool_category: progressData.tool_category ?? "",
-        data: {
-          tool_name: progressData.tool_name,
-          tool_category: progressData.tool_category ?? "",
-          message: progressData.message,
-          show_category: progressData.show_category,
-          tool_call_id: progressData.tool_call_id,
-          inputs: progressData.inputs,
-          icon_url: progressData.icon_url,
-          integration_name: progressData.integration_name,
-        } as ToolDataEntry["data"],
-        timestamp: new Date().toISOString(),
-      };
-      updateBotMessage({
-        tool_data: [...existingToolData, toolEntry],
-      });
-
-      // Sync to store for persistence
-      const conversationId =
-        refs.current.newConversation.id ||
-        useChatStore.getState().activeConversationId;
-      if (refs.current.botMessage?.message_id && conversationId) {
-        updateBotMessageInStore(conversationId);
+    // Extract loading text from tool_data.data.message for UI indicator
+    if (
+      toolData.tool_name === "tool_calls_data" &&
+      typeof toolData.data === "object" &&
+      toolData.data !== null
+    ) {
+      const data = toolData.data as Record<string, unknown>;
+      if (data.message && typeof data.message === "string") {
+        setLoadingText(data.message, {
+          toolName: data.tool_name as string | undefined,
+          toolCategory: data.tool_category as string | undefined,
+          integrationName: data.integration_name as string | undefined,
+          iconUrl: data.icon_url as string | undefined,
+          showCategory: (data.show_category as boolean) ?? true,
+        });
       }
+    }
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
+    }
+  };
+
+  /**
+   * Helper to update tool_data entries by tool_call_id.
+   * Used by handleToolOutput to add output to existing entries.
+   */
+  const updateToolDataEntry = (
+    toolCallId: string,
+    updateFn: (data: Record<string, unknown>) => Record<string, unknown>,
+  ) => {
+    const existingToolData = refs.current.botMessage?.tool_data ?? [];
+    const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
+      // Only update entries that:
+      // 1. Have tool_name === "tool_calls_data"
+      // 2. Have a valid data object with a matching tool_call_id
+      if (entry.tool_name === "tool_calls_data") {
+        const data = entry.data as Record<string, unknown>;
+        // Validate that the entry has a tool_call_id and it matches
+        if (
+          data &&
+          typeof data === "object" &&
+          "tool_call_id" in data &&
+          data.tool_call_id === toolCallId
+        ) {
+          return {
+            ...entry,
+            data: updateFn(data) as ToolDataEntry["data"],
+          };
+        }
+      }
+      return entry;
+    });
+
+    updateBotMessage({
+      tool_data: updatedToolData,
+    });
+
+    // Sync to store for persistence
+    const conversationId =
+      refs.current.newConversation.id ||
+      useChatStore.getState().activeConversationId;
+    if (refs.current.botMessage?.message_id && conversationId) {
+      updateBotMessageInStore(conversationId);
     }
   };
 
@@ -216,70 +241,10 @@ export const useChatStream = () => {
     tool_call_id: string;
     output: string;
   }) => {
-    // Find and update the matching tool call entry with output
-    const existingToolData = refs.current.botMessage?.tool_data ?? [];
-    const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
-      if (entry.tool_name === "tool_calls_data") {
-        const data = entry.data as Record<string, unknown>;
-        if (data.tool_call_id === toolOutput.tool_call_id) {
-          return {
-            ...entry,
-            data: {
-              ...data,
-              output: toolOutput.output,
-            } as ToolDataEntry["data"],
-          };
-        }
-      }
-      return entry;
-    });
-
-    updateBotMessage({
-      tool_data: updatedToolData,
-    });
-
-    // Sync to store for persistence
-    const conversationId =
-      refs.current.newConversation.id ||
-      useChatStore.getState().activeConversationId;
-    if (refs.current.botMessage?.message_id && conversationId) {
-      updateBotMessageInStore(conversationId);
-    }
-  };
-
-  const handleToolInputs = (toolInputs: {
-    tool_call_id: string;
-    inputs: Record<string, unknown>;
-  }) => {
-    // Find and update the matching tool call entry with inputs
-    const existingToolData = refs.current.botMessage?.tool_data ?? [];
-    const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
-      if (entry.tool_name === "tool_calls_data") {
-        const data = entry.data as Record<string, unknown>;
-        if (data.tool_call_id === toolInputs.tool_call_id) {
-          return {
-            ...entry,
-            data: {
-              ...data,
-              inputs: toolInputs.inputs,
-            } as ToolDataEntry["data"],
-          };
-        }
-      }
-      return entry;
-    });
-
-    updateBotMessage({
-      tool_data: updatedToolData,
-    });
-
-    // Sync to store for persistence
-    const conversationId =
-      refs.current.newConversation.id ||
-      useChatStore.getState().activeConversationId;
-    if (refs.current.botMessage?.message_id && conversationId) {
-      updateBotMessageInStore(conversationId);
-    }
+    updateToolDataEntry(toolOutput.tool_call_id, (data) => ({
+      ...data,
+      output: toolOutput.output,
+    }));
   };
 
   const handleImageGeneration = (data: Record<string, unknown>) => {
@@ -309,29 +274,6 @@ export const useChatStream = () => {
     updateBotMessage({ loading: false });
   };
 
-  const persistUserMessage = async (
-    conversationId: string,
-    messageId: string,
-  ) => {
-    if (!refs.current.userMessage || !refs.current.optimisticUserId) return;
-
-    try {
-      await db.putMessage(
-        createIMessage(
-          messageId,
-          conversationId,
-          refs.current.userMessage.response || "",
-          "user",
-          "sent",
-          refs.current.userMessage,
-        ),
-      );
-      refs.current.userMessage.message_id = messageId;
-    } catch (error) {
-      console.error("Failed to persist user message:", error);
-    }
-  };
-
   const persistBotMessage = async (
     conversationId: string,
     messageId: string,
@@ -339,7 +281,19 @@ export const useChatStream = () => {
     if (!refs.current.botMessage) return;
 
     try {
-      // Initial creation in IndexedDB - will trigger event to update store
+      // Ensure bot message timestamp is AFTER user message for correct ordering
+      // Get user message timestamp and add 1ms offset
+      const userMessageDate = refs.current.userMessage?.date
+        ? new Date(refs.current.userMessage.date)
+        : new Date();
+      const botMessageDate = new Date(userMessageDate.getTime() + 1);
+
+      // Create a copy of botMessage with the corrected date
+      const botMessageWithDate: MessageType = {
+        ...refs.current.botMessage,
+        date: botMessageDate.toISOString(),
+      };
+
       await db.putMessage(
         createIMessage(
           messageId,
@@ -347,7 +301,7 @@ export const useChatStream = () => {
           "", // Empty content initially
           "assistant",
           "sending",
-          refs.current.botMessage,
+          botMessageWithDate,
         ),
       );
     } catch (error) {
@@ -360,16 +314,23 @@ export const useChatStream = () => {
     conversation_description: string | null;
     bot_message_id?: string;
     user_message_id?: string;
+    stream_id?: string;
   }) => {
     const {
       conversation_id,
       conversation_description,
       bot_message_id,
       user_message_id,
+      stream_id,
     } = data;
 
     refs.current.newConversation.id = conversation_id;
     refs.current.newConversation.description = conversation_description;
+
+    // Set stream_id for backend cancellation support
+    if (stream_id) {
+      streamController.setStreamId(stream_id);
+    }
 
     // CRITICAL: Update streamState with the new conversationId for sync protection
     // This prevents background sync from syncing this conversation while it's being streamed
@@ -385,26 +346,82 @@ export const useChatStream = () => {
 
     await handleConversationCreation(conversation_id, conversation_description);
 
-    if (user_message_id && refs.current.optimisticUserId) {
-      await persistUserMessage(conversation_id, user_message_id);
+    // Create IMessage objects for atomic persistence
+    let userIMessage: IMessage | null = null;
+    let botIMessage: IMessage | null = null;
+
+    if (
+      user_message_id &&
+      refs.current.optimisticUserId &&
+      refs.current.userMessage
+    ) {
+      userIMessage = createIMessage(
+        user_message_id,
+        conversation_id,
+        refs.current.userMessage.response || "",
+        "user",
+        "sent",
+        refs.current.userMessage,
+      );
+      refs.current.userMessage.message_id = user_message_id;
     }
 
-    if (bot_message_id) {
-      await persistBotMessage(conversation_id, bot_message_id);
+    if (bot_message_id && refs.current.botMessage) {
+      // Ensure bot message timestamp is AFTER user message for correct ordering
+      const userMessageDate = userIMessage?.createdAt ?? new Date();
+      const botMessageDate = new Date(userMessageDate.getTime() + 1);
+
+      const botMessageWithDate: MessageType = {
+        ...refs.current.botMessage,
+        date: botMessageDate.toISOString(),
+      };
+
+      botIMessage = createIMessage(
+        bot_message_id,
+        conversation_id,
+        "",
+        "assistant",
+        "sending",
+        botMessageWithDate,
+      );
     }
 
+    // Atomically persist both messages in a single transaction
+    // Events are emitted by persistMessagePair to update the store
+    try {
+      await db.persistMessagePair(userIMessage, botIMessage);
+    } catch (error) {
+      console.error("Failed to persist message pair:", error);
+      // On persistence failure, clear optimistic UI and abort
+      useChatStore.getState().clearOptimisticMessage();
+      return;
+    }
+
+    // Clear optimistic message now that real messages are in the store via events
     useChatStore.getState().clearOptimisticMessage();
     window.history.replaceState({}, "", `/c/${conversation_id}`);
     useChatStore.getState().setActiveConversationId(conversation_id);
+
+    // Set streaming indicator for sidebar
+    useChatStore.getState().setStreamingConversationId(conversation_id);
   };
 
   const handleExistingConversationMessages = async (data: {
     user_message_id: string;
     bot_message_id: string;
+    stream_id?: string;
   }) => {
-    const { user_message_id, bot_message_id } = data;
+    const { user_message_id, bot_message_id, stream_id } = data;
     const conversationId = useChatStore.getState().activeConversationId;
     if (!conversationId) return;
+
+    // Set stream_id for backend cancellation support
+    if (stream_id) {
+      streamController.setStreamId(stream_id);
+    }
+
+    // Set streaming indicator for sidebar (existing conversation)
+    useChatStore.getState().setStreamingConversationId(conversationId);
 
     if (refs.current.optimisticUserId) {
       try {
@@ -432,7 +449,13 @@ export const useChatStream = () => {
       refs.current.accumulatedResponse += data.response;
     }
 
-    const streamUpdates = parseStreamData(data, refs.current.botMessage);
+    // Skip tool_data and tool_output - they're handled separately
+    // to avoid double-processing in parseStreamData
+    const { tool_data: _, tool_output: __, ...restData } = data;
+    const streamUpdates = parseStreamData(
+      restData as Partial<MessageType>,
+      refs.current.botMessage,
+    );
 
     updateBotMessage({
       ...streamUpdates,
@@ -474,13 +497,32 @@ export const useChatStream = () => {
   const updateBotMessageInStore = (conversationId: string) => {
     if (!refs.current.botMessage?.message_id) return;
 
+    // Get existing message to preserve createdAt timestamp
+    const state = useChatStore.getState();
+    const existingMessages = state.messagesByConversation[conversationId] ?? [];
+    const existingMessage = existingMessages.find(
+      (m) => m.id === refs.current.botMessage?.message_id,
+    );
+
+    // Use existing createdAt, or derive from user message + 1ms offset for correct ordering
+    let createdAt: Date;
+    if (existingMessage?.createdAt) createdAt = existingMessage.createdAt;
+    else if (refs.current.userMessage?.date)
+      // Bot message should be after user message
+      createdAt = new Date(
+        new Date(refs.current.userMessage.date).getTime() + 1,
+      );
+    else if (refs.current.botMessage.date)
+      createdAt = new Date(refs.current.botMessage.date);
+    else createdAt = new Date();
+
     const updatedMessage: IMessage = {
       id: refs.current.botMessage.message_id,
       conversationId,
       content: refs.current.accumulatedResponse,
       role: "assistant",
       status: "sending",
-      createdAt: new Date(),
+      createdAt,
       updatedAt: new Date(),
       messageId: refs.current.botMessage.message_id,
       fileIds: refs.current.botMessage.fileIds,
@@ -512,26 +554,26 @@ export const useChatStream = () => {
     }
 
     try {
-      const data = event.data === "[DONE]" ? null : JSON.parse(event.data);
+      if (!event.data) return; // Skip empty events (@microsoft/fetch-event-source dispatches these for SSE comments)
       if (event.data === "[DONE]") return;
-      if (data.error) return data.error;
+      const data = JSON.parse(event.data);
+      if (data.keepalive) return; // Server keepalive ping, not real data
+      if (data.error) {
+        toast.error(data.error);
+        return data.error;
+      }
 
       if (data.main_response_complete) {
+        console.log("[handleStreamEvent] Received main_response_complete");
         handleMainResponseComplete();
         return;
       }
 
-      if (data.progress) {
-        handleProgressUpdate(data.progress);
-      }
+      // Handle tool_data events (tool calls with complete inputs)
+      if (data.tool_data) handleToolData(data.tool_data);
 
-      if (data.tool_output) {
-        handleToolOutput(data.tool_output);
-      }
-
-      if (data.tool_inputs) {
-        handleToolInputs(data.tool_inputs);
-      }
+      // Handle tool_output events (tool execution results)
+      if (data.tool_output) handleToolOutput(data.tool_output);
 
       if (handleImageGeneration(data)) return;
 
@@ -541,9 +583,9 @@ export const useChatStream = () => {
         data.user_message_id &&
         data.bot_message_id &&
         !refs.current.newConversation.id
-      ) {
+      )
         await handleExistingConversationMessages(data);
-      } else if (
+      else if (
         data.conversation_description &&
         refs.current.newConversation.id
       ) {
@@ -570,60 +612,99 @@ export const useChatStream = () => {
   };
 
   const handleStreamClose = async () => {
-    streamState.endStream();
     try {
-      if (!refs.current.botMessage) return;
+      if (!refs.current.botMessage?.message_id) {
+        // No valid bot message to persist - this can happen if stream closes
+        // before backend sends message IDs. Still need to fully reset state!
+        console.warn(
+          "[handleStreamClose] No bot message ID - resetting state without persistence",
+        );
+        setIsLoading(false);
+        resetLoadingText();
+        streamController.clear();
+        streamState.endStream();
+        streamInProgressRef.current = false;
+        refs.current.botMessage = null;
+        refs.current.currentStreamingMessages = [];
+        refs.current.newConversation = { id: null, description: null };
+        useChatStore.getState().setStreamingConversationId(null);
+        return;
+      }
 
+      // Update bot message with loading: false BEFORE hiding the loading indicator
+      // This ensures the message shows immediately when loading disappears
+      updateBotMessage({ loading: false });
+
+      const conversationId =
+        refs.current.newConversation.id ||
+        useChatStore.getState().activeConversationId;
+
+      // Update the store with final message state BEFORE hiding loading
+      // This prevents the gap where loading is hidden but message isn't updated
+      if (refs.current.botMessage?.message_id && conversationId) {
+        updateBotMessageInStore(conversationId);
+      }
+
+      // Now safe to hide loading - message is already visible in store
       setIsLoading(false);
       resetLoadingText();
       streamController.clear();
 
-      if (refs.current.botMessage && refs.current.newConversation.id) {
-        updateBotMessage({ loading: false });
-      }
+      console.log("[handleStreamClose] Persisting bot message:", {
+        hasConversationId: !!conversationId,
+        conversationId,
+        botMessageId: refs.current.botMessage.message_id,
+        responseLength: refs.current.accumulatedResponse.length,
+      });
 
-      // Persist final message state to IndexedDB after stream completion
-      if (refs.current.botMessage?.message_id) {
-        const conversationId =
-          refs.current.newConversation.id ||
-          useChatStore.getState().activeConversationId;
+      if (conversationId) {
+        try {
+          // Use refs.current.botMessage directly as single source of truth
+          const finalMessage = createIMessage(
+            refs.current.botMessage.message_id,
+            conversationId,
+            refs.current.accumulatedResponse,
+            "assistant",
+            "sent",
+            refs.current.botMessage,
+          );
 
-        if (conversationId) {
-          try {
-            // Get the complete message from store to ensure all streamed data is persisted
-            const messageFromStore = useChatStore
-              .getState()
-              .messagesByConversation[conversationId]?.find(
-                (msg) => msg.id === refs.current.botMessage?.message_id,
-              );
+          // Persist the complete message with final status
+          // Event emission will automatically update the store
+          await db.putMessage(finalMessage);
+          console.log(
+            "[handleStreamClose] Bot message persisted successfully:",
+            finalMessage.id,
+          );
 
-            if (messageFromStore) {
-              // Persist the complete message with final status
-              await db.putMessage({
-                ...messageFromStore,
-                status: "sent",
-                updatedAt: new Date(),
-              });
-            }
-
-            // Update conversation metadata only when stream ends
-            await db.updateConversationFields(conversationId, {
-              updatedAt: new Date(),
-            });
-          } catch (error) {
-            console.error("Failed to persist final message:", error);
-          }
+          // Update conversation metadata only when stream ends
+          await db.updateConversationFields(conversationId, {
+            updatedAt: new Date(),
+          });
+        } catch (error) {
+          console.error("Failed to persist final message:", error);
         }
+      } else {
+        console.warn(
+          "[handleStreamClose] No conversation ID - message not persisted!",
+        );
       }
+
+      // CRITICAL: End stream state AFTER all persistence is done
+      // This prevents sync from running and overwriting messages during persistence
+      streamState.endStream();
 
       // Reset stream state after successful completion
       streamInProgressRef.current = false;
-      streamState.endStream();
       refs.current.botMessage = null;
       refs.current.currentStreamingMessages = [];
       refs.current.newConversation = { id: null, description: null };
+
+      // Clear streaming indicator
+      useChatStore.getState().setStreamingConversationId(null);
     } catch (error) {
       console.error("Error handling stream close:", error);
+      streamState.endStream();
       resetStreamState(); // Ensure state is reset even on error
     }
   };
@@ -634,6 +715,11 @@ export const useChatStream = () => {
 
     // Handle non-abort errors
     if (error.name !== "AbortError") {
+      // Show error toast for transparency
+      toast.error(
+        error.message || "An error occurred while processing your message",
+      );
+
       // Save the user's input text for restoration on error
       if (refs.current.userPrompt) {
         useComposerStore.getState().setInputText(refs.current.userPrompt);
@@ -667,6 +753,12 @@ export const useChatStream = () => {
       useChatStore.getState().activeConversationId ||
       refs.current.newConversation.id;
     streamState.startStream(conversationId);
+
+    // Track chat started event
+    trackEvent(ANALYTICS_EVENTS.CHAT_STARTED, {
+      conversation_id: conversationId,
+      is_new_conversation: !useChatStore.getState().activeConversationId,
+    });
 
     try {
       refs.current.accumulatedResponse = "";
@@ -705,18 +797,42 @@ export const useChatStream = () => {
       const controller = new AbortController();
       setAbortController(controller);
 
-      // Register the save callback for when user clicks stop
-      streamController.setSaveCallback(() => {
-        // Update the UI immediately when stop is clicked
-        if (refs.current.botMessage) {
-          updateBotMessage({
-            response: refs.current.accumulatedResponse,
-            loading: false,
-          });
-        }
+      // Register the stop callback for when user clicks stop
+      // This persists the current accumulated response to Dexie immediately
+      streamController.setSaveCallback(async () => {
+        // Set pending save flag to block sync operations during save
+        streamState.setPendingSave(true);
 
-        // Save the incomplete conversation
-        saveIncompleteConversation();
+        try {
+          // Update the UI immediately when stop is clicked
+          if (refs.current.botMessage) {
+            updateBotMessage({
+              response: refs.current.accumulatedResponse,
+              loading: false,
+            });
+
+            // Persist accumulated response to Dexie using atomic merge-update
+            // This preserves existing metadata (tool_data, follow_up_actions, image_data, etc.)
+            const conversationId =
+              refs.current.newConversation.id ||
+              useChatStore.getState().activeConversationId;
+
+            if (conversationId && refs.current.botMessage.message_id) {
+              // Use updateMessage for atomic merge-update instead of putMessage
+              // This only updates content/status/updatedAt while preserving all other fields
+              await db.updateMessage(refs.current.botMessage.message_id, {
+                content: refs.current.accumulatedResponse,
+                status: "sent",
+              });
+            }
+          }
+        } catch (error) {
+          console.error("Failed to persist message on abort:", error);
+        } finally {
+          // Clear pending save flag after save completes
+          streamState.setPendingSave(false);
+        }
+        // Note: Backend also saves - streamController.abort() schedules sync after 3s
       });
 
       await chatApi.fetchChatStream(

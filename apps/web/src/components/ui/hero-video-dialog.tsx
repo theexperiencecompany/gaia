@@ -1,10 +1,9 @@
 "use client";
 
-import { AnimatePresence, motion } from "motion/react";
+import { Cancel01Icon, PlayIcon } from "@icons";
+import { AnimatePresence, m } from "motion/react";
 import Image from "next/image";
 import { useState } from "react";
-
-import { Cancel01Icon, PlayIcon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 type AnimationStyle =
@@ -93,7 +92,7 @@ export default function HeroVideoDialog({
           priority
           fetchPriority="high"
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 90vw, 1200px"
-          className="h-full w-full rounded-3xl object-cover shadow-lg outline-2 outline-surface-400 transition-all duration-200 ease-out group-hover:brightness-[0.8]"
+          className="h-full w-full rounded-3xl object-cover shadow-lg outline-2 outline-zinc-600 transition-all duration-200 ease-out group-hover:brightness-[0.8]"
         />
         <div className="absolute inset-0 flex scale-[0.9] items-center justify-center rounded-3xl transition-all duration-200 ease-out group-hover:scale-100">
           <div className="flex size-28 items-center justify-center rounded-full bg-primary/10 backdrop-blur-md">
@@ -113,7 +112,7 @@ export default function HeroVideoDialog({
       </button>
       <AnimatePresence>
         {isVideoOpen && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             role="button"
@@ -127,14 +126,14 @@ export default function HeroVideoDialog({
             exit={{ opacity: 0 }}
             className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-md"
           >
-            <motion.div
+            <m.div
               {...selectedAnimation}
               transition={{ type: "spring", damping: 30, stiffness: 300 }}
               className="relative mx-4 aspect-video w-full max-w-4xl md:mx-0"
             >
-              <motion.button className="absolute -top-16 right-0 rounded-full bg-surface-900/50 p-2 text-xl text-foreground-900 ring-1 backdrop-blur-md dark:bg-surface-100/50">
+              <m.button className="absolute -top-16 right-0 rounded-full bg-neutral-900/50 p-2 text-xl text-white ring-1 backdrop-blur-md dark:bg-neutral-100/50 dark:text-black">
                 <Cancel01Icon className="size-5" />
-              </motion.button>
+              </m.button>
               <div className="relative isolate z-[1] size-full overflow-hidden rounded-2xl border-2 border-white">
                 <iframe
                   src={videoSrc}
@@ -144,8 +143,8 @@ export default function HeroVideoDialog({
                   allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
                 />
               </div>
-            </motion.div>
-          </motion.div>
+            </m.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>
