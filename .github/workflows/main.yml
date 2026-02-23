@@ -11,7 +11,7 @@ on:
 
 jobs:
   quality-checks:
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: write
 
