@@ -134,7 +134,7 @@ function addToWindowsPath(binDir: string): boolean {
     const currentPath = tryExec(
       "powershell -Command \"[Environment]::GetEnvironmentVariable('Path', 'User')\"",
     );
-    if (currentPath && currentPath.includes(binDir)) return true;
+    if (currentPath?.includes(binDir)) return true;
 
     execSync(`setx PATH "${binDir};${currentPath || ""}"`, {
       stdio: ["pipe", "pipe", "pipe"],

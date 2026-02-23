@@ -1,28 +1,26 @@
 name: Desktop Release
 
+# Builds desktop installers for each OS and uploads artifacts to the published GitHub Release.
 on:
+  # Fires after a release is published; workflow filters to desktop tags below.
   release:
     types: [published]
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: "Release tag to build for (e.g., desktop-v1.0.0)"
-        required: false
 
 concurrency:
-  group: desktop-release-${{ github.event.release.tag_name || inputs.tag || github.run_id }}
+  # Prevent duplicate builds for the same release tag.
+  group: desktop-release-${{ github.event.release.tag_name || github.run_id }}
   cancel-in-progress: false
 
 permissions:
+  # Needed to upload build artifacts to GitHub Releases.
   contents: write
 
 jobs:
   build:
-    # Only run for desktop releases (tag starts with 'desktop-v') or manual dispatch
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      startsWith(github.event.release.tag_name, 'desktop-v')
+    # Only run for desktop release tags (example: desktop-v0.1.2).
+    if: startsWith(github.event.release.tag_name, 'desktop-v')
 
+    # Build installers in parallel across supported operating systems.
     strategy:
       fail-fast: false
       matrix:
@@ -37,8 +35,10 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
+      # Checkout source for package/build tooling.
       - uses: actions/checkout@v4
 
+      # Install Node package manager + runtime.
       - uses: pnpm/action-setup@v4
         with:
           version: 10.17.1
@@ -51,11 +51,11 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      # Extract version from tag (remove component prefix and 'v') and update package.json
+      # Keep desktop package version aligned with release tag before packaging.
       - name: Set version from tag
         shell: bash
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          TAG="${{ github.event.release.tag_name }}"
           if [ -n "$TAG" ]; then
             # Strip component prefix (e.g., 'desktop-v0.11.0' -> '0.11.0')
             VERSION="${TAG#*-v}"
@@ -65,21 +65,32 @@ jobs:
             cd apps/desktop
             # Update version in package.json using node
             node -e "const pkg = require('./package.json'); pkg.version = '$VERSION'; require('fs').writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');"
-            echo "Updated package.json version to: $(node -p 'require(\"./package.json\").version')"
+            UPDATED_VERSION="$(node -p 'require("./package.json").version')"
+            echo "Updated package.json version to: $UPDATED_VERSION"
           else
             echo "No tag provided, using version from package.json"
           fi
 
+      # Linux builders need extra packaging tools for .rpm output.
+      - name: Install Linux packaging dependencies
+        if: matrix.target == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      # Build platform-specific desktop distribution artifacts.
       - name: Build Desktop (${{ matrix.target }})
-        run: nx dist:${{ matrix.target }} desktop
+        run: pnpm nx dist:${{ matrix.target }} desktop
         env:
+          CI: true
           NEXT_PUBLIC_API_BASE_URL: https://api.heygaia.io/api/v1/
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+      # Attach all generated installer/update files to the existing release entry.
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.event.release.tag_name || inputs.tag }}
+          tag_name: ${{ github.event.release.tag_name }}
           files: |
             apps/desktop/release/**/*.dmg
             apps/desktop/release/**/*.zip

@@ -3,6 +3,6 @@
   "apps/desktop": "0.1.1",
   "apps/mobile": "0.3.0",
   "apps/web": "0.15.0",
-  "apps/bots": "0.1.0",
-  "packages/cli": "0.1.10"
+  "apps/bots": "1.0.0",
+  "packages/cli": "0.1.15"
 }

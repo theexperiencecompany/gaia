@@ -4,7 +4,6 @@ services:
   # FastAPI Application
   gaia-backend:
     container_name: gaia-backend
-    profiles: ["", "backend-only"]
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
     command:
@@ -65,7 +64,6 @@ services:
   chromadb:
     image: chromadb/chroma:1.0.0
     container_name: chromadb
-    profiles: ["", "backend-only"]
     volumes:
       - chroma_data:/chroma/chroma
     environment:
@@ -88,7 +86,6 @@ services:
   postgres:
     image: postgres:alpine
     container_name: postgres
-    profiles: ["", "backend-only"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
@@ -110,7 +107,6 @@ services:
   redis:
     image: redis:alpine
     container_name: redis
-    profiles: ["", "backend-only"]
     ports:
       - "6379:6379"
     restart: always
@@ -128,7 +124,6 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
-    profiles: ["", "backend-only"]
     ports:
       - "5672:5672" # AMQP protocol
       - "15672:15672" # Management UI
@@ -147,7 +142,6 @@ services:
   arq_worker:
     container_name: arq_worker
     image: ghcr.io/theexperiencecompany/gaia:latest
-    profiles: ["", "backend-only"]
     working_dir: /app/apps/api
     env_file:
       - ../../apps/api/.env
@@ -175,7 +169,7 @@ services:
     profiles: ["bots"]
     image: ghcr.io/theexperiencecompany/gaia-bot-discord:latest
     env_file:
-      - ../../apps/bots/discord/.env
+      - ../../apps/bots/.env
     restart: always
     depends_on:
       gaia-backend:
@@ -189,7 +183,7 @@ services:
     profiles: ["bots"]
     image: ghcr.io/theexperiencecompany/gaia-bot-slack:latest
     env_file:
-      - ../../apps/bots/slack/.env
+      - ../../apps/bots/.env
     restart: always
     depends_on:
       gaia-backend:
@@ -203,7 +197,7 @@ services:
     profiles: ["bots"]
     image: ghcr.io/theexperiencecompany/gaia-bot-telegram:latest
     env_file:
-      - ../../apps/bots/telegram/.env
+      - ../../apps/bots/.env
     restart: always
     depends_on:
       gaia-backend:

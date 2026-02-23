@@ -1,28 +1,32 @@
 name: Publish CLI
 
+# Publishes @heygaia/cli from an explicit release tag/version pair.
 on:
-  push:
-    tags:
-      - 'cli-v*'
+  # Manual dispatch keeps CLI publish intentional and auditable.
   workflow_dispatch:
     inputs:
+      # Expected format: cli-vX.Y.Z.
       tag:
         description: 'Release tag (e.g. cli-v0.1.3)'
-        required: false
+        required: true
+      # Expected format: X.Y.Z.
       version:
         description: 'Release version (e.g. 0.1.3)'
-        required: false
+        required: true
 
 jobs:
   publish:
+    # OIDC token enables npm provenance signing.
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write
     steps:
+      # Checkout repository to read package and release manifest metadata.
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Install Node toolchain for build/publish.
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -31,18 +35,43 @@ jobs:
         with:
           node-version: '22'
           registry-url: 'https://registry.npmjs.org'
-          cache: 'pnpm'
 
+      # Normalize manual inputs into reusable step outputs.
+      - name: Resolve release inputs
+        id: release
+        run: |
+          set -euo pipefail
+
+          TAG="${{ github.event.inputs.tag }}"
+          VERSION="${{ github.event.inputs.version }}"
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      # Validate tag/version/manifest consistency and skip if npm already has this version.
+      - name: Verify CLI release tag/version and npm idempotency
+        id: verify
+        run: node scripts/ci/verify-cli-release.mjs --tag "${{ steps.release.outputs.tag }}" --version "${{ steps.release.outputs.version }}"
+
+      # Build only when publish is actually required.
       - name: Install dependencies
+        if: steps.verify.outputs.should_publish == 'true'
         run: pnpm install --frozen-lockfile
         working-directory: packages/cli
 
       - name: Build
+        if: steps.verify.outputs.should_publish == 'true'
         run: pnpm run build
         working-directory: packages/cli
 
       - name: Publish to npm
+        if: steps.verify.outputs.should_publish == 'true'
         run: npm publish --provenance --access public
         working-directory: packages/cli
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Idempotent rerun path: emit clear skip message.
+      - name: Skip publish for existing npm version
+        if: steps.verify.outputs.should_publish != 'true'
+        run: echo "Skipping publish because @heygaia/cli@${{ steps.release.outputs.version }} already exists on npm."

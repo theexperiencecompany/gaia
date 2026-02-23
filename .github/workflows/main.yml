@@ -1,31 +1,93 @@
 name: Quality Checks
 
+# Primary CI gate: validates code quality and enforces branch promotion policy.
 on:
+  # PR validation for both integration (develop) and production promotion (master).
   pull_request:
     branches:
       - develop
+      - master
+  # Push checks on master; successful runs trigger downstream build/deploy workflow.
   push:
     branches:
       - master
+  # Manual trigger for ad-hoc CI execution.
   workflow_dispatch:
 
 jobs:
+  # Runs lint/type/build checks and enforces master branch workflow rules.
   quality-checks:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: read
+      actions: read
 
     steps:
+      # Full history improves Nx affected/base-head resolution.
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # Enforce that master only receives changes promoted from develop or release-please.
+      - name: Enforce master promotion policy
+        if: >-
+          (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
+          (github.event_name == 'pull_request' && github.base_ref == 'master')
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { owner, repo } = context.repo;
+            const isAllowedMasterSource = (ref) =>
+              ref === "develop" || (typeof ref === "string" && ref.startsWith("release-please--"));
+
+            if (context.eventName === "pull_request") {
+              const pr = context.payload.pull_request;
+              if (pr.base.ref === "master" && !isAllowedMasterSource(pr.head.ref)) {
+                core.setFailed(
+                  `PRs to master must come from develop or release-please branches. Received '${pr.head.ref}' -> '${pr.base.ref}'.`,
+                );
+                return;
+              }
+              core.info(`Master PR policy passed: ${pr.head.ref} -> ${pr.base.ref}`);
+              return;
+            }
+
+            if (context.eventName === "push" && context.ref === "refs/heads/master") {
+              const commitSha = context.payload.after || context.sha;
+              const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
+                owner,
+                repo,
+                commit_sha: commitSha,
+              });
+
+              const mergedPr = prs.find((pr) => pr.base?.ref === "master" && pr.merged_at);
+              if (!mergedPr) {
+                core.setFailed(
+                  `Direct push to master is not allowed. Commit ${commitSha} is not associated with a merged PR to master from an allowed source branch.`,
+                );
+                return;
+              }
+
+              if (!isAllowedMasterSource(mergedPr.head?.ref)) {
+                core.setFailed(
+                  `PR #${mergedPr.number} merged into master from '${mergedPr.head?.ref}'. Only 'develop' or release-please branches are allowed.`,
+                );
+                return;
+              }
+
+              core.info(`Master push policy passed via PR #${mergedPr.number} from '${mergedPr.head?.ref}'.`);
+            }
+
+      # Compute NX_BASE/NX_HEAD for affected-task execution.
       - name: Set Nx SHAs
         uses: nrwl/nx-set-shas@v4
         with:
           main-branch-name: master
 
+      # Toolchain bootstrap for Node + Python quality checks.
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
@@ -42,8 +104,13 @@ jobs:
         with:
           enable-cache: true
 
+      # Install workspace dependencies once for all checks.
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
+
+      # Guard against release manifest/version drift before releases are cut.
+      - name: Validate release manifest versions
+        run: node scripts/ci/validate-release-manifest.mjs
 
       - name: Sync Python dependencies (Nx cached)
         run: npx nx sync api
@@ -64,13 +131,14 @@ jobs:
         run: bash scripts/dead-code-check.sh
         # Temporarily disable --strict flag.
 
+      # Execute only checks impacted by the current change-set.
       - name: Run affected quality checks
         run: npx nx affected -t lint type-check build --parallel=3
         env:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
           # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
-  # Only trigger builds on master when checks pass
+  # Only trigger image build/deploy planning on master after quality gate passes.
   trigger-build:
     needs: [quality-checks]
     if: github.ref == 'refs/heads/master'

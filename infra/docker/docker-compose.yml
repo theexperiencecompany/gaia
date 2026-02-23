@@ -202,7 +202,7 @@ services:
       context: ../..
       dockerfile: apps/bots/discord/Dockerfile
     env_file:
-      - ../../apps/bots/discord/.env
+      - ../../apps/bots/.env
     restart: on-failure
     depends_on:
       gaia-backend:
@@ -218,7 +218,7 @@ services:
       context: ../..
       dockerfile: apps/bots/slack/Dockerfile
     env_file:
-      - ../../apps/bots/slack/.env
+      - ../../apps/bots/.env
     restart: on-failure
     depends_on:
       gaia-backend:
@@ -234,7 +234,7 @@ services:
       context: ../..
       dockerfile: apps/bots/telegram/Dockerfile
     env_file:
-      - ../../apps/bots/telegram/.env
+      - ../../apps/bots/.env
     restart: on-failure
     depends_on:
       gaia-backend:
