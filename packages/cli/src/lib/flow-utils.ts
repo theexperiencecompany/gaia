@@ -21,15 +21,13 @@ export const createLogHandler =
   };
 
 /**
- * Runs git, docker, and mise prerequisite checks.
- * Updates the store and returns { gitStatus, dockerInfo, dockerStatus, miseStatus }.
+ * Runs git and docker prerequisite checks.
  * Sets store error and returns null on hard failure (git or docker missing).
  */
-export async function runPrerequisiteChecks(store: CLIStore): Promise<{
+export async function runBasePrerequisiteChecks(store: CLIStore): Promise<{
   gitStatus: string;
   dockerStatus: string;
   dockerInfo: Awaited<ReturnType<typeof prereqs.checkDockerDetailed>>;
-  miseStatus: string;
 } | null> {
   store.updateData("checks", {
     git: "pending",
@@ -53,22 +51,6 @@ export async function runPrerequisiteChecks(store: CLIStore): Promise<{
   });
   if (!dockerInfo.working) {
     store.updateData("dockerError", dockerInfo.errorMessage);
-  }
-
-  let miseStatus = await prereqs.checkMise();
-  store.updateData("checks", {
-    ...store.currentState.data.checks,
-    mise: miseStatus,
-  });
-
-  if (miseStatus === "missing") {
-    store.setStatus("Installing Mise...");
-    const installed = await prereqs.installMise();
-    miseStatus = installed ? "success" : "error";
-    store.updateData("checks", {
-      ...store.currentState.data.checks,
-      mise: miseStatus,
-    });
   }
 
   const failedChecks: Array<{ name: string; message?: string }> = [];
@@ -99,7 +81,42 @@ export async function runPrerequisiteChecks(store: CLIStore): Promise<{
     return null;
   }
 
-  return { gitStatus, dockerStatus, dockerInfo, miseStatus };
+  return { gitStatus, dockerStatus, dockerInfo };
+}
+
+/**
+ * Runs developer-only Mise prerequisite checks and auto-installs when missing.
+ * Sets store error and returns null if setup cannot continue.
+ */
+export async function runDeveloperPrerequisiteChecks(
+  store: CLIStore,
+): Promise<"success" | null> {
+  let miseStatus = await prereqs.checkMise();
+  store.updateData("checks", {
+    ...store.currentState.data.checks,
+    mise: miseStatus,
+  });
+
+  if (miseStatus === "missing") {
+    store.setStatus("Installing Mise...");
+    const installed = await prereqs.installMise();
+    miseStatus = installed ? "success" : "error";
+    store.updateData("checks", {
+      ...store.currentState.data.checks,
+      mise: miseStatus,
+    });
+  }
+
+  if (miseStatus === "error") {
+    store.setError(
+      new Error(
+        `Developer mode requires Mise but it failed to install.\n  • Mise: ${prereqs.PREREQUISITE_URLS.mise}`,
+      ),
+    );
+    return null;
+  }
+
+  return "success";
 }
 
 /**

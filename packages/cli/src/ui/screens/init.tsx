@@ -179,7 +179,7 @@ const FinishedStep: React.FC<{
         </Box>
 
         <Box marginTop={1}>
-          <Text color="gray">gaia stop · gaia status · gaia setup</Text>
+          <Text color="gray">gaia logs · gaia stop · gaia status · gaia setup</Text>
         </Box>
 
         <Box marginTop={1}>
@@ -205,7 +205,7 @@ const FinishedStep: React.FC<{
 
       <Box marginTop={1}>
         <Text bold>Run: </Text>
-        <Text color="cyan">$ gaia start</Text>
+        <Text color="cyan">$ gaia dev</Text>
       </Box>
 
       <Box marginTop={1} flexDirection="column">
@@ -224,7 +224,9 @@ const FinishedStep: React.FC<{
       </Box>
 
       <Box marginTop={1}>
-        <Text color="gray">gaia stop · gaia status · gaia setup</Text>
+        <Text color="gray">
+          gaia dev full · gaia logs · gaia stop · gaia status · gaia setup
+        </Text>
       </Box>
 
       <Box marginTop={1}>
@@ -412,7 +414,8 @@ export const StartServicesStep: React.FC<{
           </Box>
         ) : (
           <Box flexDirection="column">
-            <Text color="cyan">$ gaia start</Text>
+            <Text color="cyan">$ gaia dev</Text>
+            <Text color="cyan">$ gaia dev full</Text>
           </Box>
         )}
       </Box>
@@ -475,7 +478,7 @@ export const ServicesRunningStep: React.FC<{
       </Box>
 
       <Box marginTop={1}>
-        <Text color="gray">gaia stop · gaia status · gaia setup</Text>
+        <Text color="gray">gaia logs · gaia stop · gaia status · gaia setup</Text>
       </Box>
 
       <Box marginTop={1}>
@@ -513,12 +516,14 @@ export const ManualCommandsStep: React.FC<{
       <Box marginTop={1}>
         <Text>Run: </Text>
         <Text color="cyan" bold>
-          $ gaia start
+          $ gaia dev
         </Text>
       </Box>
 
       <Box marginTop={1}>
-        <Text color="gray">gaia stop · gaia status · gaia setup</Text>
+        <Text color="gray">
+          gaia dev full · gaia logs · gaia stop · gaia status · gaia setup
+        </Text>
       </Box>
 
       <Box marginTop={1}>
@@ -1526,28 +1531,6 @@ export const InitScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
           }
           logs={state.data.dependencyLogs || []}
         />
-      )}
-
-      {state.step === "Installing CLI" && (
-        <Box
-          flexDirection="column"
-          borderStyle="round"
-          padding={1}
-          borderColor={THEME_COLOR}
-        >
-          <Text bold color={THEME_COLOR}>
-            Installing CLI
-          </Text>
-          <Box marginTop={1}>
-            <Spinner
-              label={state.status || "Installing gaia CLI globally..."}
-            />
-          </Box>
-          {state.data.cliInstallLogs &&
-            (state.data.cliInstallLogs as string[]).length > 0 && (
-              <LogWindow logs={state.data.cliInstallLogs as string[]} />
-            )}
-        </Box>
       )}
 
       {state.error && <ErrorStep message={state.error.message} />}

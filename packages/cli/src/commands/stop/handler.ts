@@ -1,10 +1,11 @@
 import { render } from "ink";
 import React from "react";
+import type { StopServicesOptions } from "../../lib/service-starter.js";
 import { App } from "../../ui/app.js";
 import { createStore } from "../../ui/store.js";
 import { runStopFlow } from "./flow.js";
 
-export async function runStop(): Promise<void> {
+export async function runStop(options?: StopServicesOptions): Promise<void> {
   const store = createStore();
 
   const { unmount } = render(
@@ -21,7 +22,7 @@ export async function runStop(): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 50));
 
   try {
-    await runStopFlow(store);
+    await runStopFlow(store, options);
   } catch (error) {
     store.setError(error as Error);
   } finally {

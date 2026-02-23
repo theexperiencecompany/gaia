@@ -1,8 +1,15 @@
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
-import { findRepoRoot, stopServices } from "../../lib/service-starter.js";
+import {
+  findRepoRoot,
+  type StopServicesOptions,
+  stopServices,
+} from "../../lib/service-starter.js";
 import type { CLIStore } from "../../ui/store.js";
 
-export async function runStopFlow(store: CLIStore): Promise<void> {
+export async function runStopFlow(
+  store: CLIStore,
+  options?: StopServicesOptions,
+): Promise<void> {
   store.setStep("Stopping");
   store.setStatus("Locating GAIA repository...");
 
@@ -17,6 +24,7 @@ export async function runStopFlow(store: CLIStore): Promise<void> {
   }
 
   store.updateData("repoPath", repoPath);
+  store.updateData("stopMode", options?.forcePorts ? "force-ports" : "safe");
   const portOverrides = readDockerComposePortOverrides(repoPath);
 
   try {
@@ -26,10 +34,15 @@ export async function runStopFlow(store: CLIStore): Promise<void> {
         store.setStatus(status);
       },
       portOverrides,
+      options,
     );
 
     store.setStep("Stopped");
-    store.setStatus("All services stopped.");
+    store.setStatus(
+      options?.forcePorts
+        ? "All services stopped (force-port mode)."
+        : "All services stopped (safe mode).",
+    );
     store.updateData("stopped", true);
   } catch (e) {
     store.setError(

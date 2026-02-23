@@ -163,10 +163,12 @@ export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
                 </Text>
               </Box>
               <Box marginTop={1} flexDirection="column">
-                <Text color="gray">Dev servers started in background.</Text>
                 <Text color="gray">
-                  Logs: <Text color={THEME_COLOR}>dev-start.log</Text> in your
-                  repo root.
+                  Use gaia dev / gaia dev full for foreground Nx TUI.
+                </Text>
+                <Text color="gray">
+                  Run <Text color={THEME_COLOR}>gaia logs</Text> to stream
+                  logs.
                 </Text>
                 <Text color="gray">
                   Run <Text color={THEME_COLOR}>gaia stop</Text> to shut down.
@@ -192,8 +194,16 @@ export const ServiceScreen: React.FC<ServiceScreenProps> = ({ store }) => {
           borderColor={THEME_COLOR}
         >
           <Text color={THEME_COLOR} bold>
-            {"\u2713"} All GAIA services stopped.
+            {"\u2713"} {state.status || "All GAIA services stopped."}
           </Text>
+          {state.data.stopMode === "force-ports" && (
+            <Box marginTop={1}>
+              <Text color="yellow">
+                Force-port cleanup was enabled and may have stopped non-GAIA
+                listeners on app ports.
+              </Text>
+            </Box>
+          )}
           <Box marginTop={1}>
             <Text dimColor>
               <Text bold>Enter</Text> to exit

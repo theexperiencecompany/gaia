@@ -153,7 +153,7 @@ const FinishedStep: React.FC<{
   setupMode?: string;
   portOverrides?: Record<number, number>;
   onConfirm: () => void;
-}> = ({ portOverrides, onConfirm }) => {
+}> = ({ setupMode, portOverrides, onConfirm }) => {
   useInput((_input, key) => {
     if (key.return) onConfirm();
   });
@@ -175,7 +175,9 @@ const FinishedStep: React.FC<{
 
       <Box marginTop={1}>
         <Text bold>Run: </Text>
-        <Text color="cyan">$ gaia start</Text>
+        <Text color="cyan">
+          {setupMode === "selfhost" ? "$ gaia start" : "$ gaia dev"}
+        </Text>
       </Box>
 
       <Box marginTop={1} flexDirection="column">
@@ -194,7 +196,11 @@ const FinishedStep: React.FC<{
       </Box>
 
       <Box marginTop={1}>
-        <Text color="gray">gaia stop · gaia status · gaia setup</Text>
+        <Text color="gray">
+          {setupMode === "selfhost"
+            ? "gaia logs · gaia stop · gaia status · gaia setup"
+            : "gaia dev full · gaia logs · gaia stop · gaia status · gaia setup"}
+        </Text>
       </Box>
 
       <Box marginTop={1}>

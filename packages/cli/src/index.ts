@@ -1,22 +1,26 @@
 #!/usr/bin/env node
 
 import { Command } from "commander";
+import { CLI_COMMAND_DESCRIPTIONS } from "./command-manifest.js";
 import { runInit } from "./commands/init/handler.js";
 import { runSetup } from "./commands/setup/handler.js";
 import { runStart } from "./commands/start/handler.js";
 import { runStatus } from "./commands/status/handler.js";
 import { runStop } from "./commands/stop/handler.js";
+import { runDev } from "./commands/dev/handler.js";
+import { runLogs } from "./commands/stream-logs/handler.js";
+import { CLI_VERSION } from "./lib/version.js";
 
 const program = new Command();
 
 program
   .name("gaia")
   .description("CLI tool for setting up and managing GAIA")
-  .version("0.1.0");
+  .version(CLI_VERSION);
 
 program
   .command("init")
-  .description("Full setup from scratch (clone, configure, start)")
+  .description(CLI_COMMAND_DESCRIPTIONS.init)
   .option("--branch <branch>", "Git branch to clone")
   .action(async (options: { branch?: string }) => {
     await runInit({ branch: options.branch });
@@ -24,21 +28,21 @@ program
 
 program
   .command("setup")
-  .description("Configure an existing GAIA repository")
+  .description(CLI_COMMAND_DESCRIPTIONS.setup)
   .action(async () => {
     await runSetup();
   });
 
 program
   .command("status")
-  .description("Check health of all GAIA services")
+  .description(CLI_COMMAND_DESCRIPTIONS.status)
   .action(async () => {
     await runStatus();
   });
 
 program
   .command("start")
-  .description("Start GAIA services")
+  .description(CLI_COMMAND_DESCRIPTIONS.start)
   .option("-b, --build", "Rebuild Docker images before starting")
   .option("--pull", "Pull latest base images before starting")
   .action(async (options: { build?: boolean; pull?: boolean }) => {
@@ -46,10 +50,38 @@ program
   });
 
 program
-  .command("stop")
-  .description("Stop all GAIA services")
+  .command("dev [profile]")
+  .description(CLI_COMMAND_DESCRIPTIONS.dev)
+  .action(async (profile?: string) => {
+    try {
+      await runDev(profile);
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command("logs")
+  .description(CLI_COMMAND_DESCRIPTIONS.logs)
   .action(async () => {
-    await runStop();
+    try {
+      await runLogs();
+    } catch (error) {
+      console.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command("stop")
+  .description(CLI_COMMAND_DESCRIPTIONS.stop)
+  .option(
+    "--force-ports",
+    "Aggressively stop processes listening on API/Web ports (may affect non-GAIA processes)",
+  )
+  .action(async (options: { forcePorts?: boolean }) => {
+    await runStop({ forcePorts: options.forcePorts });
   });
 
 // Show help when no command is given instead of silently running init

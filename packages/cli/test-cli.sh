@@ -1,70 +1,77 @@
-#!/bin/bash
-# GAIA CLI Testing Script
+#!/usr/bin/env bash
 
+set -euo pipefail
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+CLI_ENTRY="$ROOT_DIR/packages/cli/dist/index.js"
+PACKAGE_JSON="$ROOT_DIR/packages/cli/package.json"
+
+if [[ ! -f "$CLI_ENTRY" ]]; then
+  echo "Missing built CLI at $CLI_ENTRY"
+  echo "Run: pnpm -C packages/cli build"
+  exit 1
+fi
+
+assert_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local message="$3"
+
+  if [[ "$haystack" != *"$needle"* ]]; then
+    echo "Assertion failed: $message"
+    echo "Expected to find: $needle"
+    exit 1
+  fi
+}
+
+assert_not_contains() {
+  local haystack="$1"
+  local needle="$2"
+  local message="$3"
+
+  if [[ "$haystack" == *"$needle"* ]]; then
+    echo "Assertion failed: $message"
+    echo "Did not expect to find: $needle"
+    exit 1
+  fi
+}
+
+PACKAGE_VERSION="$(node -e "console.log(require(process.argv[1]).version)" "$PACKAGE_JSON")"
+CLI_VERSION="$(node "$CLI_ENTRY" --version)"
+
+assert_contains "$CLI_VERSION" "$PACKAGE_VERSION" "CLI version should match package.json version"
+echo "Version check passed: $CLI_VERSION"
+
+HELP_OUTPUT="$(node "$CLI_ENTRY" --help)"
+assert_contains "$HELP_OUTPUT" "dev [profile]" "help should list dev command"
+assert_contains "$HELP_OUTPUT" "logs" "help should list logs command"
+assert_contains "$HELP_OUTPUT" "stop" "help should list stop command"
+echo "Global help check passed"
+
+STOP_HELP_OUTPUT="$(node "$CLI_ENTRY" stop --help)"
+assert_contains "$STOP_HELP_OUTPUT" "--force-ports" "stop help should include --force-ports"
+echo "Stop help check passed"
+
+set +e
+INVALID_PROFILE_OUTPUT="$(node "$CLI_ENTRY" dev wrong-profile 2>&1)"
+INVALID_PROFILE_EXIT="$?"
 set -e
+if [[ "$INVALID_PROFILE_EXIT" -eq 0 ]]; then
+  echo "Expected non-zero exit for invalid dev profile"
+  exit 1
+fi
+assert_contains "$INVALID_PROFILE_OUTPUT" "Invalid developer profile" "invalid profile should be rejected"
+echo "Invalid dev profile check passed"
 
-CLI_DIR="/Users/aryan/Projects/GAIA/gaia-light-mode/packages/cli"
-REPO_ROOT="/Users/aryan/Projects/GAIA/gaia-light-mode"
+set +e
+FULL_PROFILE_OUTPUT="$(node "$CLI_ENTRY" dev full 2>&1)"
+FULL_PROFILE_EXIT="$?"
+set -e
+if [[ "$FULL_PROFILE_EXIT" -eq 0 ]]; then
+  echo "Expected non-zero exit for dev full outside a GAIA repo"
+  exit 1
+fi
+assert_not_contains "$FULL_PROFILE_OUTPUT" "Invalid developer profile" "dev full should be accepted as a valid profile"
+echo "Dev full profile routing check passed"
 
-echo "🧪 GAIA CLI Testing Suite"
-echo "=========================="
-echo ""
-
-# Test 1: Version and Help
-echo "✓ Test 1: Version and Help Commands"
-cd "$REPO_ROOT"
-./packages/cli/dist/index.js --version
-./packages/cli/dist/index.js --help
-echo ""
-
-# Test 2: Individual Command Help
-echo "✓ Test 2: Individual Command Help"
-./packages/cli/dist/index.js init --help
-./packages/cli/dist/index.js setup --help
-./packages/cli/dist/index.js status --help
-./packages/cli/dist/index.js start --help
-./packages/cli/dist/index.js stop --help
-echo ""
-
-# Test 3: Status Command (non-interactive)
-echo "✓ Test 3: Status Command"
-echo "This will check the health of running services..."
-echo "Press Ctrl+C if it hangs"
-echo ""
-# Run status but timeout after 5 seconds if it hangs
-timeout 10 ./packages/cli/dist/index.js status || echo "Status check completed or timed out"
-echo ""
-
-# Test 4: Dev Mode
-echo "✓ Test 4: Dev Mode Test"
-GAIA_CLI_DEV=true bun "$CLI_DIR/src/index.ts" --version
-echo ""
-
-echo "=========================="
-echo "✅ Basic tests completed!"
-echo ""
-echo "📝 Manual Testing Steps:"
-echo ""
-echo "1. Test Setup Command (interactive):"
-echo "   cd /tmp"
-echo "   git clone https://github.com/heygaia/gaia.git test-gaia"
-echo "   cd test-gaia"
-echo "   $REPO_ROOT/packages/cli/dist/index.js setup"
-echo ""
-echo "2. Test Init Command (creates new clone):"
-echo "   cd /tmp"
-echo "   $REPO_ROOT/packages/cli/dist/index.js init"
-echo ""
-echo "3. Test Install Script:"
-echo "   # View the install script"
-echo "   cat $CLI_DIR/install.sh"
-echo "   # Or test from web (after deploying)"
-echo "   curl -fsSL https://heygaia.io/install.sh"
-echo ""
-echo "4. Test npm pack:"
-echo "   cd $CLI_DIR"
-echo "   npm pack"
-echo "   # Install from tarball"
-echo "   npm install -g heygaia-cli-*.tgz"
-echo "   gaia --help"
-echo ""
+echo "CLI smoke tests passed"

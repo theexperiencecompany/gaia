@@ -1,10 +1,10 @@
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
+import { CLI_VERSION } from "./version.js";
 
 export const GAIA_CONFIG_DIR = path.join(os.homedir(), ".gaia");
 export const CONFIG_PATH = path.join(GAIA_CONFIG_DIR, "config.json");
-export const CLI_VERSION = "0.1.10";
 
 export interface GaiaConfig {
   version: string;

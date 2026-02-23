@@ -3,11 +3,11 @@ import { runEnvSetup, selectSetupMode } from "../../lib/env-setup.js";
 import {
   createLogHandler,
   delay,
+  runDeveloperPrerequisiteChecks,
   runMiseDeveloperSetup,
   runPortChecks,
-  runPrerequisiteChecks,
+  runBasePrerequisiteChecks,
 } from "../../lib/flow-utils.js";
-import * as prereqs from "../../lib/prerequisites.js";
 import { findRepoRoot } from "../../lib/service-starter.js";
 import type { CLIStore } from "../../ui/store.js";
 
@@ -34,10 +34,7 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
   store.setStep("Prerequisites");
   store.setStatus("Checking system requirements...");
 
-  const prereqResult = await runPrerequisiteChecks(store);
-  if (!prereqResult) return;
-
-  const { miseStatus } = prereqResult;
+  if (!(await runBasePrerequisiteChecks(store))) return;
 
   // Port check
   const portOverrides = await runPortChecks(store);
@@ -45,6 +42,11 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
 
   // 3. Setup Mode
   const setupMode = await selectSetupMode(store);
+
+  if (setupMode === "developer") {
+    const developerPrereqs = await runDeveloperPrerequisiteChecks(store);
+    if (!developerPrereqs) return;
+  }
 
   // 4. Environment Setup
   await runEnvSetup(store, repoPath, setupMode, portOverrides);
@@ -61,21 +63,12 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
       repoPath,
     });
 
+    store.updateData("setupMode", setupMode);
     store.setStep("Finished");
     store.setStatus(
       "Setup complete! Run 'gaia start' to build and start all services in Docker.",
     );
     await store.waitForInput("exit");
-    return;
-  }
-
-  // Developer mode: mise is required
-  if (miseStatus === "error") {
-    store.setError(
-      new Error(
-        `Developer mode requires Mise but it failed to install.\n  • Mise: ${prereqs.PREREQUISITE_URLS.mise}`,
-      ),
-    );
     return;
   }
 
@@ -98,7 +91,8 @@ export async function runSetupFlow(store: CLIStore): Promise<void> {
     repoPath,
   });
 
+  store.updateData("setupMode", setupMode);
   store.setStep("Finished");
-  store.setStatus("Setup complete!");
+  store.setStatus("Setup complete! Run 'gaia dev' to start development mode.");
   await store.waitForInput("exit");
 }

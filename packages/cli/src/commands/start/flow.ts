@@ -1,7 +1,6 @@
 import { readDockerComposePortOverrides } from "../../lib/env-writer.js";
 import {
   checkDockerDetailed,
-  checkMise,
   PREREQUISITE_URLS,
 } from "../../lib/prerequisites.js";
 import {
@@ -44,6 +43,15 @@ export async function runStartFlow(
     return;
   }
 
+  if (mode === "developer") {
+    store.setError(
+      new Error(
+        "Developer mode runs in foreground. Use 'gaia dev' or 'gaia dev full' instead of 'gaia start'.",
+      ),
+    );
+    return;
+  }
+
   // Check prerequisites before starting
   if (mode === "selfhost") {
     store.setStatus("Checking Docker...");
@@ -53,17 +61,6 @@ export async function runStartFlow(
         new Error(
           dockerInfo.errorMessage ||
             `Docker is not running. Please start Docker and try again.\n  ${PREREQUISITE_URLS.docker}`,
-        ),
-      );
-      return;
-    }
-  } else {
-    store.setStatus("Checking Mise...");
-    const miseResult = await checkMise();
-    if (miseResult === "missing" || miseResult === "error") {
-      store.setError(
-        new Error(
-          `Developer mode requires Mise but it is not installed.\n  Install: ${PREREQUISITE_URLS.mise}`,
         ),
       );
       return;

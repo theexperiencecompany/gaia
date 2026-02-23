@@ -13,7 +13,6 @@ export const INIT_STEPS = [
   "Environment Setup",
   "Install Tools",
   "Project Setup",
-  "Installing CLI",
   "Finished",
 ] as const;
 
@@ -45,7 +44,6 @@ const STEP_LABELS: Record<string, string> = {
   "Environment Setup": "Env",
   "Install Tools": "Tools",
   "Project Setup": "Setup",
-  "Installing CLI": "CLI",
   "Detect Repo": "Detect",
   Finished: "Done",
 };

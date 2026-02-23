@@ -11,6 +11,10 @@ export const DEV_LOG_FILE = "dev-start.log";
 export const WEB_LOG_FILE = "web-start.log";
 export const DEV_PID_FILE = ".gaia-dev.pid";
 
+export interface StopServicesOptions {
+  forcePorts?: boolean;
+}
+
 function getEnvFileArgs(dockerDir: string): string[] {
   const envPath = path.join(dockerDir, ".env");
   if (fs.existsSync(envPath)) {
@@ -22,6 +26,27 @@ function getEnvFileArgs(dockerDir: string): string[] {
 export interface StartServicesOptions {
   build?: boolean;
   pull?: boolean;
+}
+
+export function readStoredDevPid(repoPath: string): number | null {
+  const pidPath = path.join(repoPath, DEV_PID_FILE);
+  if (!fs.existsSync(pidPath)) return null;
+  try {
+    const pid = Number.parseInt(fs.readFileSync(pidPath, "utf-8").trim(), 10);
+    return Number.isNaN(pid) || pid <= 0 ? null : pid;
+  } catch {
+    return null;
+  }
+}
+
+export function isPidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    return code === "EPERM";
+  }
 }
 
 export async function startServices(
@@ -75,43 +100,10 @@ export async function startServices(
     );
     onStatus?.("All services started in Docker!");
   } else {
-    onStatus?.("Starting development servers...");
-    const { spawn } = await import("child_process");
-    const logPath = path.join(repoPath, DEV_LOG_FILE);
-    const pidPath = path.join(repoPath, DEV_PID_FILE);
-    const devLog = fs.openSync(logPath, "w");
-    let child: ReturnType<typeof spawn>;
-    try {
-      child = spawn("mise", ["dev"], {
-        cwd: repoPath,
-        stdio: ["ignore", devLog, devLog],
-        detached: true,
-        shell: true,
-      });
-      child.unref();
-    } finally {
-      fs.closeSync(devLog);
-    }
-
-    // Store PID for targeted stop
-    if (child.pid != null) {
-      fs.writeFileSync(pidPath, String(child.pid), "utf-8");
-    }
-
-    await delay(1500);
-
-    // Verify the spawned process is still running
-    if (child.pid != null) {
-      try {
-        process.kill(child.pid, 0);
-      } catch {
-        throw new Error(
-          `Development servers crashed on startup. Check logs at: ${logPath}`,
-        );
-      }
-    }
-
-    onStatus?.(`Development servers started! Logs: ${logPath}`);
+    onStatus?.("Developer mode must run in foreground.");
+    throw new Error(
+      "Developer mode runs in foreground. Use 'gaia dev' or 'gaia dev full' instead of 'gaia start'.",
+    );
   }
 }
 
@@ -119,6 +111,7 @@ export async function stopServices(
   repoPath: string,
   onStatus?: (status: string) => void,
   portOverrides?: Record<number, number>,
+  options?: StopServicesOptions,
 ): Promise<void> {
   const dockerComposePath = path.join(repoPath, "infra/docker");
   const mode = await detectSetupMode(repoPath);
@@ -137,38 +130,55 @@ export async function stopServices(
 
   // In selfhost mode everything runs in Docker, no local processes to kill
   if (mode !== "selfhost") {
-    onStatus?.("Stopping local processes...");
+    onStatus?.("Stopping GAIA-managed local processes (safe mode)...");
     const pidPath = path.join(repoPath, DEV_PID_FILE);
     let killedByPid = false;
 
-    // Try to kill by stored PID first (targets only GAIA processes)
-    if (fs.existsSync(pidPath)) {
+    // Try to kill by stored PID first (targets only GAIA processes).
+    const pid = readStoredDevPid(repoPath);
+    const hadStoredPid = typeof pid === "number";
+    if (pid && isPidAlive(pid)) {
       try {
-        const pid = Number.parseInt(
-          fs.readFileSync(pidPath, "utf-8").trim(),
-          10,
-        );
-        if (!Number.isNaN(pid) && pid > 0) {
+        if (process.platform === "win32") {
+          await runCommand(
+            "taskkill",
+            ["/PID", String(pid), "/T", "/F"],
+            repoPath,
+          );
+          killedByPid = true;
+        } else {
+          // Prefer process-group termination for detached `gaia dev` sessions.
           try {
-            // Kill the process group (negative PID)
             process.kill(-pid, "SIGTERM");
             killedByPid = true;
           } catch {
-            // Process already dead
+            // Fallback to direct PID if group kill is unavailable.
+            process.kill(pid, "SIGTERM");
+            killedByPid = true;
+          }
+          await delay(800);
+          if (isPidAlive(pid)) {
+            try {
+              process.kill(-pid, "SIGKILL");
+            } catch {
+              process.kill(pid, "SIGKILL");
+            }
           }
         }
       } catch {
-        // Ignore PID file read errors
-      }
-      try {
-        fs.unlinkSync(pidPath);
-      } catch {
-        // Ignore cleanup errors
+        // Ignore PID termination errors
       }
     }
 
-    // Fall back to port-based kill only if PID approach didn't work
-    if (!killedByPid) {
+    try {
+      fs.unlinkSync(pidPath);
+    } catch {
+      // Ignore cleanup errors
+    }
+
+    // Fall back to port-based cleanup only when explicitly requested.
+    if (!killedByPid && options?.forcePorts) {
+      onStatus?.("No GAIA PID found. Force-stopping listeners on app ports...");
       try {
         const apiPort = portOverrides?.[8000] ?? 8000;
         const webPort = portOverrides?.[3000] ?? 3000;
@@ -207,6 +217,12 @@ export async function stopServices(
       } catch {
         // Ignore cleanup errors
       }
+    } else if (!killedByPid) {
+      onStatus?.(
+        hadStoredPid
+          ? "Stored GAIA PID is stale. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup."
+          : "No GAIA-managed PID found. Skipping port cleanup in safe mode. Use `gaia stop --force-ports` for aggressive cleanup.",
+      );
     }
   }
 

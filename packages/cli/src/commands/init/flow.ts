@@ -7,12 +7,11 @@ import { portOverridesToDockerEnv } from "../../lib/env-writer.js";
 import {
   createLogHandler,
   delay,
+  runDeveloperPrerequisiteChecks,
   runPortChecks,
-  runPrerequisiteChecks,
+  runBasePrerequisiteChecks,
 } from "../../lib/flow-utils.js";
 import * as git from "../../lib/git.js";
-import { ensureGaiaInPath } from "../../lib/path-setup.js";
-import * as prereqs from "../../lib/prerequisites.js";
 import {
   findRepoRoot,
   runCommand,
@@ -39,10 +38,7 @@ export async function runInitFlow(
   store.setStep("Prerequisites");
   store.setStatus("Checking system requirements...");
 
-  const prereqResult = await runPrerequisiteChecks(store);
-  if (!prereqResult) return;
-
-  const { miseStatus } = prereqResult;
+  if (!(await runBasePrerequisiteChecks(store))) return;
 
   // Check Ports
   // Note: 8083 (Mongo Express) is only used in dev mode, but we check it here
@@ -52,6 +48,11 @@ export async function runInitFlow(
 
   // 2. Setup Mode
   const setupMode = await selectSetupMode(store);
+
+  if (setupMode === "developer") {
+    const developerPrereqs = await runDeveloperPrerequisiteChecks(store);
+    if (!developerPrereqs) return;
+  }
 
   let repoPath = "";
 
@@ -193,46 +194,6 @@ export async function runInitFlow(
   }
 
   if (setupMode === "selfhost") {
-    // Selfhost mode: everything runs in Docker, no local tools needed
-    store.setStep("Installing CLI");
-    store.setStatus("Installing gaia CLI globally...");
-    try {
-      const cliLogHandler = (chunk: string) => {
-        const lines = chunk
-          .split("\n")
-          .map((l: string) => l.replace(ANSI_ESCAPE_RE, "").trim())
-          .filter((l: string) => l.length > 0);
-        if (lines.length === 0) return;
-        const current: string[] = store.currentState.data.cliInstallLogs || [];
-        store.updateData(
-          "cliInstallLogs",
-          [...current, ...lines].slice(-LOG_BUFFER_LINES),
-        );
-      };
-      await runCommand(
-        "npm",
-        ["install", "-g", "@heygaia/cli"],
-        repoPath,
-        undefined,
-        cliLogHandler,
-      );
-      store.setStatus("Verifying PATH...");
-      const pathResult = await ensureGaiaInPath();
-      if (pathResult.inPath) {
-        store.setStatus("CLI installed! gaia command is ready.");
-      } else if (pathResult.pathAdded) {
-        store.setStatus(pathResult.message);
-      } else {
-        store.setStatus(pathResult.message);
-      }
-    } catch {
-      store.setStatus(
-        "CLI install failed. Install manually: npm install -g @heygaia/cli",
-      );
-    }
-
-    await delay(500);
-
     // Build and start services automatically on first init
     store.setStep("Project Setup");
     store.setStatus("Building and starting all services in Docker...");
@@ -313,16 +274,6 @@ export async function runInitFlow(
     store.setStep("Finished");
     store.setStatus("Setup complete! GAIA is running.");
     await store.waitForInput("exit");
-    return;
-  }
-
-  // Developer mode: mise is required
-  if (miseStatus === "error") {
-    store.setError(
-      new Error(
-        `Developer mode requires Mise but it failed to install.\n  • Mise: ${prereqs.PREREQUISITE_URLS.mise}`,
-      ),
-    );
     return;
   }
 
@@ -416,46 +367,7 @@ export async function runInitFlow(
     updatedAt: new Date().toISOString(),
   });
 
-  store.setStep("Installing CLI");
-  store.setStatus("Installing gaia CLI globally...");
-  try {
-    const cliLogHandler = (chunk: string) => {
-      const lines = chunk
-        .split("\n")
-        .map((l: string) => l.replace(ANSI_ESCAPE_RE, "").trim())
-        .filter((l: string) => l.length > 0);
-      if (lines.length === 0) return;
-      const current: string[] = store.currentState.data.cliInstallLogs || [];
-      store.updateData(
-        "cliInstallLogs",
-        [...current, ...lines].slice(-LOG_BUFFER_LINES),
-      );
-    };
-    await runCommand(
-      "npm",
-      ["install", "-g", "@heygaia/cli"],
-      repoPath,
-      undefined,
-      cliLogHandler,
-    );
-    store.setStatus("Verifying PATH...");
-    const pathResult = await ensureGaiaInPath();
-    if (pathResult.inPath) {
-      store.setStatus("CLI installed! gaia command is ready.");
-    } else if (pathResult.pathAdded) {
-      store.setStatus(pathResult.message);
-    } else {
-      store.setStatus(pathResult.message);
-    }
-  } catch {
-    store.setStatus(
-      "CLI install failed. Install manually: npm install -g @heygaia/cli",
-    );
-  }
-
-  await delay(500);
-
   store.setStep("Finished");
-  store.setStatus("Setup complete!");
+  store.setStatus("Setup complete! Run 'gaia dev' to start development mode.");
   await store.waitForInput("exit");
 }
