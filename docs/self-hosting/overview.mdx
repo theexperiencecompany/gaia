@@ -4,10 +4,9 @@ description: "Learn how to self-host GAIA on your own infrastructure"
 icon: "circle-info"
 ---
 
-
 ## Welcome to GAIA Self-Hosting
 
-Self-host GAIA with Docker Compose. Keep it simple: start with minimal env vars, add more only when you enable features.
+Self-host GAIA with the CLI. The CLI handles setup, environment scaffolding, and run commands so you can get running quickly.
 
 ## What runs
 
@@ -17,54 +16,62 @@ Self-host GAIA with Docker Compose. Keep it simple: start with minimal env vars,
 
 ## Prerequisites
 
+- Node.js 20+ and one package manager (npm, pnpm, or bun)
 - Docker Engine 20.10+ and Compose v2+
 - 2+ CPU cores, 4GB+ RAM, 10GB+ disk (8GB+ RAM recommended)
 - API keys as needed (see [Environment Variables](/configuration/environment-variables))
 
 ## Quick Start
 
-<Tabs>
-  <Tab title="CLI (Recommended)" icon="terminal">
-    The GAIA CLI handles everything automatically — cloning, tools, env vars, and startup.
+<Steps>
+  <Step title="Install the GAIA CLI">
+    <CodeGroup>
 
+    ```bash npm
+    npm install -g @heygaia/cli
+    ```
+
+    ```bash pnpm
+    pnpm add -g @heygaia/cli
+    ```
+
+    ```bash bun
+    bun add -g @heygaia/cli
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Initialize self-host mode">
     ```bash
-    curl -fsSL https://heygaia.io/install.sh | sh
     gaia init
     ```
 
-    See [CLI Installation](/cli/installation) and [CLI Commands](/cli/commands) for details.
-  </Tab>
+    In the setup wizard, choose **Self-Host (Docker)**.
+  </Step>
 
-  <Tab title="Manual (Docker)" icon="docker">
-    <Steps>
-      <Step title="Clone the repository">
-        ```bash
-        git clone https://github.com/theexperiencecompany/gaia.git
-        cd gaia
-        ```
-      </Step>
-      <Step title="Set minimal env vars">
-        Add a minimal `apps/api/.env` (see the "Minimal .env to boot locally" section
-        in [Environment Variables](/configuration/environment-variables)).
-      </Step>
-      <Step title="Start services">
-        ```bash
-        docker compose -f infra/docker/docker-compose.yml up -d
-        ```
-      </Step>
-      <Step title="Open GAIA">
-        - Web: http://localhost:3000
-        - Backend API: http://localhost:8000
-      </Step>
-    </Steps>
-  </Tab>
-</Tabs>
+  <Step title="Start services">
+    ```bash
+    gaia start
+    ```
+  </Step>
+
+  <Step title="Monitor and open GAIA">
+    ```bash
+    gaia status
+    gaia logs
+    ```
+
+    - Web: http://localhost:3000
+    - Backend API: http://localhost:8000
+  </Step>
+</Steps>
 
 ## Next Steps
 
-- [CLI Commands](/cli/commands) - Manage services with `gaia start`, `gaia stop`, `gaia status`
+- [CLI Commands](/cli/commands) - Manage services with GAIA CLI commands
 - [Environment Variables](/configuration/environment-variables) - Configure additional features
-- [Docker Setup](/self-hosting/docker-setup) - Advanced Docker configuration
+- [Docker Setup](/self-hosting/docker-setup) - Advanced Docker operations
 
 <Warning>
   Self-hosting requires ongoing maintenance and security updates.

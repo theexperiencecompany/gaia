@@ -1,41 +1,65 @@
 ---
 title: "Commands Reference"
-description: "Complete reference of all mise and Nx commands for GAIA"
+description: "Complete reference of GAIA CLI, mise, and Nx commands"
 icon: "terminal"
 ---
 
 ## Overview
 
-GAIA has two layers of commands:
+Use the **GAIA CLI** for day-to-day setup and running. Under the hood, GAIA uses **mise + Nx**.
 
-- **[GAIA CLI](/cli/commands)** (`gaia`) - Install, configure, and manage GAIA instances
-- **mise + Nx** - Development tooling for building, testing, and running individual services
+- **GAIA CLI** - primary interface for setup, run, status, and logs
+- **[mise](https://mise.jdx.dev)** - task runner and tool version manager (advanced/direct usage)
+- **[Nx](https://nx.dev)** - build system with caching and project graph
 
-### GAIA CLI Commands
+---
 
-For managing your GAIA instance. See [CLI Commands](/cli/commands) for full details.
+## Quick Start
 
-| Command | Description |
-|---------|-------------|
-| `gaia init` | Full setup from scratch |
-| `gaia setup` | Configure an existing repository |
-| `gaia start` | Start all services |
-| `gaia stop` | Stop all services |
-| `gaia status` | Check service health |
+<CodeGroup>
 
-### mise + Nx Commands
+```bash npm
+npm install -g @heygaia/cli
+```
 
-For development workflows. Run `mise tasks` to see all available commands.
+```bash pnpm
+pnpm add -g @heygaia/cli
+```
+
+```bash bun
+bun add -g @heygaia/cli
+```
+
+</CodeGroup>
 
 ```bash
-mise setup        # First-time setup (deps, docker, seed)
-mise dev          # Start API + web (auto-starts Docker)
-mise dev:full     # Everything including ARQ worker
+gaia init         # First-time setup wizard
+gaia dev          # Developer mode (Nx TUI)
+gaia dev full     # Developer mode + workers (Nx TUI)
 ```
 
 ---
 
-## Development Commands
+## GAIA CLI Commands
+
+Run from project root.
+
+| Command | Description |
+|---------|-------------|
+| `gaia init` | Full setup wizard (self-host or developer mode) |
+| `gaia setup` | Configure an existing repository |
+| `gaia start` | Start services in self-host mode |
+| `gaia dev` | Run developer mode in Nx TUI |
+| `gaia dev full` | Run developer mode + workers in Nx TUI |
+| `gaia logs` | Stream logs for running services |
+| `gaia stop` | Stop services safely (GAIA-managed processes) |
+| `gaia status` | Check service health |
+
+Use `gaia stop --force-ports` only when needed to aggressively clear listeners on API/Web ports.
+
+---
+
+## Development Commands (Advanced: mise)
 
 Run from project root.
 
@@ -276,10 +300,9 @@ Run from `apps/desktop/` or use `mise -C apps/desktop <task>`.
 ### Daily Development
 
 ```bash
-mise dev                      # Start everything
-# or
-mise dev:api                  # In one terminal
-mise dev:web                  # In another terminal
+gaia dev                      # Start API + web in Nx TUI
+gaia dev full                 # Start API + web + workers in Nx TUI
+gaia logs                     # Stream logs
 ```
 
 ### Before Committing
@@ -319,7 +342,7 @@ mise tasks --hidden           # Include hidden tasks
 
 ### Need Help?
 
-1. Run `mise doctor` to check your setup
-2. Ensure Docker is running (`docker ps`)
-3. Check `.env` files exist
+1. Ensure Docker is running (`docker ps`)
+2. Run `gaia status` to check service health
+3. Re-run setup with `gaia setup` if needed
 4. See [Development Setup](/developers/development-setup)

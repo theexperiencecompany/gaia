@@ -6,7 +6,7 @@ icon: "terminal"
 
 ## CLI-Based Setup
 
-The GAIA CLI provides the easiest way to set up a self-hosted GAIA instance. It handles repository cloning, tool installation, environment configuration, and service startup through an interactive wizard.
+The GAIA CLI is the primary way to set up GAIA. It handles repository setup, environment configuration, and service management through an interactive wizard.
 
 <Info>
 For installation instructions, see [CLI Installation](/cli/installation). For the full command reference, see [CLI Commands](/cli/commands).
@@ -14,10 +14,23 @@ For installation instructions, see [CLI Installation](/cli/installation). For th
 
 ## Quick Start
 
-```bash
-# Install the CLI
-curl -fsSL https://heygaia.io/install.sh | sh
+<CodeGroup>
 
+```bash npm
+npm install -g @heygaia/cli
+```
+
+```bash pnpm
+pnpm add -g @heygaia/cli
+```
+
+```bash bun
+bun add -g @heygaia/cli
+```
+
+</CodeGroup>
+
+```bash
 # Run the setup wizard
 gaia init
 
@@ -31,15 +44,15 @@ The `gaia init` command walks you through:
 
 <Steps>
   <Step title="Prerequisites Check">
-    Verifies Git, Docker, and Mise are installed. Installs Mise automatically if missing. Checks for port conflicts and suggests alternatives.
+    Verifies Git and Docker are installed, then checks for port conflicts and suggests alternatives. Mise is only checked for developer mode.
   </Step>
 
   <Step title="Repository Setup">
     Clones the GAIA repository to your chosen directory with progress tracking.
   </Step>
 
-  <Step title="Tool Installation">
-    Installs all required development tools (Node.js, Python, uv, Nx) via Mise.
+  <Step title="Tool Installation (Developer Mode)">
+    Installs required development tools (Node.js, Python, uv, Nx) via Mise.
   </Step>
 
   <Step title="Environment Configuration">
@@ -49,11 +62,8 @@ The `gaia init` command walks you through:
   </Step>
 
   <Step title="Project Setup">
-    Runs `mise setup` to install all dependencies, start Docker services, and seed the database.
-  </Step>
-
-  <Step title="Service Startup">
-    If services aren't already running, optionally starts all services immediately. If they're already running, the wizard detects this and skips to completion.
+    - Self-Host mode: Builds/pulls and starts Docker services
+    - Developer mode: Runs `mise setup` to install dependencies and initialize services
   </Step>
 </Steps>
 
@@ -66,41 +76,36 @@ cd /path/to/gaia
 gaia setup
 ```
 
-This skips cloning and tool installation, going straight to environment configuration and project setup.
+This skips cloning and goes straight to environment configuration and project setup.
 
-## Managing Services After Setup
-
-Once setup is complete, manage your GAIA instance with:
+## Running GAIA After Setup
 
 ```bash
-gaia start    # Start all services
-gaia stop     # Stop all services
-gaia status   # Check service health
-gaia setup    # Reconfigure environment
+# Self-host mode
+gaia start
+
+# Developer mode (Nx TUI)
+gaia dev
+gaia dev full
+
+# Utilities
+gaia logs
+gaia status
+gaia stop
+gaia setup
 ```
 
-See [CLI Commands](/cli/commands) for full details on each command.
+## Monitoring Logs
 
-## Environment Variable Auto-Discovery
+Use `gaia logs` to stream logs for currently running services.
 
-The CLI automatically discovers environment variables from the codebase at runtime. When a developer adds a new variable to the API settings or web `.env` file, the CLI picks it up automatically — no CLI updates needed.
-
-- **API variables**: Extracted from Python settings files using AST parsing
-- **Web variables**: Parsed from `apps/web/.env` at runtime
-
-## Monitoring Logs (Developer Mode)
-
-In developer mode, `gaia start` runs services in the background. Logs are written to `dev-start.log` in the repo root — monitor them with:
-
-```bash
-tail -f dev-start.log
-```
+In developer mode, `gaia dev` runs in the foreground and shows Nx TUI output in the same terminal. Keep that terminal open, and use another terminal for `gaia logs` when needed.
 
 ## Port Conflict Handling
 
 If required ports are already in use, the CLI detects the conflict, shows which process is using the port, and suggests an alternative port. Infrastructure URLs in your `.env` files are automatically updated to use the alternative ports.
 
-Port overrides are saved to `infra/docker/.env` inside your GAIA repo and **persist across `gaia start`/`gaia stop` cycles** — no need to re-run setup. `gaia status` automatically uses the same overridden ports.
+Port overrides are saved to `infra/docker/.env` inside your GAIA repo and persist across restarts.
 
 To change port assignments after setup, edit `infra/docker/.env` directly:
 
@@ -112,7 +117,7 @@ To change port assignments after setup, edit `infra/docker/.env` directly:
 | `REDIS_HOST_PORT` | Redis | 6379 |
 | `MONGO_HOST_PORT` | MongoDB | 27017 |
 | `RABBITMQ_HOST_PORT` | RabbitMQ | 5672 |
-| `CHROMA_HOST_PORT` | ChromaDB | 8080 |
+| `CHROMADB_HOST_PORT` | ChromaDB | 8080 |
 
 <Info>
 Restart services after editing: `gaia stop && gaia start`

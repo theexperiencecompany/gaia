@@ -10,41 +10,25 @@ icon: "download"
 
 The GAIA CLI (`@heygaia/cli`) is a terminal-based tool for setting up, configuring, and managing GAIA instances.
 
-**Global installation is recommended** to use the `gaia` command from anywhere in your terminal.
-
+Install globally with your package manager:
 
 <CodeGroup>
 
-```shell curl
-# The quickest way to install globally.
-# Automatically detects your system and uses npm or bun.
-# Installs Node.js if needed.
-
-curl -fsSL https://heygaia.io/install.sh | sh
-```
-
-```shell npm
-# Install globally using npm:
-
+```bash npm
 npm install -g @heygaia/cli
 ```
 
-```shell pnpm
-# Install globally using pnpm:
-
+```bash pnpm
 pnpm add -g @heygaia/cli
 ```
 
 ```bash bun
-# Install globally using bun:
-
 bun add -g @heygaia/cli
 ```
+
 </CodeGroup>
 
 ## Verify Installation
-
-After installation, verify the `gaia` command is available:
 
 ```bash
 gaia --version
@@ -52,30 +36,17 @@ gaia --help
 ```
 
 <Tip>
-If you get "command not found: gaia", ensure npm's global bin directory is in your PATH. See [Troubleshooting](/cli/commands#troubleshooting) for details.
+If `gaia` is not available immediately, open a new terminal session and run `gaia --help` again.
 </Tip>
-
-## Alternative: Run Without Installing
-
-You can run commands directly with `npx` without global installation, but this requires prefixing every command:
-
-```bash
-npx @heygaia/cli init
-npx @heygaia/cli start
-npx @heygaia/cli status
-```
-
-<Warning>
-Using `npx` means you can't use the shorter `gaia` command. We recommend installing globally for the best experience.
-</Warning>
 
 ## Requirements
 
-- **macOS or Linux** (Windows via WSL2)
+- **macOS, Linux, or Windows (WSL2 recommended)**
+- **Node.js 20+** and one package manager (**npm**, **pnpm**, or **bun**)
 - **Docker** installed and running
 - **Git** installed
 
-The CLI will check for these prerequisites and guide you through installing anything missing.
+The CLI checks prerequisites during setup and guides you if something is missing.
 
 ## Upgrading
 
@@ -89,12 +60,10 @@ git pull
 ```
 
 <Tip>
-If the update includes dependency changes, run `gaia setup` afterwards to apply them.
+If the update includes dependency changes, run `gaia setup` afterwards.
 </Tip>
 
 ### Updating the CLI
-
-Reinstall globally using whichever package manager you used originally:
 
 <CodeGroup>
 
@@ -116,25 +85,25 @@ bun add -g @heygaia/cli
 
 To fully remove GAIA from your machine:
 
-**1. Stop all running services:**
+1. Stop all running services:
 
 ```bash
 gaia stop
 ```
 
-**2. Delete the GAIA repository directory:**
+2. Delete the GAIA repository directory:
 
 ```bash
 rm -rf /path/to/gaia
 ```
 
-**3. Remove CLI metadata:**
+3. Remove CLI metadata:
 
 ```bash
 rm -rf ~/.gaia
 ```
 
-**4. Uninstall the CLI:**
+4. Uninstall the CLI:
 
 <CodeGroup>
 

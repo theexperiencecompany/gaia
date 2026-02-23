@@ -23,9 +23,10 @@ GAIA uses Docker Compose to orchestrate all the required services. This makes de
 
     **Or install Docker Engine** (for servers):
     ```bash
-    # Ubuntu/Debian
-    curl -fsSL https://get.docker.com -o get-docker.sh
-    sudo sh get-docker.sh
+    # Ubuntu/Debian (example)
+    sudo apt-get update
+    sudo apt-get install -y docker.io docker-compose-plugin
+    sudo systemctl enable --now docker
 
     # Add user to docker group
     sudo usermod -aG docker $USER
@@ -75,32 +76,40 @@ gaia/
 ## Quick Start
 
 <Steps>
-  <Step title="Clone and Navigate">
+  <Step title="Install CLI and initialize self-host mode">
+    <CodeGroup>
+
+    ```bash npm
+    npm install -g @heygaia/cli
+    ```
+
+    ```bash pnpm
+    pnpm add -g @heygaia/cli
+    ```
+
+    ```bash bun
+    bun add -g @heygaia/cli
+    ```
+
+    </CodeGroup>
+
     ```bash
-    git clone https://github.com/theexperiencecompany/gaia.git
-    cd gaia
+    gaia init
+    ```
+
+    Choose **Self-Host (Docker)** in the setup wizard.
+  </Step>
+
+  <Step title="Start the stack">
+    ```bash
+    gaia start
     ```
   </Step>
 
-<Step title="Configure Environment">
-  See the [Environment Variables](/configuration/environment-variables) guide
-  for details.
-</Step>
-
-<Step title="Start All Services">
-  ```bash 
-  # Start in detached mode (background) 
-  docker compose -f infra/docker/docker-compose.yml up -d 
-  
-  # Or start with logs visible 
-  docker compose -f infra/docker/docker-compose.yml up 
-  ```
-</Step>
-
-  <Step title="Verify Deployment">
-    Check that all services are running:
+  <Step title="Verify and monitor">
     ```bash
-    docker compose ps
+    gaia status
+    gaia logs
     ```
 
     Access the applications:

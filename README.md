@@ -106,19 +106,16 @@ Visit **[heygaia.io](https://heygaia.io)** to get started instantly — no insta
   <img src="apps/web/public/images/screenshots/cli.png" alt="GAIA CLI" style="width:500px; border-radius:12px;">
 </a>
 
-**Prerequisites:** [Node.js](https://nodejs.org) 18+, [Docker](https://docs.docker.com/get-docker/)
+**Prerequisites:** [Node.js](https://nodejs.org) 20+, one package manager (npm/pnpm/bun), [Docker](https://docs.docker.com/get-docker/)
 
 Start with the CLI — it handles setup for both self-hosters and local dev:
 
 ```bash
-npm install -g @heygaia/cli@latest
-gaia init
-```
-
-Or use the install script:
-
-```bash
-curl -fsSL https://heygaia.io/install.sh | sh
+npm install -g @heygaia/cli
+# or
+pnpm add -g @heygaia/cli
+# or
+bun add -g @heygaia/cli
 gaia init
 ```
 
@@ -160,7 +157,7 @@ gaia
 │       └── telegram     → Telegram bot
 ├── docs                 → Documentation Website            https://docs.heygaia.io
 ├── packages
-│   ├── cli              → @heygaia/cli setup tool           https://heygaia.io/install.sh
+│   ├── cli              → @heygaia/cli setup tool           npm install -g @heygaia/cli
 │   └── gaia-ui          → @heygaia/ui (wrapper)             https://ui.heygaia.io
 ├── libs
 │   └── shared

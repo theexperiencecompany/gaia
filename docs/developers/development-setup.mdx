@@ -9,11 +9,11 @@ icon: "laptop-code"
 <CardGroup cols={2}>
   <Card title="Open Source Contributors" icon="git-alt">
     Developers who want to contribute by fixing bugs, adding features, or
-    improving documentation
+    improving documentation.
   </Card>
   <Card title="Customizers" icon="wrench">
     Developers who want to modify GAIA for their specific use cases or integrate
-    with custom systems
+    with custom systems.
   </Card>
 </CardGroup>
 
@@ -28,208 +28,102 @@ icon: "laptop-code"
     - At least 4GB of available RAM
     - 10GB of free disk space
   </Accordion>
-  
-  <Accordion icon="code" title="Development Tools">
-    - Git (for version control)
-    - [mise](https://mise.jdx.dev) (task runner and tool manager)
-    - For mobile development: Xcode (iOS) and/or Android Studio (Android)
+
+  <Accordion icon="code" title="CLI Requirements">
+    - Node.js 20+
+    - one package manager: npm, pnpm, or bun
+    - Git
   </Accordion>
 
   <Accordion icon="terminal" title="System Requirements">
     - macOS, Linux, or Windows with WSL2
-    - At least 8GB of RAM (16GB recommended)
+    - At least 8GB RAM (16GB recommended)
     - SSD storage for better performance
   </Accordion>
 </AccordionGroup>
 
 ---
 
-## Install mise
-
-mise is required for all GAIA development.
+## Install GAIA CLI
 
 <CodeGroup>
 
-```bash macOS (Homebrew)
-brew install mise
+```bash npm
+npm install -g @heygaia/cli
 ```
 
-```bash macOS/Linux (curl)
-curl https://mise.run | sh
+```bash pnpm
+pnpm add -g @heygaia/cli
 ```
 
-```powershell Windows
-winget install jdx.mise
-# Or via scoop: scoop install mise
-# Or via choco: choco install mise
+```bash bun
+bun add -g @heygaia/cli
 ```
 
 </CodeGroup>
 
-<Note>
-After installing via curl on macOS/Linux, add mise to your PATH:
-```bash
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
-```
-</Note>
-
----
-
-## Activate mise
-
-Add mise activation to your shell:
-
-<CodeGroup>
-
-```bash zsh
-echo 'eval "$(mise activate zsh)"' >> ~/.zshrc
-source ~/.zshrc
-```
-
-```bash bash
-echo 'eval "$(mise activate bash)"' >> ~/.bashrc
-source ~/.bashrc
-```
-
-```bash fish
-echo 'mise activate fish | source' >> ~/.config/fish/config.fish
-```
-
-</CodeGroup>
-
-Verify mise is working:
+Verify installation:
 
 ```bash
-mise doctor
+gaia --help
 ```
 
 ---
 
-## Setup
+## First-Time Setup
 
-<Tabs>
-  <Tab title="CLI Setup (Easiest)" icon="terminal">
-    The GAIA CLI handles everything automatically - cloning, installing tools, configuring environment variables, and starting services.
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/theexperiencecompany/gaia.git
+    cd gaia
+    ```
+  </Step>
 
-    <Steps>
-      <Step title="Install the CLI globally">
-        ```bash
-        # Recommended: Quick install script
-        curl -fsSL https://heygaia.io/install.sh | sh
+  <Step title="Run setup wizard">
+    ```bash
+    gaia init
+    ```
 
-        # Or using your package manager
-        npm install -g @heygaia/cli
-        # pnpm add -g @heygaia/cli
-        # bun add -g @heygaia/cli
-        ```
-      </Step>
+    In the wizard:
+    - Choose **Developer Mode (Local)**
+    - Choose your env setup method (Manual or Infisical)
+  </Step>
 
-      <Step title="Run the setup wizard">
-        ```bash
-        gaia init
-        ```
+  <Step title="Start development in Nx TUI">
+    ```bash
+    gaia dev
+    ```
 
-        The wizard will guide you through:
-        1. Checking prerequisites (Git, Docker, Mise)
-        2. Cloning the repository
-        3. Installing tools (Node.js, Python, uv, Nx)
-        4. Configuring environment variables interactively
-        5. Running project setup
-        6. Starting services
-      </Step>
-    </Steps>
-
-    <Tip>
-    After installation, you can use commands like `gaia start`, `gaia stop`, and `gaia status` from anywhere in your terminal.
-    </Tip>
-
-  </Tab>
-
-  <Tab title="Manual Setup" icon="wrench">
-    For more control over the setup process.
-
-    <Steps>
-      <Step title="Clone and setup environment">
-        ```bash
-        git clone https://github.com/theexperiencecompany/gaia.git
-        cd gaia
-        cp apps/api/.env.example apps/api/.env
-        cp apps/web/.env.example apps/web/.env
-        cp apps/mobile/.env.example apps/mobile/.env
-        ```
-      </Step>
-
-      <Step title="Start Docker services">
-        ```bash
-        docker compose -f infra/docker/docker-compose.yml up -d
-        ```
-
-        Wait for all services to be healthy:
-        ```bash
-        docker compose -f infra/docker/docker-compose.yml ps
-        ```
-      </Step>
-
-      <Step title="Install API dependencies">
-        ```bash
-        cd apps/api
-        uv sync
-        cd ../..
-        ```
-      </Step>
-
-      <Step title="Install web dependencies">
-        ```bash
-        cd apps/web
-        pnpm install
-        cd ../..
-        ```
-      </Step>
-
-      <Step title="Start development servers">
-        In separate terminals:
-
-        ```bash
-        # Terminal 1: API
-        nx dev api
-
-        # Terminal 2: Web
-        nx dev web
-        ```
-      </Step>
-    </Steps>
-
-  </Tab>
-</Tabs>
+    This runs `mise dev` for you and opens the Nx TUI in your current terminal.
+  </Step>
+</Steps>
 
 ---
 
-## Development Commands
+## Run Modes
 
-| Command                    | Description                   |
-| -------------------------- | ----------------------------- |
-| `nx dev api`               | API server only               |
-| `nx dev web`               | Web app only                  |
-| `nx dev desktop`           | Desktop app only              |
-| `nx dev mobile`            | Mobile app only               |
-| `nx worker api`            | ARQ background worker         |
-| `nx run-many -t lint`      | Lint all code                 |
-| `nx run-many -t format`    | Format all code               |
-
-See [Commands Reference](/developers/commands) for the complete list.
+| Command | Description |
+| ------- | ----------- |
+| `gaia dev` | API + web in Nx TUI (developer mode) |
+| `gaia dev full` | API + web + workers in Nx TUI (developer mode) |
+| `gaia logs` | Stream logs for currently running services |
+| `gaia status` | Health check for GAIA services |
+| `gaia stop` | Stop services safely (GAIA-managed processes) |
+| `gaia setup` | Re-run setup for an existing clone |
 
 ---
 
 ## Project Structure
 
-```
+```bash
 gaia/
 ├── apps/
 │   ├── api/           # FastAPI backend (Python)
 │   ├── web/           # Next.js frontend (TypeScript)
 │   ├── desktop/       # Electron desktop app
 │   ├── mobile/        # React Native mobile app
-├── docs/              # Documentation (Mintlify)
+├── docs/              # Documentation
 ├── libs/              # Shared libraries
 ├── infra/
 │   └── docker/        # Docker Compose files
@@ -243,36 +137,48 @@ gaia/
 ## Troubleshooting
 
 <AccordionGroup>
-  <Accordion title="mise command not found">
-    Ensure mise is installed and activated in your shell:
-    ```bash
-    mise doctor
+  <Accordion title="gaia command not found">
+    Reinstall globally, then open a new terminal session:
+
+    <CodeGroup>
+
+    ```bash npm
+    npm install -g @heygaia/cli
+    gaia --help
     ```
-    
-    If not activated, re-run the activation step for your shell.
+
+    ```bash pnpm
+    pnpm add -g @heygaia/cli
+    gaia --help
+    ```
+
+    ```bash bun
+    bun add -g @heygaia/cli
+    gaia --help
+    ```
+
+    </CodeGroup>
   </Accordion>
 
-<Accordion title="Docker services not starting">
-  Check Docker is running: ```bash docker ps ``` Check for port conflicts:
-  ```bash lsof -i :5432 # PostgreSQL lsof -i :6379 # Redis lsof -i :8000 # API
-  ```
-</Accordion>
+  <Accordion title="Docker services not starting">
+    Check Docker is running:
 
-<Accordion title="Missing environment variables">
-  Ensure `.env` files exist: ```bash ls apps/api/.env apps/web/.env ``` If
-  missing, copy from examples: ```bash cp apps/api/.env.example apps/api/.env cp
-  apps/web/.env.example apps/web/.env ```
-</Accordion>
-
-  <Accordion title="Python/Node version issues">
-    mise manages tool versions. Let it install them:
     ```bash
-    mise install
+    docker ps
     ```
-    
-    Check versions:
+
+    Then check GAIA service health:
+
     ```bash
-    mise current
+    gaia status
+    ```
+  </Accordion>
+
+  <Accordion title="Need to reconfigure environment">
+    From your repo root, run:
+
+    ```bash
+    gaia setup
     ```
   </Accordion>
 </AccordionGroup>
@@ -281,8 +187,7 @@ gaia/
 
 ## Next Steps
 
-- [CLI Commands](/cli/commands) - Manage your GAIA instance (`gaia start`, `gaia stop`, `gaia status`)
-- [Development Commands](/developers/commands) - All mise and Nx commands
+- [Commands Reference](/developers/commands) - Full command list
+- [CLI Commands](/cli/commands) - GAIA CLI reference
 - [Environment Variables](/configuration/environment-variables) - Configure your setup
 - [Contributing](/developers/contributing) - How to contribute
-- [Code Style](/configuration/code-style) - Coding standards
