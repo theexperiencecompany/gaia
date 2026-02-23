@@ -14,6 +14,7 @@ import { Tooltip } from "@heroui/tooltip";
 import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
+import { CLI_COMMAND_DESCRIPTIONS } from "@shared/cli/command-manifest";
 import CopyButton from "@/components/ui/CopyButton";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 
@@ -84,21 +85,9 @@ const installMethods = [
     hint: "from any directory.",
   },
   {
-    key: "curl",
-    title: "curl",
-    code: "curl -fsSL https://heygaia.io/install.sh | sh",
-    hint: "to set up GAIA.",
-  },
-  {
     key: "pnpm",
     title: "pnpm",
     code: "pnpm add -g @heygaia/cli",
-    hint: "from any directory.",
-  },
-  {
-    key: "yarn",
-    title: "yarn",
-    code: "yarn global add @heygaia/cli",
     hint: "from any directory.",
   },
   {
@@ -107,35 +96,44 @@ const installMethods = [
     code: "bun add -g @heygaia/cli",
     hint: "from any directory.",
   },
-  {
-    key: "npx",
-    title: "npx",
-    code: "npx @heygaia/cli init",
-    hint: "Run without installing. Note: You'll need to use 'npx @heygaia/cli' before every command.",
-    skipInitHint: true,
-  },
 ];
 
 const commands = [
   {
     command: "gaia init",
-    description: "Full setup from scratch (clone, configure, start)",
+    description: CLI_COMMAND_DESCRIPTIONS.init,
   },
   {
     command: "gaia setup",
-    description: "Configure an existing GAIA repository",
+    description: CLI_COMMAND_DESCRIPTIONS.setup,
   },
   {
     command: "gaia start",
-    description: "Start all GAIA services",
+    description: CLI_COMMAND_DESCRIPTIONS.start,
+  },
+  {
+    command: "gaia dev",
+    description: CLI_COMMAND_DESCRIPTIONS.dev,
+  },
+  {
+    command: "gaia dev full",
+    description: "Run developer mode + workers in Nx TUI",
+  },
+  {
+    command: "gaia logs",
+    description: CLI_COMMAND_DESCRIPTIONS.logs,
   },
   {
     command: "gaia stop",
-    description: "Stop all GAIA services",
+    description: CLI_COMMAND_DESCRIPTIONS.stop,
+  },
+  {
+    command: "gaia stop --force-ports",
+    description: "Aggressively stop listeners on app ports",
   },
   {
     command: "gaia status",
-    description: "Check health and latency of all services",
+    description: CLI_COMMAND_DESCRIPTIONS.status,
   },
   {
     command: "gaia --version",

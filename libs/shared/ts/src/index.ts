@@ -5,3 +5,4 @@
  */
 
 export * from "./bots";
+export * from "./cli";

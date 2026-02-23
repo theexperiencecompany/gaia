@@ -24,6 +24,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@/src": ["./src/*"],
+      "@shared/*": ["../../libs/shared/ts/src/*"],
       "@icons": [
         "../../node_modules/@theexperiencecompany/gaia-icons/dist/solid-rounded"
       ]

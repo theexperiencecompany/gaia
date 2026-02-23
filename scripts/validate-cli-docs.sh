@@ -3,7 +3,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-MANIFEST_PATH="$ROOT_DIR/packages/cli/src/command-manifest.ts"
+MANIFEST_PATH="$ROOT_DIR/libs/shared/ts/src/cli/command-manifest.ts"
 CLI_PACKAGE_JSON="$ROOT_DIR/packages/cli/package.json"
 
 if [[ ! -f "$MANIFEST_PATH" ]]; then
