@@ -3,7 +3,6 @@
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
 import { PlayIcon, ZapIcon } from "@icons";
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { useAuth } from "@/features/auth/hooks/useAuth";
@@ -24,6 +23,7 @@ import {
   ActivationStatus,
   CreatorAvatar,
   getNextRunDisplay,
+  SystemWorkflowChip,
   TriggerDisplay,
 } from "./WorkflowCardComponents";
 import WorkflowIcons from "./WorkflowIcons";
@@ -274,24 +274,17 @@ export default function UnifiedWorkflowCard({
     >
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">{renderToolIcons()}</div>
-        {shouldShowActivation && workflow && (
-          <ActivationStatus activated={workflow.activated} />
-        )}
+        <div className="flex items-center gap-2">
+          {workflow?.is_system_workflow && <SystemWorkflowChip />}
+          {shouldShowActivation && workflow && (
+            <ActivationStatus activated={workflow.activated} />
+          )}
+        </div>
       </div>
 
       <div>
         <div className="flex items-center gap-2">
           <h3 className="line-clamp-2 text-lg font-medium">{title}</h3>
-          {workflow?.is_system_workflow && (
-            <span className="flex shrink-0 items-center gap-1 rounded-full bg-zinc-700 px-2 py-0.5 text-xs text-zinc-300">
-              <Image
-                src="/brand/gaia_logo.svg"
-                alt="GAIA"
-                className="h-3 w-3"
-              />
-              Auto Created
-            </span>
-          )}
         </div>
         {!showDescriptionAsTooltip && (
           <div className="mt-1 line-clamp-2 min-h-8 flex-1 text-xs text-zinc-500">
