@@ -126,6 +126,9 @@ class WorkflowService:
                 user_id=user_id,
                 is_todo_workflow=is_todo_workflow,
                 source_todo_id=source_todo_id,
+                is_system_workflow=request.is_system_workflow,
+                source_integration=request.source_integration,
+                system_workflow_key=request.system_workflow_key,
             )
 
             # Insert into database

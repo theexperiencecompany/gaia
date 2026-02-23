@@ -417,6 +417,17 @@ export default function WorkflowModal({
     onOpenChange(false);
   };
 
+  const handleResetToDefault = async () => {
+    if (!existingWorkflow?.id) return;
+    try {
+      await workflowApi.resetToDefault(existingWorkflow.id);
+      await fetchWorkflows();
+      handleClose();
+    } catch (error) {
+      console.error("Failed to reset workflow:", error);
+    }
+  };
+
   const handleDelete = async () => {
     if (mode === "edit" && existingWorkflow) {
       try {
@@ -658,6 +669,7 @@ export default function WorkflowModal({
                 <WorkflowFooter
                   mode={mode}
                   existingWorkflow={!!existingWorkflow}
+                  isSystemWorkflow={existingWorkflow?.is_system_workflow}
                   isActivated={isActivated}
                   isTogglingActivation={isTogglingActivation}
                   onToggleActivation={handleActivationToggle}
@@ -665,6 +677,7 @@ export default function WorkflowModal({
                     !!currentWorkflow?.steps && currentWorkflow.steps.length > 0
                   }
                   onRunWorkflow={handleRunWorkflow}
+                  onResetToDefault={handleResetToDefault}
                   onCancel={handleClose}
                   onSave={() => handleSubmit(handleSave)()}
                   isSaveDisabled={isSaveDisabled()}

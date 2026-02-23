@@ -177,6 +177,10 @@ CRITICAL REQUIREMENTS:
 5. Categories like gmail, notion, github, slack, googlecalendar route to specialized subagents
 6. Categories like todos, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
+8. Use `gaia` category for steps that involve GAIA's own reasoning, writing, analysis, or synthesis with NO external tool call.
+   Examples: summarize fetched content, draft a message or brief, classify items, generate an outline, extract key points, write a report section.
+   Use `gaia` instead of hallucinating categories like "documents" or "general" for pure-reasoning steps.
+   Do NOT use `gaia` if the step calls any external system — use the appropriate integration category instead.
 
 ## ABSTRACT STEP DESIGN:
 **Steps are GENERIC descriptions, NOT specific tool calls!**

@@ -73,6 +73,14 @@ class WorkflowGenerationService:
                 tool_name = tool.name if hasattr(tool, "name") else str(tool)
                 tools_with_categories.append(f"Always Available: {tool_name}")
 
+            # gaia is always a valid category — for pure LLM reasoning steps
+            # (summarize, draft, classify, generate, analyze) with no external tool call
+            category_names.append("gaia")
+            tools_with_categories.append(
+                "gaia: GAIA reasoning — summarize content, draft text, classify items, "
+                "generate outlines, extract key points, write briefs. No external tool call."
+            )
+
             logger.info(f"[WorkflowGen] Categories: {len(category_names)}")
 
             trigger_context = generate_trigger_context(trigger_config)
