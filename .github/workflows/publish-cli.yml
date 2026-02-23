@@ -7,17 +7,17 @@ on:
     inputs:
       # Expected format: cli-vX.Y.Z.
       tag:
-        description: 'Release tag (e.g. cli-v0.1.3)'
+        description: "Release tag (e.g. cli-v0.1.3)"
         required: true
       # Expected format: X.Y.Z.
       version:
-        description: 'Release version (e.g. 0.1.3)'
+        description: "Release version (e.g. 0.1.3)"
         required: true
 
 jobs:
   publish:
     # OIDC token enables npm provenance signing.
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
       id-token: write
@@ -33,8 +33,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
 
       # Normalize manual inputs into reusable step outputs.
       - name: Resolve release inputs

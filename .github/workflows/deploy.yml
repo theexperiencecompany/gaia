@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     environment: production
     env:
       # Compose file and profile are centralized so deploy/verify use identical scope.
