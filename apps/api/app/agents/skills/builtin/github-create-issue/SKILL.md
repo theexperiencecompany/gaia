@@ -15,7 +15,7 @@ target: github_agent
 
 ## Tools
 
-### GITHUB_CREATE_ISSUE
+### GITHUB_CREATE_AN_ISSUE
 Create a new issue in a GitHub repository.
 
 **Required parameters:**
@@ -28,14 +28,14 @@ Create a new issue in a GitHub repository.
 - `labels`: Array of label names (e.g., ["bug", "high-priority"])
 - `assignees`: Array of usernames to assign
 
-### GITHUB_LIST_REPOS
+### GITHUB_LIST_REPOSITORIES_FOR_THE_AUTHENTICATED_USER
 List user's repositories (for finding the right repo).
 
 **Useful for:**
 - Finding which repo to create issue in
 - Checking repo names
 
-### GITHUB_LIST_ISSUES
+### GITHUB_LIST_REPOSITORY_ISSUES
 List existing issues (check for duplicates).
 
 **Useful for:**
@@ -43,10 +43,10 @@ List existing issues (check for duplicates).
 - Finding related issues
 - Checking issue status
 
-### GITHUB_GET_ISSUE
+### GITHUB_GET_AN_ISSUE
 Get details of a specific issue.
 
-### GITHUB_UPDATE_ISSUE
+### GITHUB_UPDATE_AN_ISSUE
 Modify existing issue (add labels, change status, etc.)
 
 ## Workflow
@@ -69,7 +69,7 @@ Before creating, collect:
 5. **Assignee**: Who should handle it? (optional)
 
 ### Step 2: Check for Duplicates
-- Use GITHUB_LIST_ISSUES to search
+- Use GITHUB_LIST_REPOSITORY_ISSUES to search
 - Link to related issues in description
 - Avoid duplicates
 

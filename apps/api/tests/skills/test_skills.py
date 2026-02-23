@@ -54,7 +54,6 @@ def _make_skill_doc(
         "name": name,
         "description": description,
         "target": target,
-        "auto_invoke": True,
         "license": None,
         "compatibility": None,
         "metadata": {},
@@ -116,7 +115,6 @@ class TestSkillsRegistryCRUD:
                 vfs_path="/users/user123/skills/github_agent/github-pr",
                 source=SkillSource.GITHUB,
                 source_url="https://github.com/owner/repo",
-                auto_invoke=True,
                 metadata={"author": "test"},
                 allowed_tools=["create_pull_request"],
             )
@@ -546,7 +544,6 @@ class TestSkillModelsValidation:
         assert skill.name == "test-skill"
         assert skill.description == "A test skill"
         assert skill.target == "executor"
-        assert skill.auto_invoke is True
         assert skill.enabled is True
         assert skill.metadata == {}
         assert skill.allowed_tools == []

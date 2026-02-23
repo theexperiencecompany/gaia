@@ -72,7 +72,6 @@ async def install_skill(
     source_url: Optional[str] = None,
     body_content: Optional[str] = None,
     files: Optional[List[str]] = None,
-    auto_invoke: bool = True,
     license: Optional[str] = None,
     compatibility: Optional[str] = None,
     metadata: Optional[dict[str, str]] = None,
@@ -90,7 +89,6 @@ async def install_skill(
         source_url: Original source URL for updates
         body_content: Cached SKILL.md markdown body
         files: List of files in the skill folder
-        auto_invoke: Whether the agent can auto-activate this skill
         license: License name or reference
         compatibility: Environment requirements
         metadata: Arbitrary key-value metadata
@@ -121,7 +119,6 @@ async def install_skill(
         name=name,
         description=description,
         target=target,
-        auto_invoke=auto_invoke,
         license=license,
         compatibility=compatibility,
         metadata=metadata or {},

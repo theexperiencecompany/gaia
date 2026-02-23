@@ -26,6 +26,7 @@ from app.services.vfs.path_resolver import get_session_path
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
 from langchain_core.messages import ToolMessage
+from langgraph.types import Command
 
 
 class VFSCompactionMiddleware(AgentMiddleware):
@@ -83,8 +84,8 @@ class VFSCompactionMiddleware(AgentMiddleware):
     async def awrap_tool_call(
         self,
         request: ToolCallRequest,
-        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage]],
-    ) -> ToolMessage:
+        handler: Callable[[ToolCallRequest], Awaitable[ToolMessage | Command[Any]]],
+    ) -> ToolMessage | Command[Any]:
         """
         Wrap tool execution to compact large outputs.
 
@@ -97,6 +98,10 @@ class VFSCompactionMiddleware(AgentMiddleware):
         """
         # Execute the tool
         result = await handler(request)
+
+        # Only compact ToolMessages, not Commands
+        if not isinstance(result, ToolMessage):
+            return result
 
         # Get tool info
         tool_call = request.tool_call

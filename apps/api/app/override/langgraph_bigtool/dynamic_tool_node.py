@@ -208,9 +208,9 @@ class DynamicToolNode(ToolNode):
                         tool_call_id=tc.get("id", ""),
                     )
 
-                result = await resolved_tool.ainvoke(
-                    {**tc, "type": "tool_call"}, config=config
-                )
+                tool_input = dict(tc)
+                tool_input["type"] = "tool_call"
+                result = await resolved_tool.ainvoke(tool_input, config=config)
 
                 # If tool returned a ToolMessage, pass through
                 if isinstance(result, ToolMessage):

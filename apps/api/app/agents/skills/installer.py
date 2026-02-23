@@ -13,7 +13,6 @@ import re
 from typing import List, Optional, Tuple
 
 import httpx
-
 from app.agents.skills.models import Skill, SkillSource
 from app.agents.skills.parser import (
     generate_skill_md,
@@ -240,7 +239,6 @@ async def install_from_github(
         source_url=source_url,
         body_content=body,
         files=file_list,
-        auto_invoke=metadata.auto_invoke,
         license=metadata.license,
         compatibility=metadata.compatibility,
         metadata=metadata.metadata,
@@ -363,7 +361,6 @@ async def install_from_inline(
         source=SkillSource.INLINE,
         body_content=body,
         files=["SKILL.md"],
-        auto_invoke=metadata.auto_invoke,
         license=metadata.license,
         compatibility=metadata.compatibility,
         metadata=metadata.metadata,

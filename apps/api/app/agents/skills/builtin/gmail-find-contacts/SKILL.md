@@ -29,7 +29,7 @@ Find a specific person by name.
 - Phone numbers (if available)
 - Profile photos
 
-### GET_CONTACT_LIST
+### GMAIL_GET_CONTACTS
 Get comprehensive list of all contacts.
 
 **Best for:** When user wants their full contact list
@@ -57,7 +57,7 @@ Get detailed info about specific person.
 - Organization info
 - Profile photo
 
-### GMAIL_SEARCH_EMAILS
+### GMAIL_FETCH_EMAILS
 Search emails to find contact context.
 
 **Useful for:**

@@ -17,9 +17,10 @@ from typing import Any
 from app.config.loggers import app_logger as logger
 from app.services.vfs.path_resolver import get_session_path
 from langchain.agents.middleware import SummarizationMiddleware
+from langchain.agents.middleware.types import AgentState
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AnyMessage, HumanMessage, ToolMessage
-from langchain_core.runnables import RunnableConfig
+from langgraph.runtime import Runtime
 
 
 class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
@@ -83,7 +84,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         return self._vfs
 
     async def abefore_model(
-        self, state: dict[str, Any], runtime: Any
+        self, state: AgentState[Any], runtime: Runtime[Any]
     ) -> dict[str, Any] | None:
         """
         Called before each model invocation.
@@ -107,21 +108,18 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
 
         return result
 
-    def _should_trigger_summarization(self, state: dict[str, Any]) -> bool:
+    def _should_trigger_summarization(self, state: AgentState[Any]) -> bool:
         """Check if summarization will be triggered based on current state."""
-        # Access parent's internal check if available
-        # For now, we rely on token counting
         messages = state.get("messages", [])
         if not messages:
             return False
 
         try:
-            token_count = self._token_counter(messages)
-            # Get trigger threshold
-            if isinstance(self._trigger, tuple):
-                trigger_type, trigger_value = self._trigger
+            token_count = self.token_counter(messages)
+            # Check against trigger conditions
+            if isinstance(self.trigger, tuple):
+                trigger_type, trigger_value = self.trigger
                 if trigger_type == "fraction":
-                    # Estimate max tokens (this is approximate)
                     max_tokens = getattr(self, "_max_tokens", 128000)
                     return token_count > max_tokens * trigger_value
                 elif trigger_type == "tokens":
@@ -133,12 +131,14 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
 
         return False
 
-    async def _archive_to_vfs(self, state: dict[str, Any], runtime: Any) -> str:
+    async def _archive_to_vfs(
+        self, state: AgentState[Any], runtime: Runtime[Any]
+    ) -> str:
         """Archive full conversation to VFS before summarization."""
         messages = state.get("messages", [])
 
         # Extract user_id and conversation_id from runtime config
-        config: RunnableConfig = getattr(runtime, "config", {}) or {}
+        config: dict[str, Any] = getattr(runtime, "config", {}) or {}
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id")
         conversation_id = configurable.get("thread_id")

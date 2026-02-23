@@ -27,13 +27,13 @@ Create a new email draft.
 - `bcc`: BCC recipients
 - `from`: Sender alias (if multiple accounts)
 
-### GMAIL_SEND_MESSAGE
+### GMAIL_SEND_EMAIL
 Send an already-created draft.
 
 **Required parameters:**
 - `draft_id`: The ID from GMAIL_CREATE_DRAFT response
 
-### GMAIL_SEARCH_EMAILS
+### GMAIL_FETCH_EMAILS
 Search existing emails before composing.
 
 **Useful for:**
