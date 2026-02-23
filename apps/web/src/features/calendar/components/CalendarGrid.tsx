@@ -111,7 +111,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
         <CurrentTimeLine />
 
         <div
-          className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-zinc-800 bg-primary-bg"
+          className="sticky left-0 z-[11] w-20 flex-shrink-0 border-r border-border-surface-800 bg-primary-bg"
           style={{ height: `${hours.length * 64}px` }}
         >
           <CurrentTimeLabel />
@@ -121,7 +121,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
               key={hour}
               className="flex h-16 items-start justify-end pt-2 pr-3"
             >
-              <span className="text-xs text-zinc-500">
+              <span className="text-xs text-foreground-500">
                 {hour === 0
                   ? "12 AM"
                   : hour === 12
@@ -151,7 +151,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
               {columnVirtualizer.getVirtualItems().map((virtualColumn) => (
                 <div
                   key={`border-${virtualColumn.index}`}
-                  className="absolute top-0 h-full flex-shrink-0 border-r border-zinc-800"
+                  className="absolute top-0 h-full flex-shrink-0 border-r border-border-surface-800"
                   style={{
                     width: `${virtualColumn.size}px`,
                     transform: `translateX(${virtualColumn.start}px)`,
@@ -164,7 +164,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
             {/* Loading overlay at left edge */}
             {isLoadingPast && columnVirtualizer.getVirtualItems()[0] && (
               <div
-                className="absolute top-0 left-0 z-10 flex items-center justify-center bg-zinc-900/50"
+                className="absolute top-0 left-0 z-10 flex items-center justify-center bg-surface-100/50"
                 style={{
                   width: `${columnVirtualizer.getVirtualItems()[0].size}px`,
                   height: "100%",
@@ -197,7 +197,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                     {hours.map((hour) => (
                       <div
                         key={`divider-${hour}`}
-                        className="h-16 border-t border-zinc-800 first:border-t-0"
+                        className="h-16 border-t border-border-surface-800 first:border-t-0"
                       />
                     ))}
 
@@ -230,7 +230,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
                               </div>
                               {eventPos.event.start.dateTime &&
                                 eventPos.event.end.dateTime && (
-                                  <div className="mt-1 text-xs text-zinc-400">
+                                  <div className="mt-1 text-xs text-foreground-400">
                                     {new Date(
                                       eventPos.event.start.dateTime,
                                     ).toLocaleTimeString("en-US", {
@@ -261,7 +261,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
             {/* Loading overlay at right edge */}
             {isLoadingFuture && columnVirtualizer.getVirtualItems()[0] && (
               <div
-                className="absolute top-0 right-0 z-10 flex items-center justify-center bg-zinc-900/50"
+                className="absolute top-0 right-0 z-10 flex items-center justify-center bg-surface-100/50"
                 style={{
                   width: `${columnVirtualizer.getVirtualItems()[0].size}px`,
                   height: "100%",
@@ -281,7 +281,7 @@ export const CalendarGrid: React.FC<MultiDayCalendarGridProps> = ({
           selectedCalendars.length > 0 &&
           !hasAnyEvents && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center text-zinc-500">
+              <div className="text-center text-foreground-500">
                 <div className="text-lg font-medium">No events scheduled</div>
                 <div className="mt-1 text-sm">
                   for the selected day{dates.length > 1 ? "s" : ""}

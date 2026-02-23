@@ -47,7 +47,7 @@ export default function FollowUpActions({
           }}
         >
           <Button
-            className="text-xs text-foreground-500 outline-1 outline-zinc-700 transition-colors outline-dashed hover:bg-zinc-700 hover:text-foreground-700"
+            className="text-xs text-foreground-500 outline-1 outline-surface-300 transition-colors outline-dashed hover:bg-surface-300 hover:text-foreground-700"
             variant="light"
             size="sm"
             onPress={() => handleActionClick(action)}

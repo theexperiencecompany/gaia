@@ -30,7 +30,7 @@ export default function DesktopMenu({ scrolled }: { scrolled: boolean }) {
               startContent={<Github width={18} />}
               className="pr-0.5"
               endContent={
-                <div className="flex flex-nowrap gap-1 rounded-sm bg-zinc-900 p-1 px-2 text-white">
+                <div className="flex flex-nowrap gap-1 rounded-sm bg-surface-100 p-1 px-2 text-foreground-900">
                   {isLoadingStars ? "..." : repoData?.stargazers_count || 0}
                   <StarFilledIcon />
                 </div>

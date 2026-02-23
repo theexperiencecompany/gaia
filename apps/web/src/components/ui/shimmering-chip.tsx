@@ -18,7 +18,7 @@ const ShinyText = ({
   return (
     <div className={className}>
       <div
-        className={`inline-block bg-clip-text text-zinc-800 ${disabled ? "" : "animate-shine"} `}
+        className={`inline-block bg-clip-text text-foreground-700 dark:text-foreground-200 ${disabled ? "" : "animate-shine"} `}
         style={{
           backgroundImage:
             "linear-gradient(120deg, rgba(255, 255, 255, 0) 40%, rgba(255, 255, 255, 0.8) 50%, rgba(255, 255, 255, 0) 60%)",

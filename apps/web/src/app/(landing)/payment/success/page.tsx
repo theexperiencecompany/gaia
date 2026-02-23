@@ -62,7 +62,7 @@ export default function PaymentSuccessPage() {
           <CardBody className="p-8 text-center">
             <Spinner size="lg" className="mb-4" />
             <h1 className="mb-2 text-xl font-semibold">Verifying Payment...</h1>
-            <p className="text-gray-600">
+            <p className="text-foreground-600">
               Please wait while we confirm your payment with Dodo Payments.
             </p>
           </CardBody>
@@ -80,7 +80,7 @@ export default function PaymentSuccessPage() {
             <h1 className="mb-2 text-xl font-semibold text-red-600">
               Payment Verification Failed
             </h1>
-            <p className="mb-6 text-gray-600">{error}</p>
+            <p className="mb-6 text-foreground-600">{error}</p>
             <div className="flex gap-3">
               <Button
                 color="primary"
@@ -109,7 +109,7 @@ export default function PaymentSuccessPage() {
             <h1 className="mb-2 text-xl font-semibold text-green-600">
               Payment Successful!
             </h1>
-            <p className="mb-6 text-gray-600">
+            <p className="mb-6 text-foreground-600">
               Your subscription has been activated successfully.
             </p>
             <Button

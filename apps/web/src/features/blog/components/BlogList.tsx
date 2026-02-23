@@ -44,7 +44,7 @@ export function BlogList({ blogs }: BlogListProps) {
       )}
 
       {remaining.length > 0 && (
-        <div className="dark">
+        <div>
           <div className="my-7 space-y-2 px-2">
             <div className="text-sm text-foreground-400">More News</div>
             <div className="h-px w-full bg-foreground-100" />
@@ -56,7 +56,7 @@ export function BlogList({ blogs }: BlogListProps) {
       )}
 
       {filtered.length === 0 && (
-        <p className="flex h-full items-center justify-center py-12 text-center text-zinc-400">
+        <p className="flex h-full items-center justify-center py-12 text-center text-foreground-400">
           No posts found matching your filters.
         </p>
       )}

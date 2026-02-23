@@ -53,7 +53,7 @@ export default function AddGoalDialog({
   return (
     <Modal
       backdrop="blur"
-      className="text-foreground dark"
+      className="text-foreground"
       isOpen={openDialog}
       onOpenChange={setOpenDialog}
     >
@@ -70,7 +70,7 @@ export default function AddGoalDialog({
             endContent={
               <Button
                 isIconOnly
-                className="font-medium text-zinc-800"
+                className="font-medium text-foreground-800"
                 color="primary"
                 onPress={handleAddGoal}
               >

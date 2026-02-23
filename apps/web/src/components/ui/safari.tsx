@@ -34,17 +34,17 @@ export function Safari({
       <title>Safari Browser component</title>
       <g clipPath="url(#path0)">
         <path
-          className="fill-zinc-900"
+          className="fill-surface-100"
           d="M0 52H1202V741C1202 747.627 1196.63 753 1190 753H12C5.37258 753 0 747.627 0 741V52Z"
         />
         <path
-          className="fill-zinc-900"
+          className="fill-surface-100"
           clipRule="evenodd"
           d="M0 12C0 5.37258 5.37258 0 12 0H1190C1196.63 0 1202 5.37258 1202 12V52H0L0 12Z"
           fillRule="evenodd"
         />
         <path
-          className="fill-zinc-900"
+          className="fill-surface-100"
           clipRule="evenodd"
           d="M1.06738 12C1.06738 5.92487 5.99225 1 12.0674 1H1189.93C1196.01 1 1200.93 5.92487 1200.93 12V51H1.06738V12Z"
           fillRule="evenodd"

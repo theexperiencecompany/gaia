@@ -39,8 +39,8 @@ export function DownloadAsset({
 
   const bgClass =
     backgroundColor === "dark"
-      ? "bg-foreground-950 outline-1 outline-zinc-700"
-      : "bg-white";
+      ? "bg-surface-950 outline-1 outline-surface-700"
+      : "bg-surface-50 outline-1 outline-surface-300";
 
   return (
     <div

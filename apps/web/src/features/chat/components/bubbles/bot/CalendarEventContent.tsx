@@ -105,9 +105,9 @@ export const EventContent = ({
     <>
       <div className="text-base leading-tight text-white">{summary}</div>
       {description && (
-        <div className="mt-1 text-xs text-zinc-400">{description}</div>
+        <div className="mt-1 text-xs text-foreground-400">{description}</div>
       )}
-      <div className="mt-1 flex items-center gap-2 text-xs text-zinc-400">
+      <div className="mt-1 flex items-center gap-2 text-xs text-foreground-400">
         <span>{timeDisplay}</span>
       </div>
     </>

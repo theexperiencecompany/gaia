@@ -27,7 +27,7 @@ export default function ProjectFieldChip({
       <div style={{ color: selectedProject.color || "#71717a" }}>
         <Folder02Icon width={18} height={18} />
       </div>
-      <span className="truncate text-zinc-200">{selectedProject.name}</span>
+      <span className="truncate text-foreground-200">{selectedProject.name}</span>
     </div>
   ) : undefined;
 
@@ -49,7 +49,7 @@ export default function ProjectFieldChip({
                 onChange(project.id);
                 onClose();
               }}
-              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-zinc-300 transition-colors hover:bg-zinc-800"
+              className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-foreground-300 transition-colors hover:bg-surface-200"
             >
               <div style={{ color: project.color || "#71717a" }}>
                 <Folder02Icon width={18} height={18} />
@@ -60,9 +60,9 @@ export default function ProjectFieldChip({
 
           {/* Hint */}
           <div className="mt-1 px-3 py-2">
-            <p className="text-xs text-zinc-500">
+            <p className="text-xs text-foreground-500">
               Type{" "}
-              <span className="rounded bg-zinc-800 px-1 font-mono">
+              <span className="rounded bg-surface-200 px-1 font-mono">
                 @{projects[0]?.name || "project"}
               </span>{" "}
               in title/description to select

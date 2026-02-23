@@ -20,7 +20,7 @@ export const PinCard: React.FC<PinCardProps> = ({
   return (
     <Link
       key={message.message_id}
-      className="relative flex h-full max-h-[195px] min-h-[150px] flex-col gap-2 overflow-hidden rounded-xl bg-zinc-800 p-3 transition-colors hover:bg-zinc-700"
+      className="relative flex h-full max-h-[195px] min-h-[150px] flex-col gap-2 overflow-hidden rounded-xl bg-surface-200 p-3 transition-colors hover:bg-surface-700"
       href={{
         pathname: `/c/${conversation_id}`,
         query: { messageId: message.message_id },

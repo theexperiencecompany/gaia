@@ -59,7 +59,7 @@ export default function TodoFieldsRow({
               ? "text-yellow-400 bg-yellow-400/20"
               : priority === Priority.LOW
                 ? "text-blue-400 bg-blue-400/20"
-                : "text-zinc-500"
+                : "text-foreground-500"
         }`}
       />
       <DateFieldChip

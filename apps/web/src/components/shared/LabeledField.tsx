@@ -13,7 +13,7 @@ export function LabeledField({
 }: LabeledFieldProps) {
   return (
     <div className={`space-y-1 ${className}`}>
-      <div className="text-xs font-medium text-zinc-400">{label}</div>
+      <div className="text-xs font-medium text-foreground-400">{label}</div>
       {children}
     </div>
   );

@@ -40,7 +40,7 @@ export default function ToolsList({ tools }: ToolsListProps) {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.15 }}
-            className="flex h-[52px] cursor-pointer items-center gap-2.5 rounded-2xl bg-zinc-900 px-4 py-2 transition-colors hover:bg-zinc-800"
+            className="flex h-[52px] cursor-pointer items-center gap-2.5 rounded-2xl bg-surface-100 px-4 py-2 transition-colors hover:bg-surface-200"
           >
             <div className="flex min-h-8 items-center -space-x-1.5">
               {displayIcons.map((t, i) => {
@@ -93,7 +93,7 @@ export default function ToolsList({ tools }: ToolsListProps) {
                   initial={{ opacity: 0, y: -10 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.05 }}
-                  className="cursor-pointer rounded-2xl bg-zinc-900 px-4 py-2 transition-colors hover:bg-zinc-800"
+                  className="cursor-pointer rounded-2xl bg-surface-100 px-4 py-2 transition-colors hover:bg-surface-200"
                 >
                   <div className="flex items-center gap-2">
                     {IconComponent}

@@ -6,7 +6,7 @@ import type React from "react";
 const FlowchartPreview = dynamic(() => import("./FlowchartPreview"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-40 items-center justify-center text-sm text-gray-500">
+    <div className="flex h-40 items-center justify-center text-sm text-foreground-500">
       Loading preview...
     </div>
   ),
@@ -15,7 +15,7 @@ const FlowchartPreview = dynamic(() => import("./FlowchartPreview"), {
 const MermaidCode = dynamic(() => import("./MermaidCode"), {
   ssr: false,
   loading: () => (
-    <div className="flex h-20 items-center justify-center text-sm text-gray-500">
+    <div className="flex h-20 items-center justify-center text-sm text-foreground-500">
       Loading code...
     </div>
   ),

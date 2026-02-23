@@ -24,7 +24,7 @@ const ChatBubbleFilePreview: React.FC<ChatBubbleFilePreviewProps> = ({
             className={`group ${
               file?.type?.startsWith("image/")
                 ? "flex h-[300px] w-[300px] flex-col items-center justify-center overflow-hidden rounded-xl"
-                : "flex w-fit items-center rounded-xl bg-zinc-700 p-3 text-white"
+                : "flex w-fit items-center rounded-xl bg-surface-300 p-3 text-foreground-50"
             }`}
           >
             {file?.type?.startsWith("image/") ? (
@@ -49,7 +49,7 @@ const ChatBubbleFilePreview: React.FC<ChatBubbleFilePreviewProps> = ({
                         ? `${file.filename.substring(0, 20)}...`
                         : file.filename}
                     </div>
-                    <div className="text-xs text-zinc-300">
+                    <div className="text-xs text-foreground-300">
                       {getFormattedFileType(file.type, file.filename)}
                     </div>
                   </div>

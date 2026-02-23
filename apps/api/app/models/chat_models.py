@@ -1,7 +1,7 @@
 from enum import Enum
 from typing import List, Optional, Union
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing_extensions import TypedDict
 
 from app.models.message_models import FileData, ReplyToMessageData, SelectedWorkflowData
@@ -19,6 +19,20 @@ class ToolDataEntry(TypedDict):
     tool_name: str
     data: Union[dict, List, str, int, float, bool]
     timestamp: Optional[str]
+
+
+class ToolProgressData(BaseModel):
+    """Progress data for tool execution updates sent to frontend."""
+
+    message: str = Field(..., description="Display message for the tool execution")
+    tool_name: str = Field(..., description="Raw tool name identifier")
+    tool_category: Optional[str] = Field(None, description="Category for icon display")
+    show_category: bool = Field(True, description="Whether to show category text in UI")
+    tool_call_id: Optional[str] = Field(
+        None, description="Unique ID for this tool call"
+    )
+    inputs: Optional[dict] = Field(None, description="Tool input arguments")
+    output: Optional[str] = Field(None, description="Tool output result")
 
 
 tool_fields = [

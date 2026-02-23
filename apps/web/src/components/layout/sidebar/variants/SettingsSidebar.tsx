@@ -15,7 +15,7 @@ export default function SettingsSidebar() {
   };
 
   return (
-    <div className="flex h-full max-w-[280px] flex-col border-t-1 border-zinc-800 pt-3">
+    <div className="flex h-full max-w-[280px] flex-col border-t-1 border-surface-200 pt-3">
       <nav className="flex-1 space-y-1">
         {settingsPageItems.map((item) => {
           const isActive = currentSection === item.href?.split("section=")[1];
@@ -28,7 +28,7 @@ export default function SettingsSidebar() {
               size="sm"
               variant={isActive ? "flat" : "light"}
               color={isActive ? "primary" : "default"}
-              className={`group ${isActive ? "text-primary" : "text-zinc-400 hover:text-white"} flex w-full justify-start`}
+              className={`group ${isActive ? "text-primary" : "text-foreground-500 hover:text-foreground-900"} flex w-full justify-start`}
             >
               {Icon && (
                 <Icon

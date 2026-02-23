@@ -21,7 +21,7 @@ interface StatusConfig {
 }
 
 const STATUS_CONFIG: Record<ContextStatus, StatusConfig> = {
-  idle: { text: "Waiting...", icon: null, color: "text-white/50", spin: false },
+  idle: { text: "Waiting...", icon: null, color: "text-foreground-50/50", spin: false },
   gathering: {
     text: "Gathering context...",
     icon: Loading02Icon,
@@ -65,7 +65,7 @@ export function ContextBuildingCard() {
   const Icon = config.icon;
 
   return (
-    <Card className="fixed right-4 bottom-[22rem] z-50 w-80 border border-white/10 bg-black/40 p-4 backdrop-blur-xl">
+    <Card className="fixed right-4 bottom-[22rem] z-50 w-80 border border-surface-950/10 bg-surface-50/40 p-4 backdrop-blur-xl">
       <div className="flex items-center gap-3">
         {Icon && (
           <Icon
@@ -79,7 +79,7 @@ export function ContextBuildingCard() {
             {config.text}
           </div>
           {contextMessage && (
-            <div className="mt-1 text-xs text-white/50">{contextMessage}</div>
+            <div className="mt-1 text-xs text-foreground-50/50">{contextMessage}</div>
           )}
         </div>
       </div>
@@ -87,8 +87,8 @@ export function ContextBuildingCard() {
       {(contextStatus === "gathering" ||
         contextStatus === "parsing_emails" ||
         contextStatus === "building_graph") && (
-        <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/10">
-          <div className="h-full w-1/2 animate-pulse rounded-full bg-blue-400/50" />
+        <div className="mt-3 h-1 overflow-hidden rounded-full bg-surface-950/10">
+          <div className="h-full w-1/2 animate-pulse rounded-full bg-primary/50" />
         </div>
       )}
     </Card>

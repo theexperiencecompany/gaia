@@ -15,7 +15,7 @@ export function BentoItem({
     <div className="flex aspect-square flex-col gap-2 sm:gap-3">
       <div
         className={cn(
-          "flex h-[90%] w-full min-w-full items-center justify-center rounded-2xl bg-zinc-800/70 p-3 sm:rounded-3xl sm:p-4",
+          "flex h-[90%] w-full min-w-full items-center justify-center rounded-2xl bg-surface-200/70 p-3 sm:rounded-3xl sm:p-4",
           childrenClassName,
         )}
       >

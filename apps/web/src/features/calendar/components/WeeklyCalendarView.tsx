@@ -334,11 +334,11 @@ const WeeklyCalendarView: React.FC<WeeklyCalendarViewProps> = ({
       >
         {!isCalendarConnected ? (
           <div className="flex h-full w-full flex-col items-center justify-center gap-2">
-            <GoogleCalendarIcon className="h-12 w-12 text-zinc-600" />
-            <h2 className="text-xl font-semibold text-zinc-300 mt-2">
+            <GoogleCalendarIcon className="h-12 w-12 text-foreground-600" />
+            <h2 className="text-xl font-semibold text-foreground-300 mt-2">
               Connect Google Calendar
             </h2>
-            <p className="text-sm text-zinc-500 text-center max-w-lg">
+            <p className="text-sm text-foreground-500 text-center max-w-lg">
               Connect your Calendar to view and manage your events in GAIA.
             </p>
             <Button

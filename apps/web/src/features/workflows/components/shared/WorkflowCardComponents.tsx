@@ -179,7 +179,7 @@ export function TriggerDisplay({
   if (triggerLabel !== "Manual Trigger")
     return (
       <div className={`flex flex-wrap items-center gap-2 ${className}`}>
-        <div className="flex items-center gap-1 text-xs text-zinc-500">
+        <div className="flex items-center gap-1 text-xs text-foreground-500">
           <div className="w-4">
             <TriggerIcon
               triggerType={triggerType}
@@ -191,7 +191,7 @@ export function TriggerDisplay({
         </div>
 
         {nextRunText && (
-          <div className="flex items-center gap-1 text-xs text-zinc-500">
+          <div className="flex items-center gap-1 text-xs text-foreground-500">
             <TimeScheduleIcon width={15} height={15} />
             {nextRunText}
           </div>
@@ -215,9 +215,9 @@ export function RunCountDisplay({
   if (runCount !== "Never run")
     return (
       <div
-        className={`flex items-center gap-1 text-xs text-zinc-500 ${className}`}
+        className={`flex items-center gap-1 text-xs text-foreground-500 ${className}`}
       >
-        <PlayIcon width={15} height={15} className="w-4 text-zinc-500" />
+        <PlayIcon width={15} height={15} className="w-4 text-foreground-500" />
         <span className="text-nowrap">{formatRunCount(totalExecutions)}</span>
       </div>
     );
@@ -271,7 +271,7 @@ export function CreatorAvatar({
             className="rounded-full h-7 w-7"
           />
         ) : (
-          <UserCircle02Icon className="h-7 w-7 text-zinc-400" />
+          <UserCircle02Icon className="h-7 w-7 text-foreground-400" />
         )}
       </div>
     </div>

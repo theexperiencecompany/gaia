@@ -253,7 +253,7 @@ export default function ChaoticWorkspaceSection() {
             loading="lazy"
             className="rounded-xl"
           />
-          <div className="absolute -right-2 -bottom-2 rounded-full bg-gray-700 px-2 py-1 text-xs font-bold text-white">
+          <div className="absolute -right-2 -bottom-2 rounded-full bg-surface-700 px-2 py-1 text-xs font-bold text-white">
             Offline
           </div>
         </div>

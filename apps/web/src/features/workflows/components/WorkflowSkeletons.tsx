@@ -2,7 +2,7 @@ import { Skeleton } from "@heroui/react";
 
 export const WorkflowCardSkeleton = () => {
   return (
-    <div className="relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 bg-zinc-800 outline-zinc-800/70 p-4">
+    <div className="relative z-1 flex h-full min-h-fit w-full flex-col gap-2 rounded-3xl outline-1 bg-surface-200 outline-surface-200/70 p-4">
       <div className="flex items-start justify-between">
         <div className="flex min-h-8 items-center gap-2">
           <Skeleton className="h-8 w-8 rounded-lg" />
@@ -32,7 +32,7 @@ export const WorkflowCardSkeleton = () => {
 
 export const WorkflowStepSkeleton = () => {
   return (
-    <div className="flex items-start gap-3 rounded-lg border border-zinc-800 p-3">
+    <div className="flex items-start gap-3 rounded-lg border border-surface-200 p-3">
       <Skeleton className="h-8 w-8 flex-shrink-0 rounded-full" />
       <div className="flex-1 space-y-2">
         <Skeleton className="h-5 w-3/4" />

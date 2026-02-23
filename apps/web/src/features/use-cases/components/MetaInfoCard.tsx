@@ -12,10 +12,10 @@ export default function MetaInfoCard({
   value,
 }: MetaInfoCardProps) {
   return (
-    <div className="flex items-center gap-2.5 rounded-2xl bg-zinc-900 px-4 py-2">
+    <div className="flex items-center gap-2.5 rounded-2xl bg-surface-100 px-4 py-2">
       {icon}
       <div className="flex flex-col">
-        <span className="text-xs text-zinc-500">{label}</span>
+        <span className="text-xs text-foreground-500">{label}</span>
         <span className="text-sm font-medium text-foreground">{value}</span>
       </div>
     </div>

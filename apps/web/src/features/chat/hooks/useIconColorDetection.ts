@@ -2,22 +2,32 @@
 
 import { useEffect, useRef, useState } from "react";
 
-// Cache to store results and avoid re-computing for same images
-const colorDetectionCache = new Map<string, boolean>();
+import { useTheme } from "@/components/providers/ThemeProvider";
+
+// Cache to store brightness values (not inversion decision) and avoid re-computing for same images
+const brightnessCache = new Map<string, number>();
 
 /**
- * Hook to detect if an icon image is predominantly dark and needs inversion
+ * Hook to detect if an icon image needs inversion based on theme
+ * In dark mode: invert if icon is too dark (brightness < 50)
+ * In light mode: invert if icon is too light (brightness > 200)
  * Optimized with: caching, downscaling, pixel sampling, and early exit
  */
 export const useIconColorDetection = (src: string) => {
   const [shouldInvert, setShouldInvert] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const { resolvedTheme } = useTheme();
 
   useEffect(() => {
-    // Check cache first
-    if (colorDetectionCache.has(src)) {
-      setShouldInvert(colorDetectionCache.get(src)!);
+    const isDarkMode = resolvedTheme === "dark";
+
+    // Check cache first for brightness
+    if (brightnessCache.has(src)) {
+      const brightness = brightnessCache.get(src)!;
+      // In dark mode, invert dark icons. In light mode, invert light icons.
+      const invert = isDarkMode ? brightness < 50 : brightness > 200;
+      setShouldInvert(invert);
       setIsLoading(false);
       return;
     }
@@ -84,7 +94,7 @@ export const useIconColorDetection = (src: string) => {
         }
 
         if (opaquePixels === 0) {
-          colorDetectionCache.set(src, false);
+          brightnessCache.set(src, 128); // Default to mid brightness
           setShouldInvert(false);
           setIsLoading(false);
           return;
@@ -92,11 +102,13 @@ export const useIconColorDetection = (src: string) => {
 
         const averageBrightness = totalBrightness / opaquePixels;
 
-        // If average brightness is below 50 (out of 255), consider it dark
-        const invert = averageBrightness < 50;
+        // Cache the brightness value (not the inversion decision)
+        brightnessCache.set(src, averageBrightness);
 
-        // Cache the result
-        colorDetectionCache.set(src, invert);
+        // In dark mode, invert dark icons. In light mode, invert light icons.
+        const invert = isDarkMode
+          ? averageBrightness < 50
+          : averageBrightness > 200;
 
         if (!signal.aborted) {
           setShouldInvert(invert);
@@ -117,7 +129,7 @@ export const useIconColorDetection = (src: string) => {
     return () => {
       abortControllerRef.current?.abort();
     };
-  }, [src]);
+  }, [src, resolvedTheme]);
 
   return { shouldInvert, isLoading };
 };

@@ -24,7 +24,7 @@ export default function ScrollToBottomButton({
       }`}
     >
       <Button onPress={onScrollToBottom} isIconOnly radius="full" size="sm">
-        <ArrowDown02Icon className="h-5 w-5 text-zinc-400" />
+        <ArrowDown02Icon className="h-5 w-5 text-foreground-400" />
       </Button>
     </div>
   );

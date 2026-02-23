@@ -39,7 +39,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
   return (
     <BaseCardView
       title="Unread emails"
-      icon={<InboxUnreadIcon className="h-6 w-6 text-zinc-500" />}
+      icon={<InboxUnreadIcon className="h-6 w-6 text-foreground-500" />}
       isEmpty={isEmpty}
       emptyMessage="No unread emails"
       errorMessage="Failed to load unread emails"
@@ -54,7 +54,7 @@ const UnreadEmailsView: React.FC<UnreadEmailsViewProps> = ({
     >
       {isLoading ? (
         <div className="flex h-full items-center justify-center">
-          <Loading02Icon className="h-8 w-8 animate-spin text-zinc-500" />
+          <Loading02Icon className="h-8 w-8 animate-spin text-foreground-500" />
         </div>
       ) : (
         <EmailListCard

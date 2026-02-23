@@ -154,7 +154,7 @@ export default function ChatOptionsDropdown({
   return (
     <>
       <Dropdown
-        className={`group/${chatId} w-fit min-w-fit text-foreground dark`}
+        className={`group/${chatId} w-fit min-w-fit text-foreground`}
         size="sm"
       >
         <DropdownTrigger>
@@ -185,13 +185,13 @@ export default function ChatOptionsDropdown({
         <DropdownMenu aria-label="Static Actions">
           <DropdownItem key="star" textValue="Star" onPress={handleStarToggle}>
             <div className="flex flex-row items-center justify-start gap-2">
-              <StarIcon color="white" width={18} height={18} />
+              <StarIcon className="text-foreground-900" width={18} height={18} />
               {starred ? "Unstar" : "Star"}
             </div>
           </DropdownItem>
           <DropdownItem key="edit" textValue="Rename" onPress={openEditModal}>
             <div className="flex flex-row items-center justify-start gap-2">
-              <PencilEdit02Icon color="white" width={18} height={18} />
+              <PencilEdit02Icon className="text-foreground-900" width={18} height={18} />
               Rename
             </div>
           </DropdownItem>
@@ -201,7 +201,7 @@ export default function ChatOptionsDropdown({
             onPress={handleReadToggle}
           >
             <div className="flex flex-row items-center justify-start gap-2">
-              <MessageNotificationIcon color="white" width={18} height={18} />
+              <MessageNotificationIcon className="text-foreground-900" width={18} height={18} />
               {isUnread ? "Mark as read" : "Mark as unread"}
             </div>
           </DropdownItem>
@@ -216,7 +216,7 @@ export default function ChatOptionsDropdown({
           >
             <div className="flex flex-row items-center justify-start gap-2">
               <Delete02Icon
-                color={dangerStateHovered ? "white" : "red"}
+                className={dangerStateHovered ? "text-white" : "text-danger"}
                 width={18}
                 height={18}
               />
@@ -227,7 +227,7 @@ export default function ChatOptionsDropdown({
       </Dropdown>
 
       <Modal
-        className="text-foreground dark"
+        className="text-foreground"
         isOpen={isEditModalOpen}
         onOpenChange={closeEditModal}
       >

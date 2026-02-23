@@ -78,7 +78,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
             }`}
           />
           <Drawer.Content
-            className="fixed right-0 bottom-0 z-10 flex min-h-[60vh] w-[50vw] flex-col gap-2 rounded-tl-xl bg-zinc-900 p-4"
+            className="fixed right-0 bottom-0 z-10 flex min-h-[60vh] w-[50vw] flex-col gap-2 rounded-tl-xl bg-surface-100 p-4"
             aria-describedby="Drawer to Compose a new email"
           >
             <Drawer.Title className="text-xl">New Message</Drawer.Title>
@@ -100,14 +100,14 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
               }
               disabled
               value={user.email}
-              className="bg-zinc-800"
+              className="bg-surface-200"
             />
 
             <div className="relative">
               <TagInput
                 styleClasses={{
                   inlineTagsContainer:
-                    "bg-zinc-800 border border-t-0 border-x-0 border-b-zinc-600! border-b-2 p-2 rounded-none",
+                    "bg-surface-200 border border-t-0 border-x-0 border-b-zinc-600! border-b-2 p-2 rounded-none",
                   tag: { body: "p-0 bg-white/20 pl-3 text-sm border-none" },
                 }}
                 shape="pill"
@@ -132,7 +132,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
             <Input
               placeholder="Subject"
               variant="underlined"
-              className="bg-zinc-800"
+              className="bg-surface-200"
               classNames={{ innerWrapper: "px-2" }}
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
@@ -161,7 +161,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                         </div>
                       </ShadcnButton>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="border-none bg-zinc-900 text-white dark">
+                    <DropdownMenuContent className="border-none bg-surface-100 text-foreground">
                       {writingStyles.map((style) => (
                         <DropdownMenuItem
                           key={style.id}
@@ -169,7 +169,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                             setWritingStyle(style.id);
                             handleAskGaia(style.id);
                           }}
-                          className="cursor-pointer focus:bg-zinc-600 focus:text-white"
+                          className="cursor-pointer focus:bg-surface-600 focus:text-white"
                         >
                           <div className="flex w-full items-center justify-between">
                             {style.label}
@@ -204,7 +204,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                         </div>
                       </ShadcnButton>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="border-none bg-zinc-900 text-white dark">
+                    <DropdownMenuContent className="border-none bg-surface-100 text-foreground">
                       {contentLengthOptions.map((option) => (
                         <DropdownMenuItem
                           key={option.id}
@@ -212,7 +212,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                             setContentLength(option.id);
                             handleAskGaia();
                           }}
-                          className="cursor-pointer focus:bg-zinc-600 focus:text-white"
+                          className="cursor-pointer focus:bg-surface-600 focus:text-white"
                         >
                           <div className="flex w-full items-center justify-between">
                             {option.label}
@@ -246,7 +246,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                         </div>
                       </ShadcnButton>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent className="border-none bg-zinc-900 text-white dark">
+                    <DropdownMenuContent className="border-none bg-surface-100 text-foreground">
                       {clarityOptions.map((option) => (
                         <DropdownMenuItem
                           key={option.id}
@@ -254,7 +254,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
                             setClarityOption(option.id);
                             handleAskGaia();
                           }}
-                          className="cursor-pointer focus:bg-zinc-600 focus:text-white"
+                          className="cursor-pointer focus:bg-surface-600 focus:text-white"
                         >
                           <div className="flex w-full items-center justify-between">
                             {option.label}
@@ -272,7 +272,7 @@ export default function MailCompose({ open, onOpenChange }: MailComposeProps) {
               {editor && (
                 <>
                   {/* <MenuBar editor={editor} textLength={false} isEmail={true} /> */}
-                  <EditorContent className="bg-zinc-800 p-2" editor={editor} />
+                  <EditorContent className="bg-surface-200 p-2" editor={editor} />
                 </>
               )}
             </div>

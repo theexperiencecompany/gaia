@@ -14,7 +14,7 @@ export default function Personalised() {
         />
 
         <div className="grid w-full max-w-7xl grid-cols-1 gap-6 sm:grid-cols-2 sm:gap-8 lg:gap-10">
-          <div className="rounded-3xl bg-zinc-900">
+          <div className="rounded-3xl bg-surface-100">
             <MemoryGraphDemo />
           </div>
 
@@ -45,9 +45,9 @@ export default function Personalised() {
               {personalInfo.map((info, index) => (
                 <div
                   key={index}
-                  className="mr-2 flex gap-1 rounded-xl bg-zinc-700 px-2 py-1.5 text-xs sm:mr-4 sm:gap-2 sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm lg:mr-7 lg:px-4 lg:text-base"
+                  className="mr-2 flex gap-1 rounded-xl bg-surface-700 px-2 py-1.5 text-xs sm:mr-4 sm:gap-2 sm:rounded-2xl sm:px-3 sm:py-2 sm:text-sm lg:mr-7 lg:px-4 lg:text-base"
                 >
-                  <AiBrain01Icon className="relative top-0.5 h-3 w-3 flex-shrink-0 text-zinc-400 sm:h-4 sm:w-4 lg:h-5 lg:w-5" />
+                  <AiBrain01Icon className="relative top-0.5 h-3 w-3 flex-shrink-0 text-foreground-400 sm:h-4 sm:w-4 lg:h-5 lg:w-5" />
                   <div className="w-full">{info}</div>
                 </div>
               ))}

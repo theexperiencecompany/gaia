@@ -54,12 +54,11 @@ export const NewChatLayout: React.FC<NewChatLayoutProps> = ({
 
         {!showUseCases && (
           <Button
-            className="font-medium text-zinc-300"
             radius="full"
-            variant="flat"
             onPress={() => setShowUseCases(true)}
+            variant="flat"
           >
-            Explore Use Cases <ChevronUp />
+            Explore Use Cases <ChevronUp width={18} height={18} />
           </Button>
         )}
 

@@ -17,7 +17,7 @@ export function StatusIndicator({
 
   return (
     <div className={`text-center ${className}`}>
-      <p className="text-xs text-zinc-500">{getStatusMessage()}</p>
+      <p className="text-xs text-foreground-500">{getStatusMessage()}</p>
     </div>
   );
 }

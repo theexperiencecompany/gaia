@@ -157,9 +157,9 @@ export default function BrandPage() {
                   </ul>
                 </div>
 
-                <div className="rounded-3xl bg-zinc-800 p-4 dark:border-foreground-800 dark:bg-foreground-950">
+                <div className="rounded-3xl bg-surface-200 p-4 dark:border-foreground-800 dark:bg-foreground-950">
                   <p className="mb-3">
-                    <strong className="text-zinc-300">Important:</strong> The
+                    <strong className="text-foreground-300">Important:</strong> The
                     provided graphics are proprietary and protected under
                     intellectual property laws. Please do not alter these files
                     in any way, display these graphics in a way that implies a
@@ -168,7 +168,7 @@ export default function BrandPage() {
                     graphics as part of your own product, business, or service's
                     name.
                   </p>
-                  <p className="text-zinc-300">
+                  <p className="text-foreground-300">
                     For questions or special requests, please{" "}
                     <Link
                       href="/contact"

@@ -68,7 +68,7 @@ export default function CardStack<T extends { id: string }>({
           initial={{ opacity: 0 }}
           animate={{ opacity: isExpanded ? 1 : 0 }}
           transition={{ duration: 0.2 }}
-          className="mb-3 flex items-center justify-between text-white"
+          className="mb-3 flex items-center justify-between text-foreground-50"
         >
           <h2 className="text-base font-medium select-none">{title}</h2>
           <Button
@@ -125,7 +125,7 @@ export default function CardStack<T extends { id: string }>({
                   ? index * 0.1
                   : (data.length - index - 1) * 0.1,
               }}
-              className={`group absolute top-0 right-0 left-0 flex min-h-10 w-full cursor-pointer items-center justify-center ${isExpanded ? "rounded-xl" : "rounded-xl"} rounded-2xl bg-zinc-700 p-3 transition-colors select-none`}
+              className={`group absolute top-0 right-0 left-0 flex min-h-10 w-full cursor-pointer items-center justify-center ${isExpanded ? "rounded-xl" : "rounded-xl"} rounded-2xl bg-surface-300 p-3 transition-colors select-none`}
               style={{
                 transformOrigin: "center top",
               }}
