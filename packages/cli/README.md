@@ -1,5 +1,7 @@
 # @heygaia/cli
 
+![GAIA CLI](../../apps/web/public/images/screenshots/cli.png)
+
 CLI tool for setting up and managing [GAIA](https://heygaia.io).
 
 ## Requirements
