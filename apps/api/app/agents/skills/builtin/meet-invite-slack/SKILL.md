@@ -1,7 +1,7 @@
 ---
 name: meet-invite-slack
 description: Instantly create a Google Meet space and share the link with a teammate on Slack.
-target: any
+target: executor
 ---
 
 # Meet: Quick Invite via Slack

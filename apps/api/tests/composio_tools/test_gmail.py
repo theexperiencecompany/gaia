@@ -8,6 +8,7 @@ Tests Gmail tools:
 - GMAIL_MARK_AS_UNREAD
 - GMAIL_STAR_EMAIL
 - GMAIL_ARCHIVE_EMAIL
+- GMAIL_GET_CONTACT_LIST
 - GMAIL_DELETE_DRAFT (cleanup)
 
 Creates a draft email, performs operations, then cleans up.
@@ -235,3 +236,100 @@ class TestGmailMessageOperations:
         )
 
         assert result.get("successful"), f"API call failed: {result.get('error')}"
+
+
+class TestGmailContactList:
+    """Tests for Gmail contact list extraction."""
+
+    def test_get_contact_list_with_query(self, composio_client, user_id):
+        """
+        Test GET_CONTACT_LIST returns contacts matching a query.
+
+        Expected output schema:
+        {
+          "data": {
+            "success": true,
+            "contacts": [{"name": "...", "email": "..."}],
+            "count": 5
+          },
+          "error": null,
+          "successful": true
+        }
+        """
+        result = execute_tool(
+            composio_client,
+            "GMAIL_GET_CONTACT_LIST",
+            {"query": "test", "max_results": 10},
+            user_id,
+        )
+
+        assert result.get("successful"), f"API call failed: {result.get('error')}"
+        data = parse_data(result)
+
+        assert data.get("success") is True, "Should return success"
+        assert "contacts" in data, "Should have contacts field"
+        assert isinstance(data.get("contacts"), list), "contacts should be a list"
+        assert "count" in data, "Should have count field"
+        assert data.get("count") == len(data.get("contacts", [])), (
+            "count should match contacts length"
+        )
+
+    def test_get_contact_list_with_email_domain(self, composio_client, user_id):
+        """
+        Test GET_CONTACT_LIST filters by email domain.
+
+        Expected output schema:
+        {
+          "data": {
+            "success": true,
+            "contacts": [{"name": "...", "email": "..."}],
+            "count": N
+          },
+          "error": null,
+          "successful": true
+        }
+        """
+        result = execute_tool(
+            composio_client,
+            "GMAIL_GET_CONTACT_LIST",
+            {"query": "gmail.com", "max_results": 10},
+            user_id,
+        )
+
+        assert result.get("successful"), f"API call failed: {result.get('error')}"
+        data = parse_data(result)
+
+        assert data.get("success") is True, "Should return success"
+        assert "contacts" in data, "Should have contacts field"
+        assert isinstance(data.get("contacts"), list), "contacts should be a list"
+
+    def test_get_contact_list_empty_results(self, composio_client, user_id):
+        """
+        Test GET_CONTACT_LIST handles no results gracefully.
+
+        Expected output schema:
+        {
+          "data": {
+            "success": true,
+            "contacts": [],
+            "count": 0,
+            "message": "No messages found matching query: ..."
+          },
+          "error": null,
+          "successful": true
+        }
+        """
+        result = execute_tool(
+            composio_client,
+            "GMAIL_GET_CONTACT_LIST",
+            {"query": "xyzqwerty123456789nonexistent", "max_results": 5},
+            user_id,
+        )
+
+        assert result.get("successful"), f"API call failed: {result.get('error')}"
+        data = parse_data(result)
+
+        assert data.get("success") is True, "Should return success even with no results"
+        assert "contacts" in data, "Should have contacts field"
+        assert data.get("count") == 0, "count should be 0 for no results"
+        assert len(data.get("contacts", [])) == 0, "contacts should be empty list"

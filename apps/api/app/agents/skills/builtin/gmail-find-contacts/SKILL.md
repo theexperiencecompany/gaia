@@ -30,19 +30,19 @@ Find a specific person by name.
 - Profile photos
 
 ### GMAIL_GET_CONTACTS
-Get comprehensive list of all contacts.
+Get contacts from email history using a search query.
 
-**Best for:** When user wants their full contact list
+**Best for:** Finding contacts - this is the most optimized tool for searching contacts
 
 **Parameters:**
-- max_results: Number of messages to analyze (default: 100)
+- query: Search query to filter contacts (REQUIRED - e.g., email address, name, or domain)
+- max_results: Maximum number of messages to analyze (default: 30)
 
-**How it works:**
-1. Fetches messages from inbox and sent
-2. Parses email headers (From, To, Cc, Reply-To)
-3. Extracts unique names and emails
-4. Deduplicates results
-5. Returns sorted list
+**Examples:**
+- `query="john"` - Find contacts with "john" in name or email
+- `query="company.com"` - Find contacts from specific domain
+- `query="smith"` - Find contacts with "smith" in name or email
+
 
 ### GMAIL_GET_PEOPLE
 Get detailed info about specific person.
@@ -67,7 +67,24 @@ Search emails to find contact context.
 
 ## Workflow
 
-### Finding Specific Person
+### Finding a Contact (Recommended)
+
+**Step 1: Use GMAIL_GET_CONTACTS with query**
+- This is the most optimized tool for searching contacts
+- Use query parameter to filter: `query="john"` or `query="john@company.com"`
+- Set max_results higher for more thorough search (default 30)
+
+**Step 2: Present Results**
+Show user the matches:
+```
+Found contacts matching "john":
+1. John Smith - john.smith@company.com
+2. John Doe - john.doe@other.com
+
+Want me to search for more?
+```
+
+### Alternative: Using GMAIL_SEARCH_PEOPLE
 
 **Step 1: Use GMAIL_SEARCH_PEOPLE**
 - Enter name as query
@@ -90,18 +107,18 @@ Which one?
 
 ### Getting Full Contact List
 
-**Step 1: Use GET_CONTACT_LIST**
-- Set max_results (default 100)
-- More messages = more contacts
+**Step 1: Use GMAIL_GET_CONTACTS**
+- Fetches contacts from your email history
+- Extracts unique email addresses you've interacted with
 
 **Step 2: Present Results**
-- Show count: "You have X contacts"
+- Show count: "Found X contacts from your email history"
 - Display first 10-20 with names and emails
 - Offer to show more if needed
 
 **Example:**
 ```
-You have 156 contacts. Here are some:
+Found 156 contacts from your email history. Here are some:
 - John Smith: john.smith@company.com
 - Jane Doe: jane.doe@example.com
 - Bob Wilson: bob.wilson@email.com

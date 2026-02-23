@@ -3,10 +3,10 @@
 All HTTP calls are synchronous using httpx.Client to avoid event loop issues.
 """
 
-import asyncio
 from typing import Any, Dict, List, Optional
 
 import httpx
+from app.services.contact_service import get_gmail_contacts
 from composio import Composio
 from pydantic import BaseModel, Field
 
@@ -121,15 +121,14 @@ class SnoozeEmailInput(BaseModel):
 class GetContactListInput(BaseModel):
     """Input for getting contact list from email history."""
 
-    max_results: int = Field(
-        default=100,
-        description="Maximum number of messages to analyze (default: 100)",
+    query: str = Field(
+        ...,
+        description="Search query to filter contacts (e.g., email address, name, or any Gmail search query)",
     )
-
-
-def _get_user_id(auth_credentials: Dict[str, Any]) -> str:
-    """Extract user_id from auth_credentials."""
-    return auth_credentials.get("user_id", "")
+    max_results: int = Field(
+        default=30,
+        description="Maximum number of messages to analyze for contact extraction (default: 30)",
+    )
 
 
 def register_gmail_custom_tools(composio: Composio):
@@ -290,41 +289,40 @@ def register_gmail_custom_tools(composio: Composio):
     ) -> Dict[str, Any]:
         """Get contacts from email history.
 
-        Extracts unique contacts from the user's email history by:
-        1. Fetching messages from inbox and sent
-        2. Parsing email headers (From, To, Cc, Reply-To)
-        3. Extracting names and email addresses
-        4. Deduplicating results
+        Extracts unique contacts from the user's email history using a search query.
+        This is the most optimized tool for finding contacts.
 
-        Returns: Array of contacts with name and email, sorted alphabetically.
+        Args:
+            request.query: Search query to filter contacts (e.g., name, email, domain)
+            request.max_results: Maximum number of messages to analyze (default: 30)
+
+        Returns: Array of contacts with name and email.
 
         Use this when:
-        - User asks "Show me my contacts"
-        - User asks "Get my contact list"
-        - User asks "Who have I emailed recently?"
-        - User wants a list of all email addresses they've interacted with
+        - User asks to find a contact by name or email
+        - User asks "Show me contacts matching 'john'"
+        - User asks "Find contacts from company.com"
         """
-        from app.services.mail import mail_service
+        from google.oauth2.credentials import Credentials
+        from googleapiclient.discovery import build
 
-        user_id = _get_user_id(auth_credentials)
-        if not user_id:
-            raise ValueError("Missing user_id in auth_credentials")
+        token = auth_credentials.get("access_token")
+        if not token:
+            raise ValueError("Missing access_token in auth_credentials")
 
         try:
-            loop = asyncio.new_event_loop()
-            try:
-                contacts = loop.run_until_complete(
-                    mail_service.get_contact_list(user_id, request.max_results)
-                )
-            finally:
-                loop.close()
+            credentials = Credentials(token=token)
+            service = build(
+                "gmail", "v1", credentials=credentials, cache_discovery=False
+            )
+
+            return get_gmail_contacts(
+                service=service,
+                query=request.query,
+                max_results=request.max_results,
+            )
         except Exception as e:
             raise RuntimeError(f"Failed to get contacts: {e}")
-
-        return {
-            "contacts": contacts,
-            "count": len(contacts),
-        }
 
     return [
         "GMAIL_MARK_AS_READ",

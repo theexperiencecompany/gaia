@@ -1,7 +1,7 @@
 ---
 name: google-meet-create-invite
 description: Create Google Meet video conferences and invite participants via Slack or email.
-target: any
+target: executor
 ---
 
 # Google Meet: Create & Invite
