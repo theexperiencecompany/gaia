@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   docker-release:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: write
       packages: write
@@ -76,9 +76,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
         if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
-        uses: docker/setup-buildx-action@v3
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
 
       - name: Determine version scheme
         if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
@@ -117,7 +117,7 @@ jobs:
     secrets: inherit
 
   docker-web:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     permissions:
       contents: read
       packages: write
@@ -164,9 +164,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Docker Buildx
         if: steps.web-affected.outputs.web == 'true'
-        uses: docker/setup-buildx-action@v3
+      - name: Setup Blacksmith Builder
+        uses: useblacksmith/setup-docker-builder@v1
 
       - name: Determine image tag
         if: steps.web-affected.outputs.web == 'true'
@@ -181,7 +181,7 @@ jobs:
 
       - name: Build and push web Docker image
         if: steps.web-affected.outputs.web == 'true'
-        uses: docker/build-push-action@v6
+        uses: useblacksmith/build-push-action@v2
         with:
           context: .
           file: apps/web/Dockerfile
@@ -191,8 +191,6 @@ jobs:
             ghcr.io/${{ github.repository_owner }}/gaia-web:${{ github.sha }}
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1/
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
 
       - name: Skip notification
         if: steps.web-affected.outputs.web != 'true'

@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   release-please:
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
@@ -43,7 +43,7 @@ jobs:
   trigger-desktop-release:
     needs: release-please
     if: needs.release-please.outputs.desktop_release_created == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Trigger Desktop Release Workflow
         uses: actions/github-script@v7
@@ -65,7 +65,7 @@ jobs:
   trigger-cli-publish:
     needs: release-please
     if: needs.release-please.outputs.cli_release_created == 'true'
-    runs-on: ubuntu-latest
+    runs-on: blacksmith-2vcpu-ubuntu-2404
     steps:
       - name: Trigger CLI Publish Workflow
         uses: actions/github-script@v7
