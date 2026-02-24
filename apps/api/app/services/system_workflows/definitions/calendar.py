@@ -20,7 +20,7 @@ from app.models.workflow_models import (
 
 def _meeting_prep() -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
-        title="Meeting Prep",
+        title="Meeting Briefing",
         description=(
             "60 minutes before every calendar event, GAIA researches attendees, "
             "reviews relevant emails and context, prepares talking points and agenda, "
@@ -76,17 +76,6 @@ def _meeting_prep() -> CreateWorkflowRequest:
                     "Save the brief as a note or document."
                 ),
             ),
-            WorkflowStep(
-                id=str(uuid4()),
-                title="Send prep notification",
-                category="notifications",
-                description=(
-                    "Send a notification: 'Meeting in 1 hour: [event title]'. "
-                    "Body: top 2-3 points from the brief. "
-                    "Actions: 'View Full Brief', 'Join Meeting' (if link available). "
-                    "Deliver via all active channels."
-                ),
-            ),
         ],
     )
 
@@ -114,13 +103,12 @@ def _meeting_reminder() -> CreateWorkflowRequest:
         steps=[
             WorkflowStep(
                 id=str(uuid4()),
-                title="Send reminder notification",
-                category="notifications",
+                title="Prepare meeting summary",
+                category="gaia",
                 description=(
-                    "Send a notification: 'Starting in 10 minutes: [event title]'. "
-                    "Include time, location or video join link, 1-line description if available. "
-                    "Actions: 'Join Meeting' (if video link in event), 'Snooze 5 min'. "
-                    "Deliver via all active channels."
+                    "Pull the event details: title, time, location or video join link, "
+                    "and any description. Format a concise 2-3 line heads-up summary "
+                    "ready to surface to the user."
                 ),
             ),
         ],

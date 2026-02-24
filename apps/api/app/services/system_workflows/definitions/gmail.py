@@ -20,7 +20,7 @@ from app.models.workflow_models import (
 
 def _email_intelligence() -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
-        title="Email Intelligence",
+        title="Inbox Triage",
         description=(
             "Every 15 minutes, scans new inbox emails. For important emails or ones "
             "with action items, GAIA creates todos, does relevant research, and sends "
@@ -68,24 +68,13 @@ def _email_intelligence() -> CreateWorkflowRequest:
                     "If from a person, search memory for past interactions with them."
                 ),
             ),
-            WorkflowStep(
-                id=str(uuid4()),
-                title="Send notification",
-                category="notifications",
-                description=(
-                    "Send one notification: who the email is from, what it's about, "
-                    "action items identified, todos created, research gathered. "
-                    "If not important/action-required, send no notification. "
-                    "Deliver via all active channels."
-                ),
-            ),
         ],
     )
 
 
 def _smart_reply_drafts() -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
-        title="Smart Reply Drafts",
+        title="Auto-Draft Replies",
         description=(
             "Every 30 minutes, checks new inbox emails for ones that need a reply. "
             "For direct questions, requests, and important emails from real people, "
@@ -121,16 +110,6 @@ def _smart_reply_drafts() -> CreateWorkflowRequest:
                     "Write a concise, professional reply addressing the email's ask. "
                     "For ambiguous requests, write a brief clarifying reply instead of guessing. "
                     "Save as a Gmail draft — do NOT send."
-                ),
-            ),
-            WorkflowStep(
-                id=str(uuid4()),
-                title="Notify user about the draft",
-                category="notifications",
-                description=(
-                    "Send a notification: 'Draft reply ready for [sender] — [subject]'. "
-                    "Include a 1-2 sentence preview of the draft. "
-                    "Actions: 'Review & Send' (deep-links to the Gmail draft), 'Discard'."
                 ),
             ),
         ],
