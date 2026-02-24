@@ -20,6 +20,14 @@ Folder Structure (per user):
 from typing import Annotated, Any, Dict
 
 from app.config.loggers import app_logger as logger
+from app.agents.tools.vfs_cmd_parser import get_vfs_command_parser
+from app.services.vfs import get_vfs
+from app.services.vfs.path_resolver import (
+    get_agent_root,
+    get_files_path,
+    normalize_path,
+    validate_user_access,
+)
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
@@ -47,13 +55,6 @@ def _resolve_path(
     - Relative to agent workspace: notes/meeting.txt
     - Just a filename: data.json -> files/data.json
     """
-    from app.services.vfs.path_resolver import (
-        get_agent_root,
-        get_files_path,
-        normalize_path,
-        validate_user_access,
-    )
-
     path = path.strip()
 
     # Handle empty or current dir
@@ -106,8 +107,6 @@ async def vfs_read(
       vfs_read("sessions/abc123/gmail/emails.json")
       vfs_read("files/data.json")
     """
-    from app.services.vfs import get_vfs
-
     ctx = _get_context(config)
     if not ctx["user_id"]:
         return "Error: User ID not found in configuration"
@@ -150,8 +149,6 @@ async def vfs_write(
       vfs_write("notes/log.txt", "New log entry\\n", append=True)
       vfs_write("files/data.json", '{"key": "value"}')
     """
-    from app.services.vfs import get_vfs
-
     ctx = _get_context(config)
     if not ctx["user_id"]:
         return "Error: User ID not found in configuration"
@@ -210,8 +207,6 @@ async def vfs_cmd(
 
     NOT supported: rm, mv, cp, mkdir, chmod, chown
     """
-    from app.agents.tools.vfs_cmd_parser import get_vfs_command_parser
-
     ctx = _get_context(config)
     if not ctx["user_id"]:
         return "Error: User ID not found in configuration"

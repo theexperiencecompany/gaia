@@ -19,7 +19,12 @@ from dataclasses import dataclass
 from typing import NoReturn, Optional
 
 from app.config.loggers import app_logger as logger
-from app.services.vfs.path_resolver import get_agent_root
+from app.services.vfs import MongoVFS, get_vfs
+from app.services.vfs.path_resolver import (
+    get_agent_root,
+    normalize_path,
+    validate_user_access,
+)
 from app.utils.command_parsing import extract_output_redirect
 
 
@@ -74,8 +79,8 @@ class VFSCommandParser:
     DEFAULT_TREE_DEPTH = 3
     MAX_COMMAND_LENGTH = 8192
 
-    def __init__(self):
-        self._vfs = None
+    def __init__(self) -> None:
+        self._vfs: MongoVFS | None = None
         self._parsers = self._create_parsers()
 
     def _create_parsers(self) -> dict[str, argparse.ArgumentParser]:
@@ -171,11 +176,9 @@ class VFSCommandParser:
 
         return parsers
 
-    async def _get_vfs(self):
+    async def _get_vfs(self) -> MongoVFS:
         """Lazy load VFS."""
         if self._vfs is None:
-            from app.services.vfs import get_vfs
-
             self._vfs = await get_vfs()
         return self._vfs
 
@@ -286,12 +289,6 @@ class VFSCommandParser:
 
     def _resolve_path(self, path: str, user_id: str, agent_name: str) -> str:
         """Resolve a relative path to absolute VFS path."""
-        from app.services.vfs.path_resolver import (
-            get_agent_root,
-            normalize_path,
-            validate_user_access,
-        )
-
         path = path.strip()
 
         # Handle empty path or current directory

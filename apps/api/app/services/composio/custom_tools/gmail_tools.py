@@ -8,6 +8,8 @@ from typing import Any, Dict, List, Optional
 import httpx
 from app.services.contact_service import get_gmail_contacts
 from composio import Composio
+from google.oauth2.credentials import Credentials
+from googleapiclient.discovery import build
 from pydantic import BaseModel, Field
 
 # Reusable sync HTTP client
@@ -303,9 +305,6 @@ def register_gmail_custom_tools(composio: Composio):
         - User asks "Show me contacts matching 'john'"
         - User asks "Find contacts from company.com"
         """
-        from google.oauth2.credentials import Credentials
-        from googleapiclient.discovery import build
-
         token = auth_credentials.get("access_token")
         if not token:
             raise ValueError("Missing access_token in auth_credentials")

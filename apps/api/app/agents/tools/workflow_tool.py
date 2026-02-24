@@ -16,6 +16,11 @@ always require confirmation due to config_fields (calendar_ids, channel_ids, etc
 
 from typing import Annotated, Literal
 
+from app.agents.tools.workflow_shared_tools import (
+    SUBAGENT_WORKFLOW_TOOLS as _SUBAGENT_WORKFLOW_TOOLS,
+    list_workflows,
+    search_triggers,
+)
 from app.agents.tools.workflow_utils import (
     build_from_conversation_task,
     build_new_workflow_task,
@@ -34,60 +39,12 @@ from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow import WorkflowService
 from app.services.workflow.context_extractor import WorkflowContextExtractor
 from app.services.workflow.subagent_output import parse_subagent_response
-from app.services.workflow.trigger_search import TriggerSearchService
+from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 
-
-@tool
-async def search_triggers(
-    config: RunnableConfig,
-    query: Annotated[str, "Describe when the workflow should trigger"],
-    limit: Annotated[int, "Max number of results to return"] = 15,
-) -> dict:
-    """
-    Search for integration triggers matching your description.
-
-    Returns triggers with their configuration schema embedded (config_fields).
-    Use this to find appropriate triggers before creating a workflow.
-
-    Examples:
-    - "when I receive an email" -> Gmail triggers
-    - "when calendar event starts" -> Google Calendar triggers
-    - "when someone sends a slack message" -> Slack triggers
-    - "when a github issue is created" -> GitHub triggers
-
-    Returns matching triggers with:
-    - trigger_slug: Use this in create_workflow for integration triggers
-    - trigger_name: Human-readable name
-    - description: What the trigger does
-    - is_connected: Whether user has this integration connected
-    - config_fields: Configuration options for this trigger
-    """
-    try:
-        user_id = get_user_id(config)
-
-        results = await TriggerSearchService.search(
-            query=query,
-            user_id=user_id,
-            limit=limit,
-        )
-
-        connected = [t for t in results if t.get("is_connected")]
-        not_connected = [t for t in results if not t.get("is_connected")]
-
-        return success_response(
-            {
-                "triggers": results,
-                "connected_count": len(connected),
-                "not_connected_count": len(not_connected),
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error searching triggers: {e}")
-        return error_response("search_failed", str(e))
+SUBAGENT_WORKFLOW_TOOLS = _SUBAGENT_WORKFLOW_TOOLS
 
 
 @tool
@@ -145,10 +102,6 @@ async def create_workflow(
     writer = get_stream_writer()
 
     try:
-        # Import here to avoid a circular import
-
-        from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
-
         user_id = get_user_id(config)
         thread_id = get_thread_id(config) or ""
         user_name = config.get("configurable", {}).get("user_name")
@@ -274,49 +227,6 @@ async def create_workflow(
 
 @tool
 @with_rate_limiting("workflow_operations")
-async def list_workflows(config: RunnableConfig) -> dict:
-    """List all workflows for the current user."""
-    try:
-        user_id = get_user_id(config)
-        workflows = await WorkflowService.list_workflows(user_id)
-
-        workflow_summaries = [
-            {
-                "id": w.id,
-                "title": w.title,
-                "description": w.description[:100] + "..."
-                if len(w.description) > 100
-                else w.description,
-                "trigger_type": w.trigger_config.type,
-                "activated": w.activated,
-                "step_count": len(w.steps),
-                "total_executions": w.total_executions,
-            }
-            for w in workflows
-        ]
-
-        writer = get_stream_writer()
-        writer(
-            {
-                "workflow_list": {
-                    "action": "list",
-                    "workflows": workflow_summaries,
-                    "total": len(workflows),
-                }
-            }
-        )
-
-        return success_response(
-            {"workflows": workflow_summaries, "total": len(workflows)}
-        )
-
-    except Exception as e:
-        logger.error(f"Error listing workflows: {e}")
-        return error_response("fetch_failed", str(e))
-
-
-@tool
-@with_rate_limiting("workflow_operations")
 async def get_workflow(
     config: RunnableConfig,
     workflow_id: Annotated[str, "The ID of the workflow to retrieve"],
@@ -374,12 +284,6 @@ EXECUTOR_WORKFLOW_TOOLS = [
     list_workflows,
     get_workflow,
     execute_workflow,
-]
-
-# Tools for the workflow subagent - used by WorkflowSubagentRunner
-SUBAGENT_WORKFLOW_TOOLS = [
-    search_triggers,
-    list_workflows,
 ]
 
 # Default export for registry

@@ -22,6 +22,7 @@ from typing import Any, Awaitable, Callable
 
 from app.config.loggers import app_logger as logger
 from app.constants.summarization import MIN_COMPACTION_SIZE
+from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import get_session_path
 from langchain.agents.middleware import AgentMiddleware
 from langchain.agents.middleware.types import ToolCallRequest
@@ -51,7 +52,7 @@ class VFSCompactionMiddleware(AgentMiddleware):
         always_persist_tools: list[str] | None = None,
         context_window: int = 128000,
         excluded_tools: set[str] | None = None,
-    ):
+    ) -> None:
         """
         Initialize the VFS compaction middleware.
 
@@ -71,13 +72,11 @@ class VFSCompactionMiddleware(AgentMiddleware):
         self.always_persist_tools = always_persist_tools or []
         self.context_window = context_window
         self.excluded_tools = excluded_tools or set()
-        self._vfs = None  # Lazy loaded
+        self._vfs: MongoVFS | None = None  # Lazy loaded
 
-    async def _get_vfs(self):
+    async def _get_vfs(self) -> MongoVFS:
         """Lazy load VFS."""
         if self._vfs is None:
-            from app.services.vfs import get_vfs
-
             self._vfs = await get_vfs()
         return self._vfs
 

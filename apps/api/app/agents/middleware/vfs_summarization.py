@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.config.loggers import app_logger as logger
+from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import get_session_path
 from langchain.agents.middleware import SummarizationMiddleware
 from langchain.agents.middleware.types import AgentState
@@ -50,7 +51,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         vfs_enabled: bool = True,
         excluded_tools: set[str] | None = None,
         **kwargs,
-    ):
+    ) -> None:
         """
         Initialize the VFS archiving summarization middleware.
 
@@ -72,13 +73,11 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         )
         self.vfs_enabled = vfs_enabled
         self.excluded_tools = excluded_tools or set()
-        self._vfs = None  # Lazy loaded
+        self._vfs: MongoVFS | None = None  # Lazy loaded
 
-    async def _get_vfs(self):
+    async def _get_vfs(self) -> MongoVFS:
         """Lazy load VFS."""
         if self._vfs is None:
-            from app.services.vfs import get_vfs
-
             self._vfs = await get_vfs()
         return self._vfs
 
