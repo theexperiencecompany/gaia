@@ -275,7 +275,6 @@ export default function UnifiedWorkflowCard({
       <div className="flex items-start justify-between">
         <div className="flex items-center gap-2">{renderToolIcons()}</div>
         <div className="flex items-center gap-2">
-          {workflow?.is_system_workflow && <SystemWorkflowChip />}
           {shouldShowActivation && workflow && (
             <ActivationStatus activated={workflow.activated} />
           )}
@@ -327,6 +326,7 @@ export default function UnifiedWorkflowCard({
           </div>
 
           <div className="flex items-center gap-3">
+            {workflow?.is_system_workflow && <SystemWorkflowChip />}
             {shouldShowCreator && creator && (
               <CreatorAvatar creator={creator} />
             )}

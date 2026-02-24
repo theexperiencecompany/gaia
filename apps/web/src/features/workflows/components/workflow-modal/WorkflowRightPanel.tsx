@@ -27,7 +27,7 @@ export default function WorkflowRightPanel({
   onClearError,
 }: WorkflowRightPanelProps) {
   return (
-    <div className="flex w-96 flex-col self-stretch overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
+    <div className="flex w-96 min-h-0 flex-col overflow-hidden rounded-2xl bg-zinc-950/30 p-3">
       <Tabs
         aria-label="Workflow info tabs"
         defaultSelectedKey="steps"

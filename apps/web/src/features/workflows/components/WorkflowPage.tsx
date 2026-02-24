@@ -161,7 +161,7 @@ export default function WorkflowPage() {
     onEditOpenChange();
     if (!open) {
       router.push("/workflows", { scroll: false });
-      setSelectedWorkflow(null);
+      setTimeout(() => setSelectedWorkflow(null), 300);
     }
   };
 
