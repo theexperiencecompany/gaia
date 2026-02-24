@@ -19,8 +19,8 @@ Folder Structure (per user):
 
 from typing import Annotated, Any, Dict
 
-from app.config.loggers import app_logger as logger
 from app.agents.tools.vfs_cmd_parser import get_vfs_command_parser
+from app.config.loggers import app_logger as logger
 from app.services.vfs import get_vfs
 from app.services.vfs.path_resolver import (
     get_agent_root,
@@ -35,12 +35,10 @@ from langchain_core.tools import tool
 def _get_context(config: RunnableConfig) -> Dict[str, Any]:
     """Extract user_id, conversation_id, and agent_name from config."""
     metadata = config.get("metadata", {}) if config else {}
-    configurable = config.get("configurable", {}) if config else {}
     return {
-        "user_id": metadata.get("user_id") or configurable.get("user_id"),
-        "conversation_id": configurable.get("thread_id")
-        or metadata.get("conversation_id"),
-        "agent_name": config.get("agent_name", "executor") if config else "executor",
+        "user_id": metadata.get("user_id"),
+        "conversation_id": metadata.get("thread_id"),
+        "agent_name": metadata.get("agent_name", "executor"),
     }
 
 
