@@ -14,18 +14,30 @@ target: gmail_agent
 
 ## Tools
 
-### GMAIL_CREATE_DRAFT
+### GMAIL_CREATE_EMAIL_DRAFT
 Create a new email draft.
 
 **Required parameters:**
-- `to`: Recipient email address(es), comma-separated for multiple
+- `to` or `recipient_email`: Recipient email address(es)
 - `subject`: Email subject line
-- `body`: Email body content (plain text or HTML)
+- `body`: Email body content
 
 **Optional parameters:**
 - `cc`: CC recipients
 - `bcc`: BCC recipients
 - `from`: Sender alias (if multiple accounts)
+- `thread_id`: Reply within existing thread
+- `is_html`: Set `true` when body is HTML/Markdown-to-HTML
+
+**HTML drafting (default):**
+- Default to `is_html=true` for drafts unless the user explicitly asks for plain text.
+- You may write the body as normal email text/Markdown; it will be converted to clean HTML for display.
+- Use an HTML fragment (no `<html>`/`<head>`/`<body>`). Stick to: `p`, `br`, `strong`, `em`, `ul/ol/li`, `a`.
+- Keep it email-safe: no external CSS, no scripts, no images unless user asked.
+
+**Signature:**
+- Use the user's proper name from context (`User Name:`) in the sign-off.
+- Default sign-off: “Best regards,” then the user's name.
 
 ### GMAIL_SEND_DRAFT
 Send an already-created draft.
@@ -50,7 +62,7 @@ Before composing, consider:
 - Check if there's an existing thread
 
 ### Step 2: Create Draft First (NEVER auto-send)
-Always create a draft first using `GMAIL_CREATE_DRAFT`.
+Always create a draft first using `GMAIL_CREATE_EMAIL_DRAFT`.
 - This allows user to review before sending
 - User can make changes
 - Prevents accidental sends
