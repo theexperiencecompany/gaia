@@ -222,6 +222,7 @@ FORBIDDEN STEP TYPES (DO NOT CREATE):
 - Do NOT create steps that involve only text processing, data analysis, or content generation without external tool usage
 - Do NOT create generic steps like "gather requirements," "evaluate options," or "make recommendations" - these are LLM capabilities
 - If content analysis is needed, the LLM will do it while using actual tools like web_search_tool or generate_document
+- Do NOT use `category: "notifications"` for any step. GAIA automatically sends the user a notification after every workflow run — you never need to explicitly deliver an alert or push message. If a step needs to prepare a summary or message for the user (e.g. "summarize findings to surface to the user"), use `category: "gaia"` instead.
 
 FOCUS ON EXTERNAL TOOL ACTIONS:
 - Every step must perform a concrete external action (send email, create calendar event, search web, save file, etc.)
