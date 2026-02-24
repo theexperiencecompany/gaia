@@ -112,8 +112,19 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         if not messages:
             return False
 
+        filtered_messages = [
+            m
+            for m in messages
+            if not (
+                isinstance(m, ToolMessage)
+                and getattr(m, "name", None) in self.excluded_tools
+            )
+        ]
+        if not filtered_messages:
+            return False
+
         try:
-            token_count = self.token_counter(messages)
+            token_count = self.token_counter(filtered_messages)
             # Check against trigger conditions
             if isinstance(self.trigger, tuple):
                 trigger_type, trigger_value = self.trigger
@@ -123,7 +134,7 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
                 elif trigger_type == "tokens":
                     return token_count > trigger_value
                 elif trigger_type == "messages":
-                    return len(messages) > trigger_value
+                    return len(filtered_messages) > trigger_value
         except Exception:
             pass  # Intentional: fallback if token counter unavailable  # nosec B110
 

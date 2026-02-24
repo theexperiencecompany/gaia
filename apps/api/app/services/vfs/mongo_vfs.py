@@ -10,6 +10,7 @@ Users can ONLY access paths under /users/{their_user_id}/.
 
 import fnmatch
 import json
+import re
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
@@ -31,6 +32,11 @@ from app.services.vfs.path_resolver import (
 )
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorGridFSBucket
+
+
+def _escape_mongo_regex(value: str) -> str:
+    """Escape regex metacharacters for safe MongoDB $regex usage."""
+    return re.escape(value)
 
 
 class VFSAccessError(PermissionError):
@@ -264,8 +270,10 @@ class MongoVFS:
             if existing and existing.get("gridfs_id"):
                 try:
                     await bucket.delete(ObjectId(existing["gridfs_id"]))
-                except Exception:
-                    pass  # nosec B110
+                except Exception as e:
+                    logger.warning(
+                        f"VFS: Failed to delete GridFS object {existing['gridfs_id']} for {path} (user={user_id}): {e!s}"
+                    )
 
             gridfs_id = await bucket.upload_from_stream(
                 path, content_bytes, metadata={"path": path, "user_id": user_id}
@@ -285,8 +293,10 @@ class MongoVFS:
                 try:
                     bucket = await self._get_gridfs()
                     await bucket.delete(ObjectId(existing["gridfs_id"]))
-                except Exception:
-                    pass  # nosec B110
+                except Exception as e:
+                    logger.warning(
+                        f"VFS: Failed to delete GridFS object {existing['gridfs_id']} for {path} (user={user_id}): {e!s}"
+                    )
 
         # Upsert the file node - MUST include user_id in query for security
         await vfs_nodes_collection.update_one(
@@ -560,7 +570,10 @@ class MongoVFS:
 
         # Query MUST include user_id for security
         if recursive:
-            query = {"path": {"$regex": f"^{path}/"}, "user_id": user_id}
+            query = {
+                "path": {"$regex": f"^{_escape_mongo_regex(path)}/"},
+                "user_id": user_id,
+            }
         else:
             query = {"parent_path": path, "user_id": user_id}
 
@@ -679,7 +692,7 @@ class MongoVFS:
 
         # Query MUST include user_id for security
         query: Dict[str, Any] = {
-            "path": {"$regex": f"^{base_path}"},
+            "path": {"$regex": f"^{_escape_mongo_regex(base_path)}"},
             "user_id": user_id,  # CRITICAL: Always filter by user
         }
 
@@ -751,7 +764,10 @@ class MongoVFS:
 
             # Delete all children - MUST include user_id
             children = await vfs_nodes_collection.find(
-                {"path": {"$regex": f"^{path}/"}, "user_id": user_id}
+                {
+                    "path": {"$regex": f"^{_escape_mongo_regex(path)}/"},
+                    "user_id": user_id,
+                }
             ).to_list(length=None)
 
             bucket = await self._get_gridfs()
@@ -759,11 +775,16 @@ class MongoVFS:
                 if child.get("gridfs_id"):
                     try:
                         await bucket.delete(ObjectId(child["gridfs_id"]))
-                    except Exception:
-                        pass  # nosec B110
+                    except Exception as e:
+                        logger.warning(
+                            f"VFS: Failed to delete GridFS object {child['gridfs_id']} for {child.get('path')} (user={user_id}): {e!s}"
+                        )
 
             await vfs_nodes_collection.delete_many(
-                {"path": {"$regex": f"^{path}/"}, "user_id": user_id}
+                {
+                    "path": {"$regex": f"^{_escape_mongo_regex(path)}/"},
+                    "user_id": user_id,
+                }
             )
 
         # Delete the node itself
@@ -771,8 +792,10 @@ class MongoVFS:
             try:
                 bucket = await self._get_gridfs()
                 await bucket.delete(ObjectId(node["gridfs_id"]))
-            except Exception:
-                pass  # nosec B110
+            except Exception as e:
+                logger.warning(
+                    f"VFS: Failed to delete GridFS object {node['gridfs_id']} for {path} (user={user_id}): {e!s}"
+                )
 
         await vfs_nodes_collection.delete_one({"path": path, "user_id": user_id})
         logger.debug(f"VFS: Deleted {path} for user {user_id}")
@@ -816,7 +839,10 @@ class MongoVFS:
         if node["node_type"] == VFSNodeType.FOLDER.value:
             # Move all children - MUST include user_id
             children = await vfs_nodes_collection.find(
-                {"path": {"$regex": f"^{source}/"}, "user_id": user_id}
+                {
+                    "path": {"$regex": f"^{_escape_mongo_regex(source)}/"},
+                    "user_id": user_id,
+                }
             ).to_list(length=None)
 
             for child in children:
@@ -905,14 +931,11 @@ class MongoVFS:
         for part in parts:
             current += "/" + part
 
-            # Query MUST include user_id for security
-            exists = await vfs_nodes_collection.find_one(
-                {"path": current, "user_id": user_id}
-            )
-            if not exists:
-                now = datetime.now(timezone.utc)
-                await vfs_nodes_collection.insert_one(
-                    {
+            now = datetime.now(timezone.utc)
+            await vfs_nodes_collection.update_one(
+                {"path": current, "user_id": user_id},
+                {
+                    "$setOnInsert": {
                         "path": current,
                         "name": part,
                         "node_type": VFSNodeType.FOLDER.value,
@@ -927,7 +950,9 @@ class MongoVFS:
                         "updated_at": now,
                         "accessed_at": now,
                     }
-                )
+                },
+                upsert=True,
+            )
 
     def _detect_content_type(self, filename: str) -> str:
         """Detect MIME type from filename."""

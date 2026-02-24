@@ -51,7 +51,7 @@ from app.services.vfs.path_resolver import (
 )
 
 
-async def get_vfs():
+async def get_vfs() -> MongoVFS:
     """
     Get the VFS service instance.
 
@@ -73,7 +73,7 @@ async def get_vfs():
     strategy=MissingKeyStrategy.ERROR,
     auto_initialize=True,
 )
-async def init_vfs():
+async def init_vfs() -> MongoVFS:
     """Initialize the VFS service."""
     vfs = MongoVFS()
     return vfs

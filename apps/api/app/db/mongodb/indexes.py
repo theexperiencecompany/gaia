@@ -744,7 +744,7 @@ async def create_device_token_indexes():
         raise
 
 
-async def create_vfs_indexes():
+async def create_vfs_indexes() -> None:
     """
     Create indexes for vfs_nodes collection (Virtual Filesystem).
 
@@ -812,11 +812,11 @@ async def create_vfs_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating VFS indexes: {str(e)}")
+        logger.error(f"Error creating VFS indexes: {e!s}")
         raise
 
 
-async def create_installed_skills_indexes():
+async def create_installed_skills_indexes() -> None:
     """
     Create indexes for skills collection (flat schema).
 
@@ -858,7 +858,7 @@ async def create_installed_skills_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating installed_skills indexes: {str(e)}")
+        logger.error(f"Error creating installed_skills indexes: {e!s}")
         raise
 
 

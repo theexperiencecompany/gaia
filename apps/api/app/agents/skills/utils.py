@@ -9,7 +9,7 @@ This module provides utility functions for:
 """
 
 import os
-import re
+from urllib.parse import urlparse
 from typing import List, Optional, Tuple
 
 from app.config.loggers import app_logger as logger
@@ -47,18 +47,27 @@ def parse_github_url(url: str) -> Tuple[str, str]:
     Raises:
         ValueError: If URL is invalid
     """
-    url = url.strip().rstrip("/")
+    url = url.strip()
+    if not url:
+        raise ValueError("Invalid GitHub URL")
 
-    github_match = re.match(
-        r"https?://github\.com/([^/]+)/([^/]+?)(?:\.git)?/?$",
-        url,
-    )
-    if github_match:
-        return github_match.group(1), github_match.group(2)
+    url = url.rstrip("/")
 
-    parts = url.split("/")
+    if url.startswith(("http://", "https://")):
+        parsed = urlparse(url)
+        if parsed.netloc not in {"github.com", "www.github.com"}:
+            raise ValueError(f"Invalid GitHub URL: {url}")
+        parts = [p for p in parsed.path.strip("/").split("/") if p]
+    else:
+        parts = [p for p in url.strip("/").split("/") if p]
+        if parts and parts[0] in {"github.com", "www.github.com"}:
+            parts = parts[1:]
+
     if len(parts) >= 2:
-        return parts[0], parts[1]
+        owner, repo = parts[0], parts[1]
+        if repo.endswith(".git"):
+            repo = repo[:-4]
+        return owner, repo
 
     raise ValueError(f"Invalid GitHub URL: {url}")
 

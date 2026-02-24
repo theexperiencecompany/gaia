@@ -19,7 +19,7 @@ from app.agents.skills.github_discovery import (
 pytestmark = pytest.mark.asyncio
 
 
-async def test_discover_skills_from_vercel_repo():
+async def test_discover_skills_from_vercel_repo() -> None:
     """Test discovering skills from Vercel agent-skills repo."""
     skills = await discover_skills_from_repo("vercel-labs/agent-skills")
 
@@ -35,7 +35,7 @@ async def test_discover_skills_from_vercel_repo():
     assert all(s.description for s in skills), "All skills should have descriptions"
 
 
-async def test_get_skill_by_name():
+async def test_get_skill_by_name() -> None:
     """Test getting a specific skill by name."""
     skill = await get_skill_from_repo(
         "vercel-labs/agent-skills", "vercel-react-best-practices"
@@ -48,7 +48,7 @@ async def test_get_skill_by_name():
     assert skill.name == "vercel-react-best-practices"
 
 
-async def test_skill_has_valid_metadata():
+async def test_skill_has_valid_metadata() -> None:
     """Test that discovered skills have valid metadata."""
     skills = await discover_skills_from_repo("vercel-labs/agent-skills")
 
@@ -64,7 +64,7 @@ async def test_skill_has_valid_metadata():
         assert skill.repo_url, "Skill should have a repo URL"
 
 
-async def test_discover_skills_from_gaia_repo():
+async def test_discover_skills_from_gaia_repo() -> None:
     """Test discovering skills from a different repo."""
     skills = await discover_skills_from_repo("anthropic/claude-code-skills")
 

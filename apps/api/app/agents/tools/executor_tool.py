@@ -73,7 +73,7 @@ async def call_executor(
 
     except asyncio.CancelledError:
         logger.info("Executor call cancelled")
-        return "Task was cancelled"
+        raise
     except Exception as e:
         logger.error("Error calling executor: {}", str(e), exc_info=True)
         return f"Error executing task: {str(e)}"

@@ -77,7 +77,7 @@ def build_child_tool_runtime_config(
         )
     return ToolRuntimeConfig(
         initial_tool_names=["vfs_read"],
-        enable_retrieve_tools=True,
+        enable_retrieve_tools=not disable_retrieve_tools,
         include_subagents_in_retrieve=False,
     )
 

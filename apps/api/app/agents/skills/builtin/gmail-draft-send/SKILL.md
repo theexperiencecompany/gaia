@@ -27,7 +27,7 @@ Create a new email draft.
 - `bcc`: BCC recipients
 - `from`: Sender alias (if multiple accounts)
 
-### GMAIL_SEND_EMAIL
+### GMAIL_SEND_DRAFT
 Send an already-created draft.
 
 **Required parameters:**
@@ -77,7 +77,7 @@ Best regards
 - "Does this look good?"
 
 ### Step 4: Send Only After Approval
-Use `GMAIL_SEND_EMAIL` with the draft_id **only after** user explicitly confirms.
+Use `GMAIL_SEND_DRAFT` with the draft_id **only after** user explicitly confirms.
 
 ### Step 5: Handle Feedback
 If user wants changes:

@@ -18,7 +18,7 @@ Two independent compaction triggers:
 import hashlib
 import json
 from datetime import datetime, timezone
-from typing import Any, Awaitable, Callable
+from typing import Any, Awaitable, Callable, cast
 
 from app.config.loggers import app_logger as logger
 from app.constants.summarization import MIN_COMPACTION_SIZE
@@ -76,9 +76,13 @@ class VFSCompactionMiddleware(AgentMiddleware):
 
     async def _get_vfs(self) -> MongoVFS:
         """Lazy load VFS."""
-        if self._vfs is None:
-            self._vfs = await get_vfs()
-        return self._vfs
+        vfs = self._vfs
+        if vfs is None:
+            vfs = await get_vfs()
+            self._vfs = vfs
+        if vfs is None:
+            raise RuntimeError("VFS service is not available")
+        return cast(MongoVFS, vfs)
 
     async def awrap_tool_call(
         self,
@@ -167,13 +171,13 @@ class VFSCompactionMiddleware(AgentMiddleware):
         content_str = str(content)
         content_size = len(content_str)
 
-        # Skip very small outputs
-        if content_size < MIN_COMPACTION_SIZE:
-            return False, ""
-
         # 1. Always persist certain tools
         if tool_name in self.always_persist_tools:
             return True, "always_persist_tool"
+
+        # Skip very small outputs
+        if content_size < MIN_COMPACTION_SIZE:
+            return False, ""
 
         # 2. Per-tool trigger: single output > max_output_chars → always compact
         if content_size > self.max_output_chars:
