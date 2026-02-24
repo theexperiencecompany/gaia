@@ -363,6 +363,7 @@ async def handle_oauth_connection(
             provision_system_workflows,
             user_id=user_id,
             integration_id=integration_config.id,
+            integration_display_name=integration_config.name,
         )
         logger.info(
             f"Queued system workflow provisioning for user {user_id}, "

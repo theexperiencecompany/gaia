@@ -15,7 +15,19 @@ from typing import Optional
 
 from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import workflows_collection
+from app.models.notification.notification_models import (
+    ActionConfig,
+    ActionStyle,
+    ActionType,
+    NotificationAction,
+    NotificationContent,
+    NotificationRequest,
+    NotificationSourceEnum,
+    NotificationType,
+    RedirectConfig,
+)
 from app.models.workflow_models import CreateWorkflowRequest, TriggerType
+from app.services.notification_service import NotificationService
 from app.services.system_workflows.definitions.calendar import CALENDAR_SYSTEM_WORKFLOWS
 from app.services.system_workflows.definitions.gmail import GMAIL_SYSTEM_WORKFLOWS
 from app.services.workflow.service import WorkflowService
@@ -38,7 +50,9 @@ SYSTEM_WORKFLOW_REGISTRY: dict[str, Callable[[], CreateWorkflowRequest]] = {
 }
 
 
-async def provision_system_workflows(user_id: str, integration_id: str) -> None:
+async def provision_system_workflows(
+    user_id: str, integration_id: str, integration_display_name: str
+) -> None:
     """Create system workflows for a newly connected integration.
 
     Called as a background task from handle_oauth_connection().
@@ -47,6 +61,7 @@ async def provision_system_workflows(user_id: str, integration_id: str) -> None:
     Args:
         user_id: The user who connected the integration.
         integration_id: The integration that was connected (e.g. 'gmail', 'googlecalendar').
+        integration_display_name: Human-readable name for notifications (e.g. 'Gmail').
     """
     entries = SYSTEM_WORKFLOWS_BY_INTEGRATION.get(integration_id)
     if not entries:
@@ -57,6 +72,8 @@ async def provision_system_workflows(user_id: str, integration_id: str) -> None:
         f"Provisioning {len(entries)} system workflow(s) for user {user_id}, "
         f"integration {integration_id}"
     )
+
+    created: list[CreateWorkflowRequest] = []
 
     for key, factory in entries:
         # Idempotency: skip if this key already exists for this user
@@ -70,13 +87,75 @@ async def provision_system_workflows(user_id: str, integration_id: str) -> None:
             continue
 
         try:
-            await WorkflowService.create_workflow(factory(), user_id)
+            request = factory()
+            await WorkflowService.create_workflow(request, user_id)
+            created.append(request)
             logger.info(f"Provisioned system workflow '{key}' for user {user_id}")
         except Exception as e:
             logger.error(
                 f"Failed to provision system workflow '{key}' for user {user_id}: {e}",
                 exc_info=True,
             )
+
+    if created:
+        await _notify_workflows_provisioned(user_id, integration_display_name, created)
+
+
+async def _notify_workflows_provisioned(
+    user_id: str,
+    integration_display_name: str,
+    created: list[CreateWorkflowRequest],
+) -> None:
+    """Send a friendly notification summarising the newly provisioned workflows."""
+    integration_name = integration_display_name
+
+    if len(created) == 1:
+        title = f"I set up a workflow for your {integration_name}"
+    else:
+        title = f"I set up {len(created)} workflows for your {integration_name}"
+
+    workflow_lines = "\n".join(f"• {r.title} — {r.description}" for r in created)
+    body = f"Here's what I've got running for you:\n\n{workflow_lines}\n\nYou can adjust or turn them off anytime."
+
+    try:
+        notification_service = NotificationService()
+        await notification_service.create_notification(
+            NotificationRequest(
+                user_id=user_id,
+                source=NotificationSourceEnum.SYSTEM_WORKFLOWS_PROVISIONED,
+                type=NotificationType.SUCCESS,
+                priority=2,
+                content=NotificationContent(
+                    title=title,
+                    body=body,
+                    actions=[
+                        NotificationAction(
+                            type=ActionType.REDIRECT,
+                            label="View Workflows",
+                            style=ActionStyle.PRIMARY,
+                            config=ActionConfig(
+                                redirect=RedirectConfig(
+                                    url="/workflows",
+                                    open_in_new_tab=False,
+                                    close_notification=True,
+                                )
+                            ),
+                        )
+                    ],
+                ),
+                channels=[],
+                metadata={"integration_display_name": integration_display_name},
+            )
+        )
+        logger.info(
+            f"Sent system workflow provisioning notification to user {user_id} "
+            f"for integration '{integration_display_name}'"
+        )
+    except Exception as e:
+        logger.error(
+            f"Failed to send provisioning notification for user {user_id}: {e}",
+            exc_info=True,
+        )
 
 
 async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bool:
