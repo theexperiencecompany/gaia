@@ -9,12 +9,12 @@ import {
 } from "./eventExtractors";
 import type { AnyCalendarEvent } from "./eventTypeGuards";
 
-export interface GroupedEvent<T> {
+interface GroupedEvent<T> {
   event: T;
   key: string | number;
 }
 
-export const groupEventsByDate = <T extends AnyCalendarEvent>(
+const groupEventsByDate = <T extends AnyCalendarEvent>(
   events: T[],
 ): Record<string, GroupedEvent<T>[]> => {
   const grouped: Record<string, GroupedEvent<T>[]> = {};

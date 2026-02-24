@@ -3,7 +3,7 @@
  * Handles thinking tags like <thinking>...</thinking>
  */
 
-export interface ParsedContent {
+interface ParsedContent {
   thinking: string | null;
   cleanText: string;
 }

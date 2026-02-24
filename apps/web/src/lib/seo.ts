@@ -69,7 +69,7 @@ export const siteConfig = {
 } as const;
 
 // Common keywords for all pages
-export const commonKeywords = [
+const commonKeywords = [
   "GAIA",
   "GAIA AI",
   "heygaia",
@@ -87,7 +87,7 @@ export const commonKeywords = [
 /**
  * Generate canonical URL for a page
  */
-export function getCanonicalUrl(path: string): string {
+function getCanonicalUrl(path: string): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
   // Return relative URL - metadataBase in layout will handle absolute URL
   return cleanPath;
@@ -96,7 +96,7 @@ export function getCanonicalUrl(path: string): string {
 /**
  * Generate comprehensive page metadata with SEO best practices
  */
-export interface PageMetadataOptions {
+interface PageMetadataOptions {
   title: string;
   description?: string;
   path: string;
@@ -447,7 +447,7 @@ export function generateArticleSchema(
 /**
  * Generate HowTo structured data for tutorials/workflows (JSON-LD)
  */
-export function generateHowToSchema(
+function generateHowToSchema(
   name: string,
   description: string,
   steps: Array<{ name: string; text: string; image?: string }>,

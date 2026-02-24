@@ -9,7 +9,6 @@ from app.models.notification.notification_models import (
     NotificationStatus,
     NotificationType,
 )
-from app.core.websocket_manager import websocket_manager
 from app.utils.notification.actions import (
     ActionHandler,
 )
@@ -91,13 +90,6 @@ class NotificationService:
         self, notification_ids: List[str], user_id: str, action: BulkActions
     ) -> Dict[str, bool]:
         return await self.orchestrator.bulk_actions(notification_ids, user_id, action)
-
-    # WebSocket management
-    def add_websocket_connection(self, user_id: str, websocket: Any) -> None:
-        websocket_manager.add_connection(user_id, websocket)
-
-    def remove_websocket_connection(self, user_id: str, websocket: Any) -> None:
-        websocket_manager.remove_connection(user_id, websocket)
 
     # Registration methods
     def register_channel_adapter(self, adapter: ChannelAdapter) -> None:

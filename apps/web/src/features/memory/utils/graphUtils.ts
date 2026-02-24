@@ -18,7 +18,7 @@ export interface GraphLink extends d3.SimulationLinkDatum<GraphNode> {
   value: number;
 }
 
-export interface GraphData {
+interface GraphData {
   nodes: GraphNode[];
   links: GraphLink[];
 }

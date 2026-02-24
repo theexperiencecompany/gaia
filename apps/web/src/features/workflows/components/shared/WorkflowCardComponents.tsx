@@ -121,7 +121,7 @@ interface TriggerIconProps {
   size?: number;
 }
 
-export function TriggerIcon({
+function TriggerIcon({
   triggerType,
   integrationId,
   size = 20,
@@ -206,7 +206,7 @@ interface RunCountDisplayProps {
   className?: string;
 }
 
-export function RunCountDisplay({
+function RunCountDisplay({
   totalExecutions,
   className = "",
 }: RunCountDisplayProps) {

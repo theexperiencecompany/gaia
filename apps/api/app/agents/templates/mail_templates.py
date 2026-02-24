@@ -161,18 +161,6 @@ class GmailMessageParser:
             except Exception:
                 msg.set_content(body_data)
 
-    def _handle_composio_message(self):
-        """Handle Composio message format."""
-        content = self.gmail_message.get("message_text", "")
-        # Create a simple email message for Composio data
-        self.email_message = email.message.EmailMessage()
-        if "<" in content and ">" in content:
-            self.email_message.set_content("", subtype="html")
-            self.email_message.set_payload(content)
-        else:
-            self.email_message.set_content(content)
-        self._parsed = True
-
     # ========================================================================
     # Public getter methods
     # ========================================================================
@@ -323,11 +311,6 @@ class GmailMessageParser:
     def is_read(self) -> bool:
         """Check if email is read."""
         return "UNREAD" not in self.labels
-
-    @property
-    def has_attachments(self) -> bool:
-        """Check if email has attachments."""
-        return len(self.attachments) > 0 or "HAS_ATTACHMENT" in self.labels
 
 
 def _get_text_from_html(html_content):

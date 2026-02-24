@@ -378,18 +378,6 @@ class RegenerateStepsRequest(BaseModel):
     )
 
 
-class PublishWorkflowRequest(BaseModel):
-    """Request model for publishing a workflow to the community."""
-
-    workflow_id: str = Field(description="ID of the workflow to publish")
-
-
-class UnpublishWorkflowRequest(BaseModel):
-    """Request model for unpublishing a workflow from the community."""
-
-    workflow_id: str = Field(description="ID of the workflow to unpublish")
-
-
 class PublicWorkflowsResponse(BaseModel):
     """Response model for listing public workflows."""
 

@@ -18,7 +18,7 @@ export default function fetchDate(): string {
   return new Date().toISOString();
 }
 
-export const parsingDate = (isoString: string) => {
+const parsingDate = (isoString: string) => {
   const withoutTimezone = isoString.replace(/([+-]\d{2}:\d{2})$/, "");
   const date = new Date(withoutTimezone);
   return new Intl.DateTimeFormat("en-US", {

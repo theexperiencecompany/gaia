@@ -27,7 +27,7 @@ interface UseOnboardingWebSocketReturn {
   isComplete: boolean;
 }
 
-export const useOnboardingWebSocket = (
+const useOnboardingWebSocket = (
   enabled: boolean = true,
 ): UseOnboardingWebSocketReturn => {
   const [personalizationData, setPersonalizationData] =

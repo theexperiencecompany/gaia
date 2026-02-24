@@ -90,13 +90,3 @@ STRICT RULES:
 - If task failed or not worth documenting: {{"skip": true, "reason": "explanation"}}
 
 Your detailed reflection:"""
-
-
-def format_conversation_for_extraction(messages: list) -> str:
-    """Format messages into a string for the extraction prompt."""
-    lines = []
-    for msg in messages:
-        role = msg.get("role", "unknown")
-        content = msg.get("content", "")
-        lines.append(f"{role.upper()}: {content}")
-    return "\n".join(lines)

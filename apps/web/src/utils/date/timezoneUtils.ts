@@ -5,7 +5,7 @@ import { toZonedTime } from "date-fns-tz";
  * Gets the user's current timezone
  * @returns {string} Timezone identifier (e.g., "Asia/Kolkata", "America/New_York")
  */
-export const getUserTimezone = (): string => {
+const getUserTimezone = (): string => {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 };
 
@@ -20,7 +20,7 @@ export const getUserTimezone = (): string => {
  * // User in IST timezone: returns "2 hours ago" (calculated from 5:30 PM IST)
  * formatTimestampWithTimezone("2025-01-01T12:00:00.000000")
  */
-export const formatTimestampWithTimezone = (timestamp: string): string => {
+const formatTimestampWithTimezone = (timestamp: string): string => {
   const userTimeZone = getUserTimezone(); // e.g., Asia/Kolkata
 
   // Force the timestamp to be treated as UTC by adding 'Z' if it's missing
@@ -78,7 +78,7 @@ export const getTimeGroup = (
  * // User in IST: returns Date object representing 5:30 PM IST
  * convertToUserTimezone("2025-01-01T12:00:00.000000")
  */
-export const convertToUserTimezone = (timestamp: string): Date => {
+const convertToUserTimezone = (timestamp: string): Date => {
   const userTimeZone = getUserTimezone();
   const utcTimestamp = timestamp.endsWith("Z") ? timestamp : `${timestamp}Z`;
   const utcDate = new Date(utcTimestamp);

@@ -6,7 +6,7 @@ import { useUser } from "@/features/auth/hooks/useUser";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { cn } from "@/lib/utils";
 
-export function SimpleChatBubbleUser({
+function SimpleChatBubbleUser({
   children,
   hideMobile = false,
   className = "",

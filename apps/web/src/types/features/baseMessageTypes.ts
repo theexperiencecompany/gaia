@@ -12,11 +12,9 @@ import type {
   CalendarOptions,
 } from "./calendarTypes";
 import type {
-  ContactData,
   EmailComposeData,
   EmailSentData,
   EmailThreadData,
-  PeopleSearchData,
 } from "./mailTypes";
 import type { DeepResearchResults, SearchResults } from "./searchTypes";
 import type { TodoToolData } from "./todoToolTypes";
@@ -81,7 +79,6 @@ export type {
   CalendarEditOptions,
   CalendarOptions,
   CodeData,
-  ContactData,
   DeepResearchResults,
   DocumentData,
   EmailComposeData,
@@ -91,7 +88,6 @@ export type {
   GoogleDocsData,
   ImageData,
   MemoryData,
-  PeopleSearchData,
   SearchResults,
   TodoToolData,
   WeatherData,

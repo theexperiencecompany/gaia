@@ -27,19 +27,19 @@ export interface PersonalizationData {
   }>;
 }
 
-export interface PersonalizationCompleteMessage {
+interface PersonalizationCompleteMessage {
   type: "onboarding_personalization_complete";
   data: PersonalizationData;
 }
 
-export interface BioStatusUpdateMessage {
+interface BioStatusUpdateMessage {
   type: "bio_status_update";
   data: {
     bio_status: BioStatus;
   };
 }
 
-export interface OnboardingPhaseUpdateMessage {
+interface OnboardingPhaseUpdateMessage {
   type: "onboarding_phase_update";
   data: {
     phase: OnboardingPhase;
@@ -60,7 +60,7 @@ export interface PersonalizationProgressMessage {
   };
 }
 
-export type OnboardingWebSocketMessage =
+type OnboardingWebSocketMessage =
   | PersonalizationCompleteMessage
   | BioStatusUpdateMessage
   | OnboardingPhaseUpdateMessage

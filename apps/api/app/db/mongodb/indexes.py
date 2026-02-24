@@ -11,7 +11,6 @@ Index Strategy:
 """
 
 import asyncio
-from typing import Dict, List
 
 from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import (
@@ -825,79 +824,3 @@ async def create_bot_session_indexes():
     except Exception as e:
         logger.error(f"Error creating bot session indexes: {str(e)}")
         raise
-
-
-async def get_index_status() -> Dict[str, List[str]]:
-    """
-    Get the current index status for all collections.
-    Useful for monitoring and debugging index usage.
-
-    Returns:
-        Dict mapping collection names to lists of index names
-    """
-    try:
-        collections = {
-            "users": users_collection,
-            "conversations": conversations_collection,
-            "todos": todos_collection,
-            "projects": projects_collection,
-            "goals": goals_collection,
-            "notes": notes_collection,
-            "files": files_collection,
-            "mail": mail_collection,
-            "calendar": calendars_collection,
-            "blog": blog_collection,
-            "notifications": notifications_collection,
-            "reminders": reminders_collection,
-            "workflows": workflows_collection,
-        }
-
-        # Get all collection indexes concurrently
-        async def get_collection_indexes(name: str, collection):
-            try:
-                indexes = await collection.list_indexes().to_list(length=None)
-                return name, [idx.get("name", "unnamed") for idx in indexes]
-            except Exception as e:
-                logger.error(f"Failed to get indexes for {name}: {str(e)}")
-                return name, [f"ERROR: {str(e)}"]
-
-        # Execute all index status queries concurrently
-        tasks = [
-            get_collection_indexes(name, collection)
-            for name, collection in collections.items()
-        ]
-        results = await asyncio.gather(*tasks)
-
-        # Convert results to dictionary
-        index_status = dict(results)
-
-        return index_status
-
-    except Exception as e:
-        logger.error(f"Error getting index status: {str(e)}")
-        return {"error": [str(e)]}
-
-
-async def log_index_summary():
-    """Log a summary of all collection indexes for monitoring purposes."""
-    try:
-        index_status = await get_index_status()
-
-        logger.info("=== DATABASE INDEX SUMMARY ===")
-
-        total_indexes = 0
-        for collection_name, indexes in index_status.items():
-            if not indexes or (len(indexes) == 1 and indexes[0].startswith("ERROR")):
-                logger.warning(f"{collection_name}: No indexes or error")
-            else:
-                index_count = len(indexes)
-                total_indexes += index_count
-                logger.info(
-                    f"INDEX CREATED: {collection_name}: {index_count} indexes - {', '.join(indexes)}"
-                )
-
-        logger.info(f"Total indexes across all collections: {total_indexes}")
-        logger.info("=== END INDEX SUMMARY ===")
-
-    except Exception as e:
-        logger.error(f"Error logging index summary: {str(e)}")

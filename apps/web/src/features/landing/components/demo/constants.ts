@@ -2,7 +2,7 @@
  * Shared dummy data for landing page demo components
  */
 
-export interface DummyIntegration {
+interface DummyIntegration {
   id: string;
   name: string;
   status?: string;

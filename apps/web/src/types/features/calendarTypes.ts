@@ -1,5 +1,5 @@
 // Recurrence types for calendar events
-export type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
+type RecurrenceFrequency = "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY";
 
 export interface RecurrenceRule {
   frequency: RecurrenceFrequency;
@@ -19,7 +19,7 @@ export interface RecurrenceData {
 
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 
-export interface CalendarCardProps {
+interface CalendarCardProps {
   event: GoogleCalendarEvent | CalendarEvent;
   onClick: () => void;
   calendars: CalendarItem[];
@@ -43,7 +43,7 @@ export interface CalendarSelectorProps {
   onCalendarSelect: (calendarId: string) => void;
 }
 
-export interface CalendarEventDialogProps {
+interface CalendarEventDialogProps {
   event?: GoogleCalendarEvent | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -112,7 +112,7 @@ export interface GoogleCalendar {
   primary: boolean;
 }
 
-export interface BaseEvent {
+interface BaseEvent {
   summary: string;
   description: string;
   index?: string | number;
@@ -137,13 +137,13 @@ export interface SingleTimeEvent extends BaseEvent {
 
 export type CalendarEvent = TimedEvent | SingleTimeEvent;
 
-export interface EventCardProps {
+interface EventCardProps {
   event: CalendarEvent;
   isDummy?: boolean;
   onDummyAddEvent?: () => void;
 }
 
-export interface UnifiedCalendarEventsListProps {
+interface UnifiedCalendarEventsListProps {
   events: CalendarEvent[];
   isDummy?: boolean;
   onDummyAddEvent?: (index: number) => void;

@@ -270,51 +270,6 @@ async def semantic_search_todos(
         return []
 
 
-async def bulk_index_todos(user_id: str, batch_size: int = 100) -> int:
-    """
-    Bulk index all todos for a user in ChromaDB.
-
-    Args:
-        user_id: The user ID
-        batch_size: Number of todos to process in each batch
-
-    Returns:
-        int: Number of todos successfully indexed
-    """
-    try:
-        indexed_count = 0
-        skip = 0
-
-        while True:
-            # Fetch batch of todos
-            cursor = (
-                todos_collection.find({"user_id": user_id}).skip(skip).limit(batch_size)
-            )
-            todos = await cursor.to_list(length=batch_size)
-
-            if not todos:
-                break
-
-            # Index each todo
-            for todo in todos:
-                success = await store_todo_embedding(str(todo["_id"]), todo, user_id)
-                if success:
-                    indexed_count += 1
-
-            skip += batch_size
-
-            # Break if we got less than batch_size (last batch)
-            if len(todos) < batch_size:
-                break
-
-        logger.info(f"Bulk indexed {indexed_count} todos for user {user_id}")
-        return indexed_count
-
-    except Exception as e:
-        logger.error(f"Error in bulk indexing todos for user {user_id}: {str(e)}")
-        return 0
-
-
 async def hybrid_search_todos(
     query: str, user_id: str, top_k: int = 10, semantic_weight: float = 0.7, **filters
 ) -> List[TodoResponse]:

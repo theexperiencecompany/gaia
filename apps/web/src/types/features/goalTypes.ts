@@ -12,7 +12,7 @@ export interface EdgeType extends Record<string, unknown> {
   target: string;
 }
 
-export interface NodeType {
+interface NodeType {
   id: string;
   position?: { x: number; y: number };
   data: NodeData;

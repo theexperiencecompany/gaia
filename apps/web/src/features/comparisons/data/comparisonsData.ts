@@ -1,10 +1,10 @@
-export interface ComparisonFeatureRow {
+interface ComparisonFeatureRow {
   feature: string;
   gaia: string;
   competitor: string;
 }
 
-export interface ComparisonData {
+interface ComparisonData {
   slug: string;
   name: string;
   tagline: string;
@@ -21,7 +21,7 @@ export interface ComparisonData {
   faqs: Array<{ question: string; answer: string }>;
 }
 
-export const comparisons: Record<string, ComparisonData> = {
+const comparisons: Record<string, ComparisonData> = {
   motion: {
     slug: "motion",
     name: "Motion",

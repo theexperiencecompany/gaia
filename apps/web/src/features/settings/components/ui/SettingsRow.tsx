@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib";
 
-export interface SettingsRowProps {
+interface SettingsRowProps {
   label: string;
   description?: string;
   children?: ReactNode;

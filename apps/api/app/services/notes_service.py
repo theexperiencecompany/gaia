@@ -2,16 +2,12 @@
 Service module for handling note operations.
 """
 
-from typing import Any, Dict
-
-from app.agents.prompts.convo_prompts import NOTES_PROMPT
 from app.config.loggers import notes_logger as logger
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import notes_collection
 from app.db.redis import delete_cache, get_cache, set_cache
 from app.db.utils import serialize_document
 from app.models.notes_models import NoteModel, NoteResponse
-from app.utils.embedding_utils import search_notes_by_similarity
 from app.utils.notes_utils import insert_note
 from bson import ObjectId
 from fastapi import HTTPException, status
@@ -211,40 +207,3 @@ async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
     except Exception as e:
         logger.error(f"Failed to create note: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create note")
-
-
-async def fetch_notes(context: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Fetch similar notes and append their content to the last message.
-
-    Args:
-        context: The context containing message data.
-
-    Returns:
-        Updated context with notes data if found.
-    """
-    last_message = context["last_message"]
-    query_text = context["query_text"]
-    user = context["user"]
-
-    notes = await search_notes_by_similarity(
-        input_text=query_text,
-        user_id=user.get("user_id"),
-    )
-
-    if notes:
-        formatted_notes = []
-        for note in notes:
-            formatted_notes.append(
-                f"- Title: {note.get('title', 'Untitled Note')}\n  Content: {note.get('content', '')}\n"
-            )
-
-        notes_text = "\n".join(formatted_notes)
-
-        last_message["content"] = NOTES_PROMPT.format(
-            message=last_message["content"], notes=notes_text
-        )
-        context["notes_added"] = True
-    else:
-        context["notes_added"] = False
-    return context

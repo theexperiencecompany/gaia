@@ -40,8 +40,8 @@ export const WORKFLOW_TIMINGS = {
 // ─── Animation helpers ────────────────────────────────────────────────────────
 
 export const wfEase = [0.32, 0.72, 0, 1] as const;
-export const wfTx = { duration: 0.22, ease: wfEase };
-export const wfSlideUp = {
+const wfTx = { duration: 0.22, ease: wfEase };
+const wfSlideUp = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -8 },
@@ -49,7 +49,7 @@ export const wfSlideUp = {
 
 // ─── Mock workflow data ───────────────────────────────────────────────────────
 
-export const DEMO_WORKFLOW = {
+const DEMO_WORKFLOW = {
   title: "Daily Email Digest & Briefing",
   description:
     "Every morning at 9 AM, scan my inbox for unread emails from the past 24 hours. Use AI to summarize the key points and extract action items. Create a formatted briefing document in Google Docs with sections for urgent items, meetings, and general updates. Finally, post the top 3-5 action items to our #daily-briefing Slack channel so the team stays aligned.",

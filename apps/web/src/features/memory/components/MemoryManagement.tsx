@@ -30,7 +30,7 @@ import MemoryGraph from "@/features/memory/components/MemoryGraph";
 import { useConfirmation } from "@/hooks/useConfirmation";
 import { toast } from "@/lib/toast";
 
-export interface MemoryManagementProps {
+interface MemoryManagementProps {
   className?: string;
   onClose?: () => void;
   autoFetch?: boolean; // Whether to fetch on mount

@@ -136,6 +136,6 @@ export const useLoadingStore = create<LoadingStore>()(
 
 // Selectors
 export const useIsLoading = () => useLoadingStore((state) => state.isLoading);
-export const useLoadingText = () =>
+const useLoadingText = () =>
   useLoadingStore((state) => state.loadingText);
-export const useToolInfo = () => useLoadingStore((state) => state.toolInfo);
+const useToolInfo = () => useLoadingStore((state) => state.toolInfo);

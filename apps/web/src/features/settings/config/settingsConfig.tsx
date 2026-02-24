@@ -13,7 +13,7 @@ import {
   WhatsappIcon,
 } from "@icons";
 
-export interface SettingsMenuItem {
+interface SettingsMenuItem {
   key: string;
   label: string;
   // Icons are SVG components — accept standard SVG props
@@ -96,7 +96,7 @@ export const socialMediaItems: SettingsMenuItem[] = [
   },
 ];
 
-export const resourceItems: SettingsMenuItem[] = [
+const resourceItems: SettingsMenuItem[] = [
   {
     key: "documentation",
     label: "Documentation",

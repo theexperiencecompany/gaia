@@ -12,7 +12,7 @@ import {
   isTimedEvent,
 } from "./eventTypeGuards";
 
-export const extractDateFromDateTime = (
+const extractDateFromDateTime = (
   dateTime?: CalendarEventDateTime,
 ): string => {
   if (!dateTime) return new Date().toISOString().slice(0, 10);
@@ -22,7 +22,7 @@ export const extractDateFromDateTime = (
   return new Date().toISOString().slice(0, 10);
 };
 
-export const extractTimestampFromDateTime = (
+const extractTimestampFromDateTime = (
   dateTime?: CalendarEventDateTime,
 ): number => {
   if (!dateTime) return 0;
@@ -93,7 +93,7 @@ export const extractTimestampFromFetchData = (
   return new Date(event.start_time).getTime();
 };
 
-export const getDateFromSameDayEvent = (event: SameDayEvent): string => {
+const getDateFromSameDayEvent = (event: SameDayEvent): string => {
   if (event.start?.dateTime) {
     return new Date(event.start.dateTime).toISOString().slice(0, 10);
   }
@@ -103,7 +103,7 @@ export const getDateFromSameDayEvent = (event: SameDayEvent): string => {
   return new Date().toISOString().slice(0, 10);
 };
 
-export const getTimestampFromSameDayEvent = (event: SameDayEvent): number => {
+const getTimestampFromSameDayEvent = (event: SameDayEvent): number => {
   if (event.start?.dateTime) {
     return new Date(event.start.dateTime).getTime();
   }

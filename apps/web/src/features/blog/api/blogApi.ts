@@ -2,7 +2,7 @@ import axios from "axios";
 
 import { api } from "@/lib/api";
 
-export interface TeamMember {
+interface TeamMember {
   id: string;
   name: string;
   role: string;
@@ -11,7 +11,7 @@ export interface TeamMember {
   twitter?: string;
 }
 
-export interface BlogPost {
+interface BlogPost {
   id: string;
   slug: string;
   title: string;
@@ -23,7 +23,7 @@ export interface BlogPost {
   image?: string;
 }
 
-export interface BlogPostCreate {
+interface BlogPostCreate {
   slug: string;
   title: string;
   date: string;
@@ -33,7 +33,7 @@ export interface BlogPostCreate {
   image?: string;
 }
 
-export interface BlogPostUpdate {
+interface BlogPostUpdate {
   title?: string;
   date?: string;
   authors?: string[];

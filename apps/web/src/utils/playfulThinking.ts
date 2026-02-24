@@ -115,7 +115,3 @@ export function getRelevantThinkingMessage(
   }
 }
 
-/**
- * Export the messages array for external use if needed
- */
-export { PLAYFUL_THINKING_MESSAGES };

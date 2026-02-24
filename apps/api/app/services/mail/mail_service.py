@@ -1,5 +1,4 @@
 import json
-import time
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import general_logger as logger
@@ -144,57 +143,6 @@ async def send_email(
     except Exception as e:
         logger.error(f"Error sending email for user {user_id}: {e}")
         return {"error": str(e), "successful": False}
-
-
-async def fetch_detailed_messages(
-    user_id: str, messages: List[Dict[str, Any]], batch_size: int = 20, delay: float = 2
-) -> List[Dict[str, Any]]:
-    """
-    Fetch detailed Gmail messages using Composio tools while handling rate limits.
-
-    Args:
-        user_id: User ID for Composio authentication
-        messages: List of message metadata (each containing 'id')
-        batch_size: Number of messages per batch (default: 20)
-        delay: Time in seconds to wait between batch executions
-
-    Returns:
-        List of detailed message objects
-    """
-
-    detailed_messages = []
-    total_messages = len(messages)
-
-    for i in range(0, total_messages, batch_size):
-        batch_messages = messages[i : i + batch_size]
-
-        # Process each message in the current batch
-        for message in batch_messages:
-            message_id = message.get("id")
-            if not message_id:
-                continue
-
-            try:
-                parameters = {"message_id": message_id}
-                result = await invoke_gmail_tool(
-                    user_id, "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", parameters
-                )
-
-                if result.get("successful", True):
-                    detailed_messages.append(result)
-                else:
-                    logger.error(
-                        f"Error fetching message {message_id}: {result.get('error')}"
-                    )
-
-            except Exception as e:
-                logger.error(f"Error fetching message {message_id}: {e}")
-
-        # Rate limiting: wait between batches
-        if i + batch_size < total_messages and delay > 0:
-            time.sleep(delay)
-
-    return detailed_messages
 
 
 async def modify_message_labels(
@@ -973,94 +921,3 @@ async def get_email_by_id(user_id: str, message_id: str) -> Dict[str, Any]:
             "error": str(error),
             "message": None,
         }
-
-
-async def get_contact_list(user_id: str, max_results=100):
-    """
-    Extract a list of unique contacts (email addresses and names) from the user's Gmail history.
-
-    Args:
-        user_id: User ID for Composio authentication
-        max_results: Maximum number of messages to analyze (default: 100)
-
-    Returns:
-        List of unique contacts with their email addresses and names
-    """
-    try:
-        # Get messages from inbox, sent, and all mail to maximize contact discovery
-        query = "in:inbox OR in:sent OR in:all"
-
-        # First, get message IDs using search
-        search_params = {"query": query, "max_results": max_results}
-
-        search_result = await invoke_gmail_tool(
-            user_id, "GMAIL_FETCH_EMAILS", search_params
-        )
-
-        if not search_result.get("successful", True):
-            logger.error(f"Error searching for messages: {search_result.get('error')}")
-            return []
-
-        messages = search_result.get("messages", [])
-
-        # Use a dictionary to track unique contacts
-        contacts = {}
-
-        # Process each message to extract contacts
-        for msg_data in messages:
-            msg_id = msg_data.get("id")
-            if not msg_id:
-                continue
-
-            # Fetch full message details
-            msg_params = {"message_id": msg_id}
-            msg_result = await invoke_gmail_tool(
-                user_id, "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID", msg_params
-            )
-
-            if not msg_result.get("successful", True):
-                continue
-
-            msg = msg_result
-
-            # Extract headers
-            headers = {}
-            if "payload" in msg and "headers" in msg["payload"]:
-                headers = {h["name"]: h["value"] for h in msg["payload"]["headers"]}
-
-            # Extract email addresses from From, To, Cc, and Reply-To fields
-            for field in ["From", "To", "Cc", "Reply-To"]:
-                if field in headers and headers[field]:
-                    # Split multiple addresses in a single field
-                    addresses = headers[field].split(",")
-
-                    for address in addresses:
-                        address = address.strip()
-                        if not address:
-                            continue
-
-                        # Parse name and email from address string
-                        name = ""
-                        email = address
-
-                        # Handle format: "Name <email@example.com>"
-                        if "<" in address and ">" in address:
-                            name = address.split("<")[0].strip()
-                            email = address.split("<")[1].split(">")[0].strip()
-
-                        # Only add if it's a valid email address
-                        if "@" in email and "." in email:
-                            # Add to contacts dict, using email as key to ensure uniqueness
-                            contacts[email] = {"name": name, "email": email}
-
-        # Convert dictionary to list for return
-        contact_list = list(contacts.values())
-
-        # Sort contacts alphabetically by name, then email
-        contact_list.sort(key=lambda x: x["name"] if x["name"] else x["email"])
-
-        return contact_list
-
-    except Exception as e:
-        logger.error(f"Error getting contact list: {str(e)}")
-        return []

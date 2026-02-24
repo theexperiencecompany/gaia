@@ -176,7 +176,7 @@ async def main():
     await show_plans()
 
     # Find invalid subscriptions
-    invalid_subs, valid_subs, valid_plan_ids = await find_invalid_subscriptions()
+    invalid_subs, _valid_subs, valid_plan_ids = await find_invalid_subscriptions()
 
     if not invalid_subs:
         print("\n✅ All subscriptions have valid plan_ids! No action needed.")

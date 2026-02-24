@@ -2,29 +2,19 @@ import { ImageResponse } from "next/og";
 import { getIconPaths } from "@/config/iconPaths.generated";
 import {
   getCategoryInitial,
-  getIconPath,
   getOgIconPath,
   getToolIconConfig,
-  iconAliases,
-  normalizeCategoryName,
-  type ToolIconConfig,
-  toolIconConfigs,
 } from "@/config/toolIconConfig";
 import { wallpapers } from "@/config/wallpapers";
 
 // Re-export from shared config
 export {
-  toolIconConfigs,
-  iconAliases,
-  normalizeCategoryName,
   getToolIconConfig,
-  getIconPath,
   getOgIconPath,
   getCategoryInitial,
   getIconPaths,
   wallpapers,
 };
-export type { ToolIconConfig };
 
 export const OG_WIDTH = 1200;
 export const OG_HEIGHT = 630;
@@ -46,7 +36,7 @@ export const fonts = {
   sans: "Inter, system-ui, sans-serif",
 } as const;
 
-export async function loadGoogleFont(
+async function loadGoogleFont(
   font: string,
   text: string,
 ): Promise<ArrayBuffer> {
@@ -164,7 +154,7 @@ export function CategoryBadge({ label }: { label: string }) {
   );
 }
 
-export function CategoryBadgeSmall({ label }: { label: string }) {
+function CategoryBadgeSmall({ label }: { label: string }) {
   return (
     <div
       style={{
@@ -287,7 +277,7 @@ const OG_COMPATIBLE_EXTENSIONS = [".png", ".jpg", ".jpeg", ".svg", ".gif"];
 /**
  * Check if a URL points to an OG-compatible image format
  */
-export function isOgCompatibleUrl(url: string): boolean {
+function isOgCompatibleUrl(url: string): boolean {
   if (!url) return false;
   const lowercaseUrl = url.toLowerCase();
   return OG_COMPATIBLE_EXTENSIONS.some((ext) => lowercaseUrl.includes(ext));
@@ -348,7 +338,7 @@ export function getOgCompatibleAvatarUrl(
  * Get an OG-compatible icon URL for integrations
  * Validates the URL format and returns null for incompatible formats
  */
-export function getOgCompatibleIconUrl(
+function getOgCompatibleIconUrl(
   url: string | null | undefined,
 ): string | null {
   if (!url) return null;
@@ -438,7 +428,7 @@ export async function fetchImageAsBase64(url: string): Promise<string | null> {
 /**
  * Check if a URL points to an SVG file
  */
-export function isSvgUrl(url: string | null | undefined): boolean {
+function isSvgUrl(url: string | null | undefined): boolean {
   if (!url) return false;
   const lowercaseUrl = url.toLowerCase();
   return lowercaseUrl.includes(".svg");
@@ -448,7 +438,7 @@ export function isSvgUrl(url: string | null | undefined): boolean {
  * Fetch external SVG content and extract the path data for inline rendering
  * Returns the viewBox and path data, or null if fetch fails
  */
-export async function fetchSvgContent(
+async function fetchSvgContent(
   url: string,
 ): Promise<{ viewBox: string; paths: string[] } | null> {
   try {

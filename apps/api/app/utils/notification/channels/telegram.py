@@ -57,12 +57,6 @@ class TelegramChannelAdapter(ExternalPlatformAdapter):
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _md_to_entities(text: str) -> tuple[str, List[Dict[str, Any]]]:
-        """Convert Markdown to (plain_text, entity_dicts) via telegramify-markdown."""
-        plain, entities = convert(text, latex_escape=False)
-        return plain, [e.to_dict() for e in entities]
-
-    @staticmethod
     def _chunks_from_md(
         text: str, max_len: int
     ) -> list[tuple[str, List[Dict[str, Any]]]]:

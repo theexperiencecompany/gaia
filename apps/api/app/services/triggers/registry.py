@@ -5,7 +5,7 @@ Maps trigger names and event types to their handlers.
 Provides plug-and-play registration for new trigger handlers.
 """
 
-from typing import Dict, Optional, Set
+from typing import Dict, Optional
 
 from app.config.loggers import general_logger as logger
 from app.services.triggers.base import TriggerHandler
@@ -51,14 +51,6 @@ class TriggerRegistry:
     def get_by_event_type(self, event_type: str) -> Optional[TriggerHandler]:
         """Get handler by event type (for webhook processing)."""
         return self._event_handlers.get(event_type)
-
-    def get_all_trigger_names(self) -> Set[str]:
-        """Get all registered trigger names."""
-        return set(self._name_handlers.keys())
-
-    def get_all_event_types(self) -> Set[str]:
-        """Get all registered event types."""
-        return set(self._event_handlers.keys())
 
 
 # Global registry instance

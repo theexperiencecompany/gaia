@@ -7,7 +7,6 @@ from app.db.mongodb.collections import get_sync_collection
 from app.models.calendar_models import (
     EventCreateRequest,
     EventDeleteRequest,
-    EventLookupRequest,
     EventUpdateRequest,
 )
 from fastapi import HTTPException
@@ -222,57 +221,6 @@ def list_calendars(access_token: str, short=False) -> Optional[Dict[str, Any]]:
     return fetch_calendar_list(access_token, short)
 
 
-def initialize_calendar_preferences(
-    user_id: str,
-    access_token: str,
-) -> None:
-    """
-    Initialize calendar preferences for a user who just connected their Google Calendar.
-    Fetches all available calendars and sets them as selected by default.
-
-    Args:
-        user_id (str): The user's ID
-        access_token (str): Valid Google OAuth access token
-    """
-    try:
-        # Check if user already has calendar preferences
-        existing_preferences = calendars_collection.find_one({"user_id": user_id})
-        if existing_preferences and existing_preferences.get("selected_calendars"):
-            logger.info(
-                f"User {user_id} already has calendar preferences, skipping initialization"
-            )
-            return
-
-        # Fetch all available calendars
-        calendar_data = fetch_calendar_list(access_token)
-        calendars = calendar_data.get("items", [])
-
-        if not calendars:
-            logger.warning(f"No calendars found for user {user_id}")
-            return
-
-        # Select all calendars by default
-        all_calendar_ids = [cal["id"] for cal in calendars]
-
-        # Save preferences to database
-        calendars_collection.update_one(
-            {"user_id": user_id},
-            {"$set": {"selected_calendars": all_calendar_ids}},
-            upsert=True,
-        )
-
-        logger.info(
-            f"Initialized calendar preferences for user {user_id}: "
-            f"selected {len(all_calendar_ids)} calendars"
-        )
-
-    except Exception as e:
-        logger.error(
-            f"Failed to initialize calendar preferences for user {user_id}: {e}",
-            exc_info=True,
-        )
-
-
 def get_calendar_metadata_map(
     access_token: str,
 ) -> tuple[Dict[str, str], Dict[str, str]]:
@@ -341,105 +289,6 @@ def format_event_for_frontend(
         "calendar_name": calendar_name,
         "background_color": background_color,
     }
-
-
-def extract_unique_dates(calendar_options: List[Dict[str, Any]]) -> Dict[str, str]:
-    """
-    Extract unique dates with timezone offsets from calendar options.
-
-    Args:
-        calendar_options: List of calendar event options
-
-    Returns:
-        Dict mapping date strings to timezone offsets (e.g., {"2025-10-25": "+05:30"})
-    """
-    event_dates_info = {}
-    for option in calendar_options:
-        start_time = option.get("start", "")
-        if start_time:
-            try:
-                dt = datetime.fromisoformat(start_time.replace("Z", "+00:00"))
-                date_str = dt.strftime("%Y-%m-%d")
-                tz_offset = dt.strftime("%z")
-                if tz_offset:
-                    tz_offset = f"{tz_offset[:3]}:{tz_offset[3:]}"
-                else:
-                    tz_offset = "+00:00"
-                event_dates_info[date_str] = tz_offset
-            except Exception as e:
-                logger.warning(f"Could not parse start time: {start_time}, {e}")
-    return event_dates_info
-
-
-def fetch_same_day_events(
-    event_dates_info: Dict[str, str],
-    access_token: str,
-    user_id: str,
-) -> List[Dict[str, Any]]:
-    """
-    Fetch events for each unique date.
-
-    Args:
-        event_dates_info: Dict mapping date strings to timezone offsets
-        access_token: Access token for calendar API
-        user_id: User identifier
-
-    Returns:
-        List of events across all specified dates
-    """
-    same_day_events = []
-    for event_date, tz_offset in event_dates_info.items():
-        time_min = f"{event_date}T00:00:00{tz_offset}"
-        time_max = f"{event_date}T23:59:59{tz_offset}"
-        try:
-            result = get_calendar_events(
-                access_token=access_token,
-                user_id=user_id,
-                time_min=time_min,
-                time_max=time_max,
-            )
-            if isinstance(result, dict) and "events" in result:
-                same_day_events.extend(result["events"])
-        except Exception as e:
-            logger.error(f"Error fetching events for {event_date}: {e}")
-
-    return same_day_events
-
-
-def enrich_calendar_options_with_metadata(
-    calendar_options: List[Dict[str, Any]],
-    access_token: str,
-    user_id: str,
-) -> List[Dict[str, Any]]:
-    """
-    Add calendar colors, names, and same-day events to calendar options.
-
-    Args:
-        calendar_options: List of calendar event options to enrich
-        access_token: Access token for calendar API
-        user_id: User identifier
-
-    Returns:
-        Enriched calendar options with metadata
-    """
-    color_map, name_map = get_calendar_metadata_map(access_token)
-
-    for option in calendar_options:
-        calendar_id = option.get("calendar_id", "primary")
-        option["background_color"] = color_map.get(calendar_id, "#00bbff")
-        option["calendar_name"] = name_map.get(calendar_id, "Calendar")
-
-    event_dates_info = extract_unique_dates(calendar_options)
-    same_day_events = fetch_same_day_events(event_dates_info, access_token, user_id)
-
-    for event in same_day_events:
-        calendar_id = event.get("calendarId") or ""
-        event["background_color"] = color_map.get(calendar_id, "#00bbff")
-
-    for option in calendar_options:
-        option["same_day_events"] = same_day_events
-
-    return calendar_options
 
 
 def get_calendar_events(
@@ -615,37 +464,6 @@ def get_calendar_events_by_id(
         "events": events,
         "nextPageToken": events_data.get("nextPageToken"),
     }
-
-
-def find_event_for_action(
-    access_token: str,
-    event_lookup_data: EventLookupRequest,
-    user_id: str,
-) -> Optional[dict]:
-    """
-    Find a specific event given either:
-    - query (searches for the first matching event)
-    - both calendar_id and event_id (fetches by ID)
-    Returns the event dict or None if not found.
-    Raises HTTPException for invalid input.
-    """
-    if event_lookup_data.query:
-        search_results = search_calendar_events_native(
-            query=event_lookup_data.query,
-            user_id=user_id,
-            access_token=access_token,
-        )
-        matching_events = search_results.get("matching_events", [])
-        if not matching_events:
-            return None
-        return matching_events[0]
-    else:
-        url = f"https://www.googleapis.com/calendar/v3/calendars/{event_lookup_data.calendar_id}/events/{event_lookup_data.event_id}"
-        headers = {"Authorization": f"Bearer {access_token}"}
-        response = http_client.get(url, headers=headers)
-        if response.status_code == 200:
-            return response.json()
-        return None
 
 
 def create_calendar_event(

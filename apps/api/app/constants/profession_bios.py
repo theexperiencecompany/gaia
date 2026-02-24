@@ -3,30 +3,6 @@
 import random
 from typing import Dict, List
 
-# Profession enum matching frontend options
-PROFESSIONS = (
-    "student",
-    "teacher",
-    "engineer",
-    "developer",
-    "designer",
-    "manager",
-    "consultant",
-    "entrepreneur",
-    "researcher",
-    "writer",
-    "artist",
-    "doctor",
-    "lawyer",
-    "accountant",
-    "sales",
-    "marketing",
-    "analyst",
-    "freelancer",
-    "retired",
-    "other",
-)
-
 # Creative bio templates per profession
 # {name} will be replaced with user's name
 PROFESSION_BIOS: Dict[str, List[str]] = {

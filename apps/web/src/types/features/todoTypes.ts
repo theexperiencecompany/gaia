@@ -140,7 +140,7 @@ export interface TodoListResponse {
   stats?: TodoStats;
 }
 
-export enum TodoSearchMode {
+enum TodoSearchMode {
   TEXT = "text",
   SEMANTIC = "semantic",
   HYBRID = "hybrid",

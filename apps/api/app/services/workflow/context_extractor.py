@@ -29,7 +29,6 @@ class WorkflowContextExtractor:
 
     # Maximum characters for truncated outputs
     MAX_OUTPUT_CHARS = 100
-    MAX_TOTAL_CHARS = 4000
 
     # Tools to skip (meta/internal tools that shouldn't become workflow steps)
     SKIP_TOOLS = {

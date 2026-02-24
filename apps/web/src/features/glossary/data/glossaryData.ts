@@ -1,4 +1,4 @@
-export interface GlossaryTerm {
+interface GlossaryTerm {
   slug: string;
   term: string;
   metaTitle: string;
@@ -12,7 +12,7 @@ export interface GlossaryTerm {
   faqs: Array<{ question: string; answer: string }>;
 }
 
-export const glossaryTerms: Record<string, GlossaryTerm> = {
+const glossaryTerms: Record<string, GlossaryTerm> = {
   "ai-agent": {
     slug: "ai-agent",
     term: "AI Agent",

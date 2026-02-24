@@ -5,7 +5,7 @@ Handles Notion-specific trigger logic.
 """
 
 import asyncio
-from typing import Any, Dict, List, Literal, Optional, Set, TypedDict
+from typing import Any, Dict, List, Literal, Optional, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
@@ -25,35 +25,6 @@ from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.triggers.base import TriggerHandler
 from app.utils.exceptions import TriggerRegistrationError
-
-
-class NotionTitleProperty(TypedDict):
-    plain_text: str
-
-
-class NotionRichText(TypedDict):
-    plain_text: str
-
-
-class NotionProperty(TypedDict):
-    type: str
-    title: Optional[List[NotionTitleProperty]]  # For title property
-
-
-class NotionSearchResult(TypedDict):
-    id: str
-    object: str  # 'page' or 'database'
-    url: str
-    properties: Dict[
-        str, Any
-    ]  # Properties are complex, typing loosely for now but checking types in logic
-    title: Optional[List[NotionRichText]]  # For databases, title is top level
-
-
-class NotionResponseData(TypedDict):
-    results: List[NotionSearchResult]
-    has_more: bool
-    next_cursor: Optional[str]
 
 
 class NotionTriggerHandler(TriggerHandler):

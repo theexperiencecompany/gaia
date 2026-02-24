@@ -14,7 +14,7 @@ export interface ContentCreator {
 /**
  * Tool information with category for icon display
  */
-export interface ToolInfo {
+interface ToolInfo {
   name: string;
   description: string;
   category: string;
@@ -23,7 +23,7 @@ export interface ToolInfo {
 /**
  * Step information for instructions/guides
  */
-export interface StepInfo {
+interface StepInfo {
   title: string;
   description: string;
   details?: string;

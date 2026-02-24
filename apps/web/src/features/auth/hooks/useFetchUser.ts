@@ -12,8 +12,8 @@ import {
   trackEvent,
 } from "@/lib/analytics";
 
-export const authPages = ["/login", "/signup"];
-export const publicPages = [...authPages, "/terms", "/privacy", "/contact"];
+const authPages = ["/login", "/signup"];
+const publicPages = [...authPages, "/terms", "/privacy", "/contact"];
 
 const useFetchUser = () => {
   const { setUser, clearUser } = useUserActions();

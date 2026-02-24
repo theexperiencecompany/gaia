@@ -12,7 +12,6 @@ EXPO_TOKEN_PATTERN = re.compile(r"^Expo(nent)?PushToken\[[a-zA-Z0-9_-]+\]$")
 
 # Notification channel type identifiers
 CHANNEL_TYPE_INAPP = "inapp"
-CHANNEL_TYPE_EMAIL = "email"
 CHANNEL_TYPE_TELEGRAM = "telegram"
 CHANNEL_TYPE_DISCORD = "discord"
 

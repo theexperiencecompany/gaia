@@ -8,10 +8,8 @@ export enum NotificationType {
 }
 
 export enum NotificationStatus {
-  PENDING = "pending",
   DELIVERED = "delivered",
   READ = "read",
-  SNOOZED = "snoozed",
   ARCHIVED = "archived",
 }
 
@@ -23,8 +21,6 @@ export enum ActionType {
 }
 
 export enum ActionStyle {
-  PRIMARY = "primary",
-  SECONDARY = "secondary",
   DANGER = "danger",
 }
 
@@ -78,7 +74,7 @@ export interface ApiCallConfig {
   is_internal?: boolean;
 }
 
-export interface WorkflowParameters {
+interface WorkflowParameters {
   // Entity identifiers
   user_id?: string;
   notification_id?: string;
@@ -103,7 +99,7 @@ export interface WorkflowParameters {
   };
 }
 
-export interface WorkflowConfig {
+interface WorkflowConfig {
   workflow_id: string;
   parameters?: WorkflowParameters;
 }
@@ -188,7 +184,7 @@ export interface NotificationAction {
   executed_at?: string; // ISO string
 }
 
-export interface RichContent {
+interface RichContent {
   // Interactive elements
   buttons?: Array<{
     label: string;
@@ -241,7 +237,7 @@ export interface NotificationContent {
   rich_content?: RichContent;
 }
 
-export interface ChannelConfiguration {
+interface ChannelConfiguration {
   // Email channel
   email?: {
     template?: string;
@@ -286,7 +282,7 @@ export interface ChannelConfiguration {
   };
 }
 
-export interface ChannelConfig {
+interface ChannelConfig {
   channel_type: string;
   enabled?: boolean;
   priority?: number;
@@ -338,7 +334,7 @@ export interface NotificationMetadata {
   [key: string]: string | number | boolean | string[] | object | undefined;
 }
 
-export interface NotificationRequest {
+interface NotificationRequest {
   id: string;
   user_id: string;
   source: string;
@@ -458,7 +454,7 @@ export enum BulkActions {
   DELETE = "delete",
 }
 
-export interface SnoozeSettings {
+interface SnoozeSettings {
   // Default snooze durations (in minutes)
   default_duration?: number;
   quick_options?: number[]; // e.g., [15, 30, 60, 120, 480] for 15min, 30min, 1hr, 2hr, 8hr
@@ -498,7 +494,7 @@ export interface SnoozeSettings {
   >;
 }
 
-export interface NotificationPreferences {
+interface NotificationPreferences {
   user_id: string;
   channel_preferences?: Record<string, Record<string, boolean | number>>;
   snooze_settings?: SnoozeSettings;
@@ -508,7 +504,7 @@ export interface NotificationPreferences {
 }
 
 // API Request/Response types
-export interface CreateNotificationRequest {
+interface CreateNotificationRequest {
   notification_request: NotificationRequest;
 }
 

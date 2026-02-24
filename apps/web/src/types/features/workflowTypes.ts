@@ -58,7 +58,7 @@ export interface PublicWorkflowStep {
 // ============================================================================
 
 // Re-export trigger types for convenience
-export type { TriggerConfig, TriggerFieldSchema, TriggerSchema };
+export type { TriggerConfig, TriggerSchema };
 
 /**
  * Execution configuration for workflows

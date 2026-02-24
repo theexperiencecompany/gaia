@@ -4,13 +4,10 @@
 
 export * from "./headers/CalendarHeader";
 export * from "./headers/ChatHeader";
-export * from "./headers/DefaultHeader";
 export * from "./headers/GoalHeader";
 export * from "./headers/GoalsHeader";
-export * from "./headers/HeaderComponent";
 export * from "./headers/HeaderManager";
 export * from "./headers/HeaderTitle";
-export * from "./headers/MailHeader";
 export * from "./headers/NotificationsHeader";
 export * from "./headers/SettingsHeader";
 export * from "./headers/TodosHeader";

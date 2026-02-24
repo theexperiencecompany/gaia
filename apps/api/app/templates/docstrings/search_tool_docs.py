@@ -32,35 +32,3 @@ Args:
 Returns:
     A JSON string with summarized search data, formatted text, and raw result structure.
 """
-
-DEEP_RESEARCH_TOOL = """
-Conduct an in-depth search by retrieving and analyzing the full content of web pages.
-
-This tool should only be used when a user specifically requests:
-- A deep dive into a topic
-- Thorough research or full article content
-- Technical documentation or context-rich explanations
-- Clean, structured content from websites
-
-Do NOT use this tool for:
-- Simple questions or fact lookups
-- Quick overviews or general summaries
-- Casual or exploratory queries
-- Speed-sensitive responses
-
-It consumes more time and resources than a standard web search, so use it only when depth and detail
-are explicitly needed.
-
-Examples:
-✅ "Can you analyze the full content of this article?"
-✅ "I need detailed technical documentation about Kubernetes networking."
-✅ "Give me the complete breakdown from credible sources on how the 2024 AI Act works."
-❌ "What's the capital of Sweden?"
-❌ "Tell me a bit about quantum computing."
-
-Args:
-    query_text: The search query intended for comprehensive exploration.
-
-Returns:
-    A JSON string with full content, summaries, and structured data for deep understanding.
-"""

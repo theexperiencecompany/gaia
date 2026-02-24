@@ -5,7 +5,6 @@
 export * from "./ChatOptionsDropdown";
 export * from "./ChatsList";
 export * from "./ChatTab";
-export * from "./CloseOpenSidebar";
 export * from "./ContactSupport";
 export * from "./constants";
 export * from "./MainSidebar";

@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { fetchAvailableTools, type ToolInfo } from "../api/toolsApi";
 
-export interface UseToolsQueryReturn {
+interface UseToolsQueryReturn {
   tools: ToolInfo[];
   isLoading: boolean;
   error: string | null;

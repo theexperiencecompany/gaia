@@ -35,7 +35,7 @@ const sanitizeSchema = {
   },
 };
 
-export interface MarkdownRendererProps {
+interface MarkdownRendererProps {
   content: string;
   className?: string;
   isStreaming?: boolean;

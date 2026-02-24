@@ -44,7 +44,7 @@ export function findTriggerSchema(
  * Normalize a trigger identifier to the frontend slug.
  * Converts composio_slug to slug if needed.
  */
-export function normalizeTriggerSlug(
+function normalizeTriggerSlug(
   schemas: TriggerSchema[] | undefined,
   slugOrComposioSlug: string,
 ): string {
@@ -111,7 +111,7 @@ export function getTriggerDisplayInfo(
 /**
  * Get trigger-enabled integrations for WorkflowModal dropdown.
  */
-export function getTriggerEnabledIntegrations(
+function getTriggerEnabledIntegrations(
   integrations: Integration[],
   schemas: TriggerSchema[],
 ) {

@@ -1,6 +1,6 @@
 import { apiauth } from "@/lib/api";
 
-export interface UsagePeriod {
+interface UsagePeriod {
   used: number;
   limit: number;
   percentage: number;
@@ -8,7 +8,7 @@ export interface UsagePeriod {
   remaining: number;
 }
 
-export interface FeatureUsage {
+interface FeatureUsage {
   title: string;
   description: string;
   category: string;
@@ -19,7 +19,7 @@ export interface FeatureUsage {
   };
 }
 
-export interface TokenUsage {
+interface TokenUsage {
   title: string;
   periods: {
     day?: {
@@ -41,7 +41,7 @@ export interface TokenUsage {
   };
 }
 
-export interface UsageSummary {
+interface UsageSummary {
   user_id: string;
   plan_type: string;
   features: Record<string, FeatureUsage>;
@@ -49,7 +49,7 @@ export interface UsageSummary {
   last_updated: string;
 }
 
-export interface UsageHistoryEntry {
+interface UsageHistoryEntry {
   date: string;
   plan_type: string;
   features: Record<string, Pick<FeatureUsage, "title" | "periods">>;

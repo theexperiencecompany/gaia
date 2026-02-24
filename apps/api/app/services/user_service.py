@@ -20,18 +20,6 @@ async def get_user_by_id(user_id: str) -> Optional[dict]:
         raise HTTPException(status_code=404, detail="User not found")
 
 
-async def get_user_by_email(email: str) -> Optional[dict]:
-    """Get user by email from database."""
-    try:
-        user = await users_collection.find_one({"email": email})
-        if user:
-            user["_id"] = str(user["_id"])
-        return user
-    except Exception as e:
-        logger.error(f"Error fetching user by email {email}: {e}")
-        raise HTTPException(status_code=404, detail="User not found")
-
-
 async def update_user_profile(
     user_id: str,
     name: Optional[str] = None,

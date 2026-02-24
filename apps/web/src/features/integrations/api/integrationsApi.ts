@@ -35,14 +35,14 @@ function sanitizeRedirectUrl(url: string): string | null {
   }
 }
 
-export interface IntegrationStatusResponse {
+interface IntegrationStatusResponse {
   integrations: Array<{
     integrationId: string;
     connected: boolean;
   }>;
 }
 
-export interface IntegrationConfigResponse {
+interface IntegrationConfigResponse {
   integrations: Integration[];
 }
 

@@ -25,7 +25,7 @@ export interface BlogPost {
   featured?: boolean;
 }
 
-export interface BlogPostFrontmatter {
+interface BlogPostFrontmatter {
   title: string;
   date: string;
   authors: Author[];

@@ -2,16 +2,8 @@
 
 from typing import Any, Dict, List, Optional
 
-from app.agents.llm.client import init_llm
-from app.agents.prompts.mail_prompts import EMAIL_COMPREHENSIVE_ANALYSIS
 from app.config.loggers import common_logger as logger
 from app.db.mongodb.collections import mail_collection
-from app.models.mail_models import EmailComprehensiveAnalysis
-from langchain_core.output_parsers import PydanticOutputParser
-
-email_comprehensive_parser = PydanticOutputParser(
-    pydantic_object=EmailComprehensiveAnalysis
-)
 
 
 async def get_email_importance_summaries(
@@ -90,62 +82,6 @@ async def get_single_email_importance_summary(
             f"Error retrieving email summary for user {user_id}, message {message_id}: {e}"
         )
         raise
-
-
-async def process_email_comprehensive_analysis(
-    subject: str, sender: str, date: str, content: str
-) -> Optional[EmailComprehensiveAnalysis]:
-    """
-    Process email to determine importance, generate summary, and create semantic labels in one go.
-    This is more efficient than separate API calls for importance and semantic analysis.
-
-    Args:
-        subject: Email subject
-        sender: Email sender
-        date: Email date
-        content: Email content
-
-    Returns:
-        EmailComprehensiveAnalysis or None if processing fails
-    """
-    try:
-        # Initialize Gemini LLM
-        llm = init_llm(preferred_provider="gemini")
-
-        # Format prompt with email data and format instructions
-        prompt = EMAIL_COMPREHENSIVE_ANALYSIS.format(
-            subject=subject,
-            sender=sender,
-            date=date,
-            content=content,
-            format_instructions=email_comprehensive_parser.get_format_instructions(),
-        )
-
-        # Get response from llm
-        response = await llm.ainvoke(prompt)
-
-        if isinstance(response, str):
-            response_text = response.strip()
-        else:
-            response_text = response.text
-
-        # Parse response following agent.py pattern
-        try:
-            # Parse using the parser directly
-            result = email_comprehensive_parser.parse(response_text)
-            logger.info(f"Successfully parsed comprehensive email analysis: {result}")
-            return result
-
-        except Exception as parse_error:
-            logger.error(f"Failed to parse AI response with parser: {parse_error}")
-
-            raise ValueError(
-                "Failed to parse AI response. Please check the response format."
-            )
-
-    except Exception as e:
-        logger.error(f"Error processing email comprehensive analysis with Gemini: {e}")
-        return None
 
 
 async def get_bulk_email_importance_summaries(

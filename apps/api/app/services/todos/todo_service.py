@@ -40,7 +40,6 @@ from app.services.todos.sync_service import (
     sync_subtask_to_goal_completion,
 )
 from app.utils.todo_vector_utils import (
-    bulk_index_todos,
     delete_todo_embedding,
     store_todo_embedding,
     update_todo_embedding,
@@ -821,12 +820,6 @@ class TodoService:
 
         return response
 
-    @classmethod
-    async def reindex_todos(cls, user_id: str, batch_size: int = 100) -> dict:
-        """Reindex all todos for vector search."""
-        indexed = await bulk_index_todos(user_id, batch_size)
-        return {"indexed": indexed, "user_id": user_id, "status": "completed"}
-
 
 # Project Operations (kept separate as they're less complex)
 class ProjectService:
@@ -1183,8 +1176,3 @@ async def hybrid_search_todos(
 
     response = await TodoService.list_todos(user_id, params)
     return response.data
-
-
-async def bulk_index_existing_todos(user_id: str, batch_size: int = 100) -> dict:
-    """Bulk index all existing todos for a user."""
-    return await TodoService.reindex_todos(user_id, batch_size)

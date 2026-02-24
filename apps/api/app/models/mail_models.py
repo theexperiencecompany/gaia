@@ -1,9 +1,7 @@
-import base64
-import json
 from enum import Enum
 from typing import List, Optional
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, Field
 
 
 class EmailRequest(BaseModel):
@@ -73,55 +71,6 @@ class DraftRequest(BaseModel):
     is_html: Optional[bool] = False
 
 
-class EmailWebhookMessage(BaseModel):
-    """
-    Model for the message part of the webhook request.
-    The `data` field is a base64 encoded JSON string containing `emailAddress` and `historyId`.
-    """
-
-    messageId: str
-    publishTime: str
-    data: str = Field(
-        ...,
-        description="Base64 encoded string of the email data. Contains emailAddress and historyId.",
-    )
-
-    # Decoded fields extracted from data
-    emailAddress: Optional[str] = None
-    historyId: Optional[int] = None
-
-    @model_validator(mode="before")
-    def decode_data(cls, values):
-        try:
-            encoded = values.get("data")
-            decoded_bytes = base64.urlsafe_b64decode(encoded + "==")
-            decoded_str = decoded_bytes.decode("utf-8")
-            decoded_json = json.loads(decoded_str)
-
-            values["emailAddress"] = decoded_json.get("emailAddress")
-            values["historyId"] = decoded_json.get("historyId")
-        except Exception as e:
-            raise ValueError(f"Failed to decode message data: {str(e)}")
-
-        return values
-
-
-class EmailWorkflowFilterDecision(BaseModel):
-    """Model for LLM decision on whether to process an email for a specific workflow"""
-
-    should_process: bool = Field(
-        description="Boolean decision: true if this email should trigger the workflow, false if it should be skipped"
-    )
-    reasoning: str = Field(
-        description="Brief explanation of why this email should or should not trigger the workflow"
-    )
-    confidence: float = Field(
-        ge=0.0,
-        le=1.0,
-        description="Confidence level in the decision (0.0 to 1.0)",
-    )
-
-
 class EmailImportanceLevelEnum(str, Enum):
     """Enumeration for email importance levels."""
 
@@ -134,23 +83,3 @@ class EmailImportanceLevelEnum(str, Enum):
     def list(cls) -> List[str]:
         """Return a list of all importance levels."""
         return [level.value for level in cls]
-
-
-class EmailComprehensiveAnalysis(BaseModel):
-    """Combined response model for email importance and semantic analysis."""
-
-    # Importance analysis fields
-    is_important: bool = Field(
-        description="Whether the email is important and requires attention"
-    )
-    importance_level: EmailImportanceLevelEnum = Field(
-        description="Importance level: URGENT, HIGH, MEDIUM, or LOW"
-    )
-    summary: str = Field(
-        description="Brief summary of the email if important, empty string if not important"
-    )
-
-    # Semantic labeling fields
-    semantic_labels: List[str] = Field(
-        description="List of semantic labels that categorize the email content and context"
-    )

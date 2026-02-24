@@ -101,7 +101,7 @@ export const showFeatureRestrictedToast = (
   });
 };
 
-export const showRateLimitExceededToast = (
+const showRateLimitExceededToast = (
   feature: string,
   resetTime?: string,
 ) => {

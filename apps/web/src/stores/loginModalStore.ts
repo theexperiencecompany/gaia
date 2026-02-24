@@ -21,5 +21,5 @@ export const useLoginModalStore = create<LoginModalStore>()(
 );
 
 // Selectors
-export const useLoginModalOpen = () =>
+const useLoginModalOpen = () =>
   useLoginModalStore((state) => state.open);

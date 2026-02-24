@@ -19,7 +19,7 @@ from app.constants.cache import (
     OAUTH_STATE_TTL,
 )
 from app.db.postgresql import get_db_session
-from app.db.redis import delete_cache, get_and_delete_cache, get_cache, set_cache
+from app.db.redis import get_and_delete_cache, get_cache, set_cache
 from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.utils.mcp_oauth_utils import introspect_token as do_introspect
 from cryptography.fernet import Fernet
@@ -312,41 +312,6 @@ class MCPTokenStore:
                 await session.commit()
                 logger.info(f"Deleted MCP credentials for {integration_id}")
 
-    async def update_status(
-        self,
-        integration_id: str,
-        status: MCPCredentialStatus,
-        error: Optional[str] = None,
-    ) -> None:
-        """Update PostgreSQL credential status (informational only).
-
-        NOTE: Connection status is managed in MongoDB user_integrations.
-        This method only updates the PostgreSQL status field for debugging/auditing.
-        Use update_user_integration_status() to change the canonical connection status.
-        """
-        async with get_db_session() as session:
-            result = await session.execute(
-                select(MCPCredential).where(
-                    MCPCredential.user_id == self.user_id,
-                    MCPCredential.integration_id == integration_id,
-                )
-            )
-            cred: Optional[MCPCredential] = result.scalar_one_or_none()
-            if cred:
-                cred.status = MCPCredentialStatus(status)
-                cred.error_message = error
-                session.add(cred)
-                await session.commit()
-
-    async def has_credentials(self, integration_id: str) -> bool:
-        """Check if we have stored tokens/credentials for this integration.
-
-        Note: This checks for token existence, NOT connection status.
-        Connection status is managed in MongoDB user_integrations.
-        """
-        cred = await self.get_credential(integration_id)
-        return cred is not None and cred.access_token is not None
-
     async def is_connected(self, integration_id: str) -> bool:
         """Check if user has a connected credential for this integration.
 
@@ -354,21 +319,6 @@ class MCPTokenStore:
         """
         cred = await self.get_credential(integration_id)
         return cred is not None and cred.status == MCPCredentialStatus.CONNECTED
-
-    async def get_integrations_with_credentials(self) -> list[str]:
-        """Get all MCP integration IDs that have stored credentials.
-
-        Note: This returns integrations with tokens, NOT necessarily connected.
-        Connection status is managed in MongoDB user_integrations.
-        """
-        async with get_db_session() as session:
-            result = await session.execute(
-                select(MCPCredential.integration_id).where(
-                    MCPCredential.user_id == self.user_id,
-                    MCPCredential.access_token.isnot(None),
-                )
-            )
-            return [row[0] for row in result.fetchall()]
 
     async def get_dcr_client(self, integration_id: str) -> Optional[dict]:
         """Get stored DCR client registration."""
@@ -486,36 +436,3 @@ class MCPTokenStore:
             client_id=client_id,
             client_secret=client_secret,
         )
-
-    async def delete_oauth_discovery(self, integration_id: str) -> bool:
-        """
-        Delete OAuth discovery cache for an integration.
-
-        Use this to force re-discovery of OAuth endpoints, for example
-        when the auth server configuration has changed.
-
-        Returns True if cache was deleted, False if not found.
-        """
-        cache_key = f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}"
-        result = await delete_cache(cache_key)
-        if result:
-            logger.info(f"Deleted OAuth discovery cache for {integration_id}")
-        return result or False
-
-    async def cleanup_integration(self, integration_id: str) -> None:
-        """
-        Clean up all OAuth-related data for an integration.
-
-        This removes:
-        - OAuth discovery cache (Redis)
-        - Stored credentials (PostgreSQL)
-
-        Use when an integration is removed or when OAuth needs to be reset.
-        """
-        # Delete discovery cache
-        await self.delete_oauth_discovery(integration_id)
-
-        # Delete stored credentials
-        await self.delete_credentials(integration_id)
-
-        logger.info(f"Cleaned up all OAuth data for {integration_id}")

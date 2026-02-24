@@ -169,18 +169,3 @@ def get_user_id_from_config(config: RunnableConfig) -> str:
         logger.error("No user_id found in config metadata")
 
     return user_id
-
-
-def get_user_name_from_config(config: RunnableConfig) -> str:
-    """Extract user name from the config."""
-    if not config:
-        logger.error("Tool called without config")
-        return ""
-
-    metadata = config.get("metadata", {})
-    user_name = metadata.get("user_name", "")
-
-    if not user_name:
-        logger.error("No user_name found in config metadata")
-
-    return user_name

@@ -24,7 +24,7 @@ export const ALLOWED_FILE_TYPES = [
   "image/webp",
 ] as const;
 
-export const API_ENDPOINTS = {
+const API_ENDPOINTS = {
   SUBMIT_REQUEST: "/api/support/requests",
   GET_REQUEST_STATUS: "/api/support/requests",
   GET_FAQ: "/api/support/faq",

@@ -19,10 +19,10 @@ export const useIntegrationModalStore = create<IntegrationModalStore>()(
 );
 
 // Convenience hooks
-export const useIntegrationModalOpen = () =>
+const useIntegrationModalOpen = () =>
   useIntegrationModalStore((state) => state.isOpen);
 
-export const useIntegrationModalActions = () =>
+const useIntegrationModalActions = () =>
   useIntegrationModalStore((state) => ({
     openModal: state.openModal,
     closeModal: state.closeModal,

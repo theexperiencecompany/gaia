@@ -10,7 +10,7 @@ export interface CronSchedule {
   customExpression?: string;
 }
 
-export interface SchedulePreset {
+interface SchedulePreset {
   id: string;
   label: string;
   description: string;
@@ -18,7 +18,7 @@ export interface SchedulePreset {
   schedule: CronSchedule;
 }
 
-export const schedulePresets: SchedulePreset[] = [
+const schedulePresets: SchedulePreset[] = [
   {
     id: "daily_9am",
     label: "Daily at 9:00 AM",

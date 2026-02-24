@@ -8,7 +8,6 @@ import {
   type WorkflowSelectionOptions,
 } from "@/stores/workflowSelectionStore";
 
-export type { SelectedWorkflowData, WorkflowSelectionOptions };
 
 export const useWorkflowSelection = () => {
   const {

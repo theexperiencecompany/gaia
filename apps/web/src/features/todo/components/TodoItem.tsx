@@ -30,7 +30,7 @@ interface TodoItemProps {
   onClick?: (todo: Todo) => void;
 }
 
-export const priorityColors = {
+const priorityColors = {
   [Priority.HIGH]: "danger",
   [Priority.MEDIUM]: "warning",
   [Priority.LOW]: "primary",

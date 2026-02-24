@@ -44,19 +44,19 @@ export type TwitterSearchData = {
   next_token?: string;
 };
 
-export type TwitterTimelineData = {
+type TwitterTimelineData = {
   tweets: TwitterTweetData[];
 };
 
-export type TwitterFollowersData = TwitterUserData[];
+type TwitterFollowersData = TwitterUserData[];
 
-export type TwitterPostCreatedData = {
+type TwitterPostCreatedData = {
   id: string;
   text: string;
   url: string;
 };
 
-export type TwitterPostPreviewData = {
+type TwitterPostPreviewData = {
   text: string;
   quote_tweet_id?: string;
   reply_to_tweet_id?: string;
@@ -68,7 +68,7 @@ export type TwitterPostPreviewData = {
  * Unified Twitter data type for tool_data streaming.
  * Matches the payload keys from twitter_hooks.py writer() calls.
  */
-export type TwitterData =
+type TwitterData =
   | { type: "search"; data: TwitterSearchData }
   | { type: "timeline"; data: TwitterTimelineData }
   | { type: "users"; data: TwitterUserData[] }

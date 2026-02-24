@@ -1,6 +1,6 @@
 import { create } from "zustand";
 
-export interface WorkflowModalState {
+interface WorkflowModalState {
   // Creation/Edit flow states
   creationPhase: "form" | "creating" | "generating" | "success" | "error";
 

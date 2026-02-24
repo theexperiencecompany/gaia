@@ -94,7 +94,7 @@ export const ANALYTICS_EVENTS = {
   API_ERROR: "api:error",
 } as const;
 
-export type AnalyticsEvent =
+type AnalyticsEvent =
   (typeof ANALYTICS_EVENTS)[keyof typeof ANALYTICS_EVENTS];
 
 interface UserProperties {
@@ -152,7 +152,7 @@ export function trackEvent(
 /**
  * Set user properties without tracking an event.
  */
-export function setUserProperties(properties: UserProperties): void {
+function setUserProperties(properties: UserProperties): void {
   posthog.people.set(properties);
 }
 
@@ -344,7 +344,7 @@ export function trackError(
 /**
  * Create a group (for team/organization tracking).
  */
-export function setGroup(
+function setGroup(
   groupType: string,
   groupKey: string,
   properties?: Record<string, unknown>,
@@ -355,23 +355,20 @@ export function setGroup(
 /**
  * Opt user out of tracking.
  */
-export function optOut(): void {
+function optOut(): void {
   posthog.opt_out_capturing();
 }
 
 /**
  * Opt user back into tracking.
  */
-export function optIn(): void {
+function optIn(): void {
   posthog.opt_in_capturing();
 }
 
 /**
  * Check if capturing is active.
  */
-export function isCapturingEnabled(): boolean {
+function isCapturingEnabled(): boolean {
   return !posthog.has_opted_out_capturing();
 }
-
-// Re-export posthog for advanced usage
-export { posthog };

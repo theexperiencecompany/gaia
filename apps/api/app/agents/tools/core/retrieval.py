@@ -95,24 +95,6 @@ async def _get_user_context(
     return user_namespaces, connected_integrations, internal_subagents
 
 
-async def _log_store_diagnostics(store: BaseStore) -> None:
-    """Log diagnostic information about store contents."""
-    try:
-        logger.info("DIAGNOSTIC: Inspecting store namespaces...")
-
-        # Check subagents namespace
-        subagents_items = await store.asearch(("subagents",), query="", limit=5)
-        logger.info(f"DIAGNOSTIC: Subagents namespace has {len(subagents_items)} items")
-
-        for item in subagents_items[:3]:
-            logger.info(
-                f"DIAGNOSTIC: Item - key='{item.key}', "
-                f"namespace={getattr(item, 'namespace', 'N/A')}"
-            )
-    except Exception as e:
-        logger.warning(f"DIAGNOSTIC: Failed to inspect store: {e}")
-
-
 def _build_search_tasks(
     store: BaseStore,
     query: str,
@@ -146,7 +128,7 @@ def _build_search_tasks(
 
 def _process_public_integration_result(
     result: List[dict[str, Any]],
-    task_idx: int,
+    _task_idx: int,
 ) -> List[dict[str, str | float | None]]:
     """Process public integration search results."""
     processed = []
@@ -173,7 +155,7 @@ def _process_public_integration_result(
 
 def _process_chroma_search_result(
     result: List[SearchItem],
-    task_idx: int,
+    _task_idx: int,
     available_tool_names: Set[str],
     tool_registry,
     include_subagents: bool,

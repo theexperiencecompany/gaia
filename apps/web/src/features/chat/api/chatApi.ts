@@ -9,7 +9,7 @@ import type { MessageType } from "@/types/features/convoTypes";
 import type { WorkflowData } from "@/types/features/workflowTypes";
 import type { FileData } from "@/types/shared";
 
-export interface FileUploadResponse {
+interface FileUploadResponse {
   fileId: string;
   fileName: string;
   fileSize: number;
@@ -19,7 +19,7 @@ export interface FileUploadResponse {
   message?: string;
 }
 
-export interface GenerateImageResponse {
+interface GenerateImageResponse {
   url: string;
   improved_prompt?: string;
 }
@@ -54,13 +54,13 @@ export interface Conversation {
   updatedAt?: string;
 }
 
-export interface ConversationWithMessages {
+interface ConversationWithMessages {
   id: string;
   title: string;
   messages: MessageType[];
 }
 
-export interface FetchConversationsResponse {
+interface FetchConversationsResponse {
   conversations: Conversation[];
   total: number;
   page: number;

@@ -13,7 +13,7 @@ import { mailApi } from "@/features/mail/api/mailApi";
 import type { EmailSuggestion } from "@/features/mail/components/EmailChip";
 import { toast } from "@/lib/toast";
 
-export interface EmailCompositionFormState {
+interface EmailCompositionFormState {
   toEmails: Tag[];
   subject: string;
   body: string;
@@ -23,14 +23,14 @@ export interface EmailCompositionFormState {
   clarityOption: string;
 }
 
-export interface EmailCompositionUIState {
+interface EmailCompositionUIState {
   loading: boolean;
   error: string | null;
   isAiModalOpen: boolean;
   activeTagIndex: number | null;
 }
 
-export interface EmailCompositionActions {
+interface EmailCompositionActions {
   setToEmails: (emails: Tag[] | ((prev: Tag[]) => Tag[])) => void;
   setSubject: (subject: string) => void;
   setBody: (body: string) => void;
@@ -47,7 +47,7 @@ export interface EmailCompositionActions {
   resetForm: () => void;
 }
 
-export interface UseEmailCompositionReturn {
+interface UseEmailCompositionReturn {
   formState: EmailCompositionFormState;
   uiState: EmailCompositionUIState;
   actions: EmailCompositionActions;

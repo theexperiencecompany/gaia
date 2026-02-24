@@ -1,5 +1,5 @@
 // Get start and end of a month for a given date
-export const getMonthRange = (date: Date): { start: Date; end: Date } => {
+const getMonthRange = (date: Date): { start: Date; end: Date } => {
   const start = new Date(date.getFullYear(), date.getMonth(), 1);
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59);
   return { start, end };
@@ -60,7 +60,7 @@ export const getInitialMonthlyDateRange = (currentDate: Date): Date[] => {
   return dates;
 };
 
-export const getInitialDateRange = (
+const getInitialDateRange = (
   currentWeek: Date,
   weeksBuffer = 2,
 ): Date[] => {
@@ -77,7 +77,7 @@ export const getInitialDateRange = (
   });
 };
 
-export const getExtendedDates = (
+const getExtendedDates = (
   currentWeek: Date,
   weeksBuffer = 2,
 ): Date[] => {
@@ -95,7 +95,7 @@ export const getExtendedDates = (
 };
 
 // Generate dates extending forward from a start date
-export const generateDatesForward = (
+const generateDatesForward = (
   startDate: Date,
   count: number,
 ): Date[] => {
@@ -107,7 +107,7 @@ export const generateDatesForward = (
 };
 
 // Generate dates extending backward from an end date
-export const generateDatesBackward = (endDate: Date, count: number): Date[] => {
+const generateDatesBackward = (endDate: Date, count: number): Date[] => {
   return Array.from({ length: count }, (_, i) => {
     const date = new Date(endDate);
     date.setDate(endDate.getDate() - (count - 1 - i));
@@ -116,7 +116,7 @@ export const generateDatesBackward = (endDate: Date, count: number): Date[] => {
 };
 
 // Merge new dates into existing array, avoiding duplicates
-export const mergeDateRanges = (
+const mergeDateRanges = (
   existing: Date[],
   newDates: Date[],
   position: "start" | "end",

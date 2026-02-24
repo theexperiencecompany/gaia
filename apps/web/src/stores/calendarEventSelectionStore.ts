@@ -23,7 +23,7 @@ export interface SelectedCalendarEventData {
   isAllDay?: boolean;
 }
 
-export type CalendarEventSelectionOptions = {};
+type CalendarEventSelectionOptions = {};
 
 interface CalendarEventSelectionState {
   selectedCalendarEvent: SelectedCalendarEventData | null;

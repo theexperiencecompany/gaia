@@ -33,7 +33,7 @@ export const TODO_TIMINGS = {
 
 export const tdEase = [0.32, 0.72, 0, 1] as const;
 export const tdTx = { duration: 0.22, ease: tdEase };
-export const tdSlideUp = {
+const tdSlideUp = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -8 },

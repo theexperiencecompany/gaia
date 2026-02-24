@@ -25,10 +25,6 @@ class BioStatus(str, Enum):
     NO_GMAIL = "no_gmail"  # No Gmail connected, showing placeholder
 
 
-class UserUpdateRequest(BaseModel):
-    name: Optional[str] = Field(None, description="New name for the user")
-
-
 class UserUpdateResponse(BaseModel):
     user_id: str = Field(..., description="Unique identifier for the user")
     name: str = Field(..., description="Name of the user")
@@ -92,44 +88,6 @@ class OnboardingPreferences(BaseModel):
             return v
         # Return None for empty strings to normalize the data
         return None if v == "" else v
-
-
-class OnboardingData(BaseModel):
-    completed: bool = Field(
-        default=False, description="Whether onboarding is completed"
-    )
-    completed_at: Optional[datetime] = Field(
-        None, description="Timestamp when onboarding was completed"
-    )
-    phase: OnboardingPhase = Field(
-        default=OnboardingPhase.INITIAL, description="Current onboarding phase"
-    )
-    preferences: Optional[OnboardingPreferences] = Field(
-        None, description="User's onboarding preferences"
-    )
-    house: Optional[str] = Field(None, description="Assigned house name")
-    personality_phrase: Optional[str] = Field(
-        None, description="LLM-generated personality phrase"
-    )
-    user_bio: Optional[str] = Field(None, description="LLM-generated bio paragraph")
-    bio_status: BioStatus = Field(
-        default=BioStatus.PENDING, description="Status of bio generation"
-    )
-    suggested_workflows: Optional[list[str]] = Field(
-        default_factory=list, description="Workflow IDs suggested via RAG"
-    )
-    overlay_color: Optional[str] = Field(
-        None, description="Personalization overlay color"
-    )
-    overlay_opacity: Optional[int] = Field(
-        None, description="Personalization overlay opacity"
-    )
-    account_number: Optional[int] = Field(None, description="User's account number")
-    member_since: Optional[str] = Field(None, description="Member since date string")
-    integration_scan_states: Optional[Dict[str, Dict[str, Any]]] = Field(
-        default_factory=dict,
-        description="Map of integration IDs to their scan state data (e.g. {'gmail': {'last_scan': timestamp}})",
-    )
 
 
 class OnboardingRequest(BaseModel):

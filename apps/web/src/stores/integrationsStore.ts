@@ -45,8 +45,8 @@ export const useIntegrationsStore = create<IntegrationsStore>()(
 );
 
 // Selectors
-export const useIntegrationsSearchQuery = () =>
+const useIntegrationsSearchQuery = () =>
   useIntegrationsStore((state) => state.searchQuery);
 
-export const useIntegrationsCategory = () =>
+const useIntegrationsCategory = () =>
   useIntegrationsStore((state) => state.selectedCategory);

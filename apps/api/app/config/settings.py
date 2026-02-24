@@ -86,7 +86,6 @@ class CommonSettings(BaseAppSettings):
     # ----------------------------------------------
     HOST: str = "https://api.heygaia.io"
     FRONTEND_URL: str = "https://heygaia.io"
-    DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
 
     # ----------------------------------------------
@@ -255,11 +254,6 @@ class ProductionSettings(CommonSettings):
     # MCP OAuth Credentials
     # ----------------------------------------------
     MCP_ENCRYPTION_KEY: str
-    VERCEL_MCP_CLIENT_ID: str
-    NOTION_MCP_CLIENT_ID: str
-    NOTION_MCP_CLIENT_SECRET: str
-    FIGMA_MCP_CLIENT_ID: str
-    FIGMA_MCP_CLIENT_SECRET: str
 
     # ----------------------------------------------
     # Opik Evaluation Config
@@ -323,7 +317,6 @@ class DevelopmentSettings(CommonSettings):
     # ----------------------------------------------
     GOOGLE_CLIENT_ID: Optional[str] = None
     GOOGLE_CLIENT_SECRET: Optional[str] = None
-    ENABLE_PUBSUB_JWT_VERIFICATION: bool = False
     GOOGLE_USERINFO_URL: str = "https://www.googleapis.com/oauth2/v2/userinfo"
     GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
 
@@ -411,11 +404,6 @@ class DevelopmentSettings(CommonSettings):
     # MCP OAuth Credentials
     # ----------------------------------------------
     MCP_ENCRYPTION_KEY: Optional[str] = None
-    VERCEL_MCP_CLIENT_ID: Optional[str] = None
-    NOTION_MCP_CLIENT_ID: Optional[str] = None
-    NOTION_MCP_CLIENT_SECRET: Optional[str] = None
-    FIGMA_MCP_CLIENT_ID: Optional[str] = None
-    FIGMA_MCP_CLIENT_SECRET: Optional[str] = None
 
     # ----------------------------------------------
     # Opik Evaluation Config

@@ -1,4 +1,4 @@
-export interface NoteType {
+interface NoteType {
   id: string;
   // title?: string;
   // description?: string;

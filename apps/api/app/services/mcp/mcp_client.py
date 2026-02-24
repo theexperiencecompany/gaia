@@ -23,7 +23,6 @@ import base64
 import json as _json
 import re
 import secrets
-import time
 import traceback
 import urllib.parse
 from datetime import datetime, timedelta, timezone
@@ -120,7 +119,6 @@ class MCPClient:
         self._clients: dict[str, BaseMCPClient] = {}
         self._tools: dict[str, list[BaseTool]] = {}
         self._connecting: dict[str, asyncio.Event] = {}
-        self._connect_results: dict[str, list[BaseTool] | None] = {}
 
     def _sanitize_config(self, config: dict) -> dict:
         """Sanitize config for logging by removing sensitive data."""
@@ -1030,41 +1028,6 @@ class MCPClient:
         """Get tools for a connected integration."""
         return self._tools.get(integration_id, [])
 
-    async def health_check(self, integration_id: str) -> dict:
-        """
-        Check MCP connection health.
-
-        Performs a lightweight operation (list_tools) to verify the connection
-        is still active and responsive.
-
-        Args:
-            integration_id: The integration to health check
-
-        Returns:
-            {
-                "status": "healthy" | "unhealthy" | "disconnected",
-                "latency_ms": int,  # Round-trip time in milliseconds
-                "error": str,  # Only present if unhealthy
-            }
-        """
-        if integration_id not in self._clients:
-            return {"status": "disconnected", "latency_ms": 0}
-
-        client = self._clients[integration_id]
-
-        try:
-            start = time.monotonic()
-            # Use list_tools as lightweight health check - it's fast and doesn't mutate state
-            session = client.get_session(integration_id)
-            await session.list_tools()
-            latency_ms = int((time.monotonic() - start) * 1000)
-
-            return {"status": "healthy", "latency_ms": latency_ms}
-
-        except Exception as e:
-            logger.warning(f"Health check failed for {integration_id}: {e}")
-            return {"status": "unhealthy", "latency_ms": 0, "error": str(e)}
-
     def is_connected(self, integration_id: str) -> bool:
         """Check if an integration is connected (in memory)."""
         return integration_id in self._clients
@@ -1169,59 +1132,6 @@ class MCPClient:
             f"MCP {integration_id} not connected. User needs to complete OAuth flow."
         )
 
-    async def ensure_token_valid(self, integration_id: str) -> None:
-        """Proactively refresh token if expiring soon.
-
-        Called before tool invocation to prevent 401 errors.
-        This is a no-op for unauthenticated integrations.
-        """
-        # Check if we have credentials for this integration
-        if not await self.token_store.has_credentials(integration_id):
-            return  # No auth required or no stored credentials
-
-        # Check if token is expiring soon
-        if await self.token_store.is_token_expiring_soon(integration_id):
-            logger.info(
-                f"Token expiring soon for {integration_id}, proactively refreshing"
-            )
-            resolved = await IntegrationResolver.resolve(integration_id)
-            if resolved and resolved.mcp_config:
-                refreshed = await self._try_refresh_token(
-                    integration_id, resolved.mcp_config
-                )
-                if not refreshed:
-                    logger.warning(
-                        f"Proactive token refresh failed for {integration_id}"
-                    )
-
-    async def try_token_refresh(self, integration_id: str) -> bool:
-        """Attempt to refresh OAuth token.
-
-        Public wrapper for token refresh - used by stub executor on 401 errors.
-        After a successful refresh, the stale in-memory session is evicted so the
-        next connect() creates a fresh session with the new token.
-
-        Returns True if refresh succeeded, False otherwise.
-        """
-        resolved = await IntegrationResolver.resolve(integration_id)
-        if resolved and resolved.mcp_config and resolved.mcp_config.requires_auth:
-            refreshed = await self._try_refresh_token(
-                integration_id, resolved.mcp_config
-            )
-            if refreshed:
-                # Evict stale client/tools so next connect() uses the new token
-                if integration_id in self._clients:
-                    try:
-                        await self._clients[integration_id].close_all_sessions()
-                    except Exception as e:
-                        logger.warning(
-                            f"[{integration_id}] Error closing stale session after refresh: {e}"
-                        )
-                    self._clients.pop(integration_id, None)
-                self._tools.pop(integration_id, None)
-            return refreshed
-        return False
-
     async def _safe_close_client(self, client: BaseMCPClient) -> None:
         """Close a BaseMCPClient session, swallowing errors."""
         try:
@@ -1239,13 +1149,6 @@ class MCPClient:
                 await self._clients[integration_id].close_all_sessions()
             except Exception as e:
                 logger.warning(f"Error closing MCP session for {integration_id}: {e}")
-
-    def get_active_integration_ids(self) -> list[str]:
-        """Get list of active integration IDs.
-
-        Public method for introspection - used by MCPClientPool.
-        """
-        return list(self._clients.keys())
 
 
 async def get_mcp_client(user_id: str) -> MCPClient:

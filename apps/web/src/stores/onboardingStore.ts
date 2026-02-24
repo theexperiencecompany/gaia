@@ -1,7 +1,7 @@
 import { create } from "zustand";
 import { devtools } from "zustand/middleware";
 
-export type ContextStatus =
+type ContextStatus =
   | "idle"
   | "gathering"
   | "parsing_emails"
@@ -41,7 +41,7 @@ const initialState: OnboardingState = {
   isPhaseLoading: false,
 };
 
-export const useOnboardingStore = create<OnboardingStore>()(
+const useOnboardingStore = create<OnboardingStore>()(
   devtools(
     (set) => ({
       ...initialState,

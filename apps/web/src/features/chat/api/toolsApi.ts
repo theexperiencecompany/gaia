@@ -7,13 +7,13 @@ export interface ToolInfo {
   icon_url?: string;
 }
 
-export interface ToolsListResponse {
+interface ToolsListResponse {
   tools: ToolInfo[];
   total_count: number;
   categories: string[];
 }
 
-export interface ToolsCategoryResponse {
+interface ToolsCategoryResponse {
   [category: string]: number;
 }
 

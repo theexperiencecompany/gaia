@@ -1,13 +1,13 @@
 import { useCallback, useState } from "react";
 
-export interface UseDragAndDropOptions {
+interface UseDragAndDropOptions {
   onDrop: (files: File[]) => void;
   accept?: string[];
   multiple?: boolean;
   disabled?: boolean;
 }
 
-export interface UseDragAndDropReturn {
+interface UseDragAndDropReturn {
   isDragging: boolean;
   dragHandlers: {
     onDragEnter: (e: React.DragEvent<HTMLElement>) => void;

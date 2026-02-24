@@ -16,7 +16,7 @@ import { siteConfig } from "@/lib/seo";
 /**
  * Extracts description from markdown content for meta descriptions
  */
-export function extractDescription(
+function extractDescription(
   markdown: string,
   maxLength: number = 160,
 ): string {
@@ -98,7 +98,7 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
 /**
  * Generates JSON-LD structured data for a blog post
  */
-export function generateBlogStructuredData(
+function generateBlogStructuredData(
   blog: BlogPost,
 ): WithContext<Article> {
   return {

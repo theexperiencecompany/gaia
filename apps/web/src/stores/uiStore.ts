@@ -5,11 +5,11 @@ import { useShallow } from "zustand/react/shallow";
 
 import type { ImageResult } from "@/types/features/convoTypes";
 
-export interface HeaderState {
+interface HeaderState {
   component: ReactNode | null;
 }
 
-export type SidebarVariant =
+type SidebarVariant =
   | "default"
   | "chat"
   | "mail"
@@ -73,7 +73,7 @@ const initialState: UIState = {
   menuAccordionExpanded: true,
 };
 
-export const useUIStore = create<UIStore>()(
+const useUIStore = create<UIStore>()(
   devtools(
     persist(
       (set) => ({
@@ -201,7 +201,7 @@ export const useIntegrationsAccordion = () =>
     })),
   );
 
-export const useMenuAccordion = () =>
+const useMenuAccordion = () =>
   useUIStore(
     useShallow((state) => ({
       isExpanded: state.menuAccordionExpanded,

@@ -378,49 +378,6 @@ async def create_system_conversation(
         )
 
 
-async def get_or_create_system_conversation(
-    user_id: str, system_purpose: SystemPurpose, description: str | None = None
-) -> dict:
-    """
-    Get existing system conversation for a purpose or create a new one.
-
-    Args:
-        user_id: The user ID
-        system_purpose: Purpose identifier (e.g., "email_processing", "reminder_processing")
-        description: Optional description, defaults to purpose-based description
-
-    Returns:
-        dict: Existing or newly created system conversation
-    """
-    # Try to find existing system conversation for this purpose
-    existing_conversation = await conversations_collection.find_one(
-        {
-            "user_id": user_id,
-            "is_system_generated": True,
-            "system_purpose": system_purpose,
-        }
-    )
-
-    if existing_conversation:
-        existing_conversation["_id"] = str(existing_conversation["_id"])
-        return existing_conversation
-
-    # Create new system conversation if none exists
-    if not description:
-        description_map = {
-            "email_processing": "Email Actions & Notifications",
-            "reminder_processing": "Reminder Management",
-            "task_automation": "Automated Tasks",
-            "system_notifications": "System Notifications",
-        }
-        description = description_map.get(
-            system_purpose,
-            f"System: {system_purpose.replace('_', ' ').title()}",
-        )
-
-    return await create_system_conversation(user_id, description, system_purpose)
-
-
 async def update_conversation_description(
     conversation_id: str, description: str, user: dict
 ) -> dict:

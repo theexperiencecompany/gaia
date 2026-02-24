@@ -105,7 +105,7 @@ def get_integration_config(integration: str) -> Dict[str, Any]:
 
 
 # Integration name mapping to test file names
-INTEGRATION_MAP = {
+_INTEGRATION_MAP = {
     "calendar": "test_calendar",
     "googlecalendar": "test_calendar",
     "gmail": "test_gmail",
@@ -119,7 +119,7 @@ INTEGRATION_MAP = {
     "twitter": "test_twitter",
 }
 
-ALL_INTEGRATIONS = [
+_ALL_INTEGRATIONS = [
     "calendar",
     "gmail",
     "googledocs",
@@ -129,16 +129,3 @@ ALL_INTEGRATIONS = [
     "notion",
     "twitter",
 ]
-
-
-def get_test_file(integration: str) -> Optional[str]:
-    """
-    Map integration name to test file name.
-
-    Args:
-        integration: Integration name (e.g., 'gmail', 'sheets')
-
-    Returns:
-        Test file name without .py extension, or None if not found
-    """
-    return INTEGRATION_MAP.get(integration.lower())

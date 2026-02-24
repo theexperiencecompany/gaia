@@ -174,15 +174,3 @@ class IntegrationResolver:
         """
         mcp_config = await IntegrationResolver.get_mcp_config(integration_id)
         return mcp_config.server_url if mcp_config else None
-
-    @staticmethod
-    async def is_mcp_integration(integration_id: str) -> bool:
-        """Check if an integration is MCP-based."""
-        resolved = await IntegrationResolver.resolve(integration_id)
-        return resolved is not None and resolved.managed_by == "mcp"
-
-    @staticmethod
-    async def requires_authentication(integration_id: str) -> bool:
-        """Check if an integration requires authentication."""
-        resolved = await IntegrationResolver.resolve(integration_id)
-        return resolved.requires_auth if resolved else False

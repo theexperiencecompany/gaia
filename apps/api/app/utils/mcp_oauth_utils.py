@@ -14,7 +14,7 @@ import base64
 import json
 import re
 import time
-from typing import Any, Optional, Protocol
+from typing import Any, Optional
 import ipaddress
 from urllib.parse import urlparse
 
@@ -41,7 +41,6 @@ MCP_PROTOCOL_VERSION = "2025-11-25"
 # TLS handshakes can take 2-5 seconds on slow connections, so we use generous timeouts
 OAUTH_PROBE_TIMEOUT = 10  # seconds - for initial server probe
 OAUTH_DISCOVERY_TIMEOUT = 15  # seconds - for metadata discovery
-OAUTH_TOKEN_TIMEOUT = 30  # seconds - for token operations
 
 
 class OAuthSecurityError(Exception):
@@ -52,12 +51,6 @@ class OAuthSecurityError(Exception):
 
 class OAuthDiscoveryError(Exception):
     """Raised when OAuth discovery fails."""
-
-    pass
-
-
-class TokenOperationError(Exception):
-    """Raised when token operations (revocation, introspection) fail."""
 
     pass
 
@@ -562,21 +555,6 @@ async def introspect_token(
     except Exception as e:
         logger.warning(f"Token introspection failed: {e}")
         return None
-
-
-class HTTPResponseProtocol(Protocol):
-    """Protocol for HTTP response objects (supports httpx.Response and mocks)."""
-
-    @property
-    def status_code(self) -> int: ...
-
-    @property
-    def headers(self) -> Any: ...
-
-    @property
-    def text(self) -> str: ...
-
-    def json(self) -> dict[str, Any]: ...
 
 
 def parse_oauth_error_response(response: Any) -> dict:

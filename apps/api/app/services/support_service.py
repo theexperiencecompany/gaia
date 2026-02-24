@@ -17,7 +17,6 @@ from app.models.support_models import (
     SupportRequestResponse,
     SupportRequestStatus,
     SupportRequestSubmissionResponse,
-    SupportRequestType,
 )
 from app.services.upload_service import upload_file_to_cloudinary
 from app.utils.email_utils import (
@@ -633,66 +632,4 @@ async def get_user_support_requests(
 
     except Exception as e:
         logger.error(f"Error fetching user support requests: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to fetch support requests")
-
-
-async def get_all_support_requests(
-    page: int = 1,
-    per_page: int = 20,
-    status_filter: Optional[SupportRequestStatus] = None,
-    type_filter: Optional[SupportRequestType] = None,
-) -> Dict:
-    """
-    Get all support requests (for admin use).
-
-    Args:
-        page: Page number for pagination
-        per_page: Number of items per page
-        status_filter: Optional status filter
-        type_filter: Optional type filter
-
-    Returns:
-        Dictionary with support requests and pagination info
-    """
-    try:
-        query = {}
-        if status_filter:
-            query["status"] = status_filter.value
-        if type_filter:
-            query["type"] = type_filter.value
-
-        # Count total documents
-        total = await support_collection.count_documents(query)
-
-        # Calculate pagination
-        skip = (page - 1) * per_page
-
-        # Fetch documents
-        cursor = (
-            support_collection.find(query)
-            .sort("created_at", -1)
-            .skip(skip)
-            .limit(per_page)
-        )
-        requests = await cursor.to_list(length=per_page)
-
-        # Convert to response models
-        support_requests = []
-        for req in requests:
-            req["id"] = str(req["_id"])
-            del req["_id"]
-            support_requests.append(SupportRequestResponse(**req))
-
-        return {
-            "requests": support_requests,
-            "pagination": {
-                "page": page,
-                "per_page": per_page,
-                "total": total,
-                "pages": (total + per_page - 1) // per_page,
-            },
-        }
-
-    except Exception as e:
-        logger.error(f"Error fetching all support requests: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to fetch support requests")

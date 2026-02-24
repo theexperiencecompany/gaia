@@ -6,7 +6,7 @@ import {
   useState,
 } from "react";
 
-export interface ScrollMetrics {
+interface ScrollMetrics {
   scrollLeft: number;
   scrollWidth: number;
   clientWidth: number;

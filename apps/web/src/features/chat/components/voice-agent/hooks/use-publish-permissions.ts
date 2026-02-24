@@ -11,7 +11,7 @@ const trackSourceToProtocol = (source: Track.Source) => {
   }
 };
 
-export interface PublishPermissions {
+interface PublishPermissions {
   microphone: boolean;
   data: boolean;
 }

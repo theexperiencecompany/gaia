@@ -7,7 +7,7 @@ export interface OptionItem {
   label: string;
 }
 
-export interface GroupedOption {
+interface GroupedOption {
   group: string;
   options: OptionItem[];
 }

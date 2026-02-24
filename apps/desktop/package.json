@@ -27,15 +27,13 @@
   "dependencies": {
     "electron-updater": "^6.3.9",
     "get-port": "^7.1.0",
-    "v8-compile-cache": "^2.4.0",
-    "wait-on": "^8.0.1"
+    "v8-compile-cache": "^2.4.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.7",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^3.0.0",
     "@types/node": "^22.10.2",
-    "@types/wait-on": "^5.3.4",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8",
     "electron-vite": "^2.3.0",

@@ -398,39 +398,6 @@ class LazyLoader(Generic[T]):
         else:
             return self._instance is not None
 
-    def reset(self):
-        """Reset the loader (useful for testing)."""
-        if self.is_async:
-            # For async loaders, we need to handle the async lock
-            async def _async_reset():
-                if self._async_lock is None:
-                    raise RuntimeError(
-                        f"Async lock not initialized for provider '{self.provider_name}'"
-                    )
-                async with self._async_lock:
-                    self._instance = None
-                    self._is_configured = False
-
-            # If we're in an async context, this should be awaited
-            # Otherwise, we'll do our best with sync reset
-            try:
-                loop = asyncio.get_event_loop()
-                if loop.is_running():
-                    # We're in an async context, but we can't await here
-                    # Just reset synchronously and hope for the best
-                    self._instance = None
-                    self._is_configured = False
-                else:
-                    loop.run_until_complete(_async_reset())
-            except RuntimeError:
-                # No event loop, just reset synchronously
-                self._instance = None
-                self._is_configured = False
-        else:
-            with self._lock:
-                self._instance = None
-                self._is_configured = False
-
 
 class ProviderRegistry:
     def _check_cyclic_dependency(self, name: str, visited: Optional[list] = None):
@@ -556,12 +523,6 @@ class ProviderRegistry:
                         self.get(dep)
         return await loader.aget()
 
-    def get_loader(self, name: str) -> LazyLoader:
-        """Get the loader itself (not the instance)."""
-        if name not in self._providers:
-            raise KeyError(f"Provider '{name}' not found in registry")
-        return self._providers[name]
-
     def is_available(self, name: str) -> bool:
         """Check if a provider is available."""
         if name not in self._providers:
@@ -573,18 +534,6 @@ class ProviderRegistry:
         if name not in self._providers:
             return False
         return self._providers[name].is_initialized()
-
-    def list_providers(self) -> Dict[str, Dict[str, bool]]:
-        """List all providers with their status."""
-        return {
-            name: {
-                "available": loader.is_available(),
-                "initialized": loader.is_initialized(),
-                "is_global_context": loader.is_global_context,
-                "is_async": loader.is_async,
-            }
-            for name, loader in self._providers.items()
-        }
 
 
 # Global registry instance

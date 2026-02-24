@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export interface PromoBannerAction {
+interface PromoBannerAction {
   label: string;
   icon?: ReactNode;
   href?: string;
@@ -13,7 +13,7 @@ export interface PromoBannerAction {
   color?: "default" | "primary";
 }
 
-export interface PromoBannerProps {
+interface PromoBannerProps {
   icon: ReactNode;
   title: string;
   description: string;

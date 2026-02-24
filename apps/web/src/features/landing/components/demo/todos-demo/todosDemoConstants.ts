@@ -1,4 +1,4 @@
-export interface DemoProject {
+interface DemoProject {
   id: string;
   name: string;
   color: string;

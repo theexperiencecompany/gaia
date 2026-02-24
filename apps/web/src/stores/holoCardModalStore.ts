@@ -20,5 +20,5 @@ export const useHoloCardModalStore = create<HoloCardModalStore>()(
   ),
 );
 
-export const useHoloCardModalOpen = () =>
+const useHoloCardModalOpen = () =>
   useHoloCardModalStore((state) => state.open);

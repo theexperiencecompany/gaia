@@ -22,7 +22,7 @@ export interface UseAgentControlBarProps {
   onDeviceError?: (error: { source: Track.Source; error: Error }) => void;
 }
 
-export interface UseAgentControlBarReturn {
+interface UseAgentControlBarReturn {
   micTrackRef: TrackReferenceOrPlaceholder;
   visibleControls: ControlBarControls;
   microphoneToggle: ReturnType<typeof useTrackToggle<Track.Source.Microphone>>;

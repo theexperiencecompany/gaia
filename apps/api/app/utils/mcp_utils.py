@@ -10,10 +10,9 @@ import hashlib
 import inspect
 import secrets
 from functools import wraps
-from typing import Any, Callable, Literal, Optional, Union
+from typing import Any, Callable, Optional
 
 from langchain_core.tools import BaseTool
-from pydantic import BaseModel
 
 from app.config.loggers import langchain_logger as logger
 
@@ -119,87 +118,3 @@ def wrap_tools_with_null_filter(
         wrap_tool_with_null_filter(t, on_connection_error=on_connection_error)
         for t in tools
     ]
-
-
-def extract_type_from_field(field_info: dict) -> tuple[Any, Any, bool]:
-    """
-    Extract Python type from JSON Schema field info.
-
-    MCP tools use JSON Schema with nullable types via anyOf:
-    {"anyOf": [{"type": "number"}, {"type": "null"}], "default": 50}
-
-    Also handles enums by returning Literal types:
-    {"type": "string", "enum": ["low", "medium", "high"]}
-    -> Literal["low", "medium", "high"]
-
-    Returns: (python_type, default_value, is_optional)
-    """
-    default_val = field_info.get("default")
-    is_optional = False
-    python_type: Any = str  # Default type, will be reassigned
-
-    # Check for enum first - this takes priority over type
-    enum_values = field_info.get("enum")
-    if enum_values and isinstance(enum_values, list) and len(enum_values) > 0:
-        # Create a Literal type from enum values
-        # Literal requires a tuple of values
-        python_type = Literal[tuple(enum_values)]  # type: ignore[valid-type]
-        return python_type, default_val, is_optional
-
-    any_of = field_info.get("anyOf", [])
-    if any_of:
-        is_optional = True
-        json_type = "string"
-        for option in any_of:
-            if isinstance(option, dict) and option.get("type") != "null":
-                json_type = option.get("type", "string")
-                # Also check for enum in anyOf option
-                if option.get("enum"):
-                    python_type = Literal[tuple(option["enum"])]  # type: ignore[valid-type]
-                    return python_type, default_val, is_optional
-                break
-    else:
-        json_type = field_info.get("type", "string")
-        if isinstance(json_type, list):
-            is_optional = "null" in json_type
-            json_type = next((t for t in json_type if t != "null"), "string")
-
-    type_map: dict[str, type] = {
-        "string": str,
-        "integer": int,
-        "number": float,
-        "boolean": bool,
-        "array": list,
-        "object": dict,
-    }
-    python_type = type_map.get(json_type, Any)
-
-    if is_optional and default_val is None:
-        python_type = Union[python_type, None]
-
-    return python_type, default_val, is_optional
-
-
-def serialize_args_schema(tool: BaseTool) -> dict | None:
-    """Serialize tool's args schema to JSON-compatible dict."""
-    if not hasattr(tool, "args_schema") or not tool.args_schema:
-        logger.debug(f"Tool {tool.name} has no args_schema")
-        return None
-
-    try:
-        args_schema = tool.args_schema
-        if not isinstance(args_schema, type) or not issubclass(args_schema, BaseModel):
-            logger.debug(f"Tool {tool.name} args_schema is not a BaseModel")
-            return None
-        schema = args_schema.model_json_schema()  # type: ignore[attr-defined]
-        result = {
-            "properties": schema.get("properties", {}),
-            "required": schema.get("required", []),
-        }
-        logger.debug(
-            f"Serialized schema for {tool.name}: {len(result.get('properties', {}))} properties"
-        )
-        return result
-    except Exception as e:
-        logger.warning(f"Failed to serialize schema for {tool.name}: {e}")
-        return None

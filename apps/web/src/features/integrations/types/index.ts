@@ -52,26 +52,26 @@ export interface IntegrationStatus {
   metadata?: Record<string, unknown>;
 }
 
-export interface IntegrationCategory {
+interface IntegrationCategory {
   id: string;
   name: string;
   description: string;
   integrations: Integration[];
 }
 
-export type IntegrationAction =
+type IntegrationAction =
   | "connect"
   | "disconnect"
   | "settings"
   | "refresh";
 
-export interface IntegrationActionEvent {
+interface IntegrationActionEvent {
   integration: Integration;
   action: IntegrationAction;
 }
 
 // Marketplace API Types - matches backend IntegrationResponse with camelCase aliases
-export interface MarketplaceIntegration {
+interface MarketplaceIntegration {
   integrationId: string;
   name: string;
   description: string;
@@ -157,7 +157,7 @@ export interface IntegrationConnectionData {
   message: string;
 }
 
-export interface IntegrationInfo {
+interface IntegrationInfo {
   id: string;
   name: string;
   description: string;
@@ -167,7 +167,7 @@ export interface IntegrationInfo {
   source?: string;
 }
 
-export interface IntegrationListData {
+interface IntegrationListData {
   integrations: IntegrationInfo[];
   total_count: number;
   connected_count: number;

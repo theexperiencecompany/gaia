@@ -338,29 +338,3 @@ TriggerConfigData = Annotated[
     ],
     Discriminator("trigger_name"),
 ]
-
-# Type alias for trigger names
-TriggerName = Literal[
-    "calendar_event_created",
-    "calendar_event_starting_soon",
-    "gmail_new_message",
-    "github_commit_event",
-    "github_pr_event",
-    "github_star_added",
-    "github_issue_added",
-    "google_docs_new_document",
-    "google_docs_document_deleted",
-    "google_docs_document_updated",
-    "google_sheets_new_row",
-    "google_sheets_new_sheet",
-    "linear_issue_created",
-    "linear_issue_updated",
-    "linear_comment_added",
-    "notion_new_page_in_db",
-    "notion_page_updated",
-    "notion_all_page_events",
-    "slack_new_message",
-    "slack_channel_created",
-    "todoist_new_task_created",
-    "asana_task_trigger",
-]

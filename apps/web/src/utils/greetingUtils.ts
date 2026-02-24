@@ -24,7 +24,7 @@ export const getSimpleTimeGreeting = (): string => {
  * @param includeName - Whether to include the user's name in the greeting (default: true)
  * @returns A greeting string appropriate for the current time with proper name placement
  */
-export const getTimeBasedGreeting = (
+const getTimeBasedGreeting = (
   userName?: string,
   includeName: boolean = true,
 ): string => {
@@ -130,7 +130,7 @@ export const getTimeBasedGreeting = (
  * @param userName - The user's name to include in the greeting
  * @returns A personalized greeting string
  */
-export const getPersonalizedTimeBasedGreeting = (userName?: string): string => {
+const getPersonalizedTimeBasedGreeting = (userName?: string): string => {
   return getTimeBasedGreeting(userName);
 };
 

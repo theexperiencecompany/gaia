@@ -37,7 +37,7 @@ export interface KeyboardShortcut {
  *   "shift+/" -> ["?"]
  *   "c" -> ["C"]
  */
-export function parseDisplayKeys(keys: string): string[] {
+function parseDisplayKeys(keys: string): string[] {
   // Handle sequential keys (g>d)
   if (keys.includes(">")) {
     return keys.split(">").map((k) => k.toUpperCase());
@@ -66,7 +66,7 @@ export function parseDisplayKeys(keys: string): string[] {
 /**
  * All keyboard shortcuts in the application
  */
-export const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
+const KEYBOARD_SHORTCUTS: KeyboardShortcut[] = [
   // Create Actions - Page specific
   {
     id: "create_chat",

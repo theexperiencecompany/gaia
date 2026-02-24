@@ -9,7 +9,7 @@ export interface TeamMember {
   twitter?: string;
 }
 
-export interface TeamMemberCreate {
+interface TeamMemberCreate {
   name: string;
   role: string;
   avatar?: string;
@@ -17,7 +17,7 @@ export interface TeamMemberCreate {
   twitter?: string;
 }
 
-export interface TeamMemberUpdate {
+interface TeamMemberUpdate {
   name?: string;
   role?: string;
   avatar?: string;

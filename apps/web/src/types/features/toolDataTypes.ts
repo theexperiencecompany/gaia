@@ -3,7 +3,7 @@
 /**
  * Progress data for tool execution updates from backend.
  */
-export interface ToolProgressData {
+interface ToolProgressData {
   /** Display message for the tool execution */
   message: string;
   /** Raw tool name identifier */
@@ -27,7 +27,7 @@ export interface ToolProgressData {
 /**
  * Tool output data from backend when tool execution completes.
  */
-export interface ToolOutputData {
+interface ToolOutputData {
   /** The tool_call_id this output corresponds to */
   tool_call_id: string;
   /** The output from the tool execution */

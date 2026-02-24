@@ -92,15 +92,6 @@ class SupportRequestResponse(BaseModel):
     )
 
 
-class SupportRequestUpdate(BaseModel):
-    """Request model for updating a support request."""
-
-    status: Optional[SupportRequestStatus] = Field(None, description="New status")
-    priority: Optional[SupportRequestPriority] = Field(None, description="New priority")
-    tags: Optional[List[str]] = Field(None, description="New tags")
-    notes: Optional[str] = Field(None, description="Internal notes")
-
-
 class SupportRequestSubmissionResponse(BaseModel):
     """Response model for support request submission."""
 

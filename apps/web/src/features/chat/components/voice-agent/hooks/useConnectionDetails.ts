@@ -23,7 +23,7 @@ function isTokenExpired(token: string, offsetMs = 60000) {
 }
 
 const ONE_MINUTE_IN_MILLISECONDS = 60 * 1000;
-export type ConnectionDetails = {
+type ConnectionDetails = {
   serverUrl: string;
   roomName: string;
   participantToken: string;

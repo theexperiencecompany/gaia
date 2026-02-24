@@ -73,7 +73,7 @@ export const formatTimeRange = (startTime: string, endTime: string): string => {
 /**
  * Format date for all-day events
  */
-export const formatAllDayDate = (dateString: string): string => {
+const formatAllDayDate = (dateString: string): string => {
   try {
     const date = new Date(dateString);
     return new Intl.DateTimeFormat("en-US", {
@@ -91,7 +91,7 @@ export const formatAllDayDate = (dateString: string): string => {
 /**
  * Format datetime for timed events
  */
-export const formatTimedEventDate = (isoString: string): string => {
+const formatTimedEventDate = (isoString: string): string => {
   try {
     const withoutTimezone = isoString.replace(/([+-]\d{2}:\d{2})$/, "");
     const date = new Date(withoutTimezone);
@@ -113,7 +113,7 @@ export const formatTimedEventDate = (isoString: string): string => {
 /**
  * Format date range for all-day events
  */
-export const formatAllDayDateRange = (
+const formatAllDayDateRange = (
   startDate: string,
   endDate: string,
 ): string => {
@@ -146,14 +146,14 @@ export const formatAllDayDateRange = (
 /**
  * Check if a date string is date-only (no time)
  */
-export const isDateOnly = (dateString: string): boolean => {
+const isDateOnly = (dateString: string): boolean => {
   return /^\d{4}-\d{2}-\d{2}$/.test(dateString);
 };
 
 /**
  * Get event duration text
  */
-export const getEventDurationText = (
+const getEventDurationText = (
   startDate: string,
   endDate?: string,
 ): string => {

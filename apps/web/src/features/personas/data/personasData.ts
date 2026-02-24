@@ -17,7 +17,7 @@ export interface PersonaData {
   faqs: Array<{ question: string; answer: string }>;
 }
 
-export const personas: Record<string, PersonaData> = {
+const personas: Record<string, PersonaData> = {
   "software-developers": {
     slug: "software-developers",
     title: "AI Assistant for Software Developers",

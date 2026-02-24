@@ -8,7 +8,7 @@ import { type UseQueryOptions, useQuery } from "@tanstack/react-query";
 
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 
-export interface TriggerOption {
+interface TriggerOption {
   value: string;
   label: string;
 }

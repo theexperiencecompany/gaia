@@ -13,14 +13,3 @@ User Message: {user_message}
 Selected Tool (if any): {selectedTool}
 Workflow Context (if any): {workflow_context}
 """
-
-NOTES_PROMPT = """
-System: The user has the following relevant notes from the database:
-{notes} .
-Only reference these notes if they add value to the conversation and are relevant.
-You have this information from your own database, so you can use it freely.
-
-
-User: {message}
-
-"""

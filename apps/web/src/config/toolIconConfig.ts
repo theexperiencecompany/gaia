@@ -30,7 +30,7 @@
  * - This file stays React-free to be safely imported anywhere
  */
 
-export interface ToolIconConfig {
+interface ToolIconConfig {
   /** Icon path for image-based icons, or component name for React icons */
   icon: string;
   /** Tailwind background color class */
@@ -518,7 +518,7 @@ export function getToolIconConfig(
 /**
  * Get the icon path for image-based icons
  */
-export function getIconPath(category: string): string | null {
+function getIconPath(category: string): string | null {
   const config = getToolIconConfig(category);
   return config?.isImage ? config.icon : null;
 }

@@ -287,7 +287,7 @@ async def entrypoint(ctx: JobContext):
     ctx.add_shutdown_callback(log_usage)
 
     async def _extract_and_set_participant_credentials(
-        md: Optional[str], origin: str, who: str
+        md: Optional[str], origin: str, _who: str
     ):
         """Extract and set agent token and conversation ID from participant metadata."""
         token, conv_id = _extract_meta_data(md)
@@ -310,7 +310,7 @@ async def entrypoint(ctx: JobContext):
         task.add_done_callback(background_tasks.discard)
 
     @ctx.room.on("participant_metadata_changed")
-    def _on_participant_metadata_changed(p: rtc.Participant, old_md: str, new_md: str):
+    def _on_participant_metadata_changed(p: rtc.Participant, _old_md: str, new_md: str):
         task = asyncio.create_task(
             _extract_and_set_participant_credentials(
                 new_md, "participant_metadata_changed", p.identity

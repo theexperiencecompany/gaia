@@ -6,7 +6,7 @@ import type { ToolInfo } from "../api/toolsApi";
 import type { EnhancedToolInfo } from "../types/enhancedTools";
 import { useToolsQuery } from "./useToolsQuery";
 
-export interface UseToolsWithIntegrationsReturn {
+interface UseToolsWithIntegrationsReturn {
   tools: EnhancedToolInfo[];
   toolsByCategory: Record<string, EnhancedToolInfo[]>;
   isLoading: boolean;

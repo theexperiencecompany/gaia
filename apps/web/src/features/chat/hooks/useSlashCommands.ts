@@ -13,7 +13,7 @@ export interface SlashCommandMatch {
   matchedText: string;
 }
 
-export interface UseSlashCommandsReturn {
+interface UseSlashCommandsReturn {
   tools: ToolInfo[];
   isLoadingTools: boolean;
   error: string | null;

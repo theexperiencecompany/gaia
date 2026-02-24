@@ -150,7 +150,7 @@ class TestCalendarReadOperations:
         assert "summary" in first_cal, "Calendar should have 'summary' (name) field"
         assert first_cal["id"], "Calendar id should not be empty"
 
-    def test_get_day_summary(self, composio_client, user_id, test_event):
+    def test_get_day_summary(self, composio_client, user_id, _test_event):
         """Test CUSTOM_GET_DAY_SUMMARY returns proper structure."""
         today = datetime.now().strftime("%Y-%m-%d")
 
@@ -174,7 +174,7 @@ class TestCalendarReadOperations:
                 "busy_hours should be numeric"
             )
 
-    def test_fetch_events(self, composio_client, user_id, calendar_id, test_event):
+    def test_fetch_events(self, composio_client, user_id, calendar_id, _test_event):
         """Test CUSTOM_FETCH_EVENTS returns events from specified calendar."""
         now = datetime.now()
         time_min = now.strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -205,7 +205,7 @@ class TestCalendarReadOperations:
         assert "summary" in first_event, "Event should have 'summary' field"
         assert "start_time" in first_event, "Event should have 'start_time' field"
 
-    def test_find_event(self, composio_client, user_id, test_event):
+    def test_find_event(self, composio_client, user_id, _test_event):
         """Test CUSTOM_FIND_EVENT finds our test event."""
         result = execute_tool(
             composio_client,

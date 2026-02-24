@@ -4,7 +4,7 @@ import type { Dispatch, SetStateAction } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import type { MessageType } from "@/types/features/convoTypes";
 
-export const fetchMessages = async (
+const fetchMessages = async (
   conversationId: string,
   setConvoMessages: Dispatch<SetStateAction<MessageType[]>>,
   router: AppRouterInstance | string[],

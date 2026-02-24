@@ -70,11 +70,11 @@ export const buildDeleteEventPayload = (event: CalendarDeleteOptions) => ({
   summary: event.summary,
 });
 
-export const buildBatchAddPayloads = (events: CalendarEvent[]) =>
+const buildBatchAddPayloads = (events: CalendarEvent[]) =>
   events.map(buildAddEventPayload);
 
-export const buildBatchEditPayloads = (events: CalendarEditOptions[]) =>
+const buildBatchEditPayloads = (events: CalendarEditOptions[]) =>
   events.map(buildEditEventPayload);
 
-export const buildBatchDeletePayloads = (events: CalendarDeleteOptions[]) =>
+const buildBatchDeletePayloads = (events: CalendarDeleteOptions[]) =>
   events.map(buildDeleteEventPayload);

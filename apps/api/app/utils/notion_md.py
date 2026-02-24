@@ -117,29 +117,6 @@ def _toggle(summary: Optional[str] = None, children: Optional[str] = None) -> st
     return f"<details><summary>{summary}</summary>{children or ''}</details>"
 
 
-def _table(cells: List[List[str]]) -> str:
-    """Convert a table to markdown format."""
-    if not cells:
-        return ""
-
-    # Build header row
-    headers = cells[0] if cells else []
-    header_row = "| " + " | ".join(headers) + " |"
-
-    # Build separator
-    separator = "| " + " | ".join(["---"] * len(headers)) + " |"
-
-    # Build data rows
-    data_rows = []
-    for row in cells[1:]:
-        # Pad row if needed
-        while len(row) < len(headers):
-            row.append("")
-        data_rows.append("| " + " | ".join(row) + " |")
-
-    return "\n".join([header_row, separator] + data_rows)
-
-
 # =============================================================================
 # Annotation Application
 # =============================================================================
@@ -478,11 +455,6 @@ def simplify_block(block: Dict[str, Any]) -> Dict[str, Any]:
         simplified["children"] = [simplify_block(child) for child in children]
 
     return simplified
-
-
-def simplify_blocks(blocks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Simplify a list of blocks, removing formatting metadata."""
-    return [simplify_block(block) for block in blocks]
 
 
 def extract_plain_text(blocks: List[Dict[str, Any]]) -> str:

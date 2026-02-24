@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "@/lib/toast";
 
-export interface ValidationRule<T> {
+interface ValidationRule<T> {
   field: keyof T;
   required?: boolean;
   minLength?: number;
@@ -11,7 +11,7 @@ export interface ValidationRule<T> {
   message?: string;
 }
 
-export interface UseModalFormOptions<T, R = void> {
+interface UseModalFormOptions<T, R = void> {
   initialData: T | (() => T);
   onSubmit: (data: T) => Promise<R | undefined>;
   validate?: ValidationRule<T>[] | ((data: T) => string | null);
@@ -23,7 +23,7 @@ export interface UseModalFormOptions<T, R = void> {
   errorMessage?: string;
 }
 
-export interface UseModalFormReturn<T> {
+interface UseModalFormReturn<T> {
   formData: T;
   setFormData: React.Dispatch<React.SetStateAction<T>>;
   loading: boolean;

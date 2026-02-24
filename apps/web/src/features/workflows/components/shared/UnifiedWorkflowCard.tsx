@@ -411,7 +411,7 @@ interface WorkflowActionButtonProps {
   size?: "sm" | "md";
 }
 
-export function WorkflowActionButton({
+function WorkflowActionButton({
   label,
   isLoading,
   onPress,

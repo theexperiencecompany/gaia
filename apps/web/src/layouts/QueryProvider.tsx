@@ -13,7 +13,7 @@ import { type ReactNode, useState } from "react";
  * Creates an Indexed DB persister
  * @see https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API
  */
-export function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
+function createIDBPersister(idbValidKey: IDBValidKey = "reactQuery") {
   return {
     persistClient: async (client: PersistedClient) => {
       await set(idbValidKey, client);

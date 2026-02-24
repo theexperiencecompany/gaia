@@ -25,7 +25,7 @@ interface MemoryGraphProps {
   className?: string;
 }
 
-export interface MemoryGraphHandle {
+interface MemoryGraphHandle {
   exportAsSVG: () => void;
   exportAsPNG: () => void;
 }

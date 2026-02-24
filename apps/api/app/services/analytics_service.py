@@ -20,7 +20,6 @@ class AnalyticsEvents:
     # Payment events (used by payment webhook processing)
     PAYMENT_SUCCEEDED = "payment:succeeded"
     PAYMENT_FAILED = "payment:failed"
-    PAYMENT_REFUNDED = "payment:refunded"
 
     # Subscription events (used by payment webhook processing)
     SUBSCRIPTION_ACTIVATED = "subscription:activated"
@@ -214,13 +213,3 @@ def track_payment_event(
     event_properties = {k: v for k, v in event_properties.items() if v is not None}
 
     capture_event(user_id, event_type, event_properties)
-
-
-def flush_events() -> None:
-    """Flush any pending events to PostHog."""
-    client = _get_posthog_client()
-    if client:
-        try:
-            client.flush()
-        except Exception as e:
-            logger.error(f"Failed to flush PostHog events: {e}")

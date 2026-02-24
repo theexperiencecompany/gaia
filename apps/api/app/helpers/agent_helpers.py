@@ -432,7 +432,7 @@ async def execute_graph_silent(
 
         # Process "updates" events - same logic as execute_graph_streaming
         if stream_mode == "updates":
-            for node_name, state_update in payload.items():
+            for _node_name, state_update in payload.items():
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:
                         if not hasattr(msg, "tool_calls") or not msg.tool_calls:
@@ -567,7 +567,7 @@ async def execute_graph_streaming(
             continue
 
         if stream_mode == "updates":
-            for node_name, state_update in payload.items():
+            for _node_name, state_update in payload.items():
                 # Process tool entries with metadata lookup
                 if isinstance(state_update, dict) and "messages" in state_update:
                     for msg in state_update["messages"]:

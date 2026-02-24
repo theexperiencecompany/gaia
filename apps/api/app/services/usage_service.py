@@ -56,17 +56,6 @@ class UsageService:
             return str(result.inserted_id)
 
     @staticmethod
-    async def get_latest_usage_snapshot(user_id: str) -> Optional[UserUsageSnapshot]:
-        snapshot_doc = await usage_snapshots_collection.find_one(
-            {"user_id": user_id}, sort=[("created_at", -1)]
-        )
-        if snapshot_doc:
-            return UserUsageSnapshot(
-                **UsageService._prepare_doc_for_model(snapshot_doc)
-            )
-        return None
-
-    @staticmethod
     async def get_usage_history(
         user_id: str, feature_key: Optional[str] = None, days: int = 30
     ) -> List[UserUsageSnapshot]:

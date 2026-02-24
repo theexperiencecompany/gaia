@@ -39,14 +39,6 @@ class SlackTriggerHandler(TriggerHandler):
         "SLACK_CHANNEL_CREATED",
     }
 
-    EXCLUSION_TO_TRIGGER = {
-        "exclude_bot_messages": "SLACK_RECEIVE_BOT_MESSAGE",
-        "exclude_direct_messages": "SLACK_RECEIVE_DIRECT_MESSAGE",
-        "exclude_group_messages": "SLACK_RECEIVE_GROUP_MESSAGE",
-        "exclude_mpim_messages": "SLACK_RECEIVE_MPIM_MESSAGE",
-        "exclude_thread_replies": "SLACK_RECEIVE_THREAD_REPLY",
-    }
-
     @property
     def trigger_names(self) -> List[str]:
         return self.SUPPORTED_TRIGGERS

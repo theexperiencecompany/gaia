@@ -63,23 +63,6 @@ class PlatformLinkService:
         )
 
     @staticmethod
-    async def is_authenticated(platform: str, platform_user_id: str) -> bool:
-        """
-        Check if a platform user is linked to a GAIA account.
-
-        Args:
-            platform: Platform name
-            platform_user_id: User's ID on the platform
-
-        Returns:
-            True if linked, False otherwise
-        """
-        user = await PlatformLinkService.get_user_by_platform_id(
-            platform, platform_user_id
-        )
-        return user is not None
-
-    @staticmethod
     async def link_account(
         user_id: str,
         platform: str,

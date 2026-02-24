@@ -265,7 +265,7 @@ async def execute_subagent_stream(
         stream_mode, payload = event
 
         if stream_mode == "updates":
-            for node_name, state_update in payload.items():
+            for _node_name, state_update in payload.items():
                 # Use shared helper to extract and format tool entries
                 entries = await extract_tool_entries_from_update(
                     state_update=state_update,
@@ -523,7 +523,7 @@ async def call_subagent(
         stream_mode, payload = event
 
         if stream_mode == "updates":
-            for node_name, state_update in payload.items():
+            for _node_name, state_update in payload.items():
                 # Use shared helper to extract and format tool entries
                 entries = await extract_tool_entries_from_update(
                     state_update=state_update,

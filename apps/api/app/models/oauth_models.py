@@ -36,21 +36,3 @@ class OAuthIntegration(BaseModel):
     associated_triggers: List[TriggerConfig] = []
     subagent_config: Optional[SubAgentConfig] = None
     metadata_config: Optional[ProviderMetadataConfig] = None
-
-
-class IntegrationConfigResponse(BaseModel):
-    """Response model for integration configuration."""
-
-    id: str
-    name: str
-    description: str
-    category: str
-    provider: str
-    available: bool
-    isSpecial: bool
-    displayPriority: int
-    includedIntegrations: List[str]
-    isFeatured: bool
-    managedBy: Literal["self", "composio", "mcp", "internal"]
-    authType: Optional[Literal["none", "oauth", "bearer"]] = None
-    source: Literal["platform"] = "platform"

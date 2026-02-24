@@ -5,14 +5,14 @@ import { useMemo } from "react";
 
 import { Priority } from "@/types/features/todoTypes";
 
-export interface TextProcessorCommands {
+interface TextProcessorCommands {
   project?: { name: string; id?: string };
   labels?: string[];
   priority?: Priority;
   dueDate?: { date: string; timezone?: string };
 }
 
-export interface ProcessedText {
+interface ProcessedText {
   cleanText: string;
   commands: TextProcessorCommands;
 }

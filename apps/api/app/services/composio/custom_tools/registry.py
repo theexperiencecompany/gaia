@@ -106,17 +106,6 @@ class CustomToolsRegistry:
         """
         return self._tools_by_toolkit.get(toolkit.lower(), [])
 
-    def get_all_tool_names(self) -> List[str]:
-        """Get all registered custom tool names across all toolkits."""
-        all_tools = []
-        for tools in self._tools_by_toolkit.values():
-            all_tools.extend(tools)
-        return all_tools
-
-    def get_registered_toolkits(self) -> List[str]:
-        """Get list of toolkits that have custom tools registered."""
-        return list(self._registered_toolkits)
-
     @property
     def is_initialized(self) -> bool:
         """Check if the registry has been initialized."""

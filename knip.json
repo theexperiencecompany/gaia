@@ -5,19 +5,42 @@
       "entry": [
         "src/app/**/page.tsx",
         "src/app/**/layout.tsx",
-        "src/app/**/route.ts"
+        "src/app/**/route.ts",
+        "src/components/mdx-components.tsx",
+        "next.config.mjs"
       ],
       "paths": {
         "@icons": ["src/components/shared/icons.tsx"]
       },
-      "ignoreDependencies": ["@icons", "@heroui/*"],
+      "ignoreDependencies": [
+        "@icons",
+        "@heroui/*",
+        "@biomejs/biome",
+        "@mdx-js/loader",
+        "@mdx-js/react",
+        "@react-types/shared",
+        "@tiptap/core",
+        "@tiptap/pm",
+        "barrelsby",
+        "depcheck",
+        "glob",
+        "sharp"
+      ],
       "ignore": ["src/components/ui/**"]
     },
     "apps/desktop": {
       "entry": [
         "src/main/**/*.ts",
         "src/preload/**/*.ts",
-        "src/renderer/**/*.ts"
+        "src/renderer/**/*.ts",
+        "electron.vite.config.ts"
+      ],
+      "ignoreDependencies": [
+        "@biomejs/biome",
+        "@types/wait-on",
+        "electron-builder",
+        "electron-vite",
+        "vite"
       ]
     },
     "apps/mobile": {
@@ -45,11 +68,13 @@
     "**/*.d.ts",
     "**/vitest.config.*",
     "**/jest.config.*",
+    "apps/bots/vitest.config.ts",
     "**/__tests__/**",
     ".agents/**",
     ".claude/**",
     "apps/web/content/**",
-    "apps/web/scripts/**"
+    "apps/web/scripts/**",
+    "apps/web/src/config/iconPaths.generated.ts"
   ],
   "ignoreDependencies": ["nx", "@nx/*"],
   "ignoreBinaries": [
@@ -67,7 +92,18 @@
     "lint:fix",
     "pack",
     "tsc",
-    "tsx"
+    "tsx",
+    "electron-vite",
+    "electron-builder",
+    "biome",
+    "clean",
+    "nx",
+    "check",
+    "fix",
+    "format",
+    "type",
+    "depcheck",
+    "barrelsby"
   ],
   "exclude": ["unlisted"]
 }

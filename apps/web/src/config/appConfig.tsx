@@ -22,7 +22,7 @@ import {
   YoutubeIcon,
 } from "@/components/shared/icons";
 
-export interface AppLink {
+interface AppLink {
   label: string;
   href: string;
   icon?: ReactElement;
@@ -35,7 +35,7 @@ export interface AppLink {
   hideNavbar?: boolean;
 }
 
-export interface LinkSection {
+interface LinkSection {
   title: string;
   links: AppLink[];
 }

@@ -3,7 +3,7 @@
  */
 import moment from "moment-timezone";
 
-export interface TimezoneInfo {
+interface TimezoneInfo {
   value: string;
   label: string;
   offset: string;
@@ -43,7 +43,7 @@ export const normalizeTimezone = (timezone: string): string => {
 /**
  * Get timezone information including UTC offset and abbreviation using moment
  */
-export const getTimezoneInfo = (timezone: string): TimezoneInfo => {
+const getTimezoneInfo = (timezone: string): TimezoneInfo => {
   try {
     const now = moment.tz(timezone);
     const offset = now.format("Z"); // e.g., "+05:30", "-05:00"
@@ -99,7 +99,7 @@ export const getCurrentBrowserTimezone = (): TimezoneInfo => {
 /**
  * Get popular timezones list with offsets using moment-timezone
  */
-export const getPopularTimezones = (): TimezoneInfo[] => {
+const getPopularTimezones = (): TimezoneInfo[] => {
   // Popular timezones that users commonly need
   const popularTimezones = [
     "UTC",
@@ -146,7 +146,7 @@ export const getPopularTimezones = (): TimezoneInfo[] => {
 /**
  * Get ALL available timezones using moment-timezone
  */
-export const getAllTimezones = (): TimezoneInfo[] => {
+const getAllTimezones = (): TimezoneInfo[] => {
   return moment.tz
     .names()
     .map(getTimezoneInfo)
@@ -173,7 +173,7 @@ export const getTimezoneList = (
 /**
  * Format timezone for display in settings - cleaner UX
  */
-export const formatTimezoneDisplay = (
+const formatTimezoneDisplay = (
   timezone: string | null | undefined,
 ): string => {
   if (!timezone) {
@@ -188,7 +188,7 @@ export const formatTimezoneDisplay = (
 /**
  * Get simple current time info for display
  */
-export const getCurrentTimezoneInfo = () => {
+const getCurrentTimezoneInfo = () => {
   const browserTz = getCurrentBrowserTimezone();
   return {
     timezone: browserTz.label,

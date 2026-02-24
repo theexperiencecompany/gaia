@@ -17,23 +17,23 @@ export interface Plan {
   updated_at: string;
 }
 
-export interface CreateSubscriptionRequest {
+interface CreateSubscriptionRequest {
   product_id: string;
 }
 
-export interface CreateSubscriptionResponse {
+interface CreateSubscriptionResponse {
   subscription_id: string;
   payment_link: string;
   status: string;
 }
 
-export interface PaymentVerificationResponse {
+interface PaymentVerificationResponse {
   payment_completed: boolean;
   subscription_id?: string;
   message: string;
 }
 
-export interface Subscription {
+interface Subscription {
   id: string;
   dodo_subscription_id: string;
   user_id: string;
@@ -56,7 +56,7 @@ export interface Subscription {
   cancelled_at?: string;
 }
 
-export interface UserSubscriptionStatus {
+interface UserSubscriptionStatus {
   user_id: string;
   current_plan?: Plan;
   subscription?: Subscription;

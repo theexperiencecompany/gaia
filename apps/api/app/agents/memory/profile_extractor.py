@@ -22,7 +22,6 @@ from app.config.loggers import memory_logger as logger
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
-    MAX_EMAILS_PER_PLATFORM,
     PROFILE_EXTRACTION_LLM_MODEL,
     PROFILE_EXTRACTION_LLM_PROVIDER,
 )
@@ -235,34 +234,6 @@ Here are recent emails RECEIVED by the user from {platform}:
 {emails_text}
 
 Extract the RECIPIENT's username/handle ONLY if explicitly written (not inferred):"""
-
-
-def filter_emails_by_platform(emails: List[Dict], platform: str) -> List[Dict]:
-    """
-    Filter emails sent from a specific platform.
-
-    Args:
-        emails: List of all emails
-        platform: Platform name (e.g., 'twitter', 'github')
-
-    Returns:
-        List of emails from that platform (max MAX_EMAILS_PER_PLATFORM most recent)
-    """
-    if platform not in PLATFORM_CONFIG:
-        return []
-
-    platform_domains = PLATFORM_CONFIG[platform]["sender_domains"]
-    filtered = []
-
-    for email in emails:
-        sender = (email.get("sender", "") or email.get("from", "")).lower()
-
-        if "@" in sender:
-            domain = sender.split("@")[-1].rstrip(">").strip()
-            if any(domain.endswith(pd) for pd in platform_domains):
-                filtered.append(email)
-
-    return filtered[:MAX_EMAILS_PER_PLATFORM]
 
 
 def validate_username(username: str, platform: str) -> bool:

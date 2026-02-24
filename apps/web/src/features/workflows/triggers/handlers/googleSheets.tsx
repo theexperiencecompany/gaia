@@ -39,7 +39,7 @@ interface GroupedOption {
 // GOOGLE SHEETS SETTINGS COMPONENT
 // =============================================================================
 
-export function GoogleSheetsSettings({
+function GoogleSheetsSettings({
   triggerConfig,
   onConfigChange,
 }: TriggerSettingsProps) {

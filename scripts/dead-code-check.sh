@@ -123,7 +123,12 @@ run_vulture() {
   local raw_output
   # Use 60% confidence for broader detection (includes some false positives)
   # Vulture is conservative - won't catch decorator-registered functions or dynamic access
-  raw_output=$(vulture "${py_dirs[@]}" "${whitelist_args[@]}" --min-confidence 60 2>&1) || true
+  # --ignore-decorators suppresses FastAPI route handlers (@router.*) and Composio hooks
+  # Note: vulture uses glob wildcards (not regex) and requires the @ prefix
+  raw_output=$(vulture "${py_dirs[@]}" "${whitelist_args[@]}" \
+    --min-confidence 60 \
+    --ignore-decorators "@router.*,@register_schema_modifier,@register_before_hook,@register_after_hook,@composio*,@session.*,@ctx.*" \
+    2>&1) || true
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"
@@ -198,7 +203,7 @@ run_knip() {
   fi
 
   local raw_output
-  raw_output=$(npx knip --no-progress --no-config-hints 2>&1) || true
+  raw_output=$(NPM_CONFIG_CACHE=/private/tmp/claude-501/npm-cache npx knip --no-progress --no-config-hints 2>&1) || true
 
   if [[ -z "$raw_output" ]]; then
     echo -e "  ${GREEN}No unused code found.${RESET}"

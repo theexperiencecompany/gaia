@@ -174,7 +174,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
 
     fetch_start_time = time.time()
     page_token = None
-    batch_count = 0
+    _batch_count = 0
 
     # Track memory storage tasks to await completion
     email_storage_tasks = []
@@ -216,7 +216,7 @@ async def process_gmail_to_memory(user_id: str) -> Dict:
         while total_fetched < MAX_RESULTS:
             remaining = MAX_RESULTS - total_fetched
             batch_size = min(BATCH_SIZE, remaining)
-            batch_count += 1
+            _batch_count += 1
 
             result = await search_messages(
                 user_id=user_id,

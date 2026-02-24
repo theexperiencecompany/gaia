@@ -215,31 +215,6 @@ async def get_provider_metadata(
         return None
 
 
-async def get_all_provider_metadata(user_id: str) -> Dict[str, Dict[str, str]]:
-    """
-    Retrieve all provider metadata for a user.
-
-    Args:
-        user_id: The user ID
-
-    Returns:
-        Dictionary of provider -> metadata mappings
-    """
-    try:
-        user = await users_collection.find_one(
-            {"_id": ObjectId(user_id)}, {"provider_metadata": 1}
-        )
-
-        if not user:
-            return {}
-
-        return user.get("provider_metadata", {})
-
-    except Exception as e:
-        logger.error(f"Error getting all provider metadata for user {user_id}: {e}")
-        return {}
-
-
 async def fetch_and_store_provider_metadata(user_id: str, integration_id: str) -> bool:
     """
     Fetch user info from provider and store metadata in database.

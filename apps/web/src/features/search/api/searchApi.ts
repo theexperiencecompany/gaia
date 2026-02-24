@@ -1,6 +1,6 @@
 import { apiService } from "@/lib/api";
 
-export interface SearchResult {
+interface SearchResult {
   id: string;
   conversationId: string;
   message: string;
@@ -8,13 +8,13 @@ export interface SearchResult {
   type: "user" | "bot";
 }
 
-export interface SearchResponse {
+interface SearchResponse {
   results: SearchResult[];
   total: number;
 }
 
 // Interface for the message search response from Search.tsx
-export interface MessageSearchResult {
+interface MessageSearchResult {
   message: {
     message_id: string;
     response: string;
@@ -24,12 +24,12 @@ export interface MessageSearchResult {
   conversation_id: string;
 }
 
-export interface MessageSearchResponse {
+interface MessageSearchResponse {
   results: MessageSearchResult[];
 }
 
 // Interfaces for search results (matching SearchCard.tsx expectations)
-export interface SearchMessageResult {
+interface SearchMessageResult {
   conversation_id: string;
   message: {
     message_id: string;
@@ -39,12 +39,12 @@ export interface SearchMessageResult {
   snippet: string;
 }
 
-export interface SearchConversationResult {
+interface SearchConversationResult {
   conversation_id: string;
   description: string;
 }
 
-export interface SearchNoteResult {
+interface SearchNoteResult {
   id: string;
   snippet: string;
 }

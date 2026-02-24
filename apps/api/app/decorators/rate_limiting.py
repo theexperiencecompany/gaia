@@ -275,10 +275,6 @@ class LangChainRateLimitException(Exception):
 
         super().__init__(message)
 
-    def to_agent_message(self) -> str:
-        """Convert to user-friendly message for agent responses."""
-        return f"I've reached the usage limit for {self.feature.replace('_', ' ')}. Please try again later or upgrade your plan for higher limits."
-
 
 async def _get_cached_subscription(user_id: str):
     """Get subscription with Redis caching to reduce duplicate lookups."""

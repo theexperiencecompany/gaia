@@ -18,6 +18,5 @@ export * from "./useConfirmation";
 export * from "./useDeleteConversation";
 export * from "./useGitHubContributors";
 export * from "./useGitHubStars";
-export * from "./useLatestRelease";
 export * from "./useNotificationActions";
 export * from "./useSendMessage";

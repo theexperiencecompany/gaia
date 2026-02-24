@@ -86,7 +86,7 @@ export interface EmailSummariesResponse {
   searched_labels?: string[];
 }
 
-export interface SemanticLabelsStats {
+interface SemanticLabelsStats {
   status: string;
   semantic_labels: Array<{ _id: string; count: number }>;
   categories: Array<{ _id: string; count: number }>;

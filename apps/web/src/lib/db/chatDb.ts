@@ -74,7 +74,7 @@ class MessageQueue {
   }
 }
 
-export const messageQueue = new MessageQueue();
+const messageQueue = new MessageQueue();
 
 class DBEventEmitter extends EventEmitter {
   constructor() {
@@ -117,7 +117,7 @@ class DBEventEmitter extends EventEmitter {
 
 export const dbEventEmitter = new DBEventEmitter();
 
-export class ChatDexie extends Dexie {
+class ChatDexie extends Dexie {
   public conversations!: Table<IConversation, string>;
   public messages!: Table<IMessage, string>;
 

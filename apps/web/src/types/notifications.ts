@@ -14,7 +14,7 @@ export enum NotificationSource {
   BACKGROUND_JOB = "background_job",
 }
 
-export interface Notification {
+interface Notification {
   source: NotificationSource;
   id: string;
   title: string;
@@ -27,4 +27,4 @@ export interface Notification {
   };
 }
 
-export type GroupedNotifications = Record<string, Notification[]>;
+type GroupedNotifications = Record<string, Notification[]>;

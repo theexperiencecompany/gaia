@@ -6,7 +6,7 @@ import type { Goal as ApiGoal } from "@/types/api/goalsApiTypes";
 export type Goal = ApiGoal;
 
 // Extend the API Goal type for chat-specific use cases
-export interface GoalNode {
+interface GoalNode {
   id: string;
   data: {
     title?: string;

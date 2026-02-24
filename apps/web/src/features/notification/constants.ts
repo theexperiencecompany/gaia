@@ -1,6 +1,6 @@
 export const NOTIFICATION_PLATFORMS = ["telegram", "discord"] as const;
 
-export type NotificationPlatform = (typeof NOTIFICATION_PLATFORMS)[number];
+type NotificationPlatform = (typeof NOTIFICATION_PLATFORMS)[number];
 
 export const NOTIFICATION_PLATFORM_LABELS: Record<
   NotificationPlatform,
@@ -10,6 +10,6 @@ export const NOTIFICATION_PLATFORM_LABELS: Record<
   discord: "Discord",
 };
 
-export const NOTIFICATION_PLATFORMS_SET = new Set<string>(
+const NOTIFICATION_PLATFORMS_SET = new Set<string>(
   NOTIFICATION_PLATFORMS,
 );

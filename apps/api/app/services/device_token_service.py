@@ -3,7 +3,7 @@ Device Token Service for Push Notifications
 """
 
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Optional
 
 from app.config.loggers import notification_logger as logger
 from app.db.mongodb.mongodb import MongoDB
@@ -116,82 +116,6 @@ class DeviceTokenService:
 
         except Exception as e:
             logger.error(f"Failed to unregister device token: {e}")
-            return False
-
-    async def unregister_user_devices(self, user_id: str) -> int:
-        """
-        Unregister all device tokens for a user (useful for logout)
-
-        Args:
-            user_id: User ID
-
-        Returns:
-            Number of tokens unregistered
-        """
-        try:
-            result = await self.collection.delete_many({"user_id": user_id})
-            logger.info(
-                f"Unregistered {result.deleted_count} devices for user {user_id}"
-            )
-            return result.deleted_count
-
-        except Exception as e:
-            logger.error(f"Failed to unregister user devices: {e}")
-            return 0
-
-    async def get_user_tokens(
-        self, user_id: str, active_only: bool = True
-    ) -> List[str]:
-        """
-        Get all device tokens for a user
-
-        Args:
-            user_id: User ID
-            active_only: Return only active tokens
-
-        Returns:
-            List of Expo push tokens
-        """
-        try:
-            query: dict = {"user_id": user_id}
-            if active_only:
-                query["is_active"] = True
-
-            cursor = self.collection.find(query)
-            tokens = [doc["token"] async for doc in cursor]
-
-            return tokens
-
-        except Exception as e:
-            logger.error(f"Failed to get user tokens: {e}")
-            return []
-
-    async def deactivate_invalid_token(self, token: str) -> bool:
-        """
-        Mark a token as inactive (called when push fails)
-
-        Args:
-            token: Expo push token
-
-        Returns:
-            True if successful
-        """
-        try:
-            await self.collection.update_one(
-                {"token": token},
-                {
-                    "$set": {
-                        "is_active": False,
-                        "updated_at": datetime.now(timezone.utc),
-                    }
-                },
-            )
-            masked_token = f"{token[:20]}...{token[-4:]}" if len(token) > 24 else "***"
-            logger.info(f"Deactivated invalid token: {masked_token}")
-            return True
-
-        except Exception as e:
-            logger.error(f"Failed to deactivate token: {e}")
             return False
 
 

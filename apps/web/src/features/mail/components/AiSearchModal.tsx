@@ -15,7 +15,7 @@ import { mailApi } from "@/features/mail/api/mailApi";
 
 import { EmailChip, type EmailSuggestion } from "./EmailChip";
 
-export interface AiSearchModalProps {
+interface AiSearchModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSelect: (selectedSuggestions: EmailSuggestion[]) => void;

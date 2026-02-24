@@ -290,7 +290,7 @@ export const useComposerUI = () =>
     })),
   );
 
-export const useComposerActions = () =>
+const useComposerActions = () =>
   useComposerStore(
     useShallow((state) => ({
       resetComposer: state.resetComposer,

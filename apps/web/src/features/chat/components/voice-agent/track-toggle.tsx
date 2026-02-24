@@ -7,7 +7,7 @@ import * as React from "react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-export type TrackToggleProps = React.ComponentProps<typeof Button> & {
+type TrackToggleProps = React.ComponentProps<typeof Button> & {
   source: Parameters<typeof useTrackToggle>[0]["source"];
   pending?: boolean;
   enabled?: boolean;

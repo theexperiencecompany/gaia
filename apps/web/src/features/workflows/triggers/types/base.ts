@@ -13,7 +13,7 @@ import type { ComponentType } from "react";
 /**
  * Base interface for all trigger configurations.
  */
-export interface BaseTriggerConfig {
+interface BaseTriggerConfig {
   type: string;
   enabled: boolean;
 }
@@ -55,7 +55,7 @@ export interface TriggerSchema {
 /**
  * Props for trigger settings components.
  */
-export interface TriggerSettingsProps<
+interface TriggerSettingsProps<
   T extends BaseTriggerConfig = BaseTriggerConfig,
 > {
   triggerConfig: T;
@@ -65,7 +65,7 @@ export interface TriggerSettingsProps<
 /**
  * Display information for a trigger.
  */
-export interface TriggerDisplayInfo {
+interface TriggerDisplayInfo {
   label: string;
   integrationId: string | null;
 }
@@ -78,7 +78,7 @@ export interface TriggerDisplayInfo {
  * - Optional settings UI component
  * - Display information
  */
-export interface TriggerUIHandler<
+interface TriggerUIHandler<
   T extends BaseTriggerConfig = BaseTriggerConfig,
 > {
   /** Trigger slugs this handler supports */

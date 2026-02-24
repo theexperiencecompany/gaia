@@ -214,56 +214,6 @@ class WorkflowScheduler(BaseSchedulerService):
             logger.error(f"Error fetching pending workflows: {e}")
             return []
 
-    async def create_workflow_with_scheduling(
-        self, workflow_data: Dict[str, Any], user_id: str
-    ) -> Optional[str]:
-        """
-        Create a workflow and handle its initial scheduling.
-
-        Args:
-            workflow_data: Workflow data dictionary
-            user_id: User ID
-
-        Returns:
-            Workflow ID if successful, None otherwise
-        """
-        try:
-            # Create the workflow
-            workflow = Workflow(user_id=user_id, **workflow_data)
-
-            # Insert into database
-            workflow_dict = workflow.model_dump(mode="json")
-            workflow_dict["_id"] = workflow_dict["id"]
-
-            result = await workflows_collection.insert_one(workflow_dict)
-            if not result.inserted_id:
-                raise ValueError("Failed to create workflow in database")
-
-            # Schedule if it's a scheduled workflow
-            if workflow.trigger_config.type == "schedule" and workflow.repeat:
-                from app.models.scheduler_models import ScheduleConfig
-
-                # Ensure workflow.id is not None
-                if not workflow.id:
-                    raise ValueError("Workflow ID is required for scheduling")
-
-                schedule_config = ScheduleConfig(
-                    repeat=workflow.repeat,
-                    scheduled_at=workflow.scheduled_at,
-                    max_occurrences=workflow.max_occurrences,
-                    stop_after=workflow.stop_after,
-                    base_time=datetime.now(timezone.utc),  # Add required base_time
-                )
-
-                await self.schedule_task(workflow.id, schedule_config)
-                logger.info(f"Scheduled workflow {workflow.id} for recurring execution")
-
-            return workflow.id
-
-        except Exception as e:
-            logger.error(f"Error creating and scheduling workflow: {e}")
-            return None
-
     async def schedule_workflow_execution(
         self,
         workflow_id: str,

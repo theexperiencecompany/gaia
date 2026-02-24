@@ -11,7 +11,7 @@ import type {
   IntegrationStatus,
 } from "../types";
 
-export interface UseIntegrationsReturn {
+interface UseIntegrationsReturn {
   // Data
   integrations: Integration[];
   isLoading: boolean;

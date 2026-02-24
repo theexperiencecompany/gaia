@@ -5,7 +5,7 @@
  * @param num - The number to format
  * @returns Formatted string with suffix
  */
-export function formatCompactNumber(num: number): string {
+function formatCompactNumber(num: number): string {
   if (num === 0) return "0";
 
   const absNum = Math.abs(num);

@@ -18,7 +18,7 @@ export interface UserInfo {
   selected_model?: string;
 }
 
-export interface GoogleLoginResponse {
+interface GoogleLoginResponse {
   url: string;
 }
 

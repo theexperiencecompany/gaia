@@ -165,7 +165,7 @@ class WorkflowSubagentRunner:
 
             if stream_mode == "updates":
                 # Handle tool updates
-                for node_name, state_update in payload.items():
+                for _node_name, state_update in payload.items():
                     from app.utils.stream_utils import extract_tool_entries_from_update
 
                     entries = await extract_tool_entries_from_update(

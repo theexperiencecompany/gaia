@@ -16,15 +16,15 @@ export interface ModelInfo {
   is_default: boolean;
 }
 
-export interface ModelsListResponse {
+interface ModelsListResponse {
   models: ModelInfo[];
 }
 
-export interface ModelSelectionRequest {
+interface ModelSelectionRequest {
   model_id: string;
 }
 
-export interface ModelSelectionResponse {
+interface ModelSelectionResponse {
   success: boolean;
   message: string;
   selected_model: ModelInfo;

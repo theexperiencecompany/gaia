@@ -36,10 +36,6 @@ class MemoryClientManager:
 
         return self._client
 
-    def reset(self) -> None:
-        """Reset the client instance (useful for testing)."""
-        self._client = None
-
 
 # Global instance
 memory_client_manager = MemoryClientManager()

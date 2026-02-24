@@ -22,28 +22,28 @@ export interface MemoryRelation {
   target_type: string;
 }
 
-export interface MemoryCreate {
+interface MemoryCreate {
   content: string;
 }
 
-export interface MemoryUpdate {
+interface MemoryUpdate {
   content: string;
 }
 
-export interface MemoriesResponse {
+interface MemoriesResponse {
   memories: Memory[];
   relations: MemoryRelation[];
   total_count: number;
   success?: boolean;
 }
 
-export interface MemoryResponse {
+interface MemoryResponse {
   success: boolean;
   message?: string;
   memory?: Memory;
 }
 
-export interface DeleteResponse {
+interface DeleteResponse {
   success: boolean;
   message?: string;
 }

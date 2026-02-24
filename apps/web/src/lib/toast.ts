@@ -7,7 +7,7 @@ import { type SileoOptions, type SileoPosition, sileo } from "sileo";
 // ---------------------------------------------------------------------------
 // Sonner-compatible options type
 // ---------------------------------------------------------------------------
-export interface ToastOptions {
+interface ToastOptions {
   id?: string;
   description?: ReactNode | string;
   duration?: number;

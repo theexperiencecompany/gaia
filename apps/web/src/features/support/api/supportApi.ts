@@ -7,7 +7,7 @@ export interface SupportRequest {
   attachments?: File[];
 }
 
-export interface SupportResponse {
+interface SupportResponse {
   success: boolean;
   message: string;
   ticket_id?: string;

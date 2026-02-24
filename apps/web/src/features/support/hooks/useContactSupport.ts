@@ -10,14 +10,14 @@ import {
   TOAST_MESSAGES,
 } from "../constants/supportConstants";
 
-export interface ContactFormData {
+interface ContactFormData {
   type: string;
   title: string;
   description: string;
   attachments: File[];
 }
 
-export interface ContactSupportInitialValues {
+interface ContactSupportInitialValues {
   type?: string;
   title?: string;
   description?: string;

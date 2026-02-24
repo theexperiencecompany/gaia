@@ -13,7 +13,6 @@ import re
 from typing import Literal, Optional
 
 from app.config.loggers import general_logger as logger
-from langchain_core.output_parsers import PydanticOutputParser
 from pydantic import BaseModel, Field
 
 # =============================================================================
@@ -94,15 +93,6 @@ class ParseResult:
         self.draft = draft
         self.parse_error = parse_error
         self.raw_response = raw_response
-
-
-# =============================================================================
-# PARSER
-# =============================================================================
-
-# Create parsers for format instructions
-clarifying_parser = PydanticOutputParser(pydantic_object=ClarifyingOutput)
-finalized_parser = PydanticOutputParser(pydantic_object=FinalizedOutput)
 
 
 def get_format_instructions() -> str:
@@ -237,8 +227,3 @@ def parse_subagent_response(response: str) -> ParseResult:
         message=response,
         raw_response=response,
     )
-
-
-# Legacy aliases for backwards compatibility
-WorkflowDraft = FinalizedOutput
-WorkflowSubagentOutput = ParseResult

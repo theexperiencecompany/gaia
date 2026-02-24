@@ -16,7 +16,7 @@ interface OnboardingIntegrationButtonsProps {
   className?: string;
 }
 
-export const OnboardingIntegrationButtons: React.FC<
+const OnboardingIntegrationButtons: React.FC<
   OnboardingIntegrationButtonsProps
 > = ({ className = "" }) => {
   const [isPopoverOpen, setIsPopoverOpen] = useState(false);
