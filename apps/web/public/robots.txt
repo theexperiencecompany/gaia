@@ -48,4 +48,17 @@ Allow: /
 User-agent: CCBot
 Allow: /
 
+User-agent: Bingbot
+Allow: /
+
+User-agent: YandexBot
+Allow: /
+
+User-agent: Bytespider
+Allow: /
+
+User-agent: PetalBot
+Allow: /
+
 Sitemap: https://heygaia.io/sitemap.xml
+Sitemap: https://heygaia.io/brand/sitemap.xml

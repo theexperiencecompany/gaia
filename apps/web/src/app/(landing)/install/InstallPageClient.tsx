@@ -12,7 +12,6 @@ import {
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { CLI_COMMAND_DESCRIPTIONS } from "@shared/cli/command-manifest";
-import Image from "next/image";
 import Link from "next/link";
 import { type ReactNode, useState } from "react";
 import CopyButton from "@/components/ui/CopyButton";

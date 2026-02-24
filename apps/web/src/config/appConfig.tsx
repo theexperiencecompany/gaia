@@ -1,7 +1,6 @@
 import {
   BlushBrush02Icon,
   BookOpen02Icon,
-  BubbleChatAddIcon,
   ConnectIcon,
   CreditCardPosIcon,
   GlobalIcon,

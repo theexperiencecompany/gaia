@@ -22,9 +22,11 @@
  */
 
 import useAxiosInterceptor from "@/hooks/api/useAxiosInterceptor";
+import { useOAuthSuccessToast } from "@/hooks/useOAuthSuccessToast";
 
 const GlobalInterceptor = () => {
   useAxiosInterceptor();
+  useOAuthSuccessToast();
   return null;
 };
 

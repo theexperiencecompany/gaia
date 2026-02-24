@@ -3,7 +3,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import { apiauth } from "@/lib/api";
 import { toast } from "@/lib/toast";
-import { isOnLandingRoute, processAxiosError } from "@/utils";
+import { isOnLandingRoute, processAxiosError } from "@/utils/interceptorUtils";
 
 export default function useAxiosInterceptor() {
   const pathname = usePathname();

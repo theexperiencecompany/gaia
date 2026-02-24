@@ -32,54 +32,22 @@ jobs:
 
       # Enforce that master only receives changes promoted from develop or release-please.
       - name: Enforce master promotion policy
-        if: >-
-          (github.event_name == 'push' && github.ref == 'refs/heads/master') ||
-          (github.event_name == 'pull_request' && github.base_ref == 'master')
+        if: github.event_name == 'pull_request' && github.base_ref == 'master'
         uses: actions/github-script@v7
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
-            const { owner, repo } = context.repo;
             const isAllowedMasterSource = (ref) =>
               ref === "develop" || (typeof ref === "string" && ref.startsWith("release-please--"));
 
-            if (context.eventName === "pull_request") {
-              const pr = context.payload.pull_request;
-              if (pr.base.ref === "master" && !isAllowedMasterSource(pr.head.ref)) {
-                core.setFailed(
-                  `PRs to master must come from develop or release-please branches. Received '${pr.head.ref}' -> '${pr.base.ref}'.`,
-                );
-                return;
-              }
-              core.info(`Master PR policy passed: ${pr.head.ref} -> ${pr.base.ref}`);
+            const pr = context.payload.pull_request;
+            if (pr.base.ref === "master" && !isAllowedMasterSource(pr.head.ref)) {
+              core.setFailed(
+                `PRs to master must come from develop or release-please branches. Received '${pr.head.ref}' -> '${pr.base.ref}'.`,
+              );
               return;
             }
-
-            if (context.eventName === "push" && context.ref === "refs/heads/master") {
-              const commitSha = context.payload.after || context.sha;
-              const { data: prs } = await github.rest.repos.listPullRequestsAssociatedWithCommit({
-                owner,
-                repo,
-                commit_sha: commitSha,
-              });
-
-              const mergedPr = prs.find((pr) => pr.base?.ref === "master" && pr.merged_at);
-              if (!mergedPr) {
-                core.setFailed(
-                  `Direct push to master is not allowed. Commit ${commitSha} is not associated with a merged PR to master from an allowed source branch.`,
-                );
-                return;
-              }
-
-              if (!isAllowedMasterSource(mergedPr.head?.ref)) {
-                core.setFailed(
-                  `PR #${mergedPr.number} merged into master from '${mergedPr.head?.ref}'. Only 'develop' or release-please branches are allowed.`,
-                );
-                return;
-              }
-
-              core.info(`Master push policy passed via PR #${mergedPr.number} from '${mergedPr.head?.ref}'.`);
-            }
+            core.info(`Master PR policy passed: ${pr.head.ref} -> ${pr.base.ref}`);
 
       # Compute NX_BASE/NX_HEAD for affected-task execution.
       - name: Set Nx SHAs

@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { permanentRedirect } from "next/navigation";
 
 import { generatePageMetadata } from "@/lib/seo";
 
@@ -22,5 +22,5 @@ export const metadata: Metadata = generatePageMetadata({
 });
 
 export default function StatusPage() {
-  redirect("https://status.heygaia.io");
+  permanentRedirect("https://status.heygaia.io");
 }

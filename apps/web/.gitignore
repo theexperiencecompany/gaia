@@ -1,3 +1,6 @@
 .vercel
 
 .env
+
+.open-next/
+.wrangler/

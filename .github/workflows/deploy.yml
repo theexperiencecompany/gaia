@@ -84,8 +84,8 @@ jobs:
               # Authenticate to GHCR on the VM before pulling images.
               echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-              # Pull updated images first, then do in-place rolling recreation.
-              compose_cmd pull
+              # Pull updated images; ignore failures for bot images not yet pushed to GHCR.
+              compose_cmd pull --ignore-pull-failures
 
               # Recreate only what changed while keeping the stack online.
               compose_cmd up -d --remove-orphans

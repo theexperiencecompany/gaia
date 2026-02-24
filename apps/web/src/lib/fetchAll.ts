@@ -15,10 +15,11 @@ export async function fetchAllPaginated<T>(
   while (hasMore) {
     try {
       const result = await fetchPage(batchSize, offset);
-      allItems.push(...result.items);
+      const items = Array.isArray(result?.items) ? result.items : [];
+      allItems.push(...items);
 
       offset += batchSize;
-      hasMore = result.hasMore && result.items.length === batchSize;
+      hasMore = Boolean(result?.hasMore) && items.length === batchSize;
     } catch (error) {
       console.error(`[fetchAllPaginated] Error at offset ${offset}:`, error);
       break;

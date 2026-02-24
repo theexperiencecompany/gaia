@@ -4,6 +4,7 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import Image from "next/image";
 import Link from "next/link";
+import { siteConfig } from "@/lib/seo";
 
 interface BotCardProps {
   icon: string;
@@ -34,7 +35,7 @@ const bots: BotCardProps[] = [
     badge: { label: "Beta", color: "success" },
     primaryAction: {
       label: "Add to Server",
-      href: "https://heygaia.io/discord-bot",
+      href: `${siteConfig.url}/discord-bot`,
       external: true,
     },
     secondaryAction: {

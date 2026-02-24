@@ -9,7 +9,6 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   getAllPersonaSlugs,
   getPersona,
-  type PersonaData,
 } from "@/features/personas/data/personasData";
 import {
   generateBreadcrumbSchema,

@@ -3,12 +3,7 @@
  */
 "use client";
 
-import {
-  ArrowLeft01Icon,
-  ArrowRight01Icon,
-  CalendarIcon,
-  Cancel01Icon,
-} from "@icons";
+import { ArrowLeft01Icon, CalendarIcon, Cancel01Icon } from "@icons";
 import {
   addHours,
   endOfDay,
@@ -224,11 +219,23 @@ export function DateTimePicker({
             }}
             showOutsideDays={true}
             components={{
-              IconLeft: ({ ...props }) => (
-                <ArrowLeft01Icon className="size-4 text-zinc-400" {...props} />
-              ),
-              IconRight: ({ ...props }) => (
-                <ArrowRight01Icon className="size-4 text-zinc-400" {...props} />
+              Chevron: ({
+                className,
+                orientation = "left",
+                disabled,
+                ...props
+              }) => (
+                <ArrowLeft01Icon
+                  className={cn(
+                    "size-4 text-zinc-400",
+                    orientation === "up" && "rotate-90",
+                    orientation === "right" && "rotate-180",
+                    orientation === "down" && "-rotate-90",
+                    disabled && "opacity-50",
+                    className,
+                  )}
+                  {...props}
+                />
               ),
             }}
             {...props}
