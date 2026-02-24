@@ -168,7 +168,12 @@ class TriggerHandler(ABC):
                 logger.warning(
                     f"Rolling back {len(successful_ids)} triggers due to partial failure"
                 )
-                await self.unregister(user_id, successful_ids)
+                rollback_ok = await self.unregister(user_id, successful_ids)
+                if not rollback_ok:
+                    logger.error(
+                        f"Rollback FAILED — orphaned Composio triggers: {successful_ids}. "
+                        "Manual cleanup may be required."
+                    )
 
             raise TriggerRegistrationError(
                 f"Failed to register all {trigger_name} triggers: {failure_message}",

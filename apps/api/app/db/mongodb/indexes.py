@@ -501,6 +501,15 @@ async def create_workflow_indexes():
             # Community workflows indexes
             workflows_collection.create_index([("is_public", 1), ("created_at", -1)]),
             workflows_collection.create_index([("created_by", 1)]),
+            # Partial unique index to prevent duplicate system workflows per user
+            # Only applies to documents where system_workflow_key is set
+            workflows_collection.create_index(
+                [("user_id", 1), ("system_workflow_key", 1)],
+                unique=True,
+                partialFilterExpression={
+                    "system_workflow_key": {"$exists": True, "$ne": None}
+                },
+            ),
         )
 
     except Exception as e:

@@ -13,6 +13,8 @@ from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Optional
 
+from pymongo.errors import DuplicateKeyError
+
 from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import workflows_collection
 from app.models.notification.notification_models import (
@@ -91,6 +93,11 @@ async def provision_system_workflows(
             await WorkflowService.create_workflow(request, user_id)
             created.append(request)
             logger.info(f"Provisioned system workflow '{key}' for user {user_id}")
+        except DuplicateKeyError:
+            logger.info(
+                f"System workflow '{key}' already exists for user {user_id} "
+                "(concurrent creation), skipping"
+            )
         except Exception as e:
             logger.error(
                 f"Failed to provision system workflow '{key}' for user {user_id}: {e}",
@@ -184,26 +191,12 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
     request = factory()
     trigger_config = ensure_trigger_config_object(request.trigger_config)
 
-    # Unregister old Composio triggers before re-registering with fresh config
     old_trigger_ids: list[str] = (
         existing.get("trigger_config", {}).get("composio_trigger_ids") or []
     )
     trigger_name: Optional[str] = existing.get("trigger_config", {}).get("trigger_name")
 
-    if old_trigger_ids and trigger_name:
-        try:
-            await TriggerService.unregister_triggers(
-                user_id=user_id,
-                trigger_name=trigger_name,
-                trigger_ids=old_trigger_ids,
-                workflow_id=workflow_id,
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to unregister old triggers during reset of {workflow_id}: {e}"
-            )
-
-    # Register fresh triggers from the definition
+    # Register fresh triggers FIRST (old still active if this fails)
     new_trigger_ids: list[str] = []
     if trigger_config.type == TriggerType.INTEGRATION and trigger_config.trigger_name:
         try:
@@ -216,7 +209,22 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
             )
         except Exception as e:
             logger.error(
-                f"Failed to re-register triggers during reset of {workflow_id}: {e}"
+                f"Failed to re-register triggers, aborting reset of {workflow_id}: {e}"
+            )
+            return False
+
+    # Only unregister old triggers AFTER new ones are confirmed registered
+    if old_trigger_ids and trigger_name:
+        try:
+            await TriggerService.unregister_triggers(
+                user_id=user_id,
+                trigger_name=trigger_name,
+                trigger_ids=old_trigger_ids,
+                workflow_id=workflow_id,
+            )
+        except Exception as e:
+            logger.warning(
+                f"Failed to unregister old triggers during reset of {workflow_id} (non-fatal): {e}"
             )
 
     trigger_doc = trigger_config.model_dump(mode="json")

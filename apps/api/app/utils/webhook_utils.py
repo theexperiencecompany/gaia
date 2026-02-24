@@ -4,6 +4,7 @@ import hmac
 
 from fastapi import HTTPException, Request
 
+from app.config.loggers import app_logger as logger
 from app.config.settings import settings
 
 
@@ -52,3 +53,9 @@ async def verify_composio_webhook_signature(request: Request):
         # Compare signatures
         if not hmac.compare_digest(signature, expected_signature_b64):
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
+    elif settings.COMPOSIO_WEBHOOK_SECRET:
+        raise HTTPException(status_code=401, detail="Missing webhook signature")
+    else:
+        logger.warning(
+            "Webhook signature verification skipped — COMPOSIO_WEBHOOK_SECRET not configured"
+        )

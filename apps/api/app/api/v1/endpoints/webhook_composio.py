@@ -10,6 +10,7 @@ Each handler implements its own `process_event()` method which handles:
 """
 
 from app.config.loggers import mail_webhook_logger as logger
+from app.db.redis import redis_cache
 from app.models.webhook_models import ComposioWebhookEvent
 from app.services.triggers import get_handler_by_event
 from app.utils.webhook_utils import verify_composio_webhook_signature
@@ -27,6 +28,16 @@ async def webhook_composio(request: Request):
     via its `process_event()` method.
     """
     await verify_composio_webhook_signature(request)
+
+    webhook_id = request.headers.get("webhook-id", "")
+    if webhook_id:
+        already_processed = not await redis_cache.client.set(
+            f"webhook:composio:{webhook_id}", "1", nx=True, ex=3600
+        )
+        if already_processed:
+            logger.info(f"Duplicate webhook ignored: {webhook_id}")
+            return {"status": "success", "message": "Duplicate webhook ignored"}
+
     body = await request.json()
     data = body.get("data")
 
