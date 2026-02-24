@@ -5,8 +5,8 @@ import Image from "next/image";
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import { DemoFinalCard } from "@/features/landing/components/demo/DemoFinalCards";
 import DemoToolCalls from "@/features/landing/components/demo/DemoToolCalls";
-import { FOUNDER_EMAIL } from "@/features/landing/components/demo/demoConstants";
 import MiniWaveSpinner from "@/features/landing/components/demo/MiniWaveSpinner";
 import { SimpleChatBubbleBot } from "@/features/landing/components/demo/SimpleChatBubbles";
 import type { ToolStep } from "@/features/landing/components/demo/types";
@@ -59,61 +59,29 @@ function SectionHeader({
   );
 }
 
-// ─── Chat Bubble Components ───────────────────────────────────────────
+// ─── Chat Primitives ──────────────────────────────────────────────────
 
 /**
- * User bubble using the real iMessage CSS classes from globals.css.
- * Uses a generic default avatar (no auth context needed on landing).
+ * User message: uses `chat_bubble user` CSS class from globals.css.
+ * Cyan bg, black text, border-bottom-right-radius: 0 tail.
  */
 function LandingUserBubble({ content }: { content: string }) {
   return (
-    <div className="mb-3 flex items-end justify-end gap-3">
+    <div className="mb-3 flex justify-end">
       <div className="chat_bubble user select-none text-sm">{content}</div>
-      <div className="h-8 w-8 shrink-0 overflow-hidden rounded-full border-2 border-white/10">
-        <Image
-          src="/images/avatars/default.webp"
-          width={32}
-          height={32}
-          alt="User"
-          className="h-full w-full object-cover"
-        />
-      </div>
     </div>
   );
 }
 
 /**
- * Wrapper that pairs the GAIA avatar with DemoToolCalls.
- * Mirrors the SimpleChatBubbleBot avatar layout.
+ * Thinking state: MiniWaveSpinner occupies the GAIA logo position.
+ * Replaces the logo while loading — no bubble content shown.
  */
-function ToolCallWrapper({
-  msgId,
-  tools,
-  expandedIds,
-  onToggle,
-}: {
-  msgId: string;
-  tools: ToolStep[];
-  expandedIds: Set<string>;
-  onToggle: (id: string) => void;
-}) {
+function ThinkingIndicator() {
   return (
-    <div className="relative mb-3 flex items-start gap-3">
-      <div className="relative z-[1] w-[35px] shrink-0">
-        <Image
-          src="/images/logos/logo.webp"
-          width={35}
-          height={35}
-          alt="GAIA"
-          className="rounded-full"
-        />
-      </div>
-      <div className="pt-1">
-        <DemoToolCalls
-          tools={tools}
-          expanded={expandedIds.has(msgId)}
-          onToggle={() => onToggle(msgId)}
-        />
+    <div className="mb-2 flex items-start gap-3">
+      <div className="flex w-[35px] shrink-0 items-center justify-center pt-2">
+        <MiniWaveSpinner />
       </div>
     </div>
   );
@@ -132,11 +100,9 @@ interface ChatMessage {
   delay?: number;
 }
 
-// ─── Animated Chat Demo ───────────────────────────────────────────────
-
 /**
- * Container override for --color-primary-bg so iMessage tail
- * cut-outs match the bg-zinc-900 (#18181b) card background.
+ * Container sets --color-primary-bg to #18181b so iMessage tail
+ * cut-outs match the bg-zinc-900 card background.
  */
 const CHAT_CONTAINER_STYLE = {
   "--color-primary-bg": "#18181b",
@@ -197,23 +163,23 @@ function ChatDemo({
             transition={{ duration: 0.35, ease }}
           >
             {msg.role === "user" && <LandingUserBubble content={msg.content} />}
-            {msg.role === "thinking" && (
-              <SimpleChatBubbleBot>
-                <MiniWaveSpinner />
-              </SimpleChatBubbleBot>
-            )}
+            {msg.role === "thinking" && <ThinkingIndicator />}
             {msg.role === "tools" && msg.tools && (
-              <ToolCallWrapper
-                msgId={msg.id}
-                tools={msg.tools}
-                expandedIds={expandedIds}
-                onToggle={toggleExpand}
-              />
+              /* Offset aligns with SimpleChatBubbleBot bubble area */
+              <div className="mb-2 pl-[47px]">
+                <DemoToolCalls
+                  tools={msg.tools}
+                  expanded={expandedIds.has(msg.id)}
+                  onToggle={() => toggleExpand(msg.id)}
+                />
+              </div>
             )}
             {msg.role === "assistant" && (
               <SimpleChatBubbleBot>{msg.content}</SimpleChatBubbleBot>
             )}
-            {msg.role === "card" && msg.cardContent}
+            {msg.role === "card" && (
+              <div className="mb-3 pl-[47px]">{msg.cardContent}</div>
+            )}
           </m.div>
         ))}
       </div>
@@ -231,30 +197,26 @@ const INBOX_ITEMS = [
 
 function InboxSummaryCard() {
   return (
-    <div className="mb-3 pl-[47px]">
-      <div className="rounded-2xl bg-zinc-800 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Image
-            src="/images/icons/macos/gmail.webp"
-            width={16}
-            height={16}
-            alt="Gmail"
-            className="rounded-sm"
-          />
-          <span className="text-[11px] font-medium text-zinc-400">
-            3 replies drafted
-          </span>
-        </div>
-        <div className="space-y-2.5">
-          {INBOX_ITEMS.map((item) => (
-            <div key={item.id} className="flex items-start gap-2 text-sm">
-              <span className="mt-0.5 shrink-0 text-primary">→</span>
-              <span className="text-zinc-300">{item.text}</span>
-            </div>
-          ))}
-        </div>
-        <p className="mt-3 text-[11px] text-zinc-500">Confirm to send all?</p>
+    <div className="rounded-2xl bg-zinc-800 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        {getToolCategoryIcon("gmail", {
+          width: 16,
+          height: 16,
+          showBackground: false,
+        })}
+        <span className="text-[11px] font-medium text-zinc-400">
+          3 replies drafted
+        </span>
       </div>
+      <div className="space-y-2.5">
+        {INBOX_ITEMS.map((item) => (
+          <div key={item.id} className="flex items-start gap-2 text-sm">
+            <span className="mt-0.5 shrink-0 text-primary">→</span>
+            <span className="text-zinc-300">{item.text}</span>
+          </div>
+        ))}
+      </div>
+      <p className="mt-3 text-[11px] text-zinc-500">Confirm to send all?</p>
     </div>
   );
 }
@@ -263,33 +225,29 @@ function InboxSummaryCard() {
 
 function MeetingContextCard() {
   return (
-    <div className="mb-3 pl-[47px]">
-      <div className="rounded-2xl bg-zinc-800 p-4">
-        <div className="mb-3 flex items-center gap-2">
-          <Image
-            src="/images/icons/macos/calendar.webp"
-            width={16}
-            height={16}
-            alt="Calendar"
-            className="rounded-sm"
-          />
-          <span className="text-[11px] font-medium text-zinc-400">
-            Meeting brief ready
-          </span>
-        </div>
-        <div className="mb-3">
-          <p className="text-sm font-medium text-zinc-100">
-            Sarah Chen · Sequoia Capital
-          </p>
-          <p className="mt-0.5 text-xs text-zinc-500">
-            Partner · Led 3 Series A rounds this year
-          </p>
-        </div>
-        <div className="space-y-1.5 text-xs text-zinc-400">
-          <p>Last contact: 3 weeks ago (intro from YC partner)</p>
-          <p>Open items: Q4 metrics, hiring roadmap, cap table</p>
-          <p>Style: Bullet points. Direct. Skip pleasantries.</p>
-        </div>
+    <div className="rounded-2xl bg-zinc-800 p-4">
+      <div className="mb-3 flex items-center gap-2">
+        {getToolCategoryIcon("googlecalendar", {
+          width: 16,
+          height: 16,
+          showBackground: false,
+        })}
+        <span className="text-[11px] font-medium text-zinc-400">
+          Meeting brief ready
+        </span>
+      </div>
+      <div className="mb-3">
+        <p className="text-sm font-medium text-zinc-100">
+          Sarah Chen · Sequoia Capital
+        </p>
+        <p className="mt-0.5 text-xs text-zinc-500">
+          Partner · Led 3 Series A rounds this year
+        </p>
+      </div>
+      <div className="space-y-1.5 text-xs text-zinc-400">
+        <p>Last contact: 3 weeks ago (intro from YC partner)</p>
+        <p>Open items: Q4 metrics, hiring roadmap, cap table</p>
+        <p>Style: Bullet points. Direct. Skip pleasantries.</p>
       </div>
     </div>
   );
@@ -355,7 +313,7 @@ const INBOX_MESSAGES: ChatMessage[] = [
     role: "tools",
     content: "",
     tools: INBOX_READ_TOOLS,
-    delay: 1100,
+    delay: 1000,
   },
   {
     id: "i4",
@@ -521,7 +479,7 @@ function WorkflowsDemo() {
         <span className="text-xs text-zinc-500">Every day at 9:00 AM</span>
       </div>
 
-      {/* Steps with real tool icons */}
+      {/* Steps with real tool category icons */}
       <div className="space-y-2">
         {WORKFLOW_STEPS.map((step, i) => {
           const isVisible = currentStep > i;
@@ -537,11 +495,11 @@ function WorkflowsDemo() {
                   transition={{ duration: 0.3, ease }}
                   className="flex items-center gap-3 rounded-xl bg-zinc-800/60 px-3 py-2.5"
                 >
-                  {/* Tool category icon */}
                   <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center">
                     {getToolCategoryIcon(step.category, {
                       width: 22,
                       height: 22,
+                      showBackground: false,
                     }) ?? (
                       <div
                         className={`h-2 w-2 rounded-full ${
@@ -582,31 +540,39 @@ function WorkflowsDemo() {
           );
         })}
       </div>
+
+      {/* Output: morning briefing card revealed after completion */}
+      <AnimatePresence>
+        {done && (
+          <m.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease, delay: 0.3 }}
+            className="mt-4"
+          >
+            <DemoFinalCard type="briefing" />
+          </m.div>
+        )}
+      </AnimatePresence>
     </m.div>
   );
 }
 
 // ─── Slack Demo ───────────────────────────────────────────────────────
 
-const SLACK_ITEMS = [
-  { id: "s1", text: "Auth 2.0 is live for all users" },
-  { id: "s2", text: "Dashboard redesign launched" },
-  { id: "s3", text: "3 critical API bugs resolved" },
-  { id: "s4", text: "Onboarding A/B test complete — v2 wins" },
-];
-
 function SlackDemo() {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, amount: 0.3 });
-  const [visibleCount, setVisibleCount] = useState(0);
+  const [phase, setPhase] = useState(0);
   const timersRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
   useEffect(() => {
     if (!inView) return;
 
-    const t1 = setTimeout(() => setVisibleCount(1), 400);
-    const t2 = setTimeout(() => setVisibleCount(2), 1400);
-    timersRef.current.push(t1, t2);
+    const t1 = setTimeout(() => setPhase(1), 400);
+    const t2 = setTimeout(() => setPhase(2), 1600);
+    const t3 = setTimeout(() => setPhase(3), 2600);
+    timersRef.current.push(t1, t2, t3);
 
     const captured = timersRef.current;
     return () => {
@@ -622,38 +588,58 @@ function SlackDemo() {
       transition={{ duration: 0.5, ease }}
       className="overflow-hidden rounded-3xl bg-zinc-900 text-left"
     >
-      {/* Channel header with macOS Slack icon */}
-      <div className="flex items-center gap-2 border-b border-zinc-800 px-5 py-3">
-        <div className="h-5 w-5 shrink-0 overflow-hidden rounded-md">
-          <Image
-            src="/images/icons/macos/slack.webp"
-            width={20}
-            height={20}
-            alt="Slack"
-            className="h-full w-full object-cover"
-          />
-        </div>
-        <span className="text-sm font-semibold text-zinc-200">gaia</span>
+      {/* Channel header */}
+      <div className="flex items-center gap-1.5 border-b border-zinc-800 px-5 py-3">
+        <span className="text-sm font-semibold text-zinc-500">#</span>
+        <span className="text-sm font-semibold text-zinc-200">
+          engineering-standup
+        </span>
       </div>
 
-      {/* Messages */}
-      <div className="min-h-[200px] space-y-5 p-5">
-        {/* User question */}
-        {visibleCount >= 1 && (
+      <div className="space-y-5 p-5">
+        {/* Phase 1: GAIA proactively posts the daily standup workflow card */}
+        {phase >= 1 && (
           <m.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.35, ease }}
             className="flex items-start gap-3"
           >
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg">
+            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg">
               <Image
-                src="/images/avatars/default.webp"
+                src="/images/logos/logo.webp"
                 width={36}
                 height={36}
-                alt="User"
+                alt="GAIA"
                 className="h-full w-full object-cover"
               />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="mb-1.5 flex items-baseline gap-2">
+                <span className="text-sm font-bold text-zinc-100">GAIA</span>
+                <span className="rounded-sm bg-primary/15 px-1.5 py-0.5 text-[10px] font-medium text-primary">
+                  App
+                </span>
+                <span className="text-[11px] text-zinc-600">9:00 AM</span>
+              </div>
+              <p className="mb-3 text-sm text-zinc-300">
+                Good morning. Here&apos;s today&apos;s standup:
+              </p>
+              <DemoFinalCard type="workflow" />
+            </div>
+          </m.div>
+        )}
+
+        {/* Phase 2: User asks a question */}
+        {phase >= 2 && (
+          <m.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, ease }}
+            className="flex items-start gap-3"
+          >
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-zinc-700 text-sm font-semibold text-zinc-200">
+              A
             </div>
             <div>
               <div className="mb-1 flex items-baseline gap-2">
@@ -661,15 +647,15 @@ function SlackDemo() {
                 <span className="text-[11px] text-zinc-600">9:03 AM</span>
               </div>
               <p className="text-sm text-zinc-300">
-                <span className="font-semibold text-primary">@GAIA</span> What
-                did we ship last week?
+                <span className="font-semibold text-primary">@GAIA</span> Any
+                blockers I should know about?
               </p>
             </div>
           </m.div>
         )}
 
-        {/* GAIA response */}
-        {visibleCount >= 2 && (
+        {/* Phase 3: GAIA responds */}
+        {phase >= 3 && (
           <m.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
@@ -693,46 +679,13 @@ function SlackDemo() {
                 </span>
                 <span className="text-[11px] text-zinc-600">9:03 AM</span>
               </div>
-              <div className="text-sm text-zinc-300">
-                <p className="mb-2">Here&apos;s what shipped last week:</p>
-                <div className="space-y-1">
-                  {SLACK_ITEMS.map((item) => (
-                    <div key={item.id} className="flex items-start gap-2">
-                      <span className="mt-0.5 shrink-0 text-primary">•</span>
-                      <span>{item.text}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
+              <p className="text-sm text-zinc-300">
+                2 blockers in feat/auth-refactor — Alex and Maya need your
+                review. Both are merge-blocking.
+              </p>
             </div>
           </m.div>
         )}
-      </div>
-
-      {/* Integration row */}
-      <div className="flex items-center gap-3 border-t border-zinc-800 px-5 py-3">
-        <span className="text-[11px] text-zinc-600">Connected to</span>
-        {(
-          [
-            { src: "/images/icons/macos/github.webp", alt: "GitHub" },
-            { src: "/images/icons/macos/linear.webp", alt: "Linear" },
-            { src: "/images/icons/macos/notion.webp", alt: "Notion" },
-            { src: "/images/icons/macos/gmail.webp", alt: "Gmail" },
-          ] as const
-        ).map((icon) => (
-          <div
-            key={icon.alt}
-            className="h-5 w-5 overflow-hidden rounded-md opacity-60"
-          >
-            <Image
-              src={icon.src}
-              width={20}
-              height={20}
-              alt={icon.alt}
-              className="h-full w-full object-cover"
-            />
-          </div>
-        ))}
       </div>
     </m.div>
   );
@@ -791,7 +744,7 @@ function InvestorUpdateDemo() {
               exit={{ opacity: 0 }}
               className="flex items-center gap-1.5 rounded-full bg-zinc-800 px-3 py-1"
             >
-              <MiniWaveSpinner />
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
               <span className="text-[11px] text-zinc-400">Drafting…</span>
             </m.div>
           )}
@@ -811,7 +764,7 @@ function InvestorUpdateDemo() {
         </AnimatePresence>
       </div>
 
-      {/* Metrics */}
+      {/* Metrics — reveal on first phase */}
       <AnimatePresence>
         {phase !== "idle" && (
           <m.div
@@ -835,49 +788,16 @@ function InvestorUpdateDemo() {
         )}
       </AnimatePresence>
 
-      {/* Email preview from FOUNDER_EMAIL */}
+      {/* Real EmailComposeCard via DemoFinalCard */}
       <AnimatePresence>
         {phase === "ready" && (
           <m.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.08 }}
-            className="mb-5 rounded-2xl bg-zinc-800 p-4"
+            transition={{ duration: 0.4, delay: 0.1 }}
           >
-            <div className="mb-3 flex items-center gap-2">
-              <Image
-                src="/images/icons/macos/gmail.webp"
-                width={16}
-                height={16}
-                alt="Gmail"
-                className="rounded-sm"
-              />
-              <span className="text-[11px] text-zinc-400">
-                Draft · {FOUNDER_EMAIL.to[0]}
-              </span>
-            </div>
-            <p className="mb-2 text-sm font-medium text-zinc-100">
-              {FOUNDER_EMAIL.subject}
-            </p>
-            <p className="line-clamp-3 whitespace-pre-line text-[11px] leading-relaxed text-zinc-500">
-              {FOUNDER_EMAIL.body}
-            </p>
+            <DemoFinalCard type="email" />
           </m.div>
-        )}
-      </AnimatePresence>
-
-      {/* Send CTA */}
-      <AnimatePresence>
-        {phase === "ready" && (
-          <m.button
-            type="button"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.18 }}
-            className="w-full rounded-2xl bg-primary py-2.5 text-sm font-medium text-black"
-          >
-            Send to 12 investors
-          </m.button>
         )}
       </AnimatePresence>
     </m.div>
