@@ -63,12 +63,18 @@ async def build_executor_graph(
     )
 
     # Wire SubagentMiddleware with LLM and full tool registry
-    for mw in middleware:
-        if isinstance(mw, SubagentMiddleware):
-            mw.set_llm(chat_llm)
-            mw.set_tools(registry=tool_dict)
-            mw.set_store(store)
-            break
+    subagent_mw = next(
+        (mw for mw in middleware if isinstance(mw, SubagentMiddleware)),
+        None,
+    )
+    if subagent_mw is None:
+        logger.warning(
+            "SubagentMiddleware not found in middleware stack; spawn_subagent will be unavailable"
+        )
+    else:
+        subagent_mw.set_llm(chat_llm)
+        subagent_mw.set_tools(registry=tool_dict)
+        subagent_mw.set_store(store)
 
     pre_model_hooks: list[HookType] = [
         cast(HookType, filter_messages_node),

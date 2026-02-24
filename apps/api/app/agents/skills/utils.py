@@ -26,7 +26,7 @@ def get_github_token() -> Optional[str]:
     return os.environ.get("GITHUB_TOKEN")
 
 
-def get_github_headers() -> dict:
+def get_github_headers() -> dict[str, str]:
     """Get headers for GitHub API requests."""
     headers = {"Accept": "application/vnd.github.v3+json"}
     token = get_github_token()

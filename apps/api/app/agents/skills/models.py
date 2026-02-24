@@ -31,6 +31,27 @@ SKILL_NAME_PATTERN = re.compile(r"^[a-z0-9]([a-z0-9-]*[a-z0-9])?$")
 CONSECUTIVE_HYPHENS = re.compile(r"--")
 
 
+def _validate_skill_name(value: str) -> str:
+    if not value:
+        raise ValueError("name must not be empty")
+    if len(value) > 64:
+        raise ValueError("name must be at most 64 characters")
+    if not SKILL_NAME_PATTERN.match(value):
+        raise ValueError(
+            "name must contain only lowercase letters, numbers, and hyphens, "
+            "and must not start or end with a hyphen"
+        )
+    if CONSECUTIVE_HYPHENS.search(value):
+        raise ValueError("name must not contain consecutive hyphens")
+    return value
+
+
+def _validate_skill_description(value: str) -> str:
+    if not value or not value.strip():
+        raise ValueError("description must not be empty")
+    return value
+
+
 class SkillMetadata(BaseModel):
     """Parsed from SKILL.md YAML frontmatter.
 
@@ -79,25 +100,12 @@ class SkillMetadata(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, v: str) -> str:
-        if not v:
-            raise ValueError("name must not be empty")
-        if len(v) > 64:
-            raise ValueError("name must be at most 64 characters")
-        if not SKILL_NAME_PATTERN.match(v):
-            raise ValueError(
-                "name must contain only lowercase letters, numbers, and hyphens, "
-                "and must not start or end with a hyphen"
-            )
-        if CONSECUTIVE_HYPHENS.search(v):
-            raise ValueError("name must not contain consecutive hyphens")
-        return v
+        return _validate_skill_name(v)
 
     @field_validator("description")
     @classmethod
     def validate_description(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("description must not be empty")
-        return v
+        return _validate_skill_description(v)
 
 
 class Skill(BaseModel):
@@ -176,25 +184,12 @@ class Skill(BaseModel):
     @field_validator("name")
     @classmethod
     def validate_name(cls, v: str) -> str:
-        if not v:
-            raise ValueError("name must not be empty")
-        if len(v) > 64:
-            raise ValueError("name must be at most 64 characters")
-        if not SKILL_NAME_PATTERN.match(v):
-            raise ValueError(
-                "name must contain only lowercase letters, numbers, and hyphens, "
-                "and must not start or end with a hyphen"
-            )
-        if CONSECUTIVE_HYPHENS.search(v):
-            raise ValueError("name must not contain consecutive hyphens")
-        return v
+        return _validate_skill_name(v)
 
     @field_validator("description")
     @classmethod
     def validate_description(cls, v: str) -> str:
-        if not v or not v.strip():
-            raise ValueError("description must not be empty")
-        return v
+        return _validate_skill_description(v)
 
     @field_serializer("installed_at", "updated_at")
     def serialize_datetime(self, value: datetime | None) -> str | None:

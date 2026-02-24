@@ -216,9 +216,6 @@ async def memory_node(
         logger.debug(f"Memory learning skipped: {reason}")
         return state
 
-    # Track spawned Task objects to prevent GC and allow later awaiting/gathering
-    tasks_spawned: list[asyncio.Task] = []
-
     if user_id:
         task = asyncio.create_task(
             _store_user_memory_background(
@@ -230,17 +227,11 @@ async def memory_node(
             ),
             name="user_memory",
         )
-        tasks_spawned.append(task)
 
-    if tasks_spawned:
-        # Register tasks in module-level set to prevent GC
-        for task in tasks_spawned:
-            _background_tasks.add(task)
-            task.add_done_callback(_task_done_callback)
-
-        task_names = [t.get_name() for t in tasks_spawned]
+        _background_tasks.add(task)
+        task.add_done_callback(_task_done_callback)
         logger.debug(
-            f"[{subagent_id or 'agent'}] Memory learning spawned: {', '.join(task_names)}"
+            f"[{subagent_id or 'agent'}] Memory learning spawned: {task.get_name()}"
         )
 
     return state

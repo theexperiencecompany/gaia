@@ -241,8 +241,8 @@ def get_gmail_contacts(
             f"CONTACT_SERVICE: Starting contact search with query: '{query}', max_results: {max_results}"
         )
 
-        search_query = f'"{query}"'
-        logger.debug(f"CONTACT_SERVICE: Using optimized search query: '{search_query}'")
+        search_query = query
+        logger.debug(f"CONTACT_SERVICE: Using search query: '{search_query}'")
 
         search_results = (
             service.users()

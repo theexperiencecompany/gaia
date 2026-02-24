@@ -4,30 +4,11 @@ from collections.abc import KeysView, Mapping
 from functools import cache
 from typing import Dict, Iterator, List, Optional
 
-from app.agents.tools import (
-    code_exec_tool,
-    document_tool,
-    file_tools,
-    flowchart_tool,
-    goal_tool,
-    image_tool,
-    integration_tool,
-    memory_tools,
-    notification_tool,
-    reminder_tool,
-    skill_tools,
-    support_tool,
-    todo_tool,
-    vfs_tools,
-    weather_tool,
-    webpage_tool,
-    workflow_tool,
-)
 from app.config.loggers import langchain_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
-from langchain_core.tools import BaseTool
 from app.helpers.namespace_utils import derive_integration_namespace
 from app.services.integrations.integration_resolver import IntegrationResolver
+from langchain_core.tools import BaseTool
 
 
 class DynamicToolDict(Mapping[str, BaseTool]):
@@ -194,6 +175,27 @@ class ToolRegistry:
 
     def _initialize_categories(self):
         """Initialize core tool categories. Provider tools are loaded lazily."""
+
+        # NOTE: Import tool modules lazily to avoid circular imports during app startup.
+        from app.agents.tools import (
+            code_exec_tool,
+            document_tool,
+            file_tools,
+            flowchart_tool,
+            goal_tool,
+            image_tool,
+            integration_tool,
+            memory_tools,
+            notification_tool,
+            reminder_tool,
+            skill_tools,
+            support_tool,
+            todo_tool,
+            vfs_tools,
+            weather_tool,
+            webpage_tool,
+            workflow_tool,
+        )
 
         self._add_category(
             "search",

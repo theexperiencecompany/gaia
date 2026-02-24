@@ -43,22 +43,18 @@ from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
 
 __all__ = [
-    # Factory functions (preferred)
-    "create_middleware_stack",
-    "create_default_middleware",
-    "create_executor_middleware",
-    "create_comms_middleware",
-    "create_subagent_middleware",
-    "get_summarization_llm",
-    # Executor
-    "MiddlewareExecutor",
-    # Runtime adapters
     "BigtoolRuntime",
     "BigtoolToolRuntime",
-    "create_model_request",
-    "create_tool_call_request",
-    # Middleware classes (for custom configuration)
+    "MiddlewareExecutor",
     "SubagentMiddleware",
     "VFSArchivingSummarizationMiddleware",
     "VFSCompactionMiddleware",
+    "create_comms_middleware",
+    "create_default_middleware",
+    "create_executor_middleware",
+    "create_middleware_stack",
+    "create_model_request",
+    "create_subagent_middleware",
+    "create_tool_call_request",
+    "get_summarization_llm",
 ]

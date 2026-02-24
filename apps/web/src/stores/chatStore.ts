@@ -155,6 +155,9 @@ export const useChatStore = create<ChatState>((set) => ({
 
   removeMessage: (messageId, conversationId) =>
     set((state) => {
+      // NOTE: This removes a persisted chat message from the local store
+      // (used for IndexedDB sync events like messageDeleted).
+      // It is not related to streaming tool events; those are handled separately.
       const messages = state.messagesByConversation[conversationId] ?? [];
       const filteredMessages = messages.filter((msg) => msg.id !== messageId);
 

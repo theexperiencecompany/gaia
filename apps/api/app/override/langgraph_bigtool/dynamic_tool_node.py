@@ -170,69 +170,25 @@ class DynamicToolNode(ToolNode):
 
             # Parent-routed tools: delegate to parent's execution path
             if self._needs_parent_routing(tool_name):
-                single_call_with_context = {
-                    "__type": "tool_call_with_context",
-                    "tool_call": tool_call,
-                    "state": delegate_state,
-                }
-                single_result = await super()._afunc(
-                    single_call_with_context, config, runtime
+                results.extend(
+                    await self._run_parent_for_tool_call(
+                        dict(cast(Mapping[str, Any], tool_call)),
+                        delegate_state,
+                        config,
+                        runtime,
+                    )
                 )
-                if isinstance(single_result, dict):
-                    results.extend(single_result.get("messages", []))
-                elif isinstance(single_result, list):
-                    results.extend(single_result)
-                else:
-                    results.append(single_result)
                 continue
 
-            tool = self._get_tool(tool_name)
-
-            # Create minimal state dict for middleware
-            state = cast(
-                State,
-                {
-                    "messages": [],
-                    "selected_tool_ids": [],
-                    "todos": [],
-                },
-            )
-
-            # Define the actual tool invocation function
-            async def invoke_tool(tc: dict[str, Any]) -> ToolMessage:
-                """Actual tool invocation."""
-                resolved_tool = self._get_tool(tc.get("name", ""))
-                if resolved_tool is None:
-                    return ToolMessage(
-                        content=f"Tool '{tc.get('name')}' not found",
-                        tool_call_id=tc.get("id", ""),
-                    )
-
-                tool_input = dict(tc)
-                tool_input["type"] = "tool_call"
-                result = await resolved_tool.ainvoke(tool_input, config=config)
-
-                # If tool returned a ToolMessage, pass through
-                if isinstance(result, ToolMessage):
-                    return result
-
-                return ToolMessage(
-                    content=str(result) if not isinstance(result, str) else result,
-                    tool_call_id=tc.get("id", ""),
-                    name=tc.get("name", ""),
+            results.append(
+                await self._run_tool_call_with_middleware(
+                    tool_call=dict(cast(Mapping[str, Any], tool_call)),
+                    tool=self._get_tool(tool_name),
+                    middleware_executor=middleware_executor,
+                    store=store,
+                    config=config,
                 )
-
-            # Wrap with middleware
-            tool_call_payload: dict[str, Any] = dict(tool_call)
-            result = await middleware_executor.wrap_tool_invocation(
-                tool_call=tool_call_payload,
-                tool=tool,
-                state=state,
-                config=config,
-                store=store,
-                invoke_fn=invoke_tool,
             )
-            results.append(result)
 
         # Separate Commands from ToolMessages for proper LangGraph handling
         has_commands = any(isinstance(r, Command) for r in results)
@@ -241,3 +197,70 @@ class DynamicToolNode(ToolNode):
 
         # Mixed results: return as list so LangGraph handles Commands
         return results
+
+    async def _run_parent_for_tool_call(
+        self,
+        tool_call: Any,
+        delegate_state: list[AnyMessage] | dict[str, Any] | BaseModel,
+        config: RunnableConfig,
+        runtime: "Runtime",
+    ) -> list[ToolMessage | Command]:
+        single_call_with_context = {
+            "__type": "tool_call_with_context",
+            "tool_call": dict(cast(Mapping[str, Any], tool_call)),
+            "state": delegate_state,
+        }
+        single_result = await super()._afunc(single_call_with_context, config, runtime)
+        if isinstance(single_result, dict):
+            return list(single_result.get("messages", []))
+        if isinstance(single_result, list):
+            return single_result
+        return [single_result]
+
+    async def _run_tool_call_with_middleware(
+        self,
+        *,
+        tool_call: Any,
+        tool: BaseTool | None,
+        middleware_executor: MiddlewareExecutor,
+        store: BaseStore | None,
+        config: RunnableConfig,
+    ) -> ToolMessage:
+        state = cast(
+            State,
+            {
+                "messages": [],
+                "selected_tool_ids": [],
+                "todos": [],
+            },
+        )
+
+        async def invoke_tool(tc: dict[str, Any]) -> ToolMessage:
+            resolved_tool = self._get_tool(tc.get("name", ""))
+            if resolved_tool is None:
+                return ToolMessage(
+                    content=f"Tool '{tc.get('name')}' not found",
+                    tool_call_id=tc.get("id", ""),
+                )
+
+            tool_input = dict(tc)
+            tool_input["type"] = "tool_call"
+            result = await resolved_tool.ainvoke(tool_input, config=config)
+
+            if isinstance(result, ToolMessage):
+                return result
+
+            return ToolMessage(
+                content=str(result) if not isinstance(result, str) else result,
+                tool_call_id=tc.get("id", ""),
+                name=tc.get("name", ""),
+            )
+
+        return await middleware_executor.wrap_tool_invocation(
+            tool_call=dict(cast(Mapping[str, Any], tool_call)),
+            tool=tool,
+            state=state,
+            config=config,
+            store=store,
+            invoke_fn=invoke_tool,
+        )

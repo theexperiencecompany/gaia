@@ -8,7 +8,6 @@ VFS stores body-only content (no frontmatter). Metadata lives in MongoDB
 as flat fields on the Skill document.
 """
 
-import os
 import re
 from typing import List, Optional, Tuple
 
@@ -19,26 +18,10 @@ from app.agents.skills.parser import (
     parse_skill_md,
     validate_skill_content,
 )
-from app.agents.skills.registry import install_skill
+from app.agents.skills.registry import get_skill, install_skill, uninstall_skill
+from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
 from app.config.loggers import app_logger as logger
 from app.services.vfs.path_resolver import get_custom_skill_path
-
-GITHUB_API_BASE = "https://api.github.com"
-GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
-
-
-def _get_github_token() -> Optional[str]:
-    """Get GitHub token from environment for API rate limit relief."""
-    return os.environ.get("GITHUB_TOKEN")
-
-
-def _get_headers() -> dict:
-    """Get headers for GitHub API requests."""
-    headers = {"Accept": "application/vnd.github.v3+json"}
-    token = _get_github_token()
-    if token:
-        headers["Authorization"] = f"token {token}"
-    return headers
 
 
 def _parse_github_url(url: str) -> Tuple[str, str, Optional[str]]:
@@ -83,6 +66,7 @@ async def _fetch_github_contents(
     owner: str,
     repo: str,
     path: str,
+    client: httpx.AsyncClient,
     branch: str = "main",
 ) -> List[dict]:
     """Fetch directory contents from GitHub API.
@@ -92,34 +76,34 @@ async def _fetch_github_contents(
     url = f"{GITHUB_API_BASE}/repos/{owner}/{repo}/contents/{path}"
     params = {"ref": branch}
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(url, params=params, headers=_get_headers())
+    resp = await client.get(url, params=params, headers=get_github_headers())
 
-        if resp.status_code == 404:
-            if branch == "main":
-                return await _fetch_github_contents(owner, repo, path, "master")
-            raise ValueError(f"Path not found: {owner}/{repo}/{path}")
-
-        if resp.status_code == 403:
-            logger.warning("GitHub API rate limit exceeded. Try again later.")
-            raise ValueError(
-                "GitHub API rate limit exceeded. Please try again later, or set GITHUB_TOKEN for higher limits (5000/hr vs 60/hr)."
+    if resp.status_code == 404:
+        if branch == "main":
+            return await _fetch_github_contents(
+                owner, repo, path, client=client, branch="master"
             )
+        raise ValueError(f"Path not found: {owner}/{repo}/{path}")
 
-        resp.raise_for_status()
-        data = resp.json()
+    if resp.status_code == 403:
+        logger.warning("GitHub API rate limit exceeded. Try again later.")
+        raise ValueError(
+            "GitHub API rate limit exceeded. Please try again later, or set GITHUB_TOKEN for higher limits (5000/hr vs 60/hr)."
+        )
 
-        if isinstance(data, dict):
-            return [data]
-        return data
+    resp.raise_for_status()
+    data = resp.json()
+
+    if isinstance(data, dict):
+        return [data]
+    return data
 
 
-async def _fetch_file_content(download_url: str) -> str:
+async def _fetch_file_content(download_url: str, client: httpx.AsyncClient) -> str:
     """Download raw file content from a URL."""
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await client.get(download_url, headers=_get_headers())
-        resp.raise_for_status()
-        return resp.text
+    resp = await client.get(download_url, headers=get_github_headers())
+    resp.raise_for_status()
+    return resp.text
 
 
 async def _get_vfs():
@@ -169,64 +153,68 @@ async def install_from_github(
 
     logger.info(f"[skills] Fetching from GitHub: {owner}/{repo}/{base_path}")
 
-    # Fetch the directory contents
-    contents = await _fetch_github_contents(owner, repo, base_path)
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # Fetch the directory contents
+        contents = await _fetch_github_contents(owner, repo, base_path, client=client)
 
-    # Find SKILL.md
-    skill_md_entry = None
-    for entry in contents:
-        if entry["name"] == "SKILL.md":
-            skill_md_entry = entry
-            break
+        # Find SKILL.md
+        skill_md_entry = None
+        for entry in contents:
+            if entry["name"] == "SKILL.md":
+                skill_md_entry = entry
+                break
 
-    if not skill_md_entry:
-        raise ValueError(
-            f"No SKILL.md found in {owner}/{repo}/{base_path}. "
-            "A valid skill must contain a SKILL.md file."
+        if not skill_md_entry:
+            raise ValueError(
+                f"No SKILL.md found in {owner}/{repo}/{base_path}. "
+                "A valid skill must contain a SKILL.md file."
+            )
+
+        # Download SKILL.md
+        skill_md_content = await _fetch_file_content(
+            skill_md_entry["download_url"], client=client
         )
 
-    # Download SKILL.md
-    skill_md_content = await _fetch_file_content(skill_md_entry["download_url"])
+        # Validate
+        errors = validate_skill_content(skill_md_content)
+        if errors:
+            raise ValueError(f"Invalid SKILL.md: {'; '.join(errors)}")
 
-    # Validate
-    errors = validate_skill_content(skill_md_content)
-    if errors:
-        raise ValueError(f"Invalid SKILL.md: {'; '.join(errors)}")
+        # Parse frontmatter → metadata + body
+        metadata, body = parse_skill_md(skill_md_content)
 
-    # Parse frontmatter → metadata + body
-    metadata, body = parse_skill_md(skill_md_content)
+        # Apply target override
+        target = target_override if target_override else metadata.target
 
-    # Apply target override
-    target = target_override if target_override else metadata.target
+        # Determine VFS path
+        vfs_dir = get_custom_skill_path(user_id, target, metadata.name)
 
-    # Determine VFS path
-    vfs_dir = get_custom_skill_path(user_id, target, metadata.name)
+        # Download all files in the skill directory
+        vfs = await _get_vfs()
+        file_list: List[str] = []
 
-    # Download all files in the skill directory
-    vfs = await _get_vfs()
-    file_list: List[str] = []
+        # Write body-only SKILL.md to VFS (metadata lives in MongoDB)
+        await vfs.write(
+            f"{vfs_dir}/SKILL.md",
+            body,
+            user_id,
+            metadata={"source": "github", "source_url": source_url},
+        )
+        file_list.append("SKILL.md")
 
-    # Write body-only SKILL.md to VFS (metadata lives in MongoDB)
-    await vfs.write(
-        f"{vfs_dir}/SKILL.md",
-        body,
-        user_id,
-        metadata={"source": "github", "source_url": source_url},
-    )
-    file_list.append("SKILL.md")
-
-    # Download subdirectories and files recursively
-    await _download_github_dir(
-        vfs=vfs,
-        user_id=user_id,
-        vfs_base=vfs_dir,
-        owner=owner,
-        repo=repo,
-        remote_path=base_path,
-        contents=contents,
-        file_list=file_list,
-        source_url=source_url,
-    )
+        # Download subdirectories and files recursively
+        await _download_github_dir(
+            vfs=vfs,
+            user_id=user_id,
+            vfs_base=vfs_dir,
+            owner=owner,
+            repo=repo,
+            remote_path=base_path,
+            contents=contents,
+            file_list=file_list,
+            source_url=source_url,
+            client=client,
+        )
 
     # Register flat metadata in MongoDB
     installed = await install_skill(
@@ -262,6 +250,7 @@ async def _download_github_dir(
     contents: List[dict],
     file_list: List[str],
     source_url: str,
+    client: httpx.AsyncClient,
 ) -> None:
     """Recursively download GitHub directory contents to VFS."""
     for entry in contents:
@@ -273,7 +262,7 @@ async def _download_github_dir(
 
         if entry_type == "file":
             # Download file
-            content = await _fetch_file_content(entry["download_url"])
+            content = await _fetch_file_content(entry["download_url"], client=client)
             relative_path = entry["path"].removeprefix(f"{remote_path}/")
             vfs_path = f"{vfs_base}/{relative_path}"
             await vfs.write(
@@ -286,7 +275,9 @@ async def _download_github_dir(
 
         elif entry_type == "dir":
             # Recurse into subdirectory
-            sub_contents = await _fetch_github_contents(owner, repo, entry["path"])
+            sub_contents = await _fetch_github_contents(
+                owner, repo, entry["path"], client=client
+            )
             await _download_github_dir(
                 vfs=vfs,
                 user_id=user_id,
@@ -297,6 +288,7 @@ async def _download_github_dir(
                 contents=sub_contents,
                 file_list=file_list,
                 source_url=source_url,
+                client=client,
             )
 
 
@@ -381,8 +373,6 @@ async def uninstall_skill_full(user_id: str, skill_id: str) -> bool:
     Returns:
         True if uninstalled, False if not found
     """
-    from app.agents.skills.registry import get_skill, uninstall_skill
-
     skill = await get_skill(user_id, skill_id)
     if not skill:
         return False

@@ -143,14 +143,33 @@ async def run_chat_stream_background(
 
             # Process complete message marker (internal, not sent to client)
             if chunk.startswith("nostream: "):
-                chunk_json = json.loads(chunk.replace("nostream: ", ""))
-                complete_message = chunk_json.get("complete_message", "")
+                nostream_json = json.loads(chunk.replace("nostream: ", ""))
+                if (
+                    isinstance(nostream_json, dict)
+                    and "complete_message" in nostream_json
+                ):
+                    complete_message = str(nostream_json["complete_message"])
+                else:
+                    complete_message = ""
                 continue
 
             # Process and publish data chunks
             if chunk.startswith("data: "):
                 try:
-                    new_data = extract_tool_data(chunk[6:])
+                    chunk_payload = chunk[6:]
+
+                    chunk_json: dict[str, Any] | None = None
+                    try:
+                        chunk_json = json.loads(chunk_payload)
+                    except json.JSONDecodeError:
+                        chunk_json = None
+
+                    if chunk_json and "todo_progress" in chunk_json:
+                        snapshot = chunk_json["todo_progress"]
+                        source = snapshot.get("source", "executor")
+                        todo_progress_accumulated[source] = snapshot
+
+                    new_data = extract_tool_data(chunk_payload)
                     if new_data:
                         if "other_data" in new_data:
                             other_data_dict = new_data["other_data"]
@@ -183,17 +202,13 @@ async def run_chat_stream_background(
                                 stream_id,
                                 f"data: {json.dumps({'tool_output': output_data})}\n\n",
                             )
+
+                        if chunk_json and "todo_progress" in chunk_json:
+                            await stream_manager.publish_chunk(
+                                stream_id,
+                                f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
+                            )
                     else:
-                        # Accumulate todo_progress for persistence
-                        # (not in tool_fields, so extract_tool_data skips it)
-                        try:
-                            chunk_json = json.loads(chunk[6:])
-                            if "todo_progress" in chunk_json:
-                                snapshot = chunk_json["todo_progress"]
-                                source = snapshot.get("source", "executor")
-                                todo_progress_accumulated[source] = snapshot
-                        except (json.JSONDecodeError, KeyError, TypeError):
-                            pass
                         await stream_manager.publish_chunk(stream_id, chunk)
 
                     # Update progress for recovery

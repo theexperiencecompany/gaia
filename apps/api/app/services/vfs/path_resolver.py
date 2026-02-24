@@ -43,13 +43,20 @@ def normalize_path(path: str) -> str:
     Returns:
         Normalized path string
     """
-    # Convert backslashes and remove path traversal
+    # Convert backslashes and normalize separators
     path = path.replace("\\", "/")
-    path = re.sub(r"\.\./?", "", path)
 
-    # Remove double slashes
-    while "//" in path:
-        path = path.replace("//", "/")
+    parts: list[str] = []
+    for part in path.split("/"):
+        if not part or part == ".":
+            continue
+        if part == "..":
+            if parts:
+                parts.pop()
+            continue
+        parts.append(part)
+
+    path = "/" + "/".join(parts)
 
     # Ensure leading slash
     if not path.startswith("/"):

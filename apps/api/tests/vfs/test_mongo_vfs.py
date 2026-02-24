@@ -39,6 +39,51 @@ class TestMongoVFSWrite:
     """Tests for MongoVFS write operations."""
 
     @pytest.mark.asyncio
+    async def test_write_system_path_denied_for_non_system_user(
+        self, mock_vfs_collection
+    ):
+        """Non-system users must never be able to write under /system/."""
+        with patch(
+            "app.services.vfs.mongo_vfs.vfs_nodes_collection", mock_vfs_collection
+        ):
+            from app.services.vfs.mongo_vfs import MongoVFS, VFSAccessError
+
+            vfs = MongoVFS()
+            with pytest.raises(VFSAccessError):
+                await vfs.write(
+                    "/system/test.txt",
+                    "content",
+                    user_id="user123",
+                )
+
+    @pytest.mark.asyncio
+    async def test_allow_system_write_flag_still_blocks_non_system_user(
+        self, mock_vfs_collection
+    ):
+        """Even with allow_system_write, only user_id='system' can write /system/."""
+        with patch(
+            "app.services.vfs.mongo_vfs.vfs_nodes_collection", mock_vfs_collection
+        ):
+            from app.services.vfs.mongo_vfs import MongoVFS, VFSAccessError
+
+            vfs = MongoVFS(allow_system_write=True)
+
+            with pytest.raises(VFSAccessError):
+                await vfs.write(
+                    "/system/test.txt",
+                    "content",
+                    user_id="user123",
+                )
+
+            # System user is allowed (used by seeding scripts)
+            await vfs.write(
+                "/system/test.txt",
+                "content",
+                user_id="system",
+            )
+            mock_vfs_collection.update_one.assert_called()
+
+    @pytest.mark.asyncio
     async def test_write_small_file_inline(self, mock_vfs_collection):
         """Small files should be stored inline."""
         with patch(

@@ -447,6 +447,11 @@ async def execute_graph_silent(
                             tool_name = tc.get("name")
                             tool_metadata = {}
 
+                            # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_data noise.
+                            # Safe: doesn't affect agent state; only avoids redundant UI events.
+                            if tool_name in {"plan_tasks", "mark_task", "add_task"}:
+                                continue
+
                             if tool_name == "handoff":
                                 args = tc.get("args", {})
                                 subagent_id = args.get("subagent_id", "")
@@ -637,6 +642,14 @@ async def execute_graph_streaming(
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
+                # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_output noise.
+                # Safe: doesn't affect agent state; only avoids redundant UI events.
+                if getattr(chunk, "name", None) in {
+                    "plan_tasks",
+                    "mark_task",
+                    "add_task",
+                } or chunk.additional_kwargs.get("todo_tool", False):
+                    continue
                 output = (
                     chunk.content[:3000]
                     if isinstance(chunk.content, str)

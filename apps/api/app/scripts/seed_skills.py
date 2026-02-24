@@ -53,7 +53,7 @@ async def _seed_builtin_skill(
         return None
 
     try:
-        content = skill_md_path.read_text()
+        content = skill_md_path.read_text(encoding="utf-8")
     except Exception as e:
         logger.warning(f"[seed] Failed to read SKILL.md for {skill_name}: {e}")
         return None
@@ -97,7 +97,7 @@ async def _seed_builtin_skill(
                 vfs_relative = str(relative_path).replace("\\", "/")
 
                 try:
-                    file_content = local_path.read_text()
+                    file_content = local_path.read_text(encoding="utf-8")
                     await vfs.write(
                         f"{vfs_dir}/{vfs_relative}",
                         file_content,
@@ -137,8 +137,7 @@ async def seed_all_system_skills(force: bool = False) -> List[Skill]:
     """
     logger.info("[seed] Starting system skills seeding")
 
-    vfs = MongoVFS()
-    vfs._allow_system_write = True
+    vfs = MongoVFS(allow_system_write=True)
     seeded: List[Skill] = []
 
     builtin_path = Path(__file__).parent.parent / "agents" / "skills" / "builtin"
@@ -182,7 +181,7 @@ async def verify_system_skills() -> int:
                 continue
 
             try:
-                content = skill_md_path.read_text()
+                content = skill_md_path.read_text(encoding="utf-8")
                 metadata, _ = parse_skill_md(content)
                 vfs_dir = get_system_skill_path(metadata.target, metadata.name)
                 file_path = f"{vfs_dir}/SKILL.md"

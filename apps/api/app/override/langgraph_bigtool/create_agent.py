@@ -138,7 +138,13 @@ def create_agent(
         store_arg = get_store_arg(retrieve_tools)
 
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
-        sync_execute_hooks(pre_model_hooks, state, config, store)
+        state = sync_execute_hooks(pre_model_hooks, state, config, store)
+
+        if middleware_executor:
+            raise RuntimeError(
+                "Agent middleware is configured but sync execution was requested. "
+                "Use the async graph execution path (ainvoke/astream)."
+            )
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)

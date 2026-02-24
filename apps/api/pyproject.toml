@@ -108,7 +108,7 @@ backend = [
   "chromadb>=0.6.3",
   "langchain-core>=1.2.0",
   "langchain>=1.2.0",
-  "langgraph>=1.0.0",
+  "langgraph==1.0.6",
   "langgraph-checkpoint-postgres>=2.0.21",
   "langgraph-bigtool>=0.0.2",
   "langchain-openai>=0.4.0",

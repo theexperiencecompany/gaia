@@ -8,6 +8,17 @@ manage their installed skills.
 
 from typing import Annotated
 
+from app.agents.skills.installer import (
+    install_from_github,
+    install_from_inline,
+    uninstall_skill_full,
+)
+from app.agents.skills.registry import (
+    disable_skill,
+    enable_skill,
+    get_skill_by_name,
+    list_skills,
+)
 from app.config.loggers import app_logger as logger
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -53,8 +64,6 @@ async def install_skill_from_github(
       install_skill_from_github("https://github.com/user/repo/tree/main/my-skill")
       install_skill_from_github("owner/repo/skills/email-templates", target="gmail_agent")
     """
-    from app.agents.skills.installer import install_from_github
-
     user_id = _get_user_id(config)
 
     try:
@@ -120,8 +129,6 @@ async def create_skill(
       create_skill("code-review", "Review PRs following team guidelines...",
                     "# Code Review Checklist\\n...", target="github_agent")
     """
-    from app.agents.skills.installer import install_from_inline
-
     user_id = _get_user_id(config)
 
     try:
@@ -160,8 +167,6 @@ async def list_installed_skills(
     Shows skill name, description, target, status (enabled/disabled),
     source, and VFS location.
     """
-    from app.agents.skills.registry import list_skills
-
     user_id = _get_user_id(config)
 
     try:
@@ -211,13 +216,6 @@ async def manage_skill(
     - disable: Deactivate a skill without removing it
     - uninstall: Completely remove the skill and its files
     """
-    from app.agents.skills.installer import uninstall_skill_full
-    from app.agents.skills.registry import (
-        disable_skill,
-        enable_skill,
-        get_skill_by_name,
-    )
-
     user_id = _get_user_id(config)
 
     try:

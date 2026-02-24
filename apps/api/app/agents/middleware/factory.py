@@ -134,6 +134,7 @@ def create_middleware_stack(
                 trigger=summarization_trigger,
                 keep=summarization_keep,
                 vfs_enabled=vfs_enabled,
+                excluded_tools=summarization_excluded_tools,
             )
             middleware.append(summarization)
             logger.debug(

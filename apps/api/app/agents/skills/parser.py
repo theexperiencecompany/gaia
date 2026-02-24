@@ -10,12 +10,7 @@ from typing import List, Tuple
 
 import yaml  # type: ignore[import-untyped]
 from app.agents.skills.models import SkillMetadata
-
-# Frontmatter delimiter pattern
-FRONTMATTER_PATTERN = re.compile(
-    r"^---\s*\n(.*?)\n---\s*\n?(.*)",
-    re.DOTALL,
-)
+from app.utils.markdown_utils import split_yaml_frontmatter
 
 
 def parse_skill_md(content: str) -> Tuple[SkillMetadata, str]:
@@ -33,14 +28,14 @@ def parse_skill_md(content: str) -> Tuple[SkillMetadata, str]:
     if not content or not content.strip():
         raise ValueError("SKILL.md content is empty")
 
-    match = FRONTMATTER_PATTERN.match(content)
-    if not match:
+    split = split_yaml_frontmatter(content)
+    if not split:
         raise ValueError(
             "SKILL.md must start with YAML frontmatter delimited by --- lines"
         )
 
-    frontmatter_raw = match.group(1)
-    body = match.group(2).strip()
+    frontmatter_raw, body_raw = split
+    body = body_raw.strip()
 
     try:
         frontmatter = yaml.safe_load(frontmatter_raw)
@@ -88,11 +83,12 @@ def strip_frontmatter(content: str) -> str:
     if not content:
         return ""
 
-    match = FRONTMATTER_PATTERN.match(content)
-    if not match:
+    split = split_yaml_frontmatter(content)
+    if not split:
         return content.strip()
 
-    return match.group(2).strip()
+    _, body_raw = split
+    return body_raw.strip()
 
 
 def validate_skill_content(content: str) -> List[str]:
@@ -110,13 +106,13 @@ def validate_skill_content(content: str) -> List[str]:
         errors.append("SKILL.md content is empty")
         return errors
 
-    match = FRONTMATTER_PATTERN.match(content)
-    if not match:
+    split = split_yaml_frontmatter(content)
+    if not split:
         errors.append("Missing YAML frontmatter (must start with --- delimiters)")
         return errors
 
-    frontmatter_raw = match.group(1)
-    body = match.group(2).strip()
+    frontmatter_raw, body_raw = split
+    body = body_raw.strip()
 
     try:
         frontmatter = yaml.safe_load(frontmatter_raw)
@@ -188,6 +184,14 @@ def generate_skill_md(
     Returns:
         Complete SKILL.md content
     """
+    # Validate up-front for clearer errors
+    SkillMetadata(
+        name=name,
+        description=description,
+        target=target,
+        metadata=metadata or {},
+    )
+
     frontmatter: dict = {
         "name": name,
         "description": description,
@@ -204,4 +208,11 @@ def generate_skill_md(
         sort_keys=False,
     ).strip()
 
-    return f"---\n{yaml_str}\n---\n\n{instructions}\n"
+    content = f"---\n{yaml_str}\n---\n\n{instructions}\n"
+
+    # Round-trip validate the generated markdown for safety
+    errors = validate_skill_content(content)
+    if errors:
+        raise ValueError(f"Generated SKILL.md is invalid: {'; '.join(errors)}")
+
+    return content

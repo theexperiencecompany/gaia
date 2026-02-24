@@ -10,7 +10,6 @@ from typing import Optional
 from app.agents.skills.github_discovery import (
     discover_skills_from_repo,
     get_skill_from_repo,
-    list_recommended_skills,
 )
 from app.agents.skills.installer import (
     install_from_github,
@@ -35,6 +34,16 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
 
 router = APIRouter(prefix="/skills", tags=["skills"])
+
+
+def _get_user_id(user: dict = Depends(get_current_user)) -> str:
+    user_id = user.get("user_id")
+    if not user_id:
+        raise HTTPException(
+            status_code=http_status.HTTP_401_UNAUTHORIZED,
+            detail="User not authenticated",
+        )
+    return user_id
 
 
 @router.get("/discover")
@@ -70,15 +79,6 @@ async def discover_skills_from_github(
         )
 
 
-@router.get("/recommended")
-async def get_recommended_skills():
-    """Get recommended skill repositories.
-
-    Returns a list of well-known skill collections that users can install from.
-    """
-    return await list_recommended_skills()
-
-
 @router.post(
     "/install/github",
     response_model=Skill,
@@ -95,7 +95,7 @@ async def install_skill_with_auto_discover(
     target: Optional[str] = Query(
         None, description="Override target (executor or subagent agent_name)"
     ),
-    user: dict = Depends(get_current_user),
+    user_id: str = Depends(_get_user_id),
 ):
     """Install a skill from a GitHub repository.
 
@@ -107,13 +107,6 @@ async def install_skill_with_auto_discover(
     - /api/v1/skills/install/github?repo_url=owner/repo&skill_path=skills/my-skill
     - /api/v1/skills/install/github?repo_url=owner/repo&skill_name=my-skill
     """
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=http_status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated",
-        )
-
     try:
         install_path = skill_path
 
@@ -145,13 +138,13 @@ async def install_skill_with_auto_discover(
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Error installing skill from GitHub: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to install skill from GitHub",
-        )
+        ) from e
 
 
 @router.post(
@@ -162,16 +155,9 @@ async def install_skill_with_auto_discover(
 @tiered_rate_limit("skill_operations")
 async def create_inline_skill_endpoint(
     request: SkillInlineCreateRequest,
-    user: dict = Depends(get_current_user),
+    user_id: str = Depends(_get_user_id),
 ):
     """Create a skill from inline components."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=http_status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated",
-        )
-
     try:
         installed = await install_from_inline(
             user_id=user_id,
@@ -185,31 +171,24 @@ async def create_inline_skill_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_400_BAD_REQUEST,
             detail=str(e),
-        )
+        ) from e
     except Exception as e:
         logger.error(f"Error creating inline skill: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create skill",
-        )
+        ) from e
 
 
 @router.get("", response_model=SkillListResponse)
 async def list_skills_endpoint(
-    user: dict = Depends(get_current_user),
+    user_id: str = Depends(_get_user_id),
     target: Optional[str] = Query(
         None, description="Filter by target (executor or subagent agent_name)"
     ),
     enabled_only: bool = Query(False, description="Only return enabled skills"),
 ):
     """List all installed skills for the current user."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=http_status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated",
-        )
-
     try:
         skills = await list_skills(
             user_id=user_id,
@@ -222,22 +201,15 @@ async def list_skills_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list skills",
-        )
+        ) from e
 
 
 @router.get("/{skill_id}", response_model=Skill)
 async def get_skill_endpoint(
     skill_id: str,
-    user: dict = Depends(get_current_user),
+    user_id: str = Depends(_get_user_id),
 ):
     """Get a specific installed skill by ID."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=http_status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated",
-        )
-
     try:
         skill = await get_skill(user_id, skill_id)
         if not skill:
@@ -253,22 +225,15 @@ async def get_skill_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve skill",
-        )
+        ) from e
 
 
 @router.patch("/{skill_id}/enable", response_model=dict)
 async def enable_skill_endpoint(
     skill_id: str,
-    user: dict = Depends(get_current_user),
+    user_id: str = Depends(_get_user_id),
 ):
     """Enable a disabled skill."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=http_status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated",
-        )
-
     try:
         success = await enable_skill(user_id, skill_id)
         return {"success": success, "skill_id": skill_id, "enabled": True}
@@ -277,22 +242,15 @@ async def enable_skill_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to enable skill",
-        )
+        ) from e
 
 
 @router.patch("/{skill_id}/disable", response_model=dict)
 async def disable_skill_endpoint(
     skill_id: str,
-    user: dict = Depends(get_current_user),
+    user_id: str = Depends(_get_user_id),
 ):
     """Disable a skill without uninstalling it."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=http_status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated",
-        )
-
     try:
         success = await disable_skill(user_id, skill_id)
         return {"success": success, "skill_id": skill_id, "enabled": False}
@@ -301,22 +259,15 @@ async def disable_skill_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to disable skill",
-        )
+        ) from e
 
 
 @router.delete("/{skill_id}", status_code=http_status.HTTP_204_NO_CONTENT)
 async def uninstall_skill_endpoint(
     skill_id: str,
-    user: dict = Depends(get_current_user),
+    user_id: str = Depends(_get_user_id),
 ):
     """Uninstall a skill and remove its files from VFS."""
-    user_id = user.get("user_id")
-    if not user_id:
-        raise HTTPException(
-            status_code=http_status.HTTP_401_UNAUTHORIZED,
-            detail="User not authenticated",
-        )
-
     try:
         success = await uninstall_skill_full(user_id, skill_id)
         if not success:
@@ -331,4 +282,4 @@ async def uninstall_skill_endpoint(
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to uninstall skill",
-        )
+        ) from e

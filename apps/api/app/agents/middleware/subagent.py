@@ -6,6 +6,7 @@ When a tool_registry + store are configured, subagents get `retrieve_tools`
 for dynamic discovery instead of binding all tools upfront.
 """
 
+import asyncio
 from collections.abc import Mapping
 from typing import Annotated, Any, Optional
 
@@ -122,6 +123,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         ]
                     }
                 )
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.error("Subagent execution failed: {}", str(e))
                 return Command(
@@ -275,6 +278,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                         content = (
                             "\n".join(result.get("response", [])) or "No tools found."
                         )
+                    except asyncio.CancelledError:
+                        raise
                     except Exception as e:
                         logger.error("Subagent retrieve_tools error: {}", str(e))
                         content = f"retrieve_tools error: {e}"
@@ -298,6 +303,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                                 content=str(result), tool_call_id=tc_id, name=name
                             )
                         )
+                    except asyncio.CancelledError:
+                        raise
                     except Exception as e:
                         messages.append(
                             ToolMessage(

@@ -10,9 +10,6 @@ Requires GITHUB_TOKEN for GitHub API access.
 Set EVAL_USER_ID if you want to run full integration tests (requires MongoDB/VFS).
 """
 
-import os
-from typing import cast
-
 import pytest
 from app.agents.skills.github_discovery import (
     discover_skills_from_repo,
@@ -22,18 +19,6 @@ from app.agents.skills.github_discovery import (
 pytestmark = pytest.mark.asyncio
 
 
-EVAL_USER_ID = os.environ.get("EVAL_USER_ID")
-
-
-@pytest.fixture
-def user_id() -> str:
-    """Get user ID from environment or skip test."""
-    if not EVAL_USER_ID:
-        pytest.skip("EVAL_USER_ID not set in environment")
-    return cast(str, EVAL_USER_ID)
-
-
-@pytest.mark.asyncio
 async def test_discover_skills_from_vercel_repo():
     """Test discovering skills from Vercel agent-skills repo."""
     skills = await discover_skills_from_repo("vercel-labs/agent-skills")
@@ -50,7 +35,6 @@ async def test_discover_skills_from_vercel_repo():
     assert all(s.description for s in skills), "All skills should have descriptions"
 
 
-@pytest.mark.asyncio
 async def test_get_skill_by_name():
     """Test getting a specific skill by name."""
     skill = await get_skill_from_repo(
@@ -64,7 +48,6 @@ async def test_get_skill_by_name():
     assert skill.name == "vercel-react-best-practices"
 
 
-@pytest.mark.asyncio
 async def test_skill_has_valid_metadata():
     """Test that discovered skills have valid metadata."""
     skills = await discover_skills_from_repo("vercel-labs/agent-skills")
@@ -81,7 +64,6 @@ async def test_skill_has_valid_metadata():
         assert skill.repo_url, "Skill should have a repo URL"
 
 
-@pytest.mark.asyncio
 async def test_discover_skills_from_gaia_repo():
     """Test discovering skills from a different repo."""
     skills = await discover_skills_from_repo("anthropic/claude-code-skills")

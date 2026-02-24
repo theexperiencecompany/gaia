@@ -13,21 +13,30 @@ Blocked commands (for safety):
 
 import argparse
 import asyncio
-import io
 import re
 import shlex
-import sys
 from dataclasses import dataclass
-from typing import Optional
+from typing import NoReturn, Optional
 
 from app.config.loggers import app_logger as logger
 from app.services.vfs.path_resolver import get_agent_root
+from app.utils.command_parsing import extract_output_redirect
 
 
 class CommandParseError(Exception):
     """Raised when command parsing fails."""
 
     pass
+
+
+class _VFSArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> NoReturn:  # type: ignore[override]
+        raise CommandParseError(message)
+
+    def exit(self, status: int = 0, message: str | None = None) -> NoReturn:  # type: ignore[override]
+        if message:
+            raise CommandParseError(message.strip())
+        raise CommandParseError("Invalid arguments")
 
 
 @dataclass
@@ -63,6 +72,7 @@ class VFSCommandParser:
     MAX_LINE_LENGTH = 200
     MAX_LS_ITEMS = 100
     DEFAULT_TREE_DEPTH = 3
+    MAX_COMMAND_LENGTH = 8192
 
     def __init__(self):
         self._vfs = None
@@ -70,12 +80,10 @@ class VFSCommandParser:
 
     def _create_parsers(self) -> dict[str, argparse.ArgumentParser]:
         """Create argparse parsers for each command."""
-        parsers = {}
+        parsers: dict[str, argparse.ArgumentParser] = {}
 
         # ls parser
-        ls_parser = argparse.ArgumentParser(
-            prog="ls", add_help=False, exit_on_error=False
-        )
+        ls_parser = _VFSArgumentParser(prog="ls", add_help=False, exit_on_error=False)
         ls_parser.add_argument("path", nargs="?", default=".")
         ls_parser.add_argument("-l", "--long", action="store_true", help="Long format")
         ls_parser.add_argument(
@@ -84,7 +92,7 @@ class VFSCommandParser:
         parsers["ls"] = ls_parser
 
         # tree parser
-        tree_parser = argparse.ArgumentParser(
+        tree_parser = _VFSArgumentParser(
             prog="tree", add_help=False, exit_on_error=False
         )
         tree_parser.add_argument("path", nargs="?", default=".")
@@ -92,7 +100,7 @@ class VFSCommandParser:
         parsers["tree"] = tree_parser
 
         # find parser
-        find_parser = argparse.ArgumentParser(
+        find_parser = _VFSArgumentParser(
             prog="find", add_help=False, exit_on_error=False
         )
         find_parser.add_argument("path", nargs="?", default=".")
@@ -106,7 +114,7 @@ class VFSCommandParser:
         parsers["find"] = find_parser
 
         # grep parser
-        grep_parser = argparse.ArgumentParser(
+        grep_parser = _VFSArgumentParser(
             prog="grep", add_help=False, exit_on_error=False
         )
         grep_parser.add_argument("pattern", help="Search pattern")
@@ -136,9 +144,7 @@ class VFSCommandParser:
         parsers["grep"] = grep_parser
 
         # cat parser
-        cat_parser = argparse.ArgumentParser(
-            prog="cat", add_help=False, exit_on_error=False
-        )
+        cat_parser = _VFSArgumentParser(prog="cat", add_help=False, exit_on_error=False)
         cat_parser.add_argument("path", help="File to display")
         cat_parser.add_argument(
             "-n", "--number", action="store_true", help="Number lines"
@@ -146,20 +152,18 @@ class VFSCommandParser:
         parsers["cat"] = cat_parser
 
         # pwd parser
-        pwd_parser = argparse.ArgumentParser(
-            prog="pwd", add_help=False, exit_on_error=False
-        )
+        pwd_parser = _VFSArgumentParser(prog="pwd", add_help=False, exit_on_error=False)
         parsers["pwd"] = pwd_parser
 
         # stat parser
-        stat_parser = argparse.ArgumentParser(
+        stat_parser = _VFSArgumentParser(
             prog="stat", add_help=False, exit_on_error=False
         )
         stat_parser.add_argument("path", help="File to stat")
         parsers["stat"] = stat_parser
 
         # echo parser - simple, we handle redirect separately
-        echo_parser = argparse.ArgumentParser(
+        echo_parser = _VFSArgumentParser(
             prog="echo", add_help=False, exit_on_error=False
         )
         echo_parser.add_argument("text", nargs="*", help="Text to echo")
@@ -181,39 +185,12 @@ class VFSCommandParser:
 
         Returns (command_without_redirect, redirect_info or None)
         """
-        # Handle different redirect patterns:
-        # 1. > "path with spaces"
-        # 2. > 'path with spaces'
-        # 3. > path_no_spaces
+        command_without_redirect, redirect = extract_output_redirect(command_str)
+        if not redirect:
+            return command_str, None
 
-        # First try: quoted paths with spaces
-        pattern_quoted = r'\s*(>>|>)\s*"([^"]+)"\s*$'
-        match = re.search(pattern_quoted, command_str)
-        if match:
-            mode = match.group(1)
-            filepath = match.group(2)
-            command_without_redirect = command_str[: match.start()].strip()
-            return command_without_redirect, RedirectInfo(mode=mode, filepath=filepath)
-
-        # Second try: single-quoted paths with spaces
-        pattern_single_quoted = r"\s*(>>|>)\s*'([^']+)'\s*$"
-        match = re.search(pattern_single_quoted, command_str)
-        if match:
-            mode = match.group(1)
-            filepath = match.group(2)
-            command_without_redirect = command_str[: match.start()].strip()
-            return command_without_redirect, RedirectInfo(mode=mode, filepath=filepath)
-
-        # Third try: unquoted path (no spaces)
-        pattern_unquoted = r'\s*(>>|>)\s*([^\s"\']+)\s*$'
-        match = re.search(pattern_unquoted, command_str)
-        if match:
-            mode = match.group(1)
-            filepath = match.group(2)
-            command_without_redirect = command_str[: match.start()].strip()
-            return command_without_redirect, RedirectInfo(mode=mode, filepath=filepath)
-
-        return command_str, None
+        mode, filepath = redirect
+        return command_without_redirect, RedirectInfo(mode=mode, filepath=filepath)
 
     def _tokenize(self, command_str: str) -> list[str]:
         """
@@ -234,6 +211,9 @@ class VFSCommandParser:
 
         Returns (command_name, parsed_args, redirect_info)
         """
+        if len(command_str) > self.MAX_COMMAND_LENGTH:
+            raise CommandParseError("Command too long")
+
         # Extract redirect first
         command_str, redirect = self._extract_redirect(command_str)
 
@@ -262,22 +242,9 @@ class VFSCommandParser:
 
         # Parse arguments
         try:
-            # Capture stderr to get error messages
-            old_stderr = sys.stderr
-            sys.stderr = io.StringIO()
-            try:
-                parsed = parser.parse_args(args)
-            finally:
-                error_output = sys.stderr.getvalue()
-                sys.stderr = old_stderr
-
-            if error_output:
-                # There was an error message
-                raise CommandParseError(error_output.strip())
-
-        except SystemExit:
-            # argparse calls sys.exit on error
-            raise CommandParseError(f"Invalid arguments for '{cmd}'")
+            parsed = parser.parse_args(args)
+        except SystemExit as e:
+            raise CommandParseError(f"Invalid arguments for '{cmd}': {e}")
         except argparse.ArgumentError as e:
             raise CommandParseError(f"Argument error: {e}")
 

@@ -155,23 +155,23 @@ def gmail_compose_before_hook(
 
         writer = get_stream_writer()
 
-        body = arguments.get("body", "")
+        email_body = arguments.get("body", "")
         is_html = arguments.get("is_html", False)
 
         # Detect and convert markdown content
-        if body and is_markdown_content(body):
+        if email_body and is_markdown_content(email_body):
             logger.info(
                 f"Markdown detected in email body for {tool}, converting to {'HTML' if is_html else 'plain text'}"
             )
 
             if is_html:
                 # Convert markdown to HTML
-                converted_body = convert_markdown_to_html(body)
+                converted_body = convert_markdown_to_html(email_body)
                 arguments["body"] = converted_body
                 logger.debug(f"Converted markdown to HTML for {tool}")
             else:
                 # Convert markdown to plain text
-                converted_body = convert_markdown_to_plain_text(body)
+                converted_body = convert_markdown_to_plain_text(email_body)
                 arguments["body"] = converted_body
                 logger.debug(f"Converted markdown to plain text for {tool}")
 

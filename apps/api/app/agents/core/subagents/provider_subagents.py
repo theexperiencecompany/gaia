@@ -54,11 +54,12 @@ async def create_subagent(integration_id: str):
 
     # Handle MCP-managed integrations (like DeepWiki)
     elif integration.managed_by == "mcp" and integration.mcp_config:
+        mcp_config = integration.mcp_config
         category_name = integration.id
 
         # Skip auth-required MCPs here - they need user-specific tokens
         # loaded via create_subagent_for_user() with actual user_id
-        if integration.mcp_config.requires_auth:
+        if mcp_config.requires_auth:
             raise ValueError(
                 f"{integration_id} requires authentication - use create_subagent_for_user"
             )
@@ -135,7 +136,8 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
         logger.error(f"{integration_id} integration or subagent config not found")
         return None
 
-    if not (integration.managed_by == "mcp" and integration.mcp_config):
+    mcp_config = integration.mcp_config
+    if not (integration.managed_by == "mcp" and mcp_config):
         logger.error(f"{integration_id} is not an MCP integration")
         return None
 

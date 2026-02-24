@@ -10,6 +10,7 @@ Based on Vercel skills CLI patterns (https://github.com/vercel-labs/skills)
 """
 
 import asyncio
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 import httpx
@@ -28,24 +29,17 @@ from app.agents.skills.utils import (
 from app.config.loggers import app_logger as logger
 
 
+@dataclass(frozen=True, slots=True)
 class DiscoveredSkill:
     """A skill found in a remote repository."""
 
-    def __init__(
-        self,
-        name: str,
-        description: str,
-        path: str,
-        repo_url: str,
-        subagent_id: str = "global",
-    ):
-        self.name = name
-        self.description = description
-        self.path = path
-        self.repo_url = repo_url
-        self.subagent_id = subagent_id
+    name: str
+    description: str
+    path: str
+    repo_url: str
+    subagent_id: str = "global"
 
-    def to_dict(self) -> dict:
+    def to_dict(self) -> dict[str, str]:
         return {
             "name": self.name,
             "description": self.description,
@@ -297,18 +291,3 @@ async def get_skill_from_repo(
 
     logger.info(f"[skills] Skill '{skill_name}' not found in {owner}/{repo}")
     return None
-
-
-async def list_recommended_skills() -> List[dict]:
-    """List recommended skill repositories from the ecosystem."""
-    recommended = [
-        {
-            "name": "Vercel Agent Skills",
-            "repo": "vercel-labs/agent-skills",
-            "description": "Official Vercel skill templates for common tasks",
-            "skill_count_estimate": 50,
-            "url": "https://github.com/vercel-labs/agent-skills",
-        },
-    ]
-
-    return recommended

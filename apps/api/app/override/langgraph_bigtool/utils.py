@@ -37,14 +37,7 @@ class RetrieveToolsResult(TypedDict):
 
 def dedupe_str_list(items: Sequence[str]) -> list[str]:
     """Deduplicate strings while preserving first-seen order."""
-    seen: set[str] = set()
-    deduped: list[str] = []
-    for item in items:
-        if item in seen:
-            continue
-        seen.add(item)
-        deduped.append(item)
-    return deduped
+    return list(dict.fromkeys(items))
 
 
 def _tool_binding_key(tool: BaseTool) -> tuple[str, str | int]:

@@ -63,8 +63,9 @@ class MongoVFS:
     # Files smaller than this are stored inline
     INLINE_SIZE_LIMIT = 1_048_576  # 1MB
 
-    def __init__(self):
+    def __init__(self, *, allow_system_write: bool = False):
         self._gridfs_bucket: Optional[AsyncIOMotorGridFSBucket] = None
+        self._allow_system_write = allow_system_write
 
     async def _get_gridfs(self) -> AsyncIOMotorGridFSBucket:
         """Lazy-load GridFS bucket."""
@@ -103,7 +104,11 @@ class MongoVFS:
         return normalized
 
     def _validate_write_access(
-        self, path: str, original_path: str | None = None, allow_system: bool = False
+        self,
+        path: str,
+        user_id: str,
+        original_path: str | None = None,
+        allow_system: bool = False,
     ) -> None:
         """
         Validate that a path is writable (not system read-only).
@@ -118,6 +123,19 @@ class MongoVFS:
         """
         # Check instance flag first (set by seeding script)
         if self._allow_system_write:
+            original_normalized = (
+                normalize_path(original_path) if original_path else None
+            )
+            normalized = normalize_path(path)
+            if user_id != "system" and (
+                (original_normalized and original_normalized.startswith("/system/"))
+                or normalized.startswith("/system/")
+            ):
+                raise VFSAccessError(
+                    original_normalized or normalized,
+                    user_id,
+                    "System paths are read-only. Write operations not allowed.",
+                )
             return
 
         if allow_system:
@@ -191,8 +209,6 @@ class MongoVFS:
 
     # ==================== Write Operations ====================
 
-    _allow_system_write: bool = False
-
     async def write(
         self,
         path: str,
@@ -222,7 +238,7 @@ class MongoVFS:
         # Auto-prefix and validate
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
-        self._validate_write_access(path, original_path)
+        self._validate_write_access(path, user_id, original_path)
 
         parent = get_parent_path(path)
         name = get_filename(path)
@@ -316,7 +332,7 @@ class MongoVFS:
         original_path = path
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
-        self._validate_write_access(path, original_path)
+        self._validate_write_access(path, user_id, original_path)
 
         parent = get_parent_path(path)
         name = get_filename(path)
@@ -373,7 +389,7 @@ class MongoVFS:
         path = self._validate_access(path, user_id)
 
         if content:
-            self._validate_write_access(path, original_path)
+            self._validate_write_access(path, user_id, original_path)
 
         query = self._build_query(path, user_id)
         node = await vfs_nodes_collection.find_one(query)
@@ -717,7 +733,7 @@ class MongoVFS:
         original_path = path
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
-        self._validate_write_access(path, original_path)
+        self._validate_write_access(path, user_id, original_path)
 
         # Query MUST include user_id for security
         node = await vfs_nodes_collection.find_one({"path": path, "user_id": user_id})
@@ -783,8 +799,8 @@ class MongoVFS:
         dest = self._auto_prefix_path(dest, user_id)
         source = self._validate_access(source, user_id)
         dest = self._validate_access(dest, user_id)
-        self._validate_write_access(source, original_source)
-        self._validate_write_access(dest, original_dest)
+        self._validate_write_access(source, user_id, original_source)
+        self._validate_write_access(dest, user_id, original_dest)
 
         # Query MUST include user_id for security
         node = await vfs_nodes_collection.find_one({"path": source, "user_id": user_id})
@@ -855,7 +871,7 @@ class MongoVFS:
         dest = self._auto_prefix_path(dest, user_id)
         source = self._validate_access(source, user_id)
         dest = self._validate_access(dest, user_id)
-        self._validate_write_access(dest, original_dest)
+        self._validate_write_access(dest, user_id, original_dest)
 
         # Query MUST include user_id for security
         node = await vfs_nodes_collection.find_one({"path": source, "user_id": user_id})

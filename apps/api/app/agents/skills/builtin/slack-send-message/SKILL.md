@@ -74,7 +74,7 @@ Based on what you've read:
 - Reference relevant recent discussion
 - Match the channel's communication style
 - Keep messages concise but complete
-- Use Slack formatting: *bold*, _italic_, `code`, ```code blocks```, >quotes
+- Use Slack formatting: *bold*, `_italic_`, `code`, triple-backtick code blocks, >quotes
 
 ### Step 4: Send
 

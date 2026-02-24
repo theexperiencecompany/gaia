@@ -7,6 +7,7 @@ Provides:
 - Direct workflow creation logic (can_create_directly, create_workflow_directly)
 """
 
+import asyncio
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -17,8 +18,27 @@ from app.models.workflow_models import (
     TriggerType,
 )
 from app.services.workflow import WorkflowService
+from app.services.workflow.context_extractor import ExtractedContext
 from app.services.workflow.subagent_output import FinalizedOutput
 from langchain_core.runnables.config import RunnableConfig
+from langgraph.types import StreamWriter
+
+
+class WorkflowConfigError(Exception):
+    pass
+
+
+_TRIGGER_TYPE_MAP: dict[str, TriggerType] = {
+    "manual": TriggerType.MANUAL,
+    "scheduled": TriggerType.SCHEDULE,
+    "integration": TriggerType.INTEGRATION,
+}
+
+_FRONTEND_TRIGGER_TYPE_MAP: dict[str, str] = {
+    "manual": "manual",
+    "schedule": "scheduled",
+    "integration": "integration",
+}
 
 
 def error_response(error_code: str, message: str) -> dict:
@@ -38,7 +58,7 @@ def get_user_id(config: RunnableConfig) -> str:
     """Extract user_id from config. Raises error if missing."""
     user_id = config.get("configurable", {}).get("user_id")
     if not user_id:
-        raise ValueError("User authentication required")
+        raise WorkflowConfigError("User authentication required")
     return user_id
 
 
@@ -93,7 +113,7 @@ def can_create_directly(draft: FinalizedOutput) -> bool:
 async def create_workflow_directly(
     draft: FinalizedOutput,
     user_id: str,
-    writer,
+    writer: StreamWriter,
     user_timezone: str = "UTC",
 ) -> Optional[dict]:
     """
@@ -103,14 +123,7 @@ async def create_workflow_directly(
     (caller should fall back to streaming draft).
     """
     try:
-        # Map frontend trigger_type to backend TriggerType enum
-        # Frontend uses "scheduled", backend uses TriggerType.SCHEDULE
-        trigger_type_map = {
-            "manual": TriggerType.MANUAL,
-            "scheduled": TriggerType.SCHEDULE,
-            "integration": TriggerType.INTEGRATION,
-        }
-        backend_trigger_type = trigger_type_map.get(
+        backend_trigger_type = _TRIGGER_TYPE_MAP.get(
             draft.trigger_type, TriggerType.MANUAL
         )
 
@@ -140,20 +153,12 @@ async def create_workflow_directly(
             user_timezone=user_timezone,
         )
 
-        # Stream workflow_created event with full workflow data
-        # Map backend trigger type back to frontend format
-        frontend_trigger_type_map = {
-            "manual": "manual",
-            "schedule": "scheduled",
-            "integration": "integration",
-        }
-
         workflow_data = {
             "id": workflow.id,
             "title": workflow.title,
             "description": workflow.description,
             "trigger_config": {
-                "type": frontend_trigger_type_map.get(
+                "type": _FRONTEND_TRIGGER_TYPE_MAP.get(
                     workflow.trigger_config.type, workflow.trigger_config.type
                 ),
                 "cron_expression": workflow.trigger_config.cron_expression,
@@ -173,6 +178,8 @@ async def create_workflow_directly(
             f"Workflow '{workflow.title}' created and activated.",
         )
 
+    except asyncio.CancelledError:
+        raise
     except Exception as e:
         logger.warning(f"[create_workflow] Direct creation failed: {e}")
         return None  # Signal to caller to fall back to draft
@@ -192,7 +199,9 @@ Your job:
 Remember to include a JSON block in your response."""
 
 
-def build_from_conversation_task(context, user_request: str | None = None) -> str:
+def build_from_conversation_task(
+    context: ExtractedContext, user_request: str | None = None
+) -> str:
     """Build task description for workflow extracted from conversation."""
     steps_text = "\n".join(
         f"- {step.get('title', step)}" if isinstance(step, dict) else f"- {step}"

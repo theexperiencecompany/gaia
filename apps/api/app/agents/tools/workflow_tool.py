@@ -142,11 +142,13 @@ async def create_workflow(
 
     Just pass user_request and mode. The workflow assistant handles everything else.
     """
-    from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
-
     writer = get_stream_writer()
 
     try:
+        # Import here to avoid a circular import
+
+        from app.services.workflow.workflow_subagent import WorkflowSubagentRunner
+
         user_id = get_user_id(config)
         thread_id = get_thread_id(config) or ""
         user_name = config.get("configurable", {}).get("user_name")

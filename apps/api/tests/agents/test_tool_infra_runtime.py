@@ -8,6 +8,7 @@ import pytest
 from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools.core.registry import ToolRegistry
+from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.tool_runtime_config import (
     ToolRuntimeConfig,
     build_child_tool_runtime_config,
@@ -16,7 +17,6 @@ from app.agents.tools.core.tool_runtime_config import (
     build_provider_parent_tool_runtime_config,
 )
 from app.override.langgraph_bigtool.create_agent import create_agent
-from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from langchain_core.messages import AIMessage, HumanMessage
 from langchain_core.tools import BaseTool, tool
 
@@ -575,6 +575,7 @@ async def test_retrieval_query_mode_includes_subagents_when_enabled_and_filters_
 
 
 @pytest.mark.asyncio
+@pytest.mark.integration
 async def test_create_agent_filters_subagent_from_direct_binding():
     fake_llm = _FakeLLM()
     builder = create_agent(

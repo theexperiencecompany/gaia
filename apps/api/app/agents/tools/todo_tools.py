@@ -40,6 +40,8 @@ from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from typing_extensions import TypedDict
 
+TODO_TOOL_NAMES: set[str] = {"plan_tasks", "mark_task", "add_task"}
+
 
 class Todo(TypedDict):
     """A single todo item."""
@@ -146,6 +148,8 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
                     ToolMessage(
                         content=f"Created plan with {len(new_todos)} tasks. Starting: {first_task}",
                         tool_call_id=tool_call_id,
+                        name="plan_tasks",
+                        additional_kwargs={"todo_tool": True, "todo_source": source},
                     )
                 ],
             }
@@ -176,6 +180,8 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
                     ToolMessage(
                         content=f"Updated: {summary}",
                         tool_call_id=tool_call_id,
+                        name="mark_task",
+                        additional_kwargs={"todo_tool": True, "todo_source": source},
                     )
                 ],
             }
@@ -206,6 +212,8 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
                     ToolMessage(
                         content=f"Added task: {content}",
                         tool_call_id=tool_call_id,
+                        name="add_task",
+                        additional_kwargs={"todo_tool": True, "todo_source": source},
                     )
                 ],
             }

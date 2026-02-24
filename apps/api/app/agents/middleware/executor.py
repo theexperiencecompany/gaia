@@ -11,6 +11,7 @@ It handles executing middleware hooks at appropriate points:
 - wrap_tool_call: Around each tool execution
 """
 
+import asyncio
 import inspect
 from typing import Any, Awaitable, Callable, Optional
 
@@ -157,6 +158,8 @@ class MiddlewareExecutor:
                 if result is not None:
                     current_state.update(result)
 
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.warning(
                     f"Middleware {mw.__class__.__name__}.before_model failed: {e}"
@@ -204,6 +207,8 @@ class MiddlewareExecutor:
                 if result is not None:
                     current_state.update(result)
 
+            except asyncio.CancelledError:
+                raise
             except Exception as e:
                 logger.warning(
                     f"Middleware {mw.__class__.__name__}.after_model failed: {e}"
@@ -288,6 +293,8 @@ class MiddlewareExecutor:
                 return message
 
             return AIMessage(content=str(getattr(message, "content", message)))
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error("Middleware wrap_model_call chain failed: {}", str(e))
             # Fallback to direct invocation
@@ -356,6 +363,8 @@ class MiddlewareExecutor:
         # Execute the chain
         try:
             return await current_handler(request)
+        except asyncio.CancelledError:
+            raise
         except Exception as e:
             logger.error(
                 "Middleware wrap_tool_call chain failed for {}: {}",

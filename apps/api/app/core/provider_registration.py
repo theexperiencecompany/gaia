@@ -54,7 +54,7 @@ from app.services.composio.composio_service import init_composio_service
 from app.services.mcp.mcp_client_pool import init_mcp_client_pool
 from app.services.startup_validation import validate_startup_requirements
 from app.services.tools.tools_warmup import warmup_tools_cache
-from app.services.vfs import init_vfs
+from app.services.vfs import get_vfs, init_vfs
 from pydantic import PydanticDeprecatedSince20
 
 
@@ -114,6 +114,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
         (init_mongodb_async, "mongodb"),
         (init_reminder_service, "reminder_service"),
         (init_workflow_service, "workflow_service"),
+        (get_vfs, "vfs"),
     ]
 
     # Context-specific services: WebSocket only needed for web interface

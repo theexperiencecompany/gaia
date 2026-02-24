@@ -886,6 +886,7 @@ async def get_index_status() -> Dict[str, List[str]]:
             "reminders": reminders_collection,
             "workflows": workflows_collection,
             "vfs_nodes": vfs_nodes_collection,
+            "skills": skills_collection,
         }
 
         # Get all collection indexes concurrently

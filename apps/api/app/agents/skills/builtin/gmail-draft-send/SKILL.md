@@ -77,7 +77,7 @@ Best regards
 - "Does this look good?"
 
 ### Step 4: Send Only After Approval
-Use `GMAIL_SEND_MESSAGE` with the draft_id **only after** user explicitly confirms.
+Use `GMAIL_SEND_EMAIL` with the draft_id **only after** user explicitly confirms.
 
 ### Step 5: Handle Feedback
 If user wants changes:

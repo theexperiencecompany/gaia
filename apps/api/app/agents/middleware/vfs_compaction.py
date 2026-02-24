@@ -210,8 +210,12 @@ class VFSCompactionMiddleware(AgentMiddleware):
         runtime = request.runtime
         config = getattr(runtime, "config", {}) or {}
         configurable = config.get("configurable", {})
-        user_id = configurable.get("user_id", "unknown")
-        conversation_id = configurable.get("thread_id", "unknown")
+        user_id = configurable.get("user_id")
+        conversation_id = configurable.get("thread_id")
+
+        if not user_id or not conversation_id:
+            logger.warning("Skipping VFS compaction due to missing user_id/thread_id")
+            return result
 
         # Generate storage path
         content_hash = hashlib.md5(

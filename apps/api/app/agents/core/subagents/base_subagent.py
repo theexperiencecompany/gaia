@@ -112,6 +112,11 @@ class SubAgentFactory:
             subagent_tool_space=tool_space,
         )
 
+        subagent_mw = next(
+            (mw for mw in middleware if isinstance(mw, SubagentMiddleware)),
+            None,
+        )
+
         # Create todo tools and register them in the scoped tool registry
         todo_tools: list[BaseTool] = create_todo_tools(source=provider)
         todo_hook = create_todo_pre_model_hook(source=provider)
@@ -120,10 +125,8 @@ class SubAgentFactory:
             scoped_tool_dict[todo_tool.name] = todo_tool
             todo_tool_names.append(todo_tool.name)
 
-        for mw in middleware:
-            if isinstance(mw, SubagentMiddleware):
-                mw.set_store(store)
-                break
+        if subagent_mw is not None:
+            subagent_mw.set_store(store)
 
         common_kwargs = {
             "llm": llm,
@@ -177,14 +180,12 @@ class SubAgentFactory:
             if name in scoped_tool_dict
         ]
 
-        for mw in middleware:
-            if isinstance(mw, SubagentMiddleware):
-                mw.set_tools(
-                    registry=full_tool_dict,
-                    tools=spawn_seed_tools,
-                    tool_runtime_config=child_tool_runtime,
-                )
-                break
+        if subagent_mw is not None:
+            subagent_mw.set_tools(
+                registry=full_tool_dict,
+                tools=spawn_seed_tools,
+                tool_runtime_config=child_tool_runtime,
+            )
 
         builder = create_agent(**common_kwargs)  # type: ignore[arg-type]
 

@@ -73,7 +73,6 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         self.vfs_enabled = vfs_enabled
         self.excluded_tools = excluded_tools or set()
         self._vfs = None  # Lazy loaded
-        self._last_archive_path: str | None = None
 
     async def _get_vfs(self):
         """Lazy load VFS."""
@@ -91,10 +90,11 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
 
         Archives to VFS if summarization will occur, then delegates to parent.
         """
+        archive_path: str | None = None
         # Check if we should archive (if parent will summarize)
         if self.vfs_enabled and self._should_trigger_summarization(state):
             try:
-                await self._archive_to_vfs(state, runtime)
+                archive_path = await self._archive_to_vfs(state, runtime)
             except Exception as e:
                 logger.error(f"VFS archiving failed: {e}")
 
@@ -102,9 +102,8 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         result = await super().abefore_model(state, runtime)
 
         # If summarization occurred and we have an archive path, inject it
-        if result is not None and self._last_archive_path:
-            result = self._inject_archive_path(result)
-            self._last_archive_path = None
+        if result is not None and archive_path:
+            result = self._inject_archive_path(result, archive_path)
 
         return result
 
@@ -172,7 +171,6 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         logger.info(
             f"Archived {len(messages)} messages to {archive_path} before summarization"
         )
-        self._last_archive_path = archive_path
         return archive_path
 
     def _serialize_messages(self, messages: list[AnyMessage]) -> list[dict[str, Any]]:
@@ -185,14 +183,15 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
             }
 
             # Handle tool calls
-            if hasattr(msg, "tool_calls") and msg.tool_calls:
+            tool_calls = getattr(msg, "tool_calls", None)
+            if tool_calls:
                 entry["tool_calls"] = [
                     {
                         "id": tc.get("id"),
                         "name": tc.get("name"),
                         "args": tc.get("args"),
                     }
-                    for tc in msg.tool_calls
+                    for tc in tool_calls
                 ]
 
             # Handle tool messages
@@ -204,11 +203,10 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
 
         return history
 
-    def _inject_archive_path(self, result: dict[str, Any]) -> dict[str, Any]:
+    def _inject_archive_path(
+        self, result: dict[str, Any], archive_path: str
+    ) -> dict[str, Any]:
         """Inject archive path reference into the summarized messages."""
-        if not self._last_archive_path:
-            return result
-
         messages = result.get("messages", [])
         if not messages:
             return result
@@ -220,10 +218,8 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
                 if additional_kwargs.get("is_summary"):
                     # Add archive path to content
                     if hasattr(msg, "content") and isinstance(msg.content, str):
-                        msg.content += (
-                            f"\n\n[Full history archived at: {self._last_archive_path}]"
-                        )
-                    additional_kwargs["archive_path"] = self._last_archive_path
+                        msg.content += f"\n\n[Full history archived at: {archive_path}]"
+                    additional_kwargs["archive_path"] = archive_path
                     break
 
         return result
