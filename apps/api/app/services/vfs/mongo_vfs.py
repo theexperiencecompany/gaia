@@ -298,6 +298,14 @@ class MongoVFS:
                         f"VFS: Failed to delete GridFS object {existing['gridfs_id']} for {path} (user={user_id}): {e!s}"
                     )
 
+        existing_node = await vfs_nodes_collection.find_one(
+            {"path": path, "user_id": user_id}
+        )
+        if existing_node and existing_node.get("node_type") != VFSNodeType.FILE.value:
+            raise ValueError(
+                f"Cannot write file to {path}: path already exists as a folder."
+            )
+
         # Upsert the file node - MUST include user_id in query for security
         await vfs_nodes_collection.update_one(
             {"path": path, "user_id": user_id},
@@ -350,6 +358,14 @@ class MongoVFS:
 
         if parent:
             await self._ensure_directories(parent, user_id)
+
+        existing_node = await vfs_nodes_collection.find_one(
+            {"path": path, "user_id": user_id}
+        )
+        if existing_node and existing_node.get("node_type") != VFSNodeType.FOLDER.value:
+            raise ValueError(
+                f"Cannot create directory {path}: path already exists as a file."
+            )
 
         await vfs_nodes_collection.update_one(
             {"path": path, "user_id": user_id},
@@ -930,6 +946,17 @@ class MongoVFS:
 
         for part in parts:
             current += "/" + part
+
+            existing_node = await vfs_nodes_collection.find_one(
+                {"path": current, "user_id": user_id}
+            )
+            if (
+                existing_node
+                and existing_node.get("node_type") != VFSNodeType.FOLDER.value
+            ):
+                raise ValueError(
+                    f"Cannot ensure directory {current}: path already exists as a file."
+                )
 
             now = datetime.now(timezone.utc)
             await vfs_nodes_collection.update_one(

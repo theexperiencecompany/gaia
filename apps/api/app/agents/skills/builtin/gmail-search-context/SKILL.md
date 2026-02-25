@@ -43,8 +43,7 @@ Gmail supports powerful search operators:
 ```
 GMAIL_FETCH_EMAILS(
   query="from:sarah@company.com subject:Q1 after:2025/01/01",
-  max_results=20,
-  include_payload=true
+  max_results=20
 )
 ```
 

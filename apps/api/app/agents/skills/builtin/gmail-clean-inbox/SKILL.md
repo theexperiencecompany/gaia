@@ -1,6 +1,6 @@
 ---
 name: gmail-clean-inbox
-description: Intelligently clean Gmail inbox — audit labels, identify patterns, batch categorize, archive old messages, present cleanup summary
+description: Intelligently clean Gmail inbox - audit labels, identify patterns, batch categorize, archive old messages, present cleanup summary
 target: gmail_agent
 ---
 
@@ -80,10 +80,11 @@ Inbox Audit:
 
 **Only after user confirms**, batch process:
 
-- **Archive**: Use `GMAIL_ARCHIVE_EMAIL` for moving messages out of the inbox.
-- **Mark as Read**: Use `GMAIL_MARK_AS_READ` for messages that should be kept but don't need attention.
-- **Delete**: Use `GMAIL_MOVE_TO_TRASH` for actual cleanup (e.g., spam, expired promotions).
-- **Labeling**: Use `GMAIL_BATCH_MODIFY_GMAIL_MESSAGES` to apply organizational labels.
+- **Audit labels first**: Use `GMAIL_LIST_LABELS` to find the correct label IDs (especially for custom labels).
+- **Prefer batch operations**: Use `GMAIL_BATCH_MODIFY_MESSAGES` whenever you are modifying many emails at once (archive, mark read/unread, apply/remove labels). Chunk large operations (up to 1,000 message IDs per call).
+- **Single-message label changes**: Use `GMAIL_ADD_LABEL_TO_EMAIL` when you only need to adjust one message.
+- **Thread-wide label changes**: Use `GMAIL_MODIFY_THREAD_LABELS` to label/unlabel an entire thread.
+- **Delete carefully**: Prefer `GMAIL_MOVE_TO_TRASH` for reversible cleanup; use `GMAIL_BATCH_DELETE_MESSAGES` only for permanent deletion and only with explicit user confirmation.
 
 ## Step 5: Summary Report
 
