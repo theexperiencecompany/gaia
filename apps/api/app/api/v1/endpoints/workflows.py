@@ -239,7 +239,6 @@ async def deactivate_workflow(
 @router.post(
     "/workflows/{workflow_id}/regenerate-steps", response_model=WorkflowResponse
 )
-@tiered_rate_limit("workflow_operations")
 async def regenerate_workflow_steps(
     workflow_id: str,
     request: RegenerateStepsRequest,
@@ -481,20 +480,19 @@ async def get_public_workflow(request: Request, workflow_id: str):
 @router.post(
     "/workflows/generate-prompt", response_model=GenerateWorkflowPromptResponse
 )
-@tiered_rate_limit("workflow_operations")
 async def generate_workflow_prompt_endpoint(
     request: GenerateWorkflowPromptRequest,
     user: dict = Depends(get_current_user),
 ) -> GenerateWorkflowPromptResponse:
     """Generate or improve workflow instructions using AI."""
     try:
-        prompt = await WorkflowGenerationService.generate_workflow_prompt(
+        result = await WorkflowGenerationService.generate_workflow_prompt(
             title=request.title,
             description=request.description,
             trigger_config=request.trigger_config,
             existing_prompt=request.existing_prompt,
         )
-        return GenerateWorkflowPromptResponse(prompt=prompt)
+        return GenerateWorkflowPromptResponse(**result)
     except Exception as e:
         logger.error(f"Error generating workflow prompt: {e}")
         raise HTTPException(

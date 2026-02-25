@@ -7,21 +7,27 @@ import {
   type Control,
   Controller,
   type FieldErrors,
+  type UseFormSetValue,
   useWatch,
 } from "react-hook-form";
 import { toast } from "@/lib/toast";
 import { workflowApi } from "../../api/workflowApi";
-import type { WorkflowFormData } from "../../schemas/workflowFormSchema";
+import {
+  getBrowserTimezone,
+  type WorkflowFormData,
+} from "../../schemas/workflowFormSchema";
 
 interface WorkflowDescriptionFieldProps {
   control: Control<WorkflowFormData>;
   errors: FieldErrors<WorkflowFormData>;
+  setValue?: UseFormSetValue<WorkflowFormData>;
   mode?: "create" | "edit";
 }
 
 export default function WorkflowDescriptionField({
   control,
   errors,
+  setValue,
   mode = "create",
 }: WorkflowDescriptionFieldProps) {
   const [isGenerating, setIsGenerating] = useState(false);
@@ -33,23 +39,53 @@ export default function WorkflowDescriptionField({
 
   const hasExistingPrompt = !!currentPrompt?.trim();
 
-  const tooltipText = !title?.trim()
-    ? "Add a title first"
+  const tooltipText = isGenerating
+    ? "Generating..."
     : hasExistingPrompt
-      ? "Improve your instructions with AI"
-      : "Generate instructions from your title & description";
+      ? "Improve instructions and triggers with AI"
+      : "Generate instructions and triggers with AI";
 
   const handleGenerate = async (onChange: (val: string) => void) => {
-    if (!title?.trim() || isGenerating) return;
+    if (isGenerating) return;
     setIsGenerating(true);
     try {
       const result = await workflowApi.generatePrompt({
-        title,
+        title: title?.trim() || undefined,
         description: description ?? undefined,
         trigger_config: triggerConfig as Record<string, unknown>,
         existing_prompt: hasExistingPrompt ? currentPrompt : undefined,
       });
       onChange(result.prompt);
+
+      // Auto-fill trigger config from AI suggestion
+      if (result.suggested_trigger && setValue) {
+        const { type, cron_expression, trigger_name } =
+          result.suggested_trigger;
+
+        if (type === "schedule") {
+          setValue("activeTab", "schedule");
+          setValue("trigger_config", {
+            type: "schedule",
+            enabled: true,
+            cron_expression: cron_expression || "0 9 * * *",
+            timezone: getBrowserTimezone(),
+          });
+        } else if (type === "manual") {
+          setValue("activeTab", "manual");
+          setValue("trigger_config", { type: "manual", enabled: true });
+        } else if (type === "integration") {
+          setValue("activeTab", "trigger");
+          if (trigger_name) {
+            setValue("selectedTrigger", trigger_name);
+            setValue("trigger_config", {
+              type: "integration",
+              enabled: true,
+              trigger_name,
+              trigger_data: { trigger_name },
+            });
+          }
+        }
+      }
     } catch {
       toast.error("Failed to generate instructions");
     } finally {
@@ -69,7 +105,7 @@ export default function WorkflowDescriptionField({
             placeholder={
               mode === "edit"
                 ? "Detailed instructions for what this workflow should do"
-                : "Describe in detail what this workflow should do when triggered, including specific actions and expected outcomes"
+                : "Describe in detail what this workflow should do when triggered"
             }
             minRows={5}
             variant="underlined"
@@ -78,13 +114,13 @@ export default function WorkflowDescriptionField({
             isInvalid={!!errors.prompt}
             errorMessage={errors.prompt?.message}
           />
-          <div className="absolute top-1 right-0 opacity-0 group-hover:opacity-100 transition-opacity z-10">
+          <div className="absolute top-1 right-0 z-10">
             <Tooltip content={tooltipText} placement="top">
               <Button
                 size="sm"
                 variant="light"
                 isIconOnly
-                isDisabled={!title?.trim() || isGenerating}
+                isDisabled={isGenerating}
                 isLoading={isGenerating}
                 onPress={() => handleGenerate(field.onChange)}
                 className="text-foreground-400 hover:text-primary"

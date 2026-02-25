@@ -621,11 +621,11 @@ export default function WorkflowModal({
       backdrop="blur"
     >
       <ModalContent>
-        <ModalBody className="max-h-full space-y-6 overflow-hidden pr-2">
+        <ModalBody className="min-h-0 overflow-hidden pr-2">
           {creationPhase === "form" ? (
-            <div className="flex h-full min-h-0 items-start gap-8">
+            <div className="flex min-h-0 flex-1 gap-8">
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 space-y-6 overflow-y-auto">
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto">
                   <WorkflowHeader
                     mode={mode}
                     control={control}
@@ -649,13 +649,16 @@ export default function WorkflowModal({
                     }
                   />
 
-                  <div className="border-t border-zinc-800" />
+                  <div>
+                    <div className="border-t border-zinc-800 mb-2" />
 
-                  <WorkflowDescriptionField
-                    control={control}
-                    errors={errors}
-                    mode={mode}
-                  />
+                    <WorkflowDescriptionField
+                      control={control}
+                      errors={errors}
+                      setValue={setValue}
+                      mode={mode}
+                    />
+                  </div>
                 </div>
 
                 <WorkflowFooter

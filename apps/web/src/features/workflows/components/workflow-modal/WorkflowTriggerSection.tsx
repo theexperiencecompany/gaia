@@ -1,3 +1,4 @@
+import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Tab, Tabs } from "@heroui/tabs";
 import { Tooltip } from "@heroui/tooltip";
 import { InformationCircleIcon } from "@icons";
@@ -161,10 +162,14 @@ export default function WorkflowTriggerSection({
             }}
           >
             <Tab key="schedule" title="Schedule">
-              {renderScheduleTab()}
+              <ScrollShadow className="max-h-40">
+                {renderScheduleTab()}
+              </ScrollShadow>
             </Tab>
             <Tab key="trigger" title="Trigger">
-              {renderTriggerTab()}
+              <ScrollShadow className="max-h-40">
+                {renderTriggerTab()}
+              </ScrollShadow>
             </Tab>
             <Tab key="manual" title="Manual">
               {renderManualTab()}

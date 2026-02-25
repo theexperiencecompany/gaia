@@ -2,80 +2,6 @@
 Workflow generation prompts for GAIA workflow system.
 """
 
-WORKFLOW_CREATION_NEW_TASK_TEMPLATE = """Create a workflow based on this request:
-
-"{workflow_request}"
-{hints_section}
-Process this request:
-1. If the request is clear and unambiguous, finalize immediately
-2. If anything is unclear (what it should do, when to run), ask ONE clarifying question
-3. For integration triggers, use search_triggers to find appropriate triggers
-4. For scheduled triggers, convert natural language to cron expression
-
-Always include a JSON block in your response (either clarifying or finalized type).
-"""
-
-WORKFLOW_CREATION_HINTS_TEMPLATE = """
-The executor provided these hints (use as suggestions, override based on user input):
-{hints}
-"""
-
-WORKFLOW_CREATION_FROM_CONVERSATION_TASK_TEMPLATE = """Create a workflow from this conversation context:
-
-Title suggestion: {suggested_title}
-Summary: {summary}
-
-Steps identified from conversation:
-{steps_text}
-
-Integrations used: {integrations_used}
-{user_request_section}
-{hints_section}
-Process this context:
-1. Summarize what was accomplished and confirm saving as workflow
-2. Determine trigger type - ask if not obvious from context
-3. For integration triggers, use search_triggers
-4. For scheduled triggers, convert natural language to cron
-5. Once confirmed, output finalized JSON
-
-Always include a JSON block in your response (either clarifying or finalized type).
-"""
-
-WORKFLOW_CREATION_USER_REQUEST_TEMPLATE = """
-User's additional request: "{workflow_request}"
-"""
-
-WORKFLOW_CREATION_RETRY_TEMPLATE = """Your previous response had an invalid JSON output. Error: {error}
-
-Please respond again with a VALID JSON block. Required format:
-
-For clarifying questions:
-```json
-{{"type": "clarifying", "message": "Your question here"}}
-```
-
-For finalized workflow:
-```json
-{{
-    "type": "finalized",
-    "title": "Workflow Title",
-    "description": "1-2 sentence summary for UI cards",
-    "prompt": "Detailed step-by-step instructions. Include numbered steps, specific integrations, data sources, and expected outputs.",
-    "trigger_type": "manual|scheduled|integration",
-    "cron_expression": "0 9 * * *",
-    "trigger_slug": "TRIGGER_SLUG_HERE",
-    "direct_create": true
-}}
-```
-
-Note: cron_expression required for scheduled, trigger_slug required for integration.
-Set direct_create: true only for simple, unambiguous workflows.
-
-Original request:
-{original_task}
-"""
-
-
 # =============================================================================
 # WORKFLOW GENERATION PROMPTS (existing)
 # =============================================================================
@@ -359,33 +285,49 @@ Begin executing the workflow steps. Use handoff tools for provider-specific oper
 # MAGIC PROMPT GENERATOR — system prompt & user template
 # =============================================================================
 
-WORKFLOW_PROMPT_GENERATION_SYSTEM = """You are an expert at writing workflow instructions for GAIA, a proactive personal AI assistant.
+WORKFLOW_PROMPT_GENERATION_SYSTEM = """You are writing execution instructions for GAIA, an AI workflow agent.
 
-GAIA workflows are automated sequences of steps executed by an AI agent. The agent can call tools like Gmail, Google Calendar, Notion, Slack, Linear, Todoist, Asana, GitHub, web search, todos, and reminders.
+The instructions are read by the agent at execution time. Write directly to it in imperative second-person ("Fetch...", "Search...", "Send..."). Never third-person.
 
-The "instructions" field you generate drives BOTH step generation AND execution — it must be rich and specific enough for the AI to create a complete, correct automation.
+The agent is intelligent — it decides how to call tools, process data, format output, handle retries, and structure results on its own. Your job is to describe the GOAL and the desired OUTCOME, not the mechanics.
 
-Every generated instructions block MUST include these 6 elements:
-1. Clear objective — what the workflow does and when it runs
-2. Trigger context — for integration triggers, describe how to process the incoming payload; for schedules, describe the time-bounded data to gather; for manual, describe what the user wants to accomplish
-3. Core actions — what to fetch or read, how to process it, what to create or send
-4. Data flow — how information passes between steps (e.g. "use the email subject as the calendar event title")
-5. Edge cases — what to do when nothing is found, when data is missing, or when an error occurs
-6. Output specification — where results go, in what format, and to whom
+NEVER include in instructions:
+- Implementation details: "store in JSON", "extract fields", "parse response", "retry once", "log the error"
+- Data handling: "for each email extract X, Y, Z", "create an object", "build an array"
+- Trigger context: what triggers the workflow, when it fires, what event starts it, "when a new email arrives", "before each meeting", "check calendar for upcoming events" — the trigger system handles this separately and the agent already knows WHY it was invoked
+- Scheduling language: cron, times, "every morning", "10 minutes before"
+- Retry/error logic: the agent handles failures automatically
+- Step-by-step procedures: the system generates steps separately
 
-Improve mode: if the user provides existing instructions, expand and improve them rather than generating from scratch. Keep the user's intent intact; add specificity, edge case handling, and output details.
+The user's description is raw input — distill it to intent. Strip away the WHEN (trigger) and focus on the WHAT (action). Examples:
+- "10 mins before every meeting check my inbox" → intent is "show me relevant emails for an upcoming meeting", NOT "check calendar then fetch emails"
+- "when I get an email, summarize it" → intent is "summarize the incoming email"
+- "extract sender, subject, first 200 chars, store as JSON" → intent is "summarize new emails"
 
-Style rules:
-- Output 200–400 words of natural language prose in present tense
-- Use flowing paragraphs, not bullet points or numbered steps (steps are generated separately by the system)
-- Be concrete and specific — name integrations, describe data transformations, state fallback actions
-- Do not wrap output in markdown fences or headers — plain text only"""
+Write 80–150 words of plain prose. No bullets, no headers, no code fences. Name the integrations and describe what the user should receive. One sentence for fallback behavior.
 
-WORKFLOW_PROMPT_GENERATION_TEMPLATE = """Title: {title}
-{description_section}
-{trigger_section}
+Improve mode: sharpen existing instructions — add specificity and edge cases only. Don't restructure.
+
+Trigger suggestion rules (apply in STRICT priority order):
+1. INTEGRATION FIRST — scan the available triggers list below. If the user's intent involves a service that has a trigger, YOU MUST use it. This is not optional.
+   - "before meeting" / "meeting starts" / "calendar event" → calendar_event_starting_soon
+   - "new email" / "check inbox" / "when I get an email" → gmail_new_message
+   - "new commit" / "push to repo" → github_commit_event
+   - "new message in slack" → slack_new_message
+   - "new issue" / "issue created" → github_issue_added or linear_issue_created
+   Even if the user also mentions a time interval ("every 10 mins check email"), the integration trigger takes priority.
+2. SCHEDULE — only if a cadence is mentioned AND no integration trigger matches the described event.
+3. MANUAL — default when nothing implies timing or an event.
+- trigger_name MUST be the exact slug from the available triggers list
+- Common cron: daily 9 AM = 0 9 * * *, weekdays 8 AM = 0 8 * * 1-5, every Monday = 0 10 * * 1, hourly = 0 * * * *"""
+
+WORKFLOW_PROMPT_GENERATION_TEMPLATE = """{title_section}{description_section}
+{trigger_hint}
+{available_triggers}
 {existing_section}
-{mode_instruction}"""
+{mode_instruction}
+
+{format_instructions}"""
 
 
 EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You are executing a workflow that was automatically triggered by an incoming email.

@@ -13,7 +13,11 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from app.config.loggers import general_logger as logger
 from app.models.scheduler_models import BaseScheduledTask
 from app.models.trigger_configs import TriggerConfigData
-from app.utils.cron_utils import get_next_run_time, parse_timezone
+from app.utils.cron_utils import (
+    get_next_run_time,
+    parse_timezone,
+    validate_cron_expression,
+)
 
 
 class TriggerType(str, Enum):
@@ -170,8 +174,6 @@ class TriggerConfig(BaseModel):
     def validate_cron_expression(cls, v):
         """Validate cron expression if provided."""
         if v is not None:
-            from app.utils.cron_utils import validate_cron_expression
-
             if not validate_cron_expression(v):
                 raise ValueError(f"Invalid cron expression: {v}")
         return v
@@ -460,13 +462,69 @@ class PublishWorkflowResponse(BaseModel):
 class GenerateWorkflowPromptRequest(BaseModel):
     """Request model for AI-generated workflow instructions."""
 
-    title: str
+    title: Optional[str] = None
     description: Optional[str] = None
     trigger_config: Optional[Dict[str, Any]] = None
     existing_prompt: Optional[str] = None  # non-empty → improve mode
+
+
+class SuggestedTrigger(BaseModel):
+    """AI-suggested trigger configuration returned alongside generated instructions."""
+
+    type: str = Field(description="Trigger type: manual, schedule, or integration")
+    cron_expression: Optional[str] = Field(
+        default=None, description="Cron expression for scheduled triggers"
+    )
+    trigger_name: Optional[str] = Field(
+        default=None,
+        description="Specific integration trigger slug (e.g., gmail_new_message)",
+    )
+
+
+class GeneratedPromptOutput(BaseModel):
+    """Structured LLM output for the magic-prompt generator.
+
+    Used by PydanticOutputParser to extract both the prose instructions and
+    a trigger suggestion from a single LLM response.
+    """
+
+    instructions: str = Field(
+        description=(
+            "200-400 words of imperative execution instructions written directly to "
+            "the AI agent. Use second-person present tense ('Fetch...', 'Search...', "
+            "'Send...'). Cover: goal, data gathering, processing, actions, and failure "
+            "handling. No scheduling info, no markdown, no bullet points — flowing "
+            "prose only."
+        )
+    )
+    trigger_type: str = Field(
+        description=(
+            "Suggested trigger type based on the user's intent. Must be one of: "
+            "'manual' (on-demand/one-off tasks), 'schedule' (recurring cadence), "
+            "or 'integration' (external event like email, calendar, webhook)."
+        )
+    )
+    cron_expression: Optional[str] = Field(
+        default=None,
+        description=(
+            "5-field cron expression when trigger_type is 'schedule'. Examples: "
+            "daily 9 AM = '0 9 * * *', weekdays 8 AM = '0 8 * * 1-5', "
+            "every Monday 10 AM = '0 10 * * 1', every hour = '0 * * * *'. "
+            "Must be null when trigger_type is not 'schedule'."
+        ),
+    )
+    trigger_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "When trigger_type is 'integration', the specific trigger slug from the "
+            "available integration triggers list. Must be null when trigger_type is "
+            "not 'integration'."
+        ),
+    )
 
 
 class GenerateWorkflowPromptResponse(BaseModel):
     """Response model for AI-generated workflow instructions."""
 
     prompt: str
+    suggested_trigger: Optional[SuggestedTrigger] = None

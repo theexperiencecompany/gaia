@@ -258,16 +258,26 @@ export const workflowApi = {
 
   // Generate or improve workflow instructions using AI
   generatePrompt: async (params: {
-    title: string;
+    title?: string;
     description?: string;
     trigger_config?: Record<string, unknown>;
     existing_prompt?: string;
-  }): Promise<{ prompt: string }> => {
-    return apiService.post<{ prompt: string }>(
-      "/workflows/generate-prompt",
-      params,
-      { silent: true },
-    );
+  }): Promise<{
+    prompt: string;
+    suggested_trigger?: {
+      type: "manual" | "schedule" | "integration";
+      cron_expression?: string;
+      trigger_name?: string;
+    };
+  }> => {
+    return apiService.post<{
+      prompt: string;
+      suggested_trigger?: {
+        type: "manual" | "schedule" | "integration";
+        cron_expression?: string;
+        trigger_name?: string;
+      };
+    }>("/workflows/generate-prompt", params, { silent: true });
   },
 
   // Get available trigger schemas

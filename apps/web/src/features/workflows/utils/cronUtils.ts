@@ -88,8 +88,18 @@ export const parseCronExpression = (cron: string): CronSchedule => {
 
   const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
 
+  // Only treat as a simple named schedule if minute and hour are plain integers.
+  // Step/range expressions like */22, */2, 0,30, 1-5 fall through to custom.
+  const isSimpleInt = (s: string) => /^\d+$/.test(s);
+
   // Daily: 0 9 * * *
-  if (dayOfMonth === "*" && month === "*" && dayOfWeek === "*") {
+  if (
+    isSimpleInt(minute) &&
+    isSimpleInt(hour) &&
+    dayOfMonth === "*" &&
+    month === "*" &&
+    dayOfWeek === "*"
+  ) {
     return {
       type: "daily",
       minute: parseInt(minute, 10),
@@ -98,7 +108,13 @@ export const parseCronExpression = (cron: string): CronSchedule => {
   }
 
   // Weekly: 0 9 * * 1
-  if (dayOfMonth === "*" && month === "*" && dayOfWeek !== "*") {
+  if (
+    isSimpleInt(minute) &&
+    isSimpleInt(hour) &&
+    dayOfMonth === "*" &&
+    month === "*" &&
+    isSimpleInt(dayOfWeek)
+  ) {
     return {
       type: "weekly",
       minute: parseInt(minute, 10),
@@ -108,7 +124,13 @@ export const parseCronExpression = (cron: string): CronSchedule => {
   }
 
   // Monthly: 0 9 1 * *
-  if (dayOfMonth !== "*" && month === "*" && dayOfWeek === "*") {
+  if (
+    isSimpleInt(minute) &&
+    isSimpleInt(hour) &&
+    isSimpleInt(dayOfMonth) &&
+    month === "*" &&
+    dayOfWeek === "*"
+  ) {
     return {
       type: "monthly",
       minute: parseInt(minute, 10),
@@ -118,7 +140,13 @@ export const parseCronExpression = (cron: string): CronSchedule => {
   }
 
   // Yearly: 0 9 1 1 *
-  if (dayOfMonth !== "*" && month !== "*" && dayOfWeek === "*") {
+  if (
+    isSimpleInt(minute) &&
+    isSimpleInt(hour) &&
+    isSimpleInt(dayOfMonth) &&
+    isSimpleInt(month) &&
+    dayOfWeek === "*"
+  ) {
     return {
       type: "yearly",
       minute: parseInt(minute, 10),
@@ -128,7 +156,7 @@ export const parseCronExpression = (cron: string): CronSchedule => {
     };
   }
 
-  // Everything else is custom
+  // Everything else (step expressions, ranges, lists) is custom
   return { type: "custom", customExpression: cron };
 };
 

@@ -2,6 +2,9 @@
 
 from typing import List, Optional
 
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.output_parsers import PydanticOutputParser
+
 from app.agents.llm.client import init_llm
 from app.agents.prompts.trigger_prompts import generate_trigger_context
 from app.agents.prompts.workflow_prompts import (
@@ -14,7 +17,65 @@ from app.agents.templates.workflow_template import (
 )
 from app.config.loggers import general_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
-from app.models.workflow_models import GeneratedStep
+from app.models.workflow_models import (
+    GeneratedPromptOutput,
+    GeneratedStep,
+    SuggestedTrigger,
+)
+
+prompt_output_parser = PydanticOutputParser(pydantic_object=GeneratedPromptOutput)
+
+
+def _build_trigger_hint(trigger_config: Optional[dict]) -> str:
+    """Build a minimal, human-readable trigger hint for the LLM.
+
+    We intentionally omit raw cron/timezone/next_run so the LLM cannot
+    leak scheduling details into the instructions prose.
+    """
+    if not trigger_config:
+        return (
+            "No trigger selected yet — suggest the most appropriate trigger "
+            "type based on the user's intent."
+        )
+
+    trigger_type = trigger_config.get("type", "manual")
+
+    if trigger_type == "schedule":
+        cron = trigger_config.get("cron_expression", "")
+        hint = "User has selected a scheduled trigger"
+        if cron:
+            hint += f" (current cron: {cron})"
+        hint += ". Suggest a cron expression that matches the described cadence."
+        return hint
+    if trigger_type == "manual":
+        return (
+            "User has selected a manual trigger. Respect this unless "
+            "the instructions clearly imply a recurring schedule."
+        )
+    # Integration triggers
+    trigger_name = trigger_config.get("trigger_name", "")
+    if trigger_name:
+        return f"User has selected an integration trigger ({trigger_name})."
+    return f"User has selected trigger type: {trigger_type}."
+
+
+def _build_available_triggers() -> str:
+    """Build a compact list of available integration triggers for the LLM."""
+    lines: List[str] = []
+    for integration in OAUTH_INTEGRATIONS:
+        for tc in integration.associated_triggers:
+            schema = tc.workflow_trigger_schema
+            if schema:
+                desc = f" — {schema.description}" if schema.description else ""
+                lines.append(
+                    f"- {schema.slug}: {schema.name} ({integration.name}){desc}"
+                )
+    if not lines:
+        return ""
+    return (
+        "Available integration triggers (use the slug for trigger_name):\n"
+        + "\n".join(lines)
+    )
 
 
 def enrich_steps(generated_steps: List[GeneratedStep]) -> List[dict]:
@@ -43,10 +104,11 @@ class WorkflowGenerationService:
         try:
             logger.info(f"[WorkflowGen] ========== START: {title} ==========")
 
-            # Import here to avoid circular dependency
+            logger.info("[WorkflowGen] Getting tool registry...")
+            # Inline import required: top-level causes a circular import via
+            # registry → workflow_tool → services.workflow → generation_service
             from app.agents.tools.core.registry import get_tool_registry
 
-            logger.info("[WorkflowGen] Getting tool registry...")
             tool_registry = await get_tool_registry()
 
             tools_with_categories = []
@@ -129,26 +191,25 @@ class WorkflowGenerationService:
 
     @staticmethod
     async def generate_workflow_prompt(
-        title: str,
+        title: Optional[str] = None,
         description: Optional[str] = None,
         trigger_config: Optional[dict] = None,
         existing_prompt: Optional[str] = None,
-    ) -> str:
-        """Generate or improve workflow instructions using LLM."""
-        from langchain_core.messages import HumanMessage, SystemMessage
+    ) -> dict:
+        """Generate or improve workflow instructions using LLM.
 
-        trigger_context = (
-            generate_trigger_context(trigger_config) if trigger_config else ""
-        )
+        Returns a dict with keys: prompt, suggested_trigger (optional).
+        """
+        trigger_hint = _build_trigger_hint(trigger_config)
+        available_triggers = _build_available_triggers()
 
         llm = init_llm(use_free=True)
 
         formatted = WORKFLOW_PROMPT_GENERATION_TEMPLATE.format(
-            title=title,
+            title_section=f"Title: {title}\n" if title else "",
             description_section=f"Description: {description}" if description else "",
-            trigger_section=(
-                f"Trigger: {trigger_context}" if trigger_context else "Trigger: Manual"
-            ),
+            trigger_hint=trigger_hint,
+            available_triggers=available_triggers,
             existing_section=(
                 f"Existing instructions to improve:\n{existing_prompt}"
                 if existing_prompt
@@ -160,11 +221,25 @@ class WorkflowGenerationService:
                 if existing_prompt
                 else "Generate comprehensive workflow instructions from scratch."
             ),
+            format_instructions=prompt_output_parser.get_format_instructions(),
         )
 
         messages = [
             SystemMessage(content=WORKFLOW_PROMPT_GENERATION_SYSTEM),
             HumanMessage(content=formatted),
         ]
+
         response = await llm.ainvoke(messages)
-        return response.content.strip()
+        response_content = getattr(response, "content", str(response)).strip()
+
+        result = prompt_output_parser.parse(response_content)
+
+        suggested: Optional[SuggestedTrigger] = None
+        if result.trigger_type in ("manual", "schedule", "integration"):
+            suggested = SuggestedTrigger(
+                type=result.trigger_type,
+                cron_expression=result.cron_expression,
+                trigger_name=result.trigger_name,
+            )
+
+        return {"prompt": result.instructions, "suggested_trigger": suggested}
