@@ -13,7 +13,6 @@ Blocked commands (for safety):
 
 import argparse
 import asyncio
-import re
 import shlex
 from dataclasses import dataclass
 from typing import NoReturn, Optional
@@ -74,6 +73,8 @@ class VFSCommandParser:
 
     # Output limits
     MAX_GREP_MATCHES = 50
+    MAX_GREP_FILES = 50
+    MAX_GREP_FILE_CHARS = 200_000
     MAX_LINE_LENGTH = 200
     MAX_LS_ITEMS = 100
     DEFAULT_TREE_DEPTH = 3
@@ -295,6 +296,10 @@ class VFSCommandParser:
         if not path or path == ".":
             return get_agent_root(user_id, agent_name)
 
+        # System paths pass through directly (read-only, accessible to all users)
+        if path.startswith("/system/"):
+            return normalize_path(path)
+
         # If already absolute with proper user scope, validate and return
         if path.startswith("/users/"):
             normalized = normalize_path(path)
@@ -508,12 +513,8 @@ class VFSCommandParser:
 
         resolved_path = self._resolve_path(args.path, user_id, agent_name)
 
-        # Compile regex
-        try:
-            flags = re.IGNORECASE if args.ignore_case else 0
-            regex = re.compile(args.pattern, flags)
-        except re.error as e:
-            return f"grep: invalid pattern: {e}"
+        pattern = args.pattern
+        pattern_cmp = pattern.lower() if args.ignore_case else pattern
 
         # Get list of files to search
         files_to_search = []
@@ -546,6 +547,11 @@ class VFSCommandParser:
         except Exception as e:
             return f"grep: error accessing '{args.path}': {e}"
 
+        truncated_files = False
+        if len(files_to_search) > self.MAX_GREP_FILES:
+            files_to_search = files_to_search[: self.MAX_GREP_FILES]
+            truncated_files = True
+
         # Search files in parallel
         async def search_file(file_path: str) -> tuple[str, list[str], int]:
             """Search a single file and return (rel_path, matches, count)."""
@@ -553,6 +559,9 @@ class VFSCommandParser:
                 content = await vfs.read(file_path, user_id=user_id)
                 if content is None:
                     return "", [], 0
+
+                if len(content) > self.MAX_GREP_FILE_CHARS:
+                    content = content[: self.MAX_GREP_FILE_CHARS]
 
                 # Make path relative for output
                 rel_path = file_path
@@ -565,7 +574,8 @@ class VFSCommandParser:
                 file_match_count = 0
 
                 for line_num, line in enumerate(content.split("\n"), 1):
-                    if regex.search(line):
+                    line_cmp = line.lower() if args.ignore_case else line
+                    if pattern_cmp in line_cmp:
                         file_match_count += 1
 
                         if not args.count and not args.files_with_matches:
@@ -628,6 +638,9 @@ class VFSCommandParser:
                     f"... and {total_matches - self.MAX_GREP_MATCHES} more matches"
                 )
             output = "\n".join(result_lines)
+
+        if truncated_files:
+            output += f"\n... searched first {self.MAX_GREP_FILES} files (limit)"
 
         if redirect:
             return await self._handle_redirect(output, redirect, user_id, agent_name)

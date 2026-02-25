@@ -5,11 +5,11 @@ CRITICAL: These tests verify that users CANNOT access other users' files.
 All tests MUST pass to ensure proper security.
 """
 
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 from app.services.vfs.mongo_vfs import MongoVFS, VFSAccessError
-from app.services.vfs.path_resolver import validate_user_access, normalize_path
+from app.services.vfs.path_resolver import normalize_path, validate_user_access
 
 
 class TestVFSAccessError:
@@ -49,12 +49,11 @@ class TestValidateUserAccess:
 
     def test_path_traversal_normalized_correctly(self):
         """Path traversal attempts should be normalized to safe paths."""
-        # After normalization, .. is removed which COULD still be in user's space
-        # The key is that we can't escape OUT of the user's root
+        # After normalization, .. resolves normally.
         normalized = normalize_path("/users/user123/../user456/global")
-        # This becomes /users/user123/user456/global (.. removed, not escaped)
-        # which IS under user123's space - this is safe
-        assert normalized.startswith("/users/user123")
+        # This becomes /users/user456/global and should NOT validate for user123
+        assert normalized == "/users/user456/global"
+        assert not validate_user_access(normalized, "user123")
 
         # The dangerous case is trying to escape the users folder entirely
         normalized2 = normalize_path("/../../../etc/passwd")
@@ -248,12 +247,6 @@ class TestCrossUserAccessPrevention:
             await vfs.mkdir("/users/user2/global/hacked", user_id="user1")
 
     @pytest.mark.asyncio
-    async def test_analyze_other_user_file_raises_error(self, vfs, mock_vfs_collection):
-        """User1 should NOT be able to analyze User2's files."""
-        with pytest.raises(VFSAccessError):
-            await vfs.analyze("/users/user2/global/secret.json", user_id="user1")
-
-    @pytest.mark.asyncio
     async def test_search_in_other_user_path_raises_error(
         self, vfs, mock_vfs_collection
     ):
@@ -263,53 +256,45 @@ class TestCrossUserAccessPrevention:
 
 
 class TestPathTraversalAttacks:
-    """Test that path traversal attacks are safely neutralized.
-
-    SECURITY NOTE: Our normalize_path() removes '..' patterns entirely,
-    so '/users/user1/../user2/' becomes '/users/user1/user2/' which stays
-    WITHIN user1's space. This is secure by design - traversal cannot escape.
-    """
+    """Test that path traversal attempts cannot escape user scope."""
 
     @pytest.mark.asyncio
-    async def test_traversal_stays_in_user_space(self, vfs, mock_vfs_collection):
-        """Path traversal attempts are neutralized and stay in user's space."""
+    async def test_traversal_into_other_user_is_denied(self, vfs, mock_vfs_collection):
+        """Traversal that resolves into another user's space is denied."""
         mock_vfs_collection.find_one.return_value = None
 
-        # /users/user1/../user2/ normalizes to /users/user1/user2/ - still in user1's space
-        # This should NOT raise - the path is safe after normalization
-        result = await vfs.read(
-            "/users/user1/../user2/global/secret.txt",
-            user_id="user1",
-        )
-        # No error - file just doesn't exist (returns None)
-        assert result is None
+        with pytest.raises(VFSAccessError):
+            await vfs.read(
+                "/users/user1/../user2/global/secret.txt",
+                user_id="user1",
+            )
 
     @pytest.mark.asyncio
-    async def test_write_traversal_stays_in_user_space(self, vfs, mock_vfs_collection):
-        """Write with traversal is neutralized to user's space."""
+    async def test_write_traversal_into_other_user_is_denied(
+        self, vfs, mock_vfs_collection
+    ):
+        """Write traversal that resolves into another user's space is denied."""
         mock_vfs_collection.find_one.return_value = None
 
-        # /users/user1/../../user2/ normalizes to /users/user1/user2/
-        result = await vfs.write(
-            "/users/user1/../../user2/global/hacked.txt",
-            "content",
-            user_id="user1",
-        )
-        # Path was normalized to user1's space
-        assert result.startswith("/users/user1/")
+        with pytest.raises(VFSAccessError):
+            await vfs.write(
+                "/users/user1/../../user2/global/hacked.txt",
+                "content",
+                user_id="user1",
+            )
 
     @pytest.mark.asyncio
-    async def test_delete_traversal_stays_in_user_space(self, vfs, mock_vfs_collection):
-        """Delete with traversal is neutralized to user's space."""
+    async def test_delete_traversal_into_other_user_is_denied(
+        self, vfs, mock_vfs_collection
+    ):
+        """Delete traversal that resolves into another user's space is denied."""
         mock_vfs_collection.find_one.return_value = None
 
-        # The traversal is neutralized, path stays in user1's space
-        # Returns False because file doesn't exist (not because of access error)
-        result = await vfs.delete(
-            "/users/user1/../user2/global/important.txt",
-            user_id="user1",
-        )
-        assert result is False  # File doesn't exist
+        with pytest.raises(VFSAccessError):
+            await vfs.delete(
+                "/users/user1/../user2/global/important.txt",
+                user_id="user1",
+            )
 
     @pytest.mark.asyncio
     async def test_absolute_paths_outside_users_get_prefixed(
@@ -446,10 +431,23 @@ class TestConcurrentUserAccess:
         # Verify both writes were called with correct user_id
         calls = mock_vfs_collection.update_one.call_args_list
 
-        # First call should be for user1
-        user1_query = calls[0][0][0]  # First argument (query) of first call
-        assert user1_query.get("user_id") == "user1"
+        # Directory upserts happen too; verify the actual file upserts
+        user1_file_queries = [
+            c.args[0]
+            for c in calls
+            if c.args
+            and isinstance(c.args[0], dict)
+            and c.args[0].get("path") == "/users/user1/global/file.txt"
+        ]
+        user2_file_queries = [
+            c.args[0]
+            for c in calls
+            if c.args
+            and isinstance(c.args[0], dict)
+            and c.args[0].get("path") == "/users/user2/global/file.txt"
+        ]
 
-        # Second call should be for user2
-        user2_query = calls[1][0][0]
-        assert user2_query.get("user_id") == "user2"
+        assert user1_file_queries
+        assert user2_file_queries
+        assert user1_file_queries[-1].get("user_id") == "user1"
+        assert user2_file_queries[-1].get("user_id") == "user2"

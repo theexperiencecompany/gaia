@@ -44,8 +44,8 @@ class TestNormalizePath:
         assert normalize_path("\\users\\123\\global") == "/users/123/global"
 
     def test_removes_path_traversal(self):
-        assert normalize_path("/users/../123") == "/users/123"
-        assert normalize_path("/users/123/../global") == "/users/123/global"
+        assert normalize_path("/users/../123") == "/123"
+        assert normalize_path("/users/123/../global") == "/users/global"
 
     def test_handles_empty_string(self):
         assert normalize_path("") == "/"
@@ -53,7 +53,7 @@ class TestNormalizePath:
     def test_complex_normalization(self):
         path = "users\\\\123//global/../files\\"
         result = normalize_path(path)
-        assert result == "/users/123/global/files"
+        assert result == "/users/123/files"
 
 
 class TestValidateUserAccess:

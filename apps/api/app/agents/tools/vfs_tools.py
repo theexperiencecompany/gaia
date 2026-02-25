@@ -7,7 +7,7 @@ be organized into notes, free-form files, and session-specific outputs.
 
 Tool Summary:
   - vfs_read: Read file content
-  - vfs_write: Write/append content to files
+  - vfs_write: Write content to files
   - vfs_cmd: Execute shell-like commands (ls, tree, find, grep, etc.)
 
 Folder Structure (per user):
@@ -21,6 +21,7 @@ from typing import Annotated, Any, Dict
 
 from app.agents.tools.vfs_cmd_parser import get_vfs_command_parser
 from app.config.loggers import app_logger as logger
+from app.decorators import with_rate_limiting
 from app.services.vfs import get_vfs
 from app.services.vfs.path_resolver import (
     get_agent_root,
@@ -127,6 +128,7 @@ async def vfs_read(
 
 
 @tool
+@with_rate_limiting("vfs_write")
 async def vfs_write(
     config: RunnableConfig,
     path: Annotated[
@@ -141,8 +143,6 @@ async def vfs_write(
 ) -> str:
     """
     Write content to a file. Creates parent directories automatically.
-
-    Use append=True to add content to an existing file without overwriting.
 
     Examples:
       vfs_write("notes/meeting.txt", "Meeting notes from today...")
@@ -167,9 +167,9 @@ async def vfs_write(
         if append:
             await vfs.append(resolved_path, content, user_id=ctx["user_id"])
             return f"Appended {len(content)} characters to: {resolved_path}"
-        else:
-            await vfs.write(resolved_path, content, ctx["user_id"], metadata)
-            return f"Wrote {len(content)} characters to: {resolved_path}"
+
+        await vfs.write(resolved_path, content, ctx["user_id"], metadata)
+        return f"Wrote {len(content)} characters to: {resolved_path}"
 
     except Exception as e:
         logger.error(f"VFS write error: {e}")
@@ -177,6 +177,7 @@ async def vfs_write(
 
 
 @tool
+@with_rate_limiting("vfs_cmd")
 async def vfs_cmd(
     config: RunnableConfig,
     command: Annotated[

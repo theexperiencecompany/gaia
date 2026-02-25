@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 
 from app.config.loggers import app_logger as logger
+from app.constants.vfs import SYSTEM_USER_ID
 from app.db.mongodb.collections import _get_mongodb_instance, vfs_nodes_collection
 from app.models.vfs_models import (
     VFSListResponse,
@@ -177,7 +178,23 @@ class MongoVFS:
         Returns:
             The path with proper user scope
         """
+        raw = path.replace("\\", "/").strip()
         normalized = normalize_path(path)
+
+        # If the caller provided an absolute /users/ or /system/ path but used
+        # traversal to escape that namespace, deny instead of silently remapping.
+        if raw.startswith("/users/") and not normalized.startswith("/users/"):
+            raise VFSAccessError(
+                normalized,
+                user_id,
+                "Invalid path: traversal outside /users/ is not allowed.",
+            )
+        if raw.startswith("/system/") and not normalized.startswith("/system/"):
+            raise VFSAccessError(
+                normalized,
+                user_id,
+                "Invalid path: traversal outside /system/ is not allowed.",
+            )
         # Don't prefix system paths - they have their own namespace
         if normalized.startswith("/system/"):
             return normalized
@@ -195,7 +212,7 @@ class MongoVFS:
         """
         Build MongoDB query for a path, handling system paths.
 
-        For system paths, query by path only (no user_id filter).
+        For system paths, query by path + user_id="system".
         For user paths, query by path + user_id.
 
         Args:
@@ -207,11 +224,17 @@ class MongoVFS:
             MongoDB query dict
         """
         if self._is_system_path(path):
-            query = {"path": path}
+            query = {"path": path, "user_id": SYSTEM_USER_ID}
         else:
             query = {"path": path, "user_id": user_id}
 
         return query
+
+    def _get_query_user_id(self, path: str, user_id: str) -> str:
+        """Return the effective user_id for Mongo queries."""
+        if self._is_system_path(path):
+            return SYSTEM_USER_ID
+        return user_id
 
     # ==================== Write Operations ====================
 
@@ -437,16 +460,10 @@ class MongoVFS:
 
         new_content = existing_content + content
 
-        if self._is_system_path(path):
-            await vfs_nodes_collection.update_one(
-                {"path": path},
-                {"$set": {"accessed_at": datetime.now(timezone.utc)}},
-            )
-        else:
-            await vfs_nodes_collection.update_one(
-                {"path": path, "user_id": user_id},
-                {"$set": {"accessed_at": datetime.now(timezone.utc)}},
-            )
+        await vfs_nodes_collection.update_one(
+            self._build_query(path, user_id),
+            {"$set": {"accessed_at": datetime.now(timezone.utc)}},
+        )
 
         await self.write(path, new_content, user_id)
         return path
@@ -473,16 +490,10 @@ class MongoVFS:
         if not node or node.get("node_type") != VFSNodeType.FILE.value:
             return None
 
-        if self._is_system_path(path):
-            await vfs_nodes_collection.update_one(
-                {"path": path},
-                {"$set": {"accessed_at": datetime.now(timezone.utc)}},
-            )
-        else:
-            await vfs_nodes_collection.update_one(
-                {"path": path, "user_id": user_id},
-                {"$set": {"accessed_at": datetime.now(timezone.utc)}},
-            )
+        await vfs_nodes_collection.update_one(
+            self._build_query(path, user_id),
+            {"$set": {"accessed_at": datetime.now(timezone.utc)}},
+        )
 
         if node.get("content") is not None:
             return node["content"]
@@ -584,14 +595,16 @@ class MongoVFS:
         path = self._validate_access(path, user_id)
         path = path.rstrip("/")
 
+        query_user_id = self._get_query_user_id(path, user_id)
+
         # Query MUST include user_id for security
         if recursive:
             query = {
                 "path": {"$regex": f"^{_escape_mongo_regex(path)}/"},
-                "user_id": user_id,
+                "user_id": query_user_id,
             }
         else:
-            query = {"parent_path": path, "user_id": user_id}
+            query = {"parent_path": path, "user_id": query_user_id}
 
         cursor = vfs_nodes_collection.find(query, {"content": 0, "gridfs_id": 0}).sort(
             "name", 1
@@ -637,8 +650,12 @@ class MongoVFS:
         path = self._auto_prefix_path(path, user_id)
         path = self._validate_access(path, user_id)
 
+        query_user_id = self._get_query_user_id(path, user_id)
+
         # Query MUST include user_id for security
-        node = await vfs_nodes_collection.find_one({"path": path, "user_id": user_id})
+        node = await vfs_nodes_collection.find_one(
+            {"path": path, "user_id": query_user_id}
+        )
 
         if not node:
             # Create a virtual root node
@@ -649,7 +666,7 @@ class MongoVFS:
                 children=[],
             )
 
-        return await self._build_tree_node(node, user_id, depth)
+        return await self._build_tree_node(node, query_user_id, depth)
 
     async def _build_tree_node(
         self, node: dict, user_id: str, depth: int
@@ -706,10 +723,12 @@ class MongoVFS:
             base_path = self._auto_prefix_path(base_path, user_id)
             base_path = self._validate_access(base_path, user_id)
 
+        query_user_id = self._get_query_user_id(base_path, user_id)
+
         # Query MUST include user_id for security
         query: Dict[str, Any] = {
             "path": {"$regex": f"^{_escape_mongo_regex(base_path)}"},
-            "user_id": user_id,  # CRITICAL: Always filter by user
+            "user_id": query_user_id,  # CRITICAL: Always filter by user
         }
 
         cursor = vfs_nodes_collection.find(query, {"content": 0, "gridfs_id": 0})
@@ -916,7 +935,7 @@ class MongoVFS:
         self._validate_write_access(dest, user_id, original_dest)
 
         # Query MUST include user_id for security
-        node = await vfs_nodes_collection.find_one({"path": source, "user_id": user_id})
+        node = await vfs_nodes_collection.find_one(self._build_query(source, user_id))
         if not node:
             raise FileNotFoundError(f"Source not found: {source}")
 

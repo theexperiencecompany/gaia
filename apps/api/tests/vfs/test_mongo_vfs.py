@@ -127,10 +127,20 @@ class TestMongoVFSWrite:
                 user_id="user123",
             )
 
-            # Should have called insert_one for parent directories
-            insert_calls = mock_vfs_collection.insert_one.call_args_list
-            # Multiple directories should be created
-            assert len(insert_calls) > 0
+            # Parent directories are created via upserts
+            assert mock_vfs_collection.update_one.call_count > 1
+
+            called_paths = [
+                c.args[0].get("path")
+                for c in mock_vfs_collection.update_one.call_args_list
+                if c.args and isinstance(c.args[0], dict)
+            ]
+            assert "/users" in called_paths
+            assert "/users/user123" in called_paths
+            assert "/users/user123/global" in called_paths
+            assert "/users/user123/global/executor" in called_paths
+            assert "/users/user123/global/executor/files" in called_paths
+            assert "/users/user123/global/executor/files/subdir" in called_paths
 
     @pytest.mark.asyncio
     async def test_write_with_metadata(self, mock_vfs_collection):
@@ -179,6 +189,40 @@ class TestMongoVFSRead:
             result = await vfs.read("/users/user123/global/test.txt", user_id="user123")
 
             assert result == "Hello, World!"
+
+    @pytest.mark.asyncio
+    async def test_read_system_path_uses_system_user_id_filter(
+        self, mock_vfs_collection
+    ):
+        """System paths must be queried with user_id='system' to avoid shadowing."""
+        mock_vfs_collection.find_one = AsyncMock(
+            return_value={
+                "path": "/system/test.txt",
+                "user_id": "system",
+                "node_type": "file",
+                "content": "system content",
+                "gridfs_id": None,
+            }
+        )
+
+        with patch(
+            "app.services.vfs.mongo_vfs.vfs_nodes_collection", mock_vfs_collection
+        ):
+            from app.services.vfs.mongo_vfs import MongoVFS
+
+            vfs = MongoVFS()
+            result = await vfs.read("/system/test.txt", user_id="user123")
+
+            assert result == "system content"
+            mock_vfs_collection.find_one.assert_called_with(
+                {"path": "/system/test.txt", "user_id": "system"}
+            )
+            update_call = mock_vfs_collection.update_one.call_args
+            assert update_call is not None
+            update_args, _update_kwargs = update_call
+            assert update_args[0] == {"path": "/system/test.txt", "user_id": "system"}
+            assert "$set" in update_args[1]
+            assert "accessed_at" in update_args[1]["$set"]
 
     @pytest.mark.asyncio
     async def test_read_nonexistent_file_returns_none(self, mock_vfs_collection):
@@ -467,11 +511,13 @@ class TestMongoVFSMove:
     @pytest.mark.asyncio
     async def test_move_file(self, mock_vfs_collection):
         """Move renames file path."""
+        # First lookup finds the source file; subsequent lookups (directory ensures)
+        # should behave as if directories don't exist yet.
         mock_vfs_collection.find_one = AsyncMock(
-            return_value={
-                "path": "/users/user123/global/old.txt",
-                "node_type": "file",
-            }
+            side_effect=[
+                {"path": "/users/user123/global/old.txt", "node_type": "file"},
+                *([None] * 20),
+            ]
         )
 
         with patch(
@@ -514,14 +560,17 @@ class TestMongoVFSCopy:
     @pytest.mark.asyncio
     async def test_copy_file(self, mock_vfs_collection):
         """Copy duplicates file content."""
+        source_node = {
+            "path": "/users/user123/global/source.txt",
+            "node_type": "file",
+            "content": "Original content",
+            "gridfs_id": None,
+            "metadata": {},
+        }
+
+        # copy() looks up the node, then read() looks up the node again.
         mock_vfs_collection.find_one = AsyncMock(
-            return_value={
-                "path": "/users/user123/global/source.txt",
-                "node_type": "file",
-                "content": "Original content",
-                "gridfs_id": None,
-                "metadata": {},
-            }
+            side_effect=[source_node, source_node, *([None] * 50)]
         )
 
         with patch(
@@ -568,14 +617,18 @@ class TestMongoVFSAppend:
     @pytest.mark.asyncio
     async def test_append_to_existing_file(self, mock_vfs_collection):
         """Append adds content to existing file."""
+        existing_node = {
+            "path": "/users/user123/global/log.txt",
+            "node_type": "file",
+            "content": "Line 1\n",
+            "gridfs_id": None,
+            "metadata": {},
+        }
+
+        # append() reads existing file once; subsequent lookups are for directory
+        # ensures and overwrite logic.
         mock_vfs_collection.find_one = AsyncMock(
-            return_value={
-                "path": "/users/user123/global/log.txt",
-                "node_type": "file",
-                "content": "Line 1\n",
-                "gridfs_id": None,
-                "metadata": {},
-            }
+            side_effect=[existing_node, *([None] * 50)]
         )
 
         with patch(
@@ -589,7 +642,14 @@ class TestMongoVFSAppend:
             )
 
             assert result == "/users/user123/global/log.txt"
-            # Should write combined content
-            call_args = mock_vfs_collection.update_one.call_args
-            update_doc = call_args[0][1]["$set"]
+            # Should write combined content (find the file upsert)
+            file_updates = [
+                c
+                for c in mock_vfs_collection.update_one.call_args_list
+                if c.args
+                and isinstance(c.args[0], dict)
+                and c.args[0].get("path") == "/users/user123/global/log.txt"
+            ]
+            assert file_updates
+            update_doc = file_updates[-1].args[1]["$set"]
             assert update_doc["content"] == "Line 1\nLine 2\n"

@@ -1,13 +1,16 @@
-"""
-Tests for VFS Tools - New focused tool set.
+"""Tests for VFS Tools.
 
-Tests the 4 VFS tools: vfs_read, vfs_write, vfs_cmd
+Tests the VFS tools: vfs_read, vfs_write, vfs_cmd.
 """
 
+from types import SimpleNamespace
+from typing import cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
 from langchain_core.runnables import RunnableConfig
+
+from app.models.payment_models import PlanType
 
 
 @pytest.fixture
@@ -48,7 +51,7 @@ class TestVfsRead:
     @pytest.mark.asyncio
     async def test_read_file(self, mock_config, mock_vfs):
         """Read tool returns file content."""
-        with patch("app.services.vfs.get_vfs", return_value=mock_vfs):
+        with patch("app.agents.tools.vfs_tools.get_vfs", return_value=mock_vfs):
             from app.agents.tools.vfs_tools import vfs_read
 
             result = await vfs_read.ainvoke(
@@ -64,7 +67,7 @@ class TestVfsRead:
         """Read tool returns error for missing file."""
         mock_vfs.read = AsyncMock(return_value=None)
 
-        with patch("app.services.vfs.get_vfs", return_value=mock_vfs):
+        with patch("app.agents.tools.vfs_tools.get_vfs", return_value=mock_vfs):
             from app.agents.tools.vfs_tools import vfs_read
 
             result = await vfs_read.ainvoke(
@@ -77,9 +80,9 @@ class TestVfsRead:
     @pytest.mark.asyncio
     async def test_read_requires_user_id(self, mock_vfs):
         """Read tool returns error when user_id is missing."""
-        empty_config = {"metadata": {}}
+        empty_config = cast(RunnableConfig, {"metadata": {}})
 
-        with patch("app.services.vfs.get_vfs", return_value=mock_vfs):
+        with patch("app.agents.tools.vfs_tools.get_vfs", return_value=mock_vfs):
             from app.agents.tools.vfs_tools import vfs_read
 
             result = await vfs_read.ainvoke(
@@ -99,7 +102,18 @@ class TestVfsWrite:
     @pytest.mark.asyncio
     async def test_write_file(self, mock_config, mock_vfs):
         """Write tool creates/overwrites a file."""
-        with patch("app.services.vfs.get_vfs", return_value=mock_vfs):
+        rate_limit_mock = AsyncMock(return_value={})
+        with (
+            patch("app.agents.tools.vfs_tools.get_vfs", return_value=mock_vfs),
+            patch(
+                "app.decorators.rate_limiting._get_cached_subscription",
+                new=AsyncMock(return_value=SimpleNamespace(plan_type=PlanType.FREE)),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=rate_limit_mock,
+            ),
+        ):
             from app.agents.tools.vfs_tools import vfs_write
 
             result = await vfs_write.ainvoke(
@@ -110,28 +124,46 @@ class TestVfsWrite:
             assert "Wrote" in result
             assert "11 characters" in result
             mock_vfs.write.assert_called_once()
+            rate_limit_mock.assert_awaited_once()
+            assert rate_limit_mock.call_args.kwargs.get("feature_key") == "vfs_write"
 
     @pytest.mark.asyncio
     async def test_write_append_mode(self, mock_config, mock_vfs):
         """Write tool appends when append=True."""
-        with patch("app.services.vfs.get_vfs", return_value=mock_vfs):
+        rate_limit_mock = AsyncMock(return_value={})
+        with (
+            patch("app.agents.tools.vfs_tools.get_vfs", return_value=mock_vfs),
+            patch(
+                "app.decorators.rate_limiting._get_cached_subscription",
+                new=AsyncMock(return_value=SimpleNamespace(plan_type=PlanType.FREE)),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=rate_limit_mock,
+            ),
+        ):
             from app.agents.tools.vfs_tools import vfs_write
 
             result = await vfs_write.ainvoke(
-                {"path": "notes/log.txt", "content": "new line\n", "append": True},
+                {
+                    "path": "notes/log.txt",
+                    "content": "new line\n",
+                    "append": True,
+                },
                 config=mock_config,
             )
 
             assert "Appended" in result
             mock_vfs.append.assert_called_once()
-            mock_vfs.write.assert_not_called()
+            rate_limit_mock.assert_awaited_once()
+            assert rate_limit_mock.call_args.kwargs.get("feature_key") == "vfs_write"
 
     @pytest.mark.asyncio
     async def test_write_requires_user_id(self, mock_vfs):
         """Write tool returns error when user_id is missing."""
-        empty_config = {"metadata": {}}
+        empty_config = cast(RunnableConfig, {"metadata": {}})
 
-        with patch("app.services.vfs.get_vfs", return_value=mock_vfs):
+        with patch("app.agents.tools.vfs_tools.get_vfs", return_value=mock_vfs):
             from app.agents.tools.vfs_tools import vfs_write
 
             result = await vfs_write.ainvoke(
@@ -151,9 +183,19 @@ class TestVfsCmd:
     @pytest.mark.asyncio
     async def test_cmd_pwd(self, mock_config):
         """pwd command returns working directory."""
-        with patch(
-            "app.agents.tools.vfs_cmd_parser.get_vfs_command_parser"
-        ) as mock_parser:
+        with (
+            patch(
+                "app.agents.tools.vfs_cmd_parser.get_vfs_command_parser"
+            ) as mock_parser,
+            patch(
+                "app.decorators.rate_limiting._get_cached_subscription",
+                new=AsyncMock(return_value=SimpleNamespace(plan_type=PlanType.FREE)),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(return_value={}),
+            ),
+        ):
             mock_instance = AsyncMock()
             mock_instance.execute = AsyncMock(
                 return_value="/users/user123/global/executor"
@@ -172,9 +214,19 @@ class TestVfsCmd:
     @pytest.mark.asyncio
     async def test_cmd_blocked_command(self, mock_config):
         """Blocked commands return error."""
-        with patch(
-            "app.agents.tools.vfs_cmd_parser.get_vfs_command_parser"
-        ) as mock_parser:
+        with (
+            patch(
+                "app.agents.tools.vfs_cmd_parser.get_vfs_command_parser"
+            ) as mock_parser,
+            patch(
+                "app.decorators.rate_limiting._get_cached_subscription",
+                new=AsyncMock(return_value=SimpleNamespace(plan_type=PlanType.FREE)),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=AsyncMock(return_value={}),
+            ),
+        ):
             mock_instance = AsyncMock()
             mock_instance.execute = AsyncMock(
                 return_value="Error: 'rm' is not supported."
@@ -193,7 +245,7 @@ class TestVfsCmd:
     @pytest.mark.asyncio
     async def test_cmd_requires_user_id(self):
         """vfs_cmd returns error when user_id is missing."""
-        empty_config = {"metadata": {}}
+        empty_config = cast(RunnableConfig, {"metadata": {}})
 
         from app.agents.tools.vfs_tools import vfs_cmd
 
@@ -256,6 +308,7 @@ class TestVfsCommandParserBasic:
         cmd, args, redirect = parser._parse_command('echo "hello" >> test.txt')
 
         assert cmd == "echo"
+        assert redirect is not None
         assert redirect.mode == ">>"
         assert redirect.filepath == "test.txt"
 
@@ -328,10 +381,10 @@ class TestToolExports:
     """Test that tools are properly exported."""
 
     def test_tools_list_contains_four_tools(self):
-        """Tools list should contain exactly 4 tools."""
+        """Tools list should contain exactly 3 tools."""
         from app.agents.tools.vfs_tools import tools
 
-        assert len(tools) == 4
+        assert len(tools) == 3
 
     def test_tool_names(self):
         """Tools should have correct names."""

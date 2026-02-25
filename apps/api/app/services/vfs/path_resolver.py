@@ -35,7 +35,7 @@ def normalize_path(path: str) -> str:
     - Removes double slashes
     - Ensures leading slash
     - Removes trailing slash (except for root)
-    - Removes any path traversal attempts (..)
+    - Resolves path traversal segments (..)
 
     Args:
         path: The path to normalize

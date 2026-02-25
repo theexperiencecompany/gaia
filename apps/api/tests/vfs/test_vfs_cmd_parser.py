@@ -674,6 +674,13 @@ class TestPathResolution:
         )
         assert result == "/users/user123/global/executor/notes/test.txt"
 
+    def test_resolve_system_path_preserved(self, parser):
+        """System paths should not be remapped into user workspace."""
+        result = parser._resolve_path(
+            "/system/skills/github_agent/create-pr/SKILL.md", "user123", "executor"
+        )
+        assert result == "/system/skills/github_agent/create-pr/SKILL.md"
+
 
 # ==================== Command Execution Tests ====================
 
@@ -854,7 +861,7 @@ class TestGrepExecution:
 
     @pytest.mark.asyncio
     async def test_grep_invalid_pattern(self, parser, mock_vfs):
-        """Grep with invalid regex pattern."""
+        """Grep treats patterns as literal strings (no regex)."""
         mock_info = MagicMock()
         mock_info.node_type = MagicMock()
         mock_info.node_type.value = "file"
@@ -865,7 +872,7 @@ class TestGrepExecution:
         result = await parser.execute(
             "grep '[invalid' notes/file.txt", "user123", "executor"
         )
-        assert "invalid pattern" in result.lower()
+        assert "no matches" in result.lower()
 
 
 # ==================== Tree Execution Tests ====================
