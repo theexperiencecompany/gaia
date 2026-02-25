@@ -512,9 +512,7 @@ async def create_workflow_indexes():
             workflows_collection.create_index(
                 [("user_id", 1), ("system_workflow_key", 1)],
                 unique=True,
-                partialFilterExpression={
-                    "system_workflow_key": {"$exists": True, "$ne": None}
-                },
+                partialFilterExpression={"system_workflow_key": {"$type": 2}},
             ),
         )
 

@@ -170,7 +170,7 @@ class LazyLoader(Generic[T]):
             if self.strategy == MissingKeyStrategy.WARN_ONCE:
                 self._warned_indices.update(missing_indices)
 
-    def get(self) -> Optional[T]:
+    def get(self) -> Optional[Union[T, bool]]:
         """Get the provider instance synchronously. Only works for sync loader functions."""
         if self.is_async and not self.auto_initialize:
             raise RuntimeError(
@@ -179,24 +179,24 @@ class LazyLoader(Generic[T]):
 
         # Quick check without lock for already initialized instances
         if self.is_global_context and self._is_configured:
-            return True  # type: ignore
+            return True  # type: ignore[return-value]
         elif not self.is_global_context and self._instance is not None:
             return self._instance
 
         with self._lock:
             # Double-check locking pattern
             if self.is_global_context and self._is_configured:
-                return True  # type: ignore
+                return True  # type: ignore[return-value]
             elif not self.is_global_context and self._instance is not None:
                 return self._instance
 
             return self._initialize_sync()
 
-    async def aget(self) -> Optional[T]:
+    async def aget(self) -> Optional[Union[T, bool]]:
         """Get the provider instance asynchronously. Works for both sync and async loader functions."""
         # Quick check without lock for already initialized instances
         if self.is_global_context and self._is_configured:
-            return True  # type: ignore
+            return True  # type: ignore[return-value]
         elif not self.is_global_context and self._instance is not None:
             return self._instance
 
@@ -208,7 +208,7 @@ class LazyLoader(Generic[T]):
             async with self._async_lock:
                 # Double-check locking pattern
                 if self.is_global_context and self._is_configured:
-                    return True  # type: ignore
+                    return True  # type: ignore[return-value]
                 elif not self.is_global_context and self._instance is not None:
                     return self._instance
 
@@ -218,13 +218,13 @@ class LazyLoader(Generic[T]):
             with self._lock:
                 # Double-check locking pattern
                 if self.is_global_context and self._is_configured:
-                    return True  # type: ignore
+                    return True  # type: ignore[return-value]
                 elif not self.is_global_context and self._instance is not None:
                     return self._instance
 
                 return self._initialize_sync()
 
-    def _initialize_sync(self) -> Optional[T]:
+    def _initialize_sync(self) -> Optional[Union[T, bool]]:
         """Initialize the provider instance or configure global context synchronously."""
         if self.is_async:
             raise RuntimeError(
@@ -249,7 +249,7 @@ class LazyLoader(Generic[T]):
                 logger.info(
                     f"Successfully configured global provider: {self.provider_name}"
                 )
-                return True  # type: ignore
+                return True  # type: ignore[return-value]
             else:
                 # For instance-based providers, store and return the instance
                 result = self.loader_func()
@@ -272,7 +272,7 @@ class LazyLoader(Generic[T]):
             else:
                 return None
 
-    async def _initialize_async(self) -> Optional[T]:
+    async def _initialize_async(self) -> Optional[Union[T, bool]]:
         """Initialize the provider instance or configure global context asynchronously."""
         # Check if required values are valid
         missing_indices = self._check_required_keys()
@@ -305,7 +305,7 @@ class LazyLoader(Generic[T]):
                 logger.info(
                     f"Successfully configured global provider: {self.provider_name}"
                 )
-                return True  # type: ignore
+                return True  # type: ignore[return-value]
             else:
                 # For instance-based providers, store and return the instance
                 if self.is_async:
@@ -353,7 +353,9 @@ class LazyLoader(Generic[T]):
             return True
         return False
 
-    def _handle_missing_values_on_get(self, missing_indices: Set[int]) -> Optional[T]:
+    def _handle_missing_values_on_get(
+        self, missing_indices: Set[int]
+    ) -> Optional[Union[T, bool]]:
         """Handle missing values when get() is called."""
         if self.strategy == MissingKeyStrategy.ERROR:
             indices_str = ", ".join(f"index {i}" for i in missing_indices)
@@ -365,7 +367,7 @@ class LazyLoader(Generic[T]):
         # For non-error strategies, just return None (warning already logged at registration)
         return None
 
-    def _handle_validation_failure_on_get(self) -> Optional[T]:
+    def _handle_validation_failure_on_get(self) -> Optional[Union[T, bool]]:
         """Handle custom validation failure when get() is called."""
         if self.strategy == MissingKeyStrategy.ERROR:
             raise ConfigurationError(
@@ -494,32 +496,143 @@ class ProviderRegistry:
             self._providers[name] = provider
             return provider
 
-    async def initialize_auto_providers(self):
-        """Initialize all providers marked for auto-initialization concurrently."""
+    async def initialize_auto_providers(
+        self,
+        *,
+        concurrency: int = 5,
+        strict: bool = False,
+    ) -> None:
+        """Initialize all providers marked for auto-initialization.
 
-        async def _init_provider(name: str):
-            """Initialize a single provider with error handling."""
-            try:
-                await self.aget(name)
-                logger.info(f"Auto-initialized provider '{name}'")
-            except Exception as e:
-                provider = self._providers[name]
-                if provider.strategy == MissingKeyStrategy.ERROR:
+        This is intended to be called during startup (blocking) or during a
+        background warmup phase (non-blocking).
+
+        Behavior:
+        - Providers that are not available (missing required keys / validation
+          fails) are skipped.
+        - In strict mode, any failure (or unavailable ERROR-strategy provider)
+          raises after all tasks complete.
+        - In non-strict mode, errors are logged and startup can continue.
+        """
+
+        semaphore = asyncio.Semaphore(max(1, concurrency))
+        errors: list[tuple[str, Exception]] = []
+
+        async def _init_provider(name: str) -> None:
+            async with semaphore:
+                try:
+                    provider = self._providers.get(name)
+                    if provider and not provider.is_available():
+                        if strict and provider.strategy == MissingKeyStrategy.ERROR:
+                            raise ConfigurationError(
+                                f"Provider '{name}' is not available for auto-initialization"
+                            )
+                        return
+
+                    await self.aget(name)
+                    logger.info(f"Auto-initialized provider '{name}'")
+                except asyncio.CancelledError:
+                    # Propagate cancellation so shutdown can stop warmup promptly.
                     raise
-                else:
-                    logger.warning(f"Auto-initialization failed for '{name}': {e}")
+                except Exception as e:
+                    errors.append((name, e))
+                    provider = self._providers.get(name)
+                    provider_strategy = (
+                        provider.strategy if provider else MissingKeyStrategy.WARN
+                    )
+                    if provider_strategy == MissingKeyStrategy.ERROR:
+                        logger.error(f"Auto-initialization failed for '{name}': {e}")
+                    else:
+                        logger.warning(f"Auto-initialization failed for '{name}': {e}")
 
-        # Create tasks for all auto-init providers
-        tasks = [
-            _init_provider(name)
-            for name in self._auto_init_providers
-            if name in self._providers
-        ]
+        with self._lock:
+            names = [
+                name for name in self._auto_init_providers if name in self._providers
+            ]
+        if not names:
+            return
 
-        if tasks:
-            # Run all initializations concurrently
-            await asyncio.gather(*tasks, return_exceptions=True)
-            logger.info(f"Completed auto-initialization for {len(tasks)} providers")
+        await asyncio.gather(*[_init_provider(name) for name in names])
+        logger.info(f"Completed auto-initialization for {len(names)} providers")
+
+        if strict and errors:
+            failed = ", ".join(name for name, _ in errors)
+            raise RuntimeError(f"Auto-initialization failed for: {failed}")
+
+    async def warmup_all(
+        self,
+        *,
+        concurrency: int = 5,
+        strict: bool = False,
+    ) -> None:
+        """Warm up (initialize) all registered providers.
+
+        This is designed for background warmup in production.
+
+        Key guarantees / gotchas:
+        - It uses `aget()` which is safe for both sync and async providers.
+        - If a request handler calls `providers.aget(name)` while warmup is
+          initializing the same provider, the request will wait on the same
+          per-provider lock (no double initialization).
+        - Providers that are not available are skipped (missing required keys).
+        """
+
+        semaphore = asyncio.Semaphore(max(1, concurrency))
+        errors: list[tuple[str, Exception]] = []
+
+        with self._lock:
+            snapshot = list(self._providers.items())
+
+        warmup_names: list[str] = []
+        skipped_unavailable = 0
+        for name, loader in snapshot:
+            if loader.is_available():
+                warmup_names.append(name)
+            else:
+                skipped_unavailable += 1
+                if strict and loader.strategy == MissingKeyStrategy.ERROR:
+                    errors.append(
+                        (
+                            name,
+                            ConfigurationError(
+                                f"Provider '{name}' is not available for warmup"
+                            ),
+                        )
+                    )
+
+        async def _warm(name: str) -> None:
+            async with semaphore:
+                try:
+                    await self.aget(name)
+                except asyncio.CancelledError:
+                    # Propagate cancellation so shutdown can stop warmup promptly.
+                    raise
+                except Exception as e:
+                    errors.append((name, e))
+                    logger.error(f"Provider warmup failed for '{name}': {e}")
+
+        if not warmup_names:
+            if strict and errors:
+                failed = ", ".join(name for name, _ in errors)
+                raise RuntimeError(f"Provider warmup failed for: {failed}")
+            return
+
+        await asyncio.gather(*[_warm(name) for name in warmup_names])
+
+        if errors:
+            logger.warning(
+                f"Provider warmup completed with {len(errors)} errors "
+                f"({skipped_unavailable} unavailable providers skipped)"
+            )
+        else:
+            logger.info(
+                f"Provider warmup completed for {len(warmup_names)} providers "
+                f"({skipped_unavailable} unavailable providers skipped)"
+            )
+
+        if strict and errors:
+            failed = ", ".join(name for name, _ in errors)
+            raise RuntimeError(f"Provider warmup failed for: {failed}")
 
     def get(self, name: str) -> Optional[Any]:
         """Get a provider instance by name synchronously - only works for sync providers."""
@@ -601,7 +714,10 @@ def lazy_provider(
     is_global_context: bool = False,
     auto_initialize: bool = False,
     dependencies: Optional[List[str]] = None,
-):
+) -> Callable[
+    [Callable[..., Any]],
+    Callable[[], LazyLoader[Any]],
+]:
     """
     Decorator to register a function as a lazy provider.
     Supports both sync and async functions.

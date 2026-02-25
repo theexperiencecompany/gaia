@@ -119,6 +119,10 @@ async def close_websocket_async():
 async def close_publisher_async():
     """Close publisher connection."""
     try:
+        # Avoid initializing the publisher during shutdown.
+        if not providers.is_initialized("rabbitmq_publisher"):
+            return
+
         publisher = await get_rabbitmq_publisher()
 
         if publisher:
@@ -132,6 +136,10 @@ async def close_publisher_async():
 async def close_checkpointer_manager():
     """Close checkpointer manager and connection pool."""
     try:
+        # Avoid initializing the checkpointer during shutdown.
+        if not providers.is_initialized("checkpointer_manager"):
+            return
+
         checkpointer_manager = await providers.aget("checkpointer_manager")
         if checkpointer_manager:
             await checkpointer_manager.close()
