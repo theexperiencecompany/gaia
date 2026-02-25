@@ -342,9 +342,10 @@ class CreateWorkflowRequest(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_optional_description(cls, v):
-        if v is not None and not v.strip():
-            return ""
-        return v.strip() if v else None
+        if v is None:
+            return None
+        stripped = v.strip()
+        return stripped if stripped else None
 
 
 class UpdateWorkflowRequest(BaseModel):
@@ -369,9 +370,10 @@ class UpdateWorkflowRequest(BaseModel):
     @field_validator("description")
     @classmethod
     def validate_optional_update_description(cls, v):
-        if v is not None and not v.strip():
-            return ""
-        return v.strip() if v else None
+        if v is None:
+            return None
+        stripped = v.strip()
+        return stripped if stripped else None
 
 
 class WorkflowResponse(BaseModel):
@@ -453,3 +455,18 @@ class PublishWorkflowResponse(BaseModel):
 
     message: str = Field(description="Success message")
     workflow_id: str = Field(description="ID of the published workflow")
+
+
+class GenerateWorkflowPromptRequest(BaseModel):
+    """Request model for AI-generated workflow instructions."""
+
+    title: str
+    description: Optional[str] = None
+    trigger_config: Optional[Dict[str, Any]] = None
+    existing_prompt: Optional[str] = None  # non-empty → improve mode
+
+
+class GenerateWorkflowPromptResponse(BaseModel):
+    """Response model for AI-generated workflow instructions."""
+
+    prompt: str

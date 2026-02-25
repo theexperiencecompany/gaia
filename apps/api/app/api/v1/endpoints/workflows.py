@@ -15,6 +15,8 @@ from app.db.mongodb.collections import workflows_collection
 from app.decorators import tiered_rate_limit
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    GenerateWorkflowPromptRequest,
+    GenerateWorkflowPromptResponse,
     PublicWorkflowsResponse,
     PublishWorkflowResponse,
     RegenerateStepsRequest,
@@ -30,6 +32,7 @@ from app.models.workflow_models import (
 )
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.services.workflow import WorkflowService
+from app.services.workflow.generation_service import WorkflowGenerationService
 from app.services.workflow.execution_service import (
     get_workflow_executions as get_executions,
 )
@@ -129,7 +132,8 @@ async def get_workflow_executions(
 ):
     """Get execution history for a workflow."""
     try:
-        limit = min(limit, 100)
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
         result = await get_executions(
             workflow_id=workflow_id,
             user_id=user["user_id"],
@@ -471,6 +475,31 @@ async def get_public_workflow(request: Request, workflow_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
+        )
+
+
+@router.post(
+    "/workflows/generate-prompt", response_model=GenerateWorkflowPromptResponse
+)
+@tiered_rate_limit("workflow_operations")
+async def generate_workflow_prompt_endpoint(
+    request: GenerateWorkflowPromptRequest,
+    user: dict = Depends(get_current_user),
+) -> GenerateWorkflowPromptResponse:
+    """Generate or improve workflow instructions using AI."""
+    try:
+        prompt = await WorkflowGenerationService.generate_workflow_prompt(
+            title=request.title,
+            description=request.description,
+            trigger_config=request.trigger_config,
+            existing_prompt=request.existing_prompt,
+        )
+        return GenerateWorkflowPromptResponse(prompt=prompt)
+    except Exception as e:
+        logger.error(f"Error generating workflow prompt: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate workflow prompt",
         )
 
 

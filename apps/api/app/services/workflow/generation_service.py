@@ -1,9 +1,13 @@
 """Workflow generation service for LLM-based step creation."""
 
-from typing import List
+from typing import List, Optional
 
 from app.agents.llm.client import init_llm
 from app.agents.prompts.trigger_prompts import generate_trigger_context
+from app.agents.prompts.workflow_prompts import (
+    WORKFLOW_PROMPT_GENERATION_SYSTEM,
+    WORKFLOW_PROMPT_GENERATION_TEMPLATE,
+)
 from app.agents.templates.workflow_template import (
     WORKFLOW_GENERATION_TEMPLATE,
     workflow_parser,
@@ -122,3 +126,45 @@ class WorkflowGenerationService:
                 f"[WorkflowGen] ========== FAILED: {e} ==========", exc_info=True
             )
             return []
+
+    @staticmethod
+    async def generate_workflow_prompt(
+        title: str,
+        description: Optional[str] = None,
+        trigger_config: Optional[dict] = None,
+        existing_prompt: Optional[str] = None,
+    ) -> str:
+        """Generate or improve workflow instructions using LLM."""
+        from langchain_core.messages import HumanMessage, SystemMessage
+
+        trigger_context = (
+            generate_trigger_context(trigger_config) if trigger_config else ""
+        )
+
+        llm = init_llm(use_free=True)
+
+        formatted = WORKFLOW_PROMPT_GENERATION_TEMPLATE.format(
+            title=title,
+            description_section=f"Description: {description}" if description else "",
+            trigger_section=(
+                f"Trigger: {trigger_context}" if trigger_context else "Trigger: Manual"
+            ),
+            existing_section=(
+                f"Existing instructions to improve:\n{existing_prompt}"
+                if existing_prompt
+                else ""
+            ),
+            mode_instruction=(
+                "Improve these instructions — keep the user's intent, add specificity, "
+                "edge case handling, and output details."
+                if existing_prompt
+                else "Generate comprehensive workflow instructions from scratch."
+            ),
+        )
+
+        messages = [
+            SystemMessage(content=WORKFLOW_PROMPT_GENERATION_SYSTEM),
+            HumanMessage(content=formatted),
+        ]
+        response = await llm.ainvoke(messages)
+        return response.content.strip()

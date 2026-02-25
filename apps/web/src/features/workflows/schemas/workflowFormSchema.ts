@@ -145,7 +145,7 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
   return {
     title: workflow.title,
     description: workflow.description || undefined,
-    prompt: workflow.prompt,
+    prompt: workflow.prompt || workflow.description || workflow.title,
     activeTab,
     selectedTrigger,
     trigger_config: workflow.trigger_config,

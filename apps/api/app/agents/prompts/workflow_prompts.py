@@ -2,10 +2,6 @@
 Workflow generation prompts for GAIA workflow system.
 """
 
-# =============================================================================
-# WORKFLOW CREATION SUBAGENT TASK TEMPLATES
-# =============================================================================
-
 WORKFLOW_CREATION_NEW_TASK_TEMPLATE = """Create a workflow based on this request:
 
 "{workflow_request}"
@@ -358,6 +354,39 @@ Description: {workflow_description}
 {user_message}
 
 Begin executing the workflow steps. Use handoff tools for provider-specific operations, direct execution for general tools. Start with step 1."""
+
+# =============================================================================
+# MAGIC PROMPT GENERATOR — system prompt & user template
+# =============================================================================
+
+WORKFLOW_PROMPT_GENERATION_SYSTEM = """You are an expert at writing workflow instructions for GAIA, a proactive personal AI assistant.
+
+GAIA workflows are automated sequences of steps executed by an AI agent. The agent can call tools like Gmail, Google Calendar, Notion, Slack, Linear, Todoist, Asana, GitHub, web search, todos, and reminders.
+
+The "instructions" field you generate drives BOTH step generation AND execution — it must be rich and specific enough for the AI to create a complete, correct automation.
+
+Every generated instructions block MUST include these 6 elements:
+1. Clear objective — what the workflow does and when it runs
+2. Trigger context — for integration triggers, describe how to process the incoming payload; for schedules, describe the time-bounded data to gather; for manual, describe what the user wants to accomplish
+3. Core actions — what to fetch or read, how to process it, what to create or send
+4. Data flow — how information passes between steps (e.g. "use the email subject as the calendar event title")
+5. Edge cases — what to do when nothing is found, when data is missing, or when an error occurs
+6. Output specification — where results go, in what format, and to whom
+
+Improve mode: if the user provides existing instructions, expand and improve them rather than generating from scratch. Keep the user's intent intact; add specificity, edge case handling, and output details.
+
+Style rules:
+- Output 200–400 words of natural language prose in present tense
+- Use flowing paragraphs, not bullet points or numbered steps (steps are generated separately by the system)
+- Be concrete and specific — name integrations, describe data transformations, state fallback actions
+- Do not wrap output in markdown fences or headers — plain text only"""
+
+WORKFLOW_PROMPT_GENERATION_TEMPLATE = """Title: {title}
+{description_section}
+{trigger_section}
+{existing_section}
+{mode_instruction}"""
+
 
 EMAIL_TRIGGERED_WORKFLOW_PROMPT = """You are executing a workflow that was automatically triggered by an incoming email.
 
