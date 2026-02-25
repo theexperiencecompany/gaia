@@ -1,10 +1,9 @@
 "use client";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { toast } from "sonner";
-
 import { apiauth } from "@/lib/api";
-import { isOnLandingRoute, processAxiosError } from "@/utils";
+import { toast } from "@/lib/toast";
+import { isOnLandingRoute, processAxiosError } from "@/utils/interceptorUtils";
 
 export default function useAxiosInterceptor() {
   const pathname = usePathname();

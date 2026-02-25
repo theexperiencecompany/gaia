@@ -3,7 +3,7 @@ FROM node:20-alpine AS builder
 WORKDIR /app
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 
 # Copy workspace config
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
@@ -25,7 +25,7 @@ FROM node:20-alpine AS runner
 WORKDIR /app
 
 # Install pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 
 # Copy built artifacts and necessary files
 COPY --from=builder /app/package.json /app/pnpm-lock.yaml /app/pnpm-workspace.yaml ./

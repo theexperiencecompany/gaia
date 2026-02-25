@@ -210,6 +210,31 @@ export class NotificationsAPI {
   }
 
   /**
+   * Get notification channel preferences (telegram, discord)
+   */
+  static async getChannelPreferences(): Promise<{
+    telegram: boolean;
+    discord: boolean;
+  }> {
+    const response = await apiauth.get<{ telegram: boolean; discord: boolean }>(
+      `${NotificationsAPI.BASE_URL}/preferences/channels`,
+    );
+    return response.data;
+  }
+
+  /**
+   * Update a notification channel preference
+   */
+  static async updateChannelPreference(
+    platform: "telegram" | "discord",
+    enabled: boolean,
+  ): Promise<void> {
+    await apiauth.put(`${NotificationsAPI.BASE_URL}/preferences/channels`, {
+      [platform]: enabled,
+    });
+  }
+
+  /**
    * Create a test notification for debugging WebSocket
    */
   static async createTestNotification(

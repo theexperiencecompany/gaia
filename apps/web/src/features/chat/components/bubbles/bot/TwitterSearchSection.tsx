@@ -1,7 +1,5 @@
 "use client";
 
-import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
-import { format, parseISO } from "date-fns";
 import {
   CheckmarkBadge02Icon,
   FavouriteIcon,
@@ -9,7 +7,9 @@ import {
   MessageIcon,
   RepeatIcon,
   ShareIcon,
-} from "@/icons";
+} from "@icons";
+import { Avatar, AvatarFallback, AvatarImage } from "@radix-ui/react-avatar";
+import { format, parseISO } from "date-fns";
 import type { TwitterTweetData } from "@/types/features/twitterTypes";
 
 /**

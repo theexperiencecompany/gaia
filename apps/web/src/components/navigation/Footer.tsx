@@ -139,7 +139,7 @@ export default function Footer() {
                       href={link.href}
                       className="group relative flex w-full cursor-pointer justify-start py-1 text-sm sm:justify-end"
                     >
-                      <span className="text-foreground-400 transition-colors group-hover:text-primary">
+                      <span className="text-foreground-500 transition-colors group-hover:text-primary">
                         {link.label}
                       </span>
                     </Link>

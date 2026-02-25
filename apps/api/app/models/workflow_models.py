@@ -243,6 +243,23 @@ class Workflow(BaseScheduledTask):
         description="ID of the source todo if is_todo_workflow=True",
     )
 
+    # System workflow flags (for auto-provisioned workflows created on integration connect)
+    is_system_workflow: bool = Field(
+        default=False,
+        description="Auto-provisioned by GAIA when an integration is connected.",
+    )
+    source_integration: Optional[str] = Field(
+        default=None,
+        description="Which integration provisioned this workflow. e.g. 'gmail', 'googlecalendar'.",
+    )
+    system_workflow_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stable identifier linking this document back to its definition in code. "
+            "Used for reset-to-default and idempotency. e.g. 'gmail:email_intelligence'."
+        ),
+    )
+
     def __init__(self, **data):
         """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields."""
         # Ensure user_id is provided (it's required by BaseScheduledTask)
@@ -305,6 +322,20 @@ class CreateWorkflowRequest(BaseModel):
     )
     generate_immediately: bool = Field(
         default=False, description="Generate steps immediately vs background"
+    )
+
+    # System workflow fields — set by provisioner, not by regular API users
+    is_system_workflow: bool = Field(
+        default=False,
+        description="Auto-provisioned by GAIA when an integration is connected.",
+    )
+    source_integration: Optional[str] = Field(
+        default=None,
+        description="Which integration provisioned this workflow.",
+    )
+    system_workflow_key: Optional[str] = Field(
+        default=None,
+        description="Stable key linking to the original definition in code.",
     )
 
     @field_validator("title", "description")

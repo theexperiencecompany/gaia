@@ -4,7 +4,6 @@ services:
   # FastAPI Application
   gaia-backend:
     container_name: gaia-backend
-    profiles: ["", "backend-only"]
     image: ghcr.io/theexperiencecompany/gaia:latest
     working_dir: /app/apps/api
     command:
@@ -65,7 +64,6 @@ services:
   chromadb:
     image: chromadb/chroma:1.0.0
     container_name: chromadb
-    profiles: ["", "backend-only"]
     volumes:
       - chroma_data:/chroma/chroma
     environment:
@@ -88,7 +86,6 @@ services:
   postgres:
     image: postgres:alpine
     container_name: postgres
-    profiles: ["", "backend-only"]
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
@@ -110,10 +107,11 @@ services:
   redis:
     image: redis:alpine
     container_name: redis
-    profiles: ["", "backend-only"]
     ports:
       - "6379:6379"
     restart: always
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 30s
@@ -126,7 +124,6 @@ services:
   rabbitmq:
     image: rabbitmq:3-management
     container_name: rabbitmq
-    profiles: ["", "backend-only"]
     ports:
       - "5672:5672" # AMQP protocol
       - "15672:15672" # Management UI
@@ -145,15 +142,66 @@ services:
   arq_worker:
     container_name: arq_worker
     image: ghcr.io/theexperiencecompany/gaia:latest
-    profiles: ["", "backend-only"]
     working_dir: /app/apps/api
     env_file:
       - ../../apps/api/.env
     environment:
       - WORKER_TYPE=arq_worker
       - PYTHONPATH=/app/apps/api
-    command: ["uv", "run", "--group", "backend", "python", "-m", "arq", "app.worker.WorkerSettings"]
+    command:
+      [
+        "uv",
+        "run",
+        "--group",
+        "backend",
+        "python",
+        "-m",
+        "arq",
+        "app.worker.WorkerSettings",
+      ]
     restart: always
+    networks:
+      - gaia_network
+
+  # Discord Bot (optional - enable with --profile bots)
+  discord-bot:
+    container_name: discord-bot
+    profiles: ["bots"]
+    image: ghcr.io/theexperiencecompany/gaia-bot-discord:latest
+    env_file:
+      - ../../apps/bots/.env
+    restart: always
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  # Slack Bot (optional - enable with --profile bots)
+  slack-bot:
+    container_name: slack-bot
+    profiles: ["bots"]
+    image: ghcr.io/theexperiencecompany/gaia-bot-slack:latest
+    env_file:
+      - ../../apps/bots/.env
+    restart: always
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  # Telegram Bot (optional - enable with --profile bots)
+  telegram-bot:
+    container_name: telegram-bot
+    profiles: ["bots"]
+    image: ghcr.io/theexperiencecompany/gaia-bot-telegram:latest
+    env_file:
+      - ../../apps/bots/.env
+    restart: always
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
     networks:
       - gaia_network
 
@@ -174,7 +222,7 @@ services:
     env_file:
       - ../../apps/api/.env
     volumes:
-      - voice_agent_models:/root/.cache/huggingface
+      - voice_agent_models:/home/appuser/.cache/huggingface
     restart: always
     depends_on:
       gaia-backend:
@@ -185,6 +233,7 @@ services:
 volumes:
   chroma_data:
   pgdata:
+  redis_data:
   rabbitmq_data:
   voice_agent_models:
 

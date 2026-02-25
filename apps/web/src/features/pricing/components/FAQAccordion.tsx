@@ -8,7 +8,7 @@ export function FAQAccordion() {
   const faqItems = getAllFAQs();
 
   return (
-    <div className="relative flex h-fit w-full items-center justify-center py-20">
+    <div className="relative flex h-fit w-full items-center justify-center px-4 sm:px-6 py-20">
       {/* <div
         className="pointer-events-none absolute top-0 right-0 z-0 h-screen w-screen"
         style={{
@@ -24,7 +24,7 @@ export function FAQAccordion() {
         }}
       /> */}
 
-      <div className="relative z-[1] w-screen max-w-7xl p-8">
+      <div className="relative z-[1] w-screen max-w-7xl px-0 py-4 sm:p-8">
         <div className="mb-10 flex w-full flex-col items-start justify-center gap-3">
           <span className="font-serif text-7xl font-medium">
             Frequently asked questions

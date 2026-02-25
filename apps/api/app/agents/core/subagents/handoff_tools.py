@@ -364,6 +364,15 @@ async def handoff(
     try:
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id")
+
+        # Fallback: try to get user_id from metadata if not in configurable
+        if not user_id:
+            metadata = config.get("metadata", {})
+            user_id = metadata.get("user_id")
+            if user_id and "configurable" in config:
+                # Update configurable with user_id for consistency
+                config["configurable"]["user_id"] = user_id
+
         stream_id = configurable.get("stream_id")  # Extract stream_id for cancellation
 
         # Resolve subagent and get graph

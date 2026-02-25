@@ -1,9 +1,12 @@
 import type { MetadataRoute } from "next";
 
+import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
+import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
-import { siteConfig } from "@/lib/seo";
+import { getSiteUrl } from "@/lib/seo";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 /**
  * Sitemap IDs for different content types.
@@ -15,6 +18,9 @@ const SITEMAP_IDS = {
   EXPLORE: 2,
   COMMUNITY: 3,
   INTEGRATIONS: 4,
+  COMPARISONS: 5,
+  PERSONAS: 6,
+  GLOSSARY: 7,
 } as const;
 
 /**
@@ -29,10 +35,11 @@ export async function generateSitemaps() {
     { id: SITEMAP_IDS.EXPLORE },
     { id: SITEMAP_IDS.COMMUNITY },
     { id: SITEMAP_IDS.INTEGRATIONS },
+    { id: SITEMAP_IDS.COMPARISONS },
+    { id: SITEMAP_IDS.PERSONAS },
+    { id: SITEMAP_IDS.GLOSSARY },
   ];
 }
-
-const BASE_URL = siteConfig.url;
 
 type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 const STATIC_PAGES: Array<{
@@ -46,24 +53,24 @@ const STATIC_PAGES: Array<{
   { path: "/blog", freq: "daily", priority: 0.9 },
   { path: "/use-cases", freq: "weekly", priority: 0.9 },
   { path: "/download", freq: "weekly", priority: 0.9 },
+  { path: "/compare", freq: "weekly", priority: 0.9 },
+  { path: "/for", freq: "weekly", priority: 0.9 },
+  { path: "/learn", freq: "weekly", priority: 0.8 },
   { path: "/faq", freq: "monthly", priority: 0.8 },
   { path: "/manifesto", freq: "monthly", priority: 0.8 },
   { path: "/about", freq: "monthly", priority: 0.8 },
-  { path: "/docs", freq: "weekly", priority: 0.8 },
   { path: "/contact", freq: "monthly", priority: 0.7 },
   { path: "/brand", freq: "monthly", priority: 0.7 },
   { path: "/login", freq: "monthly", priority: 0.6 },
   { path: "/signup", freq: "monthly", priority: 0.6 },
-  { path: "/status", freq: "daily", priority: 0.6 },
   { path: "/terms", freq: "monthly", priority: 0.5 },
   { path: "/privacy", freq: "monthly", priority: 0.5 },
-  { path: "/request-feature", freq: "monthly", priority: 0.5 },
   { path: "/thanks", freq: "monthly", priority: 0.4 },
 ];
 
-function getStaticPages(): MetadataRoute.Sitemap {
+function getStaticPages(baseUrl: string): MetadataRoute.Sitemap {
   return STATIC_PAGES.map((p) => ({
-    url: `${BASE_URL}${p.path}`,
+    url: `${baseUrl}${p.path}`,
     changeFrequency: p.freq,
     priority: p.priority,
   }));
@@ -72,11 +79,11 @@ function getStaticPages(): MetadataRoute.Sitemap {
 /**
  * Blog post pages from markdown files
  */
-async function getBlogPages(): Promise<MetadataRoute.Sitemap> {
+async function getBlogPages(baseUrl: string): Promise<MetadataRoute.Sitemap> {
   try {
     const blogs = await getAllBlogPosts(false);
     return blogs.map((blog) => ({
-      url: `${BASE_URL}/blog/${blog.slug}`,
+      url: `${baseUrl}/blog/${blog.slug}`,
       lastModified: new Date(blog.date),
       changeFrequency: "monthly" as const,
       priority: 0.7,
@@ -90,12 +97,14 @@ async function getBlogPages(): Promise<MetadataRoute.Sitemap> {
 /**
  * Explore workflows (GAIA team curated)
  */
-async function getExploreWorkflowPages(): Promise<MetadataRoute.Sitemap> {
+async function getExploreWorkflowPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
   try {
     const limit = isDevelopment() ? 50 : 1000;
     const exploreResp = await workflowApi.getExploreWorkflows(limit, 0);
     return exploreResp.workflows.map((wc) => ({
-      url: `${BASE_URL}/use-cases/${wc.id}`,
+      url: `${baseUrl}/use-cases/${wc.id}`,
       lastModified: new Date(wc.created_at),
       changeFrequency: "weekly" as const,
       priority: wc.categories?.includes("featured") ? 0.8 : 0.7,
@@ -109,12 +118,14 @@ async function getExploreWorkflowPages(): Promise<MetadataRoute.Sitemap> {
 /**
  * Community workflows
  */
-async function getCommunityWorkflowPages(): Promise<MetadataRoute.Sitemap> {
+async function getCommunityWorkflowPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
   try {
     if (isDevelopment()) {
       const communityResponse = await workflowApi.getCommunityWorkflows(50, 0);
       return communityResponse.workflows.map((workflow) => ({
-        url: `${BASE_URL}/use-cases/${workflow.id}`,
+        url: `${baseUrl}/use-cases/${workflow.id}`,
         lastModified: new Date(workflow.created_at),
         changeFrequency: "weekly" as const,
         priority: 0.6,
@@ -135,7 +146,7 @@ async function getCommunityWorkflowPages(): Promise<MetadataRoute.Sitemap> {
     );
 
     return allWorkflows.map((workflow) => ({
-      url: `${BASE_URL}/use-cases/${workflow.id}`,
+      url: `${baseUrl}/use-cases/${workflow.id}`,
       lastModified: new Date(workflow.created_at),
       changeFrequency: "weekly" as const,
       priority: 0.6,
@@ -149,11 +160,12 @@ async function getCommunityWorkflowPages(): Promise<MetadataRoute.Sitemap> {
 /**
  * Marketplace integration pages
  */
-async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
+async function getIntegrationPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
   try {
-    const apiUrl =
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-    const apiBaseUrl = apiUrl.replace(/\/$/, "");
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
 
     if (isDevelopment()) {
       const response = await fetch(
@@ -168,7 +180,7 @@ async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
             publishedAt?: string;
             createdAt?: string;
           }) => ({
-            url: `${BASE_URL}/marketplace/${integration.slug}`,
+            url: `${baseUrl}/marketplace/${integration.slug}`,
             lastModified: new Date(
               integration.publishedAt || integration.createdAt || Date.now(),
             ),
@@ -209,7 +221,7 @@ async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
         publishedAt?: string;
         createdAt?: string;
       }) => ({
-        url: `${BASE_URL}/marketplace/${integration.slug}`,
+        url: `${baseUrl}/marketplace/${integration.slug}`,
         lastModified: new Date(
           integration.publishedAt || integration.createdAt || Date.now(),
         ),
@@ -224,6 +236,53 @@ async function getIntegrationPages(): Promise<MetadataRoute.Sitemap> {
 }
 
 /**
+ * Comparison pages (GAIA vs competitors)
+ */
+function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
+  const slugs = getAllComparisonSlugs();
+  return slugs.map((slug) => ({
+    url: `${baseUrl}/compare/${slug}`,
+    changeFrequency: "monthly" as const,
+    priority: 0.8,
+  }));
+}
+
+/**
+ * Persona pages (AI assistant for [role])
+ * Dynamically imports to avoid circular dependency issues at build time.
+ */
+async function getPersonaPages(
+  baseUrl: string,
+): Promise<MetadataRoute.Sitemap> {
+  try {
+    const { getAllPersonaSlugs } = await import(
+      "@/features/personas/data/personasData"
+    );
+    const slugs = getAllPersonaSlugs();
+    return slugs.map((slug) => ({
+      url: `${baseUrl}/for/${slug}`,
+      changeFrequency: "monthly" as const,
+      priority: 0.8,
+    }));
+  } catch (error) {
+    console.error("Error generating persona sitemap pages:", error);
+    return [];
+  }
+}
+
+/**
+ * Glossary term pages (AI/productivity concepts)
+ */
+function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
+  const slugs = getAllGlossaryTermSlugs();
+  return slugs.map((slug) => ({
+    url: `${baseUrl}/learn/${slug}`,
+    changeFrequency: "monthly" as const,
+    priority: 0.7,
+  }));
+}
+
+/**
  * Generate dynamic sitemap for GAIA.
  * Uses sitemap index pattern with separate sitemaps for each content type.
  * Note: In Next.js 16.0.0+, the id is passed as a Promise that resolves to a string.
@@ -233,18 +292,25 @@ export default async function sitemap(props: {
 }): Promise<MetadataRoute.Sitemap> {
   const idString = await props.id;
   const id = Number(idString);
+  const baseUrl = getSiteUrl();
 
   switch (id) {
     case SITEMAP_IDS.STATIC:
-      return getStaticPages();
+      return getStaticPages(baseUrl);
     case SITEMAP_IDS.BLOG:
-      return getBlogPages();
+      return getBlogPages(baseUrl);
     case SITEMAP_IDS.EXPLORE:
-      return getExploreWorkflowPages();
+      return getExploreWorkflowPages(baseUrl);
     case SITEMAP_IDS.COMMUNITY:
-      return getCommunityWorkflowPages();
+      return getCommunityWorkflowPages(baseUrl);
     case SITEMAP_IDS.INTEGRATIONS:
-      return getIntegrationPages();
+      return getIntegrationPages(baseUrl);
+    case SITEMAP_IDS.COMPARISONS:
+      return getComparisonPages(baseUrl);
+    case SITEMAP_IDS.PERSONAS:
+      return getPersonaPages(baseUrl);
+    case SITEMAP_IDS.GLOSSARY:
+      return getGlossaryPages(baseUrl);
     default:
       return [];
   }

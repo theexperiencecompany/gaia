@@ -1,8 +1,10 @@
 import type { Metadata } from "next";
 
 import JsonLd from "@/components/seo/JsonLd";
+import { marketplaceFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
+  generateFAQSchema,
   generateItemListSchema,
   generatePageMetadata,
   generateWebPageSchema,
@@ -12,19 +14,25 @@ import {
 import { IntegrationsPageClient } from "./client";
 
 export const metadata: Metadata = generatePageMetadata({
-  title: "Integration Marketplace",
+  title: "AI Integration Marketplace - Connect Your Tools to GAIA",
   description:
-    "Discover and clone MCP integrations built by the community. Connect AI tools to your favorite services.",
+    "Browse 50+ AI integrations for productivity, communication, and developer tools. Automate Gmail, Slack, Notion, GitHub and more with GAIA's AI-powered MCP integration marketplace. Free to use.",
   path: "/marketplace",
   image: "/api/og/integrations",
   keywords: [
+    "AI integration marketplace",
     "MCP integrations",
     "AI integrations",
-    "community integrations",
+    "automate tools with AI",
+    "AI assistant integrations",
+    "connect apps to AI",
     "MCP servers",
-    "AI tools",
+    "AI automation tools",
+    "productivity AI integrations",
     "GAIA integrations",
-    "integration marketplace",
+    "AI-powered workflow integrations",
+    "community integrations",
+    "free AI integrations",
   ],
 });
 
@@ -32,8 +40,8 @@ export const revalidate = 3600;
 
 export default function MarketplacePage() {
   const webPageSchema = generateWebPageSchema(
-    "Integration Marketplace",
-    "Discover and clone MCP integrations built by the GAIA community. Connect AI tools to your favorite services.",
+    "AI Integration Marketplace - Connect Your Tools to AI",
+    "Browse 50+ AI integrations for productivity, communication, and developer tools. Automate Gmail, Slack, Notion, GitHub and more with GAIA's AI-powered MCP integration marketplace.",
     `${siteConfig.url}/marketplace`,
     [
       { name: "Home", url: siteConfig.url },
@@ -47,27 +55,46 @@ export default function MarketplacePage() {
   const itemListSchema = generateItemListSchema(
     [
       {
-        name: "Email Integrations",
+        name: "Email AI Integrations",
         url: `${siteConfig.url}/marketplace`,
-        description: "Connect GAIA to Gmail, Outlook, and more",
+        description:
+          "Automate Gmail, Outlook, and email workflows with AI. Let GAIA triage, draft, and manage your inbox.",
       },
       {
-        name: "Calendar Integrations",
+        name: "Calendar AI Integrations",
         url: `${siteConfig.url}/marketplace`,
-        description: "Sync with Google Calendar, Outlook Calendar",
+        description:
+          "AI-powered calendar management for Google Calendar and Outlook. Automate scheduling and meeting prep.",
       },
       {
-        name: "Productivity Tools",
+        name: "Productivity AI Integrations",
         url: `${siteConfig.url}/marketplace`,
-        description: "Notion, Todoist, Linear, and more",
+        description:
+          "Connect Notion, Todoist, Linear, and Asana to AI. Automate task management and project workflows.",
+      },
+      {
+        name: "Developer AI Integrations",
+        url: `${siteConfig.url}/marketplace`,
+        description:
+          "AI integrations for GitHub, GitLab, and developer tools. Automate code reviews, issues, and CI/CD.",
+      },
+      {
+        name: "Communication AI Integrations",
+        url: `${siteConfig.url}/marketplace`,
+        description:
+          "Connect Slack, Discord, and Teams to AI. Automate messages, notifications, and team communication.",
       },
     ],
     "Product",
   );
 
+  const faqSchema = generateFAQSchema(marketplaceFAQs);
+
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
+      <JsonLd
+        data={[webPageSchema, breadcrumbSchema, itemListSchema, faqSchema]}
+      />
       <IntegrationsPageClient />
     </>
   );

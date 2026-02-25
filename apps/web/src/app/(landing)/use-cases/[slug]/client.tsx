@@ -1,10 +1,10 @@
 "use client";
 
 import { Avatar } from "@heroui/avatar";
+import { UserCircle02Icon } from "@icons";
 import { PlayIcon } from "@theexperiencecompany/gaia-icons/solid-standard";
 import Image from "next/image";
 import { useState } from "react";
-
 import { wallpapers } from "@/config/wallpapers";
 import { useAuth } from "@/features/auth/hooks/useAuth";
 import { useWorkflowSelection } from "@/features/chat/hooks/useWorkflowSelection";
@@ -19,7 +19,6 @@ import type { Workflow } from "@/features/workflows/api/workflowApi";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import { useWorkflowCreation } from "@/features/workflows/hooks/useWorkflowCreation";
 import { getTriggerDisplayInfo } from "@/features/workflows/triggers";
-import { UserCircle02Icon } from "@/icons";
 
 interface UseCaseDetailClientProps {
   useCase: UseCase | null;

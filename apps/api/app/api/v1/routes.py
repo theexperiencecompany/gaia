@@ -7,7 +7,6 @@ This package contains the API routes and dependencies for version 1 of the GAIA 
 from app.api.v1.endpoints import (
     blog,
     bot,
-    bot_auth,
     calendar,
     chat,
     conversations,
@@ -23,6 +22,8 @@ from app.api.v1.endpoints import (
     oauth,
     onboarding,
     payments,
+    platform_auth,
+    platform_links,
     reminders,
     search,
     skills,
@@ -77,4 +78,9 @@ router.include_router(usage.router, tags=["Usage"])
 router.include_router(tools.router, tags=["Tools"])
 router.include_router(models.router, tags=["Models"])
 router.include_router(bot.router, prefix="/bot", tags=["Bot"])
-router.include_router(bot_auth.router, prefix="/bot-auth", tags=["Bot Auth"])
+router.include_router(
+    platform_auth.router, prefix="/platform-auth", tags=["Platform Auth"]
+)
+router.include_router(
+    platform_links.router, prefix="/platform-links", tags=["Platform Links"]
+)

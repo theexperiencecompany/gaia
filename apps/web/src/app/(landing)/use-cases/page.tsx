@@ -7,8 +7,10 @@ import {
   type CommunityWorkflow,
   workflowApi,
 } from "@/features/workflows/api/workflowApi";
+import { useCasesFAQs } from "@/lib/page-faqs";
 import {
   generateBreadcrumbSchema,
+  generateFAQSchema,
   generateItemListSchema,
   generatePageMetadata,
   generateWebPageSchema,
@@ -28,7 +30,6 @@ export const metadata: Metadata = generatePageMetadata({
     "use cases",
     "automation examples",
     "community workflows",
-    "workflow templates",
     "AI task automation",
   ],
 });
@@ -67,9 +68,13 @@ export default async function UseCasesPage() {
     "Article",
   );
 
+  const faqSchema = generateFAQSchema(useCasesFAQs);
+
   return (
     <div className="relative h-fit min-h-screen pt-90">
-      <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
+      <JsonLd
+        data={[webPageSchema, breadcrumbSchema, itemListSchema, faqSchema]}
+      />
       <div className="absolute inset-0 top-0 z-0 h-[70vh] w-full">
         <Image
           src={wallpapers.useCases.webp}

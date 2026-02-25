@@ -8,7 +8,6 @@ import { getHouseImage } from "@/features/onboarding/constants/houses";
 import { BackCardContent, BackCardFooter } from "./BackCardContent";
 import { CardOverlay } from "./CardOverlay";
 import { CARD_CLASSES } from "./constants";
-import { DitherEffect } from "./DitherEffect";
 import { FrontCardContent } from "./FrontCardContent";
 import { LogoHeader } from "./LogoHeader";
 import type { HoloCardProps } from "./types";
@@ -189,21 +188,21 @@ export const HoloCard = ({
                 />
               </div>
 
-              <DitherEffect intensity={1}>
-                <StyledHoloCard
-                  $url={houseImage}
-                  ref={ref}
-                  $active={false}
-                  $animated={false}
-                  $activeRotation={activeRotation}
-                  $activeBackgroundPosition={activeBackgroundPosition}
-                  $height={height}
-                  $width={width}
-                  $showSparkles={showSparkles}
-                >
-                  {children}
-                </StyledHoloCard>
-              </DitherEffect>
+              {/* <DitherEffect intensity={1}> */}
+              <StyledHoloCard
+                $url={houseImage}
+                ref={ref}
+                $active={false}
+                $animated={false}
+                $activeRotation={activeRotation}
+                $activeBackgroundPosition={activeBackgroundPosition}
+                $height={height}
+                $width={width}
+                $showSparkles={showSparkles}
+              >
+                {children}
+              </StyledHoloCard>
+              {/* </DitherEffect> */}
             </div>
           ) : (
             <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
@@ -222,24 +221,24 @@ export const HoloCard = ({
                 />
               </div>
 
-              <DitherEffect intensity={1}>
-                <StyledHoloCard
-                  $url={houseImage}
-                  ref={ref}
-                  $active={hover}
-                  $animated={animated}
-                  $activeRotation={activeRotation}
-                  $activeBackgroundPosition={activeBackgroundPosition}
-                  onMouseMove={handleOnMouseMove}
-                  onTouchMove={handleOnTouchMove}
-                  onMouseOut={handleOnMouseOut}
-                  $height={height}
-                  $width={width}
-                  $showSparkles={showSparkles}
-                >
-                  {children}
-                </StyledHoloCard>
-              </DitherEffect>
+              {/* <DitherEffect intensity={1}> */}
+              <StyledHoloCard
+                $url={houseImage}
+                ref={ref}
+                $active={hover}
+                $animated={animated}
+                $activeRotation={activeRotation}
+                $activeBackgroundPosition={activeBackgroundPosition}
+                onMouseMove={handleOnMouseMove}
+                onTouchMove={handleOnTouchMove}
+                onMouseOut={handleOnMouseOut}
+                $height={height}
+                $width={width}
+                $showSparkles={showSparkles}
+              >
+                {children}
+              </StyledHoloCard>
+              {/* </DitherEffect> */}
             </Tilt>
           )}
         </div>
@@ -273,21 +272,21 @@ export const HoloCard = ({
                 />
               </div>
 
-              <DitherEffect intensity={1}>
-                <StyledHoloCard
-                  $url={houseImage}
-                  ref={ref}
-                  $active={false}
-                  $animated={false}
-                  $activeRotation={activeRotation}
-                  $activeBackgroundPosition={activeBackgroundPosition}
-                  $height={height}
-                  $width={width}
-                  $showSparkles={showSparkles}
-                >
-                  {children}
-                </StyledHoloCard>
-              </DitherEffect>
+              {/* <DitherEffect intensity={1}> */}
+              <StyledHoloCard
+                $url={houseImage}
+                ref={ref}
+                $active={false}
+                $animated={false}
+                $activeRotation={activeRotation}
+                $activeBackgroundPosition={activeBackgroundPosition}
+                $height={height}
+                $width={width}
+                $showSparkles={showSparkles}
+              >
+                {children}
+              </StyledHoloCard>
+              {/* </DitherEffect> */}
             </div>
           ) : (
             <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
@@ -314,24 +313,24 @@ export const HoloCard = ({
                 />
               </div>
 
-              <DitherEffect intensity={1}>
-                <StyledHoloCard
-                  $url={houseImage}
-                  ref={ref}
-                  $active={hover}
-                  $animated={animated}
-                  $activeRotation={activeRotation}
-                  $activeBackgroundPosition={activeBackgroundPosition}
-                  onMouseMove={handleOnMouseMove}
-                  onTouchMove={handleOnTouchMove}
-                  onMouseOut={handleOnMouseOut}
-                  $height={height}
-                  $width={width}
-                  $showSparkles={showSparkles}
-                >
-                  {children}
-                </StyledHoloCard>
-              </DitherEffect>
+              {/* <DitherEffect intensity={1}> */}
+              <StyledHoloCard
+                $url={houseImage}
+                ref={ref}
+                $active={hover}
+                $animated={animated}
+                $activeRotation={activeRotation}
+                $activeBackgroundPosition={activeBackgroundPosition}
+                onMouseMove={handleOnMouseMove}
+                onTouchMove={handleOnTouchMove}
+                onMouseOut={handleOnMouseOut}
+                $height={height}
+                $width={width}
+                $showSparkles={showSparkles}
+              >
+                {children}
+              </StyledHoloCard>
+              {/* </DitherEffect> */}
             </Tilt>
           )}
         </div>

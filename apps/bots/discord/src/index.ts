@@ -1,15 +1,17 @@
-import { createBot } from "./bot";
+import { allCommands } from "@gaia/shared";
+import { DiscordAdapter } from "./adapter";
 
-let client: Awaited<ReturnType<typeof createBot>> | null = null;
+const adapter = new DiscordAdapter();
 
 async function main() {
-  client = await createBot();
+  await adapter.boot(allCommands);
 }
 
 async function shutdown() {
-  console.log("Shutting down Discord bot...");
-  if (client) {
-    client.destroy();
+  try {
+    await adapter.shutdown();
+  } catch (err) {
+    console.error("Shutdown error:", err);
   }
   process.exit(0);
 }

@@ -69,6 +69,23 @@ class GmailNewMessageConfig(BaseTriggerConfigData):
     # Gmail triggers currently have no additional config
 
 
+class GmailPollInboxConfig(BaseTriggerConfigData):
+    """Config for interval-based Gmail polling.
+
+    Uses GMAIL_NEW_GMAIL_MESSAGE with an interval so Composio polls Gmail
+    on a schedule rather than firing on every single incoming email.
+    Designed for system workflows that batch-process emails periodically.
+    """
+
+    trigger_name: Literal["gmail_poll_inbox"] = "gmail_poll_inbox"
+    interval: int = Field(
+        default=15,
+        ge=1,
+        le=1440,
+        description="How often Composio polls Gmail, in minutes.",
+    )
+
+
 # =============================================================================
 # GITHUB TRIGGERS
 # =============================================================================
@@ -316,6 +333,7 @@ TriggerConfigData = Annotated[
         CalendarEventCreatedConfig,
         CalendarEventStartingSoonConfig,
         GmailNewMessageConfig,
+        GmailPollInboxConfig,
         GitHubCommitEventConfig,
         GitHubPrEventConfig,
         GitHubStarAddedConfig,
@@ -344,6 +362,7 @@ TriggerName = Literal[
     "calendar_event_created",
     "calendar_event_starting_soon",
     "gmail_new_message",
+    "gmail_poll_inbox",
     "github_commit_event",
     "github_pr_event",
     "github_star_added",

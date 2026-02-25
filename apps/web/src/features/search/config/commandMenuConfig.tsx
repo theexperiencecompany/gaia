@@ -1,5 +1,3 @@
-import type { ReactNode } from "react";
-
 import {
   Brain02Icon,
   CalendarIcon,
@@ -14,7 +12,8 @@ import {
   Target02Icon,
   WhatsappIcon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import type { ReactNode } from "react";
 
 // Menu item configuration
 export interface MenuItemConfig {

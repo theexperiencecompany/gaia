@@ -1,6 +1,5 @@
+import { RedoIcon } from "@icons";
 import Image from "next/image";
-
-import { RedoIcon } from "@/icons";
 
 export default function Spinner({
   variant = "logo",

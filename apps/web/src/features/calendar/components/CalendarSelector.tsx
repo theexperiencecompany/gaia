@@ -1,7 +1,6 @@
 import { Chip } from "@heroui/chip";
-
+import { ViewIcon, ViewOffSlashIcon } from "@icons";
 import { isTooDark } from "@/features/calendar/utils/calendarUtils";
-import { ViewIcon, ViewOffSlashIcon } from "@/icons";
 import type {
   CalendarChipProps,
   CalendarSelectorProps,

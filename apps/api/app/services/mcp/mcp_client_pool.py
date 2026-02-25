@@ -56,6 +56,7 @@ class MCPClientPool:
 
     async def get(self, user_id: str) -> "MCPClient":
         """Get or create MCPClient for user."""
+        evicted: PooledClient | None = None
         async with self._lock:
             if user_id in self._clients:
                 pooled = self._clients[user_id]
@@ -65,10 +66,10 @@ class MCPClientPool:
                 logger.debug(f"Reusing pooled MCPClient for {user_id}")
                 return pooled.client
 
-            # Evict oldest if at capacity
+            # Pop oldest if at capacity (close outside lock)
             if len(self._clients) >= self._max_clients:
                 oldest_key = next(iter(self._clients))
-                await self._evict(oldest_key)
+                evicted = self._clients.pop(oldest_key)
 
             # Create new client (local import to avoid circular dependency)
             from app.services.mcp.mcp_client import MCPClient
@@ -76,7 +77,15 @@ class MCPClientPool:
             client = MCPClient(user_id=user_id)
             self._clients[user_id] = PooledClient(client=client)
             logger.debug(f"Created new pooled MCPClient for {user_id}")
-            return client
+
+        # Close evicted sessions outside the lock to avoid blocking
+        if evicted:
+            try:
+                await evicted.client.close_all_client_sessions()
+            except Exception as e:
+                logger.warning(f"Error closing evicted MCP sessions: {e}")
+
+        return client
 
     async def _evict(self, user_id: str):
         """Evict a client from the pool and close its connections."""
@@ -93,6 +102,7 @@ class MCPClientPool:
 
     async def cleanup_stale(self):
         """Remove clients that haven't been used within TTL."""
+        to_close: list[PooledClient] = []
         async with self._lock:
             now = datetime.now(timezone.utc)
             stale = [
@@ -101,9 +111,18 @@ class MCPClientPool:
                 if now - pooled.last_used > self._ttl
             ]
             for user_id in stale:
-                await self._evict(user_id)
+                pooled = self._clients.pop(user_id, None)
+                if pooled:
+                    to_close.append(pooled)
             if stale:
                 logger.info(f"Cleaned up {len(stale)} stale MCP clients")
+
+        # Close sessions outside the lock to avoid blocking concurrent get() calls
+        for pooled in to_close:
+            try:
+                await pooled.client.close_all_client_sessions()
+            except Exception as e:
+                logger.warning(f"Error closing stale MCP sessions: {e}")
 
     async def start_cleanup_loop(self, interval: int = 60):
         """Start background cleanup task."""

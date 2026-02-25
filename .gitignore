@@ -111,5 +111,10 @@ out
 postman/
 
 .agents/plans/
-.dmux/
-.dmux-hooks/
+
+# whatsapp-web.js
+.wwebjs_auth/
+.wwebjs_cache/
+/config.json
+
+docs/plans/

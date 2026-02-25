@@ -19,6 +19,15 @@ from starlette.types import ASGIApp
 from workos import AsyncWorkOSClient
 
 
+def get_current_user(request: Request) -> Optional[Dict[str, Any]]:
+    """
+    FastAPI dependency to get the current authenticated user from request state.
+
+    Returns None if user is not authenticated.
+    """
+    return getattr(request.state, "user", None)
+
+
 class WorkOSAuthMiddleware(BaseHTTPMiddleware):
     """
     Middleware for handling WorkOS authentication sessions.
@@ -49,6 +58,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
             "/oauth/google/callback",
             "/user/logout",
             "/health",
+            "/api/v1/bot",  # Bot endpoints use separate auth middleware
         ]
         # agent only paths
         self.agent_only_paths = ["/api/v1/chat-stream"]

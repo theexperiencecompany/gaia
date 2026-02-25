@@ -1,15 +1,12 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { AnimatePresence, motion } from "framer-motion";
+import { StarAward01Icon, WorkflowCircle03Icon } from "@icons";
 import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { AnimatePresence, m } from "motion/react";
 import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
-import {
-  ChevronUp,
-  StarAward01Icon,
-  WorkflowCircle03Icon,
-} from "@/components/shared/icons";
+import { ChevronUp } from "@/components/shared/icons";
 import type { UseCase } from "@/features/use-cases/types";
 import type { Workflow } from "@/features/workflows/api/workflowApi";
 import UnifiedWorkflowCard from "@/features/workflows/components/shared/UnifiedWorkflowCard";
@@ -27,6 +24,10 @@ export default function UseCaseSection({
   showDescriptionAsTooltip,
   useBlurEffect,
   disableCentering = false,
+  slicePerTab,
+  hideAllCategory = false,
+  rows,
+  columns = 4,
 }: {
   dummySectionRef: React.RefObject<HTMLDivElement | null>;
   hideUserWorkflows?: boolean;
@@ -36,6 +37,10 @@ export default function UseCaseSection({
   showDescriptionAsTooltip?: boolean;
   useBlurEffect?: boolean;
   disableCentering?: boolean;
+  slicePerTab?: number;
+  hideAllCategory?: boolean;
+  rows?: number;
+  columns?: number;
 }) {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(
     "featured",
@@ -82,7 +87,7 @@ export default function UseCaseSection({
   ).sort();
 
   const allCategories = [
-    "all",
+    ...(hideAllCategory ? [] : ["all"]),
     "featured",
     ...(hideUserWorkflows ? [] : ["workflows"]),
     ...dynamicCategories.filter((cat) => cat !== "featured"),
@@ -202,7 +207,7 @@ export default function UseCaseSection({
         className={`mb-6 flex flex-wrap ${setShowUseCases ? "max-w-5xl mx-auto" : ""} ${centered ? "justify-center" : ""} items-center gap-2`}
       >
         {allCategories.map((category, index) => (
-          <motion.div
+          <m.div
             key={category as string}
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -234,11 +239,11 @@ export default function UseCaseSection({
                     ? "Your Workflows"
                     : (category as string)}
             </Chip>
-          </motion.div>
+          </m.div>
         ))}
 
         {setShowUseCases && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{
@@ -258,7 +263,7 @@ export default function UseCaseSection({
             >
               <ChevronUp />
             </Button>
-          </motion.div>
+          </m.div>
         )}
       </div>
 
@@ -267,57 +272,61 @@ export default function UseCaseSection({
         {filteredUseCases.length > 0 &&
           selectedCategory !== null &&
           selectedCategory !== "workflows" && (
-            <motion.div
+            <m.div
               key={selectedCategory}
-              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"} grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.3, ease: "easeOut" }}
             >
-              {filteredUseCases
-                // .slice(0, 8)
-                .map((useCase: UseCase, index: number) => (
-                  <motion.div
-                    key={useCase.published_id || index}
-                    initial={{ opacity: 0, y: 20 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{
-                      duration: 0.3,
-                      delay: index * 0.05, // Stagger animation
-                      ease: "easeOut",
-                    }}
-                  >
-                    <UnifiedWorkflowCard
-                      showDescriptionAsTooltip={showDescriptionAsTooltip}
-                      title={useCase.title || ""}
-                      description={useCase.description || ""}
-                      actionType={useCase.action_type || "prompt"}
-                      prompt={useCase.prompt}
-                      slug={useCase.slug}
-                      steps={useCase.steps}
-                      totalExecutions={useCase.total_executions || 0}
-                      showExecutions={true}
-                      useBlurEffect={useBlurEffect}
-                      variant="explore"
-                      primaryAction={
-                        useCase.action_type === "prompt"
-                          ? "insert-prompt"
-                          : "create"
-                      }
-                    />
-                  </motion.div>
-                ))}
-            </motion.div>
+              {(slicePerTab || rows
+                ? filteredUseCases.slice(
+                    0,
+                    slicePerTab || (rows ? rows * columns : undefined),
+                  )
+                : filteredUseCases
+              ).map((useCase: UseCase, index: number) => (
+                <m.div
+                  key={useCase.published_id || index}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{
+                    duration: 0.3,
+                    delay: index * 0.05, // Stagger animation
+                    ease: "easeOut",
+                  }}
+                >
+                  <UnifiedWorkflowCard
+                    showDescriptionAsTooltip={showDescriptionAsTooltip}
+                    title={useCase.title || ""}
+                    description={useCase.description || ""}
+                    actionType={useCase.action_type || "prompt"}
+                    prompt={useCase.prompt}
+                    slug={useCase.slug}
+                    steps={useCase.steps}
+                    totalExecutions={useCase.total_executions || 0}
+                    showExecutions={true}
+                    useBlurEffect={useBlurEffect}
+                    variant="explore"
+                    primaryAction={
+                      useCase.action_type === "prompt"
+                        ? "insert-prompt"
+                        : "create"
+                    }
+                  />
+                </m.div>
+              ))}
+            </m.div>
           )}
 
         {/* Render User Workflows */}
         {selectedCategory === "workflows" &&
           !isLoadingWorkflows &&
           workflows.length > 0 && (
-            <motion.div
+            <m.div
               key="workflows"
-              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-4`}
+              className={`${disableCentering ? "" : "mx-auto"} grid ${setShowUseCases ? "max-w-5xl" : "max-w-7xl"}  grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-${columns} xl:grid-cols-${columns}`}
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -326,7 +335,7 @@ export default function UseCaseSection({
               {workflows
                 // .slice(0, 8)
                 .map((workflow: Workflow, index: number) => (
-                  <motion.div
+                  <m.div
                     key={workflow.id}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
@@ -343,9 +352,9 @@ export default function UseCaseSection({
                       primaryAction="run"
                       useBlurEffect={useBlurEffect}
                     />
-                  </motion.div>
+                  </m.div>
                 ))}
-            </motion.div>
+            </m.div>
           )}
       </AnimatePresence>
 

@@ -1,8 +1,7 @@
 import { Chip } from "@heroui/chip";
+import { SquareLock01Icon } from "@icons";
 import type React from "react";
-
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { SquareLock01Icon } from "@/icons";
 
 import { useToolsWithIntegrations } from "../../hooks/useToolsWithIntegrations";
 

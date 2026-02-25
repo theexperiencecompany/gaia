@@ -3,10 +3,13 @@
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/react";
 import { Select, SelectItem } from "@heroui/select";
+import {
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  CalendarAdd01Icon,
+  CalendarIcon,
+} from "@icons";
 import { useHotkeys } from "react-hotkeys-hook";
-
-import { CalendarAdd01Icon, CalendarIcon } from "@/components/shared";
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@/icons";
 import {
   useCreateEventAction,
   useDaysToShow,

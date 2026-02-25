@@ -119,11 +119,11 @@ class MongoDBNotificationStorage:
 
         # Filter by notification type if specified
         if notification_type is not None:
-            query["notification_type"] = notification_type
+            query["original_request.type"] = notification_type.value
 
         # Filter by source if specified
         if source is not None:
-            query["source"] = source
+            query["original_request.source"] = source.value
 
         cursor = notifications_collection.find(query)
         cursor = cursor.sort("created_at", -1).skip(offset).limit(limit)

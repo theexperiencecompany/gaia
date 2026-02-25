@@ -1,0 +1,73 @@
+{
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "workspaces": {
+    "apps/web": {
+      "entry": [
+        "src/app/**/page.tsx",
+        "src/app/**/layout.tsx",
+        "src/app/**/route.ts"
+      ],
+      "paths": {
+        "@icons": ["src/components/shared/icons.tsx"]
+      },
+      "ignoreDependencies": ["@icons", "@heroui/*"],
+      "ignore": ["src/components/ui/**"]
+    },
+    "apps/desktop": {
+      "entry": [
+        "src/main/**/*.ts",
+        "src/preload/**/*.ts",
+        "src/renderer/**/*.ts"
+      ]
+    },
+    "apps/mobile": {
+      "entry": ["src/**/*.tsx", "src/**/*.ts"],
+      "ignore": ["src/**/__tests__/**"]
+    },
+    "apps/bots/discord": {
+      "entry": ["src/bot.ts"]
+    },
+    "apps/bots/slack": {
+      "entry": ["src/app.ts"]
+    },
+    "apps/bots/telegram": {
+      "entry": ["src/bot.ts"]
+    },
+    "libs/shared/ts": {
+      "entry": ["src/index.ts", "src/**/index.ts"]
+    }
+  },
+  "ignore": [
+    "**/*.test.ts",
+    "**/*.spec.ts",
+    "**/*.test.tsx",
+    "**/*.spec.tsx",
+    "**/*.d.ts",
+    "**/vitest.config.*",
+    "**/jest.config.*",
+    "**/__tests__/**",
+    ".agents/**",
+    ".claude/**",
+    "apps/web/content/**",
+    "apps/web/scripts/**"
+  ],
+  "ignoreDependencies": ["nx", "@nx/*"],
+  "ignoreBinaries": [
+    "uv",
+    "uvx",
+    "vitest",
+    "build",
+    "dev",
+    "dist",
+    "dist:mac",
+    "dist:win",
+    "dist:linux",
+    "type-check",
+    "lint",
+    "lint:fix",
+    "pack",
+    "tsc",
+    "tsx"
+  ],
+  "exclude": ["unlisted"]
+}

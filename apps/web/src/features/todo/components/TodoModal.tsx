@@ -11,13 +11,13 @@ import {
   Tooltip,
   useDisclosure,
 } from "@heroui/react";
+import { PlusSignIcon } from "@icons";
 import { useCallback, useEffect, useMemo } from "react";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useTextProcessor } from "@/features/todo/hooks/useTextProcessor";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
 import { useModalForm } from "@/hooks/ui/useModalForm";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { PlusSignIcon } from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   Priority,

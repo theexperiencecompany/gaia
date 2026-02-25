@@ -17,6 +17,7 @@ from app.config.loggers import app_logger as logger
 from app.db.mongodb.collections import (
     ai_models_collection,
     blog_collection,
+    bot_sessions_collection,
     calendars_collection,
     conversations_collection,
     device_tokens_collection,
@@ -28,6 +29,7 @@ from app.db.mongodb.collections import (
     notifications_collection,
     payments_collection,
     plans_collection,
+    processed_webhooks_collection,
     projects_collection,
     reminders_collection,
     skills_collection,
@@ -37,6 +39,7 @@ from app.db.mongodb.collections import (
     user_integrations_collection,
     users_collection,
     vfs_nodes_collection,
+    workflow_executions_collection,
     workflows_collection,
 )
 
@@ -71,6 +74,7 @@ async def create_all_indexes():
             create_reminder_indexes(),
             create_workflow_indexes(),
             create_payment_indexes(),
+            create_processed_webhook_indexes(),
             create_usage_indexes(),
             create_ai_models_indexes(),
             create_integration_indexes(),
@@ -78,6 +82,8 @@ async def create_all_indexes():
             create_device_token_indexes(),
             create_vfs_indexes(),
             create_installed_skills_indexes(),
+            create_workflow_execution_indexes(),
+            create_bot_session_indexes(),
         ]
 
         # Execute all index creation tasks concurrently
@@ -98,6 +104,7 @@ async def create_all_indexes():
             "reminders",
             "workflows",
             "payments",
+            "processed_webhooks",
             "usage",
             "ai_models",
             "integrations",
@@ -105,6 +112,8 @@ async def create_all_indexes():
             "device_tokens",
             "vfs_nodes",
             "skills",
+            "workflow_executions",
+            "bot_sessions",
         ]
 
         index_results = {}
@@ -156,6 +165,20 @@ async def create_user_indexes():
             users_collection.create_index("last_active_at", sparse=True),
             # Inactive email tracking index (sparse since not all users have this field)
             users_collection.create_index("last_inactive_email_sent", sparse=True),
+            # Platform links indexes for bot authentication (unique + sparse: only bot users have these,
+            # and a single platform account must not be linked to multiple GAIA users)
+            users_collection.create_index(
+                "platform_links.discord.id", unique=True, sparse=True
+            ),
+            users_collection.create_index(
+                "platform_links.slack.id", unique=True, sparse=True
+            ),
+            users_collection.create_index(
+                "platform_links.telegram.id", unique=True, sparse=True
+            ),
+            users_collection.create_index(
+                "platform_links.whatsapp.id", unique=True, sparse=True
+            ),
         )
 
     except Exception as e:
@@ -484,10 +507,39 @@ async def create_workflow_indexes():
             # Community workflows indexes
             workflows_collection.create_index([("is_public", 1), ("created_at", -1)]),
             workflows_collection.create_index([("created_by", 1)]),
+            # Partial unique index to prevent duplicate system workflows per user
+            # Only applies to documents where system_workflow_key is set
+            workflows_collection.create_index(
+                [("user_id", 1), ("system_workflow_key", 1)],
+                unique=True,
+                partialFilterExpression={
+                    "system_workflow_key": {"$exists": True, "$ne": None}
+                },
+            ),
         )
 
     except Exception as e:
         logger.error(f"Error creating workflow indexes: {str(e)}")
+        raise
+
+
+async def create_workflow_execution_indexes():
+    """Create indexes for workflow_executions collection."""
+    try:
+        await asyncio.gather(
+            workflow_executions_collection.create_index(
+                [("workflow_id", 1), ("user_id", 1), ("started_at", -1)]
+            ),
+            workflow_executions_collection.create_index(
+                [("user_id", 1), ("started_at", -1)]
+            ),
+            workflow_executions_collection.create_index("execution_id", unique=True),
+            workflow_executions_collection.create_index(
+                [("workflow_id", 1), ("status", 1)]
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Error creating workflow execution indexes: {str(e)}")
         raise
 
 
@@ -522,6 +574,28 @@ async def create_payment_indexes():
 
     except Exception as e:
         logger.error(f"Error creating payment indexes: {str(e)}")
+        raise
+
+
+async def create_processed_webhook_indexes():
+    """
+    Create indexes for processed_webhooks collection for idempotency.
+
+    - Unique index for idempotency check
+    - TTL index for automatic cleanup
+    """
+    try:
+        await asyncio.gather(
+            # Unique index on webhook_id - required for idempotency
+            processed_webhooks_collection.create_index("webhook_id", unique=True),
+            # TTL index to auto-delete old records after 30 days
+            processed_webhooks_collection.create_index(
+                "processed_at",
+                expireAfterSeconds=2592000,  # 30 days
+            ),
+        )
+    except Exception as e:
+        logger.error(f"Error creating processed webhook indexes: {str(e)}")
         raise
 
 
@@ -813,6 +887,30 @@ async def create_vfs_indexes() -> None:
 
     except Exception as e:
         logger.error(f"Error creating VFS indexes: {e!s}")
+        raise
+
+
+async def create_bot_session_indexes():
+    """Create indexes for bot_sessions collection for optimal query performance and automatic cleanup."""
+    try:
+        await asyncio.gather(
+            # Unique session key index (critical for session lookup)
+            bot_sessions_collection.create_index("session_key", unique=True),
+            # Compound index for platform user lookups
+            bot_sessions_collection.create_index(
+                [("platform", 1), ("platform_user_id", 1)]
+            ),
+            # Conversation ID index for conversation-based queries
+            bot_sessions_collection.create_index("conversation_id"),
+            # TTL index for automatic session cleanup after 30 days (2,592,000 seconds)
+            bot_sessions_collection.create_index(
+                "updated_at",
+                expireAfterSeconds=2592000,  # 30 days
+            ),
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating bot session indexes: {str(e)}")
         raise
 
 

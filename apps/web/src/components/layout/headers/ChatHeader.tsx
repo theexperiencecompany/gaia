@@ -1,14 +1,13 @@
 "use client";
 
 import { Kbd } from "@heroui/kbd";
+import { BubbleChatAddIcon, PinIcon, SearchIcon } from "@icons";
 import Link from "next/link";
-
 import { SidebarHeaderButton } from "@/components";
 import ModelPickerButton from "@/features/chat/components/composer/ModelPickerButton";
 import { prepareNewChat } from "@/features/chat/utils/newChatNavigation";
 import { NotificationCenter } from "@/features/notification/components/NotificationCenter";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { BubbleChatAddIcon, PinIcon, SearchIcon } from "@/icons";
 
 export default function ChatHeader() {
   const { isMac, modifierKeyName } = usePlatform();

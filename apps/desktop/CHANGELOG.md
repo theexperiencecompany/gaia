@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/theexperiencecompany/gaia/compare/desktop-v0.1.0...desktop-v0.1.1) (2026-02-16)
+
+
+### Bug Fixes
+
+* Update desktop release workflow to handle desktop-v tags and adjust version extraction logic ([#470](https://github.com/theexperiencecompany/gaia/issues/470)) ([eabe60b](https://github.com/theexperiencecompany/gaia/commit/eabe60b4ff37c5b8c7a7f455f521c70e11ad05a4))
+
 ## [0.11.0](https://github.com/theexperiencecompany/gaia/compare/v0.1.0...v0.11.0) (2025-12-19)
 
 

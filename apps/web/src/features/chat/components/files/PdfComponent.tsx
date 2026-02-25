@@ -1,10 +1,9 @@
 import "react-pdf/dist/Page/AnnotationLayer.css";
 import "react-pdf/dist/Page/TextLayer.css";
 
+import { Pdf02Icon } from "@icons";
 import { Document, Page, pdfjs } from "react-pdf";
-
 import Spinner from "@/components/ui/spinner";
-import { Pdf02Icon } from "@/icons";
 
 // Define interfaces for component props
 interface PdfContainerProps {

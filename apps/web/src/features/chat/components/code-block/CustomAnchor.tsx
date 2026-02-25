@@ -1,13 +1,12 @@
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
+import { GlobalIcon } from "@icons";
 import Image from "next/image";
 import { memo, type ReactNode, useEffect, useRef, useState } from "react";
-
 import {
   usePrefetchUrlMetadata,
   useUrlMetadata,
 } from "@/features/chat/hooks/useUrlMetadata";
-import { GlobalIcon } from "@/icons";
 
 // Global set to track failed image URLs across all instances
 const globalFailedUrls = new Set<string>();

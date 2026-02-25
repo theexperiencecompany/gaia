@@ -62,14 +62,15 @@ class GmailTriggerHandler(TriggerHandler):
     async def find_workflows(
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:
-        """Find workflows with Gmail triggers for a user.
+        """Find workflows for a Gmail event.
 
-        Unlike other handlers that match by trigger_id, Gmail matches by user_id
-        since Gmail triggers are account-level (all emails trigger all Gmail workflows).
+        Handles two matching strategies in one pass:
+        1. gmail_new_message workflows — matched by user_id (account-level, no trigger IDs)
+        2. gmail_poll_inbox workflows — matched by composio_trigger_ids (per-interval triggers)
+
+        Both are routed here because they share the GMAIL_NEW_GMAIL_MESSAGE Composio event.
         """
         try:
-            # Validate payload structure (for logging/debugging purposes primarily)
-            # We still rely on user_id from the top-level data dict for now as it might be an envelope field
             try:
                 GmailNewMessagePayload.model_validate(data)
             except Exception as e:
@@ -80,7 +81,10 @@ class GmailTriggerHandler(TriggerHandler):
                 logger.error("No user_id in Gmail webhook data")
                 return []
 
-            query = {
+            workflows: List[Workflow] = []
+
+            # Strategy 1: match gmail_new_message workflows by user_id
+            user_query = {
                 "user_id": user_id,
                 "activated": True,
                 "trigger_config.type": TriggerType.INTEGRATION,
@@ -88,19 +92,24 @@ class GmailTriggerHandler(TriggerHandler):
                 "trigger_config.enabled": True,
             }
 
-            cursor = workflows_collection.find(query)
-            workflows = []
+            # Strategy 2: match gmail_poll_inbox workflows by trigger_id
+            poll_query = {
+                "activated": True,
+                "trigger_config.type": TriggerType.INTEGRATION,
+                "trigger_config.trigger_name": "gmail_poll_inbox",
+                "trigger_config.enabled": True,
+                "trigger_config.composio_trigger_ids": trigger_id,
+            }
 
-            async for workflow_doc in cursor:
-                try:
-                    workflow_doc["id"] = workflow_doc.get("_id")
-                    if "_id" in workflow_doc:
-                        del workflow_doc["_id"]
-                    workflow = Workflow(**workflow_doc)
-                    workflows.append(workflow)
-                except Exception as e:
-                    logger.error(f"Error processing workflow: {e}")
-                    continue
+            for query in (user_query, poll_query):
+                async for workflow_doc in workflows_collection.find(query):
+                    try:
+                        workflow_doc["id"] = workflow_doc.get("_id")
+                        if "_id" in workflow_doc:
+                            del workflow_doc["_id"]
+                        workflows.append(Workflow(**workflow_doc))
+                    except Exception as e:
+                        logger.error(f"Error processing workflow: {e}")
 
             return workflows
 

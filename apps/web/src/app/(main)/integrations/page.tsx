@@ -2,12 +2,11 @@
 
 import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
+import { ConnectIcon, MessageFavourite02Icon } from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-import { toast } from "sonner";
-
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
 import { IntegrationSidebar } from "@/components/layout/sidebar/right-variants/IntegrationSidebar";
 import { useToolsWithIntegrations } from "@/features/chat/hooks/useToolsWithIntegrations";
@@ -20,7 +19,7 @@ import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
 import ContactSupportModal from "@/features/support/components/ContactSupportModal";
 import { useHeader } from "@/hooks/layout/useHeader";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { ConnectIcon, MessageFavourite02Icon } from "@/icons";
+import { toast } from "@/lib/toast";
 import { useIntegrationsStore } from "@/stores/integrationsStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 
@@ -152,15 +151,20 @@ export default function IntegrationsPage() {
       router.replace("/integrations", { scroll: false });
 
       if (status === "connected") {
-        const integration = integrations.find((i) => i.id === integrationId);
-        toast.success(`Connected to ${integration?.name || integrationId}`);
+        const nameParam = searchParams.get("name");
+        if (nameParam) {
+          toast.success(`Connected to ${nameParam}`);
+        }
         refetch();
         queryClient.refetchQueries({ queryKey: ["tools", "available"] });
       } else if (status === "bearer_required") {
-        const integration = integrations.find((i) => i.id === integrationId);
-        setBearerIntegrationId(integrationId);
-        setBearerIntegrationName(integration?.name || integrationId);
-        setBearerModalOpen(true);
+        // name should be in URL when redirected here
+        const nameParam = searchParams.get("name");
+        if (nameParam) {
+          setBearerIntegrationId(integrationId);
+          setBearerIntegrationName(nameParam);
+          setBearerModalOpen(true);
+        }
       } else if (status === "failed") {
         const error = searchParams.get("error");
         toast.error(`Connection failed: ${error || "Unknown error"}`);
@@ -169,11 +173,11 @@ export default function IntegrationsPage() {
   }, [searchParams, integrations, router, refetch, queryClient]);
 
   const handleBearerSubmit = async (id: string, token: string) => {
-    const toastId = toast.loading(`Connecting to ${bearerIntegrationName}...`);
+    const toastId = toast.loading(`Connecting...`);
     try {
       const result = await integrationsApi.addIntegration(id, token);
       if (result.status === "connected") {
-        toast.success(`Connected to ${bearerIntegrationName}`, { id: toastId });
+        toast.success(`Connected to ${result.name}`, { id: toastId });
         refetch();
         queryClient.refetchQueries({ queryKey: ["tools", "available"] });
       } else if (result.status === "error") {

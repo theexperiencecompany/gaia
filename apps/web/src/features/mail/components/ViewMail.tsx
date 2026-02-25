@@ -3,6 +3,14 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
 import { User } from "@heroui/user";
+import {
+  ArrowLeftDoubleIcon,
+  ArrowTurnBackwardIcon,
+  Cancel01Icon,
+  MagicWand05Icon,
+  SentIcon,
+  StarsIcon,
+} from "@icons";
 import CharacterCount from "@tiptap/extension-character-count";
 import Link from "@tiptap/extension-link";
 import Placeholder from "@tiptap/extension-placeholder";
@@ -12,21 +20,12 @@ import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import he from "he";
 import { useEffect, useState } from "react";
-import { toast } from "sonner";
 import { Drawer } from "vaul";
-
 import Spinner from "@/components/ui/spinner";
 import GmailBody from "@/features/mail/components/GmailBody";
 import { useEmailSummary } from "@/features/mail/hooks/useEmailAnalysis";
 import { parseEmail } from "@/features/mail/utils/mailUtils";
-import {
-  ArrowLeftDoubleIcon,
-  ArrowTurnBackwardIcon,
-  Cancel01Icon,
-  MagicWand05Icon,
-  SentIcon,
-  StarsIcon,
-} from "@/icons";
+import { toast } from "@/lib/toast";
 // import { MenuBar } from "@/features/notes/components/NotesMenuBar";
 import type {
   EmailData,

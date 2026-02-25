@@ -3,7 +3,12 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { generateBreadcrumbSchema, siteConfig } from "@/lib/seo";
+import {
+  generateBreadcrumbSchema,
+  generateWebPageSchema,
+  siteConfig,
+} from "@/lib/seo";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 import { IntegrationDetailClient } from "./client";
 
@@ -12,9 +17,8 @@ export const revalidate = 60;
 // Fetch integration data for metadata and page
 // Backend accepts both slug and UUID for backward compatibility
 const getIntegration = cache(async (slug: string) => {
-  const apiUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-  const baseUrl = apiUrl.replace(/\/$/, "");
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return null;
 
   try {
     const controller = new AbortController();
@@ -37,9 +41,8 @@ const getIntegration = cache(async (slug: string) => {
 
 // Fetch all integrations for static generation
 async function getAllIntegrations() {
-  const apiUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-  const baseUrl = apiUrl.replace(/\/$/, "");
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return [];
 
   try {
     const isDev = process.env.NODE_ENV === "development";
@@ -108,26 +111,42 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
   const url = `${siteConfig.url}/marketplace/${slug}`;
   const ogImage = `/api/og/integration?slug=${slug}`;
+  const integrationName = integration.name;
+  const categoryLabel =
+    integration.category.charAt(0).toUpperCase() +
+    integration.category.slice(1);
+
+  const seoDescription = `Automate ${integrationName} with AI using GAIA. ${integration.description ? integration.description.slice(0, 120).trim() : `Connect ${integrationName} to your AI assistant`}. Free MCP integration with ${integration.toolCount || 0} tools.`;
+
+  const title = `${integrationName} AI Integration - Automate ${integrationName} with AI | GAIA`;
+  const ogTitle = `${integrationName} AI Integration - Connect ${integrationName} to Your AI Assistant`;
 
   return {
-    title: `${integration.name} MCP Integration for AI Agents | GAIA`,
-    description: integration.description,
+    title,
+    description: seoDescription,
     alternates: {
       canonical: url,
     },
     keywords: [
-      integration.name,
+      integrationName,
+      `AI assistant for ${integrationName}`,
+      `automate ${integrationName} with AI`,
+      `${integrationName} AI automation`,
+      `${integrationName} AI integration`,
+      `${integrationName} MCP server`,
+      `connect ${integrationName} to AI`,
       "MCP integration",
-      "MCP server",
       "AI integration",
       "AI agents",
       "Model Context Protocol",
-      integration.category,
+      `${categoryLabel} AI tools`,
+      `${categoryLabel} automation`,
+      "GAIA integrations",
       "GAIA",
     ].filter(Boolean),
     openGraph: {
-      title: `${integration.name} - MCP Integration for AI Agents`,
-      description: integration.description,
+      title: ogTitle,
+      description: seoDescription,
       url,
       siteName: siteConfig.fullName,
       images: [{ url: ogImage, width: 1200, height: 630 }],
@@ -135,8 +154,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     },
     twitter: {
       card: "summary_large_image",
-      title: `${integration.name} - MCP Integration for AI Agents`,
-      description: integration.description,
+      title: ogTitle,
+      description: seoDescription,
       images: [ogImage],
     },
   };
@@ -150,20 +169,36 @@ export default async function IntegrationPage({ params }: Props) {
     notFound();
   }
 
+  const pageUrl = `${siteConfig.url}/marketplace/${slug}`;
+  const categoryLabel =
+    integration.category.charAt(0).toUpperCase() +
+    integration.category.slice(1);
+
   // Generate structured data for SEO
-  const breadcrumbSchema = generateBreadcrumbSchema([
+  const breadcrumbItems = [
     { name: "Home", url: siteConfig.url },
     { name: "Marketplace", url: `${siteConfig.url}/marketplace` },
-    { name: integration.name, url: `${siteConfig.url}/marketplace/${slug}` },
-  ]);
+    { name: categoryLabel, url: `${siteConfig.url}/marketplace` },
+    { name: integration.name, url: pageUrl },
+  ];
+
+  const breadcrumbSchema = generateBreadcrumbSchema(breadcrumbItems);
+
+  const webPageSchema = generateWebPageSchema(
+    `${integration.name} AI Integration - Automate ${integration.name} with AI`,
+    `Automate ${integration.name} with GAIA AI assistant. Connect ${integration.name} to your AI-powered workflow with ${integration.toolCount || 0} available tools.`,
+    pageUrl,
+    breadcrumbItems,
+  );
 
   const integrationSchema = {
     "@context": "https://schema.org" as const,
     "@type": "SoftwareApplication" as const,
-    name: integration.name,
+    name: `${integration.name} AI Integration`,
     description: integration.description,
-    url: `${siteConfig.url}/marketplace/${slug}`,
+    url: pageUrl,
     applicationCategory: "Integration",
+    applicationSubCategory: categoryLabel,
     operatingSystem: "Web",
     offers: {
       "@type": "Offer" as const,
@@ -176,11 +211,16 @@ export default async function IntegrationPage({ params }: Props) {
         name: integration.creator.name,
       },
     }),
+    ...(integration.toolCount && {
+      featureList: integration.tools
+        ?.map((t: { name: string }) => t.name.replace(/_/g, " "))
+        .join(", "),
+    }),
   };
 
   return (
     <>
-      <JsonLd data={[breadcrumbSchema, integrationSchema]} />
+      <JsonLd data={[webPageSchema, breadcrumbSchema, integrationSchema]} />
       <IntegrationDetailClient integration={integration} />
     </>
   );

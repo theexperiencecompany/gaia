@@ -1,10 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Copy01Icon, Tick02Icon } from "@icons";
 import { useState } from "react";
-import { toast } from "sonner";
-
-import { Copy01Icon, Tick02Icon } from "@/icons";
+import { siteConfig } from "@/lib/seo";
+import { toast } from "@/lib/toast";
 
 interface ShareButtonProps {
   /** ID or slug to use in the URL */
@@ -17,7 +17,7 @@ export default function ShareButton({
   basePath = "/use-cases",
 }: ShareButtonProps) {
   const [copied, setCopied] = useState(false);
-  const shareUrl = `https://heygaia.io${basePath}/${id}`;
+  const shareUrl = `${siteConfig.url}${basePath}/${id}`;
 
   const handleCopyLink = async () => {
     try {

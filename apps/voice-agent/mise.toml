@@ -1,0 +1,33 @@
+# Voice Agent mise.toml for GAIA
+# This file defines tasks for the GAIA voice agent (Python).
+#
+# Quick Start:
+#   mise dev             # Start voice agent worker
+#   mise sync            # Install dependencies
+#   mise tasks           # List all available commands
+
+[tools]
+python = "3.12"
+
+[env]
+PROJECT_NAME = "{{ config_root | basename }}"
+
+[tasks.dev]
+description = "Run voice agent worker"
+run = "uv run python -m src start"
+
+[tasks.lint]
+description = "Run ruff linter"
+run = "uvx ruff check src/"
+
+[tasks.format]
+description = "Format code with ruff"
+run = "uvx ruff format src/"
+
+[tasks.sync]
+description = "Install dependencies"
+run = "uv sync --frozen"
+
+[tasks.deps]
+description = "Install dependencies"
+run = "uv sync"

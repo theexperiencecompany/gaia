@@ -55,17 +55,18 @@ def manage_system_prompts_node(
         if not messages:
             return state
 
-        # Find the latest non-memory system prompt
+        # Single reverse scan to find the latest non-memory system prompt
         latest_non_memory_system_prompt_idx = None
-
-        for idx, msg in enumerate(messages):
+        for idx in range(len(messages) - 1, -1, -1):
+            msg = messages[idx]
             if msg.type == "system":
                 is_memory = _is_memory_system_message(msg)
                 # Track the latest non-memory system prompt index
                 if not is_memory:
                     latest_non_memory_system_prompt_idx = idx
+                    break
 
-        # Filter messages: keep all except old non-memory system prompts
+        # Single forward pass to filter
         filtered_messages = []
         for idx, msg in enumerate(messages):
             if msg.type == "system":

@@ -27,7 +27,7 @@ const TermsOfService = () => {
   const termsSchema = generateWebPageSchema(
     "Terms of Service",
     "Review GAIA's Terms of Service to understand your rights, responsibilities, and the terms governing your use of our AI assistant platform.",
-    "https://heygaia.io/terms",
+    `${siteConfig.url}/terms`,
     [
       { name: "Home", url: siteConfig.url },
       { name: "Terms of Service", url: `${siteConfig.url}/terms` },

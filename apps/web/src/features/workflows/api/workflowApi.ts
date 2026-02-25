@@ -16,6 +16,7 @@ import type {
   WorkflowResponse,
   WorkflowStatusResponse,
 } from "@/types/features/workflowTypes";
+import type { WorkflowExecutionsResponse } from "../types/workflowExecutionTypes";
 
 // Re-export types for convenience
 export type { CommunityWorkflow, CreateWorkflowRequest, Workflow };
@@ -149,7 +150,21 @@ export const workflowApi = {
     return apiService.get<WorkflowStatusResponse>(
       `/workflows/${workflowId}/status`,
       {
-        silent: true, // Don't show success/error toasts for polling
+        silent: true,
+      },
+    );
+  },
+
+  // Get workflow execution history
+  getWorkflowExecutions: async (
+    workflowId: string,
+    limit: number = 10,
+    offset: number = 0,
+  ): Promise<WorkflowExecutionsResponse> => {
+    return apiService.get<WorkflowExecutionsResponse>(
+      `/workflows/${workflowId}/executions?limit=${limit}&offset=${offset}`,
+      {
+        silent: true,
       },
     );
   },
@@ -233,6 +248,20 @@ export const workflowApi = {
     return apiService.get<WorkflowResponse>(`/workflows/public/${workflowId}`, {
       errorMessage: "Failed to fetch public workflow",
     });
+  },
+
+  // Reset a system workflow to its default definition
+  resetToDefault: async (
+    workflowId: string,
+  ): Promise<{ success: boolean; message: string }> => {
+    return apiService.post<{ success: boolean; message: string }>(
+      `/workflows/${workflowId}/reset-to-default`,
+      {},
+      {
+        successMessage: "Workflow reset to default",
+        errorMessage: "Failed to reset workflow",
+      },
+    );
   },
 
   // Get available trigger schemas

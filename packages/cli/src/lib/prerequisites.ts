@@ -1,0 +1,270 @@
+import { execa } from "execa";
+
+export type CheckResult = "success" | "error" | "missing" | "pending";
+
+export interface PrerequisiteInfo {
+  name: string;
+  installUrl: string;
+  installed: boolean;
+  working: boolean;
+  errorMessage?: string;
+}
+
+export const PREREQUISITE_URLS = {
+  git: "https://git-scm.com/downloads",
+  docker: "https://docs.docker.com/get-docker/",
+  mise: "https://mise.jdx.dev/getting-started.html",
+} as const;
+
+export interface PortCheckResult {
+  port: number;
+  service: string;
+  available: boolean;
+  usedBy?: string;
+  alternative?: number;
+}
+
+const PORT_SERVICE_MAP: Record<number, string> = {
+  8000: "API Server",
+  5432: "PostgreSQL",
+  6379: "Redis",
+  27017: "MongoDB",
+  5672: "RabbitMQ",
+  3000: "Web Frontend",
+  8080: "ChromaDB",
+  8083: "Mongo Express",
+};
+
+export async function checkGit(): Promise<CheckResult> {
+  try {
+    await execa("git", ["--version"]);
+    return "success";
+  } catch {
+    return "error";
+  }
+}
+
+export async function checkDocker(): Promise<CheckResult> {
+  try {
+    await execa("docker", ["--version"]);
+  } catch {
+    return "error";
+  }
+
+  try {
+    await execa("docker", ["info"], { timeout: 5000 });
+    return "success";
+  } catch {
+    return "error";
+  }
+}
+
+export async function checkDockerDetailed(): Promise<PrerequisiteInfo> {
+  let installed = false;
+  let working = false;
+  let errorMessage: string | undefined;
+
+  try {
+    await execa("docker", ["--version"]);
+    installed = true;
+  } catch {
+    return {
+      name: "Docker",
+      installUrl: PREREQUISITE_URLS.docker,
+      installed: false,
+      working: false,
+      errorMessage: "Docker is not installed",
+    };
+  }
+
+  try {
+    await execa("docker", ["info"], { timeout: 5000 });
+    working = true;
+  } catch {
+    errorMessage =
+      "Docker is installed but the daemon is not running. Please start Docker Desktop or the Docker daemon.";
+  }
+
+  return {
+    name: "Docker",
+    installUrl: PREREQUISITE_URLS.docker,
+    installed,
+    working,
+    errorMessage,
+  };
+}
+
+export async function checkMise(): Promise<CheckResult> {
+  try {
+    await execa("mise", ["--version"]);
+    return "success";
+  } catch {
+    return "missing";
+  }
+}
+
+export async function installMise(): Promise<boolean> {
+  const os = await import("node:os");
+  const platform = os.platform();
+
+  if (platform === "win32") {
+    try {
+      await execa("powershell", [
+        "-Command",
+        "irm https://mise.jdx.dev/install.ps1 | iex",
+      ]);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  try {
+    await execa("sh", ["-c", "curl https://mise.jdx.dev/install.sh | sh"]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export async function checkPorts(
+  ports: number[],
+): Promise<{ available: boolean; conflict?: number }> {
+  try {
+    const net = await import("node:net");
+
+    const checkPort = (port: number): Promise<boolean> => {
+      return new Promise((resolve) => {
+        const server = net.createServer();
+        server.once("error", () => {
+          resolve(false);
+        });
+        server.once("listening", () => {
+          server.close(() => resolve(true));
+        });
+        server.listen(port);
+      });
+    };
+
+    for (const port of ports) {
+      const isFree = await checkPort(port);
+      if (!isFree) {
+        return { available: false, conflict: port };
+      }
+    }
+
+    return { available: true };
+  } catch {
+    return { available: true };
+  }
+}
+
+export async function checkPortsWithFallback(
+  ports: number[],
+): Promise<PortCheckResult[]> {
+  const net = await import("node:net");
+  const results: PortCheckResult[] = [];
+
+  const isPortFree = (port: number): Promise<boolean> => {
+    return new Promise((resolve) => {
+      const server = net.createServer();
+      server.once("error", () => resolve(false));
+      server.once("listening", () => {
+        server.close(() => resolve(true));
+      });
+      server.listen(port);
+    });
+  };
+
+  for (const port of ports) {
+    const service = PORT_SERVICE_MAP[port] || `Port ${port}`;
+    const free = await isPortFree(port);
+
+    if (free) {
+      results.push({ port, service, available: true });
+    } else {
+      const usedBy = await getPortUser(port);
+      const alternative = await findNextAvailablePort(
+        port + 1,
+        port + 100,
+        isPortFree,
+      );
+      results.push({
+        port,
+        service,
+        available: false,
+        usedBy,
+        alternative: alternative || undefined,
+      });
+    }
+  }
+
+  return results;
+}
+
+async function getPortUser(port: number): Promise<string | undefined> {
+  const os = await import("node:os");
+  const platform = os.platform();
+
+  if (platform === "win32") {
+    try {
+      const { stdout } = await execa("netstat", ["-ano", "-p", "TCP"]);
+      const lines = stdout.trim().split("\n");
+      for (const line of lines) {
+        if (line.includes(`:${port}`) && line.includes("LISTENING")) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          if (pid) {
+            try {
+              const { stdout: taskOut } = await execa("tasklist", [
+                "/FI",
+                `PID eq ${pid}`,
+                "/FO",
+                "CSV",
+                "/NH",
+              ]);
+              const name = taskOut.trim().split(",")[0]?.replace(/"/g, "");
+              return name || `PID ${pid}`;
+            } catch {
+              return `PID ${pid}`;
+            }
+          }
+        }
+      }
+    } catch {
+      // netstat may not be available
+    }
+    return undefined;
+  }
+
+  try {
+    const { stdout } = await execa("lsof", [
+      "-i",
+      `:${port}`,
+      "-sTCP:LISTEN",
+      "-P",
+      "-n",
+    ]);
+    const lines = stdout.trim().split("\n");
+    if (lines.length > 1) {
+      const parts = lines[1]?.split(/\s+/);
+      return parts?.[0] || undefined;
+    }
+  } catch {
+    // lsof may not be available or port not in use
+  }
+  return undefined;
+}
+
+async function findNextAvailablePort(
+  startPort: number,
+  maxPort: number,
+  isPortFree: (port: number) => Promise<boolean>,
+): Promise<number | null> {
+  for (let port = startPort; port <= maxPort; port++) {
+    if (await isPortFree(port)) {
+      return port;
+    }
+  }
+  return null;
+}

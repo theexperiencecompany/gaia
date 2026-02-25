@@ -5,10 +5,10 @@ import {
   SelectSection,
   type SharedSelection,
 } from "@heroui/react";
+import { BubbleChatSparkIcon } from "@icons";
 import Image from "next/image";
 import type React from "react";
 import { useMemo } from "react";
-import { BubbleChatSparkIcon } from "@/components/shared/icons";
 import { useUser, useUserActions } from "@/features/auth/hooks/useUser";
 import {
   useCurrentUserModel,

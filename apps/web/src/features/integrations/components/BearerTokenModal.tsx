@@ -10,9 +10,9 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/react";
+import { KeyIcon } from "@icons";
 import { useCallback, useEffect, useState } from "react";
 import { usePlatform } from "@/hooks/ui/usePlatform";
-import { KeyIcon } from "@/icons";
 
 interface BearerTokenModalProps {
   isOpen: boolean;

@@ -1,7 +1,6 @@
 import { Button } from "@heroui/button";
+import { Task01Icon, TaskDone01Icon } from "@icons";
 import type React from "react";
-
-import { Task01Icon, TaskDone01Icon } from "@/icons";
 
 interface CopyButtonProps {
   copied: boolean;

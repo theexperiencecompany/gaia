@@ -8,6 +8,7 @@ interface InfiniteConversationsState {
   isLoadingMore: boolean;
   hasMore: boolean;
   currentPage: number;
+  totalPages: number;
   error: string | null;
 }
 
@@ -16,6 +17,7 @@ export const useInfiniteConversations = () => {
     isLoadingMore: false,
     hasMore: true,
     currentPage: 1, // Page 1 is loaded by sync service
+    totalPages: 1,
     error: null,
   });
 
@@ -64,6 +66,7 @@ export const useInfiniteConversations = () => {
         isLoadingMore: false,
         hasMore,
         currentPage: nextPage,
+        totalPages: response.total_pages,
         error: null,
       });
     } catch (error) {
@@ -83,6 +86,7 @@ export const useInfiniteConversations = () => {
       isLoadingMore: false,
       hasMore: true,
       currentPage: 1,
+      totalPages: 1,
       error: null,
     });
   }, []);
@@ -92,6 +96,7 @@ export const useInfiniteConversations = () => {
     resetPagination,
     isLoadingMore: state.isLoadingMore,
     hasMore: state.hasMore,
+    totalPages: state.totalPages,
     error: state.error,
   };
 };

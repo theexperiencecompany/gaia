@@ -1,6 +1,6 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import React from "react";
@@ -128,10 +128,10 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
     }
   };
 
-  const links = getMenuLinks();
+  const links = getMenuLinks().filter((link) => !link.hideNavbar);
 
   return (
-    <motion.div
+    <m.div
       initial={{ scaleY: 0.95, opacity: 0 }}
       animate={{ scaleY: 1, opacity: 1 }}
       exit={{ scaleY: 0.95, opacity: 0 }}
@@ -154,7 +154,7 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
                 icon={link.icon}
                 backgroundImage={
                   link.href === "/login"
-                    ? "/images/wallpapers/landscape.webp"
+                    ? "/images/wallpapers/swiss.webp"
                     : link.href === "/use-cases"
                       ? wallpapers.useCases.webp
                       : link.href === "/marketplace"
@@ -223,6 +223,6 @@ export function NavbarMenu({ activeMenu }: NavbarMenuProps) {
           </div>
         )}
       </div>
-    </motion.div>
+    </m.div>
   );
 }

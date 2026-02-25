@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.2.0...mobile-v0.3.0) (2026-02-16)
+
+
+### Features
+
+* automatic creation of workflows ([#459](https://github.com/theexperiencecompany/gaia/issues/459)) ([f8391a2](https://github.com/theexperiencecompany/gaia/commit/f8391a2f983063b7059b79bcb169b2717b1e8e19))
+* **workflows:** improve MCP orchestration and improve tooling, indexing, execution history ([#462](https://github.com/theexperiencecompany/gaia/issues/462)) ([7f79f14](https://github.com/theexperiencecompany/gaia/commit/7f79f14304cf1530a761bfcd375a75d121eddd65))
+
 ## [0.2.0](https://github.com/theexperiencecompany/gaia/compare/mobile-v0.1.1...mobile-v0.2.0) (2026-01-28)
 
 

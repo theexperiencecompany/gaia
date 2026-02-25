@@ -1,11 +1,11 @@
 "use client";
 
 import { Button } from "@heroui/button";
+import { Menu01Icon } from "@icons";
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-
 import {
   Sheet,
   SheetContent,
@@ -23,7 +23,6 @@ import {
   resources,
 } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
-import { Menu01Icon } from "@/icons";
 
 export default function MobileMenu() {
   const [sheetOpen, setSheetOpen] = useState(false);

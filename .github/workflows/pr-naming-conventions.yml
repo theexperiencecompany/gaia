@@ -1,16 +1,22 @@
 name: PR Naming Conventions
 
+# Enforces semantic/conventional PR titles for consistent changelog and release hygiene.
 on:
+  # Re-validate title whenever PR is created, edited, or re-opened.
   pull_request:
-    types: [opened, edited, synchronize]
+    types: [opened, edited, synchronize, reopened]
 
 jobs:
   semantic-pull-request:
+    # Single-purpose validation job.
     name: Validate PR Title
     runs-on: ubuntu-latest
+    permissions:
+      pull-requests: read
     steps:
+      # Uses conventional-commit style rules against the PR title.
       - name: Validate PR title follows Conventional Commit format
-        uses: amannn/action-semantic-pull-request@v5.5.3
+        uses: amannn/action-semantic-pull-request@48f256284bd46cdaab1048c3721360e808335d50 # v6.1.1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
@@ -26,7 +32,6 @@ jobs:
             ci
             build
             revert
-            ci-cd
             perf
             release
             deps

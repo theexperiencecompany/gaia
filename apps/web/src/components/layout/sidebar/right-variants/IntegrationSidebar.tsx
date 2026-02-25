@@ -4,11 +4,17 @@ import { Avatar } from "@heroui/avatar";
 import { Button, ButtonGroup } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
+import {
+  GlobalIcon,
+  LinkSquareIcon,
+  RemoveCircleIcon,
+  Share08Icon,
+  Unlink04Icon,
+  UserCircle02Icon,
+} from "@icons";
 import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import React, { useState } from "react";
-import { toast } from "sonner";
-
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { RaisedButton, SidebarHeader } from "@/components/ui";
 import { SidebarContent } from "@/components/ui/sidebar";
@@ -18,14 +24,7 @@ import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { BearerTokenModal } from "@/features/integrations/components/BearerTokenModal";
 import type { Integration } from "@/features/integrations/types";
-import {
-  GlobalIcon,
-  LinkSquareIcon,
-  RemoveCircleIcon,
-  Share08Icon,
-  Unlink04Icon,
-  UserCircle02Icon,
-} from "@/icons";
+import { toast } from "@/lib/toast";
 import { useUserStore } from "@/stores/userStore";
 
 interface IntegrationSidebarProps {
@@ -103,10 +102,31 @@ export const IntegrationSidebar: React.FC<IntegrationSidebarProps> = ({
       ...(integration.includedIntegrations || []),
     ].map((id) => id.toLowerCase());
 
-    return tools.filter((tool) =>
+    const fromToolsEndpoint = tools.filter((tool) =>
       integrationIds.includes(tool.category.toLowerCase()),
     );
-  }, [tools, integration.id, integration.includedIntegrations]);
+
+    // Fallback: if the /tools endpoint doesn't know about this integration's
+    // tools yet, use the tools array from the integration record itself
+    if (fromToolsEndpoint.length === 0 && integration.tools?.length) {
+      return integration.tools.map((t) => ({
+        name: t.name,
+        category: integration.id,
+        displayName: integration.name,
+        iconUrl: integration.iconUrl,
+        isLocked: false,
+      }));
+    }
+
+    return fromToolsEndpoint;
+  }, [
+    tools,
+    integration.id,
+    integration.includedIntegrations,
+    integration.tools,
+    integration.name,
+    integration.iconUrl,
+  ]);
 
   const handleConnect = async () => {
     if (isConnected || isConnecting) return;

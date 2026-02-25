@@ -1,15 +1,17 @@
-import { createApp } from "./app";
+import { allCommands } from "@gaia/shared";
+import { SlackAdapter } from "./adapter";
 
-let app: Awaited<ReturnType<typeof createApp>> | null = null;
+const adapter = new SlackAdapter();
 
 async function main() {
-  app = await createApp();
+  await adapter.boot(allCommands);
 }
 
 async function shutdown() {
-  console.log("Shutting down Slack bot...");
-  if (app) {
-    await app.stop();
+  try {
+    await adapter.shutdown();
+  } catch (err) {
+    console.error("Shutdown error:", err);
   }
   process.exit(0);
 }

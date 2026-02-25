@@ -363,6 +363,7 @@ export interface NotificationRecord {
   id: string;
   user_id: string;
   status: NotificationStatus;
+  type: NotificationType;
   created_at: string;
   delivered_at?: string;
   read_at?: string;

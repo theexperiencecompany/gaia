@@ -90,9 +90,9 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
         <div className="relative mb-10 w-full max-w-7xl overflow-hidden rounded-4xl bg-zinc-900/50 px-8 backdrop-blur-sm">
           <FAQAccordion />
         </div>
-
-        <FinalSection />
       </div>
+
+      <FinalSection />
     </div>
   );
 }

@@ -177,6 +177,10 @@ CRITICAL REQUIREMENTS:
 5. Categories like gmail, notion, github, slack, googlecalendar route to specialized subagents
 6. Categories like todos, reminders, search, development use direct tool execution
 7. ELIMINATE any step that doesn't directly contribute to the end goal
+8. Use `gaia` category for steps that involve GAIA's own reasoning, writing, analysis, or synthesis with NO external tool call.
+   Examples: summarize fetched content, draft a message or brief, classify items, generate an outline, extract key points, write a report section.
+   Use `gaia` instead of hallucinating categories like "documents" or "general" for pure-reasoning steps.
+   Do NOT use `gaia` if the step calls any external system — use the appropriate integration category instead.
 
 ## ABSTRACT STEP DESIGN:
 **Steps are GENERIC descriptions, NOT specific tool calls!**
@@ -218,6 +222,7 @@ FORBIDDEN STEP TYPES (DO NOT CREATE):
 - Do NOT create steps that involve only text processing, data analysis, or content generation without external tool usage
 - Do NOT create generic steps like "gather requirements," "evaluate options," or "make recommendations" - these are LLM capabilities
 - If content analysis is needed, the LLM will do it while using actual tools like web_search_tool or generate_document
+- Do NOT use `category: "notifications"` for any step. GAIA automatically sends the user a notification after every workflow run — you never need to explicitly deliver an alert or push message. If a step needs to prepare a summary or message for the user (e.g. "summarize findings to surface to the user"), use `category: "gaia"` instead.
 
 FOCUS ON EXTERNAL TOOL ACTIONS:
 - Every step must perform a concrete external action (send email, create calendar event, search web, save file, etc.)

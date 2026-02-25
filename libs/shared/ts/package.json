@@ -4,8 +4,13 @@
   "private": true,
   "type": "module",
   "description": "Shared TypeScript utilities for GAIA applications",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./bots": "./src/bots/index.ts",
+    "./cli": "./src/cli/index.ts"
+  },
   "scripts": {
     "build": "tsc",
     "dev": "tsc --watch",
@@ -13,6 +18,8 @@
     "format": "prettier --write src/"
   },
   "dependencies": {
+    "@infisical/sdk": "^4.0.0",
+    "axios": "^1.7.0",
     "dotenv": "^16.4.5"
   },
   "devDependencies": {

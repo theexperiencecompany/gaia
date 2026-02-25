@@ -1,10 +1,10 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { AnimatePresence, motion } from "framer-motion";
+import { Cancel01Icon, LinkBackwardIcon } from "@icons";
+import { AnimatePresence, m } from "motion/react";
 import type React from "react";
 import { useEffect } from "react";
-import { Cancel01Icon, LinkBackwardIcon } from "@/icons";
 import { useComposerUI } from "@/stores/composerStore";
 import type { ReplyToMessageData } from "@/stores/replyToMessageStore";
 
@@ -110,7 +110,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
     <div className="px-2">
       <AnimatePresence>
         {replyToMessage && (
-          <motion.div
+          <m.div
             initial={{ opacity: 0, scale: 0.9, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             // exit={{ opacity: 0, scale: 0.9, y: 10 }}
@@ -151,7 +151,7 @@ const SelectedReplyIndicator: React.FC<SelectedReplyIndicatorProps> = ({
                 </Button>
               )}
             </div>
-          </motion.div>
+          </m.div>
         )}
       </AnimatePresence>
     </div>

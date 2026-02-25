@@ -210,7 +210,7 @@ def extract_contacts_from_messages_batch(
     contacts = list(contact_dict.values())
 
     # Sort contacts alphabetically by name, then email
-    contacts.sort(key=lambda x: (x["name"] if x["name"] else x["email"]))
+    contacts.sort(key=lambda x: x["name"] if x["name"] else x["email"])
 
     logger.info(
         f"CONTACT_SERVICE: Extracted {len(contacts)} unique contacts from {len(message_ids)} messages"

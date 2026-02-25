@@ -1,32 +1,41 @@
 name: Deploy Frontend
 
+# Syncs master to the private frontend deployment repository (Vercel auto-deploy source).
 on:
+  # External dispatch from build workflow.
   repository_dispatch:
     types: [deploy-frontend]
+  # Manual operator trigger.
   workflow_dispatch:
+  # Reusable invocation from other workflows.
   workflow_call:
 
 concurrency:
+  # Prevent overlapping frontend syncs for the same ref.
   group: deploy-frontend-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
+  # Read-only repository access is enough for this workflow.
   contents: read
 
 jobs:
   sync_and_deploy:
-    runs-on: ubuntu-latest
+    # This job only syncs code; frontend hosting platform handles actual rollout.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
     environment: production
 
     steps:
+      # Checkout repo so metadata and commit context are available.
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Mirror master branch to private fork consumed by production hosting.
       - name: Sync master to private fork
-        uses: TobKed/github-forks-sync-action@master
+        uses: TobKed/github-forks-sync-action@2fb78daa46a630ff56455a63dec51ff00ba56e23 # v0.4.0
         with:
           github_token: ${{ secrets.PRIVATE_FORK_TOKEN }}
           upstream_repository: ${{ github.repository }}
@@ -35,18 +44,19 @@ jobs:
           target_branch: master
           force: true
 
+      # Always send deploy outcome to Discord for visibility.
       - name: Notify Discord of deployment
         if: always()
-        uses: appleboy/discord-action@v1.2.0
+        uses: appleboy/discord-action@afc227330777ad298156a1f5233dfa1e885616db # v1.2.0
         with:
           webhook_url: ${{ secrets.DISCORD_WEBHOOK }}
           username: "Gaia Deploy Bot"
-          color: ${{ job.status == 'success' && '#00d4aa' || '#ff6b6b' }}
+          color: ${{ job.status == 'success' && '#00d4aa' || job.status == 'cancelled' && '#ffa500' || '#ff6b6b' }}
           message: |
-            🌐 **Web Deployment ${{ job.status == 'success' && 'Triggered' || 'Failed' }}**
+            🌐 **Web Deployment ${{ job.status == 'success' && 'Triggered' || job.status == 'cancelled' && 'Cancelled' || 'Failed' }}**
             **Repo:** ${{ github.repository }}
             **Branch:** master
             **Commit:** ${{ github.sha }}
-            **Status:** ${{ job.status == 'success' && 'Synced to private fork' || 'Sync failed' }}
-            **Next Step:** ${{ job.status == 'success' && 'Vercel will auto-deploy' || 'Check logs' }}
+            **Status:** ${{ job.status == 'success' && 'Synced to private fork' || job.status == 'cancelled' && 'Sync cancelled' || 'Sync failed' }}
+            **Next Step:** ${{ job.status == 'success' && 'Vercel will auto-deploy' || job.status == 'cancelled' && 'N/A' || 'Check logs' }}
             **Triggered by:** ${{ github.actor }}

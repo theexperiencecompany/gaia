@@ -1057,7 +1057,7 @@ async def get_contact_list(user_id: str, max_results=100):
         contact_list = list(contacts.values())
 
         # Sort contacts alphabetically by name, then email
-        contact_list.sort(key=lambda x: (x["name"] if x["name"] else x["email"]))
+        contact_list.sort(key=lambda x: x["name"] if x["name"] else x["email"])
 
         return contact_list
 

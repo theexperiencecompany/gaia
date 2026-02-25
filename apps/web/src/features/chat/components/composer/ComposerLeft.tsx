@@ -1,7 +1,7 @@
 import { Kbd } from "@heroui/react";
 import { Tooltip } from "@heroui/tooltip";
+import { AttachmentIcon, PlusSignIcon, Tick02Icon, ToolsIcon } from "@icons";
 import React from "react";
-
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -10,7 +10,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useLoading } from "@/features/chat/hooks/useLoading";
-import { AttachmentIcon, PlusSignIcon, Tick02Icon, ToolsIcon } from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { cn } from "@/lib/utils";
 import type { SearchMode } from "@/types/shared";

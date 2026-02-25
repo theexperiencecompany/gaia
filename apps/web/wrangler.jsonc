@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "gaia",
+  // Set this to today's date
+  "compatibility_date": "2026-02-24",
+  "compatibility_flags": [
+    "nodejs_compat"
+  ],
+  "minify": true,
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+}

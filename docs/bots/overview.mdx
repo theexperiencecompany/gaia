@@ -1,0 +1,80 @@
+---
+title: "Overview"
+description: "Chat with GAIA on Discord, Slack, and Telegram — without leaving the apps you already use"
+icon: "circle-info"
+---
+
+![](../images/screenshots/bots.webp)
+
+# Bot Integrations
+
+Chat with your assistant, manage todos, and run workflows from the messaging platforms you're already in.
+
+<CardGroup cols={2}>
+  <Card title="Discord" icon="discord" href="/bots/discord">
+    Use slash commands or @mention GAIA in any channel or DM
+  </Card>
+  <Card title="Slack" icon="slack" href="/bots/slack">
+    Chat with GAIA and manage your work inside your Slack workspace
+  </Card>
+  <Card title="Telegram" icon="telegram" href="/bots/telegram">
+    Send messages or use /commands to talk to GAIA on Telegram
+  </Card>
+  <Card title="WhatsApp" icon="whatsapp">
+    WhatsApp updated their [terms of service](https://techcrunch.com/2025/10/18/whatssapp-changes-its-terms-to-bar-general-purpose-chatbots-from-its-platform/) to prohibit general-purpose AI chatbots, so GAIA is not available on WhatsApp.
+  </Card>
+</CardGroup>
+
+## What You Can Do
+
+All GAIA bots give you access to the same core capabilities:
+
+- **Chat with GAIA** — Ask questions, get summaries, request actions
+- **Manage todos** — Create, view, complete, and delete todos
+- **Run workflows** — Execute and monitor your automated workflows
+- **View conversations** — Browse your chat history with links to the web interface
+- **Link your account** — Securely connect your messaging account to GAIA
+- **Stop a response** — Cancel the current response and start fresh with `/stop`
+- **Unlink your account** — Disconnect from GAIA directly from the bot with `/unlink`
+
+## Talking to GAIA: Quick Start
+
+### Step 1 — Link your account
+
+Before using most features, connect your messaging account to GAIA:
+
+```
+/auth
+```
+
+You'll receive a link — click it, log in, and your account is connected.
+
+### Step 2 — Start chatting
+
+```
+/gaia What's on my schedule today?
+```
+
+On Telegram, you can also send free-text messages directly without a command prefix.
+On Discord, you can `@mention` GAIA in any channel.
+On Slack, you can DM the bot directly for free-text chat.
+
+### Step 3 — Manage your work
+
+```
+/todo list
+/workflow list
+/conversations
+```
+
+See the [Commands Reference](/bots/commands) for the full list.
+
+## For Developers
+
+Want to self-host the bots or add them to your own server/workspace? Each platform has a dedicated setup guide:
+
+- [Discord Setup](/bots/discord#developer-setup)
+- [Slack Setup](/bots/slack#developer-setup)
+- [Telegram Setup](/bots/telegram#developer-setup)
+
+All bots are open source and part of the GAIA monorepo under `apps/bots/`.

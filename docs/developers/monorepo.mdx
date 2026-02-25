@@ -1,0 +1,217 @@
+---
+title: "Monorepo Structure"
+description: "Overview of the GAIA monorepo layout and how it's organized"
+icon: "folder-tree"
+---
+
+GAIA is a full-stack monorepo managed with [Nx](https://nx.dev). All apps, services, and shared libraries live in a single repository for unified tooling, shared code, and coordinated releases.
+
+## Top-Level Layout
+
+<Tree>
+  <Tree.Folder name="apps" defaultOpen>
+    <Tree.Folder name="api" defaultOpen>
+      <Tree.File name="app/" />
+      <Tree.File name="pyproject.toml" />
+      <Tree.File name=".env.example" />
+    </Tree.Folder>
+    <Tree.Folder name="web" defaultOpen>
+      <Tree.File name="src/" />
+      <Tree.File name="package.json" />
+      <Tree.File name="next.config.ts" />
+    </Tree.Folder>
+    <Tree.Folder name="desktop">
+      <Tree.File name="src/" />
+      <Tree.File name="electron.vite.config.ts" />
+    </Tree.Folder>
+    <Tree.Folder name="mobile">
+      <Tree.File name="src/" />
+      <Tree.File name="app.json" />
+    </Tree.Folder>
+    <Tree.Folder name="bots">
+      <Tree.Folder name="discord">
+        <Tree.File name="main.py" />
+      </Tree.Folder>
+      <Tree.Folder name="slack">
+        <Tree.File name="main.py" />
+      </Tree.Folder>
+      <Tree.Folder name="telegram">
+        <Tree.File name="main.py" />
+      </Tree.Folder>
+    </Tree.Folder>
+    <Tree.Folder name="voice-agent">
+      <Tree.File name="main.py" />
+    </Tree.Folder>
+  </Tree.Folder>
+  <Tree.Folder name="libs">
+    <Tree.Folder name="shared">
+      <Tree.Folder name="py">
+        <Tree.File name="gaia_shared/" />
+        <Tree.File name="pyproject.toml" />
+      </Tree.Folder>
+      <Tree.Folder name="ts">
+        <Tree.File name="src/" />
+        <Tree.File name="package.json" />
+      </Tree.Folder>
+    </Tree.Folder>
+  </Tree.Folder>
+  <Tree.Folder name="infra">
+    <Tree.Folder name="docker">
+      <Tree.File name="docker-compose.yml" />
+      <Tree.File name="docker-compose.prod.yml" />
+    </Tree.Folder>
+  </Tree.Folder>
+  <Tree.Folder name="docs">
+    <Tree.File name="docs.json" />
+    <Tree.File name="introduction.mdx" />
+  </Tree.Folder>
+  <Tree.File name="nx.json" />
+  <Tree.File name="mise.toml" />
+  <Tree.File name="pnpm-workspace.yaml" />
+  <Tree.File name="package.json" />
+</Tree>
+
+## Apps
+
+| App | Stack | Description |
+| --- | ----- | ----------- |
+| `apps/api` | FastAPI, LangGraph, Python | Backend API and AI agent system |
+| `apps/web` | Next.js 16, React 19, TypeScript | Primary web application |
+| `apps/desktop` | Electron, Next.js | Desktop app wrapping the web build |
+| `apps/mobile` | React Native, Expo | iOS and Android app |
+| `apps/bots/discord` | discord.py | Discord bot integration |
+| `apps/bots/slack` | Slack Bolt | Slack bot integration |
+| `apps/bots/telegram` | python-telegram-bot | Telegram bot integration |
+| `apps/voice-agent` | Python | Voice processing worker |
+
+## Backend Structure (`apps/api`)
+
+<Tree>
+  <Tree.Folder name="apps/api" defaultOpen>
+    <Tree.Folder name="app" defaultOpen>
+      <Tree.Folder name="agents" defaultOpen>
+        <Tree.Folder name="core">
+          <Tree.File name="agent.py" />
+          <Tree.File name="state.py" />
+          <Tree.File name="graph_manager.py" />
+          <Tree.File name="nodes/" />
+          <Tree.File name="subagents/" />
+        </Tree.Folder>
+        <Tree.Folder name="tools">
+          <Tree.File name="calendar.py" />
+          <Tree.File name="email.py" />
+          <Tree.File name="tasks.py" />
+        </Tree.Folder>
+        <Tree.Folder name="memory">
+          <Tree.File name="manager.py" />
+        </Tree.Folder>
+        <Tree.Folder name="llm">
+          <Tree.File name="client.py" />
+        </Tree.Folder>
+        <Tree.Folder name="prompts">
+          <Tree.File name="system.py" />
+        </Tree.Folder>
+      </Tree.Folder>
+      <Tree.Folder name="api">
+        <Tree.Folder name="v1">
+          <Tree.File name="chat.py" />
+          <Tree.File name="integrations.py" />
+          <Tree.File name="tasks.py" />
+        </Tree.Folder>
+      </Tree.Folder>
+      <Tree.Folder name="core">
+        <Tree.File name="app.py" />
+        <Tree.File name="middleware.py" />
+        <Tree.File name="lifespan.py" />
+      </Tree.Folder>
+      <Tree.Folder name="db">
+        <Tree.File name="postgresql.py" />
+        <Tree.File name="mongodb.py" />
+        <Tree.File name="redis.py" />
+        <Tree.File name="chroma.py" />
+      </Tree.Folder>
+      <Tree.Folder name="models">
+        <Tree.File name="user.py" />
+        <Tree.File name="task.py" />
+      </Tree.Folder>
+      <Tree.Folder name="services">
+        <Tree.File name="calendar.py" />
+        <Tree.File name="email.py" />
+      </Tree.Folder>
+      <Tree.Folder name="workers">
+        <Tree.File name="arq_worker.py" />
+      </Tree.Folder>
+      <Tree.File name="main.py" />
+    </Tree.Folder>
+    <Tree.File name="pyproject.toml" />
+    <Tree.File name=".env.example" />
+  </Tree.Folder>
+</Tree>
+
+## Frontend Structure (`apps/web`)
+
+<Tree>
+  <Tree.Folder name="apps/web/src" defaultOpen>
+    <Tree.Folder name="app" defaultOpen>
+      <Tree.Folder name="(landing)">
+        <Tree.File name="page.tsx" />
+        <Tree.File name="layout.tsx" />
+      </Tree.Folder>
+      <Tree.Folder name="(app)">
+        <Tree.File name="chat/" />
+        <Tree.File name="tasks/" />
+        <Tree.File name="calendar/" />
+      </Tree.Folder>
+    </Tree.Folder>
+    <Tree.Folder name="features">
+      <Tree.File name="chat/" />
+      <Tree.File name="todo/" />
+      <Tree.File name="calendar/" />
+      <Tree.File name="workflows/" />
+      <Tree.File name="integrations/" />
+    </Tree.Folder>
+    <Tree.Folder name="components">
+      <Tree.File name="ui/" />
+    </Tree.Folder>
+    <Tree.Folder name="stores">
+      <Tree.File name="chat.ts" />
+      <Tree.File name="user.ts" />
+    </Tree.Folder>
+    <Tree.Folder name="lib">
+      <Tree.File name="utils.ts" />
+      <Tree.File name="api.ts" />
+    </Tree.Folder>
+    <Tree.Folder name="types">
+      <Tree.File name="index.ts" />
+    </Tree.Folder>
+  </Tree.Folder>
+</Tree>
+
+## Shared Libraries (`libs/`)
+
+The `libs/shared` directory contains code shared across multiple apps:
+
+- **`libs/shared/py`** — Python package (`gaia-shared`) with common utilities, logging, config, and Pydantic models. Automatically available to all Python apps via workspace dependencies.
+- **`libs/shared/ts`** — TypeScript utilities shared between the web and desktop apps.
+
+## Infrastructure (`infra/`)
+
+Docker Compose files live in `infra/docker/`:
+
+- `docker-compose.yml` — Local development (PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ)
+- `docker-compose.prod.yml` — Production deployment
+
+## Build System
+
+GAIA uses [Nx](https://nx.dev) for orchestrating builds, linting, formatting, and type-checking across all projects. Each app declares its own targets in `project.json` and Nx handles caching and parallelization.
+
+```bash
+# Run a target across all projects
+nx run-many -t build
+
+# Run a target for a specific app
+nx build web
+nx dev api
+```
+
+See [Development Commands](/developers/commands) for the full list.

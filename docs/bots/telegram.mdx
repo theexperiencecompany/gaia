@@ -1,0 +1,164 @@
+---
+title: "Telegram"
+description: "Chat with GAIA on Telegram"
+icon: "telegram"
+---
+
+# GAIA on Telegram
+
+Talk to GAIA, manage todos, and run workflows directly inside Telegram. The bot works in private chats and supports standard Telegram slash commands with autocomplete via BotFather.
+
+## Start Chatting on Telegram
+
+Search for the GAIA bot on Telegram and open a private chat — no group or server needed.
+
+<Card title="Message GAIA on Telegram" icon="telegram" href="https://t.me/heygaia_bot">
+  Open a private chat with GAIA on Telegram
+</Card>
+
+<Tip>
+  Telegram DMs are fully private — only you and GAIA see the conversation. You can send free-text messages at any time without using a command prefix.
+</Tip>
+
+## Getting Started (Users)
+
+### 1. Start the Bot
+
+Send the `/start` command to begin:
+
+```
+/start
+```
+
+You'll see a welcome message with an overview of available commands.
+
+### 2. Link Your GAIA Account
+
+```
+/auth
+```
+
+Click the link provided, log in to your GAIA account, and your Telegram identity will be connected.
+
+### 3. Start Chatting
+
+```
+/gaia What's on my todo list?
+```
+
+You can also send a free-text message directly — the bot will forward it to GAIA automatically.
+
+### Available Commands
+
+#### Chat
+
+| Command | Description |
+|---|---|
+| `/start` | Start the bot and see the welcome message |
+| `/gaia <message>` | Send a message to GAIA |
+| `/help` | Show all available commands |
+
+#### Todos
+
+| Command | Description |
+|---|---|
+| `/todo list` | Show all active todos |
+| `/todo add <title>` | Create a new todo |
+| `/todo complete <id>` | Mark a todo as done |
+| `/todo delete <id>` | Delete a todo |
+
+#### Workflows
+
+| Command | Description |
+|---|---|
+| `/workflow list` | List all your workflows |
+| `/workflow get <id>` | View workflow details |
+| `/workflow execute <id>` | Trigger a workflow manually |
+
+#### Conversations & Utilities
+
+| Command | Description |
+|---|---|
+| `/conversations` | Browse your GAIA conversation history |
+| `/new` | Start a fresh conversation |
+| `/stop` | Stop the current response and start fresh |
+| `/status` | Check bot and API status |
+| `/settings` | View your GAIA settings and integrations |
+| `/auth` | Link your Telegram account to GAIA |
+| `/unlink` | Disconnect your account from GAIA |
+
+### Notes
+
+- Commands begin with `/` as is standard in Telegram
+- Free-text messages (without a command prefix) are automatically sent to GAIA as chat messages
+- Rich formatting like embeds is limited compared to Discord/Slack — responses use plain text and Markdown
+
+---
+
+## Developer Setup
+
+This section is for developers who want to self-host the GAIA Telegram bot.
+
+### Prerequisites
+
+- Node.js 18+ and pnpm
+- A Telegram account
+- GAIA API running (see [Self-Hosting Guide](/self-hosting/overview))
+
+### Step 1: Create a Telegram Bot
+
+1. Open Telegram and search for [@BotFather](https://t.me/botfather)
+2. Send `/newbot`
+3. Follow the prompts to choose a **name** and **username** for your bot
+4. Copy the **bot token** BotFather gives you
+
+### Step 2: Register Commands (Optional but Recommended)
+
+Send `/setcommands` to BotFather, select your bot, then paste:
+
+```
+start - Start the bot
+gaia - Chat with GAIA
+auth - Link your Telegram account
+todo - Manage todos
+workflow - Manage workflows
+conversations - View conversations
+new - Start a new conversation
+stop - Stop current response and start fresh
+status - Check bot status
+settings - View your GAIA settings
+help - Show help message
+unlink - Disconnect your account
+```
+
+This enables Telegram's command autocomplete for users.
+
+### Step 3: Configure Environment Variables
+
+Create a `.env` file in `apps/bots/telegram/`:
+
+```bash
+TELEGRAM_BOT_TOKEN=your_telegram_bot_token
+GAIA_API_URL=http://localhost:8000
+GAIA_BOT_API_KEY=your_secure_bot_api_key
+```
+
+### Step 4: Start the Bot
+
+```bash
+# Development (hot reload)
+nx dev bot-telegram
+
+# Production
+nx build bot-telegram && nx start bot-telegram
+```
+
+The bot uses **long polling** — no webhook or public URL is required.
+
+### Troubleshooting
+
+| Problem | Solution |
+|---|---|
+| Bot doesn't respond | Check the bot token is correct and the process is running |
+| Commands not showing autocomplete | Run `/setcommands` with BotFather |
+| Authentication fails | Ensure `GAIA_BOT_API_KEY` matches the API config and the API is reachable |

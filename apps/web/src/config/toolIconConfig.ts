@@ -437,6 +437,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#60a5fa",
     isImage: false,
   },
+  gaia: {
+    icon: "/brand/gaia_logo.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
   general: {
     icon: "ToolsIcon",
     bgColor: "bg-gray-500/20 backdrop-blur",

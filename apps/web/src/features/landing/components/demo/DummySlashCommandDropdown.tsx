@@ -3,13 +3,12 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Input } from "@heroui/input";
 import { ScrollShadow } from "@heroui/scroll-shadow";
-import { AnimatePresence, motion } from "framer-motion";
+import { Cancel01Icon, GridIcon, SearchIcon, Tick02Icon } from "@icons";
+import { AnimatePresence, m } from "motion/react";
 import type React from "react";
 import { useMemo, useState } from "react";
-
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-import { Cancel01Icon, GridIcon, SearchIcon, Tick02Icon } from "@/icons";
 
 import { dummyIntegrations } from "./constants";
 
@@ -585,7 +584,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
   return (
     <AnimatePresence>
       {isVisible && (
-        <motion.div
+        <m.div
           initial={{ opacity: 0, y: -8, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           exit={{ opacity: 0, y: -8, scale: 0.95 }}
@@ -595,7 +594,8 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
             stiffness: 300,
             duration: 0.15,
           }}
-          className="relative z-[200] mx-auto flex h-[50vh] w-full flex-col overflow-hidden rounded-3xl border-1 border-zinc-700 bg-zinc-900/60 shadow-2xl backdrop-blur-2xl"
+          className="relative z-[200] mx-auto flex w-full flex-col overflow-hidden rounded-3xl border-1 border-zinc-700 bg-zinc-900/60 shadow-2xl backdrop-blur-2xl"
+          style={{ height: "min(60vh, 420px)" }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* Header section - Only show when opened via button */}
@@ -627,7 +627,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
           )}
 
           {/* Category Tabs */}
-          <motion.div
+          <m.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             transition={{ delay: 0.1 }}
@@ -664,7 +664,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
                 ))}
               </div>
             </ScrollShadow>
-          </motion.div>
+          </m.div>
 
           {/* Tool List */}
           <div className="flex-1 overflow-y-auto">
@@ -712,7 +712,7 @@ const DummySlashCommandDropdown: React.FC<DummySlashCommandDropdownProps> = ({
               ))}
             </div>
           </div>
-        </motion.div>
+        </m.div>
       )}
     </AnimatePresence>
   );

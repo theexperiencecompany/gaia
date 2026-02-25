@@ -2,9 +2,8 @@
 
 import { Button } from "@heroui/button";
 import { Tab, Tabs } from "@heroui/tabs";
-
+import { NotificationIcon } from "@icons";
 import { HeaderTitle } from "@/components/layout/headers/HeaderTitle";
-import { NotificationIcon } from "@/icons";
 
 interface NotificationsHeaderProps {
   selectedTab: string;

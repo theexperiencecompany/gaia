@@ -1,19 +1,18 @@
 "use client";
 
 import { Button } from "@heroui/button";
-import { motion } from "framer-motion";
+import { Copy01Icon, DownloadCircle01Icon, FolderLibraryIcon } from "@icons";
+import { m } from "motion/react";
 import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
-import { toast } from "sonner";
-
 import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
-import { Copy01Icon, DownloadCircle01Icon, FolderLibraryIcon } from "@/icons";
+import { toast } from "@/lib/toast";
 
 interface LogoWithContextMenuProps {
   className?: string;
@@ -164,7 +163,7 @@ export function LogoWithContextMenu({
       id: "experience-company",
       type: "link",
       label: "by The Experience Company",
-      href: "https://exprience.heygaia.io",
+      href: "https://experience.heygaia.io",
       icon: (
         <Image
           src="/images/logos/experience_logo.svg"
@@ -205,7 +204,7 @@ export function LogoWithContextMenu({
     <ContextMenu onOpenChange={setIsOpen} modal={false}>
       <ContextMenuTrigger asChild>
         <Button as={Link} href={"/"} variant="light" className={className}>
-          <motion.div
+          <m.div
             whileHover={{
               scale: 1.02,
               transition: { duration: 0.2 },
@@ -216,13 +215,14 @@ export function LogoWithContextMenu({
               alt="GAIA Logo"
               width={width}
               height={height}
+              priority
               className={imageClassName}
             />
-          </motion.div>
+          </m.div>
         </Button>
       </ContextMenuTrigger>
       <ContextMenuContent className="rounded-2xl bg-primary-bg/70 p-1.5">
-        <motion.div
+        <m.div
           initial="hidden"
           animate={isOpen ? "visible" : "hidden"}
           variants={containerVariants}
@@ -233,7 +233,7 @@ export function LogoWithContextMenu({
               asChild
               className="hover:bg-zinc-700! hover:text-white text-zinc-400 "
             >
-              <motion.div
+              <m.div
                 variants={itemVariants}
                 onClick={item.type === "button" ? item.onClick : undefined}
               >
@@ -252,10 +252,10 @@ export function LogoWithContextMenu({
                     <span>{item.label}</span>
                   </div>
                 )}
-              </motion.div>
+              </m.div>
             </ContextMenuItem>
           ))}
-        </motion.div>
+        </m.div>
       </ContextMenuContent>
     </ContextMenu>
   );

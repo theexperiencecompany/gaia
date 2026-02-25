@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
-import { toast } from "sonner";
-
 import {
   isPersonalizationCompleteMessage,
   type PersonalizationData,
 } from "@/features/onboarding/types/websocket";
 import { apiService } from "@/lib/api";
+import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket";
 
 export type House = "frostpeak" | "greenvale" | "mistgrove" | "bluehaven";

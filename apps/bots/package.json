@@ -1,0 +1,15 @@
+{
+  "name": "@gaia/bots-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@gaia/shared": "workspace:*",
+    "@gaia/bot-discord": "workspace:*",
+    "@gaia/bot-slack": "workspace:*",
+    "@gaia/bot-telegram": "workspace:*"
+  },
+  "devDependencies": {
+    "vitest": "^4.0.15"
+  }
+}

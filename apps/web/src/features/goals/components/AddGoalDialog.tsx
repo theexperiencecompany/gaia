@@ -7,10 +7,9 @@ import {
   ModalFooter,
   ModalHeader,
 } from "@heroui/modal";
+import { SentIcon } from "@icons";
 import type React from "react";
 import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
-
-import { SentIcon } from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 export default function AddGoalDialog({

@@ -1,4 +1,3 @@
-export { useCalendarBatchOperations } from "./useCalendarBatchOperations";
 export { useCalendarOperations } from "./useCalendarOperations";
 export { useCalendarPreferences } from "./useCalendarPreferences";
 export { useCalendarsQuery } from "./useCalendarsQuery";

@@ -11,6 +11,7 @@ from app.api.v1.middleware import (
     WorkOSAuthMiddleware,
 )
 from app.api.v1.middleware.rate_limiter import limiter
+from app.core.bot_auth_middleware import BotAuthMiddleware
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -63,6 +64,9 @@ def configure_middleware(app: FastAPI) -> None:
         allow_headers=["*"],
     )
 
+    # Add bot authentication middleware (before WorkOS to allow bot auth to take precedence)
+    app.add_middleware(BotAuthMiddleware)
+
     # Add WorkOS authentication middleware
     workos_client = AsyncWorkOSClient(
         api_key=settings.WORKOS_API_KEY, client_id=settings.WORKOS_CLIENT_ID
@@ -94,8 +98,6 @@ def get_allowed_origins() -> list[str]:
         # Allow development origins
         allowed_origins.extend(
             [
-                "http://localhost:5173",
-                "https://localhost:5173",
                 "http://localhost:3000",
                 "http://192.168.138.215:5173",
                 "https://192.168.13.215:5173",

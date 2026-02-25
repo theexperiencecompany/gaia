@@ -1,7 +1,7 @@
 /**
- * Timezone utilities for displaying timezone information with offsets
+ * Timezone utilities for displaying timezone information with offsets.
+ * Uses the native Intl API — zero bundle cost, no external dependencies.
  */
-import moment from "moment-timezone";
 
 export interface TimezoneInfo {
   value: string;
@@ -13,12 +13,74 @@ export interface TimezoneInfo {
 }
 
 /**
- * Normalize timezone to current IANA identifier using moment-timezone
+ * Returns a UTC offset string like "+05:30" or "-05:00" for the given IANA
+ * timezone, derived from Intl.DateTimeFormat's "shortOffset" timeZoneName.
+ */
+const getOffsetString = (timezone: string): string => {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: timezone,
+    timeZoneName: "shortOffset",
+  }).formatToParts(new Date());
+
+  const tzPart = parts.find((p) => p.type === "timeZoneName")?.value ?? "GMT";
+
+  // shortOffset produces values like "GMT+5:30", "GMT-5", "GMT"
+  const match = tzPart.match(/GMT([+-]\d+(?::\d+)?)?/);
+  if (!match || !match[1]) return "+00:00";
+
+  const [hours, mins = "00"] = match[1].split(":");
+  const sign = hours.startsWith("-") ? "-" : "+";
+  const paddedHours = String(Math.abs(Number(hours))).padStart(2, "0");
+  const paddedMins = mins.padStart(2, "0");
+  return `${sign}${paddedHours}:${paddedMins}`;
+};
+
+/**
+ * Returns the short timezone abbreviation like "IST", "PST", "CET" for the
+ * given IANA timezone.
+ */
+const getAbbreviation = (timezone: string): string => {
+  const parts = new Intl.DateTimeFormat("en", {
+    timeZone: timezone,
+    timeZoneName: "short",
+  }).formatToParts(new Date());
+
+  return parts.find((p) => p.type === "timeZoneName")?.value ?? "";
+};
+
+/**
+ * Returns the current local time in HH:mm format for the given IANA timezone.
+ */
+const getCurrentTime = (timezone: string): string => {
+  return new Intl.DateTimeFormat("en", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date());
+};
+
+/**
+ * Extracts a human-readable city/region label from an IANA timezone identifier,
+ * e.g. "Asia/Kolkata" -> "Kolkata".
+ */
+const getTimezoneDisplayName = (timezone: string): string => {
+  const parts = timezone.split("/");
+  if (parts.length >= 2) {
+    return parts[parts.length - 1].replace(/_/g, " ");
+  }
+  return timezone;
+};
+
+/**
+ * Normalise a timezone string to a valid IANA identifier.
+ * Handles legacy aliases (e.g. "Asia/Calcutta" -> "Asia/Kolkata") and
+ * validates the result against Intl. Falls back to the original string when
+ * validation is not possible.
  */
 export const normalizeTimezone = (timezone: string): string => {
   if (!timezone) return "UTC";
 
-  // Handle common legacy timezone manually since moment might not recognize them
   const legacyMap: Record<string, string> = {
     "Asia/Calcutta": "Asia/Kolkata",
   };
@@ -28,29 +90,22 @@ export const normalizeTimezone = (timezone: string): string => {
   }
 
   try {
-    // Check if timezone is valid first
-    const momentTz = moment.tz(timezone);
-    if (momentTz.isValid()) {
-      return timezone; // If valid, return as-is (moment-timezone handles canonical names)
-    }
+    new Intl.DateTimeFormat("en", { timeZone: timezone });
     return timezone;
-  } catch (error) {
-    console.warn(`Failed to normalize timezone ${timezone}:`, error);
+  } catch {
     return timezone;
   }
 };
 
 /**
- * Get timezone information including UTC offset and abbreviation using moment
+ * Builds a TimezoneInfo object for the given IANA timezone identifier using
+ * only the native Intl API.
  */
 export const getTimezoneInfo = (timezone: string): TimezoneInfo => {
   try {
-    const now = moment.tz(timezone);
-    const offset = now.format("Z"); // e.g., "+05:30", "-05:00"
-    const abbreviation = now.format("z"); // e.g., "PST", "IST"
-    const currentTime = now.format("HH:mm");
-
-    // Get clean city name
+    const offset = getOffsetString(timezone);
+    const abbreviation = getAbbreviation(timezone);
+    const currentTime = getCurrentTime(timezone);
     const cityName = getTimezoneDisplayName(timezone);
 
     return {
@@ -75,32 +130,19 @@ export const getTimezoneInfo = (timezone: string): TimezoneInfo => {
 };
 
 /**
- * Get human-readable timezone display name
- */
-const getTimezoneDisplayName = (timezone: string): string => {
-  // Just extract the city name from the timezone identifier
-  const parts = timezone.split("/");
-  if (parts.length >= 2) {
-    return parts[parts.length - 1].replace(/_/g, " ");
-  }
-  return timezone;
-};
-
-/**
- * Get current browser timezone info
+ * Returns a TimezoneInfo for the timezone currently reported by the browser /
+ * Node.js runtime.
  */
 export const getCurrentBrowserTimezone = (): TimezoneInfo => {
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  // Normalize the browser-detected timezone using moment-timezone
   const normalizedTimezone = normalizeTimezone(browserTimezone);
   return getTimezoneInfo(normalizedTimezone);
 };
 
 /**
- * Get popular timezones list with offsets using moment-timezone
+ * Returns a sorted list of commonly-used timezone entries.
  */
 export const getPopularTimezones = (): TimezoneInfo[] => {
-  // Popular timezones that users commonly need
   const popularTimezones = [
     "UTC",
     "America/New_York",
@@ -133,7 +175,6 @@ export const getPopularTimezones = (): TimezoneInfo[] => {
   ];
 
   return popularTimezones.map(getTimezoneInfo).sort((a, b) => {
-    // Sort by offset first, then by label
     const offsetA = parseFloat(a.offset.replace(":", "."));
     const offsetB = parseFloat(b.offset.replace(":", "."));
     if (offsetA !== offsetB) {
@@ -144,14 +185,14 @@ export const getPopularTimezones = (): TimezoneInfo[] => {
 };
 
 /**
- * Get ALL available timezones using moment-timezone
+ * Returns a sorted list of every IANA timezone supported by the runtime,
+ * obtained via Intl.supportedValuesOf("timeZone") (Node 18+ / modern browsers).
+ * No timezone data bundle is needed.
  */
 export const getAllTimezones = (): TimezoneInfo[] => {
-  return moment.tz
-    .names()
+  return Intl.supportedValuesOf("timeZone")
     .map(getTimezoneInfo)
     .sort((a, b) => {
-      // Sort by offset first, then by label
       const offsetA = parseFloat(a.offset.replace(":", "."));
       const offsetB = parseFloat(b.offset.replace(":", "."));
       if (offsetA !== offsetB) {
@@ -162,16 +203,15 @@ export const getAllTimezones = (): TimezoneInfo[] => {
 };
 
 /**
- * Get timezone list (defaults to popular, but can get all)
+ * Returns either the popular or the full timezone list.
  */
-export const getTimezoneList = (
-  includeAll: boolean = false,
-): TimezoneInfo[] => {
+export const getTimezoneList = (includeAll = false): TimezoneInfo[] => {
   return includeAll ? getAllTimezones() : getPopularTimezones();
 };
 
 /**
- * Format timezone for display in settings - cleaner UX
+ * Formats a timezone for display in settings UI, e.g. "Kolkata (UTC+05:30)".
+ * Falls back to the browser timezone when the argument is null or undefined.
  */
 export const formatTimezoneDisplay = (
   timezone: string | null | undefined,
@@ -186,9 +226,13 @@ export const formatTimezoneDisplay = (
 };
 
 /**
- * Get simple current time info for display
+ * Returns simple current-time information for the browser's local timezone.
  */
-export const getCurrentTimezoneInfo = () => {
+export const getCurrentTimezoneInfo = (): {
+  timezone: string;
+  timeString: string;
+  offset: string;
+} => {
   const browserTz = getCurrentBrowserTimezone();
   return {
     timezone: browserTz.label,

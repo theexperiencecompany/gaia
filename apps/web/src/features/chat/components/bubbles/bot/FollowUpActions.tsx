@@ -1,5 +1,5 @@
 import { Button } from "@heroui/button";
-import { motion } from "framer-motion";
+import { m } from "motion/react";
 
 import { useAppendToInput } from "@/stores/composerStore";
 
@@ -26,7 +26,7 @@ export default function FollowUpActions({
   if (!actions || actions.length === 0) return null;
 
   return (
-    <motion.div
+    <m.div
       initial="hidden"
       animate="visible"
       variants={{
@@ -39,7 +39,7 @@ export default function FollowUpActions({
       className="flex max-w-xl flex-wrap gap-2 pt-3 pb-1"
     >
       {actions.map((action) => (
-        <motion.div
+        <m.div
           key={action}
           variants={{
             hidden: { opacity: 0, y: 10 },
@@ -55,8 +55,8 @@ export default function FollowUpActions({
           >
             {action}
           </Button>
-        </motion.div>
+        </m.div>
       ))}
-    </motion.div>
+    </m.div>
   );
 }

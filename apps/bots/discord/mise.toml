@@ -1,0 +1,27 @@
+# Discord Bot mise.toml for GAIA
+# This file defines tasks for the GAIA Discord bot.
+#
+# Quick Start:
+#   mise dev             # Start Discord bot in dev mode
+#   mise build           # Build bot
+#   mise tasks           # List all available commands
+
+[tasks.dev]
+description = "Run Discord bot in dev mode with watch"
+run = "pnpm tsx watch src/index.ts"
+
+[tasks.build]
+description = "Build Discord bot"
+run = "pnpm tsc"
+
+[tasks."deploy-commands"]
+description = "Deploy Discord slash commands"
+run = "pnpm tsx src/deploy-commands.ts"
+
+[tasks.test]
+description = "Run Discord bot tests"
+run = "pnpm vitest run --config ../../vitest.config.ts"
+
+[tasks.deps]
+description = "Install dependencies"
+run = "pnpm install"

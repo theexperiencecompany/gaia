@@ -1,11 +1,10 @@
-import type React from "react";
-
-import CopyButton from "@/features/chat/components/code-block/CopyButton";
 import {
   Cancel01Icon,
   CheckmarkCircle02Icon,
   SourceCodeCircleIcon,
-} from "@/icons";
+} from "@icons";
+import type React from "react";
+import CopyButton from "@/features/chat/components/code-block/CopyButton";
 
 interface CodeExecutionOutputProps {
   output?: {

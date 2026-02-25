@@ -38,7 +38,7 @@ services:
     volumes:
       - ../../apps/api/app:/app/apps/api/app
     ports:
-      - "8000:80"
+      - "${API_HOST_PORT:-8000}:80"
     restart: on-failure
     tty: true
     stdin_open: true
@@ -70,7 +70,7 @@ services:
       - CHROMA_SERVER_HOST=0.0.0.0
       - CHROMA_SERVER_PORT=8000
     ports:
-      - "8080:8000"
+      - "${CHROMADB_HOST_PORT:-8080}:8000"
     restart: on-failure
     healthcheck:
       test:
@@ -88,11 +88,11 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres # pragma: allowlist secret
-      POSTGRES_DB: postgres
+      POSTGRES_DB: langgraph
     volumes:
       - pgdata:/var/lib/postgresql/data
     ports:
-      - "5432:5432"
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
     restart: on-failure
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "postgres"]
@@ -107,7 +107,7 @@ services:
     image: redis:alpine
     container_name: redis
     ports:
-      - "6379:6379"
+      - "${REDIS_HOST_PORT:-6379}:6379"
     volumes:
       - redis_data:/data
     restart: on-failure
@@ -127,7 +127,7 @@ services:
       - mongo_data:/data/db
     restart: on-failure
     ports:
-      - "27017:27017"
+      - "${MONGO_HOST_PORT:-27017}:27017"
     healthcheck:
       test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
       interval: 10s
@@ -141,7 +141,8 @@ services:
     image: rabbitmq:3-management
     container_name: rabbitmq
     ports:
-      - "5672:5672" # AMQP protocol
+      - "${RABBITMQ_HOST_PORT:-5672}:5672" # AMQP protocol
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
     restart: always
@@ -171,6 +172,8 @@ services:
     depends_on:
       redis:
         condition: service_healthy
+      mongo:
+        condition: service_healthy
     networks:
       - gaia_network
 
@@ -184,9 +187,58 @@ services:
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: password # pragma: allowlist secret
     ports:
-      - "8083:8081"
+      - "${MONGO_EXPRESS_HOST_PORT:-8083}:8081"
     depends_on:
       mongo:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  # Discord Bot
+  discord-bot:
+    container_name: discord-bot
+    profiles: ["bots", "all"]
+    build:
+      context: ../..
+      dockerfile: apps/bots/discord/Dockerfile
+    env_file:
+      - ../../apps/bots/.env
+    restart: on-failure
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  # Slack Bot
+  slack-bot:
+    container_name: slack-bot
+    profiles: ["bots", "all"]
+    build:
+      context: ../..
+      dockerfile: apps/bots/slack/Dockerfile
+    env_file:
+      - ../../apps/bots/.env
+    restart: on-failure
+    depends_on:
+      gaia-backend:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  # Telegram Bot
+  telegram-bot:
+    container_name: telegram-bot
+    profiles: ["bots", "all"]
+    build:
+      context: ../..
+      dockerfile: apps/bots/telegram/Dockerfile
+    # Generate ../../apps/bots/.env from apps/bots/.env.example before enabling bots.
+    env_file:
+      - ../../apps/bots/.env
+    restart: on-failure
+    depends_on:
+      gaia-backend:
         condition: service_healthy
     networks:
       - gaia_network

@@ -1,0 +1,193 @@
+---
+title: "Development Setup"
+description: "How to set up your local development environment for GAIA"
+icon: "laptop-code"
+---
+
+## Who This Guide Is For
+
+<CardGroup cols={2}>
+  <Card title="Open Source Contributors" icon="git-alt">
+    Developers who want to contribute by fixing bugs, adding features, or
+    improving documentation.
+  </Card>
+  <Card title="Customizers" icon="wrench">
+    Developers who want to modify GAIA for their specific use cases or integrate
+    with custom systems.
+  </Card>
+</CardGroup>
+
+---
+
+## Prerequisites
+
+<AccordionGroup>
+  <Accordion icon="docker" title="Docker & Docker Compose">
+    - Docker Desktop or Docker Engine
+    - Docker Compose v2+
+    - At least 4GB of available RAM
+    - 10GB of free disk space
+  </Accordion>
+
+  <Accordion icon="code" title="CLI Requirements">
+    - Node.js 20+
+    - one package manager: npm, pnpm, or bun
+    - Git
+  </Accordion>
+
+  <Accordion icon="terminal" title="System Requirements">
+    - macOS, Linux, or Windows with WSL2
+    - At least 8GB RAM (16GB recommended)
+    - SSD storage for better performance
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Install GAIA CLI
+
+<CodeGroup>
+
+```bash npm
+npm install -g @heygaia/cli
+```
+
+```bash pnpm
+pnpm add -g @heygaia/cli
+```
+
+```bash bun
+bun add -g @heygaia/cli
+```
+
+</CodeGroup>
+
+Verify installation:
+
+```bash
+gaia --help
+```
+
+---
+
+## First-Time Setup
+
+<Steps>
+  <Step title="Clone the repository">
+    ```bash
+    git clone https://github.com/theexperiencecompany/gaia.git
+    cd gaia
+    ```
+  </Step>
+
+  <Step title="Run setup wizard">
+    ```bash
+    gaia init
+    ```
+
+    In the wizard:
+    - Choose **Developer Mode (Local)**
+    - Choose your env setup method (Manual or Infisical)
+  </Step>
+
+  <Step title="Start development in Nx TUI">
+    ```bash
+    gaia dev
+    ```
+
+    This runs `mise dev` for you and opens the Nx TUI in your current terminal.
+  </Step>
+</Steps>
+
+---
+
+## Run Modes
+
+| Command | Description |
+| ------- | ----------- |
+| `gaia dev` | API + web in Nx TUI (developer mode) |
+| `gaia dev full` | API + web + workers in Nx TUI (developer mode) |
+| `gaia logs` | Stream logs for currently running services |
+| `gaia status` | Health check for GAIA services |
+| `gaia stop` | Stop services safely (GAIA-managed processes) |
+| `gaia setup` | Re-run setup for an existing clone |
+
+---
+
+## Project Structure
+
+```bash
+gaia/
+├── apps/
+│   ├── api/           # FastAPI backend (Python)
+│   ├── web/           # Next.js frontend (TypeScript)
+│   ├── desktop/       # Electron desktop app
+│   ├── mobile/        # React Native mobile app
+├── docs/              # Documentation
+├── libs/              # Shared libraries
+├── infra/
+│   └── docker/        # Docker Compose files
+├── config/            # Build configuration
+├── mise.toml          # Root task configuration
+└── nx.json            # Nx build configuration
+```
+
+---
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="gaia command not found">
+    Reinstall globally, then open a new terminal session:
+
+    <CodeGroup>
+
+    ```bash npm
+    npm install -g @heygaia/cli
+    gaia --help
+    ```
+
+    ```bash pnpm
+    pnpm add -g @heygaia/cli
+    gaia --help
+    ```
+
+    ```bash bun
+    bun add -g @heygaia/cli
+    gaia --help
+    ```
+
+    </CodeGroup>
+  </Accordion>
+
+  <Accordion title="Docker services not starting">
+    Check Docker is running:
+
+    ```bash
+    docker ps
+    ```
+
+    Then check GAIA service health:
+
+    ```bash
+    gaia status
+    ```
+  </Accordion>
+
+  <Accordion title="Need to reconfigure environment">
+    From your repo root, run:
+
+    ```bash
+    gaia setup
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+- [Commands Reference](/developers/commands) - Full command list
+- [CLI Commands](/cli/commands) - GAIA CLI reference
+- [Environment Variables](/configuration/environment-variables) - Configure your setup
+- [Contributing](/developers/contributing) - How to contribute

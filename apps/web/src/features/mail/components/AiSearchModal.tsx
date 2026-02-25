@@ -1,8 +1,8 @@
 import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
+import { AiSearch02Icon } from "@icons";
 import type React from "react";
 import { useState } from "react";
-
 import {
   Dialog,
   DialogContent,
@@ -12,7 +12,6 @@ import {
 } from "@/components/ui/dialog";
 import Spinner from "@/components/ui/spinner";
 import { mailApi } from "@/features/mail/api/mailApi";
-import { AiSearch02Icon } from "@/icons";
 
 import { EmailChip, type EmailSuggestion } from "./EmailChip";
 

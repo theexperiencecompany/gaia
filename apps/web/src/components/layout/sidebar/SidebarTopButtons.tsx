@@ -2,10 +2,18 @@
 
 import { Button } from "@heroui/button";
 import { Tooltip } from "@heroui/tooltip";
+import {
+  Calendar03Icon,
+  CheckListIcon,
+  ConnectIcon,
+  DashboardSquare02Icon,
+  MessageMultiple02Icon,
+  Target02Icon,
+  ZapIcon,
+} from "@icons";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useEffect, useState } from "react";
-
 import {
   getNavigationShortcut,
   ShortcutKeysDisplay,
@@ -15,15 +23,6 @@ import {
   usePricing,
   useUserSubscriptionStatus,
 } from "@/features/pricing/hooks/usePricing";
-import {
-  Calendar03Icon,
-  CheckListIcon,
-  ConnectIcon,
-  DashboardSquare02Icon,
-  MessageMultiple02Icon,
-  Target02Icon,
-  ZapIcon,
-} from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { NotificationStatus } from "@/types/features/notificationTypes";
 import { SidebarPromo } from "./SidebarPromo";

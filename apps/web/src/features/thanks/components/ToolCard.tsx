@@ -1,12 +1,11 @@
 "use client";
 
 import { Tooltip } from "@heroui/tooltip";
+import { GlobalIcon } from "@icons";
 import Image from "next/image";
 import { memo, useRef, useState } from "react";
 import tinycolor from "tinycolor2";
-
 import type { Tool } from "@/data/tools";
-import { GlobalIcon } from "@/icons";
 
 interface ToolMetadata {
   title: string | null;

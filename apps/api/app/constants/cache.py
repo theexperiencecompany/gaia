@@ -51,3 +51,5 @@ STREAM_CHANNEL_PREFIX = "stream:channel:"
 STREAM_SIGNAL_PREFIX = "stream:signal:"
 STREAM_PROGRESS_PREFIX = "stream:progress:"
 STATE_KEY_PREFIX = "oauth_state"
+PLATFORM_LINK_TOKEN_PREFIX = "platform_link_token"  # nosec B105
+PLATFORM_LINK_TOKEN_TTL = TEN_MINUTES_TTL

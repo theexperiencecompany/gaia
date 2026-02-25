@@ -1,11 +1,10 @@
 "use client";
 
 import { Card, CardBody, CardHeader } from "@heroui/card";
+import { ViewIcon } from "@icons";
 import Markdown from "react-markdown";
 import rehypeHighlight from "rehype-highlight";
 import remarkGfm from "remark-gfm";
-
-import { ViewIcon } from "@/icons";
 
 interface MarkdownPreviewProps {
   content: string;

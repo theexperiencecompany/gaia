@@ -38,6 +38,7 @@ Usage:
     await stream_manager.cancel_stream(stream_id)
 """
 
+import json
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
@@ -167,15 +168,25 @@ class StreamManager:
         await cls._publish(stream_id, chunk)
 
     @classmethod
-    async def subscribe_stream(cls, stream_id: str) -> AsyncGenerator[str, None]:
+    async def subscribe_stream(
+        cls,
+        stream_id: str,
+        keepalive_interval: float = 15,
+    ) -> AsyncGenerator[str, None]:
         """
         Subscribe to stream channel and yield chunks.
 
         Use this in the HTTP endpoint to forward chunks to the client.
-        Automatically handles DONE and CANCELLED signals.
+        Automatically handles DONE and CANCELLED signals, and yields
+        SSE keepalive comments when no data arrives within the interval.
+
+        Args:
+            stream_id: Stream identifier
+            keepalive_interval: Seconds between keepalive comments when idle
 
         Yields:
-            SSE-formatted chunks from the background streaming task
+            SSE-formatted chunks from the background streaming task,
+            interspersed with ``": keepalive\\n\\n"`` comments during idle periods.
         """
         if not redis_cache.redis:
             logger.error("Redis not available for stream subscription")
@@ -183,36 +194,69 @@ class StreamManager:
 
         pubsub = redis_cache.redis.pubsub()
         channel = f"{STREAM_CHANNEL_PREFIX}{stream_id}"
+        chunks_received = 0
 
         try:
             await pubsub.subscribe(channel)
             logger.debug(f"Subscribed to stream channel: {channel}")
 
-            async for message in pubsub.listen():
+            while True:
+                # get_message returns None on timeout instead of cancelling
+                message = await pubsub.get_message(
+                    ignore_subscribe_messages=True,
+                    timeout=keepalive_interval,
+                )
+
+                if message is None:
+                    # No message within interval — send keepalive as a data event.
+                    # SSE comment format (": keepalive") triggers onmessage with
+                    # empty data in @microsoft/fetch-event-source due to a spec
+                    # non-compliance in that library, causing JSON.parse("") errors.
+                    yield 'data: {"keepalive":true}\n\n'
+                    continue
+
                 if message["type"] != "message":
                     continue
 
                 data = message["data"]
+                if isinstance(data, bytes):
+                    data = data.decode("utf-8")
+                chunks_received += 1
 
                 # Handle control signals
                 if data == STREAM_DONE_SIGNAL:
-                    logger.debug(f"Stream {stream_id} received DONE signal")
+                    logger.debug(
+                        f"Stream {stream_id} completed successfully ({chunks_received} chunks)"
+                    )
                     break
 
                 if data == STREAM_CANCELLED_SIGNAL:
-                    logger.debug(f"Stream {stream_id} received CANCELLED signal")
+                    logger.info(f"Stream {stream_id} was cancelled by user")
                     yield "data: [DONE]\n\n"
                     break
 
                 if data == STREAM_ERROR_SIGNAL:
-                    logger.debug(f"Stream {stream_id} received ERROR signal")
+                    logger.error(f"Stream {stream_id} encountered an error")
+                    progress = await cls.get_progress(stream_id)
+                    error_msg = (
+                        progress.get("error", "An unexpected error occurred")
+                        if progress
+                        else "An unexpected error occurred"
+                    )
+                    yield f"data: {json.dumps({'error': error_msg})}\n\n"
                     break
 
                 # Forward chunk to client
                 yield data
 
+            if chunks_received == 0:
+                logger.warning(f"Stream {stream_id} ended without receiving any chunks")
+
         except Exception as e:
-            logger.error(f"Error in stream subscription {stream_id}: {e}")
+            logger.error(
+                f"Error in stream subscription {stream_id}: {e}", exc_info=True
+            )
+            yield f"data: {json.dumps({'error': 'Stream subscription failed'})}\n\n"
         finally:
             try:
                 await pubsub.unsubscribe(channel)

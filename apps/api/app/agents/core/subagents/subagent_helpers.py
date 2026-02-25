@@ -5,6 +5,7 @@ Reusable utilities for working with subagents, including system prompt creation
 with provider metadata injection and skill retrieval.
 """
 
+import asyncio
 import re
 from datetime import datetime, timezone
 from typing import Optional
@@ -185,9 +186,13 @@ async def create_agent_context_message(
         except Exception as e:
             logger.warning(f"Error parsing user_time: {e}")
 
-    # Search for conversation memories
+    # Search for memories and skills concurrently
     memories_section = ""
-    if user_id and query:
+    skills_section = ""
+
+    async def _fetch_memories() -> str:
+        if not (user_id and query):
+            return ""
         try:
             results = await memory_service.search_memories(
                 query=query, user_id=user_id, limit=5
@@ -195,17 +200,17 @@ async def create_agent_context_message(
             if results:
                 memories = getattr(results, "memories", None)
                 if memories:
-                    memories_section = (
-                        "\n\nBased on our previous conversations:\n"
-                        + "\n".join(f"- {mem.content}" for mem in memories)
-                    )
                     logger.info(f"Added {len(memories)} memories to subagent context")
+                    return "\n\nBased on our previous conversations:\n" + "\n".join(
+                        f"- {mem.content}" for mem in memories
+                    )
         except Exception as e:
             logger.warning(f"Error retrieving memories for subagent: {e}")
+        return ""
 
-    # Inject installable skills metadata
-    installable_skills_section = ""
-    if user_id:
+    async def _fetch_skills() -> str:
+        if not user_id:
+            return ""
         try:
             agent_for_skills = subagent_id or "executor"
             skills_text = await get_available_skills_text(
@@ -213,11 +218,16 @@ async def create_agent_context_message(
                 agent_name=agent_for_skills,
             )
             if skills_text:
-                installable_skills_section = f"\n\n{skills_text}"
                 logger.info(f"Injected installable skills for {agent_for_skills}")
+                return f"\n\n{skills_text}"
         except Exception as e:
             logger.warning(f"Error injecting installable skills: {e}")
+        return ""
 
-    content = "\n".join(context_parts) + memories_section + installable_skills_section
+    memories_section, skills_section = await asyncio.gather(
+        _fetch_memories(), _fetch_skills()
+    )
+
+    content = "\n".join(context_parts) + memories_section + skills_section
 
     return SystemMessage(content=content, memory_message=True)

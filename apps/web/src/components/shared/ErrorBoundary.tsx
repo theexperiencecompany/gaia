@@ -1,8 +1,7 @@
 "use client";
 
+import { ArrowLeft01Icon, Home01Icon } from "@icons";
 import React from "react";
-
-import { ArrowLeft01Icon, Home01Icon } from "@/icons";
 import { trackError } from "@/lib/analytics";
 
 interface ErrorBoundaryProps {

@@ -9,10 +9,9 @@ import StarterKit from "@tiptap/starter-kit";
 import type { Tag } from "emblor";
 import { marked } from "marked";
 import { useCallback, useState } from "react";
-import { toast } from "sonner";
-
 import { mailApi } from "@/features/mail/api/mailApi";
 import type { EmailSuggestion } from "@/features/mail/components/EmailChip";
+import { toast } from "@/lib/toast";
 
 export interface EmailCompositionFormState {
   toEmails: Tag[];

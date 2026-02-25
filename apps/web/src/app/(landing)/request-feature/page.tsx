@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
+import { permanentRedirect } from "next/navigation";
 
 import { generatePageMetadata } from "@/lib/seo";
 
@@ -21,5 +21,5 @@ export const metadata: Metadata = generatePageMetadata({
 });
 
 export default function RequestFeaturePage() {
-  redirect("https://gaia.featurebase.app");
+  permanentRedirect("https://gaia.featurebase.app");
 }

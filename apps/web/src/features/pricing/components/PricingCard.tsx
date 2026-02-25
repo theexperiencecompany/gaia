@@ -1,15 +1,14 @@
 "use client";
 
 import { Chip } from "@heroui/chip";
+import { Tick02Icon } from "@icons";
 import { useRouter } from "next/navigation";
 import type React from "react";
 import { useEffect } from "react";
-import { toast } from "sonner";
-
 import { RaisedButton } from "@/components/ui/raised-button";
 import { useUser } from "@/features/auth/hooks/useUser";
-import { Tick02Icon } from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 
 // Removed currency import - using USD only
 import { useDodoPayments } from "../hooks/useDodoPayments";

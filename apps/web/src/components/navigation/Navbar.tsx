@@ -1,21 +1,17 @@
 "use client";
 
+import { Login02Icon, MessageMultiple02Icon } from "@icons";
 import AnimatedNumber from "animated-number-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import MobileMenu from "@/components/navigation/MobileMenu";
+import { ChevronDown, StarFilledIcon } from "@/components/shared/icons";
 import { LinkButton } from "@/components/shared/LinkButton";
 import { appConfig } from "@/config/appConfig";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { useGitHubStars } from "@/hooks";
 import useMediaQuery from "@/hooks/ui/useMediaQuery";
-import {
-  ChevronDown,
-  Login02Icon,
-  MessageMultiple02Icon,
-  StarFilledIcon,
-} from "@/icons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 
 import { Github } from "../shared";

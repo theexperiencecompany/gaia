@@ -1,10 +1,10 @@
 "use client";
 
+import { SidebarLeft01Icon } from "@icons";
 import { Slot } from "@radix-ui/react-slot";
 import { cva, type VariantProps } from "class-variance-authority";
 import * as React from "react";
 import { useHotkeys } from "react-hotkeys-hook";
-
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
@@ -24,7 +24,6 @@ import {
 } from "@/components/ui/tooltip";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useElectron } from "@/hooks/useElectron";
-import { SidebarLeft01Icon } from "@/icons";
 import { cn } from "@/lib/utils";
 
 const SIDEBAR_COOKIE_NAME = "sidebar_state";

@@ -2,15 +2,15 @@
 
 import { Checkbox } from "@heroui/checkbox";
 import { Chip } from "@heroui/chip";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   CalendarCheckOut01Icon,
   CheckmarkCircle02Icon,
-  ChevronRight,
   Flag02Icon,
   Folder02Icon,
   Tag01Icon,
-} from "@/icons";
+} from "@icons";
+import { ChevronRight } from "@/components/shared/icons";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import {
   Priority,

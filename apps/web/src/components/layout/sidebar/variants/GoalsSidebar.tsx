@@ -4,7 +4,7 @@ import { Button } from "@heroui/button";
 import { Kbd } from "@heroui/kbd";
 import { Tooltip } from "@heroui/tooltip";
 
-import { Target02Icon } from "@/icons";
+import { Target02Icon } from "@icons";
 
 interface GoalsSidebarProps {
   onCreateGoal?: () => void;

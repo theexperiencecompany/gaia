@@ -84,6 +84,13 @@ async def try_refresh_token(
 
             tokens = response.json()
 
+            access_token = tokens.get("access_token")
+            if not access_token:
+                logger.warning(
+                    f"Token refresh for {integration_id} returned empty access_token"
+                )
+                return False
+
             expires_at = None
             if tokens.get("expires_in"):
                 expires_at = datetime.now(timezone.utc) + timedelta(
@@ -92,7 +99,7 @@ async def try_refresh_token(
 
             await token_store.store_oauth_tokens(
                 integration_id=integration_id,
-                access_token=tokens.get("access_token", ""),
+                access_token=access_token,
                 refresh_token=tokens.get("refresh_token", refresh_token),
                 expires_at=expires_at,
             )

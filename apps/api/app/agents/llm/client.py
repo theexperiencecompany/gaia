@@ -89,6 +89,7 @@ def init_openrouter_llm():
         temperature=0.1,
         streaming=True,
         stream_usage=True,
+        max_tokens=4096,  # Conservative limit to avoid credit issues with free accounts
         api_key=settings.OPENROUTER_API_KEY,
         base_url=OPENROUTER_BASE_URL,
         default_headers={
@@ -141,6 +142,9 @@ def init_llm(
             model=DEFAULT_GEMINI_FREE_MODEL_NAME,
             temperature=0.1,
             streaming=False,
+            model_kwargs={
+                "max_tokens": 2048
+            },  # Lower limit for free tier auxiliary tasks
             api_key=settings.OPENROUTER_API_KEY,
             base_url=OPENROUTER_BASE_URL,
             default_headers={

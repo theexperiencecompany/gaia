@@ -2,8 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { useEffect, useState } from "react";
-
 import {
   Calendar03Icon,
   CheckmarkCircle02Icon,
@@ -11,7 +9,8 @@ import {
   FlashIcon,
   FlowIcon,
   PencilEdit01Icon,
-} from "@/icons";
+} from "@icons";
+import { useEffect, useState } from "react";
 import type { WorkflowCreatedData } from "@/types/features/toolDataTypes";
 
 import type { Workflow } from "../api/workflowApi";

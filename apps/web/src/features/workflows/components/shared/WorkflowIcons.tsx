@@ -7,6 +7,8 @@ interface WorkflowIconsProps {
   iconSize?: number;
   maxIcons?: number;
   className?: string;
+  spacing?: string;
+  showBackground?: boolean;
 }
 
 /**
@@ -18,16 +20,19 @@ export default function WorkflowIcons({
   iconSize = 25,
   maxIcons = 3,
   className = "",
+  spacing = "-space-x-1.5 ",
+  showBackground = true,
 }: WorkflowIconsProps) {
   const categories = [...new Set(steps.map((step) => step.category))];
   const displayIcons = categories.slice(0, maxIcons);
 
   return (
-    <div className={`flex min-h-8 items-center -space-x-1.5 ${className}`}>
+    <div className={`flex min-h-8 items-center ${spacing} ${className}`}>
       {displayIcons.map((category, index) => {
         const IconComponent = getToolCategoryIcon(category, {
           width: iconSize,
           height: iconSize,
+          showBackground: showBackground,
         });
         return IconComponent ? (
           <div

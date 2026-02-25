@@ -1,18 +1,17 @@
 "use client";
 
 import { Skeleton } from "@heroui/skeleton";
-import { formatDistanceToNow } from "date-fns";
-import Image from "next/image";
-import Link from "next/link";
-import { useState } from "react";
-
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
   DateTimeIcon,
   GitForkIcon,
   PackageOpenIcon,
   UserCircle02Icon,
-} from "@/icons";
+} from "@icons";
+import { formatDistanceToNow } from "date-fns";
+import Image from "next/image";
+import Link from "next/link";
+import { useState } from "react";
+import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 import type { CommunityIntegration } from "../types";
 

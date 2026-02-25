@@ -9,6 +9,8 @@ interface ProgressiveImageProps {
   shouldHaveInitialFade?: boolean;
   priority?: boolean;
   sizes?: string;
+  width?: number;
+  height?: number;
 }
 
 /**
@@ -23,6 +25,8 @@ export default function ProgressiveImage({
   shouldHaveInitialFade = false,
   priority = true,
   sizes = "100vw",
+  width = 1920,
+  height = 1080,
 }: ProgressiveImageProps) {
   const [initialLoaded, setInitialLoaded] = useState(false);
   const [loaded, setLoaded] = useState(false);
@@ -33,10 +37,13 @@ export default function ProgressiveImage({
       <NextImage
         src={webpSrc}
         alt={`${alt} webp`}
-        fill
+        width={width}
+        height={height}
         priority={priority}
+        fetchPriority="high"
         sizes={sizes}
         onLoad={() => setInitialLoaded(true)}
+        style={{ width: "100%", height: "100%", objectFit: "cover" }}
         className={`${className} transition duration-200 ${initialLoaded || !shouldHaveInitialFade ? "opacity-100" : "opacity-0"}`}
       />
 
@@ -44,9 +51,19 @@ export default function ProgressiveImage({
       <NextImage
         src={pngSrc}
         alt={`${alt} png`}
-        fill
+        width={width}
+        height={height}
         sizes={sizes}
+        loading={priority ? "eager" : "lazy"}
         onLoad={() => setLoaded(true)}
+        style={{
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          position: "absolute",
+          top: 0,
+          left: 0,
+        }}
         className={`${className} transition-opacity ${loaded ? "opacity-100" : "opacity-0"}`}
       />
     </div>

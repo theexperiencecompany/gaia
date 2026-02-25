@@ -6,6 +6,7 @@ import type {
   BreadcrumbList,
   ContactPage,
   ContactPoint,
+  DefinedTerm,
   FAQPage,
   HowTo,
   HowToStep,
@@ -22,6 +23,12 @@ import type {
   WithContext,
 } from "schema-dts";
 
+const SITE_URL = "https://heygaia.io";
+
+export function getSiteUrl(): string {
+  return SITE_URL;
+}
+
 // Site-wide SEO Configuration
 export const siteConfig = {
   short_name: "GAIA",
@@ -29,14 +36,14 @@ export const siteConfig = {
   fullName: "GAIA - Your Personal AI Assistant from The Experience Company",
   description:
     "GAIA is your open-source personal AI assistant to proactively manage your email, calendar, todos, workflows and all your digital tools to boost productivity.",
-  url: "https://heygaia.io",
+  url: getSiteUrl(),
   ogImage: "/og-image.webp",
   links: {
     twitter: "https://x.com/trygaia",
     github: "https://github.com/theexperiencecompany",
     discord: "https://discord.heygaia.io",
     linkedin: "https://www.linkedin.com/company/heygaia",
-    youtube: "https://youtube.com/@heygaia_io",
+    youtube: "https://youtube.com/@theexperiencecompany",
     whatsapp: "https://whatsapp.heygaia.io",
   },
   founders: [
@@ -236,7 +243,7 @@ export function generateOrganizationSchema(): WithContext<Organization> {
       siteConfig.links.linkedin,
       siteConfig.links.youtube,
       siteConfig.links.discord,
-      "https://heygaia.io",
+      siteConfig.url,
     ],
     contactPoint: {
       "@type": "ContactPoint",
@@ -260,6 +267,14 @@ export function generateWebSiteSchema(): WithContext<WebSite> {
     alternateName: siteConfig.name,
     url: siteConfig.url,
     description: siteConfig.description,
+    potentialAction: {
+      "@type": "SearchAction",
+      target: {
+        "@type": "EntryPoint",
+        urlTemplate: `${siteConfig.url}/use-cases?q={search_term_string}`,
+      },
+      "query-input": "required name=search_term_string",
+    } as unknown as WebSite["potentialAction"],
   };
 }
 
@@ -278,6 +293,13 @@ export function generateWebPageSchema(
     name: title,
     description,
     url,
+    author: {
+      "@type": "Organization",
+      name: "The Experience Company",
+      url: siteConfig.url,
+    },
+    datePublished: "2025-01-01",
+    dateModified: new Date().toISOString().split("T")[0],
     isPartOf: {
       "@type": "WebSite",
       url: siteConfig.url,
@@ -316,7 +338,9 @@ export function generateBreadcrumbSchema(
         "@type": "ListItem",
         position: index + 1,
         name: item.name,
-        item: getCanonicalUrl(item.url),
+        item: item.url.startsWith("http")
+          ? item.url
+          : `${siteConfig.url}${getCanonicalUrl(item.url)}`,
       }),
     ),
   };
@@ -499,7 +523,7 @@ export function generateAboutPageSchema(): WithContext<AboutPage> {
     "@type": "AboutPage",
     name: "About GAIA",
     description: "Learn about GAIA's mission and the team behind it",
-    url: `${siteConfig.url}/manifesto`,
+    url: `${siteConfig.url}/about`,
     mainEntity: {
       "@type": "Organization",
       name: siteConfig.short_name,
@@ -513,5 +537,27 @@ export function generateAboutPageSchema(): WithContext<AboutPage> {
         }),
       ),
     } as Organization,
+  };
+}
+
+/**
+ * Generate DefinedTerm structured data for glossary entries (JSON-LD)
+ */
+export function generateDefinedTermSchema(
+  term: string,
+  definition: string,
+  url: string,
+): WithContext<DefinedTerm> {
+  return {
+    "@context": "https://schema.org",
+    "@type": "DefinedTerm",
+    name: term,
+    description: definition,
+    url,
+    inDefinedTermSet: {
+      "@type": "DefinedTermSet",
+      name: "GAIA AI Glossary",
+      url: `${siteConfig.url}/learn`,
+    },
   };
 }

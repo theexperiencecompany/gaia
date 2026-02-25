@@ -4,8 +4,8 @@ import { Button } from "@heroui/button";
 import { Input, Textarea } from "@heroui/input";
 import { Select, SelectItem } from "@heroui/select";
 import { Switch } from "@heroui/switch";
+import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@icons";
 import React from "react";
-
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import {
   Accordion,
@@ -20,7 +20,6 @@ import {
 } from "@/features/calendar/components/NaturalLanguageDateInput";
 import { formatRecurrence } from "@/features/calendar/utils/recurrenceUtils";
 import { useConfirmation } from "@/hooks/useConfirmation";
-import { Delete02Icon, RepeatIcon, UserCircleIcon } from "@/icons";
 import type { CalendarItem } from "@/types/api/calendarApiTypes";
 import type { GoogleCalendarEvent } from "@/types/features/calendarTypes";
 

@@ -201,24 +201,6 @@ async def _get_user_context(
     return user_namespaces, connected_integrations, internal_subagents
 
 
-async def _log_store_diagnostics(store: BaseStore) -> None:
-    """Log diagnostic information about store contents."""
-    try:
-        logger.info("DIAGNOSTIC: Inspecting store namespaces...")
-
-        # Check subagents namespace
-        subagents_items = await store.asearch(("subagents",), query="", limit=5)
-        logger.info(f"DIAGNOSTIC: Subagents namespace has {len(subagents_items)} items")
-
-        for item in subagents_items[:3]:
-            logger.info(
-                f"DIAGNOSTIC: Item - key='{item.key}', "
-                f"namespace={getattr(item, 'namespace', 'N/A')}"
-            )
-    except Exception as e:
-        logger.warning(f"DIAGNOSTIC: Failed to inspect store: {e}")
-
-
 def _build_search_tasks(
     store: BaseStore,
     query: str,
@@ -477,10 +459,19 @@ def get_retrieve_tools_function(
         available_tool_names = tool_registry.get_tool_names()
         logger.info(f"Registry has {len(available_tool_names)} available tools")
 
-        # Get user_id from config
+        # Get user_id from config (try configurable first, then metadata as fallback)
         user_id = config.get("configurable", {}).get("user_id")
         if not user_id:
-            logger.warning("retrieve_tools called with NO user_id")
+            # Fallback to metadata
+            user_id = config.get("metadata", {}).get("user_id")
+            if user_id and "configurable" in config:
+                # Update configurable with user_id for consistency
+                config["configurable"]["user_id"] = user_id
+
+        if not user_id:
+            logger.warning(
+                "retrieve_tools called with NO user_id (not in configurable or metadata)"
+            )
 
         # BINDING MODE: Validate and bind exact tool names
         if exact_tool_names:
@@ -503,10 +494,6 @@ def get_retrieve_tools_function(
             connected_integrations,
             internal_subagents,
         ) = await _get_user_context(user_id, tool_space, include_subagents)
-
-        # Only run subagent diagnostics when subagents are included
-        if include_subagents:
-            await _log_store_diagnostics(store)
 
         # Build and execute search tasks
         search_tasks = _build_search_tasks(

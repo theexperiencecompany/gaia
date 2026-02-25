@@ -1,7 +1,7 @@
 "use client";
 
+import { Tick01Icon } from "@icons";
 import { useState } from "react";
-import { Tick01Icon } from "@/components";
 
 interface ColorCardProps {
   name: string;

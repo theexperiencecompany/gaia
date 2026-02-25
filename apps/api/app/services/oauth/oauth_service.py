@@ -26,6 +26,7 @@ from app.utils.redis_utils import RedisPoolManager
 from app.services.integrations.user_integration_status import (
     update_user_integration_status,
 )
+from app.services.system_workflows.provisioner import provision_system_workflows
 
 
 async def store_user_info(name: str, email: str, picture_url: Optional[str]):
@@ -354,4 +355,17 @@ async def handle_oauth_connection(
         )
         logger.info(
             f"Queued metadata fetch for user {user_id} and integration {integration_config.id}"
+        )
+
+    # Auto-provision system workflows for supported integrations
+    if integration_config.id in ("gmail", "googlecalendar"):
+        background_tasks.add_task(
+            provision_system_workflows,
+            user_id=user_id,
+            integration_id=integration_config.id,
+            integration_display_name=integration_config.name,
+        )
+        logger.info(
+            f"Queued system workflow provisioning for user {user_id}, "
+            f"integration {integration_config.id}"
         )

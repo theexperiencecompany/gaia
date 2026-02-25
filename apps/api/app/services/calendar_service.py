@@ -568,9 +568,9 @@ def get_calendar_events(
 
     # Sort all events by start time for consistent ordering
     all_events.sort(
-        key=lambda e: e.get("start", {}).get("dateTime")
-        or e.get("start", {}).get("date")
-        or ""
+        key=lambda e: (
+            e.get("start", {}).get("dateTime") or e.get("start", {}).get("date") or ""
+        )
     )
 
     logger.info(

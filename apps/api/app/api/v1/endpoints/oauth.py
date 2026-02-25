@@ -55,17 +55,26 @@ async def get_client_metadata():
 
 
 @router.get("/login/workos")
-async def login_workos():
+async def login_workos(return_url: Optional[str] = None):
     """
     Start the WorkOS SSO authentication flow.
+
+    Args:
+        return_url: Optional URL to redirect to after authentication.
 
     Returns:
         RedirectResponse: Redirects the user to the WorkOS SSO authorization URL
     """
-    # Add any needed parameters for your SSO implementation
+    state = secrets.token_urlsafe(32)
+
+    # Store return_url in Redis so we can redirect after callback
+    if return_url:
+        await redis_cache.client.setex(f"oauth_return_url:{state}", 600, return_url)
+
     authorization_url = workos.user_management.get_authorization_url(
         provider="authkit",
         redirect_uri=settings.WORKOS_REDIRECT_URI,
+        state=state,
     )
 
     return RedirectResponse(url=authorization_url)
@@ -245,16 +254,26 @@ async def workos_desktop_callback(
 @router.get("/workos/callback")
 async def workos_callback(
     code: Optional[str] = None,
+    state: Optional[str] = None,
 ) -> RedirectResponse:
     """
     Handle the WorkOS SSO callback.
 
     Args:
         code: Authorization code from WorkOS
+        state: State token carrying return_url reference
 
     Returns:
         RedirectResponse to the frontend with auth tokens
     """
+    # Retrieve and consume return_url from Redis
+    return_url: str | None = None
+    if state:
+        key = f"oauth_return_url:{state}"
+        return_url = await redis_cache.client.get(key)
+        if return_url:
+            await redis_cache.client.delete(key)
+
     try:
         # Validate code parameter
         if not code:
@@ -281,9 +300,19 @@ async def workos_callback(
         # Store user info in our database
         await store_user_info(name, email, picture_url)
 
-        # Set cookies and redirect to frontend
-        redirect_url = settings.FRONTEND_URL
-        response = RedirectResponse(url=f"{redirect_url}/redirect")
+        # Redirect to return_url if provided, otherwise default /redirect
+        destination = return_url or f"{settings.FRONTEND_URL}/redirect"
+        # Ensure return_url is a relative path on our frontend (prevent open redirect)
+        if return_url and not return_url.startswith("/"):
+            destination = f"{settings.FRONTEND_URL}/redirect"
+        else:
+            destination = (
+                f"{settings.FRONTEND_URL}{return_url}"
+                if return_url
+                else f"{settings.FRONTEND_URL}/redirect"
+            )
+
+        response = RedirectResponse(url=destination)
 
         # Set cookies with appropriate security settings
         response.set_cookie(

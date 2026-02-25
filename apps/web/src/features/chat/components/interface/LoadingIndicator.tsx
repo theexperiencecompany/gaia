@@ -1,6 +1,6 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
+import { AnimatePresence, m } from "motion/react";
 
 import { WaveSpinnerSquare } from "@/components/shared/WaveSpinnerSquare";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
@@ -42,7 +42,7 @@ export function LoadingIndicator({
       : "";
 
   return (
-    <motion.div
+    <m.div
       className="flex items-center gap-4 pl-11.5 text-sm font-medium pt-2"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
@@ -56,7 +56,7 @@ export function LoadingIndicator({
           toolInfo.iconUrl,
         )) || <WaveSpinnerSquare />}
       <AnimatePresence mode="wait">
-        <motion.span
+        <m.span
           key={loadingTextKey}
           variants={slideUp}
           initial="initial"
@@ -71,8 +71,8 @@ export function LoadingIndicator({
         >
           {prefix}
           {loadingText || "GAIA is thinking..."}
-        </motion.span>
+        </m.span>
       </AnimatePresence>
-    </motion.div>
+    </m.div>
   );
 }

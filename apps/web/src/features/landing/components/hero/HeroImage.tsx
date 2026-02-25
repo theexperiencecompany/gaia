@@ -1,33 +1,61 @@
-import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
+import { useEffect, useRef } from "react";
+import type { TimeOfDay } from "@/features/landing/utils/timeOfDay";
 
-import ProgressiveImage from "@/components/ui/ProgressiveImage";
+const WALLPAPERS: Record<TimeOfDay, { webp: string; png: string }> = {
+  morning: {
+    webp: "/images/wallpapers/swiss_morning.webp",
+    png: "/images/wallpapers/swiss_morning.png",
+  },
+  day: {
+    webp: "/images/wallpapers/swiss.webp",
+    png: "/images/wallpapers/swiss.png",
+  },
+  evening: {
+    webp: "/images/wallpapers/swiss_evening.webp",
+    png: "/images/wallpapers/swiss_evening.png",
+  },
+  night: {
+    webp: "/images/wallpapers/swiss_night.webp",
+    png: "/images/wallpapers/swiss_night.png",
+  },
+};
 
 export default function HeroImage({
-  shouldHaveInitialFade = false,
-  parallaxSpeed = 0.3, // 0.5 = moves at half speed (slower), 1 = normal speed, 0 = fixed
+  timeOfDay,
+  parallaxSpeed = 0.3,
 }: {
-  shouldHaveInitialFade?: boolean;
+  timeOfDay: TimeOfDay;
   parallaxSpeed?: number;
 }) {
-  const [offsetY, setOffsetY] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const transformRef = useRef<HTMLDivElement>(null);
+  const rafRef = useRef<number | null>(null);
 
   useEffect(() => {
     const handleScroll = () => {
-      if (!containerRef.current) return;
-
-      setOffsetY(window.scrollY * parallaxSpeed);
+      if (rafRef.current !== null) return;
+      rafRef.current = requestAnimationFrame(() => {
+        if (transformRef.current)
+          transformRef.current.style.transform = `translateY(${-(window.scrollY * parallaxSpeed)}px)`;
+        rafRef.current = null;
+      });
     };
 
-    window.addEventListener("scroll", handleScroll);
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
   }, [parallaxSpeed]);
+
+  const wallpaper = WALLPAPERS[timeOfDay];
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <div
+        ref={transformRef}
         style={{
-          transform: `translateY(${-offsetY}px)`,
           willChange: "transform",
         }}
         className="absolute inset-0 h-full w-full"
@@ -35,12 +63,28 @@ export default function HeroImage({
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-10 h-[30vh] bg-linear-to-b from-background to-transparent opacity-50" />
         <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
 
-        <ProgressiveImage
-          webpSrc="/images/wallpapers/g3.webp"
-          pngSrc="/images/wallpapers/g3.png"
+        {/* <ProgressiveImage
+          webpSrc={wallpaper.webp}
+          pngSrc={wallpaper.png}
           alt="wallpaper"
           className="object-cover"
-          shouldHaveInitialFade={shouldHaveInitialFade}
+          shouldHaveInitialFade={true}
+      /> */}
+        <Image
+          src={wallpaper.webp}
+          alt={`png`}
+          width={1920}
+          height={1080}
+          sizes={"100vw"}
+          loading={"eager"}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            position: "absolute",
+            top: 0,
+            left: 0,
+          }}
         />
       </div>
     </div>

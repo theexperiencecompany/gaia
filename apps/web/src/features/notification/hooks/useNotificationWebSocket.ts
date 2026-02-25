@@ -1,13 +1,17 @@
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect } from "react";
-import { toast } from "sonner";
-
 import { useUser } from "@/features/auth/hooks/useUser";
+import { toast } from "@/lib/toast";
 import { wsManager } from "@/lib/websocket";
 import { batchSyncConversations } from "@/services/syncService";
 import { useNotificationStore } from "@/stores/notificationStore";
 import type {
   NotificationRecord,
   NotificationUpdate,
+} from "@/types/features/notificationTypes";
+import {
+  ActionType,
+  NotificationType,
 } from "@/types/features/notificationTypes";
 
 interface WebSocketMessage {
@@ -28,6 +32,7 @@ export function useNotificationWebSocket() {
   const user = useUser();
   const isAuthenticated = !!user?.email;
   const { addNotification, updateNotification } = useNotificationStore();
+  const router = useRouter();
 
   const handleMessage = useCallback(
     (msg: unknown) => {
@@ -42,12 +47,36 @@ export function useNotificationWebSocket() {
 
             if (!isTestNotification) {
               if (message.notification.content?.title) {
-                toast.info(message.notification.content.title, {
+                const actions = message.notification.content.actions ?? [];
+                const redirectAction = actions.find(
+                  (a) => a.type === ActionType.REDIRECT,
+                );
+
+                const notifType = message.notification.type as NotificationType;
+                const toastFn =
+                  notifType === NotificationType.ERROR
+                    ? toast.error
+                    : notifType === NotificationType.SUCCESS
+                      ? toast.success
+                      : notifType === NotificationType.WARNING
+                        ? toast.warning
+                        : toast.info;
+
+                toastFn(message.notification.content.title, {
                   description:
                     message.notification.content.body ||
                     "New notification received",
-                  dismissible: true,
-                  duration: 10000,
+                  duration:
+                    notifType === NotificationType.ERROR ? 15000 : 10000,
+                  action: redirectAction
+                    ? {
+                        label: redirectAction.label,
+                        onClick: () => {
+                          const url = redirectAction.config?.redirect?.url;
+                          if (url) router.push(url);
+                        },
+                      }
+                    : undefined,
                 });
               } else {
                 toast.info("New notification", {

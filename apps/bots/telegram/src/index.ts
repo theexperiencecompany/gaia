@@ -1,15 +1,17 @@
-import { createBot } from "./bot";
+import { allCommands } from "@gaia/shared";
+import { TelegramAdapter } from "./adapter";
 
-let bot: Awaited<ReturnType<typeof createBot>> | null = null;
+const adapter = new TelegramAdapter();
 
 async function main() {
-  bot = await createBot();
+  await adapter.boot(allCommands);
 }
 
 async function shutdown() {
-  console.log("Shutting down Telegram bot...");
-  if (bot) {
-    await bot.stop();
+  try {
+    await adapter.shutdown();
+  } catch (err) {
+    console.error("Shutdown error:", err);
   }
   process.exit(0);
 }

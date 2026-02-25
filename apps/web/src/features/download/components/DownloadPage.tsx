@@ -8,10 +8,12 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
+import { ArrowRight02Icon } from "@icons";
 import Image from "next/image";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { useState } from "react";
+import { ChevronDown, ChevronRight } from "@/components/shared/icons";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
 import {
@@ -19,7 +21,6 @@ import {
   platformConfigs,
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
-import { ArrowRight02Icon, ChevronDown } from "@/icons";
 
 type MacChipOption = "intel" | "m-series";
 
@@ -127,7 +128,7 @@ function MacDownloadButton({ isPrimary = false }: { isPrimary?: boolean }) {
                 src="/images/icons/apple.svg"
                 alt="Apple"
                 fill
-                className="object-contain"
+                className="object-contain filter invert"
               />
             </div>
           }
@@ -335,9 +336,14 @@ function DesktopSection() {
       imagePosition="left"
       contentAlignment="right"
       title="Download for Desktop"
+      chip={
+        <Chip variant="flat" color="success">
+          Beta
+        </Chip>
+      }
       description="Get the native desktop experience with enhanced performance."
       actions={
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-3 justify-center items-center">
           {renderPrimaryButton()}
           <div className="flex flex-wrap justify-center gap-2 md:justify-end">
             {renderSecondaryButtons()}
@@ -372,45 +378,55 @@ function MobileSection() {
       contentAlignment="left"
       chip={
         <Chip variant="flat" color="warning">
-          Coming Soon
+          Waitlist
         </Chip>
       }
       title="Mobile Apps"
       description="GAIA for iOS and Android is currently in development."
       actions={
-        <div className="flex gap-2">
+        <div className="flex flex-col gap-3">
           <Button
-            variant="flat"
-            isDisabled
-            startContent={
-              <div className="relative h-4 w-4">
-                <Image
-                  src="/images/icons/apple.svg"
-                  alt="iOS"
-                  fill
-                  className="object-contain"
-                />
-              </div>
-            }
+            as={Link}
+            href="https://heygaia.app"
+            target="_blank"
+            rel="noopener noreferrer"
           >
-            App Store
+            Sign up for waitlist <ChevronRight width={17} height={17} />
           </Button>
-          <Button
-            variant="flat"
-            isDisabled
-            startContent={
-              <div className="relative h-4 w-4">
-                <Image
-                  src="/images/icons/google_play.svg"
-                  alt="Android"
-                  fill
-                  className="object-contain"
-                />
-              </div>
-            }
-          >
-            Google Play
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="flat"
+              isDisabled
+              startContent={
+                <div className="relative h-4 w-4">
+                  <Image
+                    src="/images/icons/apple.svg"
+                    alt="iOS"
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+              }
+            >
+              App Store
+            </Button>
+            <Button
+              variant="flat"
+              isDisabled
+              startContent={
+                <div className="relative h-4 w-4">
+                  <Image
+                    src="/images/icons/google_play.svg"
+                    alt="Android"
+                    fill
+                    className="object-contain"
+                  />
+                </div>
+              }
+            >
+              Google Play
+            </Button>
+          </div>
         </div>
       }
     />
@@ -430,6 +446,53 @@ function WebSection() {
       description="No download required. Access GAIA directly from your browser."
       actions={<GetStartedButton />}
     />
+  );
+}
+
+interface DownloadCardProps {
+  webpSrc: string;
+  pngSrc: string;
+  imageAlt: string;
+  imageClassName?: string;
+  chip?: ReactNode;
+  title: ReactNode;
+  description: string;
+  actions: ReactNode;
+}
+
+function DownloadCard({
+  webpSrc,
+  pngSrc,
+  imageAlt,
+  imageClassName = "object-cover object-bottom",
+  chip,
+  title,
+  description,
+  actions,
+}: DownloadCardProps) {
+  return (
+    <div className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900/50 backdrop-blur-sm">
+      <div className="relative aspect-video w-full overflow-hidden">
+        <ProgressiveImage
+          webpSrc={webpSrc}
+          pngSrc={pngSrc}
+          alt={imageAlt}
+          className={imageClassName}
+        />
+      </div>
+      <div className="flex flex-1 flex-col items-start gap-4 p-6 text-left">
+        <div className="flex-1 w-full">
+          <h3 className="mb-1 text-2xl font-medium text-white flex items-center gap-2">
+            {title}
+            {chip}
+          </h3>
+          <p className="text-sm text-zinc-400">{description}</p>
+        </div>
+        <div className="flex flex-row flex-wrap gap-2 justify-end w-full">
+          {actions}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -469,6 +532,7 @@ export function LandingDownloadSection() {
           as={Link}
           href={platformConfigs["linux"].downloadUrl || "#"}
           target="_blank"
+          color="primary"
           rel="noopener noreferrer"
           startContent={
             <div className="relative h-4 w-4">
@@ -489,64 +553,68 @@ export function LandingDownloadSection() {
   };
 
   return (
-    <section className="relative z-10 mx-auto w-full max-w-6xl py-16">
-      <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-        <div className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900/50 backdrop-blur-sm">
-          <div className="relative aspect-video w-full overflow-hidden">
-            <ProgressiveImage
-              webpSrc="/images/screenshots/desktop_dock.webp"
-              pngSrc="/images/screenshots/desktop_dock.png"
-              alt="GAIA Desktop App"
-              className="object-cover object-bottom"
-            />
-          </div>
-          <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center">
-            <div>
-              <h3 className="mb-1 text-xl font-medium text-white">Desktop</h3>
-              <p className="text-sm text-zinc-400">
-                Experience GAIA on desktop with enhanced features
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              {renderPrimaryButton()}
+    <section className="relative z-10 mx-auto w-full px-20 sm:px-6 py-24 sm:py-16">
+      <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
+        {/* Desktop Card */}
+        <DownloadCard
+          webpSrc="/images/screenshots/desktop_dock.webp"
+          pngSrc="/images/screenshots/desktop_dock.png"
+          imageAlt="GAIA Desktop App"
+          chip={
+            <Chip color="success" size="sm" variant="flat">
+              Beta
+            </Chip>
+          }
+          title="Desktop"
+          description="Experience GAIA on desktop with enhanced features"
+          actions={
+            <>
               <Link
-                href={GITHUB_RELEASES_BASE}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-center justify-center gap-1 text-sm text-zinc-500 transition hover:text-zinc-300"
+                href="/download"
+                className="flex items-center gap-1 text-sm text-zinc-500 transition hover:text-zinc-300 mr-1"
               >
                 All platforms
                 <ArrowRight02Icon className="h-3 w-3" />
               </Link>
+              {renderPrimaryButton()}
+            </>
+          }
+        />
+
+        {/* Web Card */}
+        <DownloadCard
+          webpSrc="/images/screenshots/website_tab.webp"
+          pngSrc="/images/screenshots/website_tab.png"
+          imageAlt="GAIA Web App"
+          imageClassName="object-cover object-top"
+          title="Web"
+          description="No download required. Use GAIA directly from your browser."
+          actions={
+            <div className="flex items-center w-full justify-center">
+              <GetStartedButton classname="px-4 text-black!" />
             </div>
-          </div>
-        </div>
+          }
+        />
 
         {/* Mobile Card */}
-        <div className="flex flex-col overflow-hidden rounded-3xl bg-zinc-900/50 backdrop-blur-sm">
-          <div className="relative aspect-video w-full overflow-hidden">
-            <ProgressiveImage
-              webpSrc="/images/screenshots/phone_dock.webp"
-              pngSrc="/images/screenshots/phone_dock.png"
-              alt="GAIA Mobile App"
-              className="object-cover object-center scale-115"
-            />
-          </div>
-          <div className="flex flex-1 flex-col items-center gap-4 p-6 text-center pt-6.5">
-            <div className="flex items-center gap-4">
-              <Chip variant="flat" color="warning" size="sm">
-                Coming Soon
-              </Chip>
-              <h3 className="text-xl font-medium text-white">Mobile</h3>
-            </div>
-            <p className="text-sm text-zinc-400">
-              iOS and Android apps in development
-            </p>
-            <div className="flex gap-2">
+        <DownloadCard
+          webpSrc="/images/screenshots/phone_dock.webp"
+          pngSrc="/images/screenshots/phone_dock.png"
+          imageAlt="GAIA Mobile App"
+          imageClassName="object-cover object-center"
+          chip={
+            <Chip variant="flat" color="warning" size="sm">
+              Coming Soon
+            </Chip>
+          }
+          title="Mobile"
+          description="Mobile app in development, join waitlist for early access"
+          actions={
+            <div className="w-full items-center gap-2 flex">
               <Button
                 variant="flat"
                 isDisabled
-                size="sm"
+                fullWidth
                 startContent={
                   <div className="relative h-4 w-4">
                     <Image
@@ -563,7 +631,7 @@ export function LandingDownloadSection() {
               <Button
                 variant="flat"
                 isDisabled
-                size="sm"
+                fullWidth
                 startContent={
                   <div className="relative h-4 w-4">
                     <Image
@@ -577,9 +645,18 @@ export function LandingDownloadSection() {
               >
                 Google Play
               </Button>
+              <Button
+                as={Link}
+                href="https://heygaia.app"
+                target="_blank"
+                fullWidth
+                rel="noopener noreferrer"
+              >
+                Sign Up <ChevronRight width={17} height={17} />
+              </Button>
             </div>
-          </div>
-        </div>
+          }
+        />
       </div>
     </section>
   );

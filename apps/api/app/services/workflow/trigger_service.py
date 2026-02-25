@@ -10,7 +10,6 @@ from typing import Any, Dict, List, Optional
 from app.config.loggers import general_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import workflows_collection
-from app.decorators.caching import Cacheable
 from app.models.trigger_config import WorkflowTriggerSchema
 from app.models.workflow_models import TriggerConfig
 from app.services.triggers import get_handler_by_name
@@ -25,7 +24,6 @@ class TriggerService:
     """
 
     @staticmethod
-    @Cacheable(smart_hash=True, ttl=3600)
     async def get_all_workflow_triggers() -> List[Dict[str, Any]]:
         """
         Get all available workflow triggers from OAuth integrations.

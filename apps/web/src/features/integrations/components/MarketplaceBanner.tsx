@@ -1,11 +1,11 @@
 "use client";
 
-import { PromoBanner } from "@/components/shared/PromoBanner";
 import {
   ArrowRight02Icon,
   CursorAddSelectionIcon,
   PackageOpenIcon,
-} from "@/icons";
+} from "@icons";
+import { PromoBanner } from "@/components/shared/PromoBanner";
 
 interface MarketplaceBannerProps {
   onCreateCustomIntegration?: () => void;

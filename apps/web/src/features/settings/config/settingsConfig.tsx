@@ -4,12 +4,14 @@ import {
   ChartLineData02Icon,
   CreditCardIcon,
   DiscordIcon,
+  Link03Icon,
   MessageMultiple02Icon,
+  NotificationIcon,
   SparklesIcon,
   TwitterIcon,
   UserCircleIcon,
   WhatsappIcon,
-} from "@/icons";
+} from "@icons";
 
 export interface SettingsMenuItem {
   key: string;
@@ -34,6 +36,18 @@ export const settingsPageItems: SettingsMenuItem[] = [
     label: "Account",
     icon: UserCircleIcon,
     href: "/settings?section=account",
+  },
+  {
+    key: "linked-accounts",
+    label: "Linked Accounts",
+    icon: Link03Icon,
+    href: "/settings?section=linked-accounts",
+  },
+  {
+    key: "notifications",
+    label: "Notifications",
+    icon: NotificationIcon,
+    href: "/settings?section=notifications",
   },
   {
     key: "subscription",

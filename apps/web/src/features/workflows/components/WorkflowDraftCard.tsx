@@ -2,15 +2,14 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import { useState } from "react";
-
 import {
   Calendar03Icon,
   Clock01Icon,
   FlashIcon,
   FlowIcon,
   PencilEdit01Icon,
-} from "@/icons";
+} from "@icons";
+import { useState } from "react";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 
 import { getScheduleDescription } from "../utils/cronUtils";

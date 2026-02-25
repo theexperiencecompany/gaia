@@ -126,6 +126,9 @@ class WorkflowService:
                 user_id=user_id,
                 is_todo_workflow=is_todo_workflow,
                 source_todo_id=source_todo_id,
+                is_system_workflow=request.is_system_workflow,
+                source_integration=request.source_integration,
+                system_workflow_key=request.system_workflow_key,
             )
 
             # Insert into database
@@ -410,13 +413,7 @@ class WorkflowService:
                     old_trigger_name = old_config.trigger_name or ""
                     old_trigger_ids = old_config.composio_trigger_ids or []
 
-                    # Delete old triggers (pass workflow_id for reference counting)
-                    if old_trigger_ids:
-                        await TriggerService.unregister_triggers(
-                            user_id, old_trigger_name, old_trigger_ids, workflow_id
-                        )
-
-                    # Register new triggers (can raise TriggerRegistrationError)
+                    # Register new triggers FIRST (old still active if this fails)
                     registered_trigger_ids = (
                         await WorkflowService._register_integration_triggers(
                             workflow_id=workflow_id,
@@ -424,6 +421,12 @@ class WorkflowService:
                             trigger_config=new_trigger_config,
                         )
                     )
+
+                    # Only unregister old triggers AFTER new ones are confirmed registered
+                    if old_trigger_ids:
+                        await TriggerService.unregister_triggers(
+                            user_id, old_trigger_name, old_trigger_ids, workflow_id
+                        )
 
                 # Convert TriggerConfig back to dict for MongoDB storage
                 update_fields["trigger_config"] = new_trigger_config.model_dump(
@@ -447,18 +450,6 @@ class WorkflowService:
 
             logger.info(f"Updated workflow {workflow_id} for user {user_id}")
             return await WorkflowService.get_workflow(workflow_id, user_id)
-
-        except TriggerRegistrationError as e:
-            # Compensation: try to restore old triggers
-            logger.error(f"Trigger update failed for workflow {workflow_id}: {e}")
-            if old_trigger_ids and old_trigger_name:
-                logger.info(
-                    f"Attempting to restore {len(old_trigger_ids)} old triggers for workflow {workflow_id}"
-                )
-                # Note: We previously deleted old triggers, but this was before new registration failed
-                # The old triggers are already gone - we just need to inform the user
-                # In a perfect system, we'd re-register old triggers, but that could also fail
-            raise
 
         except Exception as e:
             logger.error(f"Error updating workflow {workflow_id}: {str(e)}")

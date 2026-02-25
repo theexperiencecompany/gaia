@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-
 import { calendarApi } from "@/features/calendar/api/calendarApi";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
+import { toast } from "@/lib/toast";
 import {
   useAddEvent,
   useRemoveEvent,

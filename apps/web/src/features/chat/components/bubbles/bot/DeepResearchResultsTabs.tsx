@@ -1,13 +1,12 @@
 import { Accordion, AccordionItem } from "@heroui/accordion";
 import { Tab, Tabs } from "@heroui/tabs";
-import { useState } from "react";
-
 import {
   ArrowUpRight03Icon,
   InternetIcon,
   LinkBackwardIcon,
   SearchIcon,
-} from "@/icons";
+} from "@icons";
+import { useState } from "react";
 import type {
   DeepResearchResults,
   EnhancedWebResult,

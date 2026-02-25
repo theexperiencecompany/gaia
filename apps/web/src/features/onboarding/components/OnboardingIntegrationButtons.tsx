@@ -2,13 +2,14 @@ import { Button } from "@heroui/button";
 import { Input } from "@heroui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@heroui/popover";
 import { ScrollShadow } from "@heroui/scroll-shadow";
+import { CancelIcon, ConnectIcon } from "@icons";
 import type React from "react";
 import { useState } from "react";
+import { Gmail, GoogleCalendarIcon } from "@/components/shared/icons";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useFetchIntegrationStatus } from "@/features/integrations";
 import { useIntegrationSearch } from "@/features/integrations/hooks/useIntegrationSearch";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { CancelIcon, ConnectIcon, Gmail, GoogleCalendarIcon } from "@/icons";
 import { useIntegrationsStore } from "@/stores/integrationsStore";
 
 interface OnboardingIntegrationButtonsProps {

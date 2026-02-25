@@ -1,0 +1,78 @@
+---
+title: "Overview"
+description: "Learn how to self-host GAIA on your own infrastructure"
+icon: "circle-info"
+---
+
+## Welcome to GAIA Self-Hosting
+
+Self-host GAIA with the CLI. The CLI handles setup, environment scaffolding, and run commands so you can get running quickly.
+
+## What runs
+
+- **Web**: Next.js
+- **Backend**: FastAPI
+- **Databases/Infra**: PostgreSQL, MongoDB, Redis, ChromaDB, RabbitMQ (via Docker)
+
+## Prerequisites
+
+- Node.js 20+ and one package manager (npm, pnpm, or bun)
+- Docker Engine 20.10+ and Compose v2+
+- 2+ CPU cores, 4GB+ RAM, 10GB+ disk (8GB+ RAM recommended)
+- API keys as needed (see [Environment Variables](/configuration/environment-variables))
+
+## Quick Start
+
+<Steps>
+  <Step title="Install the GAIA CLI">
+    <CodeGroup>
+
+    ```bash npm
+    npm install -g @heygaia/cli
+    ```
+
+    ```bash pnpm
+    pnpm add -g @heygaia/cli
+    ```
+
+    ```bash bun
+    bun add -g @heygaia/cli
+    ```
+
+    </CodeGroup>
+  </Step>
+
+  <Step title="Initialize self-host mode">
+    ```bash
+    gaia init
+    ```
+
+    In the setup wizard, choose **Self-Host (Docker)**.
+  </Step>
+
+  <Step title="Start services">
+    ```bash
+    gaia start
+    ```
+  </Step>
+
+  <Step title="Monitor and open GAIA">
+    ```bash
+    gaia status
+    gaia logs
+    ```
+
+    - Web: http://localhost:3000
+    - Backend API: http://localhost:8000
+  </Step>
+</Steps>
+
+## Next Steps
+
+- [CLI Commands](/cli/commands) - Manage services with GAIA CLI commands
+- [Environment Variables](/configuration/environment-variables) - Configure additional features
+- [Docker Setup](/self-hosting/docker-setup) - Advanced Docker operations
+
+<Warning>
+  Self-hosting requires ongoing maintenance and security updates.
+</Warning>

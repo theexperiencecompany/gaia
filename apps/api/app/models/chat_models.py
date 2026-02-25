@@ -83,12 +83,23 @@ class SystemPurpose(str, Enum):
     OTHER = "other"
 
 
+class ConversationSource(str, Enum):
+    WEB = "web"
+    MOBILE = "mobile"
+    TELEGRAM = "telegram"
+    DISCORD = "discord"
+    SLACK = "slack"
+    WHATSAPP = "whatsapp"
+    WORKFLOW_SYSTEM = "workflow_system"
+
+
 class ConversationModel(BaseModel):
     conversation_id: str
     description: str = "New Chat"
     is_system_generated: Optional[bool] = False
     system_purpose: Optional[SystemPurpose] = None
     is_unread: Optional[bool] = False
+    source: Optional[ConversationSource] = None
 
 
 class UpdateMessagesRequest(BaseModel):

@@ -1,14 +1,14 @@
 "use client";
 
 import { Accordion, AccordionItem } from "@heroui/accordion";
+import { ToolsIcon } from "@icons";
 import { useMemo, useState } from "react";
-
+import { ChevronDown } from "@/components/shared/icons";
 import { CompactMarkdown } from "@/components/ui/CompactMarkdown";
 import type { ToolCallEntry } from "@/config/registries/toolRegistry";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { useIntegrations } from "@/features/integrations/hooks/useIntegrations";
-import { ChevronDown, ToolsIcon } from "@/icons";
 
 interface ToolCallsSectionProps {
   tool_calls_data: ToolCallEntry[];

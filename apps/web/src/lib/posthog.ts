@@ -1,3 +1,5 @@
+"use client";
+
 import posthog from "posthog-js";
 
 // Initialize PostHog (this is already done in instrumentation-client.ts)

@@ -257,16 +257,14 @@ export const IntegrationsList: React.FC<{
           />
         )}
 
-      {createdByYouIntegrations.length > 0 &&
-        !searchQuery &&
-        selectedCategory === "all" && (
-          <IntegrationSection
-            title="Created by You"
-            integrations={createdByYouIntegrations}
-            onConnect={handleConnect}
-            onIntegrationClick={onIntegrationClick}
-          />
-        )}
+      {createdByYouIntegrations.length > 0 && selectedCategory === "all" && (
+        <IntegrationSection
+          title="Created by You"
+          integrations={createdByYouIntegrations}
+          onConnect={handleConnect}
+          onIntegrationClick={onIntegrationClick}
+        />
+      )}
 
       {selectedCategory === "all" ? (
         // Exclude "created_by_you" virtual category (shown above) and "custom" category.

@@ -28,7 +28,12 @@ from app.models.workflow_models import (
     WorkflowResponse,
     WorkflowStatusResponse,
 )
+from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.services.workflow import WorkflowService
+from app.services.workflow.execution_service import (
+    get_workflow_executions as get_executions,
+)
+from app.services.system_workflows.provisioner import reset_system_workflow_to_default
 from app.utils.exceptions import TriggerRegistrationError
 from app.utils.workflow_utils import transform_workflow_document
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -109,6 +114,35 @@ async def execute_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute workflow",
+        )
+
+
+@router.get(
+    "/workflows/{workflow_id}/executions", response_model=WorkflowExecutionsResponse
+)
+@limiter.limit("100/minute")
+async def get_workflow_executions(
+    request: Request,
+    workflow_id: str,
+    limit: int = 10,
+    offset: int = 0,
+    user: dict = Depends(get_current_user),
+):
+    """Get execution history for a workflow."""
+    try:
+        limit = min(limit, 100)
+        result = await get_executions(
+            workflow_id=workflow_id,
+            user_id=user["user_id"],
+            limit=limit,
+            offset=offset,
+        )
+        return result
+    except Exception as e:
+        logger.error(f"Error getting executions for workflow {workflow_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to get workflow executions",
         )
 
 
@@ -504,6 +538,40 @@ async def update_workflow(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update workflow",
+        )
+
+
+@router.post("/workflows/{workflow_id}/reset-to-default")
+async def reset_workflow_to_default(
+    workflow_id: str, user: dict = Depends(get_current_user)
+):
+    """Reset a GAIA system workflow to its original definition.
+
+    Restores the workflow's title, description, steps, and trigger config to
+    the defaults that were set when it was auto-provisioned. Preserves the
+    workflow ID, activated state, and execution statistics.
+
+    Only works on workflows where is_system_workflow=True.
+    """
+    try:
+        success = await reset_system_workflow_to_default(
+            workflow_id=workflow_id,
+            user_id=user["user_id"],
+        )
+        if not success:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Workflow not found or is not a resettable system workflow.",
+            )
+        return {"success": True, "message": "Workflow reset to default."}
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resetting workflow {workflow_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to reset workflow",
         )
 
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { generatePageMetadata } from "@/lib/seo";
+import { generatePageMetadata, siteConfig } from "@/lib/seo";
 
 import { BrandAssets } from "./components/BrandAssets";
 import { BrandColors } from "./components/BrandColors";
@@ -45,18 +45,18 @@ export default function BrandPage() {
     name: "Brand Guidelines & Press Kit",
     description:
       "Official brand assets and press kit for The Experience Company and GAIA",
-    url: "https://heygaia.io/brand",
+    url: `${siteConfig.url}/brand`,
     about: [
       {
         "@type": "Organization" as const,
         name: "The Experience Company",
-        url: "https://heygaia.io",
+        url: siteConfig.url,
       },
       {
         "@type": "Organization" as const,
         name: "GAIA",
         alternateName: "General-purpose AI Assistant",
-        url: "https://heygaia.io",
+        url: siteConfig.url,
       },
     ],
   };

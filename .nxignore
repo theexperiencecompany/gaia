@@ -12,7 +12,7 @@ apps/api/.venv
 
 # Next.js build output (watched separately by Next.js)
 apps/web/.next
-apps/docs/.next
+docs/.next
 
 # Logs
 **/logs
@@ -20,4 +20,7 @@ apps/docs/.next
 # Other build artifacts
 apps/desktop/dist
 apps/desktop/out
+
+# CLI cloned repos (from gaia init testing)
+packages/cli/gaia
 

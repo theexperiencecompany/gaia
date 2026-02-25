@@ -1,8 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useState } from "react";
-
 import {
   ChartIcon,
   ChartIncreaseIcon,
@@ -11,7 +8,9 @@ import {
   Timer02Icon,
   UserGroupIcon,
   ZapIcon,
-} from "@/icons";
+} from "@icons";
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 
 import { GoalCard } from "./GoalCard";
 import type { GoalSectionProps } from "./types";

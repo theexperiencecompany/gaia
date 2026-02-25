@@ -1,5 +1,5 @@
 # ═══════════════════════════════════════════════════════════════════════════════
-# 🌍 GAIA Monorepo - Root mise.toml
+# GAIA Monorepo - Root mise.toml
 # ═══════════════════════════════════════════════════════════════════════════════
 #
 # mise manages tools (node, python, nx) and task execution
@@ -13,8 +13,48 @@
 # Documentation: https://docs.heygaia.io/developers/commands
 # ═══════════════════════════════════════════════════════════════════════════════
 
+experimental_monorepo_root = true
+
 # ─────────────────────────────────────────────────────────────────────────────
-# 🔧 TOOLS & ENVIRONMENT
+# MONOREPO CONFIGURATION
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Monorepo mode allows accessing sub-project tasks from root using // syntax:
+#
+#   mise //apps/api:lint           # Run api lint
+#   mise //apps/api:dev            # Run api dev (no docker)
+#   mise //apps/desktop:dist:mac   # Build macOS desktop app
+#   mise //apps/bots/discord:dev   # Run discord bot
+#   mise //...:lint                # Run lint in ALL config_roots
+#
+# From within a sub-project, tasks work without // syntax:
+#   cd apps/api && mise lint       # Same as: mise //apps/api:lint
+#   cd apps/desktop && mise dist:mac
+#
+# Root tasks (defined below) handle orchestration and docker setup:
+#   mise dev          # docker + api + web (orchestrated)
+#   mise dev:api      # docker + api (orchestrated)
+#   mise lint         # lint all projects (orchestrated)
+#
+# When to use each:
+#   - Root tasks (mise dev, mise lint) = orchestration + docker
+#   - Monorepo tasks (mise //apps/api:dev) = direct app commands
+#   - Local tasks (cd apps/api && mise dev) = when working in one app
+#
+
+# [monorepo]
+# config_roots = [
+#     "apps/api",
+#     "apps/web",
+#     "apps/desktop",
+#     "apps/mobile",
+#     "docs",
+#     "apps/voice-agent",
+#     "apps/bots/*",
+# ]
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TOOLS & ENVIRONMENT
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tools]
@@ -31,15 +71,17 @@ MISE_NODE_COREPACK = "1"
 
 [settings]
 experimental = true
+task.monorepo_depth = 4
+task.monorepo_exclude_dirs = ["node_modules", ".next", ".venv", "__pycache__", "dist", "build", ".expo"]
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🚀 SETUP & INSTALLATION
+# SETUP & INSTALLATION
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks."setup:env"]
 description = "Check if environment files exist for all apps"
 run = '''
-echo "🔍 Checking environment files..."
+echo "Checking environment files..."
 missing=""
 
 # API (Manual check)
@@ -49,34 +91,25 @@ fi
 
 # Web (Auto-copy)
 if [ ! -f "apps/web/.env" ] && [ -f "apps/web/.env.example" ]; then
-    echo "✨ Creating apps/web/.env from example (no secrets)"
+    echo "Creating apps/web/.env from example (no secrets)"
     cp apps/web/.env.example apps/web/.env
 fi
 
 # Mobile (Auto-copy)
 if [ ! -f "apps/mobile/.env" ] && [ -f "apps/mobile/.env.example" ]; then
-    echo "✨ Creating apps/mobile/.env from example (no secrets)"
+    echo "Creating apps/mobile/.env from example (no secrets)"
     cp apps/mobile/.env.example apps/mobile/.env
 fi
 
 if [ -n "$missing" ]; then
-    echo "❌ Missing API environment file!"
+    echo "ERROR: Missing API environment file!"
     echo ""
     echo "Please copy the example file (contains secrets):"
     echo -e "$missing"
     exit 1
 fi
-echo "✅ Environment files ready"
+echo "Environment files ready"
 '''
-
-[tasks."setup:api"]
-description = "Install API dependencies (Python/uv)"
-dir = "apps/api"
-run = "uv sync --group backend --group dev"
-
-[tasks."setup:web"]
-description = "Install web dependencies (pnpm)"
-run = "pnpm install --filter web..."
 
 [tasks."setup:mobile"]
 description = "Install mobile dependencies (Expo)"
@@ -96,29 +129,29 @@ run = "uv sync && uv run python -m src download-files"
 [tasks."setup:deps"]
 description = "Install all project dependencies"
 run = '''
-echo "📦 Installing all dependencies..."
+echo "Installing all dependencies..."
 pnpm install
-echo "🐍 Installing API dependencies..."
+echo "Installing API dependencies..."
 (cd apps/api && uv sync --group backend --group dev)
-echo "🎤 Installing voice-agent dependencies..."
+echo "Installing voice-agent dependencies..."
 (cd apps/voice-agent && uv sync)
-echo "✅ All dependencies installed"
+echo "All dependencies installed"
 '''
 
 [tasks.setup]
 description = "Complete project setup for all apps (API, Web, Desktop, Mobile, Voice)"
 depends = ["setup:env", "setup:deps"]
 run = '''
-echo "🐳 Starting Docker services..."
+echo "Starting Docker services..."
 nx run docker:docker:up
-echo "🌱 Seeding AI models..."
+echo "Seeding AI models..."
 (cd apps/api && uv run --group backend python scripts/seed_models.py --force)
 echo ""
-echo "✅ Setup complete! Run 'mise dev' to start development servers."
+echo "Setup complete! Run 'mise dev' to start development servers."
 '''
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🖥️ DEVELOPMENT COMMANDS
+# DEVELOPMENT COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.dev]
@@ -137,73 +170,44 @@ run = "nx run docker:docker:up && nx dev web"
 description = "Run Mobile App + API (starts Docker automatically)"
 run = "nx run docker:docker:up && nx run-many -t dev --projects=api,mobile --parallel=2"
 
-[tasks."dev:desktop"]
-description = "Run desktop app in development mode (requires web dev server)"
-run = "nx dev desktop"
-
-[tasks."dev:docs"]
-description = "Run ONLY docs (Mintlify)"
-run = "nx dev docs"
-
-[tasks."dev:arq"]
-description = "Run ONLY ARQ worker"
-dir = "apps/api"
-run = "mise worker"
-
-[tasks."dev:voice"]
-description = "Run ONLY voice agent worker"
-run = "nx dev voice-agent"
+[tasks."dev:bots"]
+description = "Run ALL bots (Discord, Telegram, Slack) in parallel"
+run = "nx run-many -t dev --projects=bot-discord,bot-telegram,bot-slack --parallel=3"
 
 [tasks."dev:full"]
-description = "Run API + web + arq worker + voice agent in parallel"
-run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent --parallel=4"
+description = "Run API + web + arq worker + voice agent + all bots in parallel"
+run = "nx run docker:docker:up && nx run-many -t dev,worker --projects=api,web,voice-agent,bot-discord,bot-telegram,bot-slack --parallel=7"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🏗️ BUILD COMMANDS
+# BUILD COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.build]
 description = "Build all apps"
 run = "nx run-many -t build"
 
-[tasks."build:web"]
-description = "Build web only"
-run = "nx build web"
-
-[tasks."build:docs"]
-description = "Build docs only"
-run = "nx build docs"
-
 [tasks."build:affected"]
 description = "Build only affected projects"
 run = "nx affected -t build"
 
-[tasks."build:desktop"]
-description = "Build desktop app (builds web first)"
-run = "nx build web && nx build desktop"
-
 # ─────────────────────────────────────────────────────────────────────────────
-# 🧪 TEST COMMANDS
+# TEST COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.test]
 description = "Test all apps"
 run = "nx run-many -t test"
 
-[tasks."test:api"]
-description = "Test API only"
-run = "nx test api"
-
-[tasks."test:web"]
-description = "Test web only"
-run = "nx test web"
+[tasks."test:bots"]
+description = "Test all bots (Discord, Slack, Telegram)"
+run = "cd apps/bots && pnpm vitest run"
 
 [tasks."test:affected"]
 description = "Test only affected projects"
 run = "nx affected -t test"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🔍 LINTING & FORMATTING
+# LINTING & FORMATTING
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.lint]
@@ -213,18 +217,6 @@ run = "nx run-many -t lint --parallel=3"
 [tasks."lint:fix"]
 description = "Lint and fix all apps"
 run = "nx run-many -t lint:fix --parallel=3"
-
-[tasks."lint:api"]
-description = "Lint API only"
-run = "nx lint api"
-
-[tasks."lint:web"]
-description = "Lint web only"
-run = "nx lint web"
-
-[tasks."lint:mobile"]
-description = "Lint mobile only"
-run = "nx lint mobile"
 
 [tasks."lint:affected"]
 description = "Lint only affected projects (parallel with caching)"
@@ -237,14 +229,6 @@ run = "nx run-many -t format --parallel=3"
 [tasks."format:check"]
 description = "Check formatting for all apps (parallel with caching)"
 run = "nx run-many -t format:check --parallel=3"
-
-[tasks."format:api"]
-description = "Format and write changes to API only"
-run = "nx format api"
-
-[tasks."format:web"]
-description = "Format and write changes to web only"
-run = "nx format web"
 
 [tasks."format:affected"]
 description = "Format and write changes to affected projects (parallel)"
@@ -259,7 +243,7 @@ description = "Type-check only affected projects (parallel with caching)"
 run = "nx affected -t type-check --parallel=3"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🔗 PRE-COMMIT HOOKS
+# PRE-COMMIT HOOKS
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks."pre-commit"]
@@ -287,31 +271,7 @@ description = "Uninstall pre-commit hooks"
 run = "prek uninstall"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🖥️ DESKTOP DISTRIBUTION
-# ─────────────────────────────────────────────────────────────────────────────
-
-[tasks."pack:desktop"]
-description = "Package desktop app without distributing"
-run = "nx pack desktop"
-
-[tasks."dist:desktop"]
-description = "Create distributable desktop packages for current platform"
-run = "nx dist desktop"
-
-[tasks."dist:desktop:mac"]
-description = "Create macOS distributable (DMG + ZIP)"
-run = "nx dist:mac desktop"
-
-[tasks."dist:desktop:win"]
-description = "Create Windows distributable (NSIS + Portable)"
-run = "nx dist:win desktop"
-
-[tasks."dist:desktop:linux"]
-description = "Create Linux distributable (AppImage + DEB + RPM)"
-run = "nx dist:linux desktop"
-
-# ─────────────────────────────────────────────────────────────────────────────
-# 🧹 CLEAN & MAINTENANCE
+# CLEAN & MAINTENANCE
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.clean]
@@ -323,7 +283,7 @@ description = "Clean Nx cache"
 run = "nx reset"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 📊 NX UTILITIES
+# NX UTILITIES
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks.graph]
@@ -335,7 +295,7 @@ description = "Show affected projects graph"
 run = "nx affected:graph"
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 🔄 CI/CD COMMANDS
+# CI/CD COMMANDS
 # ─────────────────────────────────────────────────────────────────────────────
 
 [tasks."ci:desktop"]
@@ -369,3 +329,18 @@ run = "act workflow_call -n -W .github/workflows/build.yml"
 [tasks."ci:all"]
 description = "List all jobs across all workflows"
 run = "act -l --workflows .github/workflows/"
+
+# DEAD CODE DETECTION
+# ─────────────────────────────────────────────────────────────────────────────
+
+[tasks."dead-code"]
+description = "Check for dead code (summary view)"
+run = "bash scripts/dead-code-check.sh"
+
+[tasks."dead-code:verbose"]
+description = "Check for dead code (detailed with file names)"
+run = "bash scripts/dead-code-check.sh --verbose"
+
+[tasks."dead-code:strict"]
+description = "Check for dead code (fail on findings)"
+run = "bash scripts/dead-code-check.sh --strict"

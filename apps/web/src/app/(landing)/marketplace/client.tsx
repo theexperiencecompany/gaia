@@ -129,8 +129,9 @@ export function IntegrationsPageClient() {
             Integration Marketplace
           </h1>
           <p className="text-lg text-foreground-500 font-light max-w-2xl">
-            Discover MCP integrations built by the community. Clone them to your
-            workspace and connect AI tools to your favorite services.
+            Discover and automate your favorite tools with AI. Browse
+            community-built MCP integrations to connect Gmail, Slack, Notion,
+            GitHub, and 50+ services to your AI assistant.
           </p>
         </div>
 
