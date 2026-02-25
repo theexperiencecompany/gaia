@@ -184,6 +184,11 @@ export interface Workflow {
   is_public?: boolean;
   created_by?: string;
   creator?: ContentCreator; // Optional creator info from community workflows
+
+  // System workflow fields
+  is_system_workflow?: boolean;
+  source_integration?: string;
+  system_workflow_key?: string;
 }
 
 // API request types

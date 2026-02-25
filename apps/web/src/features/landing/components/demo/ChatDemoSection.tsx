@@ -3,11 +3,9 @@
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import {
-  ArrowRight01Icon,
   Copy01Icon,
   LinkBackwardIcon,
   Login02Icon,
-  Login03Icon,
   PinIcon,
   RedoIcon,
   ThumbsDownIcon,

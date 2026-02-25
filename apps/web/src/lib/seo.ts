@@ -23,16 +23,10 @@ import type {
   WithContext,
 } from "schema-dts";
 
-/**
- * Resolve the site base URL based on environment.
- * Priority: NEXT_PUBLIC_APP_URL > VERCEL_URL > dev/prod default
- */
+const SITE_URL = "https://heygaia.io";
+
 export function getSiteUrl(): string {
-  if (process.env.NEXT_PUBLIC_APP_URL)
-    return process.env.NEXT_PUBLIC_APP_URL.replace(/\/$/, "");
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`;
-  if (process.env.NODE_ENV === "development") return "http://localhost:3000";
-  return "https://heygaia.io";
+  return SITE_URL;
 }
 
 // Site-wide SEO Configuration
@@ -249,7 +243,7 @@ export function generateOrganizationSchema(): WithContext<Organization> {
       siteConfig.links.linkedin,
       siteConfig.links.youtube,
       siteConfig.links.discord,
-      "https://heygaia.io",
+      siteConfig.url,
     ],
     contactPoint: {
       "@type": "ContactPoint",
@@ -529,7 +523,7 @@ export function generateAboutPageSchema(): WithContext<AboutPage> {
     "@type": "AboutPage",
     name: "About GAIA",
     description: "Learn about GAIA's mission and the team behind it",
-    url: `${siteConfig.url}/manifesto`,
+    url: `${siteConfig.url}/about`,
     mainEntity: {
       "@type": "Organization",
       name: siteConfig.short_name,

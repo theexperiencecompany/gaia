@@ -5,6 +5,7 @@ import Footer from "@/components/navigation/Footer";
 import Navbar from "@/components/navigation/Navbar";
 import BlurStack, { type BlurLayer } from "@/components/ui/blur-stack";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
+import LandingProvidersLayout from "@/layouts/LandingProvidersLayout";
 
 export default function LandingLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -22,30 +23,32 @@ export default function LandingLayout({ children }: { children: ReactNode }) {
   ];
 
   return (
-    <div className="relative ">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-9999 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-black focus:shadow-lg"
-      >
-        Skip to main content
-      </a>
-      <div
-        id="navbar-backdrop"
-        className="pointer-events-none fixed inset-0 z-40 bg-black/20 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-in-out"
-      />
+    <LandingProvidersLayout>
+      <div className="relative ">
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-9999 focus:rounded-lg focus:bg-white focus:px-4 focus:py-2 focus:text-black focus:shadow-lg"
+        >
+          Skip to main content
+        </a>
+        <div
+          id="navbar-backdrop"
+          className="pointer-events-none fixed inset-0 z-40 bg-black/20 opacity-0 backdrop-blur-sm transition-opacity duration-300 ease-in-out"
+        />
 
-      <BlurStack
-        className="fixed h-[100px] w-screen z-1000 bottom-0 pointer-events-none"
-        config={ORIGINAL_BLUR_CONFIG}
-      />
+        <BlurStack
+          className="fixed h-[100px] w-screen z-1000 bottom-0 pointer-events-none"
+          config={ORIGINAL_BLUR_CONFIG}
+        />
 
-      {!isDesktopLogin && <Navbar />}
+        {!isDesktopLogin && <Navbar />}
 
-      <main id="main-content" className="min-h-screen">
-        <LazyMotionProvider>{children}</LazyMotionProvider>
-      </main>
+        <main id="main-content" className="min-h-screen">
+          <LazyMotionProvider>{children}</LazyMotionProvider>
+        </main>
 
-      {!isDesktopLogin && <Footer />}
-    </div>
+        {!isDesktopLogin && <Footer />}
+      </div>
+    </LandingProvidersLayout>
   );
 }

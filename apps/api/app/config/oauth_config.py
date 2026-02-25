@@ -382,7 +382,29 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                     description="Trigger when a new email arrives",
                     config_schema={},
                 ),
-            )
+            ),
+            TriggerConfig(
+                slug="GMAIL_NEW_GMAIL_MESSAGE",
+                name="Gmail Poll Inbox",
+                description="Polls your Gmail inbox at a set interval to batch-process new emails",
+                config={"labelIds": "INBOX", "user_id": "me", "interval": 15},
+                auto_activate=False,
+                workflow_trigger_schema=WorkflowTriggerSchema(
+                    slug="gmail_poll_inbox",
+                    composio_slug="GMAIL_NEW_GMAIL_MESSAGE",
+                    name="Poll Inbox",
+                    description="Polls your inbox every N minutes — ideal for periodic email triage",
+                    config_schema={
+                        "interval": TriggerConfigFieldSchema(
+                            type="integer",
+                            default=15,
+                            min=1,
+                            max=1440,
+                            description="How often to poll your inbox, in minutes",
+                        )
+                    },
+                ),
+            ),
         ],
         subagent_config=SubAgentConfig(
             has_subagent=True,

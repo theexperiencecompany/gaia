@@ -13,6 +13,11 @@ import type { UseCase } from "@/features/use-cases/types";
 import type { BlogPost } from "@/lib/blog";
 import { siteConfig } from "@/lib/seo";
 
+function toAbsoluteUrl(url: string): string {
+  if (/^https?:\/\//i.test(url)) return url;
+  return `${siteConfig.url}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
 /**
  * Extracts description from markdown content for meta descriptions
  */
@@ -101,12 +106,14 @@ export function generateBlogMetadata(blog: BlogPost): Metadata {
 export function generateBlogStructuredData(
   blog: BlogPost,
 ): WithContext<Article> {
+  const absoluteImageUrl = toAbsoluteUrl(blog.image || "/og-image.webp");
+
   return {
     "@context": "https://schema.org",
     "@type": "BlogPosting",
     headline: blog.title,
     description: extractDescription(blog.content),
-    image: blog.image || "/og-image.webp",
+    image: absoluteImageUrl,
     author: blog.authors.map((author) => ({
       "@type": "Person",
       name: author.name,
@@ -117,11 +124,11 @@ export function generateBlogStructuredData(
       name: "GAIA",
       logo: {
         "@type": "ImageObject",
-        url: "/images/logos/logo.webp",
+        url: toAbsoluteUrl("/images/logos/logo.webp"),
       } as ImageObject,
     } as Organization,
     datePublished: blog.date,
-    url: `/blog/${blog.slug}`,
+    url: `${siteConfig.url}/blog/${blog.slug}`,
     articleSection: blog.category,
     inLanguage: "en-US",
   };
@@ -194,7 +201,7 @@ export function generateUseCaseMetadata(useCase: UseCase): Metadata {
 export function generateUseCaseStructuredData(
   useCase: UseCase,
 ): WithContext<HowTo> {
-  const ogImageUrl = `/api/og/use-case?slug=${useCase.slug}`;
+  const ogImageUrl = `${siteConfig.url}/api/og/use-case?slug=${useCase.slug}`;
 
   const structuredData: WithContext<HowTo> = {
     "@context": "https://schema.org",
@@ -207,10 +214,10 @@ export function generateUseCaseStructuredData(
       name: siteConfig.short_name,
       logo: {
         "@type": "ImageObject",
-        url: "/images/logos/logo.webp",
+        url: toAbsoluteUrl("/images/logos/logo.webp"),
       } as ImageObject,
     } as Organization,
-    url: `/use-cases/${useCase.slug}`,
+    url: `${siteConfig.url}/use-cases/${useCase.slug}`,
     inLanguage: "en-US",
   };
 

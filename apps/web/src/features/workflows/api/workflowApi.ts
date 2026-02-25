@@ -280,6 +280,20 @@ export const workflowApi = {
     }>("/workflows/generate-prompt", params, { silent: true });
   },
 
+  // Reset a system workflow to its default definition
+  resetToDefault: async (
+    workflowId: string,
+  ): Promise<{ success: boolean; message: string }> => {
+    return apiService.post<{ success: boolean; message: string }>(
+      `/workflows/${workflowId}/reset-to-default`,
+      {},
+      {
+        successMessage: "Workflow reset to default",
+        errorMessage: "Failed to reset workflow",
+      },
+    );
+  },
+
   // Get available trigger schemas
   getTriggerSchemas: async (): Promise<TriggerSchema[]> => {
     return apiService.get<TriggerSchema[]>("/triggers/schema", {

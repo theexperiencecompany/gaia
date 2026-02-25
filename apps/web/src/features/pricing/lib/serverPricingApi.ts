@@ -1,9 +1,7 @@
 import axios from "axios";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 import type { Plan } from "../api/pricingApi";
-
-const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1/";
 
 export async function getPlansServer(activeOnly = true): Promise<Plan[]> {
   const headers: Record<string, string> = {
@@ -11,14 +9,20 @@ export async function getPlansServer(activeOnly = true): Promise<Plan[]> {
   };
 
   try {
-    const response = await axios.get<Plan[]>(`${API_BASE_URL}payments/plans`, {
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
+
+    const response = await axios.get<Plan[]>(`${apiBaseUrl}/payments/plans`, {
       headers,
       params: { active_only: activeOnly },
       timeout: 10000, // 10 second timeout
     });
 
     if (!Array.isArray(response.data)) {
-      throw new Error("Invalid response format from backend");
+      console.warn(
+        "Failed to fetch plans server-side: backend returned non-array payload",
+      );
+      return [];
     }
 
     return response.data;

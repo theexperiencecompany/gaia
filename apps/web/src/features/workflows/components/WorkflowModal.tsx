@@ -422,6 +422,17 @@ export default function WorkflowModal({
     onOpenChange(false);
   };
 
+  const handleResetToDefault = async () => {
+    if (!existingWorkflow?.id) return;
+    try {
+      await workflowApi.resetToDefault(existingWorkflow.id);
+      await fetchWorkflows();
+      handleClose();
+    } catch (error) {
+      console.error("Failed to reset workflow:", error);
+    }
+  };
+
   const handleDelete = async () => {
     if (mode === "edit" && existingWorkflow) {
       try {
@@ -608,13 +619,12 @@ export default function WorkflowModal({
 
   return (
     <Modal
-      key={currentWorkflow?.id || "new-workflow"}
       isOpen={isOpen}
       onOpenChange={(open) => {
         if (!open) handleFormReset();
         onOpenChange(open);
       }}
-      isDismissable={false}
+      // isDismissable={false}
       hideCloseButton
       size={mode === "create" ? "3xl" : "4xl"}
       className={`max-h-[70vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
@@ -651,19 +661,21 @@ export default function WorkflowModal({
 
                   <div>
                     <div className="border-t border-zinc-800 mb-2" />
-
-                    <WorkflowDescriptionField
-                      control={control}
-                      errors={errors}
-                      setValue={setValue}
-                      mode={mode}
-                    />
+                    <div className="space-y-4">
+                      <WorkflowDescriptionField
+                        control={control}
+                        errors={errors}
+                        setValue={setValue}
+                        mode={mode}
+                      />
+                    </div>
                   </div>
                 </div>
 
                 <WorkflowFooter
                   mode={mode}
                   existingWorkflow={!!existingWorkflow}
+                  isSystemWorkflow={existingWorkflow?.is_system_workflow}
                   isActivated={isActivated}
                   isTogglingActivation={isTogglingActivation}
                   onToggleActivation={handleActivationToggle}
@@ -671,6 +683,7 @@ export default function WorkflowModal({
                     !!currentWorkflow?.steps && currentWorkflow.steps.length > 0
                   }
                   onRunWorkflow={handleRunWorkflow}
+                  onResetToDefault={handleResetToDefault}
                   onCancel={handleClose}
                   onSave={() => handleSubmit(handleSave)()}
                   isSaveDisabled={isSaveDisabled()}

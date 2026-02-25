@@ -1,7 +1,7 @@
 "use client";
 
 import { InformationCircleIcon } from "@icons";
-import React, { type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { type SileoOptions, type SileoPosition, sileo } from "sileo";
 
 // ---------------------------------------------------------------------------
@@ -70,7 +70,7 @@ export const toast = {
   info: (message: string, opts?: ToastOptions) =>
     fire(sileo.info, message, {
       ...opts,
-      icon: opts?.icon ?? React.createElement(InformationCircleIcon),
+      icon: opts?.icon ?? <InformationCircleIcon size={16} />,
     }),
 
   /** Sticky info toast. Pass the returned id to success/error to replace it. */

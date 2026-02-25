@@ -1,27 +1,55 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 
 import type { PublicHoloCardData } from "@/features/onboarding/api/holoCardApi";
 import {
   getHouseImage,
   normalizeHouse,
 } from "@/features/onboarding/constants/houses";
+import { siteConfig } from "@/lib/seo";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 export async function generateMetadata({
   params,
 }: {
-  params: { id: string };
+  params: Promise<{ id: string }>;
 }): Promise<Metadata> {
-  try {
-    const cardId = params.id;
-    const apiBaseUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+  const { id: cardId } = await params;
+  const profileUrl = `${siteConfig.url}/profile/${cardId}`;
+  const fallbackMetadata: Metadata = {
+    title: "GAIA Profile Card",
+    description: "View this personalized GAIA profile card",
+    alternates: {
+      canonical: profileUrl,
+    },
+    openGraph: {
+      url: profileUrl,
+      type: "profile",
+    },
+  };
 
-    const response = await fetch(`${apiBaseUrl}user/holo-card/${cardId}`, {
+  try {
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) {
+      return fallbackMetadata;
+    }
+
+    const response = await fetch(`${apiBaseUrl}/user/holo-card/${cardId}`, {
       headers: {
         "Content-Type": "application/json",
       },
     });
 
-    if (!response.ok) throw new Error("Failed to fetch profile data");
+    if (response.status === 404) {
+      notFound();
+    }
+
+    if (!response.ok) {
+      console.error(
+        `Failed to fetch profile metadata for ${cardId}: status ${response.status}`,
+      );
+      return fallbackMetadata;
+    }
 
     const holoCardData: PublicHoloCardData = await response.json();
     const houseName = normalizeHouse(holoCardData.house);
@@ -33,9 +61,13 @@ export async function generateMetadata({
     return {
       title,
       description,
+      alternates: {
+        canonical: profileUrl,
+      },
       openGraph: {
         title,
         description,
+        url: profileUrl,
         type: "profile",
         images: [
           {
@@ -54,11 +86,17 @@ export async function generateMetadata({
       },
     };
   } catch (error) {
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "digest" in error &&
+      (error as { digest?: string }).digest === "NEXT_HTTP_ERROR_FALLBACK;404"
+    ) {
+      throw error;
+    }
+
     console.error("Failed to generate metadata:", error);
-    return {
-      title: "GAIA Profile Card",
-      description: "View this personalized GAIA profile card",
-    };
+    return fallbackMetadata;
   }
 }
 

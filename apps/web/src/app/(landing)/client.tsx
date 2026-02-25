@@ -71,10 +71,10 @@ const LandingDownloadSection = dynamic(
     })),
   { loading: SectionLoader },
 );
-const CommunitySection = dynamic(
-  () => import("@/features/landing/components/sections/CommunitySection"),
-  { loading: SectionLoader },
-);
+// const CommunitySection = dynamic(
+//   () => import("@/features/landing/components/sections/CommunitySection"),
+//   { loading: SectionLoader },
+// );
 const FinalSection = dynamic(
   () => import("@/features/landing/components/sections/FinalSection"),
   { loading: SectionLoader },

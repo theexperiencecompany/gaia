@@ -8,7 +8,6 @@ import { getHouseImage } from "@/features/onboarding/constants/houses";
 import { BackCardContent, BackCardFooter } from "./BackCardContent";
 import { CardOverlay } from "./CardOverlay";
 import { CARD_CLASSES } from "./constants";
-import { DitherEffect } from "./DitherEffect";
 import { FrontCardContent } from "./FrontCardContent";
 import { LogoHeader } from "./LogoHeader";
 import type { HoloCardProps } from "./types";

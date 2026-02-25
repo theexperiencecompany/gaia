@@ -77,9 +77,10 @@ export default function WorkflowsSidebar() {
                 </span>
                 <WorkflowIcons
                   steps={workflow.steps || []}
-                  iconSize={20}
+                  iconSize={17}
                   maxIcons={3}
-                  className="-space-x-2.5!"
+                  spacing="-space-x-3.5!"
+                  showBackground={true}
                 />
               </button>
             ))
@@ -90,19 +91,17 @@ export default function WorkflowsSidebar() {
       <CreateWorkflowModal isOpen={isOpen} onOpenChange={onOpenChange} />
 
       {/* Edit Workflow Modal */}
-      {selectedWorkflow && (
-        <WorkflowModal
-          isOpen={isEditModalOpen}
-          onOpenChange={(open) => {
-            setIsEditModalOpen(open);
-            if (!open) {
-              setSelectedWorkflow(null);
-            }
-          }}
-          existingWorkflow={selectedWorkflow}
-          mode="edit"
-        />
-      )}
+      <WorkflowModal
+        isOpen={isEditModalOpen}
+        onOpenChange={(open) => {
+          setIsEditModalOpen(open);
+          if (!open) {
+            setTimeout(() => setSelectedWorkflow(null), 300);
+          }
+        }}
+        existingWorkflow={selectedWorkflow}
+        mode="edit"
+      />
     </>
   );
 }

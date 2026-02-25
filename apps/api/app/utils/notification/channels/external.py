@@ -17,6 +17,7 @@ import aiohttp
 
 from app.config.settings import settings
 from app.models.notification.notification_models import (
+    ActionType,
     ChannelDeliveryStatus,
     NotificationRequest,
 )
@@ -119,6 +120,18 @@ class ExternalPlatformAdapter(ChannelAdapter):
         title = content.title or ""
         body = content.body or ""
         text = f"{b}{title}{b}\n{body}" if title else body
+
+        # Append redirect action links as inline text (external platforms have no buttons)
+        if content.actions:
+            app_url = settings.FRONTEND_URL.rstrip("/")
+            links = [
+                f"[{action.label}]({app_url}{action.config.redirect.url})"
+                for action in content.actions
+                if action.type == ActionType.REDIRECT and action.config.redirect
+            ]
+            if links:
+                text += "\n\n" + " · ".join(links)
+
         return {"text": text}
 
     async def _get_platform_context(

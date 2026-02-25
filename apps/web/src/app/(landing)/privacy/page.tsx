@@ -28,7 +28,7 @@ const PrivacyPolicy = () => {
   const privacySchema = generateWebPageSchema(
     "Privacy Policy",
     "Review GAIA's Privacy Policy to learn how we collect, use, and protect your personal data.",
-    "https://heygaia.io/privacy",
+    `${siteConfig.url}/privacy`,
     [
       { name: "Home", url: siteConfig.url },
       { name: "Privacy Policy", url: `${siteConfig.url}/privacy` },

@@ -31,26 +31,29 @@ const nextConfig = {
     // Change the value here to swap the entire icon variant across the app
     resolveAlias: {
       "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
+      // cytoscape: emptyStub,
+      // "cytoscape-cose-bilkent": emptyStub,
+      // "cytoscape-fcose": emptyStub,
     },
   },
+  serverExternalPackages: ["moment", "moment-timezone"],
   experimental: {
     optimizePackageImports: [
       "mermaid",
       "react-syntax-highlighter",
       "cytoscape",
-      "@heroui/*",
+      "@theexperiencecompany/gaia-icons/solid-rounded",
+      // "@heroui/*",
     ],
   },
-  webpack: (config, { isServer }) => {
-    // Exclude cytoscape from bundle since it's not used
-    if (!isServer) {
-      config.resolve.alias = {
-        ...config.resolve.alias,
-        cytoscape: false,
-        "cytoscape-cose-bilkent": false,
-        "cytoscape-fcose": false,
-      };
-    }
+  webpack: (config) => {
+    // Exclude cytoscape from bundle since it's not used (both client and server)
+    config.resolve.alias = {
+      ...config.resolve.alias,
+      cytoscape: false,
+      "cytoscape-cose-bilkent": false,
+      "cytoscape-fcose": false,
+    };
     // Alias @icons to the active icon variant — change here to swap the entire set
     config.resolve.alias["@icons"] =
       "@theexperiencecompany/gaia-icons/solid-rounded";
@@ -58,7 +61,7 @@ const nextConfig = {
   },
   images: {
     dangerouslyAllowSVG: true,
-    minimumCacheTTL: 2592000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
+    minimumCacheTTL: 2_592_000, // 30 days — overrides short upstream Cache-Control (e.g. GitHub's 5 min)
     remotePatterns: [
       {
         protocol: "https",
@@ -111,15 +114,6 @@ const nextConfig = {
         source: "/sitemap.xml",
         destination: "/sitemap-index",
       },
-      // Docs reverse proxy - serve Mintlify docs at /docs/* for SEO authority consolidation
-      {
-        source: "/docs",
-        destination: "https://docs.heygaia.io",
-      },
-      {
-        source: "/docs/:path*",
-        destination: "https://docs.heygaia.io/:path*",
-      },
       {
         source: "/ingest/static/:path*",
         destination: "https://us-assets.i.posthog.com/static/:path*",
@@ -131,35 +125,6 @@ const nextConfig = {
       {
         source: "/ingest/flags",
         destination: "https://us.i.posthog.com/flags",
-      },
-    ];
-  },
-  async redirects() {
-    return [
-      {
-        source: "/discord",
-        destination: "https://discord.heygaia.io",
-        permanent: true,
-      },
-      {
-        source: "/whatsapp",
-        destination: "https://whatsapp.heygaia.io",
-        permanent: true,
-      },
-      {
-        source: "/roadmap",
-        destination: "https://gaia.featurebase.app/roadmap",
-        permanent: false,
-      },
-      {
-        source: "/request-feature",
-        destination: "https://gaia.featurebase.app",
-        permanent: false,
-      },
-      {
-        source: "/status",
-        destination: "https://status.heygaia.io",
-        permanent: false,
       },
     ];
   },
@@ -196,13 +161,21 @@ export default withSentryConfig(withBundleAnalyzer(withMDX(nextConfig)), {
   // side errors will fail.
   // tunnelRoute: "/monitoring",
 
-  // New webpack-based configuration for Sentry options
+  // Disable auto-instrumentation to prevent @sentry/node-core + OpenTelemetry from leaking into the bundle
   webpack: {
-    // Automatically tree-shake Sentry logger statements to reduce bundle size
+    autoInstrumentServerFunctions: false,
+    autoInstrumentMiddleware: false,
+    autoInstrumentAppDirectory: false,
     treeshake: {
       removeDebugLogging: true,
     },
-    // Enables automatic instrumentation of Vercel Cron Monitors
-    automaticVercelMonitors: true,
+  },
+
+  // Strip unused Sentry features from the client bundle
+  bundleSizeOptimizations: {
+    excludeDebugStatements: true,
+    excludeReplayShadowDom: true,
+    excludeReplayIframe: true,
+    excludeReplayWorker: true,
   },
 });

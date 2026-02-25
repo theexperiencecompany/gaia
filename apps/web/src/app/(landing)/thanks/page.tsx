@@ -9,6 +9,7 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 interface ToolMetadata {
   title: string | null;
@@ -40,7 +41,7 @@ async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
   const logPrefix = "[Thanks Page]";
 
   try {
-    const apiUrl = process.env.NEXT_PUBLIC_API_BASE_URL;
+    const apiUrl = getServerApiBaseUrl();
     if (!apiUrl) {
       console.error(`
 ╔════════════════════════════════════════════════════════════════╗
@@ -57,8 +58,7 @@ async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
     );
 
     const urls = tools.map((tool) => tool.url);
-    const baseUrl = apiUrl.replace(/\/$/, ""); // Remove trailing slash if present
-    const response = await fetch(`${baseUrl}/fetch-url-metadata`, {
+    const response = await fetch(`${apiUrl}/fetch-url-metadata`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ urls }),
@@ -86,7 +86,7 @@ async function fetchToolsMetadata(): Promise<Record<string, ToolMetadata>> {
     console.error(`
 ╔════════════════════════════════════════════════════════════════╗
 ║  ${logPrefix} ERROR: Exception while fetching tool metadata    ║
-║  API URL: ${process.env.NEXT_PUBLIC_API_BASE_URL || "NOT SET"}
+║  API URL: ${getServerApiBaseUrl() || "NOT SET"}
 ║  Error: ${error instanceof Error ? error.message : String(error)}
 ║  Tool icons and images will not be displayed                   ║
 ╚════════════════════════════════════════════════════════════════╝

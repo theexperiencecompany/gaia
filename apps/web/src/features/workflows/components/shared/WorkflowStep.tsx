@@ -46,13 +46,17 @@ export default function WorkflowStep({
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <Tooltip
-            content={step.category
-              .replaceAll("_", " ")
-              .replace(
-                /^([a-zA-Z])([\s\S]*)$/,
-                (_: string, first: string, rest: string) =>
-                  first.toUpperCase() + rest.toLowerCase(),
-              )}
+            content={
+              step.category === "gaia"
+                ? "GAIA"
+                : step.category
+                    .replaceAll("_", " ")
+                    .replace(
+                      /^([a-zA-Z])([\s\S]*)$/,
+                      (_: string, first: string, rest: string) =>
+                        first.toUpperCase() + rest.toLowerCase(),
+                    )
+            }
             size={chipSize}
             color="foreground"
             showArrow
@@ -72,9 +76,11 @@ export default function WorkflowStep({
                 </div>
               }
             >
-              {step.category
-                .replaceAll("_", " ")
-                .replace(/\b\w/g, (c) => c.toUpperCase())}
+              {step.category === "gaia"
+                ? "GAIA"
+                : step.category
+                    .replaceAll("_", " ")
+                    .replace(/\b\w/g, (c) => c.toUpperCase())}
             </Chip>
           </Tooltip>
         </div>
