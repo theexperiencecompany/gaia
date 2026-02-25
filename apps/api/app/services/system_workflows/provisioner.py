@@ -80,7 +80,7 @@ async def provision_system_workflows(
     for key, factory in entries:
         # Idempotency: skip if this key already exists for this user
         existing = await workflows_collection.find_one(
-            {"user_id": user_id, "system_workflow_key": key}
+            {"user_id": user_id, "system_workflow_key": key, "is_system_workflow": True}
         )
         if existing:
             logger.info(
@@ -210,6 +210,13 @@ async def reset_system_workflow_to_default(workflow_id: str, user_id: str) -> bo
         except Exception as e:
             logger.error(
                 f"Failed to re-register triggers, aborting reset of {workflow_id}: {e}"
+            )
+            return False
+
+        if not new_trigger_ids:
+            logger.error(
+                f"New trigger registration returned empty result for {workflow_id}, "
+                "aborting reset to avoid leaving workflow without triggers"
             )
             return False
 

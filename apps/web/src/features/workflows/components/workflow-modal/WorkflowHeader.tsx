@@ -5,7 +5,7 @@ import {
   DropdownMenu,
   DropdownTrigger,
 } from "@heroui/dropdown";
-import { Input } from "@heroui/input";
+import { Input, Textarea } from "@heroui/input";
 import {
   Delete02Icon,
   LinkSquare02Icon,
@@ -80,95 +80,118 @@ export default function WorkflowHeader({
   };
 
   return (
-    <div className="flex items-center gap-3 pt-5">
-      <Controller
-        name="title"
-        control={control}
-        render={({ field }) => (
-          <Input
-            {...field}
-            autoFocus
-            placeholder={
-              mode === "edit" ? "Edit workflow name" : "Enter workflow name"
-            }
-            variant="underlined"
-            classNames={{
-              input: "font-medium! text-4xl",
-              inputWrapper: "px-0",
-            }}
-            isRequired
-            className="flex-1"
-            isInvalid={!!errors.title}
-            errorMessage={errors.title?.message}
-          />
-        )}
-      />
-
-      {mode === "edit" && (
-        <Dropdown placement="bottom-end" className="max-w-100">
-          <DropdownTrigger>
-            <Button variant="flat" size="sm" isIconOnly>
-              <MoreVerticalIcon />
-            </Button>
-          </DropdownTrigger>
-          <DropdownMenu
-            onAction={async (key) => {
-              if (key === "publish") {
-                await handlePublishToggle();
-              } else if (key === "marketplace") {
-                handleMarketplaceView();
-              } else if (key === "delete") {
-                await onDelete();
+    <div className="flex flex-col pt-5">
+      <div className="flex items-center gap-3">
+        <Controller
+          name="title"
+          control={control}
+          render={({ field }) => (
+            <Input
+              {...field}
+              autoFocus
+              placeholder={
+                mode === "edit" ? "Edit workflow name" : "Enter workflow name"
               }
-            }}
-          >
-            <DropdownItem
-              key="publish"
-              startContent={<PlayIcon className="relative top-1 h-4 w-4" />}
+              variant="underlined"
               classNames={{
-                description: "text-wrap",
-                base: "items-start!",
+                input: "font-medium! text-4xl",
+                inputWrapper: "px-0",
               }}
-              description={
-                currentWorkflow?.is_public
-                  ? "Remove from community marketplace"
-                  : "Share to community marketplace"
-              }
-            >
-              {currentWorkflow?.is_public
-                ? "Unpublish Workflow"
-                : "Publish Workflow"}
-            </DropdownItem>
+              isRequired
+              className="flex-1"
+              isInvalid={!!errors.title}
+              errorMessage={errors.title?.message}
+            />
+          )}
+        />
 
-            {currentWorkflow?.is_public ? (
+        {mode === "edit" && (
+          <Dropdown placement="bottom-end" className="max-w-100">
+            <DropdownTrigger>
+              <Button variant="flat" size="sm" isIconOnly>
+                <MoreVerticalIcon />
+              </Button>
+            </DropdownTrigger>
+            <DropdownMenu
+              onAction={async (key) => {
+                if (key === "publish") {
+                  await handlePublishToggle();
+                } else if (key === "marketplace") {
+                  handleMarketplaceView();
+                } else if (key === "delete") {
+                  await onDelete();
+                }
+              }}
+            >
               <DropdownItem
-                key="marketplace"
-                startContent={<LinkSquare02Icon className="h-4 w-4" />}
+                key="publish"
+                startContent={<PlayIcon className="relative top-1 h-4 w-4" />}
                 classNames={{
                   description: "text-wrap",
                   base: "items-start!",
                 }}
-                description="Open community marketplace"
+                description={
+                  currentWorkflow?.is_public
+                    ? "Remove from community marketplace"
+                    : "Share to community marketplace"
+                }
               >
-                View on Marketplace
+                {currentWorkflow?.is_public
+                  ? "Unpublish Workflow"
+                  : "Publish Workflow"}
               </DropdownItem>
-            ) : null}
 
-            <DropdownItem
-              key="delete"
-              color="danger"
-              startContent={<Delete02Icon className="h-4 w-4" />}
-              classNames={{
-                description: "text-wrap",
-                base: "items-start!",
-              }}
-              description="Permanently delete this workflow"
-            >
-              Delete Workflow
-            </DropdownItem>
-          </DropdownMenu>
-        </Dropdown>
-      )}
+              {currentWorkflow?.is_public ? (
+                <DropdownItem
+                  key="marketplace"
+                  startContent={<LinkSquare02Icon className="h-4 w-4" />}
+                  classNames={{
+                    description: "text-wrap",
+                    base: "items-start!",
+                  }}
+                  description="Open community marketplace"
+                >
+                  View on Marketplace
+                </DropdownItem>
+              ) : null}
+
+              <DropdownItem
+                key="delete"
+                color="danger"
+                startContent={<Delete02Icon className="h-4 w-4" />}
+                classNames={{
+                  description: "text-wrap",
+                  base: "items-start!",
+                }}
+                description="Permanently delete this workflow"
+              >
+                Delete Workflow
+              </DropdownItem>
+            </DropdownMenu>
+          </Dropdown>
+        )}
+      </div>
+
+      <Controller
+        name="description"
+        control={control}
+        render={({ field }) => (
+          <Textarea
+            {...field}
+            value={field.value ?? ""}
+            placeholder="Add a short description..."
+            minRows={1}
+            maxRows={3}
+            variant="underlined"
+            classNames={{
+              input: "text-sm text-foreground-500 resize-none",
+              inputWrapper: "px-0",
+            }}
+            isInvalid={!!errors.description}
+            errorMessage={errors.description?.message}
+          />
+        )}
+      />
     </div>
   );
 }

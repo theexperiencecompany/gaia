@@ -75,8 +75,10 @@ export const workflowFormSchema = z.object({
   title: z.string().min(1, "Title is required").max(100, "Title too long"),
   description: z
     .string()
-    .min(1, "Description is required")
-    .max(2000, "Description too long"),
+    .max(300, "Description too long (max 300 characters)")
+    .optional()
+    .transform((val) => val?.trim() || undefined),
+  prompt: z.string().min(1, "Prompt is required").max(5000, "Prompt too long"),
   activeTab: z.enum(["manual", "schedule", "trigger"]),
   selectedTrigger: z.string(),
   trigger_config: triggerConfigSchema,
@@ -94,7 +96,8 @@ export type WorkflowFormData = z.infer<typeof workflowFormSchema>;
  */
 export const getDefaultFormValues = (): WorkflowFormData => ({
   title: "",
-  description: "",
+  description: undefined,
+  prompt: "",
   activeTab: "schedule",
   selectedTrigger: "",
   trigger_config: {
@@ -141,7 +144,8 @@ export const workflowToFormData = (workflow: Workflow): WorkflowFormData => {
 
   return {
     title: workflow.title,
-    description: workflow.description,
+    description: workflow.description || undefined,
+    prompt: workflow.prompt || workflow.description || workflow.title,
     activeTab,
     selectedTrigger,
     trigger_config: workflow.trigger_config,

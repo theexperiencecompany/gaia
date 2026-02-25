@@ -119,7 +119,8 @@ class WorkflowService:
             # Step 1: Create workflow in PENDING state (activated=False)
             workflow = Workflow(
                 title=request.title,
-                description=request.description,
+                description=request.description or "",
+                prompt=request.prompt,
                 steps=workflow_steps,
                 trigger_config=trigger_config,
                 activated=False,  # Start in pending state
@@ -148,7 +149,10 @@ class WorkflowService:
                     "workflows", create_if_not_exists=True
                 )
                 content = (
-                    f"{workflow.title} | {workflow.description} | {trigger_config.type}"
+                    f"{workflow.title} | "
+                    f"{workflow.description or ''} | "
+                    f"{workflow.prompt or ''} | "
+                    f"{trigger_config.type}"
                 )
                 chroma.add_texts(
                     texts=[content],
@@ -441,9 +445,24 @@ class WorkflowService:
 
             update_data.update(update_fields)
 
-            result = await workflows_collection.update_one(
-                {"_id": workflow_id, "user_id": user_id}, {"$set": update_data}
-            )
+            try:
+                result = await workflows_collection.update_one(
+                    {"_id": workflow_id, "user_id": user_id}, {"$set": update_data}
+                )
+            except Exception as db_err:
+                # Compensate: unregister newly created triggers so they don't become orphaned
+                if registered_trigger_ids is not None:
+                    logger.error(
+                        f"MongoDB update failed for workflow {workflow_id}; "
+                        f"unregistering {len(registered_trigger_ids)} newly registered triggers"
+                    )
+                    await TriggerService.unregister_triggers(
+                        user_id,
+                        new_trigger_config.trigger_name or "",
+                        registered_trigger_ids,
+                        workflow_id,
+                    )
+                raise db_err
 
             if result.matched_count == 0:
                 return None
@@ -730,7 +749,10 @@ class WorkflowService:
 
             # Generate new steps using the existing title and description
             steps_data = await WorkflowGenerationService.generate_steps_with_llm(
-                workflow.description, workflow.title, workflow.trigger_config
+                workflow.effective_prompt,
+                workflow.title,
+                workflow.trigger_config,
+                description=workflow.description,
             )
 
             # Update workflow with new steps
@@ -906,7 +928,8 @@ class WorkflowService:
                 formatted_workflow = {
                     "id": workflow["_id"],
                     "title": workflow["title"],
-                    "description": workflow["description"],
+                    "description": workflow.get("description"),
+                    "prompt": workflow.get("prompt"),
                     "steps": normalized_steps,
                     "created_at": workflow["created_at"],
                     "creator": {
@@ -981,7 +1004,8 @@ class WorkflowService:
                 formatted_workflow = {
                     "id": workflow["_id"],
                     "title": workflow["title"],
-                    "description": workflow["description"],
+                    "description": workflow.get("description", ""),
+                    "prompt": workflow.get("prompt") or workflow.get("description", ""),
                     "steps": normalized_steps,
                     "created_at": workflow["created_at"],
                     "categories": workflow.get("use_case_categories", ["featured"]),
@@ -1015,7 +1039,10 @@ class WorkflowService:
 
             # Generate steps using structured LLM output
             steps_data = await WorkflowGenerationService.generate_steps_with_llm(
-                workflow.description, workflow.title, workflow.trigger_config
+                workflow.effective_prompt,
+                workflow.title,
+                workflow.trigger_config,
+                description=workflow.description,
             )
 
             if steps_data:

@@ -1,7 +1,7 @@
 {
   "name": "gaia",
   "description": "Frontend Website of GAIA - The personal AI assistant",
-  "version": "0.15.0",
+  "version": "0.16.0",
   "private": true,
   "homepage": "https://github.com/theexperiencecompany/gaia",
   "bugs": {
@@ -25,8 +25,8 @@
     "lint:fix": "npm run fix",
     "format": "biome format --write .",
     "generate-barrels": "barrelsby --delete --directory ./src --location branch --exclude \"(src/app|src/features)\"",
-    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
@@ -65,7 +65,7 @@
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
     "@microsoft/fetch-event-source": "^2.0.1",
-    "@next/mdx": "^15.5.0",
+    "@next/mdx": "^16.1.6",
     "@next/third-parties": "^16.1.6",
     "@opennextjs/cloudflare": "^1.17.0",
     "@radix-ui/react-accordion": "^1.2.12",
@@ -204,7 +204,7 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.7",
-    "@next/bundle-analyzer": "^15.5.9",
+    "@next/bundle-analyzer": "^16.1.6",
     "@types/dagre": "^0.7.53",
     "@types/node": "^24.3.0",
     "@types/react": "^19.2.14",

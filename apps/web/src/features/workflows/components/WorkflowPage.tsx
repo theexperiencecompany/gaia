@@ -33,6 +33,7 @@ import { WorkflowListSkeleton } from "./WorkflowSkeletons";
 
 export default function WorkflowPage() {
   const pageRef = useRef(null);
+  const clearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const workflowId = searchParams.get("id");
@@ -161,7 +162,11 @@ export default function WorkflowPage() {
     onEditOpenChange();
     if (!open) {
       router.push("/workflows", { scroll: false });
-      setTimeout(() => setSelectedWorkflow(null), 300);
+      if (clearTimeoutRef.current) clearTimeout(clearTimeoutRef.current);
+      clearTimeoutRef.current = setTimeout(
+        () => setSelectedWorkflow(null),
+        300,
+      );
     }
   };
 

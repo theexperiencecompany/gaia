@@ -230,7 +230,7 @@ async def format_workflow_execution_message(
             for i, step in enumerate(workflow.steps, 1)
         )
         workflow_title = workflow.title
-        workflow_description = workflow.description
+        workflow_description = workflow.effective_prompt
     else:
         # Fallback to passed data
         steps_text = "\n".join(
@@ -238,7 +238,7 @@ async def format_workflow_execution_message(
             for i, step in enumerate(selected_workflow.steps, 1)
         )
         workflow_title = selected_workflow.title
-        workflow_description = selected_workflow.description
+        workflow_description = selected_workflow.prompt or selected_workflow.description
 
     common_args = {
         "workflow_title": workflow_title,

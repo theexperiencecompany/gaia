@@ -33,6 +33,13 @@ export default function WorkflowStep({
   const descriptionTextSize = isLarge ? "text-sm" : "text-xs";
   const chipSize = isLarge ? "md" : "sm";
 
+  const categoryLabel =
+    step.category === "gaia"
+      ? "GAIA"
+      : step.category
+          .replaceAll("_", " ")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+
   return (
     <div className="relative flex items-start gap-5">
       <div
@@ -46,17 +53,7 @@ export default function WorkflowStep({
       <div className="flex-1 space-y-2">
         <div className="flex items-center gap-2">
           <Tooltip
-            content={
-              step.category === "gaia"
-                ? "GAIA"
-                : step.category
-                    .replaceAll("_", " ")
-                    .replace(
-                      /^([a-zA-Z])([\s\S]*)$/,
-                      (_: string, first: string, rest: string) =>
-                        first.toUpperCase() + rest.toLowerCase(),
-                    )
-            }
+            content={categoryLabel}
             size={chipSize}
             color="foreground"
             showArrow
@@ -76,11 +73,7 @@ export default function WorkflowStep({
                 </div>
               }
             >
-              {step.category === "gaia"
-                ? "GAIA"
-                : step.category
-                    .replaceAll("_", " ")
-                    .replace(/\b\w/g, (c) => c.toUpperCase())}
+              {categoryLabel}
             </Chip>
           </Tooltip>
         </div>

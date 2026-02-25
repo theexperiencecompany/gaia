@@ -8,7 +8,10 @@ from typing import Optional
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 
-from app.agents.prompts.workflow_prompts import TODO_WORKFLOW_DESCRIPTION_TEMPLATE
+from app.agents.prompts.workflow_prompts import (
+    TODO_WORKFLOW_DESCRIPTION_TEMPLATE,
+    TODO_WORKFLOW_PROMPT_TEMPLATE,
+)
 from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
     tiered_rate_limit,
@@ -74,8 +77,9 @@ async def process_workflow_generation_task(
     logger.info(f"Processing workflow generation for todo {todo_id}: {title}")
 
     try:
-        # Create rich description using the template
-        workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(
+        # Build short card description plus detailed execution prompt
+        workflow_description = TODO_WORKFLOW_DESCRIPTION_TEMPLATE.format(title=title)
+        workflow_prompt = TODO_WORKFLOW_PROMPT_TEMPLATE.format(
             title=title,
             details_section=f"**Details:** {description}" if description else "",
         )
@@ -83,6 +87,7 @@ async def process_workflow_generation_task(
         workflow_request = CreateWorkflowRequest(
             title=f"Todo: {title}",
             description=workflow_description,
+            prompt=workflow_prompt,
             trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
             generate_immediately=True,
         )
@@ -429,6 +434,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             id=workflow.id,
             title=workflow.title,
             description=workflow.description,
+            prompt=workflow.prompt,
             steps=workflow_steps,
         )
 

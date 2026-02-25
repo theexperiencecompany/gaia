@@ -94,6 +94,7 @@ class GmailTriggerHandler(TriggerHandler):
 
             # Strategy 2: match gmail_poll_inbox workflows by trigger_id
             poll_query = {
+                "user_id": user_id,
                 "activated": True,
                 "trigger_config.type": TriggerType.INTEGRATION,
                 "trigger_config.trigger_name": "gmail_poll_inbox",

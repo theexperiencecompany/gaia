@@ -120,6 +120,7 @@ export default function WorkflowSection({
         id: workflow.id,
         title: workflow.title,
         description: workflow.description,
+        prompt: workflow.prompt,
         steps: workflow.steps.map(
           (step: {
             id: string;

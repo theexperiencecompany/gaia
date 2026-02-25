@@ -4,7 +4,6 @@ import hmac
 
 from fastapi import HTTPException, Request
 
-from app.config.loggers import app_logger as logger
 from app.config.settings import settings
 
 
@@ -29,33 +28,31 @@ async def verify_composio_webhook_signature(request: Request):
     timestamp = request.headers.get("webhook-timestamp", "")
     webhook_id = request.headers.get("webhook-id", "")
 
-    # Verify webhook authenticity
-    if signature_header:
-        # Extract the signature (format: "v1,signature")
-        if "," in signature_header:
-            version, signature = signature_header.split(",", 1)
-        else:
-            raise HTTPException(status_code=401, detail="Invalid signature format")
-
-        # Create the signed content (webhook_id.timestamp.body)
-        signed_content = f"{webhook_id}.{timestamp}.{body.decode('utf-8')}"
-
-        # Generate expected signature
-        expected_signature = hmac.new(
-            settings.COMPOSIO_WEBHOOK_SECRET.encode(),
-            signed_content.encode(),
-            hashlib.sha256,
-        ).digest()
-
-        # Encode to base64
-        expected_signature_b64 = base64.b64encode(expected_signature).decode()
-
-        # Compare signatures
-        if not hmac.compare_digest(signature, expected_signature_b64):
-            raise HTTPException(status_code=401, detail="Invalid webhook signature")
-    elif settings.COMPOSIO_WEBHOOK_SECRET:
+    # Fail closed: always require a signature header
+    if not signature_header:
         raise HTTPException(status_code=401, detail="Missing webhook signature")
+
+    # Extract the signature (format: "v1,signature")
+    if "," in signature_header:
+        _, signature = signature_header.split(",", 1)
     else:
-        logger.warning(
-            "Webhook signature verification skipped — COMPOSIO_WEBHOOK_SECRET not configured"
-        )
+        raise HTTPException(status_code=401, detail="Invalid signature format")
+
+    # Create the signed content (webhook_id.timestamp.body)
+    signed_content = f"{webhook_id}.{timestamp}.{body.decode('utf-8')}"
+
+    # Generate expected signature
+    expected_signature = hmac.new(
+        settings.COMPOSIO_WEBHOOK_SECRET.encode(),
+        signed_content.encode(),
+        hashlib.sha256,
+    ).digest()
+
+    # Encode to base64
+    expected_signature_b64 = base64.b64encode(expected_signature).decode()
+
+    # Compare signatures
+    if not hmac.compare_digest(signature, expected_signature_b64):
+        raise HTTPException(status_code=401, detail="Invalid webhook signature")
+
+    return body, webhook_id

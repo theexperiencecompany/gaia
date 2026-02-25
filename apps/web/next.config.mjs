@@ -31,9 +31,6 @@ const nextConfig = {
     // Change the value here to swap the entire icon variant across the app
     resolveAlias: {
       "@icons": "@theexperiencecompany/gaia-icons/solid-rounded",
-      // cytoscape: emptyStub,
-      // "cytoscape-cose-bilkent": emptyStub,
-      // "cytoscape-fcose": emptyStub,
     },
   },
   serverExternalPackages: ["moment", "moment-timezone"],

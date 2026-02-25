@@ -15,6 +15,8 @@ from app.db.mongodb.collections import workflows_collection
 from app.decorators import tiered_rate_limit
 from app.models.workflow_models import (
     CreateWorkflowRequest,
+    GenerateWorkflowPromptRequest,
+    GenerateWorkflowPromptResponse,
     PublicWorkflowsResponse,
     PublishWorkflowResponse,
     RegenerateStepsRequest,
@@ -30,6 +32,7 @@ from app.models.workflow_models import (
 )
 from app.models.workflow_execution_models import WorkflowExecutionsResponse
 from app.services.workflow import WorkflowService
+from app.services.workflow.generation_service import WorkflowGenerationService
 from app.services.workflow.execution_service import (
     get_workflow_executions as get_executions,
 )
@@ -50,6 +53,10 @@ async def create_workflow(
 ):
     """Create a new workflow with automatic timezone detection."""
     try:
+        # Strip system fields — these are set by the provisioner only
+        request.is_system_workflow = False
+        request.source_integration = None
+        request.system_workflow_key = None
         # Pass user timezone to the service for automatic population
         workflow = await WorkflowService.create_workflow(
             request, user["user_id"], user_timezone=user_timezone
@@ -130,7 +137,8 @@ async def get_workflow_executions(
 ):
     """Get execution history for a workflow."""
     try:
-        limit = min(limit, 100)
+        limit = max(1, min(limit, 100))
+        offset = max(0, offset)
         result = await get_executions(
             workflow_id=workflow_id,
             user_id=user["user_id"],
@@ -236,7 +244,6 @@ async def deactivate_workflow(
 @router.post(
     "/workflows/{workflow_id}/regenerate-steps", response_model=WorkflowResponse
 )
-@tiered_rate_limit("workflow_operations")
 async def regenerate_workflow_steps(
     workflow_id: str,
     request: RegenerateStepsRequest,
@@ -292,7 +299,8 @@ async def create_workflow_from_todo(
         # Create workflow using modern workflow system
         workflow_request = CreateWorkflowRequest(
             title=f"Todo: {todo_title}",
-            description=todo_description or f"Workflow for todo: {todo_title}",
+            description=f"Workflow for todo: {todo_title}",
+            prompt=todo_description or f"Complete todo: {todo_title}",
             trigger_config=TriggerConfig(type=TriggerType.MANUAL, enabled=True),
             generate_immediately=True,  # Generate steps immediately for todos
         )
@@ -471,6 +479,30 @@ async def get_public_workflow(request: Request, workflow_id: str):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
+        )
+
+
+@router.post(
+    "/workflows/generate-prompt", response_model=GenerateWorkflowPromptResponse
+)
+async def generate_workflow_prompt_endpoint(
+    request: GenerateWorkflowPromptRequest,
+    user: dict = Depends(get_current_user),
+) -> GenerateWorkflowPromptResponse:
+    """Generate or improve workflow instructions using AI."""
+    try:
+        result = await WorkflowGenerationService.generate_workflow_prompt(
+            title=request.title,
+            description=request.description,
+            trigger_config=request.trigger_config,
+            existing_prompt=request.existing_prompt,
+        )
+        return GenerateWorkflowPromptResponse(**result)
+    except Exception as e:
+        logger.error(f"Error generating workflow prompt: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate workflow prompt",
         )
 
 

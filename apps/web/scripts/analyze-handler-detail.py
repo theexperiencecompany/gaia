@@ -43,7 +43,8 @@ for path_str, size in module_sizes:
     # Skip node_modules
     if 'node_modules/' in path_str:
         m = re.search(r'node_modules/((?:@[\w.-]+/)?[\w.-]+)', path_str)
-        dir_sizes[f"node_modules/{m.group(1)}"] += size if m else 0
+        if m:
+            dir_sizes[f"node_modules/{m.group(1)}"] += size
         continue
 
     parts = path_str.split('/')

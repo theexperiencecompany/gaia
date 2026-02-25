@@ -7,6 +7,7 @@ export interface SelectedWorkflowData {
   id: string;
   title: string;
   description: string;
+  prompt?: string;
   steps: Array<{
     id: string;
     title: string;
@@ -54,6 +55,7 @@ export const useWorkflowSelectionStore = create<WorkflowSelectionStore>()(
                   id: workflow.id,
                   title: workflow.title,
                   description: workflow.description,
+                  prompt: workflow.prompt,
                   steps: workflow.steps.map((step) => ({
                     id: step.id,
                     title: step.title,

@@ -5,7 +5,7 @@ Turbopack embeds module paths as comments or identifiers in the chunk files.
 This script extracts them and estimates per-package contribution.
 
 Usage: python3 scripts/analyze-chunks.py [chunk_path]
-  If no path given, analyzes the top 5 largest chunks.
+  If no path given, analyzes the top 10 largest chunks.
 """
 
 import re, sys, os
@@ -16,7 +16,7 @@ chunks_dir = Path(".next/server/chunks")
 ssr_dir = chunks_dir / "ssr"
 
 
-def analyze_chunk(filepath):
+def analyze_chunk(filepath: str) -> str:
     text = Path(filepath).read_text(errors="ignore")
     size_kb = len(text) / 1024
 
@@ -55,7 +55,7 @@ def analyze_chunk(filepath):
     return size_kb, dict(pkg_sizes)
 
 
-def main():
+def main() -> None:
     if len(sys.argv) > 1:
         files = [sys.argv[1]]
     else:
@@ -94,7 +94,7 @@ def main():
 
     if len(files) > 1:
         print(f"\n{'='*70}")
-        print(f"GRAND TOTALS ACROSS ALL ANALYZED CHUNKS")
+        print("GRAND TOTALS ACROSS ALL ANALYZED CHUNKS")
         print(f"{'='*70}")
         print(f"  {'Module/Package':<50} {'KiB':>8}")
         print(f"  {'-'*60}")

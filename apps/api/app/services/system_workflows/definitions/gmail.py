@@ -21,7 +21,8 @@ from app.models.workflow_models import (
 def _email_intelligence() -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
         title="Inbox Triage",
-        description=(
+        description="Scans new emails, triages by importance, and creates todos for action items.",
+        prompt=(
             "Every 15 minutes, scans new inbox emails. For important emails or ones "
             "with action items, GAIA creates todos, does relevant research, and sends "
             "you a briefing. Ignores noise automatically."
@@ -75,7 +76,8 @@ def _email_intelligence() -> CreateWorkflowRequest:
 def _smart_reply_drafts() -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
         title="Auto-Draft Replies",
-        description=(
+        description="Drafts replies for emails that need a response. You always approve before sending.",
+        prompt=(
             "Every 30 minutes, checks new inbox emails for ones that need a reply. "
             "For direct questions, requests, and important emails from real people, "
             "GAIA drafts a reply for your review. You always approve before sending."

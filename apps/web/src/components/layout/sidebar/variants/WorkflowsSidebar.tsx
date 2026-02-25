@@ -6,7 +6,7 @@ import { useDisclosure } from "@heroui/modal";
 import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import { ZapIcon } from "@icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   CreateWorkflowModal,
   WorkflowModal,
@@ -24,6 +24,7 @@ export default function WorkflowsSidebar() {
     null,
   );
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const clearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleWorkflowClick = (workflow: Workflow) => {
     setSelectedWorkflow(workflow);
@@ -96,7 +97,11 @@ export default function WorkflowsSidebar() {
         onOpenChange={(open) => {
           setIsEditModalOpen(open);
           if (!open) {
-            setTimeout(() => setSelectedWorkflow(null), 300);
+            if (clearTimeoutRef.current) clearTimeout(clearTimeoutRef.current);
+            clearTimeoutRef.current = setTimeout(
+              () => setSelectedWorkflow(null),
+              300,
+            );
           }
         }}
         existingWorkflow={selectedWorkflow}

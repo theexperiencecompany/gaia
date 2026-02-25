@@ -470,8 +470,8 @@ importers:
         specifier: ^2.0.1
         version: 2.0.1
       '@next/mdx':
-        specifier: ^15.5.0
-        version: 15.5.9(@mdx-js/loader@3.1.1(webpack@5.103.0(@swc/core@1.15.5(@swc/helpers@0.5.19))))(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.1.0))
+        specifier: ^16.1.6
+        version: 16.1.6(@mdx-js/loader@3.1.1(webpack@5.103.0(@swc/core@1.15.5(@swc/helpers@0.5.19))))(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.1.0))
       '@next/third-parties':
         specifier: ^16.1.6
         version: 16.1.6(next@16.1.6(@babel/core@7.28.5)(@opentelemetry/api@1.9.0)(babel-plugin-react-compiler@1.0.0)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)(sass@1.96.0))(react@19.1.0)
@@ -882,8 +882,8 @@ importers:
         specifier: 2.3.7
         version: 2.3.7
       '@next/bundle-analyzer':
-        specifier: ^15.5.9
-        version: 15.5.9
+        specifier: ^16.1.6
+        version: 16.1.6
       '@types/dagre':
         specifier: ^0.7.53
         version: 0.7.53
@@ -4396,8 +4396,8 @@ packages:
   '@napi-rs/wasm-runtime@1.1.0':
     resolution: {integrity: sha512-Fq6DJW+Bb5jaWE69/qOE0D1TUN9+6uWhCeZpdnSBk14pjLcCWR7Q8n49PTSPHazM37JqrsdpEthXy2xn6jWWiA==}
 
-  '@next/bundle-analyzer@15.5.9':
-    resolution: {integrity: sha512-lT1EBpFyGVN9u8M43f2jE78DsCu0A5KPA5OkF5PdIHrKDo4oTJ4lUQKciA9T2u9gccSXIPQcZb5TYkHF4f8iiw==}
+  '@next/bundle-analyzer@16.1.6':
+    resolution: {integrity: sha512-ee2kagdTaeEWPlotgdTOqFHYcD3e2m2bbE3I9Rq2i6ABYi5OgopmtEUe8NM23viaYxLV2tDH/2nd5+qKoEr6cw==}
 
   '@next/env@16.0.10':
     resolution: {integrity: sha512-8tuaQkyDVgeONQ1MeT9Mkk8pQmZapMKFh5B+OrFUlG3rVmYTXcXlBetBgTurKXGaIZvkoqRT9JL5K3phXcgang==}
@@ -4405,8 +4405,8 @@ packages:
   '@next/env@16.1.6':
     resolution: {integrity: sha512-N1ySLuZjnAtN3kFnwhAwPvZah8RJxKasD7x1f8shFqhncnWZn4JMfg37diLNuoHsLAlrDfM3g4mawVdtAG8XLQ==}
 
-  '@next/mdx@15.5.9':
-    resolution: {integrity: sha512-qG9GUKUMpnyD5vU+wNGFNsVDxuSdmYDaCEsScPNPIiplzfNSS7VZk1G2yQ2tgXz6KjFncdaqJPuDehFqFy/gjQ==}
+  '@next/mdx@16.1.6':
+    resolution: {integrity: sha512-PT5JR4WPPYOls7WD6xEqUVVI9HDY8kY7XLQsNYB2lSZk5eJSXWu3ECtIYmfR0hZpx8Sg7BKZYKi2+u5OTSEx0w==}
     peerDependencies:
       '@mdx-js/loader': '>=0.15.0'
       '@mdx-js/react': '>=0.15.0'
@@ -23121,7 +23121,7 @@ snapshots:
       '@tybys/wasm-util': 0.10.1
     optional: true
 
-  '@next/bundle-analyzer@15.5.9':
+  '@next/bundle-analyzer@16.1.6':
     dependencies:
       webpack-bundle-analyzer: 4.10.1
     transitivePeerDependencies:
@@ -23132,7 +23132,7 @@ snapshots:
 
   '@next/env@16.1.6': {}
 
-  '@next/mdx@15.5.9(@mdx-js/loader@3.1.1(webpack@5.103.0(@swc/core@1.15.5(@swc/helpers@0.5.19))))(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.1.0))':
+  '@next/mdx@16.1.6(@mdx-js/loader@3.1.1(webpack@5.103.0(@swc/core@1.15.5(@swc/helpers@0.5.19))))(@mdx-js/react@3.1.1(@types/react@19.2.14)(react@19.1.0))':
     dependencies:
       source-map: 0.7.6
     optionalDependencies:

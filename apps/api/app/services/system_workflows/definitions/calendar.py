@@ -21,7 +21,8 @@ from app.models.workflow_models import (
 def _meeting_prep() -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
         title="Meeting Briefing",
-        description=(
+        description="Researches attendees and prepares a briefing before each meeting.",
+        prompt=(
             "60 minutes before every calendar event, GAIA researches attendees, "
             "reviews relevant emails and context, prepares talking points and agenda, "
             "and sends you a briefing so you walk in prepared."
@@ -72,8 +73,7 @@ def _meeting_prep() -> CreateWorkflowRequest:
                     "(2) Suggested agenda / talking points, "
                     "(3) Open action items to address, "
                     "(4) Relevant background from past interactions, "
-                    "(5) Join link if available. "
-                    "Save the brief as a note or document."
+                    "(5) Join link if available."
                 ),
             ),
         ],
@@ -83,7 +83,8 @@ def _meeting_prep() -> CreateWorkflowRequest:
 def _meeting_reminder() -> CreateWorkflowRequest:
     return CreateWorkflowRequest(
         title="Meeting Reminder",
-        description=(
+        description="A heads-up 10 minutes before any event with the join link.",
+        prompt=(
             "A simple heads-up 10 minutes before any calendar event so you don't miss it. "
             "Includes the join link if available."
         ),

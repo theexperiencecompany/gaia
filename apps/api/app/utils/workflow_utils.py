@@ -52,6 +52,14 @@ def transform_workflow_document(doc: dict) -> dict:
             transformed_doc["trigger_config"]
         )
 
+    # Backward compatibility for legacy documents.
+    if transformed_doc.get("description") is None:
+        transformed_doc["description"] = ""
+
+    # Ensure prompt exists for legacy workflows.
+    if not transformed_doc.get("prompt"):
+        transformed_doc["prompt"] = transformed_doc.get("description") or ""
+
     # Handle legacy status values - migrate old "failed" to new enum
     if "status" in transformed_doc:
         old_status = transformed_doc["status"]

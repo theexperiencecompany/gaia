@@ -103,6 +103,7 @@ export interface CommunityWorkflow {
   id: string;
   title: string;
   description: string;
+  prompt?: string;
   steps: PublicWorkflowStep[];
   created_at: string;
   creator: ContentCreator;
@@ -135,7 +136,7 @@ export interface UseCase {
   categories: string[]; // Same as CommunityWorkflow categories
   published_id: string;
   slug: string;
-  prompt?: string; // For prompt-type use cases
+  prompt?: string; // For prompt-type use cases and workflow execution context
   steps?: PublicWorkflowStep[]; // Workflow steps if action_type === "workflow"
   creator?: ContentCreator;
   total_executions?: number; // Run count for display
@@ -152,6 +153,7 @@ export interface WorkflowData {
   id: string;
   title: string;
   description: string;
+  prompt?: string;
   steps: WorkflowStepData[];
 }
 
@@ -160,6 +162,7 @@ export interface Workflow {
   id: string;
   title: string;
   description: string;
+  prompt: string;
   steps: WorkflowStepType[];
   trigger_config: TriggerConfig;
   execution_config: ExecutionConfig;
@@ -191,7 +194,8 @@ export interface Workflow {
 // API request types
 export interface CreateWorkflowRequest {
   title: string;
-  description: string;
+  description?: string;
+  prompt: string;
   trigger_config: TriggerConfig;
   steps?: WorkflowStepData[]; // Optional: pre-existing steps from explore/community workflows
   execution_config?: ExecutionConfig;

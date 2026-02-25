@@ -130,17 +130,6 @@ class SettingsValidator:
             )
         )
 
-        self.register_group(
-            SettingsGroup(
-                name="Google OAuth",
-                keys=["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
-                description="Google OAuth integration",
-                affected_features="Google login, calendar integration, and email services",
-                all_required=True,
-                docs_url="https://console.cloud.google.com/apis/credentials",
-            )
-        )
-
         # Media Processing
         self.register_group(
             SettingsGroup(
