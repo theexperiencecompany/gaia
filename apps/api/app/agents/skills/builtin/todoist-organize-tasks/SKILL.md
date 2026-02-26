@@ -1,7 +1,7 @@
 ---
 name: todoist-organize-tasks
 description: Intelligently organize Todoist projects, tasks, labels and sections — search before creating, learn user patterns, smart decomposition
-target: todo_agent
+target: todoist_agent
 ---
 
 # Todoist: Organize Tasks & Projects
@@ -14,12 +14,12 @@ User wants to create a project, organize tasks, set up a task structure, or batc
 Before creating anything, gather context:
 
 ```
-TODOIST_LIST_PROJECTS → existing projects, hierarchy, colors
-TODOIST_LIST_LABELS → existing labels
+TODOIST_GET_ALL_PROJECTS → existing projects, hierarchy, colors
+TODOIST_GET_ALL_PERSONAL_LABELS → existing labels
 ```
 
 **Think:**
-- Does a similar project already exist? (search by name with `TODOIST_SEARCH_PROJECTS`)
+- Does a similar project already exist? (fetch all with `TODOIST_GET_ALL_PROJECTS`, then filter by name)
 - What naming conventions does the user follow? (capitalization, emojis, prefixes)
 - What labels exist? Can we reuse them?
 
@@ -27,8 +27,8 @@ TODOIST_LIST_LABELS → existing labels
 
 **Always search first:**
 ```
-TODOIST_SEARCH_PROJECTS(query="<project name>") → check for duplicates
-TODOIST_SEARCH_LABELS(query="<label>") → check if label exists
+TODOIST_GET_ALL_PROJECTS() → filter by project name to check for duplicates
+TODOIST_GET_ALL_PERSONAL_LABELS() → filter by label name to check if label exists
 ```
 
 If a matching project exists:
@@ -92,7 +92,7 @@ TODOIST_CREATE_TASK(content="Sub-task 2", parent_id=task_id)
 
 Create labels only if they don't exist:
 ```
-TODOIST_SEARCH_LABELS(query="urgent") → not found
+TODOIST_GET_ALL_PERSONAL_LABELS() → no label named "urgent"
 TODOIST_CREATE_LABEL(name="urgent", color=30)  # berry_red
 ```
 

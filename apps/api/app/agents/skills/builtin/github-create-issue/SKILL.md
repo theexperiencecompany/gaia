@@ -74,7 +74,7 @@ Before creating, collect:
 - Avoid duplicates
 
 ### Step 3: Create Issue
-Call GITHUB_CREATE_ISSUE with all gathered info.
+Call GITHUB_CREATE_AN_ISSUE with all gathered info.
 
 ### Step 4: Present Confirmation
 Show user:

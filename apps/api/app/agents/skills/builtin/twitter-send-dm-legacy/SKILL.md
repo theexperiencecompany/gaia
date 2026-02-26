@@ -10,15 +10,15 @@ Use this skill when sending direct messages on X/Twitter.
 
 ## Sending a DM
 
-1. **Find the recipient**: Use `TWITTER_GET_USER_BY_USERNAME` to resolve the username to a user ID if you only have a handle.
+1. **Find the recipient**: Use `TWITTER_USER_LOOKUP_BY_USERNAME` to resolve the username to a user ID if you only have a handle.
 
 2. **Compose the message**:
    - DMs can be up to 10,000 characters
    - For longer messages, consider using a thread or linking to external content
    - Keep messages conversational and natural
 
-3. **Send**: Use `TWITTER_SEND_DM` with:
-   - `user_id`: The recipient's Twitter user ID (not username)
+3. **Send**: Use `TWITTER_SEND_A_NEW_MESSAGE_TO_A_USER` with:
+   - `participant_id`: The recipient's Twitter user ID (not username)
    - `text`: Your message content
 
 ## Best Practices

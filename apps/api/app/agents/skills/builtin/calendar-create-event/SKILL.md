@@ -1,7 +1,7 @@
 ---
 name: calendar-create-event
 description: Create calendar events intelligently - check availability, handle attendees, manage recurrence, timezone-aware scheduling with confirmation workflow.
-target: calendar_agent
+target: googlecalendar_agent
 ---
 
 # Calendar Create Event
