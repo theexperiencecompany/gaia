@@ -353,6 +353,12 @@ class MCPClient:
 
                 return _evict
 
+            # Attach server_url to any tools that have mcp_ui metadata
+            server_url = mcp_config.server_url
+            for raw_tool in raw_tools:
+                if raw_tool.metadata and raw_tool.metadata.get("mcp_ui"):
+                    raw_tool.metadata["mcp_server_url"] = server_url
+
             tools = wrap_tools_with_null_filter(
                 raw_tools, on_connection_error=_make_evict_callback(integration_id)
             )
@@ -1240,12 +1246,136 @@ class MCPClient:
             except Exception as e:
                 logger.warning(f"Error closing MCP session for {integration_id}: {e}")
 
+    async def call_tool_on_server(
+        self,
+        server_url: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call a specific tool on a specific MCP server identified by server_url.
+
+        Finds the connected integration whose server_url matches, then calls
+        the tool via the active session.
+
+        Args:
+            server_url: The MCP server URL to route the call to.
+            tool_name: The name of the tool to call.
+            arguments: The arguments to pass to the tool.
+
+        Returns:
+            A dict with keys ``content`` (list) and optionally ``isError`` (bool).
+
+        Raises:
+            ValueError: If no connected integration matches the given server_url.
+        """
+        # Resolve all connected integration_ids and match by server_url
+        matching_integration_id: Optional[str] = None
+        for integration_id in list(self._clients.keys()):
+            resolved = await IntegrationResolver.resolve(integration_id)
+            if resolved and resolved.mcp_config:
+                if resolved.mcp_config.server_url == server_url:
+                    matching_integration_id = integration_id
+                    break
+
+        if matching_integration_id is None:
+            raise ValueError(
+                f"No connected MCP integration found for server_url: {server_url}"
+            )
+
+        client = self._clients[matching_integration_id]
+        session = client.get_session(matching_integration_id)
+        result = await session.call_tool(name=tool_name, arguments=arguments)
+
+        # Normalise the mcp CallToolResult to a plain dict
+        if hasattr(result, "model_dump"):
+            raw: dict[str, Any] = result.model_dump()
+        elif hasattr(result, "__dict__"):
+            raw = dict(result.__dict__)
+        else:
+            raw = dict(result)
+
+        return raw
+
     def get_active_integration_ids(self) -> list[str]:
         """Get list of active integration IDs.
 
         Public method for introspection - used by MCPClientPool.
         """
         return list(self._clients.keys())
+
+    async def read_ui_resource(
+        self, server_url: str, resource_uri: str
+    ) -> Optional[str]:
+        """Read a UI resource from an MCP server and return its HTML content.
+
+        Finds the active session matching server_url, then calls read_resource
+        on the connector to fetch the HTML UI resource.
+
+        Args:
+            server_url: The MCP server URL to look up in active connections
+            resource_uri: The resource URI to read (e.g. "ui://tool-name/app.html")
+
+        Returns:
+            HTML content string, or None on failure
+        """
+        try:
+            # Find the integration_id whose mcp_config matches server_url
+            matching_client: Optional[BaseMCPClient] = None
+            for integration_id, base_client in self._clients.items():
+                try:
+                    resolved = await IntegrationResolver.resolve(integration_id)
+                    if (
+                        resolved
+                        and resolved.mcp_config
+                        and resolved.mcp_config.server_url == server_url
+                    ):
+                        matching_client = base_client
+                        break
+                except Exception:  # nosec B112
+                    continue
+
+            if matching_client is None:
+                logger.warning(
+                    "No active MCP session found for server_url: %s", server_url
+                )
+                return None
+
+            sessions = matching_client.get_all_active_sessions()
+            if not sessions:
+                logger.warning(
+                    "No active sessions in MCP client for server_url: %s", server_url
+                )
+                return None
+
+            session = list(sessions.values())[0]
+            result = await asyncio.wait_for(
+                session.read_resource(resource_uri),
+                timeout=10.0,
+            )
+
+            # Extract text content from ReadResourceResult
+            for content in result.contents:
+                text = getattr(content, "text", None)
+                if text is not None:
+                    return str(text)
+
+            return None
+
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Timeout reading UI resource %s from %s (10s)",
+                resource_uri,
+                server_url,
+            )
+            return None
+        except Exception as e:
+            logger.warning(
+                "Failed to read UI resource %s from %s: %s",
+                resource_uri,
+                server_url,
+                e,
+            )
+            return None
 
 
 async def get_mcp_client(user_id: str) -> MCPClient:

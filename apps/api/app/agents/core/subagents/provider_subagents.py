@@ -226,6 +226,13 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
     category_name = f"mcp_{integration_id}_{user_id}"
     tools: list[Any] | None = None  # Track tools for count-based strategy decision
 
+    # Derive namespace upfront from mcp_config (needed regardless of cache branch)
+    mcp_config = custom_doc.get("mcp_config", {})
+    server_url = mcp_config.get("server_url", "")
+    tool_namespace = derive_integration_namespace(
+        integration_id, server_url, is_custom=True
+    )
+
     if category_name not in tool_registry._categories:
         # Lazy import to avoid circular dependency
         from app.services.mcp.mcp_client import get_mcp_client
@@ -248,13 +255,6 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
 
         # Background: warm up other integrations for future handoffs
         asyncio.create_task(mcp_client.get_all_connected_tools())
-
-        # Get URL domain namespace from mcp_config to match indexing in mcp_client.py
-        mcp_config = custom_doc.get("mcp_config", {})
-        server_url = mcp_config.get("server_url", "")
-        tool_namespace = derive_integration_namespace(
-            integration_id, server_url, is_custom=True
-        )
 
         tool_registry._add_category(
             name=category_name,

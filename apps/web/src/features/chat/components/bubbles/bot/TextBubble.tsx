@@ -18,6 +18,7 @@ import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
+  type MCPAppData,
   type ToolCallEntry,
   type ToolDataEntry,
   type ToolDataMap,
@@ -31,6 +32,7 @@ import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
+import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
@@ -421,6 +423,10 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       workflow={data as WorkflowCreatedData}
     />
   ),
+
+  mcp_app: (data, index) => (
+    <MCPAppRenderer key={`tool-mcp-app-${index}`} data={data as MCPAppData} />
+  ),
 };
 
 function renderTool<K extends ToolName>(
@@ -490,7 +496,7 @@ export default function TextBubble({
         if (!typedData) return null;
 
         return (
-          <React.Fragment key={`${baseId}-tool-${toolName}}`}>
+          <React.Fragment key={`${baseId}-tool-${toolName}`}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );
