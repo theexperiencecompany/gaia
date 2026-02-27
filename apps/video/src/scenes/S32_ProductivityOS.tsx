@@ -6,37 +6,24 @@ export const S32_ProductivityOS: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Background cyan bloom: scales from 0 to 2.5 with slow spring
-  const bloomProgress = spring({ frame, fps, config: { damping: 40 } });
-  const bloomScale = interpolate(bloomProgress, [0, 1], [0, 2.5]);
+  // Background cyan bloom: simple fade in, no scaling artifact
+  const bloomOpacity = interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp" });
 
-  // Line 1: "It's your" — slides in from left at frame 0
-  const line1X = spring({ frame, fps, config: { damping: 22, stiffness: 150 } });
-  const line1TranslateX = interpolate(line1X, [0, 1], [-300, 0]);
+  // Line 1: "It's your" — fast snap up from below
+  const line1P = spring({ frame, fps, config: { damping: 200 } });
+  const line1Y = interpolate(line1P, [0, 1], [32, 0]);
+  const line1Opacity = interpolate(line1P, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
 
-  // Line 2: "Productivity" — slams up from below at frame 10
-  const line2Y = spring({
-    frame: frame - 10,
-    fps,
-    config: { damping: 9, stiffness: 200 },
-  });
-  const line2TranslateY = interpolate(line2Y, [0, 1], [180, 0]);
-  const line2Scale = interpolate(
-    frame - 10,
-    [0, 0.4 * fps * (1 / 30), fps * (1 / 30)],
-    [1.25, 0.96, 1.0],
-    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
-  );
-  const line2Opacity = frame >= 10 ? 1 : 0;
+  // Line 2: "Productivity" — hero entrance, slight controlled spring (ONE element gets drama)
+  const line2P = spring({ frame: frame - 8, fps, config: { damping: 18, stiffness: 140 } });
+  const line2Y = interpolate(line2P, [0, 1], [80, 0]);
+  const line2Scale = interpolate(line2P, [0, 0.5, 1], [1.04, 0.98, 1.0]);
+  const line2Opacity = interpolate(line2P, [0, 0.08], [0, 1], { extrapolateRight: "clamp" });
 
-  // Line 3: "Operating System." — slams in from right at frame 35
-  const line3X = spring({
-    frame: frame - 35,
-    fps,
-    config: { damping: 10, stiffness: 180 },
-  });
-  const line3TranslateX = interpolate(line3X, [0, 1], [400, 0]);
-  const line3Opacity = frame >= 35 ? 1 : 0;
+  // Line 3: "Operating System." — clean snap up, slightly after line 2 settles
+  const line3P = spring({ frame: frame - 35, fps, config: { damping: 200 } });
+  const line3Y = interpolate(line3P, [0, 1], [40, 0]);
+  const line3Opacity = interpolate(line3P, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill
@@ -56,7 +43,7 @@ export const S32_ProductivityOS: React.FC = () => {
           position: "absolute",
           inset: 0,
           background: `radial-gradient(ellipse at 50% 60%, ${COLORS.primary}18 0%, transparent 55%)`,
-          transform: `scale(${bloomScale})`,
+          opacity: bloomOpacity,
           pointerEvents: "none",
         }}
       />
@@ -70,7 +57,8 @@ export const S32_ProductivityOS: React.FC = () => {
           color: COLORS.zinc600,
           textAlign: "center",
           lineHeight: 1.1,
-          transform: `translateX(${line1TranslateX}px)`,
+          transform: `translateY(${line1Y}px)`,
+          opacity: line1Opacity,
         }}
       >
         It&apos;s your
@@ -85,7 +73,7 @@ export const S32_ProductivityOS: React.FC = () => {
           color: COLORS.textDark,
           lineHeight: 0.95,
           letterSpacing: "-0.03em",
-          transform: `translateY(${line2TranslateY}px) scale(${line2Scale})`,
+          transform: `translateY(${line2Y}px) scale(${line2Scale})`,
           opacity: line2Opacity,
         }}
       >
@@ -101,7 +89,7 @@ export const S32_ProductivityOS: React.FC = () => {
           color: COLORS.primary,
           lineHeight: 1.0,
           letterSpacing: "-0.02em",
-          transform: `translateX(${line3TranslateX}px)`,
+          transform: `translateY(${line3Y}px)`,
           opacity: line3Opacity,
         }}
       >

@@ -8,12 +8,10 @@ import { COLORS, FONTS } from "../constants";
 
 // One word per beat — instant hard cut, no fade, tiny scale punch on enter
 const WORDS = [
-  { text: "YOU",      startFrame: 0,  exitFrame: 8  },
-  { text: "DO",       startFrame: 8,  exitFrame: 16 },
-  { text: "THIS",     startFrame: 16, exitFrame: 28 },
-  { text: "MANUALLY", startFrame: 28, exitFrame: 48 },
-  { text: "EVERY",    startFrame: 48, exitFrame: 56 },
-  { text: "DAY.",     startFrame: 56, exitFrame: 999 },
+  { text: "STOP",   startFrame: 0,   exitFrame: 10  },
+  { text: "DOING",  startFrame: 10,  exitFrame: 20  },
+  { text: "GRUNT",  startFrame: 20,  exitFrame: 32  },
+  { text: "WORK.",  startFrame: 32,  exitFrame: 999 },
 ];
 
 interface WordProps {

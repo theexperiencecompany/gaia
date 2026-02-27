@@ -8,7 +8,7 @@ import {
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
 
-const WORDS = ["isn't", "just", "an", "assistant."];
+const WORDS = ["handles", "everything."];
 
 export const S31_NotJustAssistant: React.FC = () => {
   const frame = useCurrentFrame();
@@ -18,9 +18,9 @@ export const S31_NotJustAssistant: React.FC = () => {
   const gaiaSpring = spring({
     frame,
     fps,
-    config: { damping: 8, stiffness: 200 },
+    config: { damping: 200 },
   });
-  const gaiaY = interpolate(gaiaSpring, [0, 1], [150, 0]);
+  const gaiaY = interpolate(gaiaSpring, [0, 1], [60, 0]);
 
   return (
     <AbsoluteFill
@@ -60,13 +60,13 @@ export const S31_NotJustAssistant: React.FC = () => {
         }}
       >
         {WORDS.map((word, i) => {
-          const wordFrame = frame - (20 + i * 8);
+          const wordFrame = frame - (16 + i * 6);
           const wordSpring = spring({
             frame: wordFrame,
             fps,
-            config: { damping: 8, stiffness: 200 },
+            config: { damping: 200 },
           });
-          const wordY = interpolate(wordSpring, [0, 1], [50, 0]);
+          const wordY = interpolate(wordSpring, [0, 1], [24, 0]);
           const wordOpacity = interpolate(
             wordSpring,
             [0, 0.15],

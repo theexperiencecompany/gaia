@@ -105,17 +105,17 @@ const CommunityCard: React.FC<CommunityCardProps> = ({ workflow, index }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const delay = index * 12;
+  const delay = index * 6;
   const progress = spring({
     frame: frame - delay,
     fps,
-    config: { damping: 20, stiffness: 120 },
+    config: { damping: 18, stiffness: 180 },
   });
-  const scale = interpolate(progress, [0, 1], [0.95, 1.0]);
+  const scale = interpolate(progress, [0, 0.6, 1], [0.88, 1.04, 1.0]);
   const opacity = interpolate(progress, [0, 0.1], [0, 1], {
     extrapolateRight: "clamp",
   });
-  const y = interpolate(progress, [0, 1], [30, 0]);
+  const y = interpolate(progress, [0, 1], [40, 0]);
 
   return (
     <div
@@ -264,6 +264,22 @@ export const S27_CommunityCards: React.FC = () => {
     extrapolateRight: "clamp",
   });
 
+  // Animated counter: 0 → 2400 over frames 10–60
+  const rawCount = interpolate(frame, [10, 60], [0, 2400], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const displayCount = Math.round(rawCount / 50) * 50;
+
+  const counterProgress = spring({
+    frame: frame - 10,
+    fps,
+    config: { damping: 200 },
+  });
+  const counterOpacity = interpolate(counterProgress, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
+  });
+
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, overflow: "hidden" }}>
       <div
@@ -316,6 +332,20 @@ export const S27_CommunityCards: React.FC = () => {
             }}
           >
             Browse.
+          </span>
+        </div>
+
+        {/* Animated counter */}
+        <div style={{ opacity: counterOpacity, textAlign: "center" }}>
+          <span
+            style={{
+              fontFamily: FONTS.body,
+              fontSize: 40,
+              color: COLORS.zinc600,
+              fontWeight: 500,
+            }}
+          >
+            {displayCount.toLocaleString()}+ community workflows
           </span>
         </div>
 

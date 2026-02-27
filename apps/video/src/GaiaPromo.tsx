@@ -21,17 +21,19 @@ import { S09_ChatWorkflowCreated } from "./scenes/S09_ChatWorkflowCreated";
 // Act 4: Execution
 import { S16_ModalToCard } from "./scenes/S16_ModalToCard";
 import { S17_RunningToolStack } from "./scenes/S17_RunningToolStack";
-import { S18_ToolCallsExpand } from "./scenes/S18_ToolCallsExpand";
 import { S19_BotMessageStream } from "./scenes/S19_BotMessageStream";
 import { S21_Completed } from "./scenes/S21_Completed";
 
-// Act 5: Multi-Platform
+// Act 5: Multi-Platform (removed S22–S24 unchanged)
 import { S22_MacOSNotifications } from "./scenes/S22_MacOSNotifications";
 import { S23_PlatformIcons } from "./scenes/S23_PlatformIcons";
 import { S24_NotificationPreview } from "./scenes/S24_NotificationPreview";
 
-// Act 6: Ecosystem
+// Act 6: Ecosystem + Integrations
 import { S25_AllYourTools } from "./scenes/S25_AllYourTools";
+import { S26_IntegrationBuilder } from "./scenes/S26_IntegrationBuilder";
+import { S26c_IntegrationPage } from "./scenes/S26c_IntegrationPage";
+import { S26d_IntegrationTagline } from "./scenes/S26d_IntegrationTagline";
 import { S27_CommunityCards } from "./scenes/S27_CommunityCards";
 
 // Act 7 & 8: Platform + Close
@@ -134,7 +136,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={132}>
+      <TransitionSeries.Sequence durationInFrames={150}>
         <S17_RunningToolStack />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -142,15 +144,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={102}>
-        <S18_ToolCallsExpand />
-      </TransitionSeries.Sequence>
-      <TransitionSeries.Transition
-        presentation={fade()}
-        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
-      />
-
-      <TransitionSeries.Sequence durationInFrames={162}>
+      <TransitionSeries.Sequence durationInFrames={200}>
         <S19_BotMessageStream />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -158,7 +152,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={90}>
+      <TransitionSeries.Sequence durationInFrames={120}>
         <S21_Completed />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -191,7 +185,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.slow })}
       />
 
-      {/* === ACT 6: ECOSYSTEM === */}
+      {/* === ACT 6: ECOSYSTEM + INTEGRATIONS === */}
       <TransitionSeries.Sequence durationInFrames={132}>
         <S25_AllYourTools />
       </TransitionSeries.Sequence>
@@ -202,6 +196,30 @@ export const GaiaPromo: React.FC = () => {
 
       <TransitionSeries.Sequence durationInFrames={180}>
         <S27_CommunityCards />
+      </TransitionSeries.Sequence>
+      <TransitionSeries.Transition
+        presentation={fade()}
+        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
+      />
+
+      <TransitionSeries.Sequence durationInFrames={220}>
+        <S26_IntegrationBuilder />
+      </TransitionSeries.Sequence>
+      <TransitionSeries.Transition
+        presentation={fade()}
+        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
+      />
+
+      <TransitionSeries.Sequence durationInFrames={110}>
+        <S26c_IntegrationPage />
+      </TransitionSeries.Sequence>
+      <TransitionSeries.Transition
+        presentation={fade()}
+        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
+      />
+
+      <TransitionSeries.Sequence durationInFrames={90}>
+        <S26d_IntegrationTagline />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
         presentation={fade()}

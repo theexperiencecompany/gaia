@@ -3,22 +3,66 @@ import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate, Img
 import { COLORS, FONTS } from "../constants";
 import { SceneBackground } from "../components/SceneBackground";
 import { BotTail } from "./S06_UserChat";
+import { CalendarUpload01Icon, InboxUnreadIcon, Clock01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 
-const FULL_MESSAGE = `Your Daily Email Digest is ready.
+const FULL_MESSAGE = `Your Daily Digest is ready.
 
-12 emails. Key highlights:
-→ Reply needed: Sarah's Q4 report request
-→ Meeting confirmed: Design review at 2 PM
-→ Action: Follow up on vendor invoice
+→ Design review at 2 PM
+→ Sarah Q4 — reply needed
+→ Follow up on vendor invoice
 
-Posted to #daily-briefing in Slack.`;
+Posted to Slack.`;
+
+const CHIP_DELAY_1 = FULL_MESSAGE.length + 8;
+const CHIP_DELAY_2 = FULL_MESSAGE.length + 18;
+const CHIP_DELAY_3 = FULL_MESSAGE.length + 28;
+
+const CHIP_STYLE: React.CSSProperties = {
+  background: "#27272a",
+  borderRadius: 40,
+  padding: "10px 24px",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  color: "#e4e4e7",
+  fontSize: 26,
+  fontFamily: FONTS.body,
+  fontWeight: 500,
+};
+
+interface ActionChipProps {
+  frame: number;
+  fps: number;
+  delay: number;
+  icon: React.ReactNode;
+  label: string;
+}
+
+const ActionChip: React.FC<ActionChipProps> = ({ frame, fps, delay, icon, label }) => {
+  const p = spring({ frame: frame - delay, fps, config: { damping: 12, stiffness: 200 } });
+  const scale = interpolate(p, [0, 0.5, 1], [0, 1.1, 1.0]);
+  const opacity = interpolate(p, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
+
+  return (
+    <div
+      style={{
+        ...CHIP_STYLE,
+        transform: `scale(${scale})`,
+        opacity,
+      }}
+    >
+      {icon}
+      {label}
+    </div>
+  );
+};
 
 export const S19_BotMessageStream: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Stream chars at 1 per 1.5 frames
-  const charIndex = Math.min(Math.floor(frame / 1.5), FULL_MESSAGE.length);
+  // Stream chars at 1 per frame
+  const charIndex = Math.min(Math.floor(frame), FULL_MESSAGE.length);
   const displayText = FULL_MESSAGE.slice(0, charIndex);
   const cursorOpacity = Math.floor(frame / 10) % 2 === 0 ? 1 : 0;
 
@@ -26,6 +70,10 @@ export const S19_BotMessageStream: React.FC = () => {
   const enterProgress = spring({ frame, fps, config: { damping: 25 } });
   const enterY = interpolate(enterProgress, [0, 1], [30, 0]);
   const enterOpacity = interpolate(enterProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
+
+  // Chip row wrapper fades in when first chip appears
+  const chipRowP = spring({ frame: frame - CHIP_DELAY_1, fps, config: { damping: 12, stiffness: 200 } });
+  const chipRowOpacity = interpolate(chipRowP, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill>
@@ -83,6 +131,38 @@ export const S19_BotMessageStream: React.FC = () => {
                 />
               </div>
               <BotTail bgColor={COLORS.bgLight} />
+            </div>
+          </div>
+
+          {/* Action chips row — left-aligned under the bubble, not the avatar */}
+          <div
+            style={{
+              paddingLeft: 80,
+              opacity: chipRowOpacity,
+            }}
+          >
+            <div style={{ display: "flex", flexDirection: "row", gap: 12 }}>
+              <ActionChip
+                frame={frame}
+                fps={fps}
+                delay={CHIP_DELAY_1}
+                icon={<CalendarUpload01Icon size={22} style={{ color: "#60a5fa" }} />}
+                label="Add design review to calendar"
+              />
+              <ActionChip
+                frame={frame}
+                fps={fps}
+                delay={CHIP_DELAY_2}
+                icon={<InboxUnreadIcon size={22} style={{ color: "#38bdf8" }} />}
+                label="Reply to Sarah"
+              />
+              <ActionChip
+                frame={frame}
+                fps={fps}
+                delay={CHIP_DELAY_3}
+                icon={<Clock01Icon size={22} style={{ color: "#f59e0b" }} />}
+                label="Snooze invoice reminder"
+              />
             </div>
           </div>
         </div>
