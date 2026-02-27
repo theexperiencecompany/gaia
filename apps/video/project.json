@@ -1,0 +1,20 @@
+{
+  "name": "video",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "apps/video/src",
+  "targets": {
+    "start": {
+      "command": "remotion studio src/index.ts",
+      "options": { "cwd": "apps/video" }
+    },
+    "render": {
+      "command": "remotion render src/index.ts GaiaPromo out/promo.mp4",
+      "options": { "cwd": "apps/video" }
+    },
+    "build": {
+      "command": "remotion bundle src/index.ts",
+      "options": { "cwd": "apps/video" }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "lib": ["dom", "dom.iterable", "esnext"],
+    "allowJs": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "resolveJsonModule": true,
+    "isolatedModules": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": true,
+    "paths": {
+      "@/*": ["../web/src/*"],
+      "@shared/*": ["../../libs/shared/ts/src/*"]
+    }
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx", "remotion.config.ts"],
+  "exclude": ["node_modules"]
+}
