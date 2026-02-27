@@ -50,7 +50,7 @@ export const S34_SearchBarCTA: React.FC = () => {
         }}
       >
         {/* Search icon */}
-        <Search01Icon size={28} color={COLORS.zinc400} style={{ flexShrink: 0 }} />
+        <Search01Icon size={28} style={{ flexShrink: 0, color: COLORS.zinc400 }} />
 
         {/* Typing text */}
         <div style={{ flex: 1, display: "flex", alignItems: "center" }}>

@@ -8,6 +8,7 @@ import {
   Img,
   staticFile,
 } from "remotion";
+import { CheckmarkCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 import { COLORS, FONTS } from "../constants";
 import { UserTail } from "./S06_UserChat";
 
@@ -15,13 +16,15 @@ const USER_MESSAGE =
   "Hey GAIA — pull my Gmail from the last 6 hours, check Google Calendar for today's meetings, scan my GitHub for open PRs, and check Slack for anything urgent. Summarize everything and set this up to run every morning at 8am automatically.";
 
 const TOOLS = [
-  { icon: "images/icons/gmail.svg", name: "Fetch emails", category: "Gmail", completeAt: 25 },
-  { icon: "images/icons/googlecalendar.webp", name: "Get calendar events", category: "Google Calendar", completeAt: 55 },
-  { icon: "images/icons/github.svg", name: "List pull requests", category: "GitHub", completeAt: 85 },
-  { icon: "images/icons/slack.svg", name: "Fetch messages", category: "Slack", completeAt: 115 },
+  { icon: "images/icons/gmail.svg", name: "Fetch emails", category: "Gmail", completeAt: 12 },
+  { icon: "images/icons/googlecalendar.webp", name: "Get calendar events", category: "Google Calendar", completeAt: 24 },
+  { icon: "images/icons/github.svg", name: "List pull requests", category: "GitHub", completeAt: 36 },
+  { icon: "images/icons/slack.svg", name: "Fetch messages", category: "Slack", completeAt: 48 },
+  { icon: "images/icons/notion.webp", name: "Create todos", category: "Notion", completeAt: 60 },
+  { icon: "images/icons/googledocs.webp", name: "Write briefing", category: "Google Docs", completeAt: 72 },
 ];
 
-const ROTATIONS = [8, -8, 5, -5];
+const ROTATIONS = [8, -8, 5, -5, 7, -6];
 
 interface ToolRowProps {
   tool: (typeof TOOLS)[number];
@@ -32,7 +35,7 @@ const ToolRow: React.FC<ToolRowProps> = ({ tool, index }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const rowDelay = index * 12;
+  const rowDelay = index * 8;
   const rowProgress = spring({ frame: frame - rowDelay, fps, config: { damping: 200 } });
   const rowOpacity = interpolate(rowProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
   const rowY = interpolate(rowProgress, [0, 1], [12, 0]);
@@ -81,7 +84,7 @@ const ToolRow: React.FC<ToolRowProps> = ({ tool, index }) => {
       {/* Status */}
       <div style={{ width: 28, height: 28, display: "flex", alignItems: "center", justifyContent: "center", paddingTop: 4 }}>
         {isDone ? (
-          <span style={{ color: "#22c55e", fontSize: 20, display: "inline-block", transform: `scale(${successScale})` }}>✓</span>
+          <CheckmarkCircle02Icon size={24} style={{ display: "inline-block", transform: `scale(${successScale})`, color: "#22c55e" }} />
         ) : (
           <div style={{ width: 20, height: 20, borderRadius: "50%", border: "2.5px solid transparent", borderTopColor: COLORS.primary, transform: `rotate(${spinAngle}deg)` }} />
         )}
@@ -98,8 +101,8 @@ export const S07_ChatToolCalls: React.FC = () => {
   const blockY = interpolate(blockProgress, [0, 1], [24, 0]);
   const blockOpacity = interpolate(blockProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
 
-  const accordionProgress = spring({ frame: frame - 5, fps, config: { damping: 22, stiffness: 90 } });
-  const accordionMaxH = interpolate(accordionProgress, [0, 1], [0, 520]);
+  const accordionProgress = spring({ frame: frame - 20, fps, config: { damping: 10, stiffness: 90 } });
+  const accordionMaxH = interpolate(accordionProgress, [0, 1], [0, 820]);
 
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, display: "flex", alignItems: "center", justifyContent: "center" }}>

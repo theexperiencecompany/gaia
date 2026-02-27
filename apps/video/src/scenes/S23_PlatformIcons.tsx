@@ -7,7 +7,8 @@ const PLATFORMS = [
   { src: "images/icons/macos/telegram.webp", label: "Telegram", delay: 0, comingSoon: false },
   { src: "images/icons/macos/discord.webp", label: "Discord", delay: 8, comingSoon: false },
   { src: "images/icons/macos/slack.webp", label: "Slack", delay: 16, comingSoon: false },
-  { src: "images/icons/macos/whatsapp.webp", label: "WhatsApp", delay: 24, comingSoon: true },
+  { src: "images/icons/macos/whatsapp.webp", label: "WhatsApp", delay: 24, comingSoon: false },
+  { src: "images/icons/macos/imessage.webp", label: "iMessage", delay: 32, comingSoon: false },
 ];
 
 export const S23_PlatformIcons: React.FC = () => {
@@ -54,7 +55,7 @@ export const S23_PlatformIcons: React.FC = () => {
         style={{
           display: "flex",
           alignItems: "flex-end",
-          gap: 60,
+          gap: 44,
         }}
       >
         {PLATFORMS.map((platform, i) => (

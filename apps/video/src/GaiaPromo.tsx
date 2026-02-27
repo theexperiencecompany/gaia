@@ -37,7 +37,6 @@ import { S27_CommunityCards } from "./scenes/S27_CommunityCards";
 // Act 7 & 8: Platform + Close
 import { S28_DashboardReveal } from "./scenes/S28_DashboardReveal";
 import { S29_OneDashboard } from "./scenes/S29_OneDashboard";
-import { S30_FourPillars } from "./scenes/S30_FourPillars";
 import { S31_NotJustAssistant } from "./scenes/S31_NotJustAssistant";
 import { S32_ProductivityOS } from "./scenes/S32_ProductivityOS";
 import { S33_CTAClose } from "./scenes/S33_CTAClose";
@@ -224,15 +223,7 @@ export const GaiaPromo: React.FC = () => {
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
         presentation={fade()}
-        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
-      />
-
-      <TransitionSeries.Sequence durationInFrames={102}>
-        <S30_FourPillars />
-      </TransitionSeries.Sequence>
-      <TransitionSeries.Transition
-        presentation={fade()}
-        timing={linearTiming({ durationInFrames: T.reveal })}
+        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.fast })}
       />
 
       {/* === ACT 8: THE CLOSE === */}
@@ -244,7 +235,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.fast })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={102}>
+      <TransitionSeries.Sequence durationInFrames={150}>
         <S32_ProductivityOS />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition

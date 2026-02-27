@@ -13,19 +13,25 @@ const TOOL_POSITIONS = [
   { x: 500, y: 250 },
   { x: -300, y: -250 },
   { x: 300, y: 250 },
+  { x: 200, y: -320 },
+  { x: -400, y: 150 },
+  { x: 400, y: -100 },
 ];
 
 const TOOL_ICONS = [
-  "images/icons/gmail.svg",
-  "images/icons/slack.svg",
-  "images/icons/notion.webp",
-  "images/icons/googlecalendar.webp",
-  "images/icons/googledocs.webp",
-  "images/icons/figma.svg",
-  "images/icons/github.svg",
-  "images/icons/trello.svg",
-  "images/icons/whatsapp.webp",
-  "images/icons/asana.svg",
+  "images/icons/macos/gmail.webp",
+  "images/icons/macos/slack.webp",
+  "images/icons/macos/notion.webp",
+  "images/icons/macos/calendar.webp",
+  "images/icons/macos/google_docs.webp",
+  "images/icons/macos/figma.webp",
+  "images/icons/macos/github.webp",
+  "images/icons/macos/trello.webp",
+  "images/icons/macos/whatsapp.webp",
+  "images/icons/macos/asana.webp",
+  "images/icons/macos/discord.webp",
+  "images/icons/macos/telegram.webp",
+  "images/icons/macos/zoom.webp",
 ];
 
 interface ToolIconProps {
@@ -75,15 +81,15 @@ const ToolIcon: React.FC<ToolIconProps> = ({ index, position, iconSrc }) => {
         position: "absolute",
         left: "50%",
         top: "50%",
-        transform: `translate(${finalX - 32}px, ${finalY - 32}px) scale(${scale}) rotate(${shakeOpacity ? shake : 0}deg)`,
+        transform: `translate(${finalX - 36}px, ${finalY - 36}px) scale(${scale}) rotate(${shakeOpacity ? shake : 0}deg)`,
         opacity: finalOpacity,
       }}
     >
       <Img
         src={staticFile(iconSrc)}
         style={{
-          width: 64,
-          height: 64,
+          width: 72,
+          height: 72,
           borderRadius: 16,
           display: "block",
         }}
@@ -100,7 +106,7 @@ export const S02_ToolChaos: React.FC = () => {
           key={i}
           index={i}
           position={pos}
-          iconSrc={TOOL_ICONS[i] || "images/icons/github.svg"}
+          iconSrc={TOOL_ICONS[i] || "images/icons/macos/github.webp"}
         />
       ))}
     </AbsoluteFill>

@@ -4,16 +4,33 @@ import { COLORS, FONTS } from "../constants";
 import { FloatingToolIcon } from "../components/FloatingToolIcon";
 
 const TOOL_ICONS = [
-  { src: "images/icons/notion.webp",         alt: "Notion",          x: -580, y: -180, rotation: -12, size: 72, floatPhase: 0 },
-  { src: "images/icons/gmail.svg",            alt: "Gmail",           x: -420, y:  120, rotation:   8, size: 80, floatPhase: 1 },
-  { src: "images/icons/googlecalendar.webp",  alt: "Google Calendar", x:  480, y: -200, rotation:  10, size: 72, floatPhase: 2 },
-  { src: "images/icons/macos/slack.webp",      alt: "Slack",           x:  520, y:  140, rotation:  -6, size: 72, floatPhase: 3 },
-  { src: "images/icons/googledocs.webp",      alt: "Google Docs",     x: -300, y: -280, rotation:   5, size: 68, floatPhase: 4 },
-  { src: "images/icons/figma.svg",            alt: "Figma",           x:  320, y: -300, rotation: -10, size: 68, floatPhase: 5 },
-  { src: "images/icons/github.svg",           alt: "GitHub",          x: -540, y:  240, rotation:   6, size: 72, floatPhase: 0.5 },
-  { src: "images/icons/googlesheets.webp",    alt: "Sheets",          x:  420, y:  280, rotation:  -8, size: 64, floatPhase: 1.5 },
-  { src: "images/icons/trello.svg",           alt: "Trello",          x: -200, y:  300, rotation:  12, size: 64, floatPhase: 2.5 },
-  { src: "images/icons/macos/whatsapp.webp",  alt: "WhatsApp",        x:  580, y:    0, rotation:  -4, size: 64, floatPhase: 3.5 },
+  // Far left column
+  { src: "images/icons/macos/notion.webp",      alt: "Notion",          x: -780, y: -280, rotation: -12, size: 96, floatPhase: 0 },
+  { src: "images/icons/macos/github.webp",      alt: "GitHub",          x: -800, y:   20, rotation:   6, size: 92, floatPhase: 0.5 },
+  { src: "images/icons/macos/whatsapp.webp",    alt: "WhatsApp",        x: -760, y:  300, rotation:  -8, size: 88, floatPhase: 1 },
+
+  // Mid-left column
+  { src: "images/icons/macos/gmail.webp",       alt: "Gmail",           x: -580, y: -340, rotation:   8, size: 96, floatPhase: 1.5 },
+  { src: "images/icons/macos/slack.webp",       alt: "Slack",           x: -600, y:  260, rotation:  10, size: 92, floatPhase: 2 },
+
+  // Top row
+  { src: "images/icons/macos/google_docs.webp", alt: "Google Docs",     x: -220, y: -360, rotation:   5, size: 90, floatPhase: 2.5 },
+  { src: "images/icons/macos/figma.webp",       alt: "Figma",           x:  180, y: -370, rotation: -10, size: 90, floatPhase: 3 },
+  { src: "images/icons/macos/discord.webp",     alt: "Discord",         x:  540, y: -330, rotation:   7, size: 88, floatPhase: 3.5 },
+
+  // Bottom row
+  { src: "images/icons/macos/calendar.webp",    alt: "Google Calendar", x: -240, y:  360, rotation:  12, size: 90, floatPhase: 4 },
+  { src: "images/icons/macos/telegram.webp",    alt: "Telegram",        x:  160, y:  370, rotation:  -6, size: 90, floatPhase: 4.5 },
+  { src: "images/icons/macos/todoist.webp",     alt: "Todoist",         x:  560, y:  310, rotation:   9, size: 88, floatPhase: 5 },
+
+  // Far right column
+  { src: "images/icons/macos/sheets.webp",      alt: "Sheets",          x:  780, y: -260, rotation:  -8, size: 96, floatPhase: 5.5 },
+  { src: "images/icons/macos/linear.webp",      alt: "Linear",          x:  820, y:   40, rotation:   4, size: 92, floatPhase: 0.7 },
+  { src: "images/icons/macos/zoom.webp",        alt: "Zoom",            x:  770, y:  310, rotation: -11, size: 88, floatPhase: 1.2 },
+
+  // Mid-right
+  { src: "images/icons/macos/trello.webp",      alt: "Trello",          x:  620, y: -100, rotation:  -5, size: 92, floatPhase: 1.8 },
+  { src: "images/icons/macos/asana.webp",       alt: "Asana",           x: -640, y:  -80, rotation:  13, size: 92, floatPhase: 2.3 },
 ];
 
 export const S25_AllYourTools: React.FC = () => {

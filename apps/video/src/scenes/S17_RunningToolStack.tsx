@@ -39,7 +39,7 @@ export const S17_RunningToolStack: React.FC = () => {
           justifyContent: "center",
         }}
       >
-        <div style={{ width: 960, display: "flex", flexDirection: "column", gap: 28 }}>
+        <div style={{ width: 700, display: "flex", flexDirection: "column", gap: 28, transform: "scale(1.2)", transformOrigin: "center center" }}>
           {/* WorkflowVideoCard */}
           <WorkflowVideoCard
             title="Daily Morning Briefing"
@@ -50,6 +50,7 @@ export const S17_RunningToolStack: React.FC = () => {
           {/* Tool calls block */}
           <div
             style={{
+              width: 700,
               background: "#18181b",
               borderRadius: 20,
               padding: "24px 28px",
@@ -73,8 +74,8 @@ export const S17_RunningToolStack: React.FC = () => {
                     <div
                       key={i}
                       style={{
-                        width: 44,
-                        height: 44,
+                        width: 56,
+                        height: 56,
                         borderRadius: 12,
                         background: "#27272a",
                         display: "flex",
@@ -88,7 +89,7 @@ export const S17_RunningToolStack: React.FC = () => {
                     >
                       <Img
                         src={staticFile(icon)}
-                        style={{ width: 28, height: 28, objectFit: "contain", filter: icon.includes("github") ? "invert(1)" : undefined }}
+                        style={{ width: 36, height: 36, objectFit: "contain", filter: icon.includes("github") ? "invert(1)" : undefined }}
                       />
                       {/* Spinning loader on last icon */}
                       {i === TOOL_ICONS.length - 1 && (
@@ -108,12 +109,12 @@ export const S17_RunningToolStack: React.FC = () => {
                 })}
               </div>
 
-              <span style={{ color: "#a1a1aa", fontFamily: FONTS.body, fontSize: 22, fontWeight: 500, marginLeft: 16, opacity: labelOpacity }}>
+              <span style={{ color: "#a1a1aa", fontFamily: FONTS.body, fontSize: 28, fontWeight: 500, marginLeft: 16, opacity: labelOpacity }}>
                 Used 4 tools
               </span>
             </div>
 
-            <div style={{ color: "#a1a1aa", fontFamily: FONTS.body, fontSize: 18 }}>
+            <div style={{ color: "#a1a1aa", fontFamily: FONTS.body, fontSize: 24 }}>
               Fetching emails, calendar, GitHub, and Slack...
             </div>
           </div>

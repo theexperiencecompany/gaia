@@ -123,7 +123,7 @@ export const WorkflowDraftVideoCard: React.FC<WorkflowDraftVideoCardProps> = ({
             flexShrink: 0,
           }}
         >
-          <Clock01Icon size={16} color={COLORS.primary} style={{ marginRight: 6, flexShrink: 0 }} />
+          <Clock01Icon size={16} style={{ marginRight: 6, flexShrink: 0, color: COLORS.primary }} />
           {schedule}
         </div>
       </div>

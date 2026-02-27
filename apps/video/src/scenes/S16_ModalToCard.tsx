@@ -1,5 +1,6 @@
 import React from "react";
 import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate } from "remotion";
+import { CheckmarkCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 import { COLORS, FONTS } from "../constants";
 import { SceneBackground } from "../components/SceneBackground";
 import { WorkflowVideoCard } from "../components/WorkflowVideoCard";
@@ -19,12 +20,6 @@ export const S16_ModalToCard: React.FC = () => {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-
-  const showRunning = frame >= 20;
-
-  // Running pulse ring
-  const pulseProg = spring({ frame: frame - 20, fps, config: { damping: 30 } });
-  const pulseSize = interpolate(pulseProg, [0, 1], [0, 10]);
 
   return (
     <AbsoluteFill>
@@ -49,11 +44,11 @@ export const S16_ModalToCard: React.FC = () => {
           whiteSpace: "nowrap",
         }}
       >
-        <span style={{ color: "#22c55e" }}>✓</span>
+        <CheckmarkCircle02Icon size={52} style={{ color: "#22c55e" }} />
         Workflow created.
       </div>
 
-      {/* Content directly on white bg, centered, 1400px wide */}
+      {/* Content directly on white bg, centered */}
       <div
         style={{
           position: "absolute",
@@ -63,7 +58,16 @@ export const S16_ModalToCard: React.FC = () => {
           justifyContent: "center",
         }}
       >
-        <div style={{ width: 960, display: "flex", flexDirection: "column", gap: 28 }}>
+        <div
+          style={{
+            width: 700,
+            display: "flex",
+            flexDirection: "column",
+            gap: 28,
+            transform: "scale(1.2)",
+            transformOrigin: "center center",
+          }}
+        >
           {/* WorkflowVideoCard with animation */}
           <div
             style={{
@@ -76,27 +80,9 @@ export const S16_ModalToCard: React.FC = () => {
               title="Daily Morning Briefing"
               description="Pulls Gmail, Calendar, GitHub, and Slack each morning and delivers a clean summary."
               schedule="Every day at 8:00 AM"
-              status={showRunning ? "running" : "ready"}
+              status="done"
             />
           </div>
-
-          {/* Running pulse indicator */}
-          {showRunning && (
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div
-                style={{
-                  width: 12,
-                  height: 12,
-                  borderRadius: "50%",
-                  background: COLORS.primary,
-                  boxShadow: `0 0 0 ${pulseSize}px ${COLORS.primary}22`,
-                }}
-              />
-              <span style={{ color: COLORS.zinc600, fontSize: 20, fontFamily: FONTS.body }}>
-                Running workflow...
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </AbsoluteFill>

@@ -141,7 +141,7 @@ export const WorkflowVideoCard: React.FC<WorkflowVideoCardProps> = ({
           width: "fit-content",
         }}
       >
-        <Clock01Icon size={18} color={COLORS.primary} />
+        <Clock01Icon size={18} style={{ color: COLORS.primary }} />
         <span
           style={{
             fontSize: 17,

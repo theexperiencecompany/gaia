@@ -1,5 +1,12 @@
-import React from "react";
-import { useCurrentFrame, useVideoConfig, spring, interpolate, Img, staticFile } from "remotion";
+import type React from "react";
+import {
+  Img,
+  interpolate,
+  spring,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import { FONTS } from "../constants";
 
 interface MacOSNotificationProps {
@@ -41,8 +48,8 @@ export const MacOSNotification: React.FC<MacOSNotificationProps> = ({
         gap: 20,
         background: "rgba(30, 30, 32, 0.97)",
         border: "1px solid rgba(255,255,255,0.1)",
-        borderRadius: 24,
-        padding: "28px 40px",
+        borderRadius: 35,
+        padding: "30px 40px 30px 25px",
         width: 860,
       }}
     >
