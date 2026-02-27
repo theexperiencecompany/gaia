@@ -10,6 +10,8 @@ import {
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
 
+const ROTATIONS = [8, -8, 5];
+
 const COMMUNITY_WORKFLOWS = [
   {
     title: "Daily Email Digest",
@@ -147,6 +149,7 @@ const CommunityCard: React.FC<CommunityCardProps> = ({ workflow, index }) => {
               zIndex: workflow.icons.length - i,
               position: "relative",
               overflow: "hidden",
+              transform: `rotate(${ROTATIONS[i] ?? 0}deg)`,
             }}
           >
             <Img

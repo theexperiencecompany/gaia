@@ -522,25 +522,32 @@ export const S28_DashboardReveal: React.FC = () => {
               fontSize: 30,
               color: COLORS.zinc600,
               display: "flex",
-              gap: 6,
+              alignItems: "center",
+              gap: 10,
               flexWrap: "wrap",
             }}
           >
             <span>You have</span>
-            <span style={{ color: COLORS.textDark, fontWeight: 600 }}>
-              3 meetings,
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <CalendarUpload01Icon size={28} style={{ color: "#60a5fa" }} />
+              <span style={{ color: COLORS.textDark, fontWeight: 600 }}>3</span>
+              <span>meetings,</span>
             </span>
-            <span style={{ color: COLORS.textDark, fontWeight: 600 }}>
-              4 tasks due,
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <CheckmarkCircle02Icon size={28} style={{ color: "#34d399" }} />
+              <span style={{ color: COLORS.textDark, fontWeight: 600 }}>4</span>
+              <span>tasks due,</span>
             </span>
-            <span style={{ color: COLORS.textDark, fontWeight: 600 }}>
-              5 unread emails,
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <InboxUnreadIcon size={28} style={{ color: "#38bdf8" }} />
+              <span style={{ color: COLORS.textDark, fontWeight: 600 }}>5</span>
+              <span>unread emails, and</span>
             </span>
-            <span>and</span>
-            <span style={{ color: COLORS.textDark, fontWeight: 600 }}>
-              2 workflows
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <WorkflowSquare05Icon size={28} style={{ color: "#f59e0b" }} />
+              <span style={{ color: COLORS.textDark, fontWeight: 600 }}>2</span>
+              <span>workflows today.</span>
             </span>
-            <span>today.</span>
           </div>
         </div>
 

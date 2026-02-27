@@ -39,7 +39,6 @@ import { S28_DashboardReveal } from "./scenes/S28_DashboardReveal";
 import { S29_OneDashboard } from "./scenes/S29_OneDashboard";
 import { S31_NotJustAssistant } from "./scenes/S31_NotJustAssistant";
 import { S32_ProductivityOS } from "./scenes/S32_ProductivityOS";
-import { S33_CTAClose } from "./scenes/S33_CTAClose";
 import { S34_SearchBarCTA } from "./scenes/S34_SearchBarCTA";
 
 const T = TRANSITIONS;
@@ -243,13 +242,6 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.slow })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={102}>
-        <S33_CTAClose />
-      </TransitionSeries.Sequence>
-      <TransitionSeries.Transition
-        presentation={fade()}
-        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.slow })}
-      />
       <TransitionSeries.Sequence durationInFrames={120}>
         <S34_SearchBarCTA />
       </TransitionSeries.Sequence>

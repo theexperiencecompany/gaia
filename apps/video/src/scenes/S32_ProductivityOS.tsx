@@ -6,40 +6,37 @@ export const S32_ProductivityOS: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Cyan bloom behind text
+  // Background cyan bloom: scales from 0 to 2.5 with slow spring
   const bloomProgress = spring({ frame, fps, config: { damping: 40 } });
-  const bloomScale = interpolate(bloomProgress, [0, 1], [0, 2.0]);
+  const bloomScale = interpolate(bloomProgress, [0, 1], [0, 2.5]);
 
-  // Line 1: "It's your" — fades in small + muted
-  const line1Progress = spring({ frame, fps, config: { damping: 200 } });
-  const line1Opacity = interpolate(line1Progress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
+  // Line 1: "It's your" — slides in from left at frame 0
+  const line1X = spring({ frame, fps, config: { damping: 22, stiffness: 150 } });
+  const line1TranslateX = interpolate(line1X, [0, 1], [-300, 0]);
 
-  // Line 2: "Productivity" — character by character, appears at frame 10
-  const chars = "Productivity".split("");
-  const charAnimations = chars.map((_, i) => {
-    const prog = spring({
-      frame: frame - 10 - i * 3,
-      fps,
-      config: { damping: 15 },
-    });
-    return {
-      scale: interpolate(prog, [0, 1], [0.7, 1.0]),
-      opacity: interpolate(prog, [0, 0.1], [0, 1], { extrapolateRight: "clamp" }),
-      y: interpolate(prog, [0, 1], [20, 0]),
-    };
+  // Line 2: "Productivity" — slams up from below at frame 10
+  const line2Y = spring({
+    frame: frame - 10,
+    fps,
+    config: { damping: 9, stiffness: 200 },
   });
+  const line2TranslateY = interpolate(line2Y, [0, 1], [180, 0]);
+  const line2Scale = interpolate(
+    frame - 10,
+    [0, 0.4 * fps * (1 / 30), fps * (1 / 30)],
+    [1.25, 0.96, 1.0],
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+  );
+  const line2Opacity = frame >= 10 ? 1 : 0;
 
-  // Line 3: "Operating System." — slides up as one unit at ~frame 50
-  const line3Progress = spring({ frame: frame - 50, fps, config: { damping: 18, stiffness: 120 } });
-  const line3Scale = interpolate(line3Progress, [0, 1], [0.9, 1.0]);
-  const line3Opacity = interpolate(line3Progress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
-
-  // Scan line sweeps at frame 80
-  const scanX = interpolate(frame - 80, [0, 40], [-960, 960], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
+  // Line 3: "Operating System." — slams in from right at frame 35
+  const line3X = spring({
+    frame: frame - 35,
+    fps,
+    config: { damping: 10, stiffness: 180 },
   });
-  const showScan = frame >= 80;
+  const line3TranslateX = interpolate(line3X, [0, 1], [400, 0]);
+  const line3Opacity = frame >= 35 ? 1 : 0;
 
   return (
     <AbsoluteFill
@@ -49,7 +46,7 @@ export const S32_ProductivityOS: React.FC = () => {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 4,
+        gap: 0,
         overflow: "hidden",
       }}
     >
@@ -58,74 +55,53 @@ export const S32_ProductivityOS: React.FC = () => {
         style={{
           position: "absolute",
           inset: 0,
-          background: `radial-gradient(ellipse at center, ${COLORS.primary}08 0%, transparent 65%)`,
+          background: `radial-gradient(ellipse at 50% 60%, ${COLORS.primary}18 0%, transparent 55%)`,
           transform: `scale(${bloomScale})`,
           pointerEvents: "none",
         }}
       />
 
-      {/* Scan line */}
-      {showScan && (
-        <div
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: 0,
-            width: "100%",
-            height: 2,
-            background: COLORS.primary,
-            opacity: 0.4,
-            transform: `translateX(${scanX}px)`,
-            pointerEvents: "none",
-            zIndex: 10,
-          }}
-        />
-      )}
-
-      {/* Line 1 */}
+      {/* Line 1: "It's your" */}
       <div
         style={{
           fontFamily: FONTS.body,
-          fontSize: 72,
-          fontWeight: 500,
+          fontSize: 80,
+          fontWeight: 400,
           color: COLORS.zinc600,
           textAlign: "center",
-          opacity: line1Opacity,
+          lineHeight: 1.1,
+          transform: `translateX(${line1TranslateX}px)`,
         }}
       >
         It&apos;s your
       </div>
 
-      {/* Line 2: "Productivity" — hero word */}
-      <div style={{ display: "flex" }}>
-        {chars.map((char, i) => (
-          <span
-            key={i}
-            style={{
-              display: "inline-block",
-              fontFamily: FONTS.display,
-              fontSize: 200,
-              color: COLORS.textDark,
-              lineHeight: 1.0,
-              letterSpacing: "-0.02em",
-              transform: `translateY(${charAnimations[i].y}px) scale(${charAnimations[i].scale})`,
-              opacity: charAnimations[i].opacity,
-            }}
-          >
-            {char}
-          </span>
-        ))}
+      {/* Line 2: "Productivity" */}
+      <div
+        style={{
+          fontFamily: FONTS.display,
+          fontSize: 220,
+          fontWeight: 800,
+          color: COLORS.textDark,
+          lineHeight: 0.95,
+          letterSpacing: "-0.03em",
+          transform: `translateY(${line2TranslateY}px) scale(${line2Scale})`,
+          opacity: line2Opacity,
+        }}
+      >
+        Productivity
       </div>
 
-      {/* Line 3: "Operating System." in cyan */}
+      {/* Line 3: "Operating System." */}
       <div
         style={{
           fontFamily: FONTS.display,
           fontSize: 180,
+          fontWeight: 800,
           color: COLORS.primary,
           lineHeight: 1.0,
           letterSpacing: "-0.02em",
-          transform: `scale(${line3Scale})`,
+          transform: `translateX(${line3TranslateX}px)`,
           opacity: line3Opacity,
         }}
       >
