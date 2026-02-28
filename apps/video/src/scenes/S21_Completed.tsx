@@ -13,8 +13,8 @@ export const S21_Completed: React.FC = () => {
   const cardScale = interpolate(cardProgress, [0, 0.5, 1], [0.92, 1.04, 1.0]);
   const cardOpacity = interpolate(cardProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
 
-  // "Done." overlay
-  const doneProgress = spring({ frame: frame - 10, fps, config: { damping: 200 } });
+  // "Done." overlay — delayed past transition so it doesn't slam in during the wipe
+  const doneProgress = spring({ frame: frame - 20, fps, config: { damping: 25 } });
   const doneOpacity = interpolate(doneProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
   const doneFadeOut = interpolate(frame, [70, 90], [1, 0], {
     extrapolateLeft: "clamp",

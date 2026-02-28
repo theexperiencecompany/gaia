@@ -10,7 +10,7 @@ import { COLORS, FONTS } from "../constants";
 const WORDS = [
   { text: "STOP",   startFrame: 0,   exitFrame: 10,  color: "#ff4444" },
   { text: "DOING",  startFrame: 10,  exitFrame: 20,  color: COLORS.textDark },
-  { text: "GRUNT",  startFrame: 20,  exitFrame: 32,  color: COLORS.zinc400 },
+  { text: "GRUNT",  startFrame: 20,  exitFrame: 32,  color: COLORS.textDark },
   { text: "WORK.",  startFrame: 32,  exitFrame: 999, color: COLORS.primary },
 ];
 
@@ -54,28 +54,8 @@ const Word: React.FC<WordProps> = ({ text, startFrame, exitFrame, color }) => {
 };
 
 export const S01_OpeningStatement: React.FC = () => {
-  const frame = useCurrentFrame();
-
-  // White flash at word cut frames
-  const FLASH_FRAMES = [10, 20, 32];
-  const flashOpacity = FLASH_FRAMES.reduce((acc, f) => {
-    const dist = Math.abs(frame - f);
-    return Math.max(acc, dist <= 1 ? interpolate(dist, [0, 1], [0.6, 0]) : 0);
-  }, 0);
-
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, overflow: "hidden" }}>
-      {/* White flash at word cuts */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "white",
-          opacity: flashOpacity,
-          pointerEvents: "none",
-          zIndex: 10,
-        }}
-      />
       {/* Words — centered, one at a time, instant hard cut */}
       <div
         style={{

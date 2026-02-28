@@ -87,8 +87,8 @@ export const GaiaPromo: React.FC = () => {
 
       {/* === ACT 3: WORKFLOW CREATION VIA CHAT === */}
       {/* User sends a long multi-tool request */}
-      {/* DURATION TRIMMED: 240 → 120 */}
-      <TransitionSeries.Sequence durationInFrames={120}>
+      {/* framesPerChar=0.5, typing ~118f + indicator ~20f + 8f transition = 155f */}
+      <TransitionSeries.Sequence durationInFrames={155}>
         <S06_UserChat />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -141,8 +141,8 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.fast })}
       />
 
-      {/* DURATION TRIMMED: 200 → 160 */}
-      <TransitionSeries.Sequence durationInFrames={160}>
+      {/* All 3 chips settle ~182f, 12f transition = 195f */}
+      <TransitionSeries.Sequence durationInFrames={195}>
         <S19_BotMessageStream />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition

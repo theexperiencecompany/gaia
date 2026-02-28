@@ -38,10 +38,10 @@ export const S06_UserChat: React.FC = () => {
   const sceneProgress = spring({ frame, fps, config: { damping: 25 } });
   const sceneOpacity = interpolate(sceneProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
 
-  const typingDone = frame >= USER_MESSAGE.length;
+  const typingDone = frame >= Math.ceil(USER_MESSAGE.length / 2);
 
   // Typing indicator after message completes
-  const indicatorDelay = USER_MESSAGE.length + 8;
+  const indicatorDelay = Math.ceil(USER_MESSAGE.length / 2) + 8;
   const indicatorProgress = spring({ frame: frame - indicatorDelay, fps, config: { damping: 25 } });
   const indicatorOpacity = interpolate(indicatorProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
 
@@ -78,7 +78,7 @@ export const S06_UserChat: React.FC = () => {
             >
               <TypingText
                 text={USER_MESSAGE}
-                framesPerChar={1}
+                framesPerChar={0.5}
                 delay={0}
                 cursorColor="#000000"
                 showCursor={!typingDone}
