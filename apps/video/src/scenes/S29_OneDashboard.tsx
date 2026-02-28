@@ -119,7 +119,7 @@ export const S29_OneDashboard: React.FC = () => {
     };
   });
 
-  // Line 2: "Everything." (cyan) — 15 frames later
+  // Line 2: "Everything." (cyan) — 8 frames later
   const line2Progress = spring({
     frame: frame - 8,
     fps,
