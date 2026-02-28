@@ -100,7 +100,7 @@ const EmailRow: React.FC<EmailRowProps> = ({ email, index, cardDelay }) => {
         display: "flex",
         alignItems: "center",
         justifyContent: "space-between",
-        padding: "10px 20px",
+        padding: "14px 24px",
         borderTop: index === 0 ? "none" : "1px solid rgba(255,255,255,0.04)",
         opacity,
         transform: `translateY(${translateY}px)`,
@@ -111,7 +111,7 @@ const EmailRow: React.FC<EmailRowProps> = ({ email, index, cardDelay }) => {
           style={{
             color: "#e4e4e7",
             fontFamily: FONTS.body,
-            fontSize: 20,
+            fontSize: 26,
             fontWeight: 600,
             marginBottom: 2,
             overflow: "hidden",
@@ -125,7 +125,7 @@ const EmailRow: React.FC<EmailRowProps> = ({ email, index, cardDelay }) => {
           style={{
             color: COLORS.zinc400,
             fontFamily: FONTS.body,
-            fontSize: 16,
+            fontSize: 20,
             overflow: "hidden",
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
@@ -138,7 +138,7 @@ const EmailRow: React.FC<EmailRowProps> = ({ email, index, cardDelay }) => {
         style={{
           color: COLORS.zinc400,
           fontFamily: FONTS.body,
-          fontSize: 16,
+          fontSize: 20,
           flexShrink: 0,
           marginLeft: 12,
         }}
@@ -174,7 +174,7 @@ const EventRow: React.FC<EventRowProps> = ({ event, index, cardDelay }) => {
         display: "flex",
         alignItems: "center",
         gap: 12,
-        padding: "10px 20px",
+        padding: "14px 24px",
         borderTop: index === 0 ? "none" : "1px solid rgba(255,255,255,0.04)",
         opacity,
         transform: `translateY(${translateY}px)`,
@@ -194,7 +194,7 @@ const EventRow: React.FC<EventRowProps> = ({ event, index, cardDelay }) => {
           style={{
             color: "white",
             fontFamily: FONTS.body,
-            fontSize: 20,
+            fontSize: 26,
             fontWeight: 600,
           }}
         >
@@ -204,7 +204,7 @@ const EventRow: React.FC<EventRowProps> = ({ event, index, cardDelay }) => {
           style={{
             color: COLORS.zinc400,
             fontFamily: FONTS.body,
-            fontSize: 16,
+            fontSize: 20,
             marginTop: 2,
           }}
         >
@@ -240,7 +240,7 @@ const TodoRow: React.FC<TodoRowProps> = ({ todo, index, cardDelay }) => {
         display: "flex",
         alignItems: "center",
         gap: 12,
-        padding: "10px 20px",
+        padding: "14px 24px",
         borderTop: index === 0 ? "none" : "1px solid rgba(255,255,255,0.04)",
         opacity,
         transform: `translateY(${translateY}px)`,
@@ -260,7 +260,7 @@ const TodoRow: React.FC<TodoRowProps> = ({ todo, index, cardDelay }) => {
           style={{
             color: "white",
             fontFamily: FONTS.body,
-            fontSize: 20,
+            fontSize: 26,
             fontWeight: 500,
             overflow: "hidden",
             textOverflow: "ellipsis",
@@ -276,7 +276,7 @@ const TodoRow: React.FC<TodoRowProps> = ({ todo, index, cardDelay }) => {
           borderRadius: 4,
           background: todo.priorityColor + "22",
           color: todo.priorityColor,
-          fontSize: 13,
+          fontSize: 16,
           fontFamily: FONTS.body,
           fontWeight: 600,
           textTransform: "capitalize",
@@ -313,7 +313,7 @@ const WorkflowRow: React.FC<WorkflowRowProps> = ({ wf, index, cardDelay }) => {
         display: "flex",
         alignItems: "center",
         gap: 12,
-        padding: "12px 20px",
+        padding: "16px 24px",
         borderTop: index === 0 ? "none" : "1px solid rgba(255,255,255,0.04)",
         opacity,
         transform: `translateY(${translateY}px)`,
@@ -325,8 +325,8 @@ const WorkflowRow: React.FC<WorkflowRowProps> = ({ wf, index, cardDelay }) => {
           <div
             key={j}
             style={{
-              width: 32,
-              height: 32,
+              width: 40,
+              height: 40,
               borderRadius: 8,
               background: "#27272a",
               display: "flex",
@@ -341,7 +341,7 @@ const WorkflowRow: React.FC<WorkflowRowProps> = ({ wf, index, cardDelay }) => {
           >
             <Img
               src={staticFile(icon)}
-              style={{ width: 20, height: 20, objectFit: "contain" }}
+              style={{ width: 26, height: 26, objectFit: "contain" }}
             />
           </div>
         ))}
@@ -351,7 +351,7 @@ const WorkflowRow: React.FC<WorkflowRowProps> = ({ wf, index, cardDelay }) => {
           style={{
             color: "white",
             fontFamily: FONTS.body,
-            fontSize: 20,
+            fontSize: 26,
             fontWeight: 600,
           }}
         >
@@ -361,7 +361,7 @@ const WorkflowRow: React.FC<WorkflowRowProps> = ({ wf, index, cardDelay }) => {
           style={{
             color: COLORS.zinc400,
             fontFamily: FONTS.body,
-            fontSize: 16,
+            fontSize: 20,
             marginTop: 2,
           }}
         >
@@ -374,7 +374,7 @@ const WorkflowRow: React.FC<WorkflowRowProps> = ({ wf, index, cardDelay }) => {
           borderRadius: 8,
           background: COLORS.primary + "22",
           color: COLORS.primary,
-          fontSize: 15,
+          fontSize: 18,
           fontFamily: FONTS.body,
           fontWeight: 700,
         }}
@@ -432,7 +432,7 @@ const DashCard: React.FC<DashCardProps> = ({
           display: "flex",
           alignItems: "center",
           gap: 12,
-          padding: "14px 20px 10px",
+          padding: "18px 24px 14px",
         }}
       >
         {icon}
@@ -441,7 +441,7 @@ const DashCard: React.FC<DashCardProps> = ({
             color: "#d4d4d8",
             fontFamily: FONTS.body,
             fontWeight: 500,
-            fontSize: 22,
+            fontSize: 28,
           }}
         >
           {title}
@@ -463,6 +463,19 @@ export const S28_DashboardReveal: React.FC = () => {
     extrapolateRight: "clamp",
   });
   const greetY = interpolate(greetProgress, [0, 1], [20, 0]);
+
+  // Staggered summary items animation
+  const makeSummaryAnim = (delay: number) => {
+    const p = spring({ frame: frame - delay, fps, config: { damping: 200 } });
+    return {
+      opacity: interpolate(p, [0, 0.1], [0, 1], { extrapolateRight: "clamp" }),
+      transform: `translateY(${interpolate(p, [0, 1], [10, 0])}px)`,
+      display: "inline-flex" as const,
+      alignItems: "center" as const,
+      gap: 6,
+    };
+  };
+  const summaryAnims = [0, 4, 10, 16, 22].map(makeSummaryAnim);
 
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, overflowY: "hidden" }}>
@@ -527,23 +540,23 @@ export const S28_DashboardReveal: React.FC = () => {
               flexWrap: "wrap",
             }}
           >
-            <span>You have</span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={summaryAnims[0]}>You have</span>
+            <span style={summaryAnims[1]}>
               <CalendarUpload01Icon size={28} style={{ color: "#60a5fa" }} />
               <span style={{ color: COLORS.textDark, fontWeight: 600 }}>3</span>
               <span>meetings,</span>
             </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={summaryAnims[2]}>
               <CheckmarkCircle02Icon size={28} style={{ color: "#34d399" }} />
               <span style={{ color: COLORS.textDark, fontWeight: 600 }}>4</span>
               <span>tasks due,</span>
             </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={summaryAnims[3]}>
               <InboxUnreadIcon size={28} style={{ color: "#38bdf8" }} />
               <span style={{ color: COLORS.textDark, fontWeight: 600 }}>5</span>
               <span>unread emails, and</span>
             </span>
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={summaryAnims[4]}>
               <WorkflowSquare05Icon size={28} style={{ color: "#f59e0b" }} />
               <span style={{ color: COLORS.textDark, fontWeight: 600 }}>2</span>
               <span>workflows today.</span>
@@ -566,7 +579,7 @@ export const S28_DashboardReveal: React.FC = () => {
           <DashCard
             title="Unread emails"
             icon={
-              <InboxUnreadIcon size={20} style={{ color: COLORS.zinc400 }} />
+              <InboxUnreadIcon size={24} style={{ color: COLORS.zinc400 }} />
             }
             delay={10}
           >
@@ -580,7 +593,7 @@ export const S28_DashboardReveal: React.FC = () => {
             title="Upcoming events"
             icon={
               <CalendarUpload01Icon
-                size={20}
+                size={24}
                 style={{ color: COLORS.zinc400 }}
               />
             }
@@ -596,7 +609,7 @@ export const S28_DashboardReveal: React.FC = () => {
             title="Inbox Todos"
             icon={
               <CheckmarkCircle02Icon
-                size={20}
+                size={24}
                 style={{ color: COLORS.zinc400 }}
               />
             }
@@ -612,7 +625,7 @@ export const S28_DashboardReveal: React.FC = () => {
             title="Workflows"
             icon={
               <WorkflowSquare05Icon
-                size={20}
+                size={24}
                 style={{ color: COLORS.zinc400 }}
               />
             }
