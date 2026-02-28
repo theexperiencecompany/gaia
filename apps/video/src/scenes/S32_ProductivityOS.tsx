@@ -24,18 +24,6 @@ export const S32_ProductivityOS: React.FC = () => {
     extrapolateRight: "clamp",
   });
 
-  // Line 2: "Productivity" — hero entrance, slight controlled spring (ONE element gets drama)
-  const line2P = spring({
-    frame: frame - 5,
-    fps,
-    config: { damping: 18, stiffness: 140 },
-  });
-  const line2Y = interpolate(line2P, [0, 1], [80, 0]);
-  const line2Scale = interpolate(line2P, [0, 0.5, 1], [1.04, 0.98, 1.0]);
-  const line2Opacity = interpolate(line2P, [0, 0.08], [0, 1], {
-    extrapolateRight: "clamp",
-  });
-
   // Line 3: "Operating System." — clean snap up, after line 2 settles
   const line3P = spring({ frame: frame - 26, fps, config: { damping: 200 } });
   const line3Y = interpolate(line3P, [0, 1], [40, 0]);
@@ -83,22 +71,47 @@ export const S32_ProductivityOS: React.FC = () => {
         It&apos;s your
       </div>
 
-      {/* Line 2: "Productivity" */}
-      <div
-        style={{
-          fontFamily: FONTS.display,
-          textTransform: "uppercase" as const,
-          fontSize: 150,
-          fontWeight: 700,
-          color: COLORS.textDark,
-          lineHeight: 0.95,
-          letterSpacing: "-0.03em",
-          transform: `translateY(${line2Y}px) scale(${line2Scale})`,
-          opacity: line2Opacity,
-        }}
-      >
-        Productivity
-      </div>
+      {/* Line 2: "PRODUCTIVITY" — character cascade */}
+      {(() => {
+        const WORD = "PRODUCTIVITY";
+        return (
+          <div
+            style={{
+              display: "flex",
+              fontFamily: FONTS.display,
+              fontSize: 150,
+              fontWeight: 700,
+              lineHeight: 0.95,
+              letterSpacing: "-0.03em",
+            }}
+          >
+            {WORD.split("").map((char, i) => {
+              const charP = spring({
+                frame: frame - (5 + i * 1.5),
+                fps,
+                config: { damping: 18, stiffness: 140 },
+              });
+              const charY = interpolate(charP, [0, 1], [80, 0]);
+              const charOpacity = interpolate(charP, [0, 0.08], [0, 1], {
+                extrapolateRight: "clamp",
+              });
+              return (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-block",
+                    color: COLORS.textDark,
+                    transform: `translateY(${charY}px)`,
+                    opacity: charOpacity,
+                  }}
+                >
+                  {char}
+                </span>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {/* Line 3: "Operating System." */}
       <div
