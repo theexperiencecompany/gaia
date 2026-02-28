@@ -61,7 +61,7 @@ export const S31_NotJustAssistant: React.FC = () => {
         }}
       >
         {WORDS.map((word, i) => {
-          const wordFrame = frame - (16 + i * 6);
+          const wordFrame = frame - (8 + i * 3);
           const wordSpring = spring({
             frame: wordFrame,
             fps,

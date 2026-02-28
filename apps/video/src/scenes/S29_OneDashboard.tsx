@@ -73,13 +73,13 @@ export const S29_OneDashboard: React.FC = () => {
       label: "Emails",
       color: "#38bdf8",
       iconNode: <InboxUnreadIcon size={28} style={{ color: "#38bdf8" }} />,
-      delay: 50,
+      delay: 20,
     },
     {
       label: "Calendar",
       color: "#60a5fa",
       iconNode: <CalendarUpload01Icon size={28} style={{ color: "#60a5fa" }} />,
-      delay: 60,
+      delay: 26,
     },
     {
       label: "Todos",
@@ -87,19 +87,19 @@ export const S29_OneDashboard: React.FC = () => {
       iconNode: (
         <CheckmarkCircle02Icon size={28} style={{ color: "#34d399" }} />
       ),
-      delay: 70,
+      delay: 32,
     },
     {
       label: "Goals",
       color: "#6366f1",
       iconNode: <Target02Icon size={28} style={{ color: "#6366f1" }} />,
-      delay: 80,
+      delay: 38,
     },
     {
       label: "Workflows",
       color: "#f59e0b",
       iconNode: <ZapIcon size={28} style={{ color: "#f59e0b" }} />,
-      delay: 90,
+      delay: 44,
     },
   ];
 
@@ -107,9 +107,9 @@ export const S29_OneDashboard: React.FC = () => {
   const words1 = ["One", "dashboard."];
   const line1Chars = words1.map((_, i) => {
     const prog = spring({
-      frame: frame - i * 5,
+      frame: frame - i * 2,
       fps,
-      config: { damping: 18, stiffness: 120 },
+      config: { damping: 20, stiffness: 180 },
     });
     return {
       y: interpolate(prog, [0, 1], [40, 0]),
@@ -121,9 +121,9 @@ export const S29_OneDashboard: React.FC = () => {
 
   // Line 2: "Everything." (cyan) — 15 frames later
   const line2Progress = spring({
-    frame: frame - 15,
+    frame: frame - 8,
     fps,
-    config: { damping: 18, stiffness: 120 },
+    config: { damping: 20, stiffness: 180 },
   });
   const line2Scale = interpolate(line2Progress, [0, 1], [0.9, 1.0]);
   const line2Opacity = interpolate(line2Progress, [0, 0.1], [0, 1], {

@@ -19,9 +19,9 @@ export const S05_MeetGaia: React.FC = () => {
   // Character-by-character for "Meet"
   const charAnims = chars.map((_, i) => {
     const prog = spring({
-      frame: frame - i * 3,
+      frame: frame - i * 1.5,
       fps,
-      config: { damping: 25, stiffness: 150 },
+      config: { damping: 20, stiffness: 200 },
     });
     return {
       y: interpolate(prog, [0, 1], [30, 0]),
@@ -32,7 +32,7 @@ export const S05_MeetGaia: React.FC = () => {
   });
 
   // GAIA logo blooms in after "Meet" settles
-  const logoDelay = chars.length * 3 + 6;
+  const logoDelay = chars.length * 1.5 + 4;
   const logoProg = spring({
     frame: frame - logoDelay,
     fps,
@@ -76,7 +76,7 @@ export const S05_MeetGaia: React.FC = () => {
   );
 
   // Dive zoom exit
-  const exitProg = spring({ frame: frame - 90, fps, config: { damping: 200 } });
+  const exitProg = spring({ frame: frame - 70, fps, config: { damping: 200 } });
   const exitScale = interpolate(exitProg, [0, 1], [1.0, 1.15], {
     extrapolateLeft: "clamp",
   });

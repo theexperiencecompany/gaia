@@ -26,7 +26,7 @@ export const S32_ProductivityOS: React.FC = () => {
 
   // Line 2: "Productivity" — hero entrance, slight controlled spring (ONE element gets drama)
   const line2P = spring({
-    frame: frame - 8,
+    frame: frame - 5,
     fps,
     config: { damping: 18, stiffness: 140 },
   });
@@ -37,7 +37,7 @@ export const S32_ProductivityOS: React.FC = () => {
   });
 
   // Line 3: "Operating System." — clean snap up, slightly after line 2 settles
-  const line3P = spring({ frame: frame - 35, fps, config: { damping: 200 } });
+  const line3P = spring({ frame: frame - 16, fps, config: { damping: 200 } });
   const line3Y = interpolate(line3P, [0, 1], [40, 0]);
   const line3Opacity = interpolate(line3P, [0, 0.1], [0, 1], {
     extrapolateRight: "clamp",
