@@ -46,9 +46,11 @@ export const S03_BetterWay: React.FC = () => {
   const exitP = spring({ frame: frame - 80, fps, config: { damping: 200 } });
   const exitScale = interpolate(exitP, [0, 1], [1.0, 1.08], {
     extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
   });
   const exitOpacity = interpolate(exitP, [0, 1], [1, 0], {
     extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
   });
 
   return (

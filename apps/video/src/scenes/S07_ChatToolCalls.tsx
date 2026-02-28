@@ -106,8 +106,8 @@ export const S07_ChatToolCalls: React.FC = () => {
 
   // Exit: slide up + fade (clears for slide-from-bottom transition)
   const exitP = spring({ frame: frame - 135, fps, config: { damping: 200 } });
-  const exitY = interpolate(exitP, [0, 1], [0, -30], { extrapolateLeft: "clamp" });
-  const exitOpacity = interpolate(exitP, [0, 1], [1, 0], { extrapolateLeft: "clamp" });
+  const exitY = interpolate(exitP, [0, 1], [0, -30], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const exitOpacity = interpolate(exitP, [0, 1], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, display: "flex", alignItems: "center", justifyContent: "center", transform: `translateY(${exitY}px)`, opacity: exitOpacity }}>
