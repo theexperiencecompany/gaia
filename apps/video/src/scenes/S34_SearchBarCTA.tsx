@@ -45,9 +45,8 @@ export const S34_SearchBarCTA: React.FC = () => {
   });
 
   // Headline: slides down from top, very fast snap
-  const headlineP = spring({ frame, fps, config: { damping: 200 } });
-  const headlineY = interpolate(headlineP, [0, 1], [-24, 0]);
-  const headlineOpacity = interpolate(headlineP, [0, 0.08], [0, 1], {
+  const headlineY = interpolate(barProgress, [0, 1], [-24, 0]);
+  const headlineOpacity = interpolate(barProgress, [0, 0.08], [0, 1], {
     extrapolateRight: "clamp",
   });
 
@@ -66,10 +65,8 @@ export const S34_SearchBarCTA: React.FC = () => {
       <div
         style={{
           position: "absolute",
-          width: 1100,
-          height: 300,
-          borderRadius: "50%",
-          background: `radial-gradient(ellipse at center, ${COLORS.primary}18 0%, transparent 70%)`,
+          inset: 0,
+          background: `radial-gradient(ellipse at 50% 55%, ${COLORS.primary}18 0%, transparent 40%)`,
           opacity: barOpacity,
           pointerEvents: "none",
         }}
