@@ -213,7 +213,7 @@ async def run_chat_stream_background(
 
                     # Update progress for recovery
                     response_text = _extract_response_text(chunk)
-                    if response_text:
+                    if response_text or new_data:
                         await stream_manager.update_progress(
                             stream_id,
                             message_chunk=response_text,
@@ -264,8 +264,13 @@ async def run_chat_stream_background(
             if progress:
                 complete_message = progress.get("complete_message", "")
                 # Also recover tool_data if we have it
-                if progress.get("tool_data"):
-                    tool_data = progress["tool_data"]
+                progress_tool_data = progress.get("tool_data")
+                if (
+                    isinstance(progress_tool_data, dict)
+                    and progress_tool_data.get("tool_data")
+                    and not tool_data.get("tool_data")
+                ):
+                    tool_data = progress_tool_data
                 logger.debug(
                     f"Recovered {len(complete_message)} chars from Redis progress"
                 )

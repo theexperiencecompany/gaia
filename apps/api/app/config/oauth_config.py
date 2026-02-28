@@ -473,10 +473,9 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             auto_bind_tools=[
                 "GMAIL_FETCH_EMAILS",
                 "GMAIL_CREATE_EMAIL_DRAFT",
-                "GMAIL_SEND_DRAFT",
                 "GMAIL_SEARCH_EMAILS",
                 "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
-                "GMAIL_LIST_DRAFTS",
+                "GMAIL_GET_CONTACT_LIST",
             ],
             memory_prompt=GMAIL_MEMORY_PROMPT,
         ),
