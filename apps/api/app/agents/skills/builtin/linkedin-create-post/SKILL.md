@@ -1,6 +1,6 @@
 ---
 name: linkedin-create-post
-description: Create and manage LinkedIn posts with a professional standard - draft-first posting, post as me or company, and high-quality engagement workflows.
+description: Create and manage LinkedIn posts with a professional standard - post as me or company, and high-quality engagement workflows.
 target: linkedin_agent
 ---
 
@@ -15,37 +15,34 @@ target: linkedin_agent
 
 ## Tools
 
-### Author and org context
+### Primary custom tools
 
-- **LINKEDIN_GET_MY_INFO** - get authenticated user identity and profile context
-- **LINKEDIN_GET_COMPANY_INFO** - get organization context when posting/engaging as a company
+- **LINKEDIN_CUSTOM_CREATE_POST** - preferred post creation (text/image/carousel/document/article)
+- **LINKEDIN_CUSTOM_ADD_COMMENT** - add comment to a post URN
+- **LINKEDIN_CUSTOM_GET_POST_COMMENTS** - fetch comments for a post URN
+- **LINKEDIN_CUSTOM_REACT_TO_POST** - react to a post URN
+- **LINKEDIN_CUSTOM_GET_POST_REACTIONS** - fetch reactions for a post URN
+- **LINKEDIN_CUSTOM_DELETE_REACTION** - remove your reaction from a post URN
 
-### Posting
+### Context + identity tools
 
-- **LINKEDIN_CUSTOM_CREATE_POST** - preferred post creation tool in this system
+- **LINKEDIN_GET_MY_INFO** - authenticated person identity context
+- **LINKEDIN_GET_COMPANY_INFO** - organization context for company posting
+- **LINKEDIN_GET_POST_CONTENT** - read/verify post content before engagement
 
-### Engagement and management
+### Toolkit fallback tools
 
-- **LINKEDIN_CUSTOM_GET_POST_COMMENTS** - fetch comments for a post
-- **LINKEDIN_CUSTOM_REACT_TO_POST** - add a reaction to a post
-- **LINKEDIN_CUSTOM_ADD_COMMENT** - add a comment to a post
-- **LINKEDIN_CUSTOM_GET_POST_REACTIONS** - fetch reactions for a post
-- **LINKEDIN_CUSTOM_DELETE_REACTION** - remove a reaction (requires explicit user confirmation)
+Use these when a custom tool does not fit the request:
 
-Prefer the LINKEDIN_CUSTOM_* tools listed above (they are the supported set in this repo).
-If a capability is not available via custom tools, use composio toolkit tools (discover via retrieve_tools),
-then still follow the same draft-first + confirmation rules.
+- **LINKEDIN_CREATE_LINKED_IN_POST** - generic fallback post creation
+- **LINKEDIN_CREATE_ARTICLE_OR_URL_SHARE** - fallback for URL/article share flows
+- **LINKEDIN_CREATE_COMMENT_ON_POST** - fallback comment creation
+- **LINKEDIN_LIST_REACTIONS** - fallback reactions listing
+- **LINKEDIN_DELETE_POST** / **LINKEDIN_DELETE_LINKED_IN_POST** / **LINKEDIN_DELETE_UGC_POST** / **LINKEDIN_DELETE_UGC_POSTS** - deletion tools (explicit consent required)
 
-Common composio LINKEDIN tools you may see:
-- LINKEDIN_CREATE_LINKED_IN_POST
-- LINKEDIN_CREATE_COMMENT_ON_POST
-- LINKEDIN_GET_POST_CONTENT
-- LINKEDIN_LIST_REACTIONS
-- LINKEDIN_DELETE_POST / LINKEDIN_DELETE_LINKED_IN_POST
-
-Composio tools often require explicit author URNs:
-- For posting as a person: author="urn:li:person:<person_id>" (get person_id via LINKEDIN_GET_MY_INFO)
-- For posting as an org: author="urn:li:organization:<org_id>" (get org_id via LINKEDIN_GET_COMPANY_INFO)
+Composio fallback tools may require explicit author URNs:
+- Person author: `urn:li:person:<person_id>` (resolve via `LINKEDIN_GET_MY_INFO`)
+- Organization author: `urn:li:organization:<org_id>` (resolve via `LINKEDIN_GET_COMPANY_INFO`)
 
 ## Professional Standard (Non-Negotiable)
 
@@ -61,15 +58,9 @@ For creating posts:
 
 1. Draft the post copy first and show it to the user.
 2. Ask for explicit confirmation to post (e.g., "Post it", "Yes, publish", "Go ahead").
-3. Only then call the chosen post-creation tool (prefer LINKEDIN_CUSTOM_CREATE_POST; LINKEDIN_CREATE_LINKED_IN_POST is also acceptable).
+3. Only then call the chosen post-creation tool.
 
 Do not publish on the user's behalf without explicit confirmation.
-
-If you need to use composio tools for post creation, you may use:
-- LINKEDIN_CREATE_LINKED_IN_POST
-
-Even then: keep the same draft-first + explicit confirmation rule.
-If supported/desired, you may create a platform draft with lifecycleState="DRAFT".
 
 ## Step 1: Determine Author and Goal
 
@@ -88,14 +79,18 @@ If author context matters, call:
 
 ## Step 2: Choose Post Type and Required Inputs
 
-Prefer **LINKEDIN_CUSTOM_CREATE_POST**. You may also use **LINKEDIN_CREATE_LINKED_IN_POST**.
+Prefer **LINKEDIN_CUSTOM_CREATE_POST** for all post types.
 
 - Text-only: commentary only
 - Image post: commentary + image_url (or image_urls for carousel; supported, max 20)
 - Document post: commentary + document_url + document_title
 - Link/article post: commentary + article_url
 
-The tool should handle media uploads.
+Fallbacks when needed:
+- **LINKEDIN_CREATE_ARTICLE_OR_URL_SHARE** for URL/article specific share flows
+- **LINKEDIN_CREATE_LINKED_IN_POST** for generic toolkit creation flows
+
+Custom post tool handles media uploads.
 
 ## Step 3: Draft the Post Copy
 
@@ -140,12 +135,27 @@ LINKEDIN_CUSTOM_CREATE_POST(
   organization_id="urn:li:organization:12345",
   visibility="PUBLIC",
 )
+
+# Toolkit fallback for URL/article shares
+LINKEDIN_CREATE_ARTICLE_OR_URL_SHARE(...)
+
+# Toolkit fallback for generic post creation
+LINKEDIN_CREATE_LINKED_IN_POST(...)
 ```
 
 Return the post URL and the returned post URN.
 Note: the tool returns `post_id` as the post URN; use it as `post_urn` for comments/reactions.
 
 ## Engagement Guidance
+
+### Tool mapping
+
+- Read post before engaging: `LINKEDIN_GET_POST_CONTENT`
+- Fetch comments: `LINKEDIN_CUSTOM_GET_POST_COMMENTS`
+- Add comment: `LINKEDIN_CUSTOM_ADD_COMMENT` (fallback: `LINKEDIN_CREATE_COMMENT_ON_POST`)
+- Fetch reactions: `LINKEDIN_CUSTOM_GET_POST_REACTIONS` (fallback: `LINKEDIN_LIST_REACTIONS`)
+- Add reaction: `LINKEDIN_CUSTOM_REACT_TO_POST`
+- Remove reaction: `LINKEDIN_CUSTOM_DELETE_REACTION` (only after explicit user confirmation)
 
 ### Reactions
 
@@ -170,35 +180,3 @@ Good comments must:
 - Reference something specific from the post
 - Add perspective, a helpful detail, or a thoughtful question
 - Stay concise and professional
-
-## Destructive Actions (Safety)
-
-- Removing reactions requires explicit user confirmation.
-- If you discover a post deletion tool via retrieve_tools, treat deletion as irreversible and require explicit user confirmation.
-
-## Context-First Rule
-
-If a post URN/ID is already in context, use it directly for comments/reactions.
-Do not search unnecessarily.
-
-## Error Handling
-
-If an action fails:
-
-1. Verify assumptions (correct post URN, correct author/org identity)
-2. Retry once with corrected inputs
-3. If still failing, report clearly what cannot be done and why
-
-## Completion Standard
-
-Task is complete only when:
-
-- The LinkedIn action succeeded, OR
-- Explicit user confirmation is awaited (destructive actions), OR
-- The action is not possible with available tools.
-
-Always report:
-
-- What action was taken
-- Which tool was used
-- Any follow-up needed
