@@ -47,7 +47,6 @@ export const MacOSNotification: React.FC<MacOSNotificationProps> = ({
         alignItems: "flex-start",
         gap: 20,
         background: "rgba(30, 30, 32, 0.97)",
-        border: "1px solid rgba(255,255,255,0.1)",
         borderRadius: 35,
         padding: "30px 40px 30px 25px",
         width: 860,

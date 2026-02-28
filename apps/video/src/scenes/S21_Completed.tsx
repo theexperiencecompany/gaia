@@ -39,7 +39,7 @@ export const S21_Completed: React.FC = () => {
       >
         <div
           style={{
-            fontFamily: FONTS.display,
+            fontFamily: FONTS.display, textTransform: "uppercase" as const,
             fontSize: 200,
             fontWeight: 700,
             color: COLORS.textDark,

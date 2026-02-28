@@ -1,16 +1,23 @@
-import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate } from "remotion";
+import type React from "react";
+import {
+  AbsoluteFill,
+  Img,
+  interpolate,
+  spring,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import { COLORS, FONTS } from "../constants";
 
 export const S05_MeetGaia: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  const chars1 = "Meet GAIA".split("");
-  const chars2 = ".";
+  const chars = "Meet".split("");
 
-  // Line 1: character-by-character
-  const line1Chars = chars1.map((_, i) => {
+  // Character-by-character for "Meet"
+  const charAnims = chars.map((_, i) => {
     const prog = spring({
       frame: frame - i * 3,
       fps,
@@ -18,34 +25,48 @@ export const S05_MeetGaia: React.FC = () => {
     });
     return {
       y: interpolate(prog, [0, 1], [30, 0]),
-      opacity: interpolate(prog, [0, 0.1], [0, 1], { extrapolateRight: "clamp" }),
+      opacity: interpolate(prog, [0, 0.1], [0, 1], {
+        extrapolateRight: "clamp",
+      }),
     };
   });
 
-  // Cyan dot animation
-  const dotDelay = chars1.length * 3;
-  const dotProg = spring({
-    frame: frame - dotDelay,
+  // GAIA logo blooms in after "Meet" settles
+  const logoDelay = chars.length * 3 + 6;
+  const logoProg = spring({
+    frame: frame - logoDelay,
     fps,
-    config: { damping: 25, stiffness: 150 },
+    config: { damping: 15, stiffness: 100 },
   });
-  const dotY = interpolate(dotProg, [0, 1], [30, 0]);
-  const dotOpacity = interpolate(dotProg, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
-  // Dot pulse after landing
-  const dotPulseDelay = dotDelay + 15;
-  const dotPulseProg = spring({
-    frame: frame - dotPulseDelay,
-    fps,
-    config: { damping: 12 },
-    durationInFrames: 20,
+  const logoScale = interpolate(logoProg, [0, 1], [0.75, 1.0]);
+  const logoOpacity = interpolate(logoProg, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
   });
-  const dotScale = frame > dotPulseDelay ? interpolate(dotPulseProg, [0, 0.5, 1], [1, 1.3, 1.0]) : 1;
 
-  // Line 2: blur reveal after 25 frames
-  const line2Prog = spring({ frame: frame - 25, fps, config: { damping: 200 } });
+  // Radial bloom behind logo
+  const bloomProgress = spring({
+    frame: frame - logoDelay,
+    fps,
+    config: { damping: 40 },
+  });
+  const bloomScale = interpolate(bloomProgress, [0, 1], [0.3, 1.5]);
+  const bloomOpacity = interpolate(
+    bloomProgress,
+    [0, 0.3, 0.7, 1],
+    [0, 0.35, 0.25, 0.15],
+  );
+
+  // Line 2: blur reveal
+  const line2Prog = spring({
+    frame: frame - 30,
+    fps,
+    config: { damping: 200 },
+  });
   const line2Blur = interpolate(line2Prog, [0, 1], [20, 0]);
   const line2Scale = interpolate(line2Prog, [0, 1], [0.95, 1.0]);
-  const line2Opacity = interpolate(line2Prog, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
+  const line2Opacity = interpolate(line2Prog, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
+  });
 
   // Subtle breathe hold
   const breathe = interpolate(
@@ -56,8 +77,12 @@ export const S05_MeetGaia: React.FC = () => {
 
   // Dive zoom exit
   const exitProg = spring({ frame: frame - 90, fps, config: { damping: 200 } });
-  const exitScale = interpolate(exitProg, [0, 1], [1.0, 1.15], { extrapolateLeft: "clamp" });
-  const exitOpacity = interpolate(exitProg, [0, 1], [1, 0], { extrapolateLeft: "clamp" });
+  const exitScale = interpolate(exitProg, [0, 1], [1.0, 1.15], {
+    extrapolateLeft: "clamp",
+  });
+  const exitOpacity = interpolate(exitProg, [0, 1], [1, 0], {
+    extrapolateLeft: "clamp",
+  });
 
   return (
     <AbsoluteFill
@@ -67,64 +92,88 @@ export const S05_MeetGaia: React.FC = () => {
         flexDirection: "column",
         alignItems: "center",
         justifyContent: "center",
-        gap: 28,
       }}
     >
+      {/* Radial bloom behind logo */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: `radial-gradient(ellipse at center, ${COLORS.primary}22 0%, transparent 70%)`,
+          transform: `scale(${bloomScale})`,
+          opacity: bloomOpacity,
+          pointerEvents: "none",
+        }}
+      />
+
       <div
         style={{
           display: "flex",
           flexDirection: "column",
           alignItems: "center",
-          gap: 28,
+          gap: 32,
           transform: `scale(${breathe * exitScale})`,
           opacity: exitOpacity,
         }}
       >
-        {/* Line 1: "Meet GAIA." with cyan period */}
+        {/* Row: "Meet" chars + GAIA logo on same line */}
         <div
           style={{
             display: "flex",
-            flexWrap: "wrap",
-            justifyContent: "center",
-            fontFamily: FONTS.display,
-            fontSize: 220,
-            lineHeight: 1.0,
-            letterSpacing: "-0.02em",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 50,
           }}
         >
-          {chars1.map((char, i) => (
-            <span
-              key={i}
-              style={{
-                display: "inline-block",
-                color: COLORS.textDark,
-                transform: `translateY(${line1Chars[i].y}px)`,
-                opacity: line1Chars[i].opacity,
-                whiteSpace: char === " " ? "pre" : "normal",
-              }}
-            >
-              {char === " " ? "\u00a0" : char}
-            </span>
-          ))}
-          <span
+          {/* "Meet" character-by-character */}
+          <div
             style={{
-              display: "inline-block",
-              color: COLORS.primary,
-              transform: `translateY(${dotY}px) scale(${dotScale})`,
-              opacity: dotOpacity,
+              display: "flex",
+              fontSize: 180,
+              lineHeight: 1.0,
+              letterSpacing: "-0.02em",
+              fontFamily: FONTS.display,
+              textTransform: "uppercase" as const,
+              fontWeight: 700,
             }}
           >
-            {chars2}
-          </span>
+            {chars.map((char, i) => (
+              <span
+                key={i}
+                style={{
+                  display: "inline-block",
+                  color: COLORS.textDark,
+                  transform: `translateY(${charAnims[i].y}px)`,
+                  opacity: charAnims[i].opacity,
+                }}
+              >
+                {char}
+              </span>
+            ))}
+          </div>
+
+          {/* GAIA logo */}
+          <div
+            style={{
+              transform: `scale(${logoScale})`,
+              opacity: logoOpacity,
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <Img
+              src={staticFile("images/logos/text_w_logo_white.webp")}
+              style={{ height: 230, objectFit: "contain", display: "block" }}
+            />
+          </div>
         </div>
 
-        {/* Line 2: subtitle */}
+        {/* Subtitle */}
         <div
           style={{
             fontFamily: FONTS.body,
             fontSize: 42,
-            fontWeight: 500,
-            color: COLORS.zinc600,
+            color: COLORS.white,
             textAlign: "center",
             letterSpacing: "0.05em",
             filter: `blur(${line2Blur}px)`,
@@ -132,7 +181,7 @@ export const S05_MeetGaia: React.FC = () => {
             opacity: line2Opacity,
           }}
         >
-          Your Productivity Operating System.
+          Your Proactive Personal Assistant
         </div>
       </div>
     </AbsoluteFill>

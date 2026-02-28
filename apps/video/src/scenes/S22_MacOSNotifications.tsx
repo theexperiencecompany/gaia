@@ -1,7 +1,13 @@
-import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate } from "remotion";
-import { COLORS, FONTS } from "../constants";
+import type React from "react";
+import {
+  AbsoluteFill,
+  interpolate,
+  spring,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import { MacOSNotification } from "../components/MacOSNotification";
+import { COLORS, FONTS } from "../constants";
 
 const NOTIFICATIONS = [
   {
@@ -32,8 +38,14 @@ export const S22_MacOSNotifications: React.FC = () => {
   const { fps } = useVideoConfig();
 
   // "Your output, everywhere you are." text
-  const labelProgress = spring({ frame: frame - 30, fps, config: { damping: 200 } });
-  const labelOpacity = interpolate(labelProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
+  const labelProgress = spring({
+    frame: frame - 30,
+    fps,
+    config: { damping: 200 },
+  });
+  const labelOpacity = interpolate(labelProgress, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
+  });
 
   return (
     <AbsoluteFill
@@ -52,14 +64,15 @@ export const S22_MacOSNotifications: React.FC = () => {
           left: "50%",
           transform: "translateX(-50%)",
           whiteSpace: "nowrap",
-          fontFamily: FONTS.body,
+          fontFamily: FONTS.display,
           fontSize: 68,
           fontWeight: 700,
           color: COLORS.textDark,
+          textTransform: "uppercase" as const,
           opacity: labelOpacity,
         }}
       >
-        Your output, everywhere you are.
+        Notifications, wherever you want.
       </div>
 
       {/* Notifications stack — centered on screen */}

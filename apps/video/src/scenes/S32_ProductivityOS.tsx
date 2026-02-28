@@ -1,5 +1,11 @@
-import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate } from "remotion";
+import type React from "react";
+import {
+  AbsoluteFill,
+  interpolate,
+  spring,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import { COLORS, FONTS } from "../constants";
 
 export const S32_ProductivityOS: React.FC = () => {
@@ -7,23 +13,35 @@ export const S32_ProductivityOS: React.FC = () => {
   const { fps } = useVideoConfig();
 
   // Background cyan bloom: simple fade in, no scaling artifact
-  const bloomOpacity = interpolate(frame, [0, 20], [0, 1], { extrapolateRight: "clamp" });
+  const bloomOpacity = interpolate(frame, [0, 20], [0, 1], {
+    extrapolateRight: "clamp",
+  });
 
   // Line 1: "It's your" — fast snap up from below
   const line1P = spring({ frame, fps, config: { damping: 200 } });
   const line1Y = interpolate(line1P, [0, 1], [32, 0]);
-  const line1Opacity = interpolate(line1P, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
+  const line1Opacity = interpolate(line1P, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
+  });
 
   // Line 2: "Productivity" — hero entrance, slight controlled spring (ONE element gets drama)
-  const line2P = spring({ frame: frame - 8, fps, config: { damping: 18, stiffness: 140 } });
+  const line2P = spring({
+    frame: frame - 8,
+    fps,
+    config: { damping: 18, stiffness: 140 },
+  });
   const line2Y = interpolate(line2P, [0, 1], [80, 0]);
   const line2Scale = interpolate(line2P, [0, 0.5, 1], [1.04, 0.98, 1.0]);
-  const line2Opacity = interpolate(line2P, [0, 0.08], [0, 1], { extrapolateRight: "clamp" });
+  const line2Opacity = interpolate(line2P, [0, 0.08], [0, 1], {
+    extrapolateRight: "clamp",
+  });
 
   // Line 3: "Operating System." — clean snap up, slightly after line 2 settles
   const line3P = spring({ frame: frame - 35, fps, config: { damping: 200 } });
   const line3Y = interpolate(line3P, [0, 1], [40, 0]);
-  const line3Opacity = interpolate(line3P, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
+  const line3Opacity = interpolate(line3P, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
+  });
 
   return (
     <AbsoluteFill
@@ -59,6 +77,7 @@ export const S32_ProductivityOS: React.FC = () => {
           lineHeight: 1.1,
           transform: `translateY(${line1Y}px)`,
           opacity: line1Opacity,
+          marginBottom: 20,
         }}
       >
         It&apos;s your
@@ -68,8 +87,9 @@ export const S32_ProductivityOS: React.FC = () => {
       <div
         style={{
           fontFamily: FONTS.display,
-          fontSize: 220,
-          fontWeight: 800,
+          textTransform: "uppercase" as const,
+          fontSize: 150,
+          fontWeight: 700,
           color: COLORS.textDark,
           lineHeight: 0.95,
           letterSpacing: "-0.03em",
@@ -84,8 +104,9 @@ export const S32_ProductivityOS: React.FC = () => {
       <div
         style={{
           fontFamily: FONTS.display,
-          fontSize: 180,
-          fontWeight: 800,
+          textTransform: "uppercase" as const,
+          fontSize: 150,
+          fontWeight: 700,
           color: COLORS.primary,
           lineHeight: 1.0,
           letterSpacing: "-0.02em",

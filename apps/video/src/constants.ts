@@ -6,15 +6,15 @@ export const FPS = 30;
 // Colors
 export const COLORS = {
   bg: "#111111",
-  bgLight: "#ffffff",
+  bgLight: "#111111",   // scene background (dark mode)
   secondaryBg: "#1a1a1a",
   surface: "#27272a",
   primary: "#00bbff",
   white: "#ffffff",
-  textDark: "#111111",
+  textDark: "#ffffff",  // primary heading text on dark bg
   zinc400: "#a1a1aa",
   zinc500: "#71717a",
-  zinc600: "#52525b",
+  zinc600: "#a1a1aa",   // bumped up for legibility on dark bg
   zinc700: "#3f3f46",
   zinc800: "#27272a",
   zinc900: "#18181b",
@@ -22,7 +22,7 @@ export const COLORS = {
 
 // Font families
 export const FONTS = {
-  display: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+  display: '"Aeonik", "Helvetica Neue", Helvetica, sans-serif',
   body: '"Inter", system-ui, sans-serif',
   mono: '"Anonymous Pro", "Cascadia Code", monospace',
 } as const;

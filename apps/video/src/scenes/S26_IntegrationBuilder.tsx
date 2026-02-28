@@ -486,17 +486,18 @@ export const S26_IntegrationBuilder: React.FC = () => {
   return (
     <AbsoluteFill
       style={{
-        background: "#09090b",
+        background: COLORS.bg,
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        paddingTop: 180,
       }}
     >
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: "linear-gradient(135deg, #0f0f12 0%, #09090b 100%)",
+          background: COLORS.bg,
         }}
       />
       <div
@@ -509,35 +510,63 @@ export const S26_IntegrationBuilder: React.FC = () => {
         }}
       />
 
+      {/* Top heading — "Create custom integrations" */}
+      <div
+        style={{
+          position: "absolute",
+          top: 72,
+          left: 0,
+          right: 0,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          opacity: isPublished ? 0 : overlayOpacity,
+          zIndex: 10,
+          pointerEvents: "none",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: FONTS.display,
+            textTransform: "uppercase" as const,
+            fontSize: 80,
+            fontWeight: 700,
+            color: "#ffffff",
+          }}
+        >
+          Create custom integrations
+        </span>
+      </div>
+
       {/* Published — top-of-screen text */}
       {isPublished && (
         <div
           style={{
             position: "absolute",
-            top: 52,
+            top: 40,
             left: 0,
             right: 0,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            gap: 10,
+            gap: 14,
             opacity: publishedOpacity,
-            transform: `translateY(${interpolate(publishedTransitionP, [0, 1], [-16, 0])}px)`,
+            transform: `translateY(${interpolate(publishedTransitionP, [0, 1], [-20, 0])}px)`,
             zIndex: 10,
           }}
         >
           <CheckmarkCircle02Icon
-            width={28}
-            height={28}
+            width={44}
+            height={44}
             style={{ color: "#22c55e" }}
           />
           <span
             style={{
               fontFamily: FONTS.body,
-              fontSize: 26,
-              fontWeight: 500,
+              fontSize: 48,
+              fontWeight: 600,
               color: "#22c55e",
-              letterSpacing: -0.2,
+              letterSpacing: -0.3,
             }}
           >
             Published to marketplace

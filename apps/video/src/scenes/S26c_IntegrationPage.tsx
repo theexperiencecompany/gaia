@@ -194,7 +194,7 @@ export const S26c_IntegrationPage: React.FC = () => {
   const cardY = interpolate(cardP, [0, 1], [20, 0]);
 
   return (
-    <AbsoluteFill style={{ background: "#09090b", overflow: "hidden" }}>
+    <AbsoluteFill style={{ background: COLORS.bg, overflow: "hidden" }}>
       {/* Cyan radial glow */}
       <div
         style={{
@@ -205,6 +205,34 @@ export const S26c_IntegrationPage: React.FC = () => {
         }}
       />
 
+      {/* Top heading — "Community Marketplace" */}
+      <div
+        style={{
+          position: "absolute",
+          top: 72,
+          left: 0,
+          right: 0,
+          display: "flex",
+          justifyContent: "center",
+          alignItems: "center",
+          opacity: pageOpacity,
+          zIndex: 10,
+          pointerEvents: "none",
+        }}
+      >
+        <span
+          style={{
+            fontFamily: FONTS.display,
+            textTransform: "uppercase" as const,
+            fontSize: 80,
+            fontWeight: 700,
+            color: "#ffffff",
+          }}
+        >
+          Community Marketplace
+        </span>
+      </div>
+
       {/* Centered content — max-w-5xl */}
       <div
         style={{
@@ -212,8 +240,8 @@ export const S26c_IntegrationPage: React.FC = () => {
           inset: 0,
           display: "flex",
           justifyContent: "center",
-          alignItems: "center",
-          padding: "16px 24px",
+          alignItems: "flex-start",
+          padding: "185px 24px 24px",
         }}
       >
         <div

@@ -1,6 +1,6 @@
-import { loadFont as loadInter } from "@remotion/google-fonts/Inter";
 import { loadFont } from "@remotion/fonts";
-import { staticFile } from "remotion";
+import { loadFont as loadInter } from "@remotion/google-fonts/Inter";
+import { continueRender, delayRender, staticFile } from "remotion";
 
 // Inter from Google Fonts (body + UI text)
 const { fontFamily: interFamily } = loadInter("normal", {
@@ -10,17 +10,36 @@ const { fontFamily: interFamily } = loadInter("normal", {
 
 export const FONT_FAMILIES = {
   inter: interFamily,
-  display: '"Helvetica Neue", Helvetica, Arial, sans-serif',
+  display: '"Aeonik", "Helvetica Neue", Helvetica, sans-serif',
   mono: '"Anonymous Pro", "Cascadia Code", monospace',
 };
 
-export async function loadLocalFonts(): Promise<void> {
-  // Anonymous Pro (monospace for typing/code contexts)
-  await loadFont({
+const waitForFonts = delayRender("Loading local fonts");
+
+Promise.all([
+  loadFont({
+    family: "Aeonik",
+    url: staticFile("fonts/AeonikExtendedProTRIAL-Bold.otf"),
+    weight: "700",
+  }),
+  loadFont({
+    family: "Aeonik",
+    url: staticFile("fonts/AeonikExtendedProTRIAL-Black.otf"),
+    weight: "900",
+  }),
+  loadFont({
+    family: "Aeonik",
+    url: staticFile("fonts/AeonikExtendedProTRIAL-Air.otf"),
+    weight: "400",
+  }),
+  loadFont({
     family: "Anonymous Pro",
     url: staticFile("fonts/AnonymousPro-Regular.woff2"),
     weight: "400",
-  }).catch(() => {
-    // Gracefully fall back if not available
+  }),
+])
+  .then(() => continueRender(waitForFonts))
+  .catch((err) => {
+    console.error("Font loading failed:", err);
+    continueRender(waitForFonts);
   });
-}

@@ -55,6 +55,7 @@ export const BigText: React.FC<BigTextProps> = ({
     <div
       style={{
         fontFamily: font === "editorial" ? FONTS.display : FONTS.body,
+        textTransform: font === "editorial" ? ("uppercase" as const) : undefined,
         fontSize: size,
         fontStyle: italic ? "italic" : "normal",
         lineHeight,

@@ -306,8 +306,9 @@ export const S27_CommunityCards: React.FC = () => {
           <span
             style={{
               fontFamily: FONTS.display,
+              textTransform: "uppercase" as const,
               fontSize: 100,
-              fontWeight: 800,
+              fontWeight: 700,
               color: COLORS.textDark,
             }}
           >
@@ -316,8 +317,9 @@ export const S27_CommunityCards: React.FC = () => {
           <span
             style={{
               fontFamily: FONTS.display,
+              textTransform: "uppercase" as const,
               fontSize: 100,
-              fontWeight: 800,
+              fontWeight: 700,
               color: COLORS.primary,
             }}
           >
@@ -326,8 +328,9 @@ export const S27_CommunityCards: React.FC = () => {
           <span
             style={{
               fontFamily: FONTS.display,
+              textTransform: "uppercase" as const,
               fontSize: 100,
-              fontWeight: 800,
+              fontWeight: 700,
               color: COLORS.textDark,
             }}
           >

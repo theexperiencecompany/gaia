@@ -9,7 +9,6 @@ import { TRANSITIONS } from "./constants";
 import { S01_OpeningStatement } from "./scenes/S01_OpeningStatement";
 import { S02_ToolChaos } from "./scenes/S02_ToolChaos";
 import { S03_BetterWay } from "./scenes/S03_BetterWay";
-import { S04_LogoBloom } from "./scenes/S04_LogoBloom";
 import { S05_MeetGaia } from "./scenes/S05_MeetGaia";
 
 // Act 3: Workflow Creation via Chat (replaces modal scenes S06–S15)
@@ -30,7 +29,6 @@ import { S23_PlatformIcons } from "./scenes/S23_PlatformIcons";
 import { S24_NotificationPreview } from "./scenes/S24_NotificationPreview";
 
 // Act 6: Ecosystem + Integrations
-import { S25_AllYourTools } from "./scenes/S25_AllYourTools";
 import { S26_IntegrationBuilder } from "./scenes/S26_IntegrationBuilder";
 import { S26c_IntegrationPage } from "./scenes/S26c_IntegrationPage";
 import { S26d_IntegrationTagline } from "./scenes/S26d_IntegrationTagline";
@@ -71,14 +69,6 @@ export const GaiaPromo: React.FC = () => {
       <TransitionSeries.Transition
         presentation={fade()}
         timing={linearTiming({ durationInFrames: T.normal })}
-      />
-
-      <TransitionSeries.Sequence durationInFrames={102}>
-        <S04_LogoBloom />
-      </TransitionSeries.Sequence>
-      <TransitionSeries.Transition
-        presentation={fade()}
-        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
       {/* === ACT 2: MEET GAIA === */}
@@ -186,14 +176,6 @@ export const GaiaPromo: React.FC = () => {
       />
 
       {/* === ACT 6: ECOSYSTEM + INTEGRATIONS === */}
-      <TransitionSeries.Sequence durationInFrames={132}>
-        <S25_AllYourTools />
-      </TransitionSeries.Sequence>
-      <TransitionSeries.Transition
-        presentation={fade()}
-        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
-      />
-
       <TransitionSeries.Sequence durationInFrames={180}>
         <S27_CommunityCards />
       </TransitionSeries.Sequence>

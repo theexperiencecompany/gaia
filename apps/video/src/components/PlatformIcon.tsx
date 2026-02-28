@@ -1,5 +1,12 @@
-import React from "react";
-import { useCurrentFrame, useVideoConfig, spring, interpolate, Img, staticFile } from "remotion";
+import type React from "react";
+import {
+  Img,
+  interpolate,
+  spring,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
 import { FONTS } from "../constants";
 
 interface PlatformIconProps {
@@ -42,8 +49,15 @@ export const PlatformIcon: React.FC<PlatformIconProps> = ({
       : 0;
 
   const finalOpacity = comingSoon
-    ? baseopacity * 0.65 * interpolate(bounceProgress, [0, 0.2], [0, 1], { extrapolateRight: "clamp" })
-    : baseopacity * interpolate(bounceProgress, [0, 0.2], [0, 1], { extrapolateRight: "clamp" });
+    ? baseopacity *
+      0.65 *
+      interpolate(bounceProgress, [0, 0.2], [0, 1], {
+        extrapolateRight: "clamp",
+      })
+    : baseopacity *
+      interpolate(bounceProgress, [0, 0.2], [0, 1], {
+        extrapolateRight: "clamp",
+      });
 
   return (
     <div

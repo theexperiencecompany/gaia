@@ -1,10 +1,10 @@
-import React from "react";
+import type React from "react";
 import {
   AbsoluteFill,
+  interpolate,
+  spring,
   useCurrentFrame,
   useVideoConfig,
-  spring,
-  interpolate,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
 
@@ -38,8 +38,9 @@ export const S31_NotJustAssistant: React.FC = () => {
       <div
         style={{
           fontFamily: FONTS.display,
+          textTransform: "uppercase" as const,
           fontSize: 280,
-          fontWeight: 800,
+          fontWeight: 700,
           color: COLORS.textDark,
           letterSpacing: "-0.03em",
           lineHeight: 1,
@@ -67,12 +68,9 @@ export const S31_NotJustAssistant: React.FC = () => {
             config: { damping: 200 },
           });
           const wordY = interpolate(wordSpring, [0, 1], [24, 0]);
-          const wordOpacity = interpolate(
-            wordSpring,
-            [0, 0.15],
-            [0, 1],
-            { extrapolateRight: "clamp" }
-          );
+          const wordOpacity = interpolate(wordSpring, [0, 0.15], [0, 1], {
+            extrapolateRight: "clamp",
+          });
 
           return (
             <div

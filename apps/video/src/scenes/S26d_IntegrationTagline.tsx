@@ -6,7 +6,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { FONTS } from "../constants";
+import { COLORS, FONTS } from "../constants";
 
 interface WordToken {
   text: string;
@@ -59,10 +59,9 @@ const LINE_1_TOKENS: WordToken[] = [
 ];
 
 const LINE_2_TOKENS: WordToken[] = [
+  { text: "Community", color: "#71717a" },
   { text: "Built", color: "#71717a" },
-  { text: "by", color: "#71717a" },
-  { text: "the", color: "#71717a" },
-  { text: "community.", color: "#00bbff" },
+  { text: "Integrations", color: "#71717a" },
 ];
 
 const LINE_1_WORD_COUNT = LINE_1_TOKENS.length;
@@ -73,7 +72,7 @@ export const S26d_IntegrationTagline: React.FC = () => {
   return (
     <AbsoluteFill
       style={{
-        background: "#09090b",
+        background: COLORS.bg,
         overflow: "hidden",
       }}
     >
@@ -104,8 +103,9 @@ export const S26d_IntegrationTagline: React.FC = () => {
         <div
           style={{
             fontFamily: FONTS.display,
+            textTransform: "uppercase" as const,
             fontSize: 96,
-            fontWeight: 800,
+            fontWeight: 700,
             lineHeight: 1.1,
             textAlign: "center",
           }}
@@ -124,6 +124,7 @@ export const S26d_IntegrationTagline: React.FC = () => {
         <div
           style={{
             fontFamily: FONTS.display,
+            textTransform: "uppercase" as const,
             fontSize: 72,
             fontWeight: 700,
             lineHeight: 1.1,

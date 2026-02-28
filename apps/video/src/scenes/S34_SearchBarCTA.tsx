@@ -65,8 +65,8 @@ export const S34_SearchBarCTA: React.FC = () => {
           width: 1000,
           height: 100,
           borderRadius: 50,
-          background: "#f4f4f5",
-          border: "2px solid #e4e4e7",
+          background: COLORS.zinc900,
+          border: "2px solid rgba(255,255,255,0.1)",
           padding: "0 20px 0 28px",
           gap: 16,
         }}
@@ -125,7 +125,7 @@ export const S34_SearchBarCTA: React.FC = () => {
         }}
       >
         <Img
-          src={staticFile("images/logos/text_w_logo_black.webp")}
+          src={staticFile("images/logos/text_w_logo_white.webp")}
           style={{
             height: 64,
             objectFit: "contain",

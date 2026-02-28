@@ -1,10 +1,7 @@
 import React from "react";
 import { Composition } from "remotion";
 import { GaiaPromo } from "./GaiaPromo";
-import { loadLocalFonts } from "./fonts";
-
-// Load local fonts at module level (Remotion requirement)
-loadLocalFonts();
+import "./fonts"; // module-level font loading with delayRender/continueRender
 
 export const RemotionRoot: React.FC = () => {
   return (

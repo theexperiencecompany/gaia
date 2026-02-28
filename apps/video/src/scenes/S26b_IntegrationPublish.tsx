@@ -271,14 +271,14 @@ export const S26b_IntegrationPublish: React.FC = () => {
   });
 
   return (
-    <AbsoluteFill style={{ background: "#09090b" }}>
+    <AbsoluteFill style={{ background: COLORS.bg }}>
       {/* Main content area — dimmed app background */}
       <div
         style={{
           position: "absolute",
           inset: 0,
           opacity: bgOpacity * 0.4,
-          background: "#09090b",
+          background: COLORS.bg,
           display: "flex",
           alignItems: "center",
           justifyContent: "flex-start",

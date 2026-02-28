@@ -77,7 +77,7 @@ const Beat: React.FC<BeatProps> = ({ beat, isActive, localFrame, fps }) => {
     >
       <div
         style={{
-          fontFamily: FONTS.display,
+          fontFamily: FONTS.display, textTransform: "uppercase" as const,
           fontSize: beat.headline.length > 14 ? 140 : 160,
           color: beat.color,
           textAlign: "center",
