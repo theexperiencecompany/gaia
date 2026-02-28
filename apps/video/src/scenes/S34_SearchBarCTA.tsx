@@ -44,6 +44,13 @@ export const S34_SearchBarCTA: React.FC = () => {
     extrapolateRight: "clamp",
   });
 
+  // Headline: slides down from top, very fast snap
+  const headlineP = spring({ frame, fps, config: { damping: 200 } });
+  const headlineY = interpolate(headlineP, [0, 1], [-24, 0]);
+  const headlineOpacity = interpolate(headlineP, [0, 0.08], [0, 1], {
+    extrapolateRight: "clamp",
+  });
+
   return (
     <AbsoluteFill
       style={{
@@ -55,6 +62,42 @@ export const S34_SearchBarCTA: React.FC = () => {
         gap: 48,
       }}
     >
+      {/* Subtle cyan glow behind search bar */}
+      <div
+        style={{
+          position: "absolute",
+          width: 1100,
+          height: 300,
+          borderRadius: "50%",
+          background: `radial-gradient(ellipse at center, ${COLORS.primary}18 0%, transparent 70%)`,
+          opacity: barOpacity,
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Headline */}
+      <div
+        style={{
+          transform: `translateY(${headlineY}px)`,
+          opacity: headlineOpacity,
+          textAlign: "center",
+        }}
+      >
+        <div
+          style={{
+            fontFamily: FONTS.display,
+            fontSize: 72,
+            fontWeight: 700,
+            color: COLORS.textDark,
+            textTransform: "uppercase" as const,
+            letterSpacing: "-0.02em",
+            lineHeight: 1.0,
+          }}
+        >
+          Start for free.
+        </div>
+      </div>
+
       {/* TOP HALF: Search bar */}
       <div
         style={{
