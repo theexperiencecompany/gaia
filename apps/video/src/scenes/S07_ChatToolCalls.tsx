@@ -102,10 +102,11 @@ export const S07_ChatToolCalls: React.FC = () => {
   const blockOpacity = interpolate(blockProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
 
   const accordionProgress = spring({ frame: frame - 20, fps, config: { damping: 10, stiffness: 90 } });
-  const accordionMaxH = interpolate(accordionProgress, [0, 1], [0, 820]);
+  // Start at 82px so the header ("Used N tools") is always fully visible when collapsed
+  const accordionMaxH = interpolate(accordionProgress, [0, 1], [82, 820]);
 
   // Exit: slide up + fade (clears for slide-from-bottom transition)
-  const exitP = spring({ frame: frame - 135, fps, config: { damping: 200 } });
+  const exitP = spring({ frame: frame - 88, fps, config: { damping: 200 } });
   const exitY = interpolate(exitP, [0, 1], [0, -30], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
   const exitOpacity = interpolate(exitP, [0, 1], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
 

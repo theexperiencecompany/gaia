@@ -45,9 +45,13 @@ export const S06_UserChat: React.FC = () => {
   const indicatorProgress = spring({ frame: frame - indicatorDelay, fps, config: { damping: 25 } });
   const indicatorOpacity = interpolate(indicatorProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
 
-  const dot1 = interpolate(Math.sin(((frame - indicatorDelay) / 12) * Math.PI * 2), [-1, 1], [0.3, 1.0]);
-  const dot2 = interpolate(Math.sin(((frame - indicatorDelay - 4) / 12) * Math.PI * 2), [-1, 1], [0.3, 1.0]);
-  const dot3 = interpolate(Math.sin(((frame - indicatorDelay - 8) / 12) * Math.PI * 2), [-1, 1], [0.3, 1.0]);
+  // Wave spinner: 3x3 grid of cells animating diagonally (matching WaveSpinnerSquare)
+  const WAVE_DELAYS_F = [0, 3.6, 7.2, 3.6, 7.2, 10.8, 7.2, 10.8, 14.4]; // frames
+  const WAVE_PERIOD = 21; // 0.7s at 30fps
+  const waveOpacities = WAVE_DELAYS_F.map((d) => {
+    const rawPhase = ((frame - indicatorDelay - d) / WAVE_PERIOD) * Math.PI * 2;
+    return Math.max(0, Math.min(1, (1 + Math.cos(rawPhase)) / 2));
+  });
 
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, display: "flex", alignItems: "center", justifyContent: "center" }}>
@@ -96,10 +100,12 @@ export const S06_UserChat: React.FC = () => {
               src={staticFile("images/logos/logo.webp")}
               style={{ width: 60, height: 60, borderRadius: "50%", objectFit: "contain", flexShrink: 0 }}
             />
-            <div style={{ background: "#27272a", padding: "20px 32px", borderRadius: "40px 40px 40px 8px", position: "relative", display: "flex", gap: 12, alignItems: "center" }}>
-              {[dot1, dot2, dot3].map((d, i) => (
-                <div key={i} style={{ width: 14, height: 14, borderRadius: "50%", background: COLORS.zinc400, opacity: d }} />
-              ))}
+            <div style={{ background: "#27272a", padding: "20px 28px", borderRadius: "40px 40px 40px 8px", position: "relative", display: "flex", alignItems: "center" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
+                {waveOpacities.map((opacity, i) => (
+                  <div key={i} style={{ width: 12, height: 12, background: COLORS.primary, opacity }} />
+                ))}
+              </div>
               <BotTail bgColor={COLORS.bgLight} />
             </div>
           </div>

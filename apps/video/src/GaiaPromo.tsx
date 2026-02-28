@@ -23,6 +23,10 @@ import { S17_RunningToolStack } from "./scenes/S17_RunningToolStack";
 import { S19_BotMessageStream } from "./scenes/S19_BotMessageStream";
 import { S21_Completed } from "./scenes/S21_Completed";
 
+// Act 4.5: Trigger types
+import { S22b_ScheduleScene } from "./scenes/S22b_ScheduleScene";
+import { S22c_TriggerSlots } from "./scenes/S22c_TriggerSlots";
+
 // Act 5: Multi-Platform (removed S22–S24 unchanged)
 import { S22_MacOSNotifications } from "./scenes/S22_MacOSNotifications";
 import { S23_PlatformIcons } from "./scenes/S23_PlatformIcons";
@@ -67,7 +71,7 @@ export const GaiaPromo: React.FC = () => {
       />
 
       {/* S03 → S05: Calm beat to logo reveal — clean snap dissolve */}
-      <TransitionSeries.Sequence durationInFrames={102}>
+      <TransitionSeries.Sequence durationInFrames={82}>
         <S03_BetterWay />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -91,13 +95,14 @@ export const GaiaPromo: React.FC = () => {
       <TransitionSeries.Sequence durationInFrames={155}>
         <S06_UserChat />
       </TransitionSeries.Sequence>
+      {/* Fade (not slide) so tool calls feel like a continuation of the same chat */}
       <TransitionSeries.Transition
-        presentation={slide({ direction: "from-right" })}
+        presentation={fade()}
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.fast })}
       />
 
       {/* GAIA runs tool calls */}
-      <TransitionSeries.Sequence durationInFrames={150}>
+      <TransitionSeries.Sequence durationInFrames={105}>
         <S07_ChatToolCalls />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -133,7 +138,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={150}>
+      <TransitionSeries.Sequence durationInFrames={105}>
         <S17_RunningToolStack />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -150,8 +155,27 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={120}>
+      <TransitionSeries.Sequence durationInFrames={70}>
         <S21_Completed />
+      </TransitionSeries.Sequence>
+      <TransitionSeries.Transition
+        presentation={slide({ direction: "from-bottom" })}
+        timing={springTiming({ config: S.natural, durationInFrames: T.normal })}
+      />
+
+      {/* === ACT 4.5: TRIGGER TYPES === */}
+      {/* Schedule scene — clean list of schedule options */}
+      <TransitionSeries.Sequence durationInFrames={100}>
+        <S22b_ScheduleScene />
+      </TransitionSeries.Sequence>
+      <TransitionSeries.Transition
+        presentation={slide({ direction: "from-right" })}
+        timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
+      />
+
+      {/* Slot machine carousel — event triggers */}
+      <TransitionSeries.Sequence durationInFrames={155}>
+        <S22c_TriggerSlots />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
         presentation={wipe({ direction: "from-right" })}
@@ -167,7 +191,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: S.natural, durationInFrames: T.normal })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={132}>
+      <TransitionSeries.Sequence durationInFrames={100}>
         <S22_MacOSNotifications />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -192,7 +216,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={220}>
+      <TransitionSeries.Sequence durationInFrames={255}>
         <S26_IntegrationBuilder />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -250,8 +274,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
-      {/* DURATION TRIMMED: 240 → 130 */}
-      <TransitionSeries.Sequence durationInFrames={130}>
+      <TransitionSeries.Sequence durationInFrames={105}>
         <S34_SearchBarCTA />
       </TransitionSeries.Sequence>
     </TransitionSeries>

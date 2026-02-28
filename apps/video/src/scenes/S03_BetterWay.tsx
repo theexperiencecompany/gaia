@@ -42,8 +42,8 @@ export const S03_BetterWay: React.FC = () => {
     [1.0, 1.005],
   );
 
-  // Exit: scale up slightly + fade (next transition overlaps 20f, exit starts at ~frame 80)
-  const exitP = spring({ frame: frame - 80, fps, config: { damping: 200 } });
+  // Exit: scale up slightly + fade (next transition overlaps 20f, exit starts at ~frame 60)
+  const exitP = spring({ frame: frame - 60, fps, config: { damping: 200 } });
   const exitScale = interpolate(exitP, [0, 1], [1.0, 1.08], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",

@@ -53,10 +53,11 @@ const TOOL_CALLS = [
     name: "Write briefing",
     category: "Google Docs",
     status: "running" as const,
+    completeAt: 88,
   },
 ];
 
-type ToolCall = (typeof TOOL_CALLS)[number];
+type ToolCall = (typeof TOOL_CALLS)[number] & { completeAt?: number };
 
 interface ToolRowProps {
   tool: ToolCall;
@@ -174,7 +175,7 @@ const ToolRow: React.FC<ToolRowProps> = ({
 
       {/* Status indicator */}
       <div style={{ flexShrink: 0 }}>
-        {tool.status === "success" ? (
+        {tool.status === "success" || (tool.completeAt !== undefined && frame >= tool.completeAt) ? (
           <CheckmarkCircle02Icon
             style={{ width: 28, height: 28, color: COLORS.primary }}
           />

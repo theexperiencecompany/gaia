@@ -18,7 +18,7 @@ const USER_MESSAGE =
   "Hey GAIA — pull my Gmail from the last 6 hours, check Google Calendar for today's meetings, scan my GitHub for open PRs, and check Slack for anything urgent. Summarize everything and set this up to run every morning at 8am automatically.";
 
 const BOT_SUMMARY =
-  "📬 14 emails, 2 need replies. 📅 3 meetings today. 🔧 2 overnight PRs. 💬 3 DMs in #design.\n\nI've drafted your daily briefing workflow below.";
+  "14 emails — Sarah's Q4 report needs a reply, vendor invoice due Friday.\n3 meetings: standup 10am, design review 2pm, 1:1 at 4pm.\n2 PRs opened overnight on your repos.\n3 urgent DMs in #design.\n\nI've drafted your daily briefing workflow below — runs at 8am automatically.";
 
 const CONFIRM_MESSAGE = "Yes, create it";
 
@@ -85,7 +85,7 @@ export const S09_ChatWorkflowCreated: React.FC = () => {
           <Img src={staticFile("images/logos/logo.webp")} style={{ width: 60, height: 60, borderRadius: "50%", objectFit: "contain", flexShrink: 0 }} />
           <div style={{ display: "flex", flexDirection: "column", gap: 20, flex: 1 }}>
             <div style={{ position: "relative" }}>
-              <div style={{ background: "#27272a", color: "white", padding: "14px 28px", borderRadius: "40px 40px 40px 8px", fontSize: 26, lineHeight: 1.6, fontFamily: FONTS.body, whiteSpace: "pre-wrap", maxWidth: 1000, opacity: 0.85 }}>
+              <div style={{ background: "#27272a", color: "white", padding: "18px 32px", borderRadius: "40px 40px 40px 8px", fontSize: 28, lineHeight: 1.65, fontFamily: FONTS.body, whiteSpace: "pre-wrap", maxWidth: 1100 }}>
                 {BOT_SUMMARY}
               </div>
               <BotTail bgColor={COLORS.bgLight} />

@@ -71,6 +71,24 @@ const DUMMY_WORKFLOWS = [
     ],
     runs: 43,
   },
+  {
+    title: "Notion Weekly Digest",
+    icons: [
+      "images/icons/notion.webp",
+      "images/icons/googledocs.webp",
+      "images/icons/slack.svg",
+    ],
+    runs: 89,
+  },
+  {
+    title: "Invoice Reminder",
+    icons: [
+      "images/icons/gmail.svg",
+      "images/icons/notion.webp",
+      "images/icons/googlecalendar.webp",
+    ],
+    runs: 21,
+  },
 ];
 
 // --- Row components with their own hooks for staggered animation ---
@@ -321,7 +339,9 @@ const WorkflowRow: React.FC<WorkflowRowProps> = ({ wf, index, cardDelay }) => {
     >
       {/* Stacked icons */}
       <div style={{ display: "flex", alignItems: "center" }}>
-        {wf.icons.map((icon, j) => (
+        {wf.icons.map((icon, j) => {
+          const rotations = [6, -5, 7];
+          return (
           <div
             key={j}
             style={{
@@ -337,14 +357,16 @@ const WorkflowRow: React.FC<WorkflowRowProps> = ({ wf, index, cardDelay }) => {
               position: "relative",
               overflow: "hidden",
               border: "2px solid #1e1e21",
+              transform: `rotate(${rotations[j] ?? 0}deg)`,
             }}
           >
             <Img
               src={staticFile(icon)}
-              style={{ width: 26, height: 26, objectFit: "contain" }}
+              style={{ width: 26, height: 26, objectFit: "contain", filter: icon.includes("github") ? "invert(1)" : undefined }}
             />
           </div>
-        ))}
+        );
+        })}
       </div>
       <div style={{ flex: 1 }}>
         <div

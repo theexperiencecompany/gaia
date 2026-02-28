@@ -81,16 +81,16 @@ const ToolIcon: React.FC<ToolIconProps> = ({ index, position, iconSrc }) => {
         position: "absolute",
         left: "50%",
         top: "50%",
-        transform: `translate(${finalX - 36}px, ${finalY - 36}px) scale(${scale}) rotate(${shakeOpacity ? shake : 0}deg)`,
+        transform: `translate(${finalX - 48}px, ${finalY - 48}px) scale(${scale}) rotate(${shakeOpacity ? shake : 0}deg)`,
         opacity: finalOpacity,
       }}
     >
       <Img
         src={staticFile(iconSrc)}
         style={{
-          width: 72,
-          height: 72,
-          borderRadius: 16,
+          width: 96,
+          height: 96,
+          borderRadius: 20,
           display: "block",
         }}
       />
