@@ -43,31 +43,31 @@ async def _seed_builtin_skill(
     vfs: MongoVFS,
     skill_dir: Path,
     force: bool = False,
-) -> Skill | None:
+) -> tuple[Skill | None, str | None]:
     """Seed a single builtin skill from filesystem."""
     skill_name = skill_dir.name
 
     skill_md_path = skill_dir / "SKILL.md"
     if not skill_md_path.exists():
         logger.warning(f"[seed] Skipping {skill_name}: no SKILL.md found")
-        return None
+        return None, None
 
     try:
         content = skill_md_path.read_text(encoding="utf-8")
     except Exception as e:
         logger.warning(f"[seed] Failed to read SKILL.md for {skill_name}: {e}")
-        return None
+        return None, None
 
     errors = validate_skill_content(content)
     if errors:
         logger.warning(f"[seed] Invalid SKILL.md for {skill_name}: {errors}")
-        return None
+        return None, None
 
     try:
         metadata, body = parse_skill_md(content)
     except Exception as e:
         logger.warning(f"[seed] Failed to parse SKILL.md for {skill_name}: {e}")
-        return None
+        return None, None
 
     target = metadata.target
     vfs_dir = get_system_skill_path(target, metadata.name)
@@ -76,7 +76,7 @@ async def _seed_builtin_skill(
         existing = await get_skill_by_name("system", metadata.name, target)
         if existing and not force:
             logger.info(f"[seed] Builtin skill already exists: {metadata.name}")
-            return existing
+            return None, metadata.name
         elif existing and force and existing.id:
             await uninstall_skill("system", existing.id)
     except Exception as e:
@@ -120,25 +120,26 @@ async def _seed_builtin_skill(
         )
 
         logger.info(f"[seed] Seeded builtin: {metadata.name} (target={target})")
-        return skill
+        return skill, None
     except Exception as e:
         logger.warning(f"[seed] Failed to seed builtin {metadata.name}: {e}")
-        return None
+        return None, None
 
 
-async def seed_all_system_skills(force: bool = False) -> List[Skill]:
+async def seed_all_system_skills(force: bool = False) -> tuple[List[Skill], List[str]]:
     """Seed all builtin system skills to VFS and MongoDB.
 
     Args:
         force: If True, overwrite existing skills
 
     Returns:
-        List of seeded Skill objects
+        Tuple of newly seeded Skill objects and existing skill names
     """
     logger.info("[seed] Starting system skills seeding")
 
     vfs = MongoVFS(allow_system_write=True)
     seeded: List[Skill] = []
+    existing: List[str] = []
 
     builtin_path = Path(__file__).parent.parent / "agents" / "skills" / "builtin"
     if builtin_path.exists():
@@ -146,19 +147,25 @@ async def seed_all_system_skills(force: bool = False) -> List[Skill]:
         logger.info(f"[seed] Found {len(builtin_dirs)} builtin skills")
 
         for skill_dir in builtin_dirs:
-            skill = await _seed_builtin_skill(vfs, skill_dir, force=force)
+            skill, existing_name = await _seed_builtin_skill(
+                vfs, skill_dir, force=force
+            )
             if skill:
                 seeded.append(skill)
+            elif existing_name:
+                existing.append(existing_name)
     else:
         logger.warning(f"[seed] Builtin skills path not found: {builtin_path}")
 
-    logger.info(f"[seed] Seeded {len(seeded)} system skills")
+    logger.info(f"[seed] Seeded {len(seeded)} new system skills")
+    if existing:
+        logger.info(f"[seed] Skipped {len(existing)} existing system skills")
 
     await delete_cache_by_pattern("skills:user:*")
     await delete_cache_by_pattern("skills:text:*")
     logger.info("[seed] Invalidated skills caches")
 
-    return seeded
+    return seeded, existing
 
 
 async def verify_system_skills() -> int:
@@ -216,10 +223,22 @@ async def main():
         count = await verify_system_skills()
         print(f"Found {count} system skills in VFS")
     else:
-        skills = await seed_all_system_skills(force=args.force)
-        print(f"Seeded {len(skills)} system skills:")
-        for skill in skills:
-            print(f"  - {skill.name} -> {skill.vfs_path}")
+        seeded_skills, existing_skills = await seed_all_system_skills(force=args.force)
+
+        if seeded_skills:
+            print(f"Seeded {len(seeded_skills)} new system skills:")
+            for skill in seeded_skills:
+                print(f"  - {skill.name} -> {skill.vfs_path}")
+        else:
+            print("No new system skills seeded.")
+
+        if existing_skills:
+            print(
+                f"Skipped {len(existing_skills)} existing system skills "
+                "(use --force to overwrite):"
+            )
+            for skill_name in existing_skills:
+                print(f"  - {skill_name}")
 
 
 if __name__ == "__main__":
