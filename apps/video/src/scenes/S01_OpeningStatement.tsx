@@ -8,19 +8,20 @@ import { COLORS, FONTS } from "../constants";
 
 // One word per beat — instant hard cut, no fade, tiny scale punch on enter
 const WORDS = [
-  { text: "STOP",   startFrame: 0,   exitFrame: 10  },
-  { text: "DOING",  startFrame: 10,  exitFrame: 20  },
-  { text: "GRUNT",  startFrame: 20,  exitFrame: 32  },
-  { text: "WORK.",  startFrame: 32,  exitFrame: 999 },
+  { text: "STOP",   startFrame: 0,   exitFrame: 10,  color: "#ff4444" },
+  { text: "DOING",  startFrame: 10,  exitFrame: 20,  color: COLORS.textDark },
+  { text: "GRUNT",  startFrame: 20,  exitFrame: 32,  color: COLORS.zinc400 },
+  { text: "WORK.",  startFrame: 32,  exitFrame: 999, color: COLORS.primary },
 ];
 
 interface WordProps {
   text: string;
   startFrame: number;
   exitFrame: number;
+  color: string;
 }
 
-const Word: React.FC<WordProps> = ({ text, startFrame, exitFrame }) => {
+const Word: React.FC<WordProps> = ({ text, startFrame, exitFrame, color }) => {
   const frame = useCurrentFrame();
   if (frame < startFrame || frame >= exitFrame) return null;
 
@@ -35,7 +36,7 @@ const Word: React.FC<WordProps> = ({ text, startFrame, exitFrame }) => {
         fontFamily: FONTS.display,
         fontSize: 200,
         fontWeight: 800,
-        color: COLORS.textDark,
+        color,
         lineHeight: 1.0,
         letterSpacing: "-0.02em",
         textTransform: "uppercase",
@@ -53,8 +54,28 @@ const Word: React.FC<WordProps> = ({ text, startFrame, exitFrame }) => {
 };
 
 export const S01_OpeningStatement: React.FC = () => {
+  const frame = useCurrentFrame();
+
+  // White flash at word cut frames
+  const FLASH_FRAMES = [10, 20, 32];
+  const flashOpacity = FLASH_FRAMES.reduce((acc, f) => {
+    const dist = Math.abs(frame - f);
+    return Math.max(acc, dist <= 1 ? interpolate(dist, [0, 1], [0.6, 0]) : 0);
+  }, 0);
+
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, overflow: "hidden" }}>
+      {/* White flash at word cuts */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background: "white",
+          opacity: flashOpacity,
+          pointerEvents: "none",
+          zIndex: 10,
+        }}
+      />
       {/* Words — centered, one at a time, instant hard cut */}
       <div
         style={{
@@ -76,7 +97,7 @@ export const S01_OpeningStatement: React.FC = () => {
           }}
         >
           {WORDS.map((word, i) => (
-            <Word key={i} text={word.text} startFrame={word.startFrame} exitFrame={word.exitFrame} />
+            <Word key={i} text={word.text} startFrame={word.startFrame} exitFrame={word.exitFrame} color={word.color} />
           ))}
         </div>
       </div>
