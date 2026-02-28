@@ -104,8 +104,13 @@ export const S07_ChatToolCalls: React.FC = () => {
   const accordionProgress = spring({ frame: frame - 20, fps, config: { damping: 10, stiffness: 90 } });
   const accordionMaxH = interpolate(accordionProgress, [0, 1], [0, 820]);
 
+  // Exit: slide up + fade (clears for slide-from-bottom transition)
+  const exitP = spring({ frame: frame - 135, fps, config: { damping: 200 } });
+  const exitY = interpolate(exitP, [0, 1], [0, -30], { extrapolateLeft: "clamp" });
+  const exitOpacity = interpolate(exitP, [0, 1], [1, 0], { extrapolateLeft: "clamp" });
+
   return (
-    <AbsoluteFill style={{ background: COLORS.bgLight, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <AbsoluteFill style={{ background: COLORS.bgLight, display: "flex", alignItems: "center", justifyContent: "center", transform: `translateY(${exitY}px)`, opacity: exitOpacity }}>
       <div style={{ width: 1400, display: "flex", flexDirection: "column", gap: 32 }}>
 
         {/* User message (static, faded as context) */}

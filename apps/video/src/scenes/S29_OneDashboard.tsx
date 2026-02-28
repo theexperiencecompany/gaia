@@ -138,6 +138,11 @@ export const S29_OneDashboard: React.FC = () => {
     [1.0, 1.008],
   );
 
+  // Exit: scale down + fade (precedes hard cut to S31)
+  const exitP = spring({ frame: frame - 82, fps, config: { damping: 200 } });
+  const exitScale = interpolate(exitP, [0, 1], [1.0, 0.94], { extrapolateLeft: "clamp" });
+  const exitOpacity = interpolate(exitP, [0, 1], [1, 0], { extrapolateLeft: "clamp" });
+
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight }}>
       {/* Typography */}
@@ -150,7 +155,8 @@ export const S29_OneDashboard: React.FC = () => {
           alignItems: "center",
           justifyContent: "center",
           gap: 8,
-          transform: `scale(${breathe})`,
+          transform: `scale(${breathe * exitScale})`,
+          opacity: exitOpacity,
         }}
       >
         {/* Line 1 */}

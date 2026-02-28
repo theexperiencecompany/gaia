@@ -42,6 +42,15 @@ export const S03_BetterWay: React.FC = () => {
     [1.0, 1.005],
   );
 
+  // Exit: scale up slightly + fade (next transition overlaps 20f, exit starts at ~frame 80)
+  const exitP = spring({ frame: frame - 80, fps, config: { damping: 200 } });
+  const exitScale = interpolate(exitP, [0, 1], [1.0, 1.08], {
+    extrapolateLeft: "clamp",
+  });
+  const exitOpacity = interpolate(exitP, [0, 1], [1, 0], {
+    extrapolateLeft: "clamp",
+  });
+
   return (
     <AbsoluteFill
       style={{
@@ -59,7 +68,8 @@ export const S03_BetterWay: React.FC = () => {
           flexDirection: "column",
           alignItems: "center",
           gap: 24,
-          transform: `scale(${breathe})`,
+          transform: `scale(${breathe * exitScale})`,
+          opacity: exitOpacity,
         }}
       >
         {/* Beat 1: "10s of apps." */}
