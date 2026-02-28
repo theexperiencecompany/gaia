@@ -10,7 +10,7 @@
     "@remotion/cli": "4.0.429",
     "@remotion/fonts": "4.0.429",
     "@remotion/google-fonts": "4.0.429",
-    "@remotion/transitions": "4.0.429",
+"@remotion/transitions": "4.0.429",
     "@theexperiencecompany/gaia-icons": "^1.9.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",

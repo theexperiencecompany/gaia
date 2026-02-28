@@ -1,7 +1,9 @@
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
+  Sequence,
   interpolate,
   spring,
   staticFile,
@@ -9,6 +11,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 const BRIEFING_LINES = [
   "Good morning! Here's your briefing:",
@@ -43,6 +46,34 @@ export const S24_NotificationPreview: React.FC = () => {
         justifyContent: "center",
       }}
     >
+      {/* Card whoosh in */}
+      <Sequence from={0}><Audio src={SFX.uiSwitch} volume={0.3} /></Sequence>
+      {/* Each briefing line ticks in */}
+      {BRIEFING_LINES.map((line, i) =>
+        line ? (
+          <Sequence key={i} from={i * 8 + 15}>
+            <Audio src={SFX.uiSwitch} volume={0.1} />
+          </Sequence>
+        ) : null
+      )}
+      {/* Headline */}
+      <div
+        style={{
+          position: "absolute",
+          top: 80,
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          fontFamily: FONTS.display,
+          textTransform: "uppercase" as const,
+          fontSize: 68,
+          fontWeight: 700,
+          color: COLORS.textDark,
+          opacity: cardOpacity,
+        }}
+      >
+        Delivered to wherever you already are.
+      </div>
       <div
         style={{
           background: "rgba(25, 25, 28, 0.97)",

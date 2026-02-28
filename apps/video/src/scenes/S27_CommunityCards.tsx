@@ -1,14 +1,17 @@
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
   interpolate,
+  Sequence,
   spring,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 const ROTATIONS = [8, -8, 5];
 
@@ -312,29 +315,8 @@ export const S27_CommunityCards: React.FC = () => {
               color: COLORS.textDark,
             }}
           >
-            {"Create. "}
-          </span>
-          <span
-            style={{
-              fontFamily: FONTS.display,
-              textTransform: "uppercase" as const,
-              fontSize: 80,
-              fontWeight: 700,
-              color: COLORS.primary,
-            }}
-          >
-            {"Publish. "}
-          </span>
-          <span
-            style={{
-              fontFamily: FONTS.display,
-              textTransform: "uppercase" as const,
-              fontSize: 80,
-              fontWeight: 700,
-              color: COLORS.textDark,
-            }}
-          >
-            Browse.
+            Built by the community.
+            <br /> Ready for you.
           </span>
         </div>
 
@@ -351,6 +333,13 @@ export const S27_CommunityCards: React.FC = () => {
             {displayCount.toLocaleString()}+ community workflows
           </span>
         </div>
+
+        {/* Soft whoosh per card as it springs in */}
+        {COMMUNITY_WORKFLOWS.map((_, i) => (
+          <Sequence key={`sfx-${i}`} from={i * 6}>
+            <Audio src={SFX.whip} volume={0.1} />
+          </Sequence>
+        ))}
 
         {/* Cards grid */}
         <div

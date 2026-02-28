@@ -1,6 +1,8 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
+  Sequence,
   useCurrentFrame,
   useVideoConfig,
   spring,
@@ -8,6 +10,7 @@ import {
   Img,
   staticFile,
 } from "remotion";
+import { SFX } from "../sfx";
 import { CheckmarkCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 import { COLORS, FONTS } from "../constants";
 import { UserTail, BotTail } from "./S06_UserChat";
@@ -44,6 +47,14 @@ export const S09_ChatWorkflowCreated: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* Swoosh when the workflow card snaps into place */}
+      <Sequence from={swapFrame}>
+        <Audio src={SFX.whoosh} volume={0.45} />
+      </Sequence>
+      {/* Success chime when workflow is confirmed created */}
+      <Sequence from={swapFrame}>
+        <Audio src={SFX.uiSwitch} volume={0.5} />
+      </Sequence>
       {/* "✓ Workflow created." flash */}
       {frame >= swapFrame && (
         <div

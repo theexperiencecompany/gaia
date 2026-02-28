@@ -1,32 +1,80 @@
-import React from "react";
+import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
+  Img,
+  interpolate,
+  Sequence,
+  spring,
+  staticFile,
   useCurrentFrame,
   useVideoConfig,
-  spring,
-  interpolate,
-  Img,
-  staticFile,
 } from "remotion";
-import { COLORS, FONTS } from "../constants";
 import { TypingText } from "../components/TypingText";
+import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 const USER_MESSAGE =
   "Hey GAIA — pull my Gmail from the last 6 hours, check Google Calendar for today's meetings, scan my GitHub for open PRs, and check Slack for anything urgent. Summarize everything and set this up to run every morning at 8am automatically.";
 
 // iMessage tail — user bubble (bottom-right)
-export const UserTail: React.FC<{ bg?: string; bgColor?: string }> = ({ bg = COLORS.primary, bgColor = COLORS.bg }) => (
+export const UserTail: React.FC<{ bg?: string; bgColor?: string }> = ({
+  bg = COLORS.primary,
+  bgColor = COLORS.bg,
+}) => (
   <>
-    <div style={{ position: "absolute", bottom: 0, right: -7, width: 20, height: 18, background: bg, borderBottomLeftRadius: "16px 14px" }} />
-    <div style={{ position: "absolute", bottom: 0, right: -26, width: 26, height: 18, background: bgColor, borderBottomLeftRadius: 10 }} />
+    <div
+      style={{
+        position: "absolute",
+        bottom: 0,
+        right: -7,
+        width: 20,
+        height: 18,
+        background: bg,
+        borderBottomLeftRadius: "16px 14px",
+      }}
+    />
+    <div
+      style={{
+        position: "absolute",
+        bottom: 0,
+        right: -26,
+        width: 26,
+        height: 18,
+        background: bgColor,
+        borderBottomLeftRadius: 10,
+      }}
+    />
   </>
 );
 
 // iMessage tail — bot bubble (bottom-left)
-export const BotTail: React.FC<{ bgColor?: string }> = ({ bgColor = COLORS.bg }) => (
+export const BotTail: React.FC<{ bgColor?: string }> = ({
+  bgColor = COLORS.bg,
+}) => (
   <>
-    <div style={{ position: "absolute", bottom: 0, left: -7, width: 20, height: 18, background: "#27272a", borderBottomRightRadius: 16 }} />
-    <div style={{ position: "absolute", bottom: 0, left: -26, width: 26, height: 18, background: bgColor, borderBottomRightRadius: 10 }} />
+    <div
+      style={{
+        position: "absolute",
+        bottom: 0,
+        left: -7,
+        width: 20,
+        height: 18,
+        background: "#27272a",
+        borderBottomRightRadius: 16,
+      }}
+    />
+    <div
+      style={{
+        position: "absolute",
+        bottom: 0,
+        left: -26,
+        width: 26,
+        height: 18,
+        background: bgColor,
+        borderBottomRightRadius: 10,
+      }}
+    />
   </>
 );
 
@@ -36,14 +84,23 @@ export const S06_UserChat: React.FC = () => {
 
   // Whole scene fades in
   const sceneProgress = spring({ frame, fps, config: { damping: 25 } });
-  const sceneOpacity = interpolate(sceneProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
+  const sceneOpacity = interpolate(sceneProgress, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
+  });
 
-  const typingDone = frame >= Math.ceil(USER_MESSAGE.length / 2);
+  const typingFrames = Math.ceil(USER_MESSAGE.length / 2); // framesPerChar=0.5
+  const typingDone = frame >= typingFrames;
 
   // Typing indicator after message completes
   const indicatorDelay = Math.ceil(USER_MESSAGE.length / 2) + 8;
-  const indicatorProgress = spring({ frame: frame - indicatorDelay, fps, config: { damping: 25 } });
-  const indicatorOpacity = interpolate(indicatorProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
+  const indicatorProgress = spring({
+    frame: frame - indicatorDelay,
+    fps,
+    config: { damping: 25 },
+  });
+  const indicatorOpacity = interpolate(indicatorProgress, [0, 0.1], [0, 1], {
+    extrapolateRight: "clamp",
+  });
 
   // Wave spinner: 3x3 grid of cells animating diagonally (matching WaveSpinnerSquare)
   const WAVE_DELAYS_F = [0, 3.6, 7.2, 3.6, 7.2, 10.8, 7.2, 10.8, 14.4]; // frames
@@ -54,7 +111,20 @@ export const S06_UserChat: React.FC = () => {
   });
 
   return (
-    <AbsoluteFill style={{ background: COLORS.bgLight, display: "flex", alignItems: "center", justifyContent: "center" }}>
+    <AbsoluteFill
+      style={{
+        background: COLORS.bgLight,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      {/* Rapid mouse-click pulses simulating keyboard typing (one every 4 frames) */}
+      {Array.from({ length: Math.ceil(typingFrames / 4) }).map((_, i) => (
+        <Sequence key={i} from={i * 4} durationInFrames={4}>
+          <Audio src={SFX.mouseClick} volume={0.18} />
+        </Sequence>
+      ))}
       <div
         style={{
           width: 1400,
@@ -66,7 +136,13 @@ export const S06_UserChat: React.FC = () => {
         }}
       >
         {/* User message bubble — right aligned */}
-        <div style={{ display: "flex", justifyContent: "flex-end", paddingRight: 32 }}>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "flex-end",
+            paddingRight: 32,
+          }}
+        >
           <div style={{ position: "relative", maxWidth: "85%" }}>
             <div
               style={{
@@ -95,15 +171,52 @@ export const S06_UserChat: React.FC = () => {
 
         {/* GAIA typing indicator */}
         {frame >= indicatorDelay && (
-          <div style={{ display: "flex", alignItems: "flex-end", gap: 18, paddingLeft: 8, opacity: indicatorOpacity }}>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "flex-end",
+              gap: 18,
+              paddingLeft: 8,
+              opacity: indicatorOpacity,
+            }}
+          >
             <Img
               src={staticFile("images/logos/logo.webp")}
-              style={{ width: 60, height: 60, borderRadius: "50%", objectFit: "contain", flexShrink: 0 }}
+              style={{
+                width: 60,
+                height: 60,
+                borderRadius: "50%",
+                objectFit: "contain",
+                flexShrink: 0,
+              }}
             />
-            <div style={{ background: "#27272a", padding: "20px 28px", borderRadius: "40px 40px 40px 8px", position: "relative", display: "flex", alignItems: "center" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 4 }}>
+            <div
+              style={{
+                background: "#27272a",
+                padding: "20px 28px",
+                borderRadius: "40px 40px 40px 8px",
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(3, 1fr)",
+                  gap: 4,
+                }}
+              >
                 {waveOpacities.map((opacity, i) => (
-                  <div key={i} style={{ width: 12, height: 12, background: COLORS.primary, opacity }} />
+                  <div
+                    key={i}
+                    style={{
+                      width: 12,
+                      height: 12,
+                      background: COLORS.primary,
+                      opacity,
+                    }}
+                  />
                 ))}
               </div>
               <BotTail bgColor={COLORS.bgLight} />

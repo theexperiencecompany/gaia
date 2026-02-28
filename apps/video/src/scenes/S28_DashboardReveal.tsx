@@ -7,7 +7,9 @@ import {
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
+  Sequence,
   interpolate,
   spring,
   staticFile,
@@ -15,6 +17,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 const DUMMY_EMAILS = [
   {
@@ -103,7 +106,7 @@ const EmailRow: React.FC<EmailRowProps> = ({ email, index, cardDelay }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rowProgress = spring({
-    frame: frame - (cardDelay + index * 10),
+    frame: frame - (cardDelay + index * 6),
     fps,
     config: { damping: 200 },
   });
@@ -177,7 +180,7 @@ const EventRow: React.FC<EventRowProps> = ({ event, index, cardDelay }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rowProgress = spring({
-    frame: frame - (cardDelay + index * 10),
+    frame: frame - (cardDelay + index * 6),
     fps,
     config: { damping: 200 },
   });
@@ -243,7 +246,7 @@ const TodoRow: React.FC<TodoRowProps> = ({ todo, index, cardDelay }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rowProgress = spring({
-    frame: frame - (cardDelay + index * 10),
+    frame: frame - (cardDelay + index * 6),
     fps,
     config: { damping: 200 },
   });
@@ -316,7 +319,7 @@ const WorkflowRow: React.FC<WorkflowRowProps> = ({ wf, index, cardDelay }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const rowProgress = spring({
-    frame: frame - (cardDelay + index * 10),
+    frame: frame - (cardDelay + index * 6),
     fps,
     config: { damping: 200 },
   });
@@ -501,6 +504,10 @@ export const S28_DashboardReveal: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, overflowY: "hidden" }}>
+      {/* Greeting whoosh */}
+      <Sequence from={0}><Audio src={SFX.whoosh} volume={0.25} /></Sequence>
+      {/* All DashCards slide in together */}
+      <Sequence from={10}><Audio src={SFX.uiSwitch} volume={0.3} /></Sequence>
       <div
         style={{
           position: "absolute",
@@ -619,10 +626,10 @@ export const S28_DashboardReveal: React.FC = () => {
                 style={{ color: COLORS.zinc400 }}
               />
             }
-            delay={22}
+            delay={10}
           >
             {DUMMY_EVENTS.map((event, i) => (
-              <EventRow key={i} event={event} index={i} cardDelay={22} />
+              <EventRow key={i} event={event} index={i} cardDelay={10} />
             ))}
           </DashCard>
 
@@ -635,10 +642,10 @@ export const S28_DashboardReveal: React.FC = () => {
                 style={{ color: COLORS.zinc400 }}
               />
             }
-            delay={34}
+            delay={10}
           >
             {DUMMY_TODOS.map((todo, i) => (
-              <TodoRow key={i} todo={todo} index={i} cardDelay={34} />
+              <TodoRow key={i} todo={todo} index={i} cardDelay={10} />
             ))}
           </DashCard>
 
@@ -651,10 +658,10 @@ export const S28_DashboardReveal: React.FC = () => {
                 style={{ color: COLORS.zinc400 }}
               />
             }
-            delay={46}
+            delay={10}
           >
             {DUMMY_WORKFLOWS.map((wf, i) => (
-              <WorkflowRow key={i} wf={wf} index={i} cardDelay={46} />
+              <WorkflowRow key={i} wf={wf} index={i} cardDelay={10} />
             ))}
           </DashCard>
         </div>

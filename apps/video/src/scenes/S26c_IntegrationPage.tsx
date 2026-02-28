@@ -7,7 +7,9 @@ import {
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
+  Sequence,
   interpolate,
   spring,
   staticFile,
@@ -15,6 +17,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 // Stat chip matching the actual marketplace page design
 const StatChip: React.FC<{
@@ -195,6 +198,16 @@ export const S26c_IntegrationPage: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ background: COLORS.bg, overflow: "hidden" }}>
+      {/* Page slide-in whoosh */}
+      <Sequence from={0}><Audio src={SFX.whoosh} volume={0.25} /></Sequence>
+      {/* "Add to GAIA" button pop */}
+      <Sequence from={22}><Audio src={SFX.uiSwitch} volume={0.3} /></Sequence>
+      {/* Stat chips */}
+      {[35, 42, 49, 56].map((f) => (
+        <Sequence key={f} from={f}><Audio src={SFX.uiSwitch} volume={0.1} /></Sequence>
+      ))}
+      {/* Tools card */}
+      <Sequence from={60}><Audio src={SFX.uiSwitch} volume={0.2} /></Sequence>
       {/* Cyan radial glow */}
       <div
         style={{

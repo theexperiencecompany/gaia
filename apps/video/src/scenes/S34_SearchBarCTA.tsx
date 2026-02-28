@@ -2,7 +2,9 @@ import { Search01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
+  Sequence,
   interpolate,
   spring,
   staticFile,
@@ -11,6 +13,7 @@ import {
 } from "remotion";
 import { TypingText } from "../components/TypingText";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 export const S34_SearchBarCTA: React.FC = () => {
   const frame = useCurrentFrame();
@@ -61,6 +64,18 @@ export const S34_SearchBarCTA: React.FC = () => {
         gap: 48,
       }}
     >
+      {/* Search bar + headline entrance */}
+      <Sequence from={0}><Audio src={SFX.whoosh} volume={0.35} /></Sequence>
+      {/* Typing chars */}
+      {Array.from({ length: 9 }).map((_, i) => (
+        <Sequence key={i} from={20 + i * 3}>
+          <Audio src={SFX.mouseClick} volume={0.15} />
+        </Sequence>
+      ))}
+      {/* Go button pops in */}
+      <Sequence from={70}><Audio src={SFX.uiSwitch} volume={0.3} /></Sequence>
+      {/* Branding line */}
+      <Sequence from={80}><Audio src={SFX.uiSwitch} volume={0.25} /></Sequence>
       {/* Subtle cyan glow behind search bar */}
       <div
         style={{
@@ -171,16 +186,6 @@ export const S34_SearchBarCTA: React.FC = () => {
             objectFit: "contain",
           }}
         />
-        <span
-          style={{
-            fontFamily: FONTS.body,
-            fontSize: 44,
-            color: COLORS.zinc600,
-            fontWeight: 400,
-          }}
-        >
-          — now in beta
-        </span>
       </div>
     </AbsoluteFill>
   );

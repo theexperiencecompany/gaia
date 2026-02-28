@@ -1,7 +1,8 @@
 import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate, Img, staticFile } from "remotion";
+import { AbsoluteFill, Audio, Sequence, useCurrentFrame, useVideoConfig, spring, interpolate, Img, staticFile } from "remotion";
 import { COLORS, FONTS } from "../constants";
 import { SceneBackground } from "../components/SceneBackground";
+import { SFX } from "../sfx";
 import { BotTail } from "./S06_UserChat";
 import { CalendarUpload01Icon, InboxUnreadIcon, Clock01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 
@@ -11,11 +12,13 @@ const FULL_MESSAGE = `Your Daily Digest is ready.
 → Sarah Q4 — reply needed
 → Follow up on vendor invoice
 
-Posted to Slack.`;
+Posted to Slack. Todos updated.`;
 
-const CHIP_DELAY_1 = FULL_MESSAGE.length + 8;
-const CHIP_DELAY_2 = FULL_MESSAGE.length + 18;
-const CHIP_DELAY_3 = FULL_MESSAGE.length + 28;
+const CHARS_PER_FRAME = 3;
+const TEXT_DONE_FRAME = Math.ceil(FULL_MESSAGE.length / CHARS_PER_FRAME);
+const CHIP_DELAY_1 = TEXT_DONE_FRAME + 8;
+const CHIP_DELAY_2 = TEXT_DONE_FRAME + 18;
+const CHIP_DELAY_3 = TEXT_DONE_FRAME + 28;
 
 const CHIP_STYLE: React.CSSProperties = {
   background: "#27272a",
@@ -61,8 +64,8 @@ export const S19_BotMessageStream: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Stream chars at 1 per frame
-  const charIndex = Math.min(Math.floor(frame), FULL_MESSAGE.length);
+  // Stream chars at CHARS_PER_FRAME per frame
+  const charIndex = Math.min(Math.floor(frame * CHARS_PER_FRAME), FULL_MESSAGE.length);
   const displayText = FULL_MESSAGE.slice(0, charIndex);
   const cursorOpacity = Math.floor(frame / 10) % 2 === 0 ? 1 : 0;
 
@@ -77,6 +80,10 @@ export const S19_BotMessageStream: React.FC = () => {
 
   return (
     <AbsoluteFill>
+      {/* Action chip pops */}
+      <Sequence from={CHIP_DELAY_1}><Audio src={SFX.whip} volume={0.4} /></Sequence>
+      <Sequence from={CHIP_DELAY_2}><Audio src={SFX.whip} volume={0.4} /></Sequence>
+      <Sequence from={CHIP_DELAY_3}><Audio src={SFX.whip} volume={0.4} /></Sequence>
       <SceneBackground variant="light" />
       <div
         style={{

@@ -1,12 +1,15 @@
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
+  Sequence,
   interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 export const S03_BetterWay: React.FC = () => {
   const frame = useCurrentFrame();
@@ -64,6 +67,10 @@ export const S03_BetterWay: React.FC = () => {
         gap: 16,
       }}
     >
+      {/* Beat 1 reveal */}
+      <Sequence from={0}><Audio src={SFX.whoosh} volume={0.35} /></Sequence>
+      {/* Beat 2 slides in */}
+      <Sequence from={18}><Audio src={SFX.uiSwitch} volume={0.3} /></Sequence>
       <div
         style={{
           display: "flex",

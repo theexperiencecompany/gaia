@@ -1,33 +1,28 @@
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
+  Sequence,
   interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 export const S32_ProductivityOS: React.FC = () => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
 
-  // Background cyan bloom: simple fade in, no scaling artifact
   const bloomOpacity = interpolate(frame, [0, 20], [0, 1], {
     extrapolateRight: "clamp",
   });
 
-  // Line 1: "It's your" — fast snap up from below
+  // Lead-in: "So you can focus on" — snaps in immediately
   const line1P = spring({ frame, fps, config: { damping: 200 } });
-  const line1Y = interpolate(line1P, [0, 1], [32, 0]);
+  const line1Y = interpolate(line1P, [0, 1], [28, 0]);
   const line1Opacity = interpolate(line1P, [0, 0.1], [0, 1], {
-    extrapolateRight: "clamp",
-  });
-
-  // Line 3: "Operating System." — clean snap up, after line 2 settles
-  const line3P = spring({ frame: frame - 26, fps, config: { damping: 200 } });
-  const line3Y = interpolate(line3P, [0, 1], [40, 0]);
-  const line3Opacity = interpolate(line3P, [0, 0.1], [0, 1], {
     extrapolateRight: "clamp",
   });
 
@@ -35,99 +30,128 @@ export const S32_ProductivityOS: React.FC = () => {
     <AbsoluteFill
       style={{
         background: COLORS.bgLight,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 0,
         overflow: "hidden",
       }}
     >
+      {/* Audio cues */}
+      <Sequence from={26}><Audio src={SFX.whoosh} volume={0.35} /></Sequence>
+
       {/* Cyan radial bloom */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: `radial-gradient(ellipse at 50% 60%, ${COLORS.primary}18 0%, transparent 55%)`,
+          background: `radial-gradient(ellipse at 20% 55%, ${COLORS.primary}14 0%, transparent 60%)`,
           opacity: bloomOpacity,
           pointerEvents: "none",
         }}
       />
 
-      {/* Line 1: "It's your" */}
+      {/* Text block — left-aligned, vertically centered */}
       <div
         style={{
-          fontFamily: FONTS.body,
-          fontSize: 80,
-          fontWeight: 400,
-          color: COLORS.zinc600,
-          textAlign: "center",
-          lineHeight: 1.1,
-          transform: `translateY(${line1Y}px)`,
-          opacity: line1Opacity,
-          marginBottom: 20,
+          position: "absolute",
+          left: 120,
+          top: "50%",
+          transform: "translateY(-50%)",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "flex-start",
+          gap: 0,
         }}
       >
-        It&apos;s your
-      </div>
+        {/* Lead-in */}
+        <div
+          style={{
+            fontFamily: FONTS.body,
+            fontSize: 44,
+            fontWeight: 300,
+            color: COLORS.zinc400,
+            letterSpacing: "0.01em",
+            transform: `translateY(${line1Y}px)`,
+            opacity: line1Opacity,
+            marginBottom: 8,
+          }}
+        >
+          So you can focus on
+        </div>
 
-      {/* Line 2: "PRODUCTIVITY" — character cascade */}
-      {(() => {
-        const WORD = "PRODUCTIVITY";
-        return (
-          <div
-            style={{
-              display: "flex",
-              fontFamily: FONTS.display,
-              fontSize: 150,
-              fontWeight: 700,
-              lineHeight: 0.95,
-              letterSpacing: "-0.03em",
-            }}
-          >
-            {WORD.split("").map((char, i) => {
-              const charP = spring({
-                frame: frame - (5 + i * 1.5),
-                fps,
-                config: { damping: 18, stiffness: 140 },
-              });
-              const charY = interpolate(charP, [0, 1], [80, 0]);
-              const charOpacity = interpolate(charP, [0, 0.08], [0, 1], {
-                extrapolateRight: "clamp",
-              });
-              return (
-                <span
-                  key={i}
-                  style={{
-                    display: "inline-block",
-                    color: COLORS.textDark,
-                    transform: `translateY(${charY}px)`,
-                    opacity: charOpacity,
-                  }}
-                >
-                  {char}
-                </span>
-              );
-            })}
-          </div>
-        );
-      })()}
+        {/* WHAT MATTERS — hero */}
+        <div
+          style={{
+            display: "flex",
+            fontFamily: FONTS.display,
+            fontSize: 190,
+            fontWeight: 800,
+            lineHeight: 0.9,
+            letterSpacing: "-0.04em",
+            marginBottom: 24,
+          }}
+        >
+          {"WHAT MATTERS".split("").map((char, i) => {
+            const charP = spring({
+              frame: frame - (5 + i * 1.5),
+              fps,
+              config: { damping: 18, stiffness: 140 },
+            });
+            const charY = interpolate(charP, [0, 1], [70, 0]);
+            const charOpacity = interpolate(charP, [0, 0.08], [0, 1], {
+              extrapolateRight: "clamp",
+            });
+            return (
+              <span
+                key={`wm-${i}`}
+                style={{
+                  display: "inline-block",
+                  color: COLORS.textDark,
+                  transform: `translateY(${charY}px)`,
+                  opacity: charOpacity,
+                  whiteSpace: "pre",
+                }}
+              >
+                {char === " " ? "\u00A0" : char}
+              </span>
+            );
+          })}
+        </div>
 
-      {/* Line 3: "Operating System." */}
-      <div
-        style={{
-          fontFamily: FONTS.display,
-          textTransform: "uppercase" as const,
-          fontSize: 150,
-          fontWeight: 700,
-          color: COLORS.primary,
-          lineHeight: 1.0,
-          letterSpacing: "-0.02em",
-          transform: `translateY(${line3Y}px)`,
-          opacity: line3Opacity,
-        }}
-      >
-        Operating System.
+        {/* EVERYTHING ELSE, HANDLED. — cyan punctuation */}
+        <div
+          style={{
+            display: "flex",
+            fontFamily: FONTS.display,
+            fontSize: 80,
+            fontWeight: 700,
+            lineHeight: 1.0,
+            letterSpacing: "-0.02em",
+          }}
+        >
+          {"EVERYTHING ELSE, HANDLED.".split("").map((char, i) => {
+            const charP = spring({
+              frame: frame - (26 + i * 1.5),
+              fps,
+              config: { damping: 18, stiffness: 140 },
+            });
+            const charY = interpolate(charP, [0, 1], [50, 0]);
+            const charOpacity = interpolate(charP, [0, 0.08], [0, 1], {
+              extrapolateRight: "clamp",
+            });
+            return (
+              <span
+                key={`eh-${i}`}
+                style={{
+                  display: "inline-block",
+                  color: COLORS.primary,
+                  transform: `translateY(${charY}px)`,
+                  opacity: charOpacity,
+                  whiteSpace: "pre",
+                }}
+              >
+                {char === " " ? "\u00A0" : char}
+              </span>
+            );
+          })}
+        </div>
       </div>
     </AbsoluteFill>
   );

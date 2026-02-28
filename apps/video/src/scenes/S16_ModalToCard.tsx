@@ -1,5 +1,6 @@
 import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate } from "remotion";
+import { AbsoluteFill, Audio, Sequence, useCurrentFrame, useVideoConfig, spring, interpolate } from "remotion";
+import { SFX } from "../sfx";
 import { CheckmarkCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 import { COLORS, FONTS } from "../constants";
 import { SceneBackground } from "../components/SceneBackground";
@@ -24,6 +25,10 @@ export const S16_ModalToCard: React.FC = () => {
   return (
     <AbsoluteFill>
       <SceneBackground variant="light" />
+      {/* Swoosh as the card slides into view */}
+      <Sequence from={0}>
+        <Audio src={SFX.whoosh} volume={0.35} />
+      </Sequence>
 
       {/* "✓ Workflow created." */}
       <div

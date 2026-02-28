@@ -1,13 +1,16 @@
-import React from "react";
+import { Clock01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   interpolate,
+  Sequence,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
-import { Clock01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 const SCHEDULE_OPTIONS = [
   { label: "Every day at 8:00 AM", badge: "Daily" },
@@ -43,6 +46,13 @@ export const S22b_ScheduleScene: React.FC = () => {
         padding: "0 120px",
       }}
     >
+      {/* Headline beat */}
+      {/* Row ticks — each schedule option pops in */}
+      {SCHEDULE_OPTIONS.map((_, i) => (
+        <Sequence key={i} from={18 + i * 9}>
+          <Audio src={SFX.uiSwitch} volume={0.2} />
+        </Sequence>
+      ))}
       <div style={{ width: "100%" }}>
         {/* Icon + Headline — single line */}
         <div
@@ -132,9 +142,7 @@ export const S22b_ScheduleScene: React.FC = () => {
                     i === 0 ? "none" : "1px solid rgba(255,255,255,0.05)",
                 }}
               >
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: 16 }}
-                >
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
                   <div
                     style={{
                       width: 10,

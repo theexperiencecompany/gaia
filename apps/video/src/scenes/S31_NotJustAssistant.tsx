@@ -1,14 +1,17 @@
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
+  Sequence,
   interpolate,
   spring,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
-const WORDS = ["handles", "everything."];
+const WORDS = ["does the", "boring stuff."];
 
 export const S31_NotJustAssistant: React.FC = () => {
   const frame = useCurrentFrame();
@@ -34,6 +37,14 @@ export const S31_NotJustAssistant: React.FC = () => {
         overflow: "hidden",
       }}
     >
+      {/* GAIA slam */}
+      <Sequence from={0}><Audio src={SFX.whoosh} volume={0.45} /></Sequence>
+      {/* "handles everything." word beats */}
+      {WORDS.map((_, i) => (
+        <Sequence key={i} from={8 + i * 3}>
+          <Audio src={SFX.uiSwitch} volume={0.28} />
+        </Sequence>
+      ))}
       {/* GAIA title */}
       <div
         style={{

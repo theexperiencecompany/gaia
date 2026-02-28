@@ -1,6 +1,8 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
+  Sequence,
   useCurrentFrame,
   useVideoConfig,
   spring,
@@ -9,6 +11,7 @@ import {
   staticFile,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 import { TypingText } from "../components/TypingText";
 import { UserTail, BotTail } from "./S06_UserChat";
 import { WorkflowDraftVideoCard } from "../components/WorkflowDraftVideoCard";
@@ -17,7 +20,7 @@ const USER_MESSAGE =
   "Hey GAIA — pull my Gmail from the last 6 hours, check Google Calendar for today's meetings, scan my GitHub for open PRs, and check Slack for anything urgent. Summarize everything and set this up to run every morning at 8am automatically.";
 
 const BOT_MESSAGE =
-  "14 emails — Sarah's Q4 report needs a reply, vendor invoice due Friday.\n3 meetings: standup 10am, design review 2pm, 1:1 at 4pm.\n2 PRs opened overnight on your repos.\n3 urgent DMs in #design.\n\nI've drafted your daily briefing workflow below — runs at 8am automatically.";
+  "14 emails (3 need replies). Vendor invoice due Friday.\n3 meetings today. 2 overnight PRs. 3 urgent Slack DMs.\n\nWorkflow created — runs every morning at 8am.";
 
 export const S08_ChatResponse: React.FC = () => {
   const frame = useCurrentFrame();
@@ -27,7 +30,8 @@ export const S08_ChatResponse: React.FC = () => {
   const bubbleOpacity = interpolate(bubbleProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
   const bubbleY = interpolate(bubbleProgress, [0, 1], [24, 0]);
 
-  const messageComplete = frame >= Math.ceil(BOT_MESSAGE.length * 0.7);
+  const streamingFrames = Math.ceil(BOT_MESSAGE.length * 0.7); // framesPerChar≈0.7
+  const messageComplete = frame >= streamingFrames;
   const cardDelay = Math.ceil(BOT_MESSAGE.length * 0.7 * 0.55);
   const cardProgress = spring({ frame: frame - cardDelay, fps, config: { damping: 22, stiffness: 100 } });
   const cardOpacity = interpolate(cardProgress, [0, 0.1], [0, 1], { extrapolateRight: "clamp" });
@@ -36,6 +40,12 @@ export const S08_ChatResponse: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* Rapid mouse-click pulses simulating the bot streaming its response */}
+      {Array.from({ length: Math.ceil(streamingFrames / 5) }).map((_, i) => (
+        <Sequence key={i} from={i * 5} durationInFrames={5}>
+          <Audio src={SFX.mouseClick} volume={0.13} />
+        </Sequence>
+      ))}
       <div style={{ width: 1400, display: "flex", flexDirection: "column", gap: 32 }}>
 
         {/* User message (faded context) */}

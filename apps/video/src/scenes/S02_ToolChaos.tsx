@@ -1,6 +1,17 @@
-import React from "react";
-import { AbsoluteFill, useCurrentFrame, useVideoConfig, spring, interpolate, Img, staticFile } from "remotion";
-import { COLORS } from "../constants";
+import type React from "react";
+import {
+  AbsoluteFill,
+  Audio,
+  Img,
+  interpolate,
+  Sequence,
+  spring,
+  staticFile,
+  useCurrentFrame,
+  useVideoConfig,
+} from "remotion";
+import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 const TOOL_POSITIONS = [
   { x: -500, y: -200 },
@@ -68,11 +79,16 @@ const ToolIcon: React.FC<ToolIconProps> = ({ index, position, iconSrc }) => {
     config: { damping: 200 },
   });
 
-  const finalX = frame >= collapseStart ? interpolate(collapseProgress, [0, 1], [x, 0]) : x;
-  const finalY = frame >= collapseStart ? interpolate(collapseProgress, [0, 1], [y, 0]) : y;
+  const finalX =
+    frame >= collapseStart ? interpolate(collapseProgress, [0, 1], [x, 0]) : x;
+  const finalY =
+    frame >= collapseStart ? interpolate(collapseProgress, [0, 1], [y, 0]) : y;
   const finalOpacity =
     frame >= collapseStart
-      ? interpolate(collapseProgress, [0.5, 1], [1, 0], { extrapolateLeft: "clamp", extrapolateRight: "clamp" })
+      ? interpolate(collapseProgress, [0.5, 1], [1, 0], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        })
       : 1;
 
   return (
@@ -99,8 +115,20 @@ const ToolIcon: React.FC<ToolIconProps> = ({ index, position, iconSrc }) => {
 };
 
 export const S02_ToolChaos: React.FC = () => {
+  const frame = useCurrentFrame();
+
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight }}>
+      {/* Pop beat per icon entry */}
+      {/* {TOOL_ICONS.map((_, i) => (
+        <Sequence key={i} from={i * 3}>
+          <Audio src={SFX.mouseClick} volume={0.22} />
+        </Sequence>
+      ))} */}
+      {/* Whoosh on collapse */}
+      <Sequence from={75}>
+        <Audio src={SFX.whoosh} volume={0.3} />
+      </Sequence>
       {TOOL_POSITIONS.map((pos, i) => (
         <ToolIcon
           key={i}
@@ -109,6 +137,27 @@ export const S02_ToolChaos: React.FC = () => {
           iconSrc={TOOL_ICONS[i] || "images/icons/macos/github.webp"}
         />
       ))}
+      {/* Problem statement text overlay — appears at frame 35, exits with tool collapse */}
+      <div
+        style={{
+          position: "absolute",
+          bottom: 80,
+          left: 0,
+          right: 0,
+          textAlign: "center",
+          fontFamily: FONTS.body,
+          fontSize: 36,
+          fontWeight: 400,
+          color: "#71717a",
+          opacity: interpolate(frame, [35, 45, 70, 85], [0, 1, 1, 0], {
+            extrapolateLeft: "clamp",
+            extrapolateRight: "clamp",
+          }),
+          pointerEvents: "none",
+        }}
+      >
+        12 tabs. 3 inboxes. 47 unread. It&apos;s 9am.
+      </div>
     </AbsoluteFill>
   );
 };

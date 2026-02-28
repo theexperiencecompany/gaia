@@ -1,6 +1,8 @@
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
+  Sequence,
   interpolate,
   spring,
   useCurrentFrame,
@@ -8,6 +10,7 @@ import {
 } from "remotion";
 import { MacOSNotification } from "../components/MacOSNotification";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 const NOTIFICATIONS = [
   {
@@ -74,6 +77,13 @@ export const S22_MacOSNotifications: React.FC = () => {
       >
         Notifications, wherever you want.
       </div>
+
+      {/* Notification ding for each notification as it appears */}
+      {NOTIFICATIONS.map((notif, i) => (
+        <Sequence key={`sfx-${i}`} from={notif.delay}>
+          <Audio src={SFX.uiSwitch} volume={0.55} />
+        </Sequence>
+      ))}
 
       {/* Notifications stack — centered on screen */}
       <div

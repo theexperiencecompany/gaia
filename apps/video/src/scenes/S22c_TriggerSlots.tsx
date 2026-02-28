@@ -2,7 +2,9 @@ import { FlashIcon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
+  Sequence,
   interpolate,
   spring,
   staticFile,
@@ -10,6 +12,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 // Triggers backed by real backend integration events (apps/api/app/models/trigger_configs.py)
 // Icons must exist in apps/video/public/images/icons/
@@ -109,6 +112,12 @@ export const S22c_TriggerSlots: React.FC = () => {
         padding: "72px 200px 0",
       }}
     >
+      {/* Slot machine click for each scroll step */}
+      {TRANSITION_STARTS.map((f) => (
+        <Sequence key={f} from={f}>
+          <Audio src={SFX.uiSwitch} volume={0.4} />
+        </Sequence>
+      ))}
       {/* Headline row — single line, full available width */}
       <div
         style={{

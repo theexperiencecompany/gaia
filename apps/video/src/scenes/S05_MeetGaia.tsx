@@ -1,14 +1,17 @@
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
   interpolate,
+  Sequence,
   spring,
   staticFile,
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 export const S05_MeetGaia: React.FC = () => {
   const frame = useCurrentFrame();
@@ -94,6 +97,18 @@ export const S05_MeetGaia: React.FC = () => {
         justifyContent: "center",
       }}
     >
+      {/* "Meet" character drops — one click per char */}
+      {/* {[0, 2, 3, 5].map((f) => (
+        <Sequence key={f} from={f}><Audio src={SFX.uiSwitch} volume={0.18} /></Sequence>
+      ))} */}
+      {/* GAIA logo bloom */}
+      <Sequence from={10}>
+        <Audio src={SFX.whoosh} volume={0.4} />
+      </Sequence>
+      {/* Subtitle reveals */}
+      {/* <Sequence from={30}>
+        <Audio src={SFX.uiSwitch} volume={0.28} />
+      </Sequence> */}
       {/* Radial bloom behind logo */}
       <div
         style={{
@@ -181,7 +196,7 @@ export const S05_MeetGaia: React.FC = () => {
             opacity: line2Opacity,
           }}
         >
-          Your Proactive Personal Assistant
+          The AI that acts before you ask.
         </div>
       </div>
     </AbsoluteFill>

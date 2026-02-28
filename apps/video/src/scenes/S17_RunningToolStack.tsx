@@ -1,6 +1,8 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
+  Sequence,
   useCurrentFrame,
   useVideoConfig,
   spring,
@@ -12,6 +14,7 @@ import { CheckmarkCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-ro
 import { COLORS, FONTS } from "../constants";
 import { SceneBackground } from "../components/SceneBackground";
 import { WorkflowVideoCard } from "../components/WorkflowVideoCard";
+import { SFX } from "../sfx";
 
 const ROTATIONS = [8, -8, 5, -5, 7, -6];
 const STAGGER_STEP = 7;
@@ -229,6 +232,20 @@ export const S17_RunningToolStack: React.FC = () => {
 
   return (
     <AbsoluteFill>
+      {/* Stacked icon entries */}
+      {TOOL_CALLS.map((_, i) => (
+        <Sequence key={i} from={i * STAGGER_STEP}>
+          <Audio src={SFX.uiSwitch} volume={0.18} />
+        </Sequence>
+      ))}
+      {/* Accordion springs open */}
+      <Sequence from={ACCORDION_START}><Audio src={SFX.whoosh} volume={0.3} /></Sequence>
+      {/* Tool rows cascade in */}
+      {TOOL_CALLS.map((_, i) => (
+        <Sequence key={`row-${i}`} from={ACCORDION_START + i * 6}>
+          <Audio src={SFX.uiSwitch} volume={0.22} />
+        </Sequence>
+      ))}
       <SceneBackground variant="light" />
       <div
         style={{

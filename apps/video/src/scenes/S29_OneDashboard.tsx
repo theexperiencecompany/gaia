@@ -8,7 +8,9 @@ import {
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
+  Sequence,
   interpolate,
   spring,
   staticFile,
@@ -16,6 +18,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 interface ChipProps {
   label: string;
@@ -140,6 +143,17 @@ export const S29_OneDashboard: React.FC = () => {
 
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight }}>
+      {/* "One dashboard." word beats */}
+      <Sequence from={0}><Audio src={SFX.uiSwitch} volume={0.32} /></Sequence>
+      <Sequence from={2}><Audio src={SFX.uiSwitch} volume={0.28} /></Sequence>
+      {/* "For Everything." cyan line */}
+      <Sequence from={8}><Audio src={SFX.whoosh} volume={0.3} /></Sequence>
+      {/* Chip pops */}
+      {chips.map((chip) => (
+        <Sequence key={chip.label} from={chip.delay}>
+          <Audio src={SFX.uiSwitch} volume={0.2} />
+        </Sequence>
+      ))}
       {/* Typography */}
       <div
         style={{

@@ -14,7 +14,9 @@ import {
 import type React from "react";
 import {
   AbsoluteFill,
+  Audio,
   Img,
+  Sequence,
   interpolate,
   spring,
   staticFile,
@@ -22,6 +24,7 @@ import {
   useVideoConfig,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 // ─── Form sub-components ──────────────────────────────────────────────────────
 
@@ -493,20 +496,26 @@ export const S26_IntegrationBuilder: React.FC = () => {
         paddingTop: 180,
       }}
     >
+      {/* Field entry beats */}
+      {[18, 26, 46, 64].map((f) => (
+        <Sequence key={f} from={f}><Audio src={SFX.uiSwitch} volume={0.1} /></Sequence>
+      ))}
+      {/* Create button press */}
+      <Sequence from={CREATE_FRAME}><Audio src={SFX.uiSwitch} volume={0.35} /></Sequence>
+      {/* Sidebar slides in */}
+      <Sequence from={SIDEBAR_START}><Audio src={SFX.whoosh} volume={0.25} /></Sequence>
+      {/* Publish button press */}
+      <Sequence from={PUBLISH_FRAME}><Audio src={SFX.uiSwitch} volume={0.4} /></Sequence>
+      {/* Published banner */}
+      <Sequence from={PUBLISHED_GATE}><Audio src={SFX.whip} volume={0.35} /></Sequence>
+      {/* Subtle cyan radial glow — matches S26c/S26d */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: COLORS.bg,
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "rgba(0,0,0,0.72)",
-          backdropFilter: "blur(6px)",
-          opacity: overlayOpacity,
+          background:
+            "radial-gradient(ellipse 80% 60% at 50% 0%, rgba(0,187,255,0.04) 0%, transparent 70%)",
+          pointerEvents: "none",
         }}
       />
 
@@ -584,8 +593,6 @@ export const S26_IntegrationBuilder: React.FC = () => {
           overflow: "hidden",
           transform: `scale(${modalScale})`,
           opacity: modalOpacity,
-          boxShadow:
-            "0 32px 100px rgba(0,0,0,0.92), 0 0 0 1px rgba(255,255,255,0.07)",
         }}
       >
         {/* ── PHASE 1: CREATION FORM ────────────────────────────────────── */}

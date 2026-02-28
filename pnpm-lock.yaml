@@ -373,6 +373,9 @@ importers:
       '@remotion/google-fonts':
         specifier: 4.0.429
         version: 4.0.429(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      '@remotion/sfx':
+        specifier: 4.0.429
+        version: 4.0.429
       '@remotion/transitions':
         specifier: 4.0.429
         version: 4.0.429(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
@@ -6866,6 +6869,9 @@ packages:
     peerDependencies:
       react: 19.1.0
       react-dom: 19.1.0
+
+  '@remotion/sfx@4.0.429':
+    resolution: {integrity: sha512-K4aWRYjiAw/X+051ml9VHbFZgNe627+CnjadPgzgj3Ph6chd9p0PFl7Vw8C1g9kYMc/WfSPIdXERuIGKEmOgWg==}
 
   '@remotion/shapes@4.0.429':
     resolution: {integrity: sha512-tfulMYS8PUqYxBRvhA+s/sPCLOYSfe6qnR+6/cj8TZF96yAgZD7OWiPAXM3qy40ZdWP/Y18DpBOEiOMNwHEHBA==}
@@ -26874,6 +26880,8 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
+
+  '@remotion/sfx@4.0.429': {}
 
   '@remotion/shapes@4.0.429(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
     dependencies:

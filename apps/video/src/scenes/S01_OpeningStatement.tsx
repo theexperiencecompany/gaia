@@ -1,17 +1,20 @@
 import React from "react";
 import {
   AbsoluteFill,
+  Audio,
+  Sequence,
   useCurrentFrame,
   interpolate,
 } from "remotion";
 import { COLORS, FONTS } from "../constants";
+import { SFX } from "../sfx";
 
 // One word per beat — instant hard cut, no fade, tiny scale punch on enter
 const WORDS = [
-  { text: "STOP",   startFrame: 0,   exitFrame: 10,  color: "#ff4444" },
-  { text: "DOING",  startFrame: 10,  exitFrame: 20,  color: COLORS.textDark },
-  { text: "GRUNT",  startFrame: 20,  exitFrame: 32,  color: COLORS.textDark },
-  { text: "WORK.",  startFrame: 32,  exitFrame: 999, color: COLORS.primary },
+  { text: "STOP",     startFrame: 0,   exitFrame: 10,  color: "#ff4444" },
+  { text: "WASTING",  startFrame: 10,  exitFrame: 20,  color: COLORS.textDark },
+  { text: "YOUR",     startFrame: 20,  exitFrame: 32,  color: COLORS.textDark },
+  { text: "TIME.",    startFrame: 32,  exitFrame: 999, color: COLORS.primary },
 ];
 
 interface WordProps {
@@ -56,6 +59,12 @@ const Word: React.FC<WordProps> = ({ text, startFrame, exitFrame, color }) => {
 export const S01_OpeningStatement: React.FC = () => {
   return (
     <AbsoluteFill style={{ background: COLORS.bgLight, overflow: "hidden" }}>
+      {/* Word impact beats — one whip per hard cut */}
+      {WORDS.map((word) => (
+        <Sequence key={word.startFrame} from={word.startFrame}>
+          <Audio src={SFX.whip} volume={0.55} />
+        </Sequence>
+      ))}
       {/* Words — centered, one at a time, instant hard cut */}
       <div
         style={{
