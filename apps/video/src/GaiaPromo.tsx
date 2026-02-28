@@ -49,7 +49,7 @@ export const GaiaPromo: React.FC = () => {
     <TransitionSeries>
       {/* === ACT 1: THE HOOK === */}
       {/* S01 → S02: Hard smash cut into chaos */}
-      <TransitionSeries.Sequence durationInFrames={120}>
+      <TransitionSeries.Sequence durationInFrames={55}>
         <S01_OpeningStatement />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -87,8 +87,8 @@ export const GaiaPromo: React.FC = () => {
 
       {/* === ACT 3: WORKFLOW CREATION VIA CHAT === */}
       {/* User sends a long multi-tool request */}
-      {/* DURATION TRIMMED: 240 → 180 */}
-      <TransitionSeries.Sequence durationInFrames={180}>
+      {/* DURATION TRIMMED: 240 → 120 */}
+      <TransitionSeries.Sequence durationInFrames={120}>
         <S06_UserChat />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -116,7 +116,7 @@ export const GaiaPromo: React.FC = () => {
       />
 
       {/* User confirms — workflow created */}
-      <TransitionSeries.Sequence durationInFrames={130}>
+      <TransitionSeries.Sequence durationInFrames={85}>
         <S09_ChatWorkflowCreated />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -159,7 +159,7 @@ export const GaiaPromo: React.FC = () => {
       />
 
       {/* === ACT 5: MULTI-PLATFORM === */}
-      <TransitionSeries.Sequence durationInFrames={132}>
+      <TransitionSeries.Sequence durationInFrames={100}>
         <S23_PlatformIcons />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -184,7 +184,7 @@ export const GaiaPromo: React.FC = () => {
       />
 
       {/* === ACT 6: ECOSYSTEM + INTEGRATIONS === */}
-      <TransitionSeries.Sequence durationInFrames={180}>
+      <TransitionSeries.Sequence durationInFrames={90}>
         <S27_CommunityCards />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -217,7 +217,7 @@ export const GaiaPromo: React.FC = () => {
       />
 
       {/* === ACT 7: THE PLATFORM === */}
-      <TransitionSeries.Sequence durationInFrames={132}>
+      <TransitionSeries.Sequence durationInFrames={105}>
         <S28_DashboardReveal />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -225,7 +225,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.fast })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={102}>
+      <TransitionSeries.Sequence durationInFrames={85}>
         <S29_OneDashboard />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -234,7 +234,7 @@ export const GaiaPromo: React.FC = () => {
       />
 
       {/* === ACT 8: THE CLOSE === */}
-      <TransitionSeries.Sequence durationInFrames={72}>
+      <TransitionSeries.Sequence durationInFrames={50}>
         <S31_NotJustAssistant />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -242,7 +242,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.fast })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={150}>
+      <TransitionSeries.Sequence durationInFrames={72}>
         <S32_ProductivityOS />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
@@ -250,8 +250,8 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
-      {/* DURATION TRIMMED: 240 → 180 */}
-      <TransitionSeries.Sequence durationInFrames={180}>
+      {/* DURATION TRIMMED: 240 → 130 */}
+      <TransitionSeries.Sequence durationInFrames={130}>
         <S34_SearchBarCTA />
       </TransitionSeries.Sequence>
     </TransitionSeries>
