@@ -3,7 +3,7 @@ import { TransitionSeries, linearTiming, springTiming } from "@remotion/transiti
 import { fade } from "@remotion/transitions/fade";
 import { slide } from "@remotion/transitions/slide";
 import { wipe } from "@remotion/transitions/wipe";
-import { TRANSITIONS } from "./constants";
+import { TRANSITIONS, SPRINGS } from "./constants";
 
 // Act 1 & 2
 import { S01_OpeningStatement } from "./scenes/S01_OpeningStatement";
@@ -42,6 +42,7 @@ import { S32_ProductivityOS } from "./scenes/S32_ProductivityOS";
 import { S34_SearchBarCTA } from "./scenes/S34_SearchBarCTA";
 
 const T = TRANSITIONS;
+const S = SPRINGS;
 
 export const GaiaPromo: React.FC = () => {
   return (
@@ -62,10 +63,10 @@ export const GaiaPromo: React.FC = () => {
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
         presentation={fade()}
-        timing={springTiming({ config: { damping: 14, stiffness: 80 }, durationInFrames: 20 })}
+        timing={springTiming({ config: S.natural, durationInFrames: 20 })}
       />
 
-      {/* S03 → S05: Calm beat to logo reveal — slow cross dissolve */}
+      {/* S03 → S05: Calm beat to logo reveal — clean snap dissolve */}
       <TransitionSeries.Sequence durationInFrames={102}>
         <S03_BetterWay />
       </TransitionSeries.Sequence>
@@ -81,10 +82,11 @@ export const GaiaPromo: React.FC = () => {
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
         presentation={slide({ direction: "from-bottom" })}
-        timing={springTiming({ config: { damping: 18, stiffness: 100 }, durationInFrames: 20 })}
+        timing={springTiming({ config: S.natural, durationInFrames: 20 })}
       />
 
       {/* === ACT 3: WORKFLOW CREATION VIA CHAT === */}
+      {/* User sends a long multi-tool request */}
       {/* DURATION TRIMMED: 240 → 180 */}
       <TransitionSeries.Sequence durationInFrames={180}>
         <S06_UserChat />
@@ -94,6 +96,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.fast })}
       />
 
+      {/* GAIA runs tool calls */}
       <TransitionSeries.Sequence durationInFrames={150}>
         <S07_ChatToolCalls />
       </TransitionSeries.Sequence>
@@ -102,6 +105,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
+      {/* GAIA streams response + proposes workflow draft */}
       {/* DURATION TRIMMED: 210 → 180 */}
       <TransitionSeries.Sequence durationInFrames={180}>
         <S08_ChatResponse />
@@ -111,6 +115,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.fast })}
       />
 
+      {/* User confirms — workflow created */}
       <TransitionSeries.Sequence durationInFrames={130}>
         <S09_ChatWorkflowCreated />
       </TransitionSeries.Sequence>
@@ -159,7 +164,7 @@ export const GaiaPromo: React.FC = () => {
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
         presentation={slide({ direction: "from-top" })}
-        timing={springTiming({ config: { damping: 18, stiffness: 100 }, durationInFrames: T.normal })}
+        timing={springTiming({ config: S.natural, durationInFrames: T.normal })}
       />
 
       <TransitionSeries.Sequence durationInFrames={132}>
@@ -241,7 +246,7 @@ export const GaiaPromo: React.FC = () => {
         <S32_ProductivityOS />
       </TransitionSeries.Sequence>
       <TransitionSeries.Transition
-        presentation={wipe({ direction: "from-left" })}
+        presentation={slide({ direction: "from-right" })}
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.normal })}
       />
 
