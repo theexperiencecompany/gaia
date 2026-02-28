@@ -543,30 +543,30 @@ export const S26_IntegrationBuilder: React.FC = () => {
         <div
           style={{
             position: "absolute",
-            top: 40,
+            top: 72,
             left: 0,
             right: 0,
             display: "flex",
             justifyContent: "center",
             alignItems: "center",
-            gap: 14,
+            gap: 18,
             opacity: publishedOpacity,
             transform: `translateY(${interpolate(publishedTransitionP, [0, 1], [-20, 0])}px)`,
             zIndex: 10,
           }}
         >
           <CheckmarkCircle02Icon
-            width={44}
-            height={44}
+            width={64}
+            height={64}
             style={{ color: "#22c55e" }}
           />
           <span
             style={{
-              fontFamily: FONTS.body,
-              fontSize: 48,
-              fontWeight: 600,
+              fontFamily: FONTS.display,
+              textTransform: "uppercase" as const,
+              fontSize: 80,
+              fontWeight: 700,
               color: "#22c55e",
-              letterSpacing: -0.3,
             }}
           >
             Published to marketplace

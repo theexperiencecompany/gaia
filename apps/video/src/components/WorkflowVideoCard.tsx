@@ -1,13 +1,13 @@
 import React from "react";
 import { Img, staticFile } from "remotion";
 import { COLORS, FONTS } from "../constants";
-import { Clock01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
+import { CheckmarkCircle02Icon, Clock01Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 
 interface WorkflowVideoCardProps {
   title: string;
   description?: string;
   schedule?: string;
-  status?: "ready" | "running" | "done";
+  status?: "ready" | "running" | "done" | "completed";
   animProgress?: number;
   cardScale?: number;
 }
@@ -34,12 +34,14 @@ export const WorkflowVideoCard: React.FC<WorkflowVideoCardProps> = ({
   cardScale = 1,
 }) => {
   const isDone = status === "done";
+  const isCompleted = status === "completed";
   const isRunning = status === "running";
 
-  const iconBg = isDone ? "rgba(34,197,94,0.15)" : `${COLORS.primary}26`;
-  const statusColor = isDone ? "#22c55e" : isRunning ? COLORS.primary : COLORS.zinc400;
-  const statusBg = isDone ? "rgba(34,197,94,0.15)" : isRunning ? `${COLORS.primary}26` : "rgba(63,63,70,0.4)";
-  const statusLabel = isDone ? "✓  Created" : isRunning ? "Running..." : "Ready";
+  const iconBg = (isDone || isCompleted) ? "rgba(34,197,94,0.15)" : `${COLORS.primary}26`;
+  const statusColor = (isDone || isCompleted) ? "#22c55e" : isRunning ? COLORS.primary : COLORS.zinc400;
+  const statusBg = (isDone || isCompleted) ? "rgba(34,197,94,0.15)" : isRunning ? `${COLORS.primary}26` : "rgba(63,63,70,0.4)";
+  const statusLabel = isDone ? "Created" : isCompleted ? "Done" : isRunning ? "Running..." : "Ready";
+  const showCheckIcon = isDone || isCompleted;
 
   return (
     <div
@@ -91,7 +93,7 @@ export const WorkflowVideoCard: React.FC<WorkflowVideoCardProps> = ({
               {title}
             </span>
             <span style={{ fontSize: 16, color: COLORS.zinc500, fontFamily: FONTS.body }}>
-              {isDone ? "Workflow Created" : "Workflow"}
+              {isDone ? "Workflow Created" : isCompleted ? "Workflow" : "Workflow"}
             </span>
           </div>
         </div>
@@ -108,8 +110,14 @@ export const WorkflowVideoCard: React.FC<WorkflowVideoCardProps> = ({
             fontWeight: 600,
             whiteSpace: "nowrap",
             flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
           }}
         >
+          {showCheckIcon && (
+            <CheckmarkCircle02Icon size={18} style={{ color: statusColor, flexShrink: 0 }} />
+          )}
           {statusLabel}
         </div>
       </div>
@@ -168,7 +176,7 @@ export const WorkflowVideoCard: React.FC<WorkflowVideoCardProps> = ({
           textAlign: "center",
         }}
       >
-        {isDone ? "View & Edit" : "Running..."}
+        {(isDone || isCompleted) ? "View & Edit" : "Running..."}
       </div>
     </div>
   );

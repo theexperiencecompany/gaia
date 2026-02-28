@@ -46,7 +46,7 @@ export const S21_Completed: React.FC = () => {
             opacity: doneOpacity * doneFadeOut,
           }}
         >
-          Done.
+          Delivered.
         </div>
       </div>
 
@@ -65,7 +65,7 @@ export const S21_Completed: React.FC = () => {
             title="Daily Morning Briefing"
             description="Pulls Gmail, Calendar, GitHub, and Slack each morning and delivers a clean summary."
             schedule="Every day at 8:00 AM"
-            status="done"
+            status="completed"
           />
         </div>
       </div>

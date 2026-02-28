@@ -291,7 +291,7 @@ export const S27_CommunityCards: React.FC = () => {
           alignItems: "center",
           justifyContent: "center",
           padding: "40px 80px",
-          gap: 16,
+          gap: 20,
         }}
       >
         {/* Header: Create. Publish. Browse. */}
@@ -307,7 +307,7 @@ export const S27_CommunityCards: React.FC = () => {
             style={{
               fontFamily: FONTS.display,
               textTransform: "uppercase" as const,
-              fontSize: 100,
+              fontSize: 80,
               fontWeight: 700,
               color: COLORS.textDark,
             }}
@@ -318,7 +318,7 @@ export const S27_CommunityCards: React.FC = () => {
             style={{
               fontFamily: FONTS.display,
               textTransform: "uppercase" as const,
-              fontSize: 100,
+              fontSize: 80,
               fontWeight: 700,
               color: COLORS.primary,
             }}
@@ -329,7 +329,7 @@ export const S27_CommunityCards: React.FC = () => {
             style={{
               fontFamily: FONTS.display,
               textTransform: "uppercase" as const,
-              fontSize: 100,
+              fontSize: 80,
               fontWeight: 700,
               color: COLORS.textDark,
             }}

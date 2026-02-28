@@ -244,7 +244,7 @@ export const S17_RunningToolStack: React.FC = () => {
             display: "flex",
             flexDirection: "column",
             gap: 28,
-            transform: "scale(1.2)",
+            transform: "scale(1.0)",
             transformOrigin: "center center",
           }}
         >

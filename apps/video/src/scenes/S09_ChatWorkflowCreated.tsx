@@ -8,6 +8,7 @@ import {
   Img,
   staticFile,
 } from "remotion";
+import { CheckmarkCircle02Icon } from "@theexperiencecompany/gaia-icons/solid-rounded";
 import { COLORS, FONTS } from "../constants";
 import { UserTail, BotTail } from "./S06_UserChat";
 import { WorkflowVideoCard } from "../components/WorkflowVideoCard";
@@ -63,7 +64,7 @@ export const S09_ChatWorkflowCreated: React.FC = () => {
             whiteSpace: "nowrap",
           }}
         >
-          <span style={{ color: "#22c55e" }}>✓</span>
+          <CheckmarkCircle02Icon size={52} style={{ color: "#22c55e" }} />
           Workflow created.
         </div>
       )}

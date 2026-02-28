@@ -242,7 +242,7 @@ export const GaiaPromo: React.FC = () => {
         timing={springTiming({ config: { damping: 200 }, durationInFrames: T.slow })}
       />
 
-      <TransitionSeries.Sequence durationInFrames={120}>
+      <TransitionSeries.Sequence durationInFrames={240}>
         <S34_SearchBarCTA />
       </TransitionSeries.Sequence>
     </TransitionSeries>
