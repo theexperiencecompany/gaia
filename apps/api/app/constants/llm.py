@@ -1,4 +1,6 @@
 DEFAULT_LLM_PROVIDER = "openai"
+AGENT_RECURSION_LIMIT = 75  # Main agent graphs (comms, executor, provider subagents)
+SUBAGENT_RECURSION_LIMIT = 25  # Spawned subagents (spawn_subagent tool loop)
 DEFAULT_MAX_TOKENS = 24000
 DEFAULT_OPENAI_MODEL_NAME = "gpt-4o-mini"
 DEFAULT_MODEL_NAME = DEFAULT_OPENAI_MODEL_NAME
