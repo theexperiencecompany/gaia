@@ -239,7 +239,7 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
 
     # FastAPI with hot reloading disabled: start serving quickly,
     # warm up in background.
-    if context == "main_app" and not settings.ENABLE_HOT_RELOADING:
+    if context == "main_app" and not settings.ENABLE_LAZY_LOADING:
         logger.info(
             "Hot reloading disabled: scheduling warmup tasks in background "
             "(non-blocking startup)"
