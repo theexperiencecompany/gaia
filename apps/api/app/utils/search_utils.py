@@ -346,7 +346,7 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
             snippet_cell = row.find_next_sibling("tr")
             if not link:
                 continue
-            href = link.get("href", "")
+            href = str(link.get("href", ""))
             if not href.startswith("http"):
                 continue
             snippet = snippet_cell.get_text(strip=True) if snippet_cell else ""
