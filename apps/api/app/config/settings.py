@@ -171,13 +171,6 @@ class ProductionSettings(CommonSettings):
     RABBITMQ_URL: str
 
     # ----------------------------------------------
-    # Authentication & OAuth
-    # ----------------------------------------------
-    GOOGLE_CLIENT_ID: str
-    GOOGLE_CLIENT_SECRET: str
-    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
-
-    # ----------------------------------------------
     # External API Integration Keys
     # ----------------------------------------------
     TAVILY_API_KEY: str
@@ -317,15 +310,6 @@ class DevelopmentSettings(CommonSettings):
     CHROMADB_PORT: Optional[int] = None
     POSTGRES_URL: Optional[str] = None
     RABBITMQ_URL: Optional[str] = None
-
-    # ----------------------------------------------
-    # Authentication & OAuth
-    # ----------------------------------------------
-    GOOGLE_CLIENT_ID: Optional[str] = None
-    GOOGLE_CLIENT_SECRET: Optional[str] = None
-    ENABLE_PUBSUB_JWT_VERIFICATION: bool = False
-    GOOGLE_USERINFO_URL: str = "https://www.googleapis.com/oauth2/v2/userinfo"
-    GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
 
     # ----------------------------------------------
     # External API Integration Keys

@@ -5,13 +5,10 @@ from typing import Any, Literal
 
 import pymongo.errors
 import redis
-from mcp_use.exceptions import OAuthAuthenticationError
-
 from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
     get_integration_by_id,
-    get_integration_scopes,
 )
 from app.config.token_repository import token_repository
 from app.constants.keys import OAUTH_STATUS_KEY
@@ -33,7 +30,7 @@ from app.services.integrations.user_integrations import remove_user_integration
 from app.services.mcp.mcp_client import get_mcp_client
 from app.services.mcp.mcp_token_store import MCPTokenStore
 from app.services.oauth.oauth_state_service import create_oauth_state
-from app.utils.oauth_utils import build_google_oauth_url
+from mcp_use.client.exceptions import OAuthAuthenticationError
 
 
 @lru_cache(maxsize=1)
@@ -214,47 +211,6 @@ async def connect_composio_integration(
         integration_id=integration_id,
         name=integration_name,
         redirect_url=url["redirect_url"],
-        message="OAuth authentication required",
-    )
-
-
-async def connect_self_integration(
-    user_id: str,
-    user_email: str,
-    integration_id: str,
-    integration_name: str,
-    provider: str,
-    redirect_path: str,
-) -> ConnectIntegrationResponse:
-    """Handle self-managed integration connection (Google)."""
-    if provider != "google":
-        return ConnectIntegrationResponse(
-            status="error",
-            integration_id=integration_id,
-            name=integration_name,
-            error=f"Provider {provider} not implemented",
-        )
-
-    state_token = await create_oauth_state(
-        user_id=user_id,
-        redirect_path=redirect_path,
-        integration_id=integration_id,
-    )
-
-    await update_user_integration_status(user_id, integration_id, "created")
-
-    auth_url = await build_google_oauth_url(
-        user_email=user_email,
-        state_token=state_token,
-        integration_scopes=get_integration_scopes(integration_id),
-        user_id=user_id,
-    )
-
-    return ConnectIntegrationResponse(
-        status="redirect",
-        integration_id=integration_id,
-        name=integration_name,
-        redirect_url=auth_url,
         message="OAuth authentication required",
     )
 

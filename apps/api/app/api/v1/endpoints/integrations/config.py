@@ -15,7 +15,6 @@ from app.services.integrations.integration_connection_service import (
     build_integrations_config,
     connect_composio_integration,
     connect_mcp_integration,
-    connect_self_integration,
     disconnect_integration,
 )
 from app.services.integrations.integration_resolver import IntegrationResolver
@@ -124,22 +123,6 @@ async def connect_integration_endpoint(
                 raise HTTPException(status_code=400, detail="Provider not configured")
             return await connect_composio_integration(
                 user_id=str(user_id),
-                integration_id=integration_id,
-                integration_name=resolved.name,
-                provider=provider,
-                redirect_path=request.redirect_path,
-            )
-        elif resolved.managed_by == "self":
-            provider = (
-                resolved.platform_integration.provider
-                if resolved.platform_integration
-                else None
-            )
-            if not provider:
-                raise HTTPException(status_code=400, detail="Provider not configured")
-            return await connect_self_integration(
-                user_id=str(user_id),
-                user_email=user.get("email", ""),
                 integration_id=integration_id,
                 integration_name=resolved.name,
                 provider=provider,

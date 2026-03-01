@@ -12,12 +12,9 @@ import json
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-import httpx
 from app.config.loggers import token_repository_logger as logger
-from app.config.settings import settings
 from app.db.postgresql import get_db_session
 from app.models.db_oauth import OAuthToken
-from authlib.integrations.starlette_client import OAuth
 from authlib.oauth2.rfc6749 import OAuth2Token
 from fastapi import HTTPException
 from sqlalchemy import select, update
@@ -27,39 +24,15 @@ class TokenRepository:
     """
     Repository for managing integration OAuth tokens in PostgreSQL.
 
-    This class handles tokens for third-party integrations like Google, Slack, Notion, etc.
+    This class handles tokens for third-party integrations like Slack, Notion, etc.
     It does NOT handle WorkOS authentication tokens, which are managed by WorkOSAuthMiddleware.
     """
 
     def __init__(self):
         """Initialize the token repository."""
-
-        self.oauth = OAuth()
-
-        # Initialize supported providers
-        self._init_oauth_clients()
-
         logger.info(
             "Token repository initialized for managing API tokens (Google, etc.)"
         )
-
-    def _init_oauth_clients(self):
-        """Initialize OAuth clients for all supported providers."""
-        # Google OAuth client
-        if settings.GOOGLE_CLIENT_ID and settings.GOOGLE_CLIENT_SECRET:
-            self.oauth.register(
-                name="google",
-                client_id=settings.GOOGLE_CLIENT_ID,
-                client_secret=settings.GOOGLE_CLIENT_SECRET,
-                server_metadata_url="https://accounts.google.com/.well-known/openid-configuration",
-                client_kwargs={
-                    "scope": "openid email profile",
-                    "prompt": "select_account",
-                },
-            )
-            logger.info("Google OAuth client registered")
-        else:
-            logger.warning("Google OAuth credentials not found, client not registered")
 
     def _get_token_expiration(self, token_data: dict) -> datetime:
         """Get token expiration time with fallback logic."""
@@ -240,55 +213,6 @@ class TokenRepository:
         """
         return await self.store_token(user_id, provider, token)
 
-    async def _refresh_google_token(self, refresh_token: str) -> Optional[OAuth2Token]:
-        """
-        Refresh a Google OAuth token using the refresh token.
-
-        Args:
-            refresh_token: The refresh token to use
-
-        Returns:
-            A new OAuth2Token or None if refreshing failed
-        """
-
-        if not self.oauth.google:
-            logger.error("Google OAuth client not properly initialized")
-            return None
-
-        client = self.oauth.google
-        try:
-            # Prepare the refresh token request
-            data = {
-                "client_id": client.client_id,
-                "client_secret": client.client_secret,
-                "refresh_token": refresh_token,
-                "grant_type": "refresh_token",
-            }
-
-            # Make the refresh token request
-            async with httpx.AsyncClient() as http_client:
-                response = await http_client.post(
-                    settings.GOOGLE_TOKEN_URL,
-                    data=data,
-                    headers={"Content-Type": "application/x-www-form-urlencoded"},
-                )
-
-            if response.status_code != 200:
-                logger.error(f"Failed to refresh token: {response.text}")
-                return None
-
-            token_data = response.json()
-
-            # Google refresh token responses don't include the refresh token
-            # Add it back to maintain the full token
-            token_data["refresh_token"] = refresh_token
-
-            # Create OAuth2Token from response
-            return OAuth2Token(token_data)
-        except Exception as e:
-            logger.error(f"Error refreshing Google token: {str(e)}")
-            return None
-
     async def _refresh_provider_token(
         self, provider: str, refresh_token: str
     ) -> Optional[OAuth2Token]:
@@ -302,12 +226,8 @@ class TokenRepository:
         Returns:
             A new OAuth2Token or None if refreshing failed
         """
-        if provider == "google":
-            return await self._refresh_google_token(refresh_token)
-        # Add more providers as needed
-        else:
-            logger.error(f"Provider {provider} not supported for token refresh")
-            return None
+        logger.error(f"Provider {provider} not supported for token refresh")
+        return None
 
     async def refresh_token(self, user_id: str, provider: str) -> Optional[OAuth2Token]:
         """
