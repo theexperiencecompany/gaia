@@ -187,6 +187,7 @@ class ToolRegistry:
             memory_tools,
             notification_tool,
             reminder_tool,
+            research_tool,
             skill_tools,
             support_tool,
             todo_tool,
@@ -201,6 +202,7 @@ class ToolRegistry:
             tools=[
                 webpage_tool.web_search_tool,
                 webpage_tool.fetch_webpages,
+                research_tool.deep_research,
             ],
         )
 

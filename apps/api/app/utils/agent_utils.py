@@ -110,6 +110,7 @@ async def format_tool_call_entry(
         "retrieve_tools": ("retrieve_tools", "Retrieving tools", False),
         "call_executor": ("executor", "Delegating to executor", False),
         "handoff": ("handoff", None, False),  # message will be set from args
+        "spawn_subagent": ("spawn_subagent", "Spawning subagent", False),
     }
 
     if tool_name_raw in special_tools:

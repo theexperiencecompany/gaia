@@ -70,6 +70,7 @@ class SubAgentFactory:
             Compiled LangGraph agent with tool registry, retrieval, and checkpointer
         """
         from app.agents.tools.core.registry import get_tool_registry
+        from app.agents.tools.research_tool import deep_research
         from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 
         logger.info(
@@ -99,10 +100,11 @@ class SubAgentFactory:
         # Add vfs_read so subagents can always read VFS files (e.g. compacted tool outputs)
         scoped_tool_dict[vfs_read.name] = vfs_read
 
-        # Add webpage tools to scoped_tool_dict so subagents can bind and execute them
+        # Add search tools to scoped_tool_dict so subagents can bind and execute them
         # when retrieved (retrieve_tools may return these from the general namespace).
         scoped_tool_dict[web_search_tool.name] = web_search_tool
         scoped_tool_dict[fetch_webpages.name] = fetch_webpages
+        scoped_tool_dict[deep_research.name] = deep_research
 
         # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
         # all parent tools, not just the provider's scoped tools.

@@ -22,6 +22,7 @@ from typing import (
 )
 
 from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
@@ -33,7 +34,7 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore, SearchItem
 
-WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name]
+WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
 
 # ---------------------------------------------------------------------------
 # retrieve_tools docstring (doubles as LLM-facing tool description)

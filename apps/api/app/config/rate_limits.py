@@ -87,10 +87,14 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
         ),
     ),
     "deep_research": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=2),  # Keep very restrictive
-        pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
+        # Each call runs 3-9 parallel searches + up to 20 page fetches internally.
+        # Free: enough to evaluate the feature (2/day, 10/month)
+        # Pro: generous for power users — ~1 deep research every 1.2 hours at daily limit
+        free=RateLimitConfig(day=2, month=10),
+        pro=RateLimitConfig(day=20, month=600),
         info=FeatureInfo(
-            title="Deep Research", description="Perform comprehensive research analysis"
+            title="Deep Research",
+            description="Multi-source parallel research with full content analysis and synthesis",
         ),
     ),
     "document_generation": TieredRateLimits(

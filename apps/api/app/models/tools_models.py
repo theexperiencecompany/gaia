@@ -13,6 +13,7 @@ class ToolInfo(BaseModel):
     category: str  # Integration ID (e.g., "gmail", UUID for custom)
     display_name: str  # REQUIRED - human-readable name, never null
     icon_url: Optional[str] = None
+    requires_integration: bool = False  # False for core platform tools
 
 
 class ToolsListResponse(BaseModel):

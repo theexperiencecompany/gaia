@@ -87,7 +87,14 @@ async def build_executor_graph(
         agent_name="executor_agent",
         tool_registry=tool_dict,
         retrieve_tools_coroutine=get_retrieve_tools_function(),
-        initial_tool_ids=["handoff", "plan_tasks", "mark_task", "add_task", "vfs_read"],
+        initial_tool_ids=[
+            "handoff",
+            "plan_tasks",
+            "mark_task",
+            "add_task",
+            "vfs_read",
+            "deep_research",
+        ],
         middleware=middleware,
         pre_model_hooks=pre_model_hooks,
     )

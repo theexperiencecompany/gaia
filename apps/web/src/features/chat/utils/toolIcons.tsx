@@ -11,11 +11,13 @@
 
 import {
   AlarmClockIcon,
+  BodyPartMuscleIcon,
   Brain02Icon,
   CheckListIcon,
   ComputerTerminal01Icon,
   ConnectIcon,
   FileEmpty02Icon,
+  FolderFileStorageIcon,
   Image02Icon,
   InformationCircleIcon,
   NotificationIcon,
@@ -24,6 +26,8 @@ import {
   SquareArrowUpRight02Icon,
   Target02Icon,
   ToolsIcon,
+  WorkflowCircle06Icon,
+  ZapIcon,
 } from "@icons";
 import { m } from "motion/react";
 import Image from "next/image";
@@ -67,6 +71,10 @@ const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   SquareArrowUpRight02Icon,
   PackageOpenIcon,
   ComputerTerminal01Icon,
+  FolderFileStorageIcon,
+  BodyPartMuscleIcon,
+  WorkflowCircle06Icon,
+  ZapIcon,
 };
 
 /** Build runtime icon configs from shared config */

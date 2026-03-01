@@ -5,6 +5,7 @@ export interface ToolInfo {
   category: string; // Integration ID
   display_name: string; // REQUIRED - human-readable name
   icon_url?: string;
+  requires_integration: boolean; // false for core platform tools (search, memory, etc.)
 }
 
 export interface ToolsListResponse {

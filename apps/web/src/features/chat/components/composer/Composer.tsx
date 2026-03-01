@@ -478,41 +478,42 @@ const Composer: React.FC<MainSearchbarProps> = ({
           hasMessages={hasMessages}
           onToggleSlashCommand={handleToggleSlashCommandDropdown}
         />
-        <FilePreview files={uploadedFiles} onRemove={removeUploadedFile} />
-        <SelectedToolIndicator
-          toolName={selectedTool}
-          toolCategory={selectedToolCategory}
-          iconUrl={selectedToolIconUrl}
-          onRemove={handleRemoveSelectedTool}
-        />
-        <SelectedWorkflowIndicator
-          workflow={selectedWorkflow}
-          onRemove={clearSelectedWorkflow}
-        />
-        <SelectedCalendarEventIndicator
-          event={selectedCalendarEvent}
-          onRemove={clearSelectedCalendarEvent}
-        />
-        <SelectedReplyIndicator
-          replyToMessage={replyToMessage}
-          onRemove={clearReplyToMessage}
-          onNavigate={(messageId) => {
-            // Scroll to the message being replied to
-            const messageElement = document.getElementById(messageId);
-            if (messageElement) {
-              messageElement.scrollIntoView({
-                behavior: "smooth",
-                block: "center",
-              });
-              // Brief visual highlight
-              messageElement.style.transition = "all 0.3s ease";
-              messageElement.style.scale = "1.02";
-              setTimeout(() => {
-                messageElement.style.scale = "1";
-              }, 300);
-            }
-          }}
-        />
+        {/* relative z-10 ensures indicators always paint above the absolute banner */}
+        <div className="relative z-10">
+          <FilePreview files={uploadedFiles} onRemove={removeUploadedFile} />
+          <SelectedToolIndicator
+            toolName={selectedTool}
+            toolCategory={selectedToolCategory}
+            iconUrl={selectedToolIconUrl}
+            onRemove={handleRemoveSelectedTool}
+          />
+          <SelectedWorkflowIndicator
+            workflow={selectedWorkflow}
+            onRemove={clearSelectedWorkflow}
+          />
+          <SelectedCalendarEventIndicator
+            event={selectedCalendarEvent}
+            onRemove={clearSelectedCalendarEvent}
+          />
+          <SelectedReplyIndicator
+            replyToMessage={replyToMessage}
+            onRemove={clearReplyToMessage}
+            onNavigate={(messageId) => {
+              const messageElement = document.getElementById(messageId);
+              if (messageElement) {
+                messageElement.scrollIntoView({
+                  behavior: "smooth",
+                  block: "center",
+                });
+                messageElement.style.transition = "all 0.3s ease";
+                messageElement.style.scale = "1.02";
+                setTimeout(() => {
+                  messageElement.style.scale = "1";
+                }, 300);
+              }
+            }}
+          />
+        </div>
         <ComposerInput
           ref={composerInputRef}
           searchbarText={inputText}
