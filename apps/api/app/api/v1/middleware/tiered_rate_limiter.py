@@ -102,7 +102,11 @@ class TieredRateLimiter:
             )
 
             if current_usage >= limit:
-                plan_required = "pro" if user_plan == PlanType.FREE else None
+                free_limits = get_limits_for_plan(feature_key, PlanType.FREE)
+                is_plan_gated = getattr(free_limits, period.value) == 0
+                plan_required = (
+                    "pro" if (user_plan == PlanType.FREE and is_plan_gated) else None
+                )
                 raise RateLimitExceededException(feature_key, plan_required, reset_time)
 
         # Increment usage atomically
@@ -130,8 +134,14 @@ class TieredRateLimiter:
                         # Double-check limit hasn't been exceeded by concurrent requests
                         if current_val >= limit:
                             await pipe.unwatch()
+                            free_limits = get_limits_for_plan(
+                                feature_key, PlanType.FREE
+                            )
+                            is_plan_gated = getattr(free_limits, period.value) == 0
                             plan_required = (
-                                "pro" if user_plan == PlanType.FREE else None
+                                "pro"
+                                if (user_plan == PlanType.FREE and is_plan_gated)
+                                else None
                             )
                             raise RateLimitExceededException(
                                 feature_key, plan_required, get_reset_time(period)

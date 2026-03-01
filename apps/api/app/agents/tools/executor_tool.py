@@ -9,7 +9,9 @@ from app.agents.core.subagents.subagent_runner import (
     prepare_executor_execution,
 )
 from app.agents.tools.core.registry import get_tool_registry
+from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
 from app.config.loggers import llm_logger as logger
+from app.decorators.rate_limiting import LangChainRateLimitException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
@@ -74,6 +76,14 @@ async def call_executor(
     except asyncio.CancelledError:
         logger.info("Executor call cancelled")
         raise
+    except (LangChainRateLimitException, RateLimitExceededException) as e:
+        if isinstance(e, LangChainRateLimitException):
+            feature = e.feature
+        else:
+            detail: dict = e.detail if isinstance(e.detail, dict) else {}
+            feature = detail.get("feature", "")
+        logger.warning("Rate limit exceeded for executor task: {}", feature)
+        return f"Rate limit exceeded for {feature or 'this feature'}. The user has been shown an upgrade prompt."
     except Exception as e:
         logger.error("Error calling executor: {}", str(e), exc_info=True)
         return f"Error executing task: {str(e)}"
