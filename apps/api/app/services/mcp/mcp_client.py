@@ -289,7 +289,11 @@ class MCPClient:
                 event.set()
 
     async def _do_connect(self, integration_id: str) -> list[BaseTool]:
-        """Internal connect implementation."""
+        """Internal connect implementation.
+
+        Includes a single retry on auth-related failures (401, 405 from
+        OAuth fallback, etc.) — refreshes the token and retries once.
+        """
         # Resolve integration from platform config or MongoDB
         resolved = await IntegrationResolver.resolve(integration_id)
         if not resolved or not resolved.mcp_config:
@@ -347,6 +351,11 @@ class MCPClient:
                         try:
                             loop = asyncio.get_running_loop()
                             loop.create_task(self._safe_close_client(stale_client))
+                            loop.create_task(
+                                update_user_integration_status(
+                                    self.user_id, iid, "created"
+                                )
+                            )
                         except RuntimeError:
                             pass  # No running loop — skip async cleanup
                     logger.info(f"[{iid}] Evicted stale session after connection error")
@@ -444,9 +453,64 @@ class MCPClient:
                 )
                 raise StepUpAuthRequired(integration_id, required_scopes) from e
 
+            # Retry once on auth-related failures: 401 (expired token) or
+            # 405 (mcp-use OAuth fallback hit a wrong endpoint because the
+            # token we passed was rejected). Refresh the token and retry.
+            is_auth_error = (
+                any(code in str(e) for code in ("401", "405", "403"))
+                or "unauthorized" in error_str
+                or "method not allowed" in error_str
+            )
+            retry_flag = f"_retry_{integration_id}"
+            if (
+                is_auth_error
+                and mcp_config.requires_auth
+                and not getattr(self, retry_flag, False)
+            ):
+                logger.info(
+                    f"[{integration_id}] Auth-related connection failure, "
+                    "attempting token refresh and retry"
+                )
+                setattr(self, retry_flag, True)
+                try:
+                    refreshed = await self._try_refresh_token(
+                        integration_id, mcp_config
+                    )
+                    if refreshed:
+                        logger.info(
+                            f"[{integration_id}] Token refreshed, retrying connection"
+                        )
+                        return await self._do_connect(integration_id)
+                    else:
+                        logger.warning(
+                            f"[{integration_id}] Token refresh "
+                            "failed, user may need to re-authorize"
+                        )
+                finally:
+                    try:
+                        delattr(self, retry_flag)
+                    except AttributeError:
+                        pass
+
             logger.error(f"Failed to connect to MCP {integration_id}: {e}")
-            # Note: Status is managed in MongoDB user_integrations, not PostgreSQL
-            # PostgreSQL mcp_credentials only stores auth tokens
+            # Reset MongoDB status so frontend shows re-auth flow
+            try:
+                await update_user_integration_status(
+                    self.user_id, integration_id, "created"
+                )
+            except Exception:
+                logger.warning(
+                    f"[{integration_id}] Failed to reset status after connection failure"
+                )
+            # If auth-related, clear cached OAuth discovery so next attempt
+            # does fresh discovery instead of reusing stale endpoints
+            if is_auth_error:
+                try:
+                    await delete_cache(f"{OAUTH_DISCOVERY_PREFIX}:{integration_id}")
+                except Exception as cache_err:  # nosec B110
+                    logger.debug(
+                        f"[{integration_id}] Failed to clear OAuth discovery cache: {cache_err}"
+                    )
             raise
 
     async def _handle_custom_integration_connect(
@@ -638,6 +702,21 @@ class MCPClient:
             scope_str = " ".join(mcp_config.oauth_scopes)
         elif oauth_config.get("scopes_supported"):
             scope_str = " ".join(oauth_config["scopes_supported"])
+
+        # Inject offline_access if the server supports it and it's not already present.
+        # This is the key to "connect once, stay forever" — without it many OAuth servers
+        # issue short-lived or session-only refresh tokens (like a browser session cookie).
+        # offline_access tells the server: issue a long-lived refresh token for background use.
+        # We only add it when the server advertises support to avoid breaking servers that
+        # reject unknown scopes.
+        scopes_supported = oauth_config.get("scopes_supported", [])
+        scope_parts = scope_str.split() if scope_str else []
+        if "offline_access" in scopes_supported and "offline_access" not in scope_parts:
+            scope_parts.append("offline_access")
+            scope_str = " ".join(scope_parts)
+            logger.info(
+                f"[{integration_id}] Added offline_access scope for long-lived refresh token"
+            )
 
         # Get resource URL for token binding (RFC 8707)
         # This ensures the token is bound to the specific MCP server
@@ -947,8 +1026,11 @@ class MCPClient:
                 f"  Rolling back tokens to prevent stuck state.\n"
                 f"  Traceback:\n{traceback.format_exc()}"
             )
-            # Delete the tokens we just stored since connection failed
+            # Delete the tokens and DCR registration we just stored since
+            # connection failed — if the DCR client_id is revoked/invalid,
+            # keeping it would trap the user in a re-auth loop
             await self.token_store.delete_credentials(integration_id)
+            await self.token_store.delete_dcr_client(integration_id)
             raise
 
     async def disconnect(self, integration_id: str) -> None:
@@ -1007,6 +1089,16 @@ class MCPClient:
 
         # Delete credentials from PostgreSQL (for both authenticated and unauthenticated MCPs)
         await self.token_store.delete_credentials(integration_id)
+
+        # Update MongoDB status so frontend reflects disconnected state
+        try:
+            await update_user_integration_status(
+                self.user_id, integration_id, "created"
+            )
+        except Exception as e:
+            logger.warning(
+                f"[{integration_id}] Failed to reset MongoDB status on disconnect: {e}"
+            )
 
         logger.info(f"Disconnected MCP {integration_id}")
 
@@ -1086,6 +1178,14 @@ class MCPClient:
             return await self.connect(integration_id)
         except Exception as e:
             logger.warning(f"Failed to connect MCP {integration_id}: {e}")
+            try:
+                await update_user_integration_status(
+                    self.user_id, integration_id, "created"
+                )
+            except Exception as status_err:  # nosec B110
+                logger.debug(
+                    f"Failed to reset status for {integration_id}: {status_err}"
+                )
             return None
 
     async def get_all_connected_tools(self) -> dict[str, list[BaseTool]]:

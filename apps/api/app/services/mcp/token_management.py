@@ -40,11 +40,13 @@ async def try_refresh_token(
     """Attempt to refresh OAuth token using stored refresh_token."""
     refresh_token = await token_store.get_refresh_token(integration_id)
     if not refresh_token:
+        logger.info(f"No refresh token stored for {integration_id}, cannot refresh")
         return False
 
     try:
         token_endpoint = oauth_config.get("token_endpoint")
         if not token_endpoint:
+            logger.warning(f"No token_endpoint in OAuth config for {integration_id}")
             return False
 
         client_id, client_secret = resolve_client_credentials(mcp_config)
@@ -55,6 +57,9 @@ async def try_refresh_token(
                 client_secret = dcr_data.get("client_secret")
 
         if not client_id:
+            logger.warning(
+                f"No client_id for refresh, user must re-authorize {integration_id}"
+            )
             return False
 
         resource = oauth_config.get("resource", mcp_config.server_url.rstrip("/"))
@@ -80,6 +85,10 @@ async def try_refresh_token(
             )
 
             if response.status_code != 200:
+                logger.warning(
+                    f"Token refresh returned {response.status_code} for "
+                    f"{integration_id}: {response.text[:500]}"
+                )
                 return False
 
             tokens = response.json()
