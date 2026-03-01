@@ -134,7 +134,9 @@ async function waitForDevServer(): Promise<void> {
   }
 
   console.log("[Main] Dev server wait timeout — is `nx dev web` running?");
-  await mainWindow?.loadURL("data:text/html,<h2>GAIA dev server not found on port 3000.<br>Run <code>nx dev web</code> and restart the desktop app.</h2>");
+  await mainWindow?.loadURL(
+    "data:text/html,<h2>GAIA dev server not found on port 3000.<br>Run <code>nx dev web</code> and restart the desktop app.</h2>",
+  );
 }
 
 /**

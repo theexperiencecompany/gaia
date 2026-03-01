@@ -14,7 +14,8 @@ const isWindows = process.platform === "win32";
 
 function tryExec(cmd: string): string | null {
   try {
-    return execSync(cmd, { // NOSONAR: cmd is always a hard-coded constant string; no user-controlled input is ever passed here
+    return execSync(cmd, {
+      // NOSONAR: cmd is always a hard-coded constant string; no user-controlled input is ever passed here
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();

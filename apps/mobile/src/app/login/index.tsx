@@ -3,12 +3,12 @@ import { Button, PressableFeedback } from "heroui-native";
 import { useState } from "react";
 import { ActivityIndicator, Alert, View } from "react-native";
 import { Text } from "@/components/ui/text";
-import { useAuth } from "@/features/auth/hooks/use-auth";
 import {
   AuthCard,
   AuthLogo,
   AuthScreenLayout,
 } from "@/features/auth/components/AuthScreenLayout";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import {
   fetchUserInfo,
   startOAuthFlow,
