@@ -67,6 +67,12 @@ import type {
 // 3) If you stream or store this tool’s data in messages, no extra typing is required;
 //    the message schema derives from this registry.
 // 4) Optionally, add tests and docs/examples demonstrating the new tool.
+export interface RateLimitData {
+  feature: string;
+  plan_required?: string;
+  reset_time?: string;
+}
+
 // Entry for a single tool call progress
 export interface ToolCallEntry {
   tool_name: string;
@@ -111,6 +117,7 @@ export const TOOL_REGISTRY = {
   workflow_draft: null as unknown as WorkflowDraftData,
   workflow_created: null as unknown as WorkflowCreatedData,
   todo_progress: null as unknown as TodoProgressData,
+  rate_limit_data: null as unknown as RateLimitData,
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
@@ -143,10 +150,12 @@ export const TOOLS_MESSAGE_KEYS = Object.keys(
 // Tools that should merge multiple calls into one component
 // Add any tool name here - its data will be accumulated into an array
 export const GROUPED_TOOLS = new Set<ToolName>([
+  "search_results",
   "reddit_data",
   "tool_calls_data",
   "integration_connection_required",
   "integration_list_data",
+  "rate_limit_data",
   // "email_fetch_data",
   // "test_data",
   // Add any tool you want to group here

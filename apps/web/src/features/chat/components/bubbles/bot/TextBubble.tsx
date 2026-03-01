@@ -18,6 +18,7 @@ import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
+  type RateLimitData,
   type ToolCallEntry,
   type ToolDataEntry,
   type ToolDataMap,
@@ -101,6 +102,7 @@ import GoalSection from "./goals/GoalSection";
 import type { GoalAction } from "./goals/types";
 import NotificationListSection from "./NotificationListSection";
 import PeopleSearchSection from "./PeopleSearchSection";
+import RateLimitCard from "./RateLimitCard";
 import RedditCommentSection from "./RedditCommentSection";
 import RedditCreatedSection from "./RedditCreatedSection";
 import RedditPostSection from "./RedditPostSection";
@@ -117,12 +119,35 @@ type RendererMap = {
 };
 const TOOL_RENDERERS: Partial<RendererMap> = {
   // Search
-  search_results: (data, index) => (
-    <SearchResultsTabs
-      key={`tool-search-${index}`}
-      search_results={data as SearchResults}
-    />
-  ),
+  search_results: (data, index) => {
+    // When grouped, data is SearchResults[] — merge and dedup
+    const items = (Array.isArray(data) ? data : [data]) as SearchResults[];
+    const seenUrls = new Set<string>();
+    const merged: SearchResults = { web: [], images: [], news: [] };
+    for (const item of items) {
+      for (const r of item.web ?? []) {
+        if (!seenUrls.has(r.url)) {
+          seenUrls.add(r.url);
+          merged.web!.push(r);
+        }
+      }
+      for (const img of item.images ?? []) {
+        if (!seenUrls.has(img)) {
+          seenUrls.add(img);
+          merged.images!.push(img);
+        }
+      }
+      for (const n of item.news ?? []) {
+        if (!seenUrls.has(n.url)) {
+          seenUrls.add(n.url);
+          merged.news!.push(n);
+        }
+      }
+    }
+    return (
+      <SearchResultsTabs key={`tool-search-${index}`} search_results={merged} />
+    );
+  },
   deep_research_results: (data, index) => (
     <DeepResearchResultsTabs
       key={`tool-deep-search-${index}`}
@@ -430,6 +455,28 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       todo_progress={data as TodoProgressData}
     />
   ),
+
+  rate_limit_data: (data, index) => {
+    // When grouped, data is RateLimitData[] — deduplicate by feature
+    const items = (Array.isArray(data) ? data : [data]) as RateLimitData[];
+    const seen = new Set<string>();
+    const unique = items.filter((item) => {
+      const key = item.feature || "unknown";
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return (
+      <>
+        {unique.map((item) => (
+          <RateLimitCard
+            key={`tool-rate-limit-${index}-${item.feature ?? "unknown"}`}
+            data={item}
+          />
+        ))}
+      </>
+    );
+  },
 };
 
 function renderTool<K extends ToolName>(

@@ -99,7 +99,7 @@ function ImageResults({ images }: ImageResultsProps) {
   }
 
   return (
-    <div className="my-4 flex w-screen max-w-2xl -space-x-15 pr-2">
+    <div className="my-4 flex w-full max-w-2xl -space-x-15 overflow-x-auto pb-2 pr-2">
       {validImages.map((imageUrl, index) => (
         <ImageItem
           key={imageUrl}
@@ -117,15 +117,10 @@ interface ImageItemProps {
   imageUrl: string;
   index: number;
   onImageClick: () => void;
-  totalImages: number;
+  totalImages: number; // kept for potential future use
 }
 
-function ImageItem({
-  imageUrl,
-  index,
-  onImageClick,
-  totalImages,
-}: ImageItemProps) {
+function ImageItem({ imageUrl, index, onImageClick }: ImageItemProps) {
   const [isLoading, setIsLoading] = useState(true);
 
   const handleLoad = useCallback(() => {
@@ -135,46 +130,30 @@ function ImageItem({
   return (
     <m.div
       onClick={onImageClick}
-      className={`group cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 ${
-        (index + 1) % 2 === 0
-          ? "-rotate-7 hover:-rotate-0"
-          : "rotate-7 hover:rotate-0"
-      }`}
-      style={{
-        zIndex: index,
-      }}
+      className="relative h-24 w-24 shrink-0 cursor-pointer overflow-hidden rounded-2xl shadow-zinc-950 transition-all duration-200 hover:scale-105"
       initial={{ scale: 0.6, filter: "blur(10px)" }}
       animate={{ scale: 1, filter: "blur(0px)" }}
       transition={{
-        delay: index * 0.1,
-        duration: 0.1,
+        delay: index * 0.07,
+        duration: 0.15,
         ease: [0.19, 1, 0.22, 1],
-        scale: {
-          duration: 0.2,
-        },
-      }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.zIndex = (totalImages + 10).toString();
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.zIndex = index.toString();
       }}
     >
       {isLoading && (
         <div className="absolute inset-0 z-10">
-          <Skeleton className="aspect-square h-full w-full rounded-2xl" />
+          <Skeleton className="h-full w-full rounded-2xl" />
         </div>
       )}
       <Image
         src={imageUrl}
         alt={`Search result image ${index + 1}`}
-        width={700}
-        height={700}
-        className={`aspect-square h-full bg-zinc-800 object-cover transition ${
+        width={96}
+        height={96}
+        className={`h-full w-full bg-zinc-800 object-cover transition ${
           isLoading ? "opacity-0" : "opacity-100"
         }`}
         onLoad={handleLoad}
-        priority={index < 3} // Prioritize first 3 images
+        priority={index < 3}
       />
     </m.div>
   );
