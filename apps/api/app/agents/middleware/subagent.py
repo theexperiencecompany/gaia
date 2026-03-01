@@ -26,7 +26,7 @@ from langchain.agents.middleware.types import (
     OmitFromInput,
 )
 from langchain.tools import InjectedToolCallId
-from langchain_core.language_models import BaseChatModel
+from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.messages.tool import ToolCall
 from langchain_core.runnables import RunnableConfig
@@ -51,7 +51,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
     def __init__(
         self,
-        llm: BaseChatModel | None = None,
+        llm: LanguageModelLike | None = None,
         available_tools: list[BaseTool] | None = None,
         tool_registry: Mapping[str, BaseTool] | None = None,
         max_turns: int = SUBAGENT_RECURSION_LIMIT,
@@ -226,7 +226,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         if self._llm is None:
             raise ValueError("LLM not configured for subagent execution")
 
-        llm: BaseChatModel = self._llm
+        llm: Any = self._llm
 
         tools_by_name, dynamic, retrieve_tool = self._build_child_toolset(
             config=config,
@@ -376,7 +376,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         return tools_by_name, dynamic, retrieve_tool
 
-    def set_llm(self, llm: BaseChatModel) -> None:
+    def set_llm(self, llm: LanguageModelLike) -> None:
         self._llm = llm
 
     def set_store(self, store: BaseStore) -> None:
