@@ -3,24 +3,27 @@
  * These are the open-source projects and amazing tools we love and want to celebrate
  */
 
+const TOOL_CATEGORIES = [
+  "Build & Development",
+  "AI & Machine Learning",
+  "Frontend",
+  "Backend & Infrastructure",
+  "Database & Storage",
+  "Monitoring & Analytics",
+  "DevOps & Deployment",
+  "Payments & Business",
+  "Security & Auth",
+  "Community & Feedback",
+] as const;
+
+export type ToolCategory = (typeof TOOL_CATEGORIES)[number];
+
 export interface Tool {
   name: string;
   url: string;
   description: string;
   category: ToolCategory;
 }
-
-export type ToolCategory =
-  | "Build & Development"
-  | "AI & Machine Learning"
-  | "Frontend"
-  | "Backend & Infrastructure"
-  | "Database & Storage"
-  | "Monitoring & Analytics"
-  | "DevOps & Deployment"
-  | "Payments & Business"
-  | "Security & Auth"
-  | "Community & Feedback";
 
 export const tools: Tool[] = [
   // Build & Development
@@ -547,15 +550,4 @@ export const tools: Tool[] = [
   },
 ];
 
-export const toolCategories: ToolCategory[] = [
-  "Build & Development",
-  "AI & Machine Learning",
-  "Frontend",
-  "Backend & Infrastructure",
-  "Database & Storage",
-  "Monitoring & Analytics",
-  "DevOps & Deployment",
-  "Payments & Business",
-  "Security & Auth",
-  "Community & Feedback",
-];
+export const toolCategories: ToolCategory[] = [...TOOL_CATEGORIES];

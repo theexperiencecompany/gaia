@@ -12,8 +12,9 @@ import {
   Textarea,
 } from "@heroui/react";
 import { ConnectIcon, KeyIcon, PuzzleIcon } from "@icons";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { useModalForm } from "@/hooks/ui/useModalForm";
+import { useModalKeyboardShortcut } from "@/hooks/ui/useModalKeyboardShortcut";
 import { usePlatform } from "@/hooks/ui/usePlatform";
 import { toast } from "@/lib/toast";
 import { useIntegrations } from "../hooks/useIntegrations";
@@ -40,7 +41,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
   onClose,
   onIntegrationCreated,
 }) => {
-  const { isMac, modifierKeyName } = usePlatform();
+  const { modifierKeyName } = usePlatform();
   const { createCustomIntegration } = useIntegrations();
 
   // Use ref to always get latest callback (avoids stale closure in useModalForm)
@@ -127,26 +128,7 @@ export const MCPIntegrationModal: React.FC<MCPIntegrationModalProps> = ({
     onClose();
   }, [resetForm, onClose]);
 
-  // Keyboard shortcut handler for Cmd/Ctrl + Enter to submit
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (!isOpen || loading) return;
-
-      const modifierKey = isMac ? e.metaKey : e.ctrlKey;
-      if (modifierKey && e.key === "Enter") {
-        e.preventDefault();
-        handleSubmit();
-      }
-    },
-    [isOpen, loading, isMac, handleSubmit],
-  );
-
-  useEffect(() => {
-    if (isOpen) {
-      document.addEventListener("keydown", handleKeyDown);
-      return () => document.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [isOpen, handleKeyDown]);
+  useModalKeyboardShortcut(isOpen, loading, handleSubmit);
 
   return (
     <Modal

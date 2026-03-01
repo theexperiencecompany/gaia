@@ -3,8 +3,11 @@
 import { Chip } from "@heroui/chip";
 import { Tooltip } from "@heroui/tooltip";
 import {
+  Calendar03Icon,
+  Clock01Icon,
   CursorMagicSelection03Icon,
   DateTimeIcon,
+  FlashIcon,
   Mail01Icon,
   PlayIcon,
   TimeScheduleIcon,
@@ -13,9 +16,9 @@ import {
 import Image from "next/image";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { formatRunCount } from "@/utils/formatters";
-
 import type { Workflow } from "../../api/workflowApi";
 import { getBrowserTimezone } from "../../schemas/workflowFormSchema";
+import { getScheduleDescription } from "../../utils/cronUtils";
 
 /**
  * Format a UTC date to a localized time string in the specified timezone.
@@ -318,5 +321,83 @@ export function CreatorAvatar({
     >
       {avatar}
     </Tooltip>
+  );
+}
+
+// Shared trigger display config type
+export interface WorkflowTriggerDisplay {
+  label: string;
+  icon: React.ReactNode;
+  color: "default" | "primary" | "secondary";
+  bgColor: string;
+}
+
+// Normalize trigger data from WorkflowCreatedCard and WorkflowDraftCard
+// into a shared display config.
+export function getWorkflowTriggerDisplay(trigger: {
+  type: "manual" | "scheduled" | "integration";
+  cronExpression?: string | null;
+  triggerName?: string | null;
+}): WorkflowTriggerDisplay {
+  switch (trigger.type) {
+    case "manual":
+      return {
+        label: "Manual",
+        icon: <FlashIcon className="size-3.5" />,
+        color: "default",
+        bgColor: "bg-zinc-700/50",
+      };
+    case "scheduled": {
+      const cronLabel = trigger.cronExpression
+        ? getScheduleDescription(trigger.cronExpression)
+        : "Scheduled";
+      return {
+        label: cronLabel,
+        icon: <Clock01Icon className="size-3.5" />,
+        color: "primary",
+        bgColor: "bg-primary/15",
+      };
+    }
+    case "integration":
+      return {
+        label:
+          trigger.triggerName
+            ?.split("_")
+            .slice(0, 2)
+            .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+            .join(" ") || "Integration",
+        icon: <Calendar03Icon className="size-3.5" />,
+        color: "secondary",
+        bgColor: "bg-secondary/15",
+      };
+    default:
+      return {
+        label: "Unknown",
+        icon: <FlashIcon className="size-3.5" />,
+        color: "default",
+        bgColor: "bg-zinc-700/50",
+      };
+  }
+}
+
+// Reusable trigger chip for workflow cards
+interface WorkflowTriggerChipProps {
+  trigger: WorkflowTriggerDisplay;
+}
+
+export function WorkflowTriggerChip({ trigger }: WorkflowTriggerChipProps) {
+  return (
+    <Chip
+      size="sm"
+      variant="flat"
+      color={trigger.color}
+      startContent={trigger.icon}
+      classNames={{
+        base: `${trigger.bgColor} shrink-0`,
+        content: "text-xs font-medium",
+      }}
+    >
+      {trigger.label}
+    </Chip>
   );
 }

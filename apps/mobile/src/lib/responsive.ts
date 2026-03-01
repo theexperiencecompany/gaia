@@ -100,20 +100,10 @@ export interface ResponsiveValues {
   };
 }
 
-/**
- * Hook that provides responsive values and scaling functions
- * based on current screen dimensions.
- *
- * @example
- * const { scale, moderateScale, fontSize, sidebarWidth } = useResponsive();
- *
- * <View style={{ padding: scale(16), width: sidebarWidth }}>
- *   <Text style={{ fontSize: fontSize.lg }}>Hello</Text>
- * </View>
- */
-export function useResponsive(): ResponsiveValues {
-  const { width, height } = useWindowDimensions();
-
+function buildResponsiveValues(
+  width: number,
+  height: number,
+): ResponsiveValues {
   const isSmallDevice = width < 375;
   const isMediumDevice = width >= 375 && width <= 428;
   const isLargeDevice = width > 428;
@@ -169,6 +159,22 @@ export function useResponsive(): ResponsiveValues {
 }
 
 /**
+ * Hook that provides responsive values and scaling functions
+ * based on current screen dimensions.
+ *
+ * @example
+ * const { scale, moderateScale, fontSize, sidebarWidth } = useResponsive();
+ *
+ * <View style={{ padding: scale(16), width: sidebarWidth }}>
+ *   <Text style={{ fontSize: fontSize.lg }}>Hello</Text>
+ * </View>
+ */
+export function useResponsive(): ResponsiveValues {
+  const { width, height } = useWindowDimensions();
+  return buildResponsiveValues(width, height);
+}
+
+/**
  * Get responsive values without a hook (for use outside components)
  * Note: This won't automatically update on dimension changes
  */
@@ -176,53 +182,5 @@ export function getResponsiveValues(
   width: number,
   height: number,
 ): ResponsiveValues {
-  const isSmallDevice = width < 375;
-  const isMediumDevice = width >= 375 && width <= 428;
-  const isLargeDevice = width > 428;
-
-  const boundScale = (size: number) => scale(size, width);
-  const boundVerticalScale = (size: number) => verticalScale(size, height);
-  const boundModerateScale = (size: number, factor = 0.5) =>
-    moderateScale(size, width, factor);
-
-  const spacing = {
-    xs: Math.round(moderateScale(4, width, 0.5)),
-    sm: Math.round(moderateScale(8, width, 0.5)),
-    md: Math.round(moderateScale(16, width, 0.5)),
-    lg: Math.round(moderateScale(24, width, 0.5)),
-    xl: Math.round(moderateScale(32, width, 0.5)),
-  };
-
-  const fontSize = {
-    xs: Math.round(moderateScale(10, width, 0.3)),
-    sm: Math.round(moderateScale(12, width, 0.3)),
-    md: Math.round(moderateScale(14, width, 0.3)),
-    base: Math.round(moderateScale(16, width, 0.3)),
-    lg: Math.round(moderateScale(18, width, 0.3)),
-    xl: Math.round(moderateScale(20, width, 0.3)),
-    "2xl": Math.round(moderateScale(24, width, 0.3)),
-    "3xl": Math.round(moderateScale(30, width, 0.3)),
-  };
-
-  const iconSize = {
-    sm: Math.round(scale(16, width)),
-    md: Math.round(scale(20, width)),
-    lg: Math.round(scale(24, width)),
-    xl: Math.round(scale(32, width)),
-  };
-
-  return {
-    width,
-    height,
-    isSmallDevice,
-    isMediumDevice,
-    isLargeDevice,
-    sidebarWidth: getSidebarWidth(width),
-    scale: boundScale,
-    verticalScale: boundVerticalScale,
-    moderateScale: boundModerateScale,
-    spacing,
-    fontSize,
-    iconSize,
-  };
+  return buildResponsiveValues(width, height);
 }

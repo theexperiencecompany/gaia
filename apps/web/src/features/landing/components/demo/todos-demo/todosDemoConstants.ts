@@ -1,3 +1,28 @@
+// ─── Priority styling helpers ──────────────────────────────────────────────
+
+export const PRIORITY_RING_COLORS = {
+  high: "border-red-500",
+  medium: "border-yellow-500",
+  low: "border-blue-500",
+  none: "border-zinc-500",
+} as const;
+
+export const PRIORITY_CHIP_CLASS_NAMES = {
+  high: "text-red-400 bg-red-400/10",
+  medium: "text-yellow-400 bg-yellow-400/10",
+  low: "text-blue-400 bg-blue-400/10",
+  none: "text-zinc-500",
+} as const;
+
+export const PRIORITY_HEX_COLORS = {
+  high: "#ef4444",
+  medium: "#eab308",
+  low: "#3b82f6",
+  none: undefined,
+} as const;
+
+// ─── Demo types ────────────────────────────────────────────────────────────
+
 export interface DemoProject {
   id: string;
   name: string;

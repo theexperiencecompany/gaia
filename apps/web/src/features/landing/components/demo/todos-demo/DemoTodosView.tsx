@@ -16,26 +16,19 @@ import {
 import { formatDistanceToNow } from "date-fns";
 import { useMemo, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import TodoWorkflowCategoryIcons from "@/features/landing/components/demo/TodoWorkflowCategoryIcons";
 import {
   DEMO_PROJECTS,
   DEMO_TODOS,
   type DemoTodo,
   type DemoWorkflowStep,
+  PRIORITY_CHIP_CLASS_NAMES,
+  PRIORITY_HEX_COLORS,
+  PRIORITY_RING_COLORS,
 } from "./todosDemoConstants";
 
-const priorityRingColors = {
-  high: "border-red-500",
-  medium: "border-yellow-500",
-  low: "border-blue-500",
-  none: "border-zinc-500",
-} as const;
-
-const priorityChipClassNames = {
-  high: "text-red-400 bg-red-400/10",
-  medium: "text-yellow-400 bg-yellow-400/10",
-  low: "text-blue-400 bg-blue-400/10",
-  none: "text-zinc-500",
-} as const;
+const priorityRingColors = PRIORITY_RING_COLORS;
+const priorityChipClassNames = PRIORITY_CHIP_CLASS_NAMES;
 
 function formatDueDate(dateString: string): string {
   const date = new Date(dateString);
@@ -208,33 +201,9 @@ function DemoTodoItem({
         </div>
 
         {/* Workflow category icons */}
-        {todo.workflow_categories && todo.workflow_categories.length > 0 && (
-          <div className="flex min-h-8 items-center -space-x-1.5 self-center">
-            {todo.workflow_categories.slice(0, 3).map((category, index) => {
-              const IconComponent = getToolCategoryIcon(category, {
-                width: 22,
-                height: 22,
-              });
-              return IconComponent ? (
-                <div
-                  key={category}
-                  className="relative flex min-w-7 items-center justify-center"
-                  style={{
-                    rotate:
-                      todo.workflow_categories!.length > 1
-                        ? index % 2 === 0
-                          ? "8deg"
-                          : "-8deg"
-                        : "0deg",
-                    zIndex: index,
-                  }}
-                >
-                  {IconComponent}
-                </div>
-              ) : null;
-            })}
-          </div>
-        )}
+        <TodoWorkflowCategoryIcons
+          categories={todo.workflow_categories ?? []}
+        />
       </div>
     </div>
   );
@@ -322,12 +291,7 @@ function DemoTodoSidebar({
 }) {
   const project = DEMO_PROJECTS.find((p) => p.id === todo.project_id);
 
-  const priorityColor = {
-    high: "#ef4444",
-    medium: "#eab308",
-    low: "#3b82f6",
-    none: undefined,
-  }[todo.priority];
+  const priorityColor = PRIORITY_HEX_COLORS[todo.priority];
 
   return (
     <div

@@ -1,10 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { ArrowRight02Icon, RedoIcon } from "@icons";
-import { AnimatePresence, m, useInView, useReducedMotion } from "motion/react";
-import Image from "next/image";
+import { AnimatePresence, m, useInView } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  DemoBackground,
+  DemoNavControls,
+} from "@/features/landing/components/demo/DemoAnimationLayout";
 import DemoTodoComplete from "./DemoTodoComplete";
 import DemoTodoList from "./DemoTodoList";
 import DemoTodoModal from "./DemoTodoModal";
@@ -31,7 +32,6 @@ export default function TodoDemoAnimation() {
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
   const hasStarted = useRef(false);
   const containerRef = useRef<HTMLDivElement>(null);
-  const prefersReduced = useReducedMotion();
   const isInView = useInView(containerRef, { once: true, amount: 0.3 });
 
   const clearAll = () => {
@@ -95,38 +95,7 @@ export default function TodoDemoAnimation() {
 
   return (
     <div ref={containerRef} className="flex flex-col items-center gap-4">
-      <m.div
-        initial={{ opacity: 0, y: 20, scale: 0.97 }}
-        whileInView={{ opacity: 1, y: 0, scale: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.5, ease: tdEase }}
-        className="relative flex h-[70vh] w-full items-center justify-center overflow-hidden rounded-2xl"
-      >
-        {/* Background — same mesh gradient as workflow demo */}
-        <m.div
-          className="absolute inset-0"
-          animate={prefersReduced ? {} : { scale: [1, 1.1, 1] }}
-          transition={{ duration: 10, repeat: Infinity, ease: "linear" }}
-        >
-          <Image
-            src="/images/wallpapers/mesh_gradient_1.webp"
-            alt="Mesh gradient background"
-            width={1920}
-            height={1080}
-            sizes="100vw"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              position: "absolute",
-              inset: 0,
-            }}
-            className="object-cover"
-            priority
-          />
-        </m.div>
-        <div className="absolute inset-0 bg-black/10 backdrop-blur-sm" />
-
+      <DemoBackground ease={tdEase}>
         {/* Stage content */}
         <div className="relative z-10 flex h-full w-full items-center justify-center px-6">
           <AnimatePresence mode="wait">
@@ -161,45 +130,15 @@ export default function TodoDemoAnimation() {
             )}
           </AnimatePresence>
         </div>
-      </m.div>
+      </DemoBackground>
 
-      {/* Nav controls */}
-      <div className="flex w-full items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <Button
-            isIconOnly
-            variant="flat"
-            size="sm"
-            aria-label="Previous phase"
-            onPress={prevPhase}
-            isDisabled={PHASE_ORDER.indexOf(phase) <= 0}
-            className="rounded-full"
-          >
-            <ArrowRight02Icon width={18} height={18} className="rotate-180" />
-          </Button>
-          <Button
-            isIconOnly
-            variant="flat"
-            size="sm"
-            aria-label="Next phase"
-            onPress={nextPhase}
-            isDisabled={PHASE_ORDER.indexOf(phase) >= PHASE_ORDER.length - 1}
-            className="rounded-full"
-          >
-            <ArrowRight02Icon width={18} height={18} />
-          </Button>
-        </div>
-        <Button
-          isIconOnly
-          variant="flat"
-          size="sm"
-          aria-label="Restart demo"
-          onPress={() => runAnimation()}
-          className="rounded-full"
-        >
-          <RedoIcon width={18} height={18} />
-        </Button>
-      </div>
+      <DemoNavControls
+        phaseIndex={PHASE_ORDER.indexOf(phase)}
+        phaseCount={PHASE_ORDER.length}
+        onPrev={prevPhase}
+        onNext={nextPhase}
+        onRestart={runAnimation}
+      />
     </div>
   );
 }

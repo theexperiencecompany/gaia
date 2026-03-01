@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { spawnSync } from "child_process";
 import fs from "fs";
 
 const iconsFile = "../src/components/shared/icons.tsx";
@@ -28,20 +28,27 @@ for (const icon of icons) {
   // Exclude the icons file and common directories
 
   try {
-    const cmd = `grep -r "\\b${icon}\\b" ${projectDir} \
-      --exclude="${iconsFileName}" \
-      --exclude-dir=node_modules \
-      --exclude-dir=.next \
-      --exclude-dir=dist \
-      --exclude-dir=build \
-      --exclude="*.test.*" \
-      --exclude="*.spec.*" \
-      2>/dev/null || true`;
-
-    const result = execSync(cmd, {
-      encoding: "utf8",
-      maxBuffer: 10 * 1024 * 1024, // 10MB buffer
-    });
+    const { stdout, status } = spawnSync(
+      "grep",
+      [
+        "-r",
+        `\\b${icon}\\b`,
+        projectDir,
+        `--exclude=${iconsFileName}`,
+        "--exclude-dir=node_modules",
+        "--exclude-dir=.next",
+        "--exclude-dir=dist",
+        "--exclude-dir=build",
+        "--exclude=*.test.*",
+        "--exclude=*.spec.*",
+      ],
+      {
+        encoding: "utf8",
+        maxBuffer: 10 * 1024 * 1024, // 10MB buffer
+      },
+    );
+    // grep exits with 1 when no matches are found, which is not an error here
+    const result = status === 0 || status === 1 ? (stdout ?? "") : "";
 
     // Filter out the definition itself
     const lines = result

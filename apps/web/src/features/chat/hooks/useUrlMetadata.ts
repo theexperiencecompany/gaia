@@ -16,7 +16,8 @@ interface UrlMetadataError {
   code?: number;
 }
 
-const isEmail = (str: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(str);
+const isEmail = (str: string) =>
+  /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,63}$/.test(str);
 
 const isValidHttpUrl = (str: string): boolean => {
   try {

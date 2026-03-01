@@ -352,6 +352,60 @@ def _extract_response_text(chunk: str) -> str:
     return ""
 
 
+def _build_message_pair(
+    body: MessageRequestWithHistory,
+    complete_message: str,
+    metadata: Dict[str, Any],
+    user_message_id: Optional[str],
+    bot_message_id: Optional[str],
+    follow_up_actions: Optional[List[str]] = None,
+) -> tuple[MessageModel, MessageModel]:
+    """
+    Build user and bot MessageModel objects from request data.
+
+    Shared by both the async background save path and the legacy
+    synchronous background-task path.
+    """
+    bot_timestamp = datetime.now(timezone.utc)
+    user_timestamp = bot_timestamp - timedelta(milliseconds=100)
+
+    user_content = (
+        body.messages[-1].get("content")
+        if body.messages and len(body.messages) > 0
+        else None
+    ) or body.message
+
+    user_message = MessageModel(
+        type="user",
+        response=user_content,
+        date=user_timestamp.isoformat(),
+        fileIds=body.fileIds,
+        fileData=body.fileData,
+        selectedTool=body.selectedTool,
+        toolCategory=body.toolCategory,
+        selectedWorkflow=body.selectedWorkflow,
+        replyToMessage=body.replyToMessage,
+    )
+    if user_message_id:
+        user_message.message_id = user_message_id
+
+    bot_kwargs: Dict[str, Any] = {
+        "type": "bot",
+        "response": complete_message,
+        "date": bot_timestamp.isoformat(),
+        "fileIds": body.fileIds,
+        "metadata": metadata,
+    }
+    if follow_up_actions is not None:
+        bot_kwargs["follow_up_actions"] = follow_up_actions
+
+    bot_message = MessageModel(**bot_kwargs)
+    if bot_message_id:
+        bot_message.message_id = bot_message_id
+
+    return user_message, bot_message
+
+
 async def _save_conversation_async(
     body: MessageRequestWithHistory,
     user: dict,
@@ -377,39 +431,13 @@ async def _save_conversation_async(
         except Exception as e:
             logger.error(f"Failed to process token usage: {e}")
 
-    # Get timestamps
-    bot_timestamp = datetime.now(timezone.utc)
-    user_timestamp = bot_timestamp - timedelta(milliseconds=100)
-
-    # Create user message
-    user_content = (
-        body.messages[-1].get("content")
-        if body.messages and len(body.messages) > 0
-        else None
-    ) or body.message
-
-    user_message = MessageModel(
-        type="user",
-        response=user_content,
-        date=user_timestamp.isoformat(),
-        fileIds=body.fileIds,
-        fileData=body.fileData,
-        selectedTool=body.selectedTool,
-        toolCategory=body.toolCategory,
-        selectedWorkflow=body.selectedWorkflow,
-        replyToMessage=body.replyToMessage,
-    )
-    user_message.message_id = user_message_id
-
-    # Create bot message
-    bot_message = MessageModel(
-        type="bot",
-        response=complete_message,
-        date=bot_timestamp.isoformat(),
-        fileIds=body.fileIds,
+    user_message, bot_message = _build_message_pair(
+        body=body,
+        complete_message=complete_message,
         metadata=metadata,
+        user_message_id=user_message_id,
+        bot_message_id=bot_message_id,
     )
-    bot_message.message_id = bot_message_id
 
     # Apply tool data
     for key, value in tool_data.items():
@@ -563,40 +591,14 @@ def update_conversation_messages(
             _process_token_usage_and_cost, user_id=user["user_id"], metadata=metadata
         )
 
-    bot_timestamp = datetime.now(timezone.utc)
-    user_timestamp = bot_timestamp - timedelta(milliseconds=100)
-
-    user_content = (
-        body.messages[-1].get("content")
-        if body.messages and len(body.messages) > 0
-        else None
-    ) or body.message
-    user_message = MessageModel(
-        type="user",
-        response=user_content,
-        date=user_timestamp.isoformat(),
-        fileIds=body.fileIds,
-        fileData=body.fileData,
-        selectedTool=body.selectedTool,
-        toolCategory=body.toolCategory,
-        selectedWorkflow=body.selectedWorkflow,
-        replyToMessage=body.replyToMessage,
-    )
-
-    if user_message_id:
-        user_message.message_id = user_message_id
-
-    bot_message = MessageModel(
-        type="bot",
-        response=complete_message,
-        date=bot_timestamp.isoformat(),
-        fileIds=body.fileIds,
+    user_message, bot_message = _build_message_pair(
+        body=body,
+        complete_message=complete_message,
         metadata=metadata,
+        user_message_id=user_message_id,
+        bot_message_id=bot_message_id,
         follow_up_actions=follow_up_actions,
     )
-
-    if bot_message_id:
-        bot_message.message_id = bot_message_id
 
     if tool_data:
         for key, value in tool_data.items():

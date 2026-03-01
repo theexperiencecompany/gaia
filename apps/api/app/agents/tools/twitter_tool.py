@@ -33,10 +33,11 @@ from app.templates.docstrings.twitter_tool_docs import (
 from app.utils.twitter_utils import (
     TWITTER_API_BASE,
     create_tweet,
+    execute_batch_user_operation,
     follow_user,
     get_access_token,
     get_my_user_id,
-    lookup_user_by_username,
+    resolve_usernames_to_user_ids,
     search_tweets,
     twitter_headers,
     unfollow_user,
@@ -75,64 +76,22 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
         if not request.usernames and not request.user_ids:
             raise ValueError("Either usernames or user_ids must be provided")
 
-        results: List[Dict[str, Any]] = []
-        success_count = 0
-        failed_count = 0
-
-        user_ids_to_process: List[Dict[str, Any]] = []
-
-        if request.user_ids:
-            for uid in request.user_ids:
-                user_ids_to_process.append({"user_id": uid, "username": None})
-
-        if request.usernames:
-            for username in request.usernames:
-                user_data = lookup_user_by_username(access_token, username)
-                if user_data and user_data.get("id"):
-                    user_ids_to_process.append(
-                        {
-                            "user_id": user_data["id"],
-                            "username": user_data.get("username"),
-                            "name": user_data.get("name"),
-                        }
-                    )
-                else:
-                    results.append(
-                        {
-                            "username": username,
-                            "success": False,
-                            "error": "User not found",
-                        }
-                    )
-                    failed_count += 1
+        user_ids_to_process, failed_results = resolve_usernames_to_user_ids(
+            access_token, request.usernames, request.user_ids
+        )
 
         total = len(user_ids_to_process)
         if writer is not None:
             writer({"progress": f"Following {total} users..."})
 
+        op_results, success_count, failed_count = execute_batch_user_operation(
+            access_token, my_user_id, user_ids_to_process, follow_user
+        )
+
+        results = failed_results + op_results
+        failed_count += len(failed_results)
+
         for i, user_info in enumerate(user_ids_to_process):
-            result = follow_user(access_token, my_user_id, user_info["user_id"])
-
-            if result["success"]:
-                results.append(
-                    {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
-                        "success": True,
-                    }
-                )
-                success_count += 1
-            else:
-                results.append(
-                    {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
-                        "success": False,
-                        "error": result.get("error"),
-                    }
-                )
-                failed_count += 1
-
             if writer is not None and (i + 1) % 5 == 0:
                 writer({"progress": f"Followed {i + 1}/{total} users..."})
 
@@ -164,63 +123,22 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
         if not request.usernames and not request.user_ids:
             raise ValueError("Either usernames or user_ids must be provided")
 
-        results: List[Dict[str, Any]] = []
-        success_count = 0
-        failed_count = 0
-
-        user_ids_to_process: List[Dict[str, Any]] = []
-
-        if request.user_ids:
-            for uid in request.user_ids:
-                user_ids_to_process.append({"user_id": uid, "username": None})
-
-        if request.usernames:
-            for username in request.usernames:
-                user_data = lookup_user_by_username(access_token, username)
-                if user_data and user_data.get("id"):
-                    user_ids_to_process.append(
-                        {
-                            "user_id": user_data["id"],
-                            "username": user_data.get("username"),
-                        }
-                    )
-                else:
-                    results.append(
-                        {
-                            "username": username,
-                            "success": False,
-                            "error": "User not found",
-                        }
-                    )
-                    failed_count += 1
+        user_ids_to_process, failed_results = resolve_usernames_to_user_ids(
+            access_token, request.usernames, request.user_ids
+        )
 
         total = len(user_ids_to_process)
         if writer is not None:
             writer({"progress": f"Unfollowing {total} users..."})
 
+        op_results, success_count, failed_count = execute_batch_user_operation(
+            access_token, my_user_id, user_ids_to_process, unfollow_user
+        )
+
+        results = failed_results + op_results
+        failed_count += len(failed_results)
+
         for i, user_info in enumerate(user_ids_to_process):
-            result = unfollow_user(access_token, my_user_id, user_info["user_id"])
-
-            if result["success"]:
-                results.append(
-                    {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
-                        "success": True,
-                    }
-                )
-                success_count += 1
-            else:
-                results.append(
-                    {
-                        "user_id": user_info["user_id"],
-                        "username": user_info.get("username"),
-                        "success": False,
-                        "error": result.get("error"),
-                    }
-                )
-                failed_count += 1
-
             if writer is not None and (i + 1) % 5 == 0:
                 writer({"progress": f"Unfollowed {i + 1}/{total} users..."})
 

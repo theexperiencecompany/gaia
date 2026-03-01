@@ -1,8 +1,9 @@
-"""Google Sheets utility functions for API operations.
+"""Google API utility functions shared across Google tool modules.
 
-This module provides helper functions for Google Sheets and Drive API interactions including:
+This module provides helper functions for Google Sheets, Docs, and Drive API interactions
+including:
 - Access token extraction
-- Header generation
+- Header generation (with and without Content-Type)
 - Color conversion
 - A1 notation parsing
 - Sheet ID resolution
@@ -37,6 +38,17 @@ def auth_headers(access_token: str) -> Dict[str, str]:
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json",
     }
+
+
+def bearer_auth_headers(access_token: str) -> Dict[str, str]:
+    """Return Bearer-only Authorization header (without Content-Type)."""
+    return {"Authorization": f"Bearer {access_token}"}
+
+
+def get_auth_headers(auth_credentials: Dict[str, Any]) -> Dict[str, str]:
+    """Extract access token and return auth headers in one step."""
+    token = get_access_token(auth_credentials)
+    return auth_headers(token)
 
 
 def hex_to_rgb(hex_color: str) -> Dict[str, float]:

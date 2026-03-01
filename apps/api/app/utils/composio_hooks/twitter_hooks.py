@@ -5,7 +5,7 @@ These hooks implement schema modifiers for customizing tool descriptions,
 before/after hooks for data processing, and frontend streaming via writer.
 """
 
-from typing import Any
+from typing import Any, Dict, List
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
@@ -17,6 +17,67 @@ from .registry import (
     register_before_hook,
     register_schema_modifier,
 )
+
+
+def _build_users_map(includes: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    """Build a user ID -> user data lookup map from a Twitter API includes block.
+
+    Args:
+        includes: The 'includes' dict from a Twitter API response
+
+    Returns:
+        A dict mapping user ID strings to user data dicts
+    """
+    users_map: Dict[str, Dict[str, Any]] = {}
+    for user in includes.get("users", []):
+        users_map[user.get("id")] = {
+            "id": user.get("id"),
+            "username": user.get("username"),
+            "name": user.get("name"),
+            "profile_image_url": user.get("profile_image_url"),
+            "verified": user.get("verified", False),
+            "description": user.get("description", ""),
+            "public_metrics": user.get("public_metrics", {}),
+        }
+    return users_map
+
+
+def _truncate_tweet_text(text: str, max_len: int = 200) -> str:
+    """Truncate tweet text to max_len characters, appending '...' if truncated.
+
+    Args:
+        text: The tweet text to truncate
+        max_len: Maximum character length before truncation
+
+    Returns:
+        The original text if within limit, otherwise truncated text with '...'
+    """
+    return text[:max_len] + "..." if len(text) > max_len else text
+
+
+def _process_tweets_for_llm(
+    processed_tweets: List[Dict[str, Any]], limit: int = 10
+) -> List[Dict[str, Any]]:
+    """Convert processed tweet dicts into the minimal format suitable for LLM context.
+
+    Args:
+        processed_tweets: List of tweets with full author and metrics data
+        limit: Maximum number of tweets to include
+
+    Returns:
+        List of minimal tweet dicts for LLM consumption
+    """
+    return [
+        {
+            "id": tweet["id"],
+            "text": _truncate_tweet_text(tweet["text"]),
+            "author_username": tweet["author"].get("username"),
+            "author_name": tweet["author"].get("name"),
+            "likes": tweet["public_metrics"].get("like_count", 0),
+            "retweets": tweet["public_metrics"].get("retweet_count", 0),
+        }
+        for tweet in processed_tweets[:limit]
+    ]
 
 
 @register_schema_modifier(tools=["TWITTER_RECENT_SEARCH"])
@@ -166,19 +227,7 @@ def twitter_search_after_hook(
         data = response.get("data", {})
         tweets = data.get("data", [])
         includes = data.get("includes", {})
-        users_map = {}
-
-        # Build user lookup map
-        for user in includes.get("users", []):
-            users_map[user.get("id")] = {
-                "id": user.get("id"),
-                "username": user.get("username"),
-                "name": user.get("name"),
-                "profile_image_url": user.get("profile_image_url"),
-                "verified": user.get("verified", False),
-                "description": user.get("description", ""),
-                "public_metrics": user.get("public_metrics", {}),
-            }
+        users_map = _build_users_map(includes)
 
         # Process tweets for frontend display
         processed_tweets = []
@@ -211,24 +260,8 @@ def twitter_search_after_hook(
             }
             writer(payload)
 
-        # Return cleaned data for LLM (minimize tokens)
-        llm_tweets = []
-        for tweet in processed_tweets[:10]:  # Limit to 10 for LLM context
-            llm_tweets.append(
-                {
-                    "id": tweet["id"],
-                    "text": tweet["text"][:200] + "..."
-                    if len(tweet["text"]) > 200
-                    else tweet["text"],
-                    "author_username": tweet["author"].get("username"),
-                    "author_name": tweet["author"].get("name"),
-                    "likes": tweet["public_metrics"].get("like_count", 0),
-                    "retweets": tweet["public_metrics"].get("retweet_count", 0),
-                }
-            )
-
         return {
-            "tweets": llm_tweets,
+            "tweets": _process_tweets_for_llm(processed_tweets),
             "result_count": data.get("meta", {}).get(
                 "result_count", len(processed_tweets)
             ),
@@ -322,17 +355,7 @@ def twitter_timeline_after_hook(
         data = response.get("data", {})
         tweets = data.get("data", [])
         includes = data.get("includes", {})
-        users_map = {}
-
-        # Build user lookup map
-        for user in includes.get("users", []):
-            users_map[user.get("id")] = {
-                "id": user.get("id"),
-                "username": user.get("username"),
-                "name": user.get("name"),
-                "profile_image_url": user.get("profile_image_url"),
-                "verified": user.get("verified", False),
-            }
+        users_map = _build_users_map(includes)
 
         # Process tweets
         processed_tweets = []
@@ -366,9 +389,7 @@ def twitter_timeline_after_hook(
             "tweets": [
                 {
                     "id": t["id"],
-                    "text": t["text"][:200] + "..."
-                    if len(t["text"]) > 200
-                    else t["text"],
+                    "text": _truncate_tweet_text(t["text"]),
                     "author": t["author"].get("username"),
                     "likes": t["public_metrics"].get("like_count", 0),
                 }

@@ -4,6 +4,26 @@ import type React from "react";
 import type { PortCheckResult } from "../../lib/prerequisites.js";
 import { THEME_COLOR } from "../constants.js";
 
+export const PortDisplay: React.FC<{
+  webPort: number;
+  apiPort: number;
+}> = ({ webPort, apiPort }) => (
+  <Box marginTop={1} flexDirection="column">
+    <Text>
+      Web:{" "}
+      <Text color="cyan" bold>
+        http://localhost:{webPort}
+      </Text>
+    </Text>
+    <Text>
+      API:{" "}
+      <Text color="cyan" bold>
+        http://localhost:{apiPort}
+      </Text>
+    </Text>
+  </Box>
+);
+
 export const SystemChecksStep: React.FC<{
   checks: { git: string; docker: string; mise: string };
 }> = ({ checks }) => (

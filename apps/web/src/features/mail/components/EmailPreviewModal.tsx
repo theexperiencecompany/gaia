@@ -64,7 +64,7 @@ export function EmailPreviewModal({
 
   // Email validation function
   const isValidEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const emailRegex = /^[^\s@]{1,64}@[^\s@]{1,255}\.[^\s@]{1,63}$/;
     return emailRegex.test(email.trim());
   };
 

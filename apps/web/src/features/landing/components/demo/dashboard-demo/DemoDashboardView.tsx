@@ -440,6 +440,46 @@ function DemoConversationsCard() {
   );
 }
 
+interface DemoSection {
+  icon: React.ReactNode;
+  count: number;
+  label: string;
+}
+
+interface DemoSectionLineProps {
+  sections: DemoSection[];
+  prefix?: React.ReactNode;
+  suffix?: React.ReactNode;
+  showAndBeforeLast?: boolean;
+}
+
+function DemoSectionLine({
+  sections,
+  prefix,
+  suffix,
+  showAndBeforeLast = false,
+}: DemoSectionLineProps) {
+  return (
+    <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-3xl text-zinc-500">
+      {prefix}
+      {sections.map((section, index) => (
+        <span key={section.label}>
+          <span className="inline-flex items-center gap-1.5">
+            {section.icon}
+            <span className="font-medium text-white">{section.count}</span>
+            <span>{section.label}</span>
+          </span>
+          {index < sections.length - 1 && <span>,</span>}
+          {showAndBeforeLast && index === sections.length - 2 && (
+            <span> and</span>
+          )}
+          {index === sections.length - 1 && suffix}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function getRelativeTime(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
   const minutes = Math.floor(diff / 60000);
@@ -535,38 +575,16 @@ export default function DemoDashboardView() {
         </div>
 
         <div className="flex flex-col gap-1">
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-3xl text-zinc-500">
-            <span>You have</span>
-            {firstLine.map((section, index) => (
-              <span key={section.label}>
-                <span className="inline-flex items-center gap-1.5">
-                  {section.icon}
-                  <span className="font-medium text-white">
-                    {section.count}
-                  </span>
-                  <span>{section.label}</span>
-                </span>
-                {index < firstLine.length - 1 && <span>,</span>}
-                {index === firstLine.length - 1 && <span>,</span>}
-              </span>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 text-3xl text-zinc-500">
-            {secondLine.map((section, index) => (
-              <span key={section.label}>
-                <span className="inline-flex items-center gap-1.5">
-                  {section.icon}
-                  <span className="font-medium text-white">
-                    {section.count}
-                  </span>
-                  <span>{section.label}</span>
-                </span>
-                {index < secondLine.length - 1 && <span>,</span>}
-                {index === secondLine.length - 2 && <span> and</span>}
-                {index === secondLine.length - 1 && <span> today.</span>}
-              </span>
-            ))}
-          </div>
+          <DemoSectionLine
+            sections={firstLine}
+            prefix={<span>You have</span>}
+            suffix={<span>,</span>}
+          />
+          <DemoSectionLine
+            sections={secondLine}
+            suffix={<span> today.</span>}
+            showAndBeforeLast
+          />
         </div>
       </m.div>
 

@@ -86,6 +86,11 @@ async function getAllIntegrations() {
  * Uses slug for SEO-friendly URLs.
  */
 export async function generateStaticParams() {
+  // Skip heavy API-based SSG during desktop builds — served dynamically at runtime.
+  if (process.env.DESKTOP_BUILD === "true") {
+    return [];
+  }
+
   const integrations = await getAllIntegrations();
   console.log(`[SSG Marketplace] Generating ${integrations.length} pages`);
   return integrations.map((i: { slug: string }) => ({

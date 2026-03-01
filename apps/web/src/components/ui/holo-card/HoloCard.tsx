@@ -13,6 +13,117 @@ import { LogoHeader } from "./LogoHeader";
 import type { HoloCardProps } from "./types";
 import { calculateBackgroundPosition } from "./utils";
 
+interface CardFaceWrapperProps {
+  isStatic: boolean;
+  hover: boolean;
+  animated: boolean;
+  activeRotation: { x: number; y: number };
+  activeBackgroundPosition: { tp: number; lp: number };
+  houseImage: string;
+  height: number;
+  width: number;
+  showSparkles: boolean;
+  cardRef: React.RefObject<HTMLInputElement | null>;
+  onMouseMove?: (event: React.MouseEvent<HTMLDivElement>) => void;
+  onTouchMove?: (event: React.TouchEvent<HTMLDivElement>) => void;
+  onMouseOut?: () => void;
+  overlayColor?: string;
+  overlayOpacity: number;
+  children?: React.ReactNode;
+  innerContent: React.ReactNode;
+  contentWrapperClass: string;
+}
+
+const CardFaceWrapper = ({
+  isStatic,
+  hover,
+  animated,
+  activeRotation,
+  activeBackgroundPosition,
+  houseImage,
+  height,
+  width,
+  showSparkles,
+  cardRef,
+  onMouseMove,
+  onTouchMove,
+  onMouseOut,
+  overlayColor,
+  overlayOpacity,
+  children,
+  innerContent,
+  contentWrapperClass,
+}: CardFaceWrapperProps) => {
+  const holoCardProps = isStatic
+    ? {
+        $active: false as const,
+        $animated: false as const,
+      }
+    : {
+        $active: hover,
+        $animated: animated,
+        onMouseMove,
+        onTouchMove,
+        onMouseOut,
+      };
+
+  const content = (
+    <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-xl">
+      <CardOverlay
+        overlayColor={overlayColor}
+        overlayOpacity={overlayOpacity}
+      />
+
+      <div className={contentWrapperClass}>{innerContent}</div>
+
+      {/* <DitherEffect intensity={1}> */}
+      <StyledHoloCard
+        $url={houseImage}
+        ref={cardRef}
+        $activeRotation={activeRotation}
+        $activeBackgroundPosition={activeBackgroundPosition}
+        $height={height}
+        $width={width}
+        $showSparkles={showSparkles}
+        {...holoCardProps}
+      >
+        {children}
+      </StyledHoloCard>
+      {/* </DitherEffect> */}
+    </div>
+  );
+
+  if (isStatic) {
+    return content;
+  }
+
+  return (
+    <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
+      <CardOverlay
+        overlayColor={overlayColor}
+        overlayOpacity={overlayOpacity}
+      />
+
+      <div className={contentWrapperClass}>{innerContent}</div>
+
+      {/* <DitherEffect intensity={1}> */}
+      <StyledHoloCard
+        $url={houseImage}
+        ref={cardRef}
+        $activeRotation={activeRotation}
+        $activeBackgroundPosition={activeBackgroundPosition}
+        $height={height}
+        $width={width}
+        $showSparkles={showSparkles}
+        {...holoCardProps}
+      >
+        {children}
+      </StyledHoloCard>
+      {/* </DitherEffect> */}
+    </Tilt>
+  );
+};
+
 export const HoloCard = ({
   data,
   height = 446,
@@ -102,6 +213,26 @@ export const HoloCard = ({
   };
 
   const effectiveFlipped = forceSide ? forceSide === "back" : isFlipped;
+  const isStatic = !!forceSide;
+
+  const sharedFaceProps = {
+    isStatic,
+    hover,
+    animated,
+    activeRotation,
+    activeBackgroundPosition,
+    houseImage,
+    height,
+    width,
+    showSparkles,
+    cardRef: ref,
+    onMouseMove: handleOnMouseMove,
+    onTouchMove: handleOnTouchMove,
+    onMouseOut: handleOnMouseOut,
+    overlayColor: overlay_color,
+    overlayOpacity: overlay_opacity,
+    children,
+  };
 
   // Static mode styles for download
   const containerStyle = forceSide
@@ -170,89 +301,31 @@ export const HoloCard = ({
       >
         {/* Front Side */}
         <div style={frontStyle}>
-          {forceSide ? (
-            <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-xl">
-              <CardOverlay
-                overlayColor={overlay_color}
-                overlayOpacity={overlay_opacity}
-              />
-
-              <div className={CARD_CLASSES.CONTENT_WRAPPER}>
+          <CardFaceWrapper
+            {...sharedFaceProps}
+            contentWrapperClass={CARD_CLASSES.CONTENT_WRAPPER}
+            innerContent={
+              <>
                 <LogoHeader house={house} variant="front" />
                 <FrontCardContent
                   name={name}
                   personalityPhrase={personality_phrase}
                   accountNumber={account_number}
                   memberSince={member_since}
-                  isStatic
+                  isStatic={isStatic}
                 />
-              </div>
-
-              {/* <DitherEffect intensity={1}> */}
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={false}
-                $animated={false}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
-              {/* </DitherEffect> */}
-            </div>
-          ) : (
-            <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
-              <CardOverlay
-                overlayColor={overlay_color}
-                overlayOpacity={overlay_opacity}
-              />
-
-              <div className={CARD_CLASSES.CONTENT_WRAPPER}>
-                <LogoHeader house={house} variant="front" />
-                <FrontCardContent
-                  name={name}
-                  personalityPhrase={personality_phrase}
-                  accountNumber={account_number}
-                  memberSince={member_since}
-                />
-              </div>
-
-              {/* <DitherEffect intensity={1}> */}
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={hover}
-                $animated={animated}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                onMouseMove={handleOnMouseMove}
-                onTouchMove={handleOnTouchMove}
-                onMouseOut={handleOnMouseOut}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
-              {/* </DitherEffect> */}
-            </Tilt>
-          )}
+              </>
+            }
+          />
         </div>
 
         {/* Back Side */}
         <div style={backStyle}>
-          {forceSide ? (
-            <div className="relative h-full w-full overflow-hidden rounded-2xl shadow-xl">
-              <CardOverlay
-                overlayColor={overlay_color}
-                overlayOpacity={overlay_opacity}
-              />
-
-              <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
+          <CardFaceWrapper
+            {...sharedFaceProps}
+            contentWrapperClass={CARD_CLASSES.CONTENT_WRAPPER_BACK}
+            innerContent={
+              <>
                 <div className="flex w-full flex-col gap-4">
                   <LogoHeader house={house} variant="back" />
                   <BackCardContent
@@ -261,78 +334,18 @@ export const HoloCard = ({
                     userBio={user_bio}
                     accountNumber={account_number}
                     memberSince={member_since}
-                    isStatic
+                    isStatic={isStatic}
                   />
                 </div>
 
                 <BackCardFooter
                   accountNumber={account_number}
                   memberSince={member_since}
-                  isStatic
+                  isStatic={isStatic}
                 />
-              </div>
-
-              {/* <DitherEffect intensity={1}> */}
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={false}
-                $animated={false}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
-              {/* </DitherEffect> */}
-            </div>
-          ) : (
-            <Tilt className="relative h-full w-full overflow-hidden rounded-2xl p-0! shadow-xl">
-              <CardOverlay
-                overlayColor={overlay_color}
-                overlayOpacity={overlay_opacity}
-              />
-
-              <div className={CARD_CLASSES.CONTENT_WRAPPER_BACK}>
-                <div className="flex w-full flex-col gap-4">
-                  <LogoHeader house={house} variant="back" />
-                  <BackCardContent
-                    name={name}
-                    personalityPhrase={personality_phrase}
-                    userBio={user_bio}
-                    accountNumber={account_number}
-                    memberSince={member_since}
-                  />
-                </div>
-
-                <BackCardFooter
-                  accountNumber={account_number}
-                  memberSince={member_since}
-                />
-              </div>
-
-              {/* <DitherEffect intensity={1}> */}
-              <StyledHoloCard
-                $url={houseImage}
-                ref={ref}
-                $active={hover}
-                $animated={animated}
-                $activeRotation={activeRotation}
-                $activeBackgroundPosition={activeBackgroundPosition}
-                onMouseMove={handleOnMouseMove}
-                onTouchMove={handleOnTouchMove}
-                onMouseOut={handleOnMouseOut}
-                $height={height}
-                $width={width}
-                $showSparkles={showSparkles}
-              >
-                {children}
-              </StyledHoloCard>
-              {/* </DitherEffect> */}
-            </Tilt>
-          )}
+              </>
+            }
+          />
         </div>
       </div>
     </div>

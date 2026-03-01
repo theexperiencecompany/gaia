@@ -5,7 +5,7 @@ import { Chip } from "@heroui/chip";
 import { CalendarCheckOut01Icon, Flag02Icon, Tag01Icon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import { ChevronRight } from "@/components/shared/icons";
-import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
+import TodoWorkflowCategoryIcons from "@/features/landing/components/demo/TodoWorkflowCategoryIcons";
 import {
   DEMO_TODOS,
   PRIORITY_CHIP,
@@ -146,40 +146,9 @@ export default function DemoTodoList({ phase }: DemoTodoListProps) {
                   </div>
 
                   {/* Workflow Category Icons */}
-                  {todo.workflowCategories.length > 0 && (
-                    <div className="flex min-h-8 items-center -space-x-1.5 self-center">
-                      {todo.workflowCategories
-                        .slice(0, 3)
-                        .map((category, i) => {
-                          const IconComponent = getToolCategoryIcon(category, {
-                            width: 22,
-                            height: 22,
-                          });
-                          return IconComponent ? (
-                            <div
-                              key={category}
-                              className="relative flex min-w-7 items-center justify-center"
-                              style={{
-                                rotate:
-                                  todo.workflowCategories.length > 1
-                                    ? i % 2 === 0
-                                      ? "8deg"
-                                      : "-8deg"
-                                    : "0deg",
-                                zIndex: i,
-                              }}
-                            >
-                              {IconComponent}
-                            </div>
-                          ) : null;
-                        })}
-                      {todo.workflowCategories.length > 3 && (
-                        <div className="z-0 flex size-[28px] min-h-[28px] min-w-[28px] items-center justify-center rounded-lg bg-zinc-700/60 text-xs text-foreground-500">
-                          +{todo.workflowCategories.length - 3}
-                        </div>
-                      )}
-                    </div>
-                  )}
+                  <TodoWorkflowCategoryIcons
+                    categories={todo.workflowCategories}
+                  />
 
                   {/* Chevron */}
                   <div className="flex h-full items-center self-center">

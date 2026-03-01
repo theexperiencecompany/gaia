@@ -24,6 +24,49 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 router = APIRouter()
 
 
+def _parse_date_range(
+    start_date: Optional[str],
+    end_date: Optional[str],
+) -> tuple[Optional[str], Optional[str]]:
+    """Convert YYYY-MM-DD date strings to ISO 8601 UTC timestamps.
+
+    Returns:
+        A (time_min, time_max) tuple suitable for the Google Calendar API.
+        time_max is shifted forward by 24 hours to include the full end day.
+
+    Raises:
+        HTTPException: If either date string does not match the YYYY-MM-DD format.
+    """
+    time_min: Optional[str] = None
+    time_max: Optional[str] = None
+
+    if start_date:
+        try:
+            start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
+            time_min = start_dt.isoformat()
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD"
+            )
+
+    if end_date:
+        try:
+            end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
+            # Add 24 hours to include the entire end day
+            end_dt = end_dt + timedelta(days=1)
+            time_max = end_dt.isoformat()
+        except ValueError:
+            raise HTTPException(
+                status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
+            )
+
+    return time_min, time_max
+
+
 @router.get("/calendar/list", summary="Get Calendar List")
 async def get_calendar_list(
     current_user: dict = Depends(require_integration("calendar")),
@@ -80,32 +123,7 @@ async def query_events(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        # Convert start_date and end_date to time_min and time_max for Google Calendar API
-        time_min = None
-        time_max = None
-        if request.start_date:
-            try:
-                start_dt = datetime.strptime(request.start_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
-                time_min = start_dt.isoformat()
-            except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD"
-                )
-
-        if request.end_date:
-            try:
-                end_dt = datetime.strptime(request.end_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
-                # Add 24 hours to include the entire end day
-                end_dt = end_dt + timedelta(days=1)
-                time_max = end_dt.isoformat()
-            except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
-                )
+        time_min, time_max = _parse_date_range(request.start_date, request.end_date)
 
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
@@ -156,35 +174,7 @@ async def get_events(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        # Convert start_date and end_date to time_min and time_max for Google Calendar API
-        time_min = None
-        time_max = None
-
-        if start_date:
-            try:
-                # Convert YYYY-MM-DD to start of day in UTC
-                start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
-                time_min = start_dt.isoformat()
-            except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD"
-                )
-
-        if end_date:
-            try:
-                # Convert YYYY-MM-DD to end of day in UTC
-                end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
-                # Add 24 hours to include the entire end day
-                end_dt = end_dt + timedelta(days=1)
-                time_max = end_dt.isoformat()
-            except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
-                )
+        time_min, time_max = _parse_date_range(start_date, end_date)
 
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
@@ -231,35 +221,7 @@ async def get_events_by_calendar(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
-        # Convert start_date and end_date to time_min and time_max for Google Calendar API
-        time_min = None
-        time_max = None
-
-        if start_date:
-            try:
-                # Convert YYYY-MM-DD to start of day in UTC
-                start_dt = datetime.strptime(start_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
-                time_min = start_dt.isoformat()
-            except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid start_date format. Use YYYY-MM-DD"
-                )
-
-        if end_date:
-            try:
-                # Convert YYYY-MM-DD to end of day in UTC
-                end_dt = datetime.strptime(end_date, "%Y-%m-%d").replace(
-                    tzinfo=timezone.utc
-                )
-                # Add 24 hours to include the entire end day
-                end_dt = end_dt + timedelta(days=1)
-                time_max = end_dt.isoformat()
-            except ValueError:
-                raise HTTPException(
-                    status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
-                )
+        time_min, time_max = _parse_date_range(start_date, end_date)
 
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))

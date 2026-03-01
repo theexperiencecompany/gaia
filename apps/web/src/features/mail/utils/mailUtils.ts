@@ -14,7 +14,8 @@ export function parseEmail(from: string | undefined): {
       email: "",
     };
 
-  const match = from.match(/^(.*?)\s*<(.+?)>$/) || from.match(/(.+)/);
+  const match =
+    from.match(/^([^<]{0,200})\s*<([^>]{1,254})>$/) || from.match(/([^\r\n]+)/);
 
   if (match) {
     return {

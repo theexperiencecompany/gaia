@@ -15,19 +15,19 @@ interface EmailListProps {
 
 function extractSenderName(from: string): string {
   // Extract name before email or use email if no name
-  const match = from.match(/^"?([^"<]+)"?\s*</);
+  const match = from.match(/^"?([^"<]{1,200})"?\s*</);
   if (match) {
     return match[1].trim();
   }
 
   // If no angle brackets, check for name before space
-  const spaceMatch = from.match(/^([^<]+)\s+</);
+  const spaceMatch = from.match(/^([^<]{1,200})\s</);
   if (spaceMatch) {
     return spaceMatch[1].trim();
   }
 
   // Extract just the email part if no name
-  const emailMatch = from.match(/<([^>]+)>/);
+  const emailMatch = from.match(/<([^>]{1,254})>/);
   if (emailMatch) {
     return emailMatch[1].split("@")[0];
   }

@@ -6,36 +6,14 @@ import { useEffect, useState } from "react";
 
 import DemoToolCalls from "@/features/landing/components/demo/DemoToolCalls";
 import MiniWaveSpinner from "@/features/landing/components/demo/MiniWaveSpinner";
-import type { WorkflowDemoPhase } from "./workflowDemoConstants";
+import {
+  DEMO_WORKFLOW,
+  type WorkflowDemoPhase,
+  wfTx,
+} from "./workflowDemoConstants";
 
-const TOOLS = [
-  {
-    category: "gmail",
-    name: "gmail_list_emails",
-    message: "Reading 23 unread emails",
-  },
-  {
-    category: "executor",
-    name: "executor",
-    message: "Summarizing contents",
-  },
-  {
-    category: "googledocs",
-    name: "docs_create",
-    message: "Creating briefing doc",
-  },
-  {
-    category: "slack",
-    name: "slack_post_message",
-    message: "Posting to #daily-briefing",
-  },
-];
-
-const EXECUTION_RESPONSE =
-  "Your morning briefing is ready. 23 emails processed — 4 urgent action items posted to Slack, full briefing doc created.";
-
-const wfEase = [0.32, 0.72, 0, 1] as const;
-const wfTx = { duration: 0.22, ease: wfEase };
+const TOOLS = DEMO_WORKFLOW.tools;
+const EXECUTION_RESPONSE = DEMO_WORKFLOW.executionResponse;
 
 interface DemoExecutionChatProps {
   phase: WorkflowDemoPhase;

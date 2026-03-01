@@ -4,8 +4,7 @@ import { Tab, Tabs } from "@heroui/tabs";
 import { AnimatePresence, m } from "motion/react";
 import { useEffect, useState } from "react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
-
-const wfEase = [0.32, 0.72, 0, 1] as const;
+import { wfEase } from "./workflowDemoConstants";
 
 type TriggerTab = "schedule" | "trigger" | "manual";
 

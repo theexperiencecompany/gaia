@@ -206,6 +206,45 @@ const identifyDeletedConversations = (
   return deletedIds;
 };
 
+const mapRemoteConversation = (
+  conversation: Awaited<
+    ReturnType<typeof chatApi.batchSyncConversations>
+  >["conversations"][number],
+): IConversation => ({
+  id: conversation.conversation_id,
+  title: conversation.description || "Untitled conversation",
+  description: conversation.description,
+  starred: conversation.starred ?? false,
+  isSystemGenerated: conversation.is_system_generated ?? false,
+  systemPurpose: conversation.system_purpose ?? null,
+  isUnread: conversation.is_unread ?? false,
+  createdAt: new Date(conversation.createdAt),
+  updatedAt: conversation.updatedAt
+    ? new Date(conversation.updatedAt)
+    : new Date(conversation.createdAt),
+});
+
+const persistConversationWithMessages = async (
+  conversation: Awaited<
+    ReturnType<typeof chatApi.batchSyncConversations>
+  >["conversations"][number],
+): Promise<void> => {
+  const conversationId = conversation.conversation_id;
+  const messages = conversation.messages ?? [];
+
+  const mappedConversation = mapRemoteConversation(conversation);
+  const remoteMessages = mapApiMessagesToStored(messages, conversationId);
+  const localMessages = await db.getMessagesForConversation(conversationId);
+  const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
+
+  await Promise.allSettled([
+    db.putConversation(mappedConversation),
+    messages.length > 0
+      ? db.syncMessages(conversationId, mergedMessages)
+      : Promise.resolve(),
+  ]);
+};
+
 export const batchSyncConversations = async (): Promise<void> => {
   // CRITICAL: Skip sync if there's an active stream to prevent data corruption
   if (streamState.isStreaming()) return;
@@ -251,37 +290,10 @@ export const batchSyncConversations = async (): Promise<void> => {
 
     await Promise.allSettled(
       freshConversations.map(async (conversation) => {
-        const conversationId = conversation.conversation_id;
-        const messages = conversation.messages ?? [];
-
         // Skip syncing if streaming or pending save (e.g., after abort)
-        if (streamState.shouldBlockSync(conversationId)) return;
+        if (streamState.shouldBlockSync(conversation.conversation_id)) return;
 
-        const mappedConversation: IConversation = {
-          id: conversationId,
-          title: conversation.description || "Untitled conversation",
-          description: conversation.description,
-          starred: conversation.starred ?? false,
-          isSystemGenerated: conversation.is_system_generated ?? false,
-          systemPurpose: conversation.system_purpose ?? null,
-          isUnread: conversation.is_unread ?? false,
-          createdAt: new Date(conversation.createdAt),
-          updatedAt: conversation.updatedAt
-            ? new Date(conversation.updatedAt)
-            : new Date(conversation.createdAt),
-        };
-
-        const remoteMessages = mapApiMessagesToStored(messages, conversationId);
-        const localMessages =
-          await db.getMessagesForConversation(conversationId);
-        const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
-
-        await Promise.allSettled([
-          db.putConversation(mappedConversation),
-          messages.length > 0
-            ? db.syncMessages(conversationId, mergedMessages)
-            : Promise.resolve(),
-        ]);
+        await persistConversationWithMessages(conversation);
       }),
     );
   } catch {
@@ -308,40 +320,10 @@ export const syncSingleConversation = async (
       return;
     }
 
-    const conversation = freshConversations[0];
-    const messages = conversation.messages ?? [];
-
-    // Map conversation to IndexedDB format
-    const mappedConversation: IConversation = {
-      id: conversationId,
-      title: conversation.description || "Untitled conversation",
-      description: conversation.description,
-      starred: conversation.starred ?? false,
-      isSystemGenerated: conversation.is_system_generated ?? false,
-      systemPurpose: conversation.system_purpose ?? null,
-      isUnread: conversation.is_unread ?? false,
-      createdAt: new Date(conversation.createdAt),
-      updatedAt: conversation.updatedAt
-        ? new Date(conversation.updatedAt)
-        : new Date(conversation.createdAt),
-    };
-
-    // Map messages
-    const remoteMessages = mapApiMessagesToStored(messages, conversationId);
-    const localMessages = await db.getMessagesForConversation(conversationId);
-
-    const mergedMessages = mergeMessageLists(localMessages, remoteMessages);
-
-    // Persist to IndexedDB
-    await Promise.allSettled([
-      db.putConversation(mappedConversation),
-      messages.length > 0
-        ? db.syncMessages(conversationId, mergedMessages)
-        : Promise.resolve(),
-    ]);
+    await persistConversationWithMessages(freshConversations[0]);
 
     console.debug(
-      `[SyncService] Synced conversation ${conversationId} with ${messages.length} messages`,
+      `[SyncService] Synced conversation ${conversationId} with ${freshConversations[0].messages?.length ?? 0} messages`,
     );
   } catch (error) {
     console.error(

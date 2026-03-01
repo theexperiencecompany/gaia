@@ -1,7 +1,6 @@
 import { Spinner } from "@inkjs/ui";
 import { Box, Text, useInput } from "ink";
 import type React from "react";
-import { useEffect, useState } from "react";
 import type { SetupMode } from "../../lib/env-parser.js";
 
 import { SETUP_STEPS, Shell } from "../components/Shell.js";
@@ -9,9 +8,11 @@ import {
   EnvSetupSpinnerStep,
   ErrorStep,
   PortConflictStep,
+  PortDisplay,
   SystemChecksStep,
 } from "../components/shared-steps.js";
 import { THEME_COLOR } from "../constants.js";
+import { useStoreSync } from "../hooks.js";
 import type { CLIStore } from "../store.js";
 import {
   AlternativeGroupSelectionStep,
@@ -24,21 +25,7 @@ import {
 } from "./init.js";
 
 export const SetupScreen: React.FC<{ store: CLIStore }> = ({ store }) => {
-  const [state, setState] = useState(store.currentState);
-
-  useEffect(() => {
-    const update = () => setState({ ...store.currentState });
-    store.on("change", update);
-    return () => {
-      store.off("change", update);
-    };
-  }, [store]);
-
-  useInput((_input, key) => {
-    if ((key.return || key.escape) && state.error) {
-      store.submitInput("exit");
-    }
-  });
+  const state = useStoreSync(store);
 
   return (
     <Shell status={state.status} step={state.step} steps={SETUP_STEPS}>
@@ -180,20 +167,7 @@ const FinishedStep: React.FC<{
         <Text color="cyan">{isSelfHost ? "$ gaia start" : "$ gaia dev"}</Text>
       </Box>
 
-      <Box marginTop={1} flexDirection="column">
-        <Text>
-          Web:{" "}
-          <Text color="cyan" bold>
-            http://localhost:{webPort}
-          </Text>
-        </Text>
-        <Text>
-          API:{" "}
-          <Text color="cyan" bold>
-            http://localhost:{apiPort}
-          </Text>
-        </Text>
-      </Box>
+      <PortDisplay webPort={webPort} apiPort={apiPort} />
 
       <Box marginTop={1}>
         <Text color="gray">

@@ -36,17 +36,14 @@ from app.templates.docstrings.google_sheets_tool_docs import (
 from app.utils.google_sheets_utils import (
     DRIVE_API_BASE,
     SHEETS_API_BASE,
-    auth_headers,
-    get_access_token,
+    _http_client,
+    get_auth_headers,
     get_column_index_by_header,
     get_sheet_id_by_name,
     hex_to_rgb,
     parse_a1_range,
 )
 from composio import Composio
-
-# Reusable sync HTTP client
-_http_client = httpx.Client(timeout=60)
 
 
 def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
@@ -60,8 +57,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Share a Google Spreadsheet with one or more recipients."""
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        headers = get_auth_headers(auth_credentials)
 
         shared = []
         errors = []
@@ -131,8 +127,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Create a pivot table from spreadsheet data."""
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        headers = get_auth_headers(auth_credentials)
 
         # Get source and destination sheet IDs
         source_sheet_id = get_sheet_id_by_name(
@@ -262,8 +257,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Set data validation rules on a range."""
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        headers = get_auth_headers(auth_credentials)
 
         sheet_id = get_sheet_id_by_name(
             request.spreadsheet_id, request.sheet_name, headers
@@ -393,8 +387,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Add conditional formatting rules to a range."""
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        headers = get_auth_headers(auth_credentials)
 
         sheet_id = get_sheet_id_by_name(
             request.spreadsheet_id, request.sheet_name, headers
@@ -528,8 +521,7 @@ def register_google_sheets_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Create a chart from spreadsheet data."""
-        access_token = get_access_token(auth_credentials)
-        headers = auth_headers(access_token)
+        headers = get_auth_headers(auth_credentials)
 
         source_sheet_id = get_sheet_id_by_name(
             request.spreadsheet_id, request.sheet_name, headers

@@ -39,13 +39,11 @@ export const WORKFLOW_TIMINGS = {
 
 // ─── Animation helpers ────────────────────────────────────────────────────────
 
-export const wfEase = [0.32, 0.72, 0, 1] as const;
-export const wfTx = { duration: 0.22, ease: wfEase };
-export const wfSlideUp = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
-};
+export {
+  demoEase as wfEase,
+  demoSlideUp as wfSlideUp,
+  demoTx as wfTx,
+} from "../demoAnimationConstants";
 
 // ─── Mock workflow data ───────────────────────────────────────────────────────
 

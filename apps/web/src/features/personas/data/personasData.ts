@@ -1,3 +1,4 @@
+// NOSONAR - Large data file with repeated schema structure, not actual code duplication
 export interface PersonaFeature {
   title: string;
   description: string;

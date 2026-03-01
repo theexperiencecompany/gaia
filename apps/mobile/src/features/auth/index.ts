@@ -9,6 +9,7 @@ export * from "@/features/auth/components/auth-background";
 export * from "@/features/auth/components/auth-card";
 export * from "@/features/auth/components/auth-footer";
 export * from "@/features/auth/components/auth-header";
+export * from "@/features/auth/components/AuthScreenLayout";
 
 // Hooks
 export * from "@/features/auth/hooks/use-auth";

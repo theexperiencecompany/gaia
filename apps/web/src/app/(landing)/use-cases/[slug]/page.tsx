@@ -21,6 +21,12 @@ export const revalidate = 3600; // Revalidate every hour
 
 export async function generateStaticParams() {
   try {
+    // Skip heavy API-based SSG during desktop builds — these marketing pages
+    // are served dynamically at runtime from the embedded Next.js server.
+    if (process.env.DESKTOP_BUILD === "true") {
+      return [];
+    }
+
     const isDev = process.env.NODE_ENV === "development";
 
     if (isDev) {

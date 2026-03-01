@@ -98,7 +98,8 @@ export default function SettingsMenu({
       key: "documentation",
       label: "Documentation",
       icon: BookBookmark02Icon,
-      action: () => window.open(docsLink?.href, "_blank"),
+      action: () =>
+        window.open(docsLink?.href, "_blank", "noopener,noreferrer"),
     },
     {
       key: "changelog",
@@ -108,6 +109,7 @@ export default function SettingsMenu({
         window.open(
           "https://github.com/theexperiencecompany/gaia/releases",
           "_blank",
+          "noopener,noreferrer",
         ),
     },
     {
@@ -121,13 +123,18 @@ export default function SettingsMenu({
       label: "Roadmap",
       icon: MapsIcon,
       action: () =>
-        window.open("https://gaia.featurebase.app/roadmap", "_blank"),
+        window.open(
+          "https://gaia.featurebase.app/roadmap",
+          "_blank",
+          "noopener,noreferrer",
+        ),
     },
     {
       key: "opensource",
       label: "Open Source",
       icon: Github,
-      action: () => window.open(githubLink?.href, "_blank"),
+      action: () =>
+        window.open(githubLink?.href, "_blank", "noopener,noreferrer"),
     },
   ];
 
@@ -173,7 +180,7 @@ export default function SettingsMenu({
     ),
     action: () => {
       if (platform.downloadUrl) {
-        window.open(platform.downloadUrl, "_blank");
+        window.open(platform.downloadUrl, "_blank", "noopener,noreferrer");
       } else {
         router.push("/download");
       }
@@ -199,7 +206,7 @@ export default function SettingsMenu({
         documentation: docsLink?.href,
       };
       const url = linkMap[item.key];
-      if (url) window.open(url, "_blank");
+      if (url) window.open(url, "_blank", "noopener,noreferrer");
     }
   };
 

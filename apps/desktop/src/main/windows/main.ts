@@ -13,7 +13,6 @@
  * @module windows/main
  */
 
-import { createConnection } from "node:net";
 import { join } from "node:path";
 import { app, BrowserWindow, shell } from "electron";
 import { getServerUrl } from "../server";
@@ -91,54 +90,51 @@ async function waitForProductionServer(
 }
 
 /**
- * Poll until the development server on `localhost:3000` accepts
- * TCP connections, then navigate the main window to the login page.
+ * Check that `http://localhost:3000/api/_electron/ping` responds with
+ * `{ "app": "gaia" }`, confirming that the GAIA web dev server is
+ * running on this port and not some unrelated service.
+ */
+async function isGaiaDevServer(): Promise<boolean> {
+  try {
+    const res = await fetch("http://localhost:3000/api/_electron/ping", {
+      signal: AbortSignal.timeout(500),
+    });
+    if (!res.ok) return false;
+    const json = (await res.json()) as { app?: string };
+    return json.app === "gaia";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Poll until the GAIA development server on `localhost:3000` is
+ * reachable and positively identified, then navigate to the login page.
+ *
+ * A fingerprint check (`/api/_electron/ping`) guards against accidentally
+ * loading whatever else might be running on port 3000.
  */
 async function waitForDevServer(): Promise<void> {
   const devUrl = "http://localhost:3000";
   const maxAttempts = 100; // 100 × 100 ms = 10 s
 
-  console.log("[Main] Waiting for dev server at", devUrl);
+  console.log("[Main] Waiting for GAIA dev server at", devUrl);
 
   for (let i = 0; i < maxAttempts; i++) {
-    try {
-      const isReady = await new Promise<boolean>((resolve) => {
-        const socket = createConnection({ port: 3000, host: "localhost" });
-        socket.once("connect", () => {
-          socket.destroy();
-          resolve(true);
-        });
-        socket.once("error", () => {
-          socket.destroy();
-          resolve(false);
-        });
-        setTimeout(() => {
-          socket.destroy();
-          resolve(false);
-        }, 100);
-      });
-
-      if (isReady) {
-        console.log("[Main] Dev server ready, loading...");
-        try {
-          await mainWindow?.loadURL(`${devUrl}/desktop-login`);
-        } catch (err) {
-          console.error("[Main] Failed to load dev URL:", err);
-        }
-        return;
+    if (await isGaiaDevServer()) {
+      console.log("[Main] GAIA dev server confirmed, loading...");
+      try {
+        await mainWindow?.loadURL(`${devUrl}/desktop-login`);
+      } catch (err) {
+        console.error("[Main] Failed to load dev URL:", err);
       }
-    } catch {
-      // Ignore errors, keep polling
+      return;
     }
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
-  console.log("[Main] Dev server wait timeout, attempting to load anyway");
-  try {
-    await mainWindow?.loadURL(`${devUrl}/desktop-login`);
-  } catch (err) {
-    console.error("[Main] Failed to load dev URL (fallback):", err);
-  }
+  console.log("[Main] Dev server wait timeout — is `nx dev web` running?");
+  await mainWindow?.loadURL("data:text/html,<h2>GAIA dev server not found on port 3000.<br>Run <code>nx dev web</code> and restart the desktop app.</h2>");
 }
 
 /**

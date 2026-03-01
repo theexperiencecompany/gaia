@@ -2,20 +2,16 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import {
-  Calendar03Icon,
-  CheckmarkCircle02Icon,
-  Clock01Icon,
-  FlashIcon,
-  FlowIcon,
-  PencilEdit01Icon,
-} from "@icons";
+import { CheckmarkCircle02Icon, FlowIcon, PencilEdit01Icon } from "@icons";
 import { useEffect, useState } from "react";
 import type { WorkflowCreatedData } from "@/types/features/toolDataTypes";
 
 import type { Workflow } from "../api/workflowApi";
 import { workflowApi } from "../api/workflowApi";
-import { getScheduleDescription } from "../utils/cronUtils";
+import {
+  getWorkflowTriggerDisplay,
+  WorkflowTriggerChip,
+} from "./shared/WorkflowCardComponents";
 import WorkflowModal from "./WorkflowModal";
 
 interface WorkflowCreatedCardProps {
@@ -34,49 +30,11 @@ export default function WorkflowCreatedCard({
   const [fullWorkflow, setFullWorkflow] = useState<Workflow | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const getTriggerDisplay = () => {
-    switch (workflow.trigger_config.type) {
-      case "manual":
-        return {
-          label: "Manual",
-          icon: <FlashIcon className="size-3.5" />,
-          color: "default" as const,
-          bgColor: "bg-zinc-700/50",
-        };
-      case "scheduled": {
-        const cronLabel = workflow.trigger_config.cron_expression
-          ? getScheduleDescription(workflow.trigger_config.cron_expression)
-          : "Scheduled";
-        return {
-          label: cronLabel,
-          icon: <Clock01Icon className="size-3.5" />,
-          color: "primary" as const,
-          bgColor: "bg-primary/15",
-        };
-      }
-      case "integration":
-        return {
-          label:
-            workflow.trigger_config.trigger_name
-              ?.split("_")
-              .slice(0, 2)
-              .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-              .join(" ") || "Integration",
-          icon: <Calendar03Icon className="size-3.5" />,
-          color: "secondary" as const,
-          bgColor: "bg-secondary/15",
-        };
-      default:
-        return {
-          label: "Unknown",
-          icon: <FlashIcon className="size-3.5" />,
-          color: "default" as const,
-          bgColor: "bg-zinc-700/50",
-        };
-    }
-  };
-
-  const trigger = getTriggerDisplay();
+  const trigger = getWorkflowTriggerDisplay({
+    type: workflow.trigger_config.type,
+    cronExpression: workflow.trigger_config.cron_expression,
+    triggerName: workflow.trigger_config.trigger_name,
+  });
 
   // Fetch full workflow when modal opens
   const handleOpenModal = async () => {
@@ -150,18 +108,7 @@ export default function WorkflowCreatedCard({
         </p>
 
         {/* Trigger display */}
-        <Chip
-          size="sm"
-          variant="flat"
-          color={trigger.color}
-          startContent={trigger.icon}
-          classNames={{
-            base: `${trigger.bgColor} shrink-0`,
-            content: "text-xs font-medium",
-          }}
-        >
-          {trigger.label}
-        </Chip>
+        <WorkflowTriggerChip trigger={trigger} />
 
         {/* Action button */}
         <Button

@@ -7,10 +7,11 @@ import {
   Target02Icon,
   ZapIcon,
 } from "@icons";
+import { demoEase } from "./demoAnimationConstants";
 import type { DemoPage, UseCase } from "./types";
 
 // ─── Animation helpers ────────────────────────────────────────────────────────
-export const ease = [0.32, 0.72, 0, 1] as const;
+export const ease = demoEase;
 export const tx = { duration: 0.18, ease };
 export const slideUp = {
   initial: { opacity: 0, y: 10 },

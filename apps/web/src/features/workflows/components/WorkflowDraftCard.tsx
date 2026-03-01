@@ -2,17 +2,14 @@
 
 import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
-import {
-  Calendar03Icon,
-  Clock01Icon,
-  FlashIcon,
-  FlowIcon,
-  PencilEdit01Icon,
-} from "@icons";
+import { FlowIcon, PencilEdit01Icon } from "@icons";
 import { useState } from "react";
 import type { WorkflowDraftData } from "@/types/features/toolDataTypes";
 
-import { getScheduleDescription } from "../utils/cronUtils";
+import {
+  getWorkflowTriggerDisplay,
+  WorkflowTriggerChip,
+} from "./shared/WorkflowCardComponents";
 import WorkflowModal from "./WorkflowModal";
 
 interface WorkflowDraftCardProps {
@@ -22,49 +19,11 @@ interface WorkflowDraftCardProps {
 export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
-  const getTriggerDisplay = () => {
-    switch (draft.trigger_type) {
-      case "manual":
-        return {
-          label: "Manual",
-          icon: <FlashIcon className="size-3.5" />,
-          color: "default" as const,
-          bgColor: "bg-zinc-700/50",
-        };
-      case "scheduled": {
-        const cronLabel = draft.cron_expression
-          ? getScheduleDescription(draft.cron_expression)
-          : "Scheduled";
-        return {
-          label: cronLabel,
-          icon: <Clock01Icon className="size-3.5" />,
-          color: "primary" as const,
-          bgColor: "bg-primary/15",
-        };
-      }
-      case "integration":
-        return {
-          label:
-            draft.trigger_slug
-              ?.split("_")
-              .slice(0, 2)
-              .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-              .join(" ") || "Integration",
-          icon: <Calendar03Icon className="size-3.5" />,
-          color: "secondary" as const,
-          bgColor: "bg-secondary/15",
-        };
-      default:
-        return {
-          label: "Unknown",
-          icon: <FlashIcon className="size-3.5" />,
-          color: "default" as const,
-          bgColor: "bg-zinc-700/50",
-        };
-    }
-  };
-
-  const trigger = getTriggerDisplay();
+  const trigger = getWorkflowTriggerDisplay({
+    type: draft.trigger_type,
+    cronExpression: draft.cron_expression,
+    triggerName: draft.trigger_slug,
+  });
 
   return (
     <>
@@ -98,18 +57,7 @@ export default function WorkflowDraftCard({ draft }: WorkflowDraftCardProps) {
               </span>
             </div>
           </div>
-          <Chip
-            size="sm"
-            variant="flat"
-            color={trigger.color}
-            startContent={trigger.icon}
-            classNames={{
-              base: `${trigger.bgColor} shrink-0`,
-              content: "text-xs font-medium",
-            }}
-          >
-            {trigger.label}
-          </Chip>
+          <WorkflowTriggerChip trigger={trigger} />
         </div>
 
         <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">

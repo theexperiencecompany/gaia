@@ -11,10 +11,10 @@
 import {
   dispatchWorkflowSubcommand,
   handleWorkflowCreate,
-  handleWorkflowDelete,
 } from "../utils/commands";
-import { truncateResponse, parseTextArgs } from "../utils";
+import { parseTextArgs } from "../utils";
 import type { BotCommand, CommandExecuteParams } from "../types";
+import { resolveSubcommand, sendTruncated } from "./shared";
 
 /** `/workflow` command definition with subcommands. */
 export const workflowCommand: BotCommand = {
@@ -85,9 +85,7 @@ export const workflowCommand: BotCommand = {
     args,
     rawText,
   }: CommandExecuteParams): Promise<void> {
-    const subcommand =
-      (args.subcommand as string) ||
-      (rawText ? parseTextArgs(rawText).subcommand : "list");
+    const subcommand = resolveSubcommand(args, rawText);
     const subArgs = rawText ? parseTextArgs(rawText).args : [];
 
     // Handle `create` subcommand specially since it's not in dispatchWorkflowSubcommand
@@ -109,8 +107,7 @@ export const workflowCommand: BotCommand = {
       }
 
       const response = await handleWorkflowCreate(gaia, name, ctx, description);
-      const truncated = truncateResponse(response, target.platform);
-      await target.sendEphemeral(truncated);
+      await sendTruncated(response, target);
       return;
     }
 
@@ -125,7 +122,6 @@ export const workflowCommand: BotCommand = {
       subcommand,
       subArgs,
     );
-    const truncated = truncateResponse(response, target.platform);
-    await target.sendEphemeral(truncated);
+    await sendTruncated(response, target);
   },
 };

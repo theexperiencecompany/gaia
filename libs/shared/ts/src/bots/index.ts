@@ -28,5 +28,6 @@ export * from "./adapter";
 export * from "./api";
 export * from "./commands";
 export * from "./config";
+export * from "./runner";
 export * from "./types";
 export * from "./utils";

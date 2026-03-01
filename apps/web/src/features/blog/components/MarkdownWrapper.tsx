@@ -2,19 +2,17 @@
 
 import "katex/dist/katex.min.css";
 
-import Image from "next/image";
 import type React from "react";
 import ReactMarkdown from "react-markdown";
 import rehypeKatex from "rehype-katex";
-import remarkBreaks from "remark-breaks";
-import remarkGfm from "remark-gfm";
-import remarkMath from "remark-math";
-import remarkSmartypants from "remark-smartypants";
-import remarkSupersub from "remark-supersub";
 
-import CodeBlock from "@/features/chat/components/code-block/CodeBlock";
-import CustomAnchor from "@/features/chat/components/code-block/CustomAnchor";
 import { cn } from "@/lib";
+import {
+  makeAnchorComponent,
+  makeImgComponent,
+  sharedMarkdownComponents,
+  sharedRemarkPlugins,
+} from "@/lib/markdown/sharedComponents";
 import { useImageDialog } from "@/stores/uiStore";
 
 import { slugifyHeading } from "../utils/parseHeadings";
@@ -46,11 +44,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
     >
       <ReactMarkdown
         components={{
-          code: ({ className, children, ...props }) => (
-            <CodeBlock className={className} {...props}>
-              {children}
-            </CodeBlock>
-          ),
+          ...sharedMarkdownComponents,
           h1: ({ children, ...props }) => (
             <h1
               id={headingId(children)}
@@ -84,9 +78,7 @@ export default function MarkdownWrapper({ content }: { content: string }) {
           ol: ({ ...props }) => (
             <ol className="my-6 list-decimal space-y-2 pl-6" {...props} />
           ),
-          a: ({ href, children }) => (
-            <CustomAnchor href={href}>{children}</CustomAnchor>
-          ),
+          a: makeAnchorComponent(),
           blockquote: ({ ...props }) => (
             <blockquote
               className="my-6 border-l-2 border-t-0 border-gray-300 bg-gray-300/10 py-4 pl-5 not-italic"
@@ -100,18 +92,9 @@ export default function MarkdownWrapper({ content }: { content: string }) {
             <p className="my-5 leading-[1.8] first:mt-0 last:mb-0" {...props} />
           ),
           li: ({ ...props }) => <li className="leading-[1.7]" {...props} />,
-          img: ({ ...props }) => (
-            <Image
-              width={500}
-              height={500}
-              alt="image"
-              className="mx-auto my-8 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80"
-              src={props.src as string}
-              onClick={() => openDialog(props.src as string)}
-            />
-          ),
-          pre: ({ ...props }) => (
-            <pre className="my-8 font-serif! text-wrap" {...props} />
+          img: makeImgComponent(
+            openDialog,
+            "mx-auto my-8 cursor-pointer rounded-xl bg-zinc-900 object-contain transition hover:opacity-80",
           ),
           table: ({ ...props }) => (
             <div className="my-8 overflow-x-auto">
@@ -121,33 +104,8 @@ export default function MarkdownWrapper({ content }: { content: string }) {
               />
             </div>
           ),
-          thead: ({ ...props }) => (
-            <thead
-              className="bg-opacity-20 border border-zinc-700 bg-zinc-700"
-              {...props}
-            />
-          ),
-          tbody: ({ ...props }) => <tbody {...props} />,
-          tr: ({ ...props }) => (
-            <tr className="border-b border-zinc-600" {...props} />
-          ),
-          th: ({ ...props }) => (
-            <th
-              className="border border-zinc-600 px-4 py-2 text-left font-bold"
-              {...props}
-            />
-          ),
-          td: ({ ...props }) => (
-            <td className="border border-zinc-700 px-4 py-2" {...props} />
-          ),
         }}
-        remarkPlugins={[
-          remarkGfm,
-          remarkBreaks,
-          remarkMath,
-          remarkSmartypants,
-          remarkSupersub,
-        ]}
+        remarkPlugins={sharedRemarkPlugins}
         rehypePlugins={[rehypeKatex]}
       >
         {content}

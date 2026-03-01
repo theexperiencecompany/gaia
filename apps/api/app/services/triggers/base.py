@@ -10,7 +10,7 @@ from typing import Any, Callable, Dict, List, Optional, Set
 
 from app.config.loggers import general_logger as logger
 from app.db.mongodb.collections import workflows_collection
-from app.models.workflow_models import TriggerConfig, Workflow
+from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.workflow.queue_service import WorkflowQueueService
 from app.utils.exceptions import TriggerRegistrationError
@@ -182,6 +182,23 @@ class TriggerHandler(ABC):
             )
 
         return successful_ids
+
+    async def _find_workflows_by_trigger_id(
+        self, trigger_id: str, log_context: str = ""
+    ) -> List[Workflow]:
+        """Find workflows by Composio trigger ID using the standard integration query."""
+        try:
+            query = {
+                "activated": True,
+                "trigger_config.type": TriggerType.INTEGRATION,
+                "trigger_config.enabled": True,
+                "trigger_config.composio_trigger_ids": trigger_id,
+            }
+            context = log_context or f"trigger {trigger_id}"
+            return await self._load_workflows_from_query(query, context)
+        except Exception as e:
+            logger.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            return []
 
     async def _load_workflows_from_query(
         self, query: Dict[str, Any], log_context: str

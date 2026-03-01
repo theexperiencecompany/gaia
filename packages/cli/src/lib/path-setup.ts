@@ -1,4 +1,4 @@
-import { execSync } from "child_process";
+import { execFileSync, execSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
@@ -14,7 +14,7 @@ const isWindows = process.platform === "win32";
 
 function tryExec(cmd: string): string | null {
   try {
-    return execSync(cmd, {
+    return execSync(cmd, { // NOSONAR: cmd is always a hard-coded constant string; no user-controlled input is ever passed here
       encoding: "utf-8",
       stdio: ["pipe", "pipe", "pipe"],
     }).trim();
@@ -85,7 +85,7 @@ function findGaiaBinDir(): string | null {
 function isGaiaInPath(): boolean {
   try {
     const cmd = isWindows ? "where gaia" : "command -v gaia";
-    execSync(cmd, { stdio: ["pipe", "pipe", "pipe"] });
+    execSync(cmd, { stdio: ["pipe", "pipe", "pipe"] }); // NOSONAR: cmd is a constant string literal; "where" and "command -v" take no shell-injectable arguments
     return true;
   } catch {
     return false;
@@ -136,7 +136,7 @@ function addToWindowsPath(binDir: string): boolean {
     );
     if (currentPath?.includes(binDir)) return true;
 
-    execSync(`setx PATH "${binDir};${currentPath || ""}"`, {
+    execFileSync("setx", ["PATH", `${binDir};${currentPath || ""}`], {
       stdio: ["pipe", "pipe", "pipe"],
     });
 

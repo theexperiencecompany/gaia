@@ -8,50 +8,11 @@ import { Switch } from "@heroui/switch";
 import { AnimatePresence, m } from "motion/react";
 import WorkflowSteps from "@/features/workflows/components/shared/WorkflowSteps";
 import DemoTriggerTabs from "./DemoTriggerTabs";
-import type { WorkflowDemoPhase } from "./workflowDemoConstants";
-
-const DEMO_WORKFLOW = {
-  title: "Daily Email Digest & Briefing",
-  description:
-    "Every morning at 9 AM, scan my inbox for unread emails from the past 24 hours. Use AI to summarize the key points and extract action items. Create a formatted briefing document in Google Docs with sections for urgent items, meetings, and general updates. Finally, post the top 3-5 action items to our #daily-briefing Slack channel so the team stays aligned.",
-  steps: [
-    {
-      id: "step_1",
-      title: "Fetch unread emails",
-      description:
-        "Read all unread emails from the last 24 hours via Gmail API.",
-      category: "gmail",
-    },
-    {
-      id: "step_2",
-      title: "Summarize email contents",
-      description:
-        "Use LLM to generate concise summaries and extract action items.",
-      category: "executor",
-    },
-    {
-      id: "step_3",
-      title: "Create briefing document",
-      description:
-        "Write a formatted briefing in Google Docs with sections per priority.",
-      category: "googledocs",
-    },
-    {
-      id: "step_4",
-      title: "Post action items to Slack",
-      description: "Send extracted action items to #daily-briefing channel.",
-      category: "slack",
-    },
-  ],
-};
-
-const wfEase = [0.32, 0.72, 0, 1] as const;
-const wfTx = { duration: 0.22, ease: wfEase };
-const _wfSlideUp = {
-  initial: { opacity: 0, y: 12 },
-  animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
-};
+import {
+  DEMO_WORKFLOW,
+  type WorkflowDemoPhase,
+  wfTx,
+} from "./workflowDemoConstants";
 
 interface DemoWorkflowModalProps {
   phase: WorkflowDemoPhase;

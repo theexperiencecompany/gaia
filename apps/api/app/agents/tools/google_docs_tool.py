@@ -27,26 +27,16 @@ from app.utils.google_docs_utils import (
     extract_headings_from_document,
     generate_toc_text,
 )
+from app.utils.google_sheets_utils import (
+    DRIVE_API_BASE,
+    bearer_auth_headers,
+    get_access_token,
+)
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
 
-DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
-
 # Reusable sync HTTP client for direct API calls
 _http_client = httpx.Client(timeout=30)
-
-
-def _get_access_token(auth_credentials: Dict[str, Any]) -> str:
-    """Extract access token from auth_credentials."""
-    token = auth_credentials.get("access_token")
-    if not token:
-        raise ValueError("Missing access_token in auth_credentials")
-    return token
-
-
-def _auth_headers(access_token: str) -> Dict[str, str]:
-    """Return Bearer token header for Google Drive API."""
-    return {"Authorization": f"Bearer {access_token}"}
 
 
 def register_google_docs_custom_tools(composio: Composio) -> List[str]:
@@ -60,8 +50,8 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Share a Google Doc with one or more recipients."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = bearer_auth_headers(access_token)
         headers["Content-Type"] = "application/json"
 
         shared = []
@@ -198,8 +188,8 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         """Delete a file permanently using Drive API."""
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
+        access_token = get_access_token(auth_credentials)
+        headers = bearer_auth_headers(access_token)
 
         url = f"{DRIVE_API_BASE}/files/{request.document_id}"
 

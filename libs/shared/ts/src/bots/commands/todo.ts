@@ -15,8 +15,9 @@ import {
   handleTodoCreate,
   handleTodoList,
 } from "../utils/commands";
-import { truncateResponse, parseTextArgs } from "../utils";
+import { parseTextArgs } from "../utils";
 import type { BotCommand, CommandExecuteParams } from "../types";
+import { resolveSubcommand, sendTruncated } from "./shared";
 
 /** `/todo` command definition with subcommands. */
 export const todoCommand: BotCommand = {
@@ -94,9 +95,7 @@ export const todoCommand: BotCommand = {
     args,
     rawText,
   }: CommandExecuteParams): Promise<void> {
-    const subcommand =
-      (args.subcommand as string) ||
-      (rawText ? parseTextArgs(rawText).subcommand : "list");
+    const subcommand = resolveSubcommand(args, rawText);
 
     // Structured args path (Discord): handle "add" specially to preserve
     // priority and description options that dispatchTodoSubcommand ignores
@@ -114,8 +113,7 @@ export const todoCommand: BotCommand = {
         priority,
         description,
       });
-      const truncated = truncateResponse(response, target.platform);
-      await target.sendEphemeral(truncated);
+      await sendTruncated(response, target);
       return;
     }
 
@@ -124,8 +122,7 @@ export const todoCommand: BotCommand = {
       const completed =
         typeof args.completed === "boolean" ? args.completed : undefined;
       const response = await handleTodoList(gaia, ctx, completed);
-      const truncated = truncateResponse(response, target.platform);
-      await target.sendEphemeral(truncated);
+      await sendTruncated(response, target);
       return;
     }
 
@@ -140,8 +137,7 @@ export const todoCommand: BotCommand = {
         subcommand,
         subArgs,
       );
-      const truncated = truncateResponse(response, target.platform);
-      await target.sendEphemeral(truncated);
+      await sendTruncated(response, target);
       return;
     }
 
@@ -153,7 +149,6 @@ export const todoCommand: BotCommand = {
       subcommand,
       subArgs,
     );
-    const truncated = truncateResponse(response, target.platform);
-    await target.sendEphemeral(truncated);
+    await sendTruncated(response, target);
   },
 };

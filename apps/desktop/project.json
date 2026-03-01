@@ -83,7 +83,8 @@
         "cwd": "{projectRoot}",
         "parallel": false,
         "env": {
-          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/"
+          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/",
+          "DESKTOP_BUILD": "true"
         }
       },
       "dependsOn": ["build"]
@@ -99,7 +100,8 @@
         "parallel": false,
         "cwd": "{projectRoot}",
         "env": {
-          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/"
+          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/",
+          "DESKTOP_BUILD": "true"
         }
       },
       "dependsOn": ["build"]
@@ -115,7 +117,8 @@
         "parallel": false,
         "cwd": "{projectRoot}",
         "env": {
-          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/"
+          "NEXT_PUBLIC_API_BASE_URL": "https://api.heygaia.io/api/v1/",
+          "DESKTOP_BUILD": "true"
         }
       },
       "dependsOn": ["build"]

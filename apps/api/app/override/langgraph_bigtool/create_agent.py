@@ -60,6 +60,72 @@ from app.override.langgraph_bigtool.utils import (
 RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
+def _build_tool_selection_kwargs(
+    tool_call: dict,
+    store_arg: str | None,
+    store: "BaseStore",
+    config: "RunnableConfig",
+) -> dict:
+    """Build the kwargs dict for a retrieve_tools invocation.
+
+    Merges tool call args with optional store and user_id injections.
+    """
+    kwargs: dict = {**tool_call["args"]}
+    if store_arg:
+        kwargs[store_arg] = store
+    if config:
+        user_id = config.get("configurable", {}).get("user_id")
+        if user_id:
+            kwargs["user_id"] = user_id
+    return kwargs
+
+
+def _process_retrieve_result(
+    result: RetrieveToolsResponse,
+) -> tuple[list[str], list[str]]:
+    """Parse a retrieve_tools result into (tools_to_bind, response) id lists.
+
+    Handles both the TypedDict form (RetrieveToolsResult) and plain list form.
+    """
+    if isinstance(result, dict):
+        tools_to_bind = [
+            tool_id
+            for tool_id in result.get("tools_to_bind", [])
+            if isinstance(tool_id, str)
+        ]
+        response = [
+            tool_id
+            for tool_id in result.get("response", [])
+            if isinstance(tool_id, str)
+        ]
+    else:
+        tools_to_bind = [
+            tool_id
+            for tool_id in (result if isinstance(result, list) else [])
+            if isinstance(tool_id, str)
+        ]
+        response = tools_to_bind
+    return tools_to_bind, response
+
+
+def _build_tool_bindings(
+    tools_to_bind: list[str],
+    response: list[str],
+    tool_call_id: str,
+    selected_tools: dict,
+    response_tools: dict,
+) -> None:
+    """Filter subagent-prefixed tools and accumulate per-call id lists.
+
+    Mutates selected_tools and response_tools in place.
+    """
+    filtered_bind = [
+        tool_id for tool_id in tools_to_bind if not tool_id.startswith("subagent:")
+    ]
+    selected_tools[tool_call_id] = dedupe_str_list(filtered_bind)
+    response_tools[tool_call_id] = dedupe_str_list(response)
+
+
 def create_agent(
     llm: LanguageModelLike,
     tool_registry: Mapping[str, BaseTool],
@@ -137,6 +203,33 @@ def create_agent(
         )
         store_arg = get_store_arg(retrieve_tools)
 
+    def _configure_llm(config: RunnableConfig) -> Any:
+        """Apply runtime configurable settings to the LLM."""
+        return llm.with_config(configurable=config.get("configurable", {}))
+
+    def _prepare_llm_with_tools(
+        configured_llm: Any, state: State
+    ) -> tuple[Any, list[BaseTool]]:
+        """Assemble the deduplicated tools list and bind them to the configured LLM."""
+        selected = [tool_registry[id] for id in state["selected_tool_ids"]]
+        initial = [tool_registry[id] for id in (initial_tool_ids or [])]
+        tools: list[BaseTool] = []
+        if retrieve_tools is not None:
+            tools.append(retrieve_tools)
+        tools.extend(selected)
+        tools.extend(initial)
+        tools.extend(middleware_tools)
+        tools = dedupe_tool_bindings(tools)
+        llm_with_tools = configured_llm.bind_tools(tools)  # type: ignore[attr-defined]
+        return llm_with_tools, tools
+
+    def _normalize_response(response: AIMessage) -> None:
+        """Apply empty-content fallback and comms_agent message suffix in place."""
+        if not response.tool_calls and not response.content:
+            response.content = "Empty response from model."
+        if isinstance(response.content, str) and agent_name == "comms_agent":
+            response.content = response.content + NEW_MESSAGE_BREAKER
+
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
         state = sync_execute_hooks(pre_model_hooks, state, config, store)
 
@@ -146,25 +239,10 @@ def create_agent(
                 "Use the async graph execution path (ainvoke/astream)."
             )
 
-        model_configurations = config.get("configurable", {})
-        _llm = llm.with_config(configurable=model_configurations)
-        selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
-        initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        tools_to_bind: list[BaseTool] = []
-        if retrieve_tools is not None:
-            tools_to_bind.append(retrieve_tools)
-        tools_to_bind.extend(selected_tools)
-        tools_to_bind.extend(initial_tools)
-        tools_to_bind.extend(middleware_tools)
-        tools_to_bind = dedupe_tool_bindings(tools_to_bind)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+        _llm = _configure_llm(config)
+        llm_with_tools, _ = _prepare_llm_with_tools(_llm, state)
         response = llm_with_tools.invoke(state["messages"])
-
-        if not response.tool_calls and not response.content:
-            response.content = "Empty response from model."
-
-        if isinstance(response.content, str) and agent_name == "comms_agent":
-            response.content = response.content + NEW_MESSAGE_BREAKER
+        _normalize_response(response)
 
         return {"messages": [response]}  # type: ignore[return-value]
 
@@ -177,19 +255,8 @@ def create_agent(
         if middleware_executor:
             state = await middleware_executor.execute_before_model(state, config, store)
 
-        model_configurations = config.get("configurable", {})
-        _llm = llm.with_config(configurable=model_configurations)
-
-        selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
-        initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        tools_to_bind: list[BaseTool] = []
-        if retrieve_tools is not None:
-            tools_to_bind.append(retrieve_tools)
-        tools_to_bind.extend(selected_tools)
-        tools_to_bind.extend(initial_tools)
-        tools_to_bind.extend(middleware_tools)
-        tools_to_bind = dedupe_tool_bindings(tools_to_bind)
-        llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
+        _llm = _configure_llm(config)
+        llm_with_tools, tools_to_bind = _prepare_llm_with_tools(_llm, state)
 
         if middleware_executor and middleware_executor.has_wrap_model_call():
             middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [
@@ -206,11 +273,7 @@ def create_agent(
         else:
             response = await llm_with_tools.ainvoke(state["messages"])
 
-        if not response.tool_calls and not response.content:
-            response.content = "Empty response from model."
-
-        if isinstance(response.content, str) and agent_name == "comms_agent":
-            response.content = response.content + NEW_MESSAGE_BREAKER
+        _normalize_response(response)
 
         # Build updated state with response for after_model hooks
         updated_state: State = dict(state)  # type: ignore[assignment]
@@ -240,47 +303,15 @@ def create_agent(
                 "retrieve_tools is disabled and select_tools should not be called"
             )
 
-        selected_tools = {}
-        response_tools = {}
+        selected_tools: dict[str, list[str]] = {}
+        response_tools: dict[str, list[str]] = {}
         for tool_call in tool_calls:
-            kwargs = {**tool_call["args"]}
-            if store_arg:
-                kwargs[store_arg] = store
-            if config:
-                user_id = config.get("configurable", {}).get("user_id")
-                if user_id:
-                    kwargs["user_id"] = user_id
-
+            kwargs = _build_tool_selection_kwargs(tool_call, store_arg, store, config)
             result = retrieve_tools.invoke(kwargs, config=config)
-
-            # Handle both RetrieveToolsResult dict and plain list
-            if isinstance(result, dict):
-                tools_to_bind = [
-                    tool_id
-                    for tool_id in result.get("tools_to_bind", [])
-                    if isinstance(tool_id, str)
-                ]
-                response = [
-                    tool_id
-                    for tool_id in result.get("response", [])
-                    if isinstance(tool_id, str)
-                ]
-            else:
-                tools_to_bind = [
-                    tool_id
-                    for tool_id in (result if isinstance(result, list) else [])
-                    if isinstance(tool_id, str)
-                ]
-                response = tools_to_bind
-
-            # Filter out subagent: prefixed tools from binding
-            filtered_bind = [
-                tool_id
-                for tool_id in tools_to_bind
-                if not tool_id.startswith("subagent:")
-            ]
-            selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
-            response_tools[tool_call["id"]] = dedupe_str_list(response)
+            tools_to_bind, response = _process_retrieve_result(result)
+            _build_tool_bindings(
+                tools_to_bind, response, tool_call["id"], selected_tools, response_tools
+            )
 
         tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
         _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
@@ -294,47 +325,15 @@ def create_agent(
                 "retrieve_tools is disabled and aselect_tools should not be called"
             )
 
-        selected_tools = {}
-        response_tools = {}
+        selected_tools: dict[str, list[str]] = {}
+        response_tools: dict[str, list[str]] = {}
         for tool_call in tool_calls:
-            kwargs = {**tool_call["args"]}
-            if store_arg:
-                kwargs[store_arg] = store
-            if config:
-                user_id = config.get("configurable", {}).get("user_id")
-                if user_id:
-                    kwargs["user_id"] = user_id
-
+            kwargs = _build_tool_selection_kwargs(tool_call, store_arg, store, config)
             result = await retrieve_tools.ainvoke(kwargs, config=config)
-
-            # Handle both RetrieveToolsResult dict and plain list
-            if isinstance(result, dict):
-                tools_to_bind = [
-                    tool_id
-                    for tool_id in result.get("tools_to_bind", [])
-                    if isinstance(tool_id, str)
-                ]
-                response = [
-                    tool_id
-                    for tool_id in result.get("response", [])
-                    if isinstance(tool_id, str)
-                ]
-            else:
-                tools_to_bind = [
-                    tool_id
-                    for tool_id in (result if isinstance(result, list) else [])
-                    if isinstance(tool_id, str)
-                ]
-                response = tools_to_bind
-
-            # Filter out subagent: prefixed tools from binding
-            filtered_bind = [
-                tool_id
-                for tool_id in tools_to_bind
-                if not tool_id.startswith("subagent:")
-            ]
-            selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
-            response_tools[tool_call["id"]] = dedupe_str_list(response)
+            tools_to_bind, response = _process_retrieve_result(result)
+            _build_tool_bindings(
+                tools_to_bind, response, tool_call["id"], selected_tools, response_tools
+            )
 
         tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
         _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]

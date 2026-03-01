@@ -1,10 +1,11 @@
 "use client";
 
-import { Button } from "@heroui/button";
-import { ArrowRight02Icon, RedoIcon } from "@icons";
 import { AnimatePresence, m, useInView } from "motion/react";
-import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  DemoBackground,
+  DemoNavControls,
+} from "@/features/landing/components/demo/DemoAnimationLayout";
 import DummyComposer from "@/features/landing/components/demo/DummyComposer";
 import DemoCommunityCards from "./DemoCommunityCards";
 import DemoExecutionChat from "./DemoExecutionChat";
@@ -138,44 +139,7 @@ export default function WorkflowDemoAnimation() {
 
   return (
     <div ref={containerRef} className="flex flex-col items-center gap-4">
-      <m.div
-        initial={{ opacity: 0, y: 20, scale: 0.97 }}
-        whileInView={{ opacity: 1, y: 0, scale: 1 }}
-        viewport={{ once: true }}
-        transition={{ duration: 0.5, ease: wfEase }}
-        className="relative flex h-[70vh] w-full items-center justify-center overflow-hidden rounded-2xl"
-      >
-        {/* Background image with subtle Ken Burns effect */}
-        <m.div
-          className="absolute inset-0"
-          animate={{ scale: [1, 1.1, 1] }}
-          transition={{
-            duration: 10,
-            repeat: Number.POSITIVE_INFINITY,
-            ease: "linear",
-          }}
-        >
-          <Image
-            src="/images/wallpapers/mesh_gradient_1.webp"
-            alt="Mesh gradient background"
-            width={1920}
-            height={1080}
-            sizes="100vw"
-            style={{
-              width: "100%",
-              height: "100%",
-              objectFit: "cover",
-              position: "absolute",
-              inset: 0,
-            }}
-            className="object-cover"
-            priority
-          />
-        </m.div>
-
-        {/* Overlay for readability */}
-        <div className="absolute inset-0 bg-black/10 backdrop-blur-sm" />
-
+      <DemoBackground ease={wfEase}>
         {/* Animated content layer */}
         <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6">
           <AnimatePresence mode="wait">
@@ -243,48 +207,15 @@ export default function WorkflowDemoAnimation() {
             )}
           </AnimatePresence>
         </div>
-      </m.div>
+      </DemoBackground>
 
-      {/* Navigation controls — below the demo container */}
-      <div className="flex items-center justify-between w-full">
-        <div className="flex items-center gap-1.5">
-          <Button
-            isIconOnly
-            variant="flat"
-            size="sm"
-            aria-label="Previous phase"
-            title="Previous phase"
-            onPress={prevPhase}
-            isDisabled={PHASE_ORDER.indexOf(phase) <= 0}
-            className="rounded-full"
-          >
-            <ArrowRight02Icon width={18} height={18} className="rotate-180" />
-          </Button>
-          <Button
-            isIconOnly
-            variant="flat"
-            size="sm"
-            aria-label="Next phase"
-            title="Next phase"
-            onPress={nextPhase}
-            isDisabled={PHASE_ORDER.indexOf(phase) >= PHASE_ORDER.length - 1}
-            className="rounded-full"
-          >
-            <ArrowRight02Icon width={18} height={18} />
-          </Button>
-        </div>
-        <Button
-          isIconOnly
-          variant="flat"
-          size="sm"
-          aria-label="Restart demo"
-          title="Restart demo"
-          onPress={() => runAnimation()}
-          className="rounded-full"
-        >
-          <RedoIcon width={18} height={18} />
-        </Button>
-      </div>
+      <DemoNavControls
+        phaseIndex={PHASE_ORDER.indexOf(phase)}
+        phaseCount={PHASE_ORDER.length}
+        onPrev={prevPhase}
+        onNext={nextPhase}
+        onRestart={runAnimation}
+      />
     </div>
   );
 }
