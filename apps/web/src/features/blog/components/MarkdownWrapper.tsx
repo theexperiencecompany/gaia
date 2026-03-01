@@ -45,6 +45,9 @@ export default function MarkdownWrapper({ content }: { content: string }) {
       <ReactMarkdown
         components={{
           ...sharedMarkdownComponents,
+          pre: ({ ...props }: React.HTMLAttributes<HTMLElement>) => (
+            <pre className="my-8 font-serif! text-wrap" {...props} />
+          ),
           h1: ({ children, ...props }) => (
             <h1
               id={headingId(children)}

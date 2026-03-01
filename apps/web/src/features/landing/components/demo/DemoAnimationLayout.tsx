@@ -28,6 +28,7 @@ export function DemoNavControls({
           isIconOnly
           variant="flat"
           size="sm"
+          title="Previous phase"
           aria-label="Previous phase"
           onPress={onPrev}
           isDisabled={phaseIndex <= 0}
@@ -39,6 +40,7 @@ export function DemoNavControls({
           isIconOnly
           variant="flat"
           size="sm"
+          title="Next phase"
           aria-label="Next phase"
           onPress={onNext}
           isDisabled={phaseIndex >= phaseCount - 1}
@@ -51,6 +53,7 @@ export function DemoNavControls({
         isIconOnly
         variant="flat"
         size="sm"
+        title="Restart demo"
         aria-label="Restart demo"
         onPress={onRestart}
         className="rounded-full"

@@ -226,6 +226,7 @@ def execute_batch_user_operation(
     my_user_id: str,
     user_ids_to_process: List[Dict[str, Any]],
     operation: Callable[[str, str, str], Dict[str, Any]],
+    progress_callback: Optional[Callable[[int, int], None]] = None,
 ) -> Tuple[List[Dict[str, Any]], int, int]:
     """Execute a follow or unfollow operation for each user in the list.
 
@@ -234,6 +235,7 @@ def execute_batch_user_operation(
         my_user_id: The authenticated user's ID
         user_ids_to_process: List of user entry dicts with 'user_id' and optional 'username'
         operation: Callable accepting (access_token, my_user_id, target_user_id)
+        progress_callback: Optional callback(current_index, total) called after each operation
 
     Returns:
         Tuple of (results list, success_count, failed_count)
@@ -241,8 +243,9 @@ def execute_batch_user_operation(
     results: List[Dict[str, Any]] = []
     success_count = 0
     failed_count = 0
+    total = len(user_ids_to_process)
 
-    for user_info in user_ids_to_process:
+    for i, user_info in enumerate(user_ids_to_process):
         result = operation(access_token, my_user_id, user_info["user_id"])
 
         if result["success"]:
@@ -264,5 +267,8 @@ def execute_batch_user_operation(
                 }
             )
             failed_count += 1
+
+        if progress_callback and (i + 1) % 5 == 0:
+            progress_callback(i + 1, total)
 
     return results, success_count, failed_count

@@ -122,6 +122,10 @@ jobs:
               docker image prune -f
             "
 
+      # Wait for services to stabilize before verifying health checks.
+      - name: Wait for services to stabilize
+        run: sleep 30
+
       # Validate that every expected compose service is running and healthy.
       # Core services are mandatory; bot services are only checked when their
       # image exists locally (images are only pushed when bot code changes).

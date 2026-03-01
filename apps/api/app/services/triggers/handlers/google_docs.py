@@ -4,6 +4,8 @@ Google Docs trigger handler.
 
 from typing import Any, Dict, List, Set
 
+from app.config.loggers import general_logger as logger
+from app.models.composio_schemas import GoogleDocsPageAddedPayload
 from app.models.trigger_configs import (
     GoogleDocsDocumentDeletedConfig,
     GoogleDocsDocumentUpdatedConfig,
@@ -90,6 +92,11 @@ class GoogleDocsTriggerHandler(TriggerHandler):
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:
         """Find workflows matching a Google Docs trigger event."""
+        try:
+            GoogleDocsPageAddedPayload.model_validate(data)
+        except Exception as e:
+            logger.debug(f"Google Docs payload validation failed: {e}")
+
         return await self._find_workflows_by_trigger_id(trigger_id)
 
 

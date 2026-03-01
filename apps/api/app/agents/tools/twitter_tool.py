@@ -84,16 +84,16 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
         if writer is not None:
             writer({"progress": f"Following {total} users..."})
 
+        def on_progress(current: int, total: int) -> None:
+            if writer is not None:
+                writer({"progress": f"Followed {current}/{total} users..."})
+
         op_results, success_count, failed_count = execute_batch_user_operation(
-            access_token, my_user_id, user_ids_to_process, follow_user
+            access_token, my_user_id, user_ids_to_process, follow_user, on_progress
         )
 
         results = failed_results + op_results
         failed_count += len(failed_results)
-
-        for i, user_info in enumerate(user_ids_to_process):
-            if writer is not None and (i + 1) % 5 == 0:
-                writer({"progress": f"Followed {i + 1}/{total} users..."})
 
         # If all operations failed, raise
         if results and failed_count == len(results):
@@ -131,16 +131,16 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
         if writer is not None:
             writer({"progress": f"Unfollowing {total} users..."})
 
+        def on_progress(current: int, total: int) -> None:
+            if writer is not None:
+                writer({"progress": f"Unfollowed {current}/{total} users..."})
+
         op_results, success_count, failed_count = execute_batch_user_operation(
-            access_token, my_user_id, user_ids_to_process, unfollow_user
+            access_token, my_user_id, user_ids_to_process, unfollow_user, on_progress
         )
 
         results = failed_results + op_results
         failed_count += len(failed_results)
-
-        for i, user_info in enumerate(user_ids_to_process):
-            if writer is not None and (i + 1) % 5 == 0:
-                writer({"progress": f"Unfollowed {i + 1}/{total} users..."})
 
         # If all operations failed, raise
         if results and failed_count == len(results):

@@ -5,7 +5,7 @@ These hooks implement schema modifiers for customizing tool descriptions,
 before/after hooks for data processing, and frontend streaming via writer.
 """
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
 from langgraph.config import get_stream_writer
@@ -19,26 +19,32 @@ from .registry import (
 )
 
 
-def _build_users_map(includes: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+def _build_users_map(
+    includes: Dict[str, Any],
+    extra_fields: Optional[List[str]] = None,
+) -> Dict[str, Dict[str, Any]]:
     """Build a user ID -> user data lookup map from a Twitter API includes block.
 
     Args:
         includes: The 'includes' dict from a Twitter API response
+        extra_fields: Optional list of additional user fields to include
+            (e.g. ["description", "public_metrics"])
 
     Returns:
         A dict mapping user ID strings to user data dicts
     """
     users_map: Dict[str, Dict[str, Any]] = {}
     for user in includes.get("users", []):
-        users_map[user.get("id")] = {
+        entry: Dict[str, Any] = {
             "id": user.get("id"),
             "username": user.get("username"),
             "name": user.get("name"),
             "profile_image_url": user.get("profile_image_url"),
             "verified": user.get("verified", False),
-            "description": user.get("description", ""),
-            "public_metrics": user.get("public_metrics", {}),
         }
+        for field in extra_fields or []:
+            entry[field] = user.get(field, "" if field == "description" else {})
+        users_map[user.get("id")] = entry
     return users_map
 
 
@@ -227,7 +233,9 @@ def twitter_search_after_hook(
         data = response.get("data", {})
         tweets = data.get("data", [])
         includes = data.get("includes", {})
-        users_map = _build_users_map(includes)
+        users_map = _build_users_map(
+            includes, extra_fields=["description", "public_metrics"]
+        )
 
         # Process tweets for frontend display
         processed_tweets = []
