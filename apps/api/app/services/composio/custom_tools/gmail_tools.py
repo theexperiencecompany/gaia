@@ -3,6 +3,7 @@
 All HTTP calls are synchronous using httpx.Client to avoid event loop issues.
 """
 
+import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -10,6 +11,7 @@ from app.services.contact_service import get_gmail_contacts
 from composio import Composio
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
+from app.models.common_models import GatherContextInput
 from pydantic import BaseModel, Field
 
 # Reusable sync HTTP client
@@ -323,6 +325,66 @@ def register_gmail_custom_tools(composio: Composio):
         except Exception as e:
             raise RuntimeError(f"Failed to get contacts: {e}")
 
+    @composio.tools.custom_tool(toolkit="gmail")
+    def CUSTOM_GATHER_CONTEXT(
+        request: GatherContextInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get Gmail context snapshot: profile info, inbox unread count, and recent message IDs.
+
+        Zero required parameters. Returns current user's Gmail state for situational awareness.
+        """
+        headers = _auth_headers(auth_credentials)
+
+        # Get user profile
+        profile_resp = _http_client.get(
+            "https://gmail.googleapis.com/gmail/v1/users/me/profile",
+            headers=headers,
+        )
+        profile_resp.raise_for_status()
+        profile = profile_resp.json()
+
+        # Get inbox label info (includes unread count)
+        inbox_resp = _http_client.get(
+            "https://gmail.googleapis.com/gmail/v1/users/me/labels/INBOX",
+            headers=headers,
+        )
+        inbox_resp.raise_for_status()
+        inbox = inbox_resp.json()
+
+        # Get recent inbox messages (IDs only)
+        messages_params: Dict[str, Any] = {"labelIds": "INBOX", "maxResults": 5}
+        if request.since:
+            since_ts = int(
+                datetime.datetime.fromisoformat(
+                    request.since.replace("Z", "+00:00")
+                ).timestamp()
+            )
+            messages_params["q"] = f"after:{since_ts}"
+        messages_resp = _http_client.get(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+            headers=headers,
+            params=messages_params,
+        )
+        messages_resp.raise_for_status()
+        messages_data = messages_resp.json()
+
+        recent_ids = [m.get("id") for m in messages_data.get("messages", [])]
+
+        return {
+            "user": {
+                "email": profile.get("emailAddress"),
+                "messages_total": profile.get("messagesTotal"),
+                "threads_total": profile.get("threadsTotal"),
+            },
+            "inbox": {
+                "unread_count": inbox.get("messagesUnread", 0),
+                "message_count": inbox.get("messagesTotal", 0),
+            },
+            "recent_message_ids": recent_ids,
+        }
+
     return [
         "GMAIL_MARK_AS_READ",
         "GMAIL_MARK_AS_UNREAD",
@@ -330,4 +392,5 @@ def register_gmail_custom_tools(composio: Composio):
         "GMAIL_STAR_EMAIL",
         "GMAIL_GET_UNREAD_COUNT",
         "GMAIL_GET_CONTACT_LIST",
+        "GMAIL_CUSTOM_GATHER_CONTEXT",
     ]

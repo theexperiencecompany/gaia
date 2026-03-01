@@ -21,7 +21,7 @@ from app.agents.tools.workflow_shared_tools import (
     list_workflows,
     search_triggers,
 )
-from app.agents.tools.workflow_utils import (
+from app.utils.workflow_utils import (
     build_from_conversation_task,
     build_new_workflow_task,
     can_create_directly,

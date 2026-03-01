@@ -10,6 +10,7 @@ from datetime import datetime, timedelta
 from typing import Any, Dict, List
 
 from app.decorators import with_doc
+from app.models.common_models import GatherContextInput
 from app.models.linear_models import (
     BulkUpdateIssuesInput,
     CreateIssueInput,
@@ -944,6 +945,70 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
             },
         }
 
+    @composio.tools.custom_tool(toolkit="linear")
+    def CUSTOM_GATHER_CONTEXT(
+        request: GatherContextInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get Linear workspace context snapshot: current user, teams, and urgent items.
+
+        Zero required parameters. Returns full workspace state for session initialization.
+        """
+        viewer_data = graphql_request(QUERY_VIEWER, None, auth_credentials)
+        viewer = viewer_data.get("viewer", {})
+
+        teams_data = graphql_request(QUERY_TEAMS, None, auth_credentials)
+        teams = teams_data.get("teams", {}).get("nodes", [])
+
+        issues_data = graphql_request(
+            QUERY_MY_ISSUES,
+            {"assigneeId": viewer.get("id"), "includeCompleted": True, "first": 50},
+            auth_credentials,
+        )
+        my_issues = issues_data.get("issues", {}).get("nodes", [])
+
+        today = datetime.now().date()
+        overdue = []
+        high_priority = []
+
+        for issue in my_issues:
+            state_type = issue.get("state", {}).get("type", "")
+            if state_type in ["completed", "canceled"]:
+                continue
+            due_str = issue.get("dueDate")
+            if due_str:
+                try:
+                    due_date = datetime.fromisoformat(
+                        due_str.replace("Z", "+00:00")
+                    ).date()
+                    if due_date < today:
+                        overdue.append(format_issue_summary(issue))
+                except ValueError:
+                    pass
+            if issue.get("priority") in [1, 2]:
+                high_priority.append(format_issue_summary(issue))
+
+        return {
+            "user": {
+                "id": viewer.get("id"),
+                "name": viewer.get("name"),
+                "email": viewer.get("email"),
+            },
+            "teams": [
+                {
+                    "id": t.get("id"),
+                    "name": t.get("name"),
+                    "key": t.get("key"),
+                }
+                for t in teams
+            ],
+            "urgent_items": {
+                "overdue": overdue[:5],
+                "high_priority": high_priority[:5],
+            },
+        }
+
     return [
         "LINEAR_CUSTOM_RESOLVE_CONTEXT",
         "LINEAR_CUSTOM_GET_MY_TASKS",
@@ -957,4 +1022,5 @@ def register_linear_custom_tools(composio: Composio) -> List[str]:
         "LINEAR_CUSTOM_BULK_UPDATE_ISSUES",
         "LINEAR_CUSTOM_GET_NOTIFICATIONS",
         "LINEAR_CUSTOM_GET_WORKSPACE_CONTEXT",
+        "LINEAR_CUSTOM_GATHER_CONTEXT",
     ]

@@ -10,6 +10,7 @@ from typing import Any, Dict, List
 
 import httpx
 from app.decorators.documentation import with_doc
+from app.models.common_models import GatherContextInput
 from app.models.linkedin_models import (
     AddCommentInput,
     CreatePostInput,
@@ -35,6 +36,7 @@ from app.utils.linkedin_utils import (
     upload_image_from_url,
 )
 from composio import Composio
+
 
 # Reusable sync HTTP client
 _http_client = httpx.Client(timeout=60)
@@ -360,6 +362,72 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
             "post_urn": request.post_urn,
         }
 
+    @composio.tools.custom_tool(toolkit="LINKEDIN")
+    def CUSTOM_GATHER_CONTEXT(
+        request: GatherContextInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get LinkedIn context snapshot: authenticated user profile info and recent posts.
+
+        Zero required parameters. Returns user identity information and up to 5
+        recent posts authored by the authenticated user.
+        """
+        access_token = get_access_token(auth_credentials)
+        headers = linkedin_headers(access_token)
+
+        # Use OpenID Connect userinfo endpoint
+        resp = _http_client.get(
+            "https://api.linkedin.com/v2/userinfo",
+            headers=headers,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        person_id = data.get("sub", "")
+        person_urn = f"urn:li:person:{person_id}"
+
+        # Fetch recent posts by the authenticated user via ugcPosts API
+        posts: List[Dict[str, Any]] = []
+        if person_id:
+            try:
+                encoded_urn = person_urn.replace(":", "%3A")
+                posts_resp = _http_client.get(
+                    f"https://api.linkedin.com/v2/ugcPosts"
+                    f"?q=authors&authors=List({encoded_urn})&count=5",
+                    headers=headers,
+                )
+                if posts_resp.status_code != 403:
+                    posts_resp.raise_for_status()
+                    posts = posts_resp.json().get("elements", [])
+            except Exception:
+                posts = []
+
+        return {
+            "user": {
+                "id": person_id,
+                "name": data.get("name"),
+                "given_name": data.get("given_name"),
+                "family_name": data.get("family_name"),
+                "email": data.get("email"),
+                "profile_picture": data.get("picture"),
+            },
+            "recent_posts": [
+                {
+                    "id": post.get("id"),
+                    "text": post.get("specificContent", {})
+                    .get("com.linkedin.ugc.ShareContent", {})
+                    .get("shareCommentary", {})
+                    .get("text", "")[:200],
+                    "created": post.get("created", {}).get("time"),
+                    "visibility": post.get("visibility", {}).get(
+                        "com.linkedin.ugc.MemberNetworkVisibility"
+                    ),
+                }
+                for post in posts
+            ],
+        }
+
     # Return list of registered tool names
     return [
         "LINKEDIN_CUSTOM_CREATE_POST",
@@ -368,4 +436,5 @@ def register_linkedin_custom_tools(composio: Composio) -> List[str]:
         "LINKEDIN_CUSTOM_REACT_TO_POST",
         "LINKEDIN_CUSTOM_DELETE_REACTION",
         "LINKEDIN_CUSTOM_GET_POST_REACTIONS",
+        "LINKEDIN_CUSTOM_GATHER_CONTEXT",
     ]

@@ -103,7 +103,7 @@ export const integrationsApi = {
     const redirectPath = window.location.pathname + window.location.search;
 
     const response = (await apiService.post(
-      `/integrations/connect/${integrationId}`,
+      `/integrations/connect/${integrationId.toLowerCase()}`,
       {
         redirect_path: redirectPath,
         bearer_token: bearerToken,

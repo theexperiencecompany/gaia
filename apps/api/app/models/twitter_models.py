@@ -88,3 +88,9 @@ class ScheduleTweetInput(BaseModel):
         None,
         description="Optional tweet ID to reply to",
     )
+
+
+class GatherContextInput(BaseModel):
+    """Input for gathering Twitter/X context (no parameters needed)."""
+
+    pass

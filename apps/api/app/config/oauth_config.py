@@ -203,8 +203,10 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 "GOOGLECALENDAR_CUSTOM_DELETE_EVENT",
                 "GOOGLECALENDAR_CUSTOM_PATCH_EVENT",
                 "GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE",
+                "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
             ],
             auto_bind_tools=[
+                "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
                 "GOOGLECALENDAR_CUSTOM_CREATE_EVENT",
                 "GOOGLECALENDAR_CUSTOM_FETCH_EVENTS",
                 "GOOGLECALENDAR_FIND_FREE_SLOTS",
@@ -283,6 +285,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="creating documents, editing docs, sharing with team members, formatting content, or any Google Docs operation",
             system_prompt=GOOGLE_DOCS_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "GOOGLEDOCS_CUSTOM_GATHER_CONTEXT",
                 "GOOGLEDOCS_CREATE_DOCUMENT",
                 "GOOGLEDOCS_CREATE_DOCUMENT_MARKDOWN",
                 "GOOGLEDOCS_GET_DOCUMENT_BY_ID",
@@ -473,6 +476,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="any email-related task including sending, reading, organizing, or automating email operations",
             system_prompt=GMAIL_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "GMAIL_CUSTOM_GATHER_CONTEXT",
                 "GMAIL_FETCH_EMAILS",
                 "GMAIL_SEND_EMAIL",
                 "GMAIL_CREATE_EMAIL_DRAFT",
@@ -574,6 +578,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="creating pages, managing databases, organizing knowledge, or any Notion workspace operation",
             system_prompt=NOTION_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "NOTION_CUSTOM_GATHER_CONTEXT",
                 "NOTION_CREATE_PAGE",
                 "NOTION_UPDATE_A_PAGE",
                 "NOTION_SEARCH_NOTION_PAGE",
@@ -627,6 +632,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="posting tweets, engaging with content, managing followers, or analyzing Twitter activity",
             system_prompt=TWITTER_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "TWITTER_CUSTOM_GATHER_CONTEXT",
                 "TWITTER_CREATION_OF_A_POST",
                 "TWITTER_RECENT_SEARCH",
                 "TWITTER_USER_LOOKUP_BY_USERNAME",
@@ -719,6 +725,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="spreadsheet management, data analysis, formula creation, or any Google Sheets operation",
             system_prompt=GOOGLE_SHEETS_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "GOOGLESHEETS_CUSTOM_GATHER_CONTEXT",
                 "GOOGLESHEETS_VALUES_GET",
                 "GOOGLESHEETS_SPREADSHEETS_VALUES_APPEND",
                 "GOOGLESHEETS_BATCH_GET",
@@ -756,6 +763,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="posting professional content with rich media, commenting on posts, reacting to content, sharing articles, or any LinkedIn career-related activity",
             system_prompt=LINKEDIN_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "LINKEDIN_CUSTOM_GATHER_CONTEXT",
                 "LINKEDIN_CUSTOM_CREATE_POST",
                 "LINKEDIN_CUSTOM_ADD_COMMENT",
                 "LINKEDIN_CUSTOM_GET_POST_COMMENTS",
@@ -893,6 +901,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=GITHUB_AGENT_SYSTEM_PROMPT,
             specific_tools=GITHUB_TOOLS,
             auto_bind_tools=[
+                "GITHUB_CUSTOM_GATHER_CONTEXT",
                 "GITHUB_CREATE_AN_ISSUE",
                 "GITHUB_LIST_REPOSITORY_ISSUES",
                 "GITHUB_CREATE_A_PULL_REQUEST",
@@ -940,6 +949,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="posting to Reddit, engaging with communities, managing subreddit content, or analyzing Reddit activity",
             system_prompt=REDDIT_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "REDDIT_CUSTOM_GATHER_CONTEXT",
                 "REDDIT_CREATE_REDDIT_POST",
                 "REDDIT_POST_REDDIT_COMMENT",
                 "REDDIT_SEARCH_ACROSS_SUBREDDITS",
@@ -976,6 +986,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="managing Airtable bases, organizing data, creating records, or building database workflows",
             system_prompt=AIRTABLE_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "AIRTABLE_CUSTOM_GATHER_CONTEXT",
                 "AIRTABLE_LIST_BASES",
                 "AIRTABLE_GET_BASE_SCHEMA",
                 "AIRTABLE_LIST_FIELDS",
@@ -1072,6 +1083,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="issue management, project tracking, sprint planning, or any Linear development workflow task",
             system_prompt=LINEAR_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "LINEAR_CUSTOM_GATHER_CONTEXT",
                 "LINEAR_CREATE_LINEAR_ISSUE",
                 "LINEAR_LIST_LINEAR_ISSUES",
                 "LINEAR_UPDATE_ISSUE",
@@ -1184,6 +1196,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             system_prompt=SLACK_AGENT_SYSTEM_PROMPT,
             specific_tools=SLACK_TOOLS,
             auto_bind_tools=[
+                "SLACK_CUSTOM_GATHER_CONTEXT",
                 "SLACK_SEND_MESSAGE",
                 "SLACK_FETCH_CONVERSATION_HISTORY",
                 "SLACK_SEARCH_MESSAGES",
@@ -1234,6 +1247,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="CRM management, sales tracking, contact organization, or marketing automation tasks",
             system_prompt=HUBSPOT_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "HUBSPOT_CUSTOM_GATHER_CONTEXT",
                 "HUBSPOT_CREATE_CONTACT",
                 "HUBSPOT_LIST_CONTACTS",
                 "HUBSPOT_UPDATE_CONTACT",
@@ -1271,6 +1285,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="managing tasks, organizing to-do lists, tracking personal productivity, or any Google Tasks operation",
             system_prompt=GOOGLE_TASKS_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "GOOGLETASKS_CUSTOM_GATHER_CONTEXT",
                 "GOOGLETASKS_LIST_TASK_LISTS",
                 "GOOGLETASKS_LIST_TASKS",
                 "GOOGLETASKS_CREATE_TASK",
@@ -1323,6 +1338,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="task management, project organization, productivity tracking, or any Todoist operation",
             system_prompt=TODOIST_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "TODOIST_CUSTOM_GATHER_CONTEXT",
                 "TODOIST_CREATE_TASK",
                 "TODOIST_LIST_TASKS",
                 "TODOIST_UPDATE_TASK",
@@ -1360,6 +1376,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="team messaging, channel management, meeting coordination, file sharing, or any Microsoft Teams collaboration task",
             system_prompt=MICROSOFT_TEAMS_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "MICROSOFT_TEAMS_CUSTOM_GATHER_CONTEXT",
                 "MICROSOFT_TEAMS_SEND_MESSAGE_TO_CHAT",
                 "MICROSOFT_TEAMS_POST_MESSAGE_TO_CHANNEL",
                 "MICROSOFT_TEAMS_GET_ALL_CHATS",
@@ -1424,6 +1441,9 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_direct_tools=True,
             disable_retrieve_tools=True,
             system_prompt=GOOGLE_MEET_AGENT_SYSTEM_PROMPT,
+            auto_bind_tools=[
+                "GOOGLEMEET_CUSTOM_GATHER_CONTEXT",
+            ],
             memory_prompt=GOOGLE_MEET_MEMORY_PROMPT,
         ),
     ),
@@ -1452,6 +1472,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="location search, getting directions, finding nearby places, or any Google Maps operation",
             system_prompt=GOOGLE_MAPS_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "GOOGLE_MAPS_CUSTOM_GATHER_CONTEXT",
                 "GOOGLE_MAPS_NEARBY_SEARCH",
                 "GOOGLE_MAPS_TEXT_SEARCH",
                 "GOOGLE_MAPS_GET_PLACE_DETAILS",
@@ -1515,6 +1536,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="project management, task organization, team collaboration, or any Asana workflow operation",
             system_prompt=ASANA_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "ASANA_CUSTOM_GATHER_CONTEXT",
                 "ASANA_CREATE_A_TASK",
                 "ASANA_SEARCH_TASKS_IN_WORKSPACE",
                 "ASANA_UPDATE_A_TASK",
@@ -1552,6 +1574,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="board management, card organization, visual task tracking, or any Trello operation",
             system_prompt=TRELLO_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "TRELLO_CUSTOM_GATHER_CONTEXT",
                 "TRELLO_ADD_CARDS",
                 "TRELLO_GET_LISTS_CARDS_BY_ID_LIST",
                 "TRELLO_UPDATE_CARDS_ID_LIST_BY_ID_CARD",
@@ -1589,6 +1612,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="posting to Instagram, managing content, engaging with audience, or social media management tasks",
             system_prompt=INSTAGRAM_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "INSTAGRAM_CUSTOM_GATHER_CONTEXT",
                 "INSTAGRAM_GET_USER_INFO",
                 "INSTAGRAM_CREATE_MEDIA_CONTAINER",
                 "INSTAGRAM_POST_IG_USER_MEDIA_PUBLISH",
@@ -1626,6 +1650,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
             use_cases="task management, project organization, time tracking, or any ClickUp operation",
             system_prompt=CLICKUP_AGENT_SYSTEM_PROMPT,
             auto_bind_tools=[
+                "CLICKUP_CUSTOM_GATHER_CONTEXT",
                 "CLICKUP_CREATE_TASK",
                 "CLICKUP_GET_TASKS",
                 "CLICKUP_GET_TASK",

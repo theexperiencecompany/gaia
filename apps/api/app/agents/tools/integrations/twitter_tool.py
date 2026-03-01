@@ -16,6 +16,7 @@ Note: Errors are raised as exceptions - Composio wraps responses automatically.
 from typing import Any, Dict, List, Optional
 
 from app.decorators.documentation import with_doc
+from app.models.common_models import GatherContextInput
 from app.models.twitter_models import (
     BatchFollowInput,
     BatchUnfollowInput,
@@ -407,10 +408,70 @@ def register_twitter_custom_tools(composio: Composio) -> List[str]:
             "message": f"Tweet scheduled for {request.scheduled_time}. Note: Actual scheduling requires a backend scheduler service.",
         }
 
+    @composio.tools.custom_tool(toolkit="TWITTER")
+    def CUSTOM_GATHER_CONTEXT(
+        request: GatherContextInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get Twitter/X context snapshot: profile info and recent tweets.
+
+        Zero required parameters. Returns authenticated user's profile and recent activity.
+        """
+        access_token = get_access_token(auth_credentials)
+        headers = twitter_headers(access_token)
+
+        # Get user profile with metrics
+        me_resp = _http_client.get(
+            f"{TWITTER_API_BASE}/users/me",
+            headers=headers,
+            params={"user.fields": "public_metrics,description,username"},
+        )
+        me_resp.raise_for_status()
+        me_data = me_resp.json().get("data", {})
+
+        user_id = me_data.get("id")
+        metrics = me_data.get("public_metrics", {})
+
+        # Get recent tweets
+        tweets: List[Dict[str, Any]] = []
+        if user_id:
+            tweets_resp = _http_client.get(
+                f"{TWITTER_API_BASE}/users/{user_id}/tweets",
+                headers=headers,
+                params={"max_results": 5, "tweet.fields": "created_at,public_metrics"},
+            )
+            if tweets_resp.status_code == 200:
+                tweets_data = tweets_resp.json().get("data", [])
+                tweets = [
+                    {
+                        "id": t.get("id"),
+                        "text": t.get("text", "")[:200],
+                        "created_at": t.get("created_at"),
+                        "likes": t.get("public_metrics", {}).get("like_count", 0),
+                        "retweets": t.get("public_metrics", {}).get("retweet_count", 0),
+                    }
+                    for t in (tweets_data if isinstance(tweets_data, list) else [])
+                ]
+
+        return {
+            "user": {
+                "id": user_id,
+                "username": me_data.get("username"),
+                "name": me_data.get("name"),
+                "description": me_data.get("description", "")[:200],
+                "followers": metrics.get("followers_count", 0),
+                "following": metrics.get("following_count", 0),
+                "tweet_count": metrics.get("tweet_count", 0),
+            },
+            "recent_tweets": tweets,
+        }
+
     return [
         "TWITTER_CUSTOM_BATCH_FOLLOW",
         "TWITTER_CUSTOM_BATCH_UNFOLLOW",
         "TWITTER_CUSTOM_CREATE_THREAD",
         "TWITTER_CUSTOM_SEARCH_USERS",
         "TWITTER_CUSTOM_SCHEDULE_TWEET",
+        "TWITTER_CUSTOM_GATHER_CONTEXT",
     ]

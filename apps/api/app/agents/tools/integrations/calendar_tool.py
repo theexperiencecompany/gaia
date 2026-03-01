@@ -14,6 +14,7 @@ from typing import Any, Dict, List
 import httpx
 from app.config.loggers import chat_logger as logger
 from app.decorators import with_doc
+from app.models.common_models import GatherContextInput
 from app.models.calendar_models import (
     AddRecurrenceInput,
     CreateEventInput,
@@ -568,6 +569,74 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
                 "message": f"{len(calendar_options)} event(s) prepared for confirmation.",
             }
 
+    @composio.tools.custom_tool(toolkit="GOOGLECALENDAR")
+    def CUSTOM_GATHER_CONTEXT(
+        request: GatherContextInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get Google Calendar context snapshot: calendar list and today's events.
+
+        Zero required parameters. Returns user's calendars and today's schedule.
+        """
+        access_token = _get_access_token(auth_credentials)
+        headers = _auth_headers(access_token)
+
+        # Get calendar list
+        cal_list_resp = _http_client.get(
+            f"{CALENDAR_API_BASE}/users/me/calendarList",
+            headers=headers,
+        )
+        cal_list_resp.raise_for_status()
+        cal_list_data = cal_list_resp.json()
+        calendars = cal_list_data.get("items", [])
+
+        # Get today's events from primary calendar
+        today = datetime.now(timezone.utc)
+        today_start = today.replace(hour=0, minute=0, second=0, microsecond=0)
+        today_end = today_start + timedelta(days=1)
+
+        time_min = request.since if request.since else today_start.isoformat()
+
+        events_resp = _http_client.get(
+            f"{CALENDAR_API_BASE}/calendars/primary/events",
+            headers=headers,
+            params={
+                "timeMin": time_min,
+                "timeMax": today_end.isoformat(),
+                "singleEvents": "true",
+                "orderBy": "startTime",
+                "maxResults": 10,
+            },
+        )
+        events_resp.raise_for_status()
+        events_data = events_resp.json()
+        events = events_data.get("items", [])
+
+        return {
+            "calendars": [
+                {
+                    "id": c.get("id"),
+                    "summary": c.get("summary"),
+                    "primary": c.get("primary", False),
+                }
+                for c in calendars
+            ],
+            "today_events": [
+                {
+                    "id": e.get("id"),
+                    "summary": e.get("summary", "(No title)"),
+                    "start": e.get("start", {}).get("dateTime")
+                    or e.get("start", {}).get("date"),
+                    "end": e.get("end", {}).get("dateTime")
+                    or e.get("end", {}).get("date"),
+                }
+                for e in events
+            ],
+            "calendar_count": len(calendars),
+            "today_event_count": len(events),
+        }
+
     return [
         "GOOGLECALENDAR_CUSTOM_CREATE_EVENT",
         "GOOGLECALENDAR_CUSTOM_LIST_CALENDARS",
@@ -578,4 +647,5 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         "GOOGLECALENDAR_CUSTOM_DELETE_EVENT",
         "GOOGLECALENDAR_CUSTOM_PATCH_EVENT",
         "GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE",
+        "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
     ]

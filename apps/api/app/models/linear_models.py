@@ -343,3 +343,9 @@ class GetWorkspaceContextInput(BaseModel):
     """Input for getting full workspace context (no parameters needed)."""
 
     pass
+
+
+class GatherContextInput(BaseModel):
+    """Input for gather context snapshot (no parameters needed)."""
+
+    pass

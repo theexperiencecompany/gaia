@@ -12,6 +12,7 @@ from typing import Any, Dict, List
 
 import httpx
 from app.config.loggers import chat_logger as logger
+from app.models.common_models import GatherContextInput
 from app.decorators import with_doc
 from app.models.notion_models import (
     CreateTestPageInput,
@@ -332,10 +333,81 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         except Exception as e:
             raise RuntimeError(f"Failed to create page: {e}")
 
+    @composio.tools.custom_tool(toolkit="NOTION")
+    def CUSTOM_GATHER_CONTEXT(
+        request: GatherContextInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get Notion workspace context: recently edited pages and databases.
+
+        Zero required parameters. Returns recently modified content for situational awareness.
+        """
+        token = auth_credentials.get("access_token")
+        if not token:
+            raise ValueError("Missing access_token in auth_credentials")
+
+        headers = {
+            "Authorization": f"Bearer {token}",
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json",
+        }
+
+        search_body: Dict[str, Any] = {
+            "page_size": 20,
+            "sort": {"direction": "descending", "timestamp": "last_edited_time"},
+        }
+        if request.since:
+            search_body["filter"] = {"last_edited_time": {"after": request.since}}
+
+        resp = httpx.post(
+            "https://api.notion.com/v1/search",
+            headers=headers,
+            json=search_body,
+            timeout=30,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        results = data.get("results", [])
+
+        pages = []
+        databases = []
+        for item in results:
+            obj_type = item.get("object")
+            item_id = item.get("id", "")
+            title = "Untitled"
+
+            if obj_type == "page":
+                props = item.get("properties", {})
+                for prop in props.values():
+                    if prop.get("type") == "title":
+                        title_arr = prop.get("title", [])
+                        if title_arr:
+                            title = title_arr[0].get("plain_text", "Untitled")
+                        break
+                pages.append(
+                    {"id": item_id, "title": title, "url": item.get("url", "")}
+                )
+            elif obj_type == "database":
+                title_arr = item.get("title", [])
+                if title_arr:
+                    title = title_arr[0].get("plain_text", "Untitled")
+                databases.append(
+                    {"id": item_id, "title": title, "url": item.get("url", "")}
+                )
+
+        return {
+            "recent_pages": pages[:10],
+            "databases": databases[:5],
+            "page_count": len(pages),
+            "database_count": len(databases),
+        }
+
     return [
         "NOTION_MOVE_PAGE",
         "NOTION_FETCH_PAGE_AS_MARKDOWN",
         "NOTION_INSERT_MARKDOWN",
         "NOTION_FETCH_DATA",
         "NOTION_CUSTOM_CREATE_TEST_PAGE",
+        "NOTION_CUSTOM_GATHER_CONTEXT",
     ]
