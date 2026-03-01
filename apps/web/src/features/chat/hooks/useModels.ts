@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useUser } from "@/features/auth/hooks/useUser";
 import { toast } from "@/lib/toast";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 import {
   fetchAvailableModels,
@@ -48,9 +49,7 @@ export const useSelectModel = () => {
         toast.error("This model requires a Pro subscription", {
           action: {
             label: "Upgrade",
-            onClick: () => {
-              window.location.href = "/pricing";
-            },
+            onClick: () => usePricingModalStore.getState().openModal(),
           },
         });
       } else {

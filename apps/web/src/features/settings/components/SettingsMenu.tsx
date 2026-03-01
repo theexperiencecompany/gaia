@@ -41,6 +41,7 @@ import {
   usePlatformDetection,
 } from "@/hooks/ui/usePlatformDetection";
 import { useConfirmation } from "@/hooks/useConfirmation";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 import { settingsPageItems, socialMediaItems } from "../config/settingsConfig";
 import { useNestedMenu } from "../hooks/useNestedMenu";
 import { NestedMenuTooltip } from "./NestedMenuTooltip";
@@ -83,6 +84,7 @@ export default function SettingsMenu({
   >();
   const [modalAction, setModalAction] = useState<ModalAction | null>(null);
   const { data: subscriptionStatus } = useUserSubscriptionStatus();
+  const openPricingModal = usePricingModalStore((s) => s.openModal);
 
   const resourcesMenu = useNestedMenu();
   const supportMenu = useNestedMenu();
@@ -214,7 +216,7 @@ export default function SettingsMenu({
               {
                 key: "upgrade_to_pro",
                 label: "Upgrade to Pro",
-                action: () => router.push("/pricing"),
+                action: openPricingModal,
                 icon: CircleArrowUp02Icon,
                 iconColor: "#00bbff",
                 customClassNames: { title: "text-primary font-medium" },
