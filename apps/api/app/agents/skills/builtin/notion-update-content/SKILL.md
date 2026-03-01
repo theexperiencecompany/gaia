@@ -63,7 +63,7 @@ Use NOTION_INSERT_MARKDOWN to add/replace content.
 Guidelines:
 - Insert under an appropriate heading
 - Use headings and lists to match existing style
-- If positioning matters, use INSERT_MARKDOWN's `after` parameter (use block IDs from FETCH_PAGE_AS_MARKDOWN)
+- If positioning matters, use INSERT_MARKDOWN's `after` parameter (use block IDs from NOTION_FETCH_PAGE_AS_MARKDOWN)
 
 ### Step 5: Verify and Summarize
 

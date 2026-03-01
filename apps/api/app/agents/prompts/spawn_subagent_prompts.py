@@ -44,8 +44,7 @@ Do NOT use when:
 - The task involves a third-party provider (use handoff instead)
 - A single direct tool call suffices
 
-The subagent has full access to your currently bound tools (except handoff and spawn_subagent),
-runs for up to 5 turns, and returns only the distilled result.
+The subagent has full access to your currently bound tools (except handoff and spawn_subagent), and returns only the distilled result.
 Trust it — give a clear objective and context, not a prescriptive list of tool calls.
 
 Args:
