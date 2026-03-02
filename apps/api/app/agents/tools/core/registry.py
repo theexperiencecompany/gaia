@@ -178,6 +178,7 @@ class ToolRegistry:
         # NOTE: Import tool modules lazily to avoid circular imports during app startup.
         from app.agents.tools import (
             code_exec_tool,
+            context_tool,
             document_tool,
             file_tools,
             flowchart_tool,
@@ -253,6 +254,7 @@ class ToolRegistry:
         )
         self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])
+        self._add_category("context", tools=[context_tool.gather_context])
 
     async def register_provider_tools(
         self,

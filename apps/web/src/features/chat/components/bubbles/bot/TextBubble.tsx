@@ -170,26 +170,37 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       emailThreadData={data as EmailThreadData}
     />
   ),
-  email_fetch_data: (data, index) => (
-    <EmailListCard
-      key={`tool-email-fetch-${index}`}
-      emails={(Array.isArray(data) ? data : [data]) as EmailFetchData[]}
-    />
-  ),
-  email_compose_data: (data, index) => (
-    <EmailComposeSection
-      key={`tool-email-compose-${index}`}
-      email_compose_data={
-        (Array.isArray(data) ? data : [data]) as EmailComposeData[]
-      }
-    />
-  ),
-  email_sent_data: (data, index) => (
-    <EmailSentSection
-      key={`tool-email-sent-${index}`}
-      email_sent_data={(Array.isArray(data) ? data : [data]) as EmailSentData[]}
-    />
-  ),
+  email_fetch_data: (data, index) => {
+    // When grouped, data is EmailFetchData[][] — flatten batches into one list
+    const emails = Array.isArray(data[0])
+      ? (data as unknown as EmailFetchData[][]).flat()
+      : (data as EmailFetchData[]);
+    return <EmailListCard key={`tool-email-fetch-${index}`} emails={emails} />;
+  },
+  email_compose_data: (data, index) => {
+    // When grouped, data is EmailComposeData[][] — flatten batches
+    const items = Array.isArray(data[0])
+      ? (data as unknown as EmailComposeData[][]).flat()
+      : (data as EmailComposeData[]);
+    return (
+      <EmailComposeSection
+        key={`tool-email-compose-${index}`}
+        email_compose_data={items}
+      />
+    );
+  },
+  email_sent_data: (data, index) => {
+    // When grouped, data is EmailSentData[][] — flatten batches
+    const items = Array.isArray(data[0])
+      ? (data as unknown as EmailSentData[][]).flat()
+      : (data as EmailSentData[]);
+    return (
+      <EmailSentSection
+        key={`tool-email-sent-${index}`}
+        email_sent_data={items}
+      />
+    );
+  },
   contacts_data: (data, index) => (
     <ContactListSection
       key={`tool-contacts-${index}`}
@@ -449,13 +460,6 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
 
-  todo_progress: (data, index) => (
-    <TodoProgressSection
-      key={`tool-todo-progress-${index}`}
-      todo_progress={data as TodoProgressData}
-    />
-  ),
-
   rate_limit_data: (data, index) => {
     // When grouped, data is RateLimitData[] — deduplicate by feature
     const items = (Array.isArray(data) ? data : [data]) as RateLimitData[];
@@ -539,13 +543,26 @@ export default function TextBubble({
 
       {processedTools.map((entry, index) => {
         const toolName = entry.tool_name as ToolName;
+        const keyId = entry.timestamp || index;
+
+        if (toolName === "todo_progress") {
+          const data = getTypedData(entry as ToolDataUnion, "todo_progress");
+          return data ? (
+            <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
+              <TodoProgressSection
+                todo_progress={data as TodoProgressData}
+                isStreaming={loading}
+              />
+            </React.Fragment>
+          ) : null;
+        }
+
         const renderer = TOOL_RENDERERS[toolName];
         if (!renderer) return null;
 
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (!typedData) return null;
 
-        const keyId = entry.timestamp || index;
         return (
           <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
             {renderTool(toolName, typedData, index)}

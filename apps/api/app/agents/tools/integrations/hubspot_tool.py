@@ -1,22 +1,12 @@
-"""HubSpot tools using Composio custom tool infrastructure.
-
-These tools provide HubSpot CRM functionality using the access_token from Composio's
-auth_credentials. Uses HubSpot CRM API v3 for all operations.
-
-Note: Errors are raised as exceptions - Composio wraps responses automatically.
-"""
+"""HubSpot tools using Composio custom tool infrastructure."""
 
 from typing import Any, Dict, List
 
 import httpx
 from composio import Composio
 
+from app.config.loggers import chat_logger as logger
 from app.models.common_models import GatherContextInput
-
-HUBSPOT_API_BASE = "https://api.hubapi.com"
-
-# Reusable sync HTTP client
-_http_client = httpx.Client(timeout=30)
 
 
 def register_hubspot_custom_tools(composio: Composio) -> List[str]:
@@ -40,55 +30,64 @@ def register_hubspot_custom_tools(composio: Composio) -> List[str]:
             "Content-Type": "application/json",
         }
 
-        # Get recent contacts
-        contacts_resp = _http_client.get(
-            f"{HUBSPOT_API_BASE}/crm/v3/objects/contacts",
-            headers=headers,
-            params={
-                "limit": 5,
-                "properties": "firstname,lastname,email,hs_lead_status",
-                "sort": "-createdate",
-            },
-        )
-        contacts_resp.raise_for_status()
-        contacts_data = contacts_resp.json()
-        contacts = contacts_data.get("results", [])
+        contacts: List[Dict[str, Any]] = []
+        try:
+            resp = httpx.get(
+                "https://api.hubapi.com/crm/v3/objects/contacts",
+                headers=headers,
+                params={
+                    "limit": 10,
+                    "properties": "firstname,lastname,email,hs_lead_status",
+                    "sort": "-createdate",
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            contacts = resp.json().get("results", [])
+        except Exception as e:
+            logger.debug(f"HubSpot contacts fetch failed: {e}")
 
-        # Get recent deals
-        deals_resp = _http_client.get(
-            f"{HUBSPOT_API_BASE}/crm/v3/objects/deals",
-            headers=headers,
-            params={
-                "limit": 5,
-                "properties": "dealname,amount,dealstage,closedate",
-                "sort": "-createdate",
-            },
-        )
-        deals_resp.raise_for_status()
-        deals_data = deals_resp.json()
-        deals = deals_data.get("results", [])
+        deals: List[Dict[str, Any]] = []
+        try:
+            resp = httpx.get(
+                "https://api.hubapi.com/crm/v3/objects/deals",
+                headers=headers,
+                params={
+                    "limit": 10,
+                    "properties": "dealname,amount,dealstage,closedate",
+                    "sort": "-createdate",
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            deals = resp.json().get("results", [])
+        except Exception as e:
+            logger.debug(f"HubSpot deals fetch failed: {e}")
+
+        recent_contacts = [
+            {
+                "id": c.get("id"),
+                "firstname": c.get("properties", {}).get("firstname"),
+                "lastname": c.get("properties", {}).get("lastname"),
+                "email": c.get("properties", {}).get("email"),
+                "lead_status": c.get("properties", {}).get("hs_lead_status"),
+            }
+            for c in contacts
+        ]
+        recent_deals = [
+            {
+                "id": d.get("id"),
+                "dealname": d.get("properties", {}).get("dealname"),
+                "amount": d.get("properties", {}).get("amount"),
+                "dealstage": d.get("properties", {}).get("dealstage"),
+                "closedate": d.get("properties", {}).get("closedate"),
+            }
+            for d in deals
+        ]
 
         return {
-            "recent_contacts": [
-                {
-                    "id": c.get("id"),
-                    "firstname": c.get("properties", {}).get("firstname"),
-                    "lastname": c.get("properties", {}).get("lastname"),
-                    "email": c.get("properties", {}).get("email"),
-                    "lead_status": c.get("properties", {}).get("hs_lead_status"),
-                }
-                for c in contacts
-            ],
-            "recent_deals": [
-                {
-                    "id": d.get("id"),
-                    "dealname": d.get("properties", {}).get("dealname"),
-                    "amount": d.get("properties", {}).get("amount"),
-                    "dealstage": d.get("properties", {}).get("dealstage"),
-                    "closedate": d.get("properties", {}).get("closedate"),
-                }
-                for d in deals
-            ],
+            "recent_contacts": recent_contacts,
+            "recent_deals": recent_deals,
             "contact_count": len(contacts),
             "deal_count": len(deals),
         }

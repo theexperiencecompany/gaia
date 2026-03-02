@@ -328,7 +328,10 @@ async def _resolve_subagent(
             if error_message:
                 return None, None, error_message, False
 
-        subagent_graph = await providers.aget(agent_name)
+        try:
+            subagent_graph = await providers.aget(agent_name)
+        except KeyError:
+            return None, None, f"Error: {agent_name} not available", False
         if not subagent_graph:
             return None, None, f"Error: {agent_name} not available", False
 

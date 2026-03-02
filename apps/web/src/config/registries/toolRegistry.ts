@@ -156,7 +156,9 @@ export const GROUPED_TOOLS = new Set<ToolName>([
   "integration_connection_required",
   "integration_list_data",
   "rate_limit_data",
-  // "email_fetch_data",
+  "email_fetch_data",
+  "email_compose_data",
+  "email_sent_data",
   // "test_data",
   // Add any tool you want to group here
 ]);

@@ -292,6 +292,13 @@ Do not mix direct tool calls with handoff subagent responsibilities.
 KNOWN PROVIDERS (skip retrieve_tools): gmail, googlecalendar, notion, slack, linear, github
 UNKNOWN PROVIDERS: use retrieve_tools first to discover.
 
+CONTEXT GATHERING (always available, bind directly):
+GAIA_GATHER_CONTEXT aggregates all connected integrations in parallel — calendar, email, tasks, code, messages.
+Use it when the user asks about their day, schedule, pending work, "what's going on", "catch me up", etc.
+  retrieve_tools(exact_tool_names=["GAIA_GATHER_CONTEXT"])
+  GAIA_GATHER_CONTEXT(date="YYYY-MM-DD")  # omit date for today; providers=None auto-detects connected
+Use GAIA_GATHER_CONTEXT FIRST before falling back to individual provider handoffs for context queries.
+
 — spawn_subagent (Lightweight Focused Work)
 A lightweight clone of you (same tools minus handoff/spawn_subagent, max 5 turns, no streaming).
 

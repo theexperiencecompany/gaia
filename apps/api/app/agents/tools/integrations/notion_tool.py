@@ -27,6 +27,7 @@ from app.templates.docstrings.notion_tool_docs import (
     INSERT_MARKDOWN_DOC,
     MOVE_PAGE_DOC,
 )
+from app.utils.context_utils import execute_tool
 from app.utils.notion_md import blocks_to_markdown, markdown_to_notion_blocks
 from composio import Composio
 from composio.core.models.tools import ToolExecutionResponse
@@ -343,65 +344,14 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns recently modified content for situational awareness.
         """
-        token = auth_credentials.get("access_token")
-        if not token:
-            raise ValueError("Missing access_token in auth_credentials")
-
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Notion-Version": "2022-06-28",
-            "Content-Type": "application/json",
-        }
-
-        search_body: Dict[str, Any] = {
-            "page_size": 20,
-            "sort": {"direction": "descending", "timestamp": "last_edited_time"},
-        }
-        if request.since:
-            search_body["filter"] = {"last_edited_time": {"after": request.since}}
-
-        resp = httpx.post(
-            "https://api.notion.com/v1/search",
-            headers=headers,
-            json=search_body,
-            timeout=30,
+        user_id = auth_credentials.get("user_id", "")
+        if not user_id:
+            raise ValueError("Missing user_id in auth_credentials")
+        data = execute_tool(
+            "NOTION_SEARCH_NOTION_PAGE", {"query": "", "page_size": 10}, user_id
         )
-        resp.raise_for_status()
-        data = resp.json()
-        results = data.get("results", [])
-
-        pages = []
-        databases = []
-        for item in results:
-            obj_type = item.get("object")
-            item_id = item.get("id", "")
-            title = "Untitled"
-
-            if obj_type == "page":
-                props = item.get("properties", {})
-                for prop in props.values():
-                    if prop.get("type") == "title":
-                        title_arr = prop.get("title", [])
-                        if title_arr:
-                            title = title_arr[0].get("plain_text", "Untitled")
-                        break
-                pages.append(
-                    {"id": item_id, "title": title, "url": item.get("url", "")}
-                )
-            elif obj_type == "database":
-                title_arr = item.get("title", [])
-                if title_arr:
-                    title = title_arr[0].get("plain_text", "Untitled")
-                databases.append(
-                    {"id": item_id, "title": title, "url": item.get("url", "")}
-                )
-
-        return {
-            "recent_pages": pages[:10],
-            "databases": databases[:5],
-            "page_count": len(pages),
-            "database_count": len(databases),
-        }
+        pages = data.get("results", data.get("pages", []))
+        return {"relevant_pages": pages}
 
     return [
         "NOTION_MOVE_PAGE",

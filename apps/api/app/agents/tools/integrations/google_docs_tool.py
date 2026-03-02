@@ -232,32 +232,34 @@ def register_google_docs_custom_tools(composio: Composio) -> List[str]:
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
 
-        resp = _http_client.get(
-            f"{DRIVE_API_BASE}/files",
-            headers=headers,
-            params={
-                "q": "mimeType='application/vnd.google-apps.document'",
-                "orderBy": "viewedByMeTime desc",
-                "pageSize": 10,
-                "fields": "files(id,name,modifiedTime,webViewLink)",
-            },
-        )
-        resp.raise_for_status()
-        data = resp.json()
-        files = data.get("files", [])
-
-        return {
-            "recent_docs": [
+        mime = "application/vnd.google-apps.document"
+        files: List[Dict[str, Any]] = []
+        try:
+            resp = _http_client.get(
+                "https://www.googleapis.com/drive/v3/files",
+                headers=headers,
+                params={
+                    "q": f"mimeType='{mime}'",
+                    "orderBy": "viewedByMeTime desc",
+                    "pageSize": 20,
+                    "fields": "files(id,name,modifiedTime,webViewLink)",
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            files = [
                 {
                     "id": f.get("id"),
                     "name": f.get("name"),
                     "modified": f.get("modifiedTime"),
                     "url": f.get("webViewLink"),
                 }
-                for f in files
-            ],
-            "doc_count": len(files),
-        }
+                for f in resp.json().get("files", [])
+            ]
+        except Exception as e:
+            logger.debug(f"Google Docs fetch failed: {e}")
+
+        return {"recent_docs": files, "doc_count": len(files)}
 
     return [
         "GOOGLEDOCS_CUSTOM_SHARE_DOC",

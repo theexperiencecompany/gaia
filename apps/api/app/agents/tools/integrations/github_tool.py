@@ -1,22 +1,12 @@
-"""GitHub tools using Composio custom tool infrastructure.
-
-These tools provide GitHub functionality using the access_token from Composio's
-auth_credentials. Uses GitHub REST API v3 for all operations.
-
-Note: Errors are raised as exceptions - Composio wraps responses automatically.
-"""
+"""GitHub tools using Composio custom tool infrastructure."""
 
 from typing import Any, Dict, List
 
-import httpx
 from composio import Composio
 
+from app.config.loggers import chat_logger as logger
 from app.models.common_models import GatherContextInput
-
-GITHUB_API_BASE = "https://api.github.com"
-
-# Reusable sync HTTP client
-_http_client = httpx.Client(timeout=30)
+from app.utils.context_utils import execute_tool
 
 
 def register_github_custom_tools(composio: Composio) -> List[str]:
@@ -28,80 +18,51 @@ def register_github_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Get GitHub context snapshot: user info, open PRs assigned, and notifications.
+        """Get GitHub context snapshot: assigned issues, PRs, review requests, notifications.
 
         Zero required parameters. Returns current GitHub state for situational awareness.
         """
-        token = auth_credentials.get("access_token")
-        if not token:
-            raise ValueError("Missing access_token in auth_credentials")
-        headers = {
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-        }
+        user_id = auth_credentials.get("user_id", "")
+        if not user_id:
+            raise ValueError("Missing user_id in auth_credentials")
 
-        # Get authenticated user
-        user_resp = _http_client.get(
-            f"{GITHUB_API_BASE}/user",
-            headers=headers,
+        data = execute_tool(
+            "GITHUB_LIST_ISSUES_ASSIGNED_TO_THE_AUTHENTICATED_USER",
+            {"per_page": 20, "state": "open"},
+            user_id,
         )
-        user_resp.raise_for_status()
-        user_data = user_resp.json()
-        login = user_data.get("login", "")
+        issues = data.get("issues", data.get("items", []))
+        prs = [i for i in issues if i.get("pull_request")]
+        actual_issues = [i for i in issues if not i.get("pull_request")]
 
-        # Get open PRs assigned to user
-        prs_resp = _http_client.get(
-            f"{GITHUB_API_BASE}/search/issues",
-            headers=headers,
-            params={"q": f"is:pr is:open assignee:{login}", "per_page": 10},
-        )
-        prs_resp.raise_for_status()
-        prs_data = prs_resp.json()
-        prs = prs_data.get("items", [])
+        review_requests: List[Dict[str, Any]] = []
+        try:
+            reviews_data = execute_tool(
+                "GITHUB_SEARCH_GITHUB_ISSUES_AND_PULL_REQUESTS",
+                {"q": "is:pr is:open review-requested:@me", "per_page": 10},
+                user_id,
+            )
+            review_requests = reviews_data.get("items", [])
+        except Exception as e:
+            logger.debug(f"GitHub review requests fetch skipped: {e}")
 
-        # Get unread notifications
-        notifs_params: Dict[str, Any] = {"per_page": 10, "all": "false"}
-        if request.since:
-            notifs_params["since"] = request.since
-        notifs_resp = _http_client.get(
-            f"{GITHUB_API_BASE}/notifications",
-            headers=headers,
-            params=notifs_params,
-        )
-        notifs_resp.raise_for_status()
-        notifs_raw = notifs_resp.json()
-        notifications: List[Dict[str, Any]] = (
-            notifs_raw if isinstance(notifs_raw, list) else []
-        )
+        notifications: List[Dict[str, Any]] = []
+        try:
+            notif_data = execute_tool(
+                "GITHUB_LIST_NOTIFICATIONS",
+                {"per_page": 10, "all": False},
+                user_id,
+            )
+            raw = notif_data.get("notifications", notif_data)
+            notifications = raw if isinstance(raw, list) else []
+        except Exception as e:
+            logger.debug(f"GitHub notifications fetch skipped: {e}")
 
         return {
-            "user": {
-                "login": user_data.get("login"),
-                "name": user_data.get("name"),
-                "public_repos": user_data.get("public_repos"),
-                "followers": user_data.get("followers"),
-            },
-            "open_prs_assigned": [
-                {
-                    "number": p.get("number"),
-                    "title": p.get("title"),
-                    "repo": p.get("repository_url", "").split("/repos/")[-1],
-                    "url": p.get("html_url"),
-                }
-                for p in prs[:5]
-            ],
-            "unread_notification_count": len(
-                [n for n in notifications if n.get("unread", False)]
-            ),
-            "recent_notifications": [
-                {
-                    "subject": n.get("subject", {}).get("title"),
-                    "type": n.get("subject", {}).get("type"),
-                    "repo": n.get("repository", {}).get("full_name"),
-                }
-                for n in notifications[:5]
-            ],
+            "assigned_issues": actual_issues,
+            "assigned_prs": prs,
+            "review_requests": review_requests,
+            "notifications": notifications,
         }
 
     return ["GITHUB_CUSTOM_GATHER_CONTEXT"]

@@ -172,7 +172,7 @@ async def _get_user_context(
         return user_namespaces, connected_integrations, internal_subagents
 
     try:
-        user_namespaces = await get_user_available_tool_namespaces(user_id)
+        user_namespaces = set(await get_user_available_tool_namespaces(user_id))
 
         if include_subagents:
             raw_connected = user_namespaces - {"general", "subagents"}

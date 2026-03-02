@@ -1,22 +1,12 @@
-"""Microsoft Teams tools using Composio custom tool infrastructure.
-
-These tools provide Microsoft Teams functionality using the access_token from Composio's
-auth_credentials. Uses Microsoft Graph API v1.0 for all operations.
-
-Note: Errors are raised as exceptions - Composio wraps responses automatically.
-"""
+"""Microsoft Teams tools using Composio custom tool infrastructure."""
 
 from typing import Any, Dict, List
 
 import httpx
 from composio import Composio
 
+from app.config.loggers import chat_logger as logger
 from app.models.common_models import GatherContextInput
-
-GRAPH_API_BASE = "https://graph.microsoft.com/v1.0"
-
-# Reusable sync HTTP client
-_http_client = httpx.Client(timeout=30)
 
 
 def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
@@ -36,58 +26,64 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
         if not token:
             raise ValueError("Missing access_token in auth_credentials")
         headers = {"Authorization": f"Bearer {token}"}
+        base = "https://graph.microsoft.com/v1.0"
 
-        # Get current user profile
-        me_resp = _http_client.get(
-            f"{GRAPH_API_BASE}/me",
-            headers=headers,
-            params={"$select": "id,displayName,mail,userPrincipalName"},
-        )
-        me_resp.raise_for_status()
-        me_data = me_resp.json()
+        user_info: Dict[str, Any] = {}
+        try:
+            resp = httpx.get(
+                f"{base}/me",
+                headers=headers,
+                params={"$select": "id,displayName,mail,userPrincipalName"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            me = resp.json()
+            user_info = {
+                "id": me.get("id"),
+                "display_name": me.get("displayName"),
+                "email": me.get("mail") or me.get("userPrincipalName"),
+            }
+        except Exception as e:
+            logger.debug(f"Teams /me fetch failed: {e}")
 
-        # Get joined teams
-        teams_resp = _http_client.get(
-            f"{GRAPH_API_BASE}/me/joinedTeams",
-            headers=headers,
-            params={"$select": "id,displayName,description"},
-        )
-        teams_resp.raise_for_status()
-        teams_data = teams_resp.json()
-        teams: List[Dict[str, Any]] = teams_data.get("value", [])
-
-        # Get recent chats with last message preview for unread detection
-        chats_resp = _http_client.get(
-            f"{GRAPH_API_BASE}/me/chats",
-            headers=headers,
-            params={"$expand": "lastMessagePreview", "$top": 5},
-        )
-        chats_resp.raise_for_status()
-        chats_data = chats_resp.json()
-        chats: List[Dict[str, Any]] = chats_data.get("value", [])
-
-        unread_count = sum(
-            1
-            for c in chats
-            if c.get("lastMessagePreview")
-            and not c["lastMessagePreview"].get("isRead", True)
-        )
-
-        return {
-            "user": {
-                "id": me_data.get("id"),
-                "display_name": me_data.get("displayName"),
-                "email": me_data.get("mail") or me_data.get("userPrincipalName"),
-            },
-            "teams": [
+        teams: List[Dict[str, Any]] = []
+        try:
+            resp = httpx.get(
+                f"{base}/me/joinedTeams",
+                headers=headers,
+                params={"$select": "id,displayName,description"},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            teams = [
                 {
                     "id": t.get("id"),
                     "name": t.get("displayName"),
                     "description": t.get("description"),
                 }
-                for t in teams
-            ],
-            "recent_chats": [
+                for t in resp.json().get("value", [])
+            ]
+        except Exception as e:
+            logger.debug(f"Teams joinedTeams fetch failed: {e}")
+
+        chats: List[Dict[str, Any]] = []
+        unread_count = 0
+        try:
+            resp = httpx.get(
+                f"{base}/me/chats",
+                headers=headers,
+                params={"$expand": "lastMessagePreview", "$top": 10},
+                timeout=15,
+            )
+            resp.raise_for_status()
+            raw_chats = resp.json().get("value", [])
+            unread_count = sum(
+                1
+                for c in raw_chats
+                if c.get("lastMessagePreview")
+                and not c["lastMessagePreview"].get("isRead", True)
+            )
+            chats = [
                 {
                     "id": c.get("id"),
                     "topic": c.get("topic"),
@@ -103,8 +99,15 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
                         else True
                     ),
                 }
-                for c in chats
-            ],
+                for c in raw_chats
+            ]
+        except Exception as e:
+            logger.debug(f"Teams chats fetch failed: {e}")
+
+        return {
+            "user": user_info,
+            "teams": teams,
+            "recent_chats": chats,
             "team_count": len(teams),
             "chat_count": len(chats),
             "unread_chat_count": unread_count,

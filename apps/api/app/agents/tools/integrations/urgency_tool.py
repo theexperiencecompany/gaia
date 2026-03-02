@@ -50,9 +50,11 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
 
             integration_lower = integration.lower()
 
-            # Gmail: unread count
-            if "inbox" in snapshot:
-                unread = snapshot["inbox"].get("unread_count", 0)
+            # Gmail: unread count (data is flat — inbox_unread_count at top level)
+            if "inbox_unread_count" in snapshot or "unread_count" in snapshot:
+                unread = snapshot.get("inbox_unread_count") or snapshot.get(
+                    "unread_count", 0
+                )
                 if unread > 0:
                     urgent_items.append(
                         {
@@ -64,18 +66,26 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
                         }
                     )
 
-            # Slack: unread mentions / channels
-            if "unread_channels" in snapshot:
-                channels = snapshot["unread_channels"]
-                if channels:
+            # Slack: unread mentions / messages
+            if "mentions" in snapshot or "unread_count" in snapshot:
+                mentions_list = snapshot.get("mentions", [])
+                unread_count = snapshot.get("unread_count", 0)
+                if mentions_list or unread_count:
+                    count = len(mentions_list) if mentions_list else unread_count
                     urgent_items.append(
                         {
                             "integration": "slack",
-                            "type": "unread_channels",
-                            "count": len(channels),
+                            "type": "unread_messages",
+                            "count": count,
                             "priority": "high",
-                            "description": f"{len(channels)} Slack channels with unread messages",
-                            "details": [c.get("name") for c in channels[:5]],
+                            "description": (
+                                f"{len(mentions_list)} Slack @mentions"
+                                if mentions_list
+                                else f"{unread_count} unread Slack messages"
+                            ),
+                            "details": [
+                                m.get("text", "")[:80] for m in mentions_list[:3]
+                            ],
                         }
                     )
 
@@ -94,24 +104,32 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
                         }
                     )
 
-            # Google Calendar: upcoming events in next hour
-            if "upcoming_events" in snapshot:
-                events = snapshot["upcoming_events"]
-                if events:
+            # Google Calendar: today's events
+            if "events" in snapshot or "next_event" in snapshot:
+                events = snapshot.get("events", [])
+                next_event = snapshot.get("next_event")
+                if events or next_event:
+                    event_list = events or ([next_event] if next_event else [])
                     urgent_items.append(
                         {
                             "integration": "googlecalendar",
                             "type": "upcoming_events",
-                            "count": len(events),
+                            "count": len(event_list),
                             "priority": "medium",
-                            "description": f"{len(events)} upcoming calendar events",
-                            "details": [e.get("summary") for e in events[:3]],
+                            "description": f"{len(event_list)} calendar events today",
+                            "details": [
+                                e.get("summary", e.get("title", ""))
+                                for e in event_list[:3]
+                            ],
                         }
                     )
 
-            # GitHub: notifications
-            if "unread_notification_count" in snapshot:
-                notif_count = snapshot["unread_notification_count"]
+            # GitHub: notifications and review requests
+            if "notifications" in snapshot or "review_requests" in snapshot:
+                notifications_list = snapshot.get("notifications", [])
+                review_requests = snapshot.get("review_requests", [])
+                notif_count = len(notifications_list)
+                review_count = len(review_requests)
                 if notif_count > 0:
                     urgent_items.append(
                         {
@@ -120,6 +138,19 @@ def register_urgency_custom_tools(composio: Composio) -> List[str]:
                             "count": notif_count,
                             "priority": "medium",
                             "description": f"{notif_count} unread GitHub notifications",
+                        }
+                    )
+                if review_count > 0:
+                    urgent_items.append(
+                        {
+                            "integration": "github",
+                            "type": "review_requests",
+                            "count": review_count,
+                            "priority": "high",
+                            "description": f"{review_count} GitHub PRs awaiting your review",
+                            "details": [
+                                pr.get("title", "") for pr in review_requests[:3]
+                            ],
                         }
                     )
 

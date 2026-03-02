@@ -7,14 +7,15 @@ Note: Errors are raised as exceptions, not returned as dicts - Composio wraps
 responses in {successful: bool, data: Any, error: str} format automatically.
 """
 
+import asyncio
+import concurrent.futures
 import zoneinfo
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 import httpx
 from app.config.loggers import chat_logger as logger
 from app.decorators import with_doc
-from app.models.common_models import GatherContextInput
 from app.models.calendar_models import (
     AddRecurrenceInput,
     CreateEventInput,
@@ -26,7 +27,9 @@ from app.models.calendar_models import (
     ListCalendarsInput,
     PatchEventInput,
 )
+from app.models.common_models import GatherContextInput
 from app.services import calendar_service, user_service
+from app.utils.context_utils import execute_tool
 from app.templates.docstrings.calendar_tool_docs import (
     CUSTOM_ADD_RECURRENCE as CUSTOM_ADD_RECURRENCE_DOC,
 )
@@ -101,28 +104,23 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        import asyncio
-
         access_token = _get_access_token(auth_credentials)
         user_id = _get_user_id(auth_credentials)
 
         # Get user's timezone from their preferences
-        # Note: We need to run async code in sync context. Using run_until_complete
-        # with proper event loop handling.
         try:
             try:
-                loop = asyncio.get_running_loop()
-                # If we're already in an async context, we can't use run_until_complete
-                # Fall back to not fetching user timezone
-                user_timezone = None
+                asyncio.get_running_loop()
+                # Inside a running loop — offload to a new thread
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                    user = pool.submit(
+                        lambda: asyncio.run(user_service.get_user_by_id(user_id))
+                    ).result(timeout=5)
+                user_timezone = user.get("timezone") if user else None
             except RuntimeError:
-                # No running loop - safe to create one and run
-                loop = asyncio.new_event_loop()
-                try:
-                    user = loop.run_until_complete(user_service.get_user_by_id(user_id))
-                    user_timezone = user.get("timezone") if user else None
-                finally:
-                    loop.close()
+                # No running loop — safe to use asyncio.run directly
+                user = asyncio.run(user_service.get_user_by_id(user_id))
+                user_timezone = user.get("timezone") if user else None
         except Exception:
             user_timezone = None
 
@@ -575,67 +573,17 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Get Google Calendar context snapshot: calendar list and today's events.
+        """Get Google Calendar context snapshot: today's events, busy hours, free slots.
 
-        Zero required parameters. Returns user's calendars and today's schedule.
+        Zero required parameters. Returns today's schedule for situational awareness.
         """
-        access_token = _get_access_token(auth_credentials)
-        headers = _auth_headers(access_token)
-
-        # Get calendar list
-        cal_list_resp = _http_client.get(
-            f"{CALENDAR_API_BASE}/users/me/calendarList",
-            headers=headers,
+        user_id = _get_user_id(auth_credentials)
+        if not user_id:
+            raise ValueError("Missing user_id in auth_credentials")
+        date_str = date.today().strftime("%Y-%m-%d")
+        return execute_tool(
+            "GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY", {"date": date_str}, user_id
         )
-        cal_list_resp.raise_for_status()
-        cal_list_data = cal_list_resp.json()
-        calendars = cal_list_data.get("items", [])
-
-        # Get today's events from primary calendar
-        today = datetime.now(timezone.utc)
-        today_start = today.replace(hour=0, minute=0, second=0, microsecond=0)
-        today_end = today_start + timedelta(days=1)
-
-        time_min = request.since if request.since else today_start.isoformat()
-
-        events_resp = _http_client.get(
-            f"{CALENDAR_API_BASE}/calendars/primary/events",
-            headers=headers,
-            params={
-                "timeMin": time_min,
-                "timeMax": today_end.isoformat(),
-                "singleEvents": "true",
-                "orderBy": "startTime",
-                "maxResults": 10,
-            },
-        )
-        events_resp.raise_for_status()
-        events_data = events_resp.json()
-        events = events_data.get("items", [])
-
-        return {
-            "calendars": [
-                {
-                    "id": c.get("id"),
-                    "summary": c.get("summary"),
-                    "primary": c.get("primary", False),
-                }
-                for c in calendars
-            ],
-            "today_events": [
-                {
-                    "id": e.get("id"),
-                    "summary": e.get("summary", "(No title)"),
-                    "start": e.get("start", {}).get("dateTime")
-                    or e.get("start", {}).get("date"),
-                    "end": e.get("end", {}).get("dateTime")
-                    or e.get("end", {}).get("date"),
-                }
-                for e in events
-            ],
-            "calendar_count": len(calendars),
-            "today_event_count": len(events),
-        }
 
     return [
         "GOOGLECALENDAR_CUSTOM_CREATE_EVENT",

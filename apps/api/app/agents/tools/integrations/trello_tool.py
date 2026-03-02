@@ -1,22 +1,11 @@
-"""Trello tools using Composio custom tool infrastructure.
-
-These tools provide Trello functionality using the access_token from Composio's
-auth_credentials. Uses Trello REST API v1 for all operations.
-
-Note: Errors are raised as exceptions - Composio wraps responses automatically.
-"""
+"""Trello tools using Composio custom tool infrastructure."""
 
 from typing import Any, Dict, List
 
-import httpx
 from composio import Composio
 
 from app.models.common_models import GatherContextInput
-
-TRELLO_API_BASE = "https://api.trello.com/1"
-
-# Reusable sync HTTP client
-_http_client = httpx.Client(timeout=30)
+from app.utils.context_utils import execute_tool
 
 
 def register_trello_custom_tools(composio: Composio) -> List[str]:
@@ -28,63 +17,20 @@ def register_trello_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Get Trello context snapshot: user info, open boards, and assigned cards.
+        """Get Trello context snapshot: cards assigned to the current user.
 
         Zero required parameters. Returns current board state for situational awareness.
         """
-        token = auth_credentials.get("access_token")
-        if not token:
-            raise ValueError("Missing access_token in auth_credentials")
-        headers = {"Authorization": f"Bearer {token}"}
+        user_id = auth_credentials.get("user_id", "")
+        if not user_id:
+            raise ValueError("Missing user_id in auth_credentials")
 
-        # Get authenticated member info
-        me_resp = _http_client.get(
-            f"{TRELLO_API_BASE}/members/me",
-            headers=headers,
-            params={"fields": "id,username,fullName,email"},
+        data = execute_tool(
+            "TRELLO_GET_MEMBERS_CARDS_BY_ID_MEMBER",
+            {"idMember": "me"},
+            user_id,
         )
-        me_resp.raise_for_status()
-        me_data = me_resp.json()
-
-        # Get open boards
-        boards_resp = _http_client.get(
-            f"{TRELLO_API_BASE}/members/me/boards",
-            headers=headers,
-            params={"filter": "open", "fields": "id,name,shortUrl"},
-        )
-        boards_resp.raise_for_status()
-        boards: List[Dict[str, Any]] = boards_resp.json()
-
-        # Get cards assigned to user
-        cards_resp = _http_client.get(
-            f"{TRELLO_API_BASE}/members/me/cards",
-            headers=headers,
-            params={
-                "filter": "visible",
-                "limit": 10,
-                "fields": "id,name,idBoard,due,dateLastActivity",
-            },
-        )
-        cards_resp.raise_for_status()
-        cards: List[Dict[str, Any]] = cards_resp.json()
-
-        return {
-            "user": {
-                "id": me_data.get("id"),
-                "username": me_data.get("username"),
-                "fullName": me_data.get("fullName"),
-                "email": me_data.get("email"),
-            },
-            "boards": [
-                {"id": b.get("id"), "name": b.get("name"), "url": b.get("shortUrl")}
-                for b in boards
-            ],
-            "my_cards": [
-                {"id": c.get("id"), "name": c.get("name"), "due": c.get("due")}
-                for c in cards
-            ],
-            "board_count": len(boards),
-            "card_count": len(cards),
-        }
+        cards = data if isinstance(data, list) else data.get("cards", [])
+        return {"cards": cards}
 
     return ["TRELLO_CUSTOM_GATHER_CONTEXT"]
