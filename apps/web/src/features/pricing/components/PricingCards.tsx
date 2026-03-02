@@ -54,7 +54,7 @@ export function PricingCards({
   // Only show loading if we're actually loading AND don't have any plans yet
   if (isLoading && (!plans || plans.length === 0)) {
     return (
-      <div className="grid w-screen max-w-(--breakpoint-sm) grid-cols-2 gap-4">
+      <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
         <Skeleton className="h-96 w-full rounded-2xl" />
         <Skeleton className="h-96 w-full rounded-2xl" />
       </div>
@@ -64,7 +64,7 @@ export function PricingCards({
   // Only show error if we have an error AND no plans to display
   if (error && (!plans || plans.length === 0)) {
     return (
-      <div className="grid w-screen max-w-(--breakpoint-sm) grid-cols-2 gap-4">
+      <div className="grid w-full max-w-2xl grid-cols-2 gap-4">
         <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/10 p-8">
           <p className="text-center text-red-400">
             Unable to load pricing plans. Please refresh the page or try again
@@ -85,7 +85,7 @@ export function PricingCards({
   // If we have no plans at all, show a message
   if (!plans || plans.length === 0) {
     return (
-      <div className="grid w-screen max-w-(--breakpoint-sm) grid-cols-2 gap-3">
+      <div className="grid w-full max-w-2xl grid-cols-2 gap-3">
         <div className="col-span-2 flex flex-col items-center justify-center rounded-2xl bg-gray-500/10 p-8">
           <p className="text-center text-gray-400">
             No pricing plans available at the moment.
@@ -115,7 +115,7 @@ export function PricingCards({
   let originalPriceInUSDCents: number;
 
   return (
-    <div className="grid w-screen max-w-(--breakpoint-sm) grid-cols-2 gap-3">
+    <div className="grid w-full max-w-2xl grid-cols-2 items-stretch gap-3">
       {sortedPlans.map((plan: Plan) => {
         const isPro = plan.name.toLowerCase().includes("pro");
         // Convert any currency to USD cents for display
@@ -148,12 +148,14 @@ export function PricingCards({
             planId={plan.dodo_product_id} // Use dodo_product_id instead of id
             durationIsMonth={durationIsMonth}
             features={featuresWithIcons}
+            featurestitle={isPro ? "Everything in Free, plus:" : undefined}
             description={plan.description} // Pass the description from backend
             price={priceInUSDCents} // Always in USD cents
             originalPrice={originalPriceInUSDCents}
             title={plan.name}
             isCurrentPlan={isCurrentPlan}
             hasActiveSubscription={hasActiveSubscription}
+            isPro={isPro}
           />
         );
       })}

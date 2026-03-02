@@ -56,12 +56,12 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
         <div className="flex w-full flex-col items-center justify-center gap-3 text-white">
           <h1 className="font-serif text-8xl font-normal">Level Up</h1>
           <span className="text-xl font-light text-zinc-300">
-            Choose the plan that matches your ambition
+            Start free. Work smarter. Upgrade when GAIA proves itself.
           </span>
         </div>
 
         <div className="mt-5 flex w-full flex-col items-center font-medium">
-          <Tabs aria-label="Options" radius="full">
+          <Tabs aria-label="Options" radius="lg" variant="solid">
             <Tab key="monthly" title="Monthly">
               <PricingCards durationIsMonth initialPlans={initialPlans} />
             </Tab>
@@ -70,7 +70,7 @@ export default function PricingPage({ initialPlans = [] }: PricingPageProps) {
               title={
                 <div className="flex w-full items-center justify-center gap-2">
                   Yearly
-                  <Chip color="primary" size="sm" variant="shadow">
+                  <Chip color="primary" size="sm">
                     <div className="text-sm font-medium">Save 25%</div>
                   </Chip>
                 </div>

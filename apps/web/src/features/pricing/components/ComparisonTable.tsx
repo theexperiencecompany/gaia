@@ -18,7 +18,6 @@ import { RaisedButton } from "@/components/ui/raised-button";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 
 interface FeatureStatus {
-  // description: string;
   description: React.ReactNode;
 }
 
@@ -61,7 +60,7 @@ function AppConnectionsIcons({
         <span
           key={integration.id}
           title={integration.name}
-          className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-120"
+          className="opacity-60 transition duration-200 hover:scale-150 hover:rotate-6 hover:opacity-100"
         >
           {getToolCategoryIcon(integration.id, {
             size: 14,
@@ -84,70 +83,63 @@ export function ComparisonTable({
 }: ComparisonTableProps) {
   const comparisonFeatures: ComparisonFeature[] = [
     {
-      icon: <AiBrain01Icon className="h-6 w-6 text-primary" />,
+      icon: <AiBrain01Icon className="h-5 w-5 text-primary" />,
       title: "Overwhelmed by emails",
-      gaia: { description: "I’ll sort, label, and reply for you." },
-      chatgpt: { description: "Copy the email here." },
-      gemini: { description: "Copy the email here." },
+      gaia: { description: "I'll sort, label, and reply for you." },
+      chatgpt: { description: "Paste the email in here." },
+      gemini: { description: "Paste the email in here." },
     },
     {
-      icon: <Calendar01Icon className="h-6 w-6 text-primary" />,
+      icon: <Calendar01Icon className="h-5 w-5 text-primary" />,
       title: "Forgetting things",
       gaia: { description: "Already added to your calendar." },
-      chatgpt: { description: "Remind you… if you type it." },
-      gemini: { description: "Remind you… manually." },
+      chatgpt: { description: "Ask me to remind you first." },
+      gemini: { description: "You remind it." },
     },
-    // {
-    //   icon: <ConnectIcon className="h-6 w-6 text-primary" />,
-    //   title: "Scattered files",
-    //   gaia: { description: "I remember every file. Ask me." },
-    //   chatgpt: { description: "Upload again?" },
-    //   gemini: { description: "Maybe I recall it… maybe not." },
-    // },
     {
-      icon: <ZapIcon className="h-6 w-6 text-primary" />,
+      icon: <ZapIcon className="h-5 w-5 text-primary" />,
       title: "Repeating tasks",
-      gaia: { description: "I’ll automate it daily." },
-      chatgpt: { description: "Type it again?" },
-      gemini: { description: "Repeat it… again?" },
+      gaia: { description: "I'll automate it daily." },
+      chatgpt: { description: "Prompt it again." },
+      gemini: { description: "Prompt it again." },
     },
     {
-      icon: <ComputerIcon className="h-6 w-6 text-primary" />,
+      icon: <ComputerIcon className="h-5 w-5 text-primary" />,
       title: "Need fast reports",
-      gaia: { description: "Here’s your doc. Ready." },
-      chatgpt: { description: "I write, you finish." },
-      gemini: { description: "Same." },
+      gaia: { description: "Here's your doc. Ready." },
+      chatgpt: { description: "Explains. Doesn't act." },
+      gemini: { description: "Tells you. Doesn't do." },
     },
     {
-      icon: <SquareLock02Icon className="h-6 w-6 text-primary" />,
+      icon: <SquareLock02Icon className="h-5 w-5 text-primary" />,
       title: "Privacy concerns",
-      gaia: { description: "All yours. Open-source and self-hosted." },
-      chatgpt: { description: "Trust us." },
-      gemini: { description: "Trust us." },
+      gaia: { description: "Open-source. Self-hosted. Yours." },
+      chatgpt: { description: "Trains on your data." },
+      gemini: { description: "Trains on your data." },
     },
     {
-      icon: <UserCircle02Icon className="h-6 w-6 text-primary" />,
+      icon: <UserCircle02Icon className="h-5 w-5 text-primary" />,
       title: "Personal memory",
       gaia: { description: "I remember your habits." },
       chatgpt: { description: "What did we talk about?" },
       gemini: { description: "Remind me again?" },
     },
     {
-      icon: <AiBrain01Icon className="h-6 w-6 text-primary" />,
+      icon: <AiBrain01Icon className="h-5 w-5 text-primary" />,
       title: "Get work done",
-      gaia: { description: "On it. Executing." },
-      chatgpt: { description: "Here’s the theory." },
-      gemini: { description: "Here’s an answer." },
+      gaia: { description: "Done. Already." },
+      chatgpt: { description: "Explains. Doesn't act." },
+      gemini: { description: "Tells you. Doesn't do." },
     },
     {
-      icon: <Home01Icon className="h-6 w-6 text-primary" />,
+      icon: <Home01Icon className="h-5 w-5 text-primary" />,
       title: "Personalization",
-      gaia: { description: "Change anything. It’s yours." },
+      gaia: { description: "Change anything. It's yours." },
       chatgpt: { description: "You get what we give." },
       gemini: { description: "You get what we give." },
     },
     {
-      icon: <ConnectIcon className="h-6 w-6 text-primary" />,
+      icon: <ConnectIcon className="h-5 w-5 text-primary" />,
       title: "App connections",
       gaia: {
         description: (
@@ -162,7 +154,7 @@ export function ComparisonTable({
       gemini: { description: "No real integrations." },
     },
     {
-      icon: <ZapIcon className="h-6 w-6 text-primary" />,
+      icon: <ZapIcon className="h-5 w-5 text-primary" />,
       title: "Proactive help",
       gaia: { description: "I act before you ask." },
       chatgpt: { description: "No workflows." },
@@ -174,24 +166,37 @@ export function ComparisonTable({
     name,
     logo,
     description,
+    isGaia = false,
   }: {
     name: string;
     logo: string;
     description: string;
+    isGaia?: boolean;
   }) {
     return (
-      <div className="text-center">
+      <div
+        className={[
+          "rounded-2xl px-4 py-3 text-center transition-all",
+          isGaia ? "bg-primary/5 ring-1 ring-primary/15" : "bg-transparent",
+        ].join(" ")}
+      >
         <div className="mb-3 flex items-center justify-center">
           <Image
             src={logo}
             alt={`${name} Logo`}
-            width={48}
-            height={48}
-            className="rounded-2xl"
+            width={40}
+            height={40}
+            className="rounded-xl"
           />
         </div>
-        <h3 className="mb-1 text-2xl font-semibold">{name}</h3>
-        <p className="text-sm text-gray-400">{description}</p>
+        <h3
+          className={`mb-1 text-xl font-semibold ${isGaia ? "text-white" : "text-zinc-300"}`}
+        >
+          {name}
+        </h3>
+        <p className={`text-xs ${isGaia ? "text-zinc-400" : "text-zinc-500"}`}>
+          {description}
+        </p>
       </div>
     );
   }
@@ -204,10 +209,15 @@ export function ComparisonTable({
     highlight?: boolean;
   }) {
     return (
-      <div className="flex flex-col items-center gap-2">
+      <div
+        className={[
+          "flex flex-col items-center gap-2 rounded-lg px-2 py-1",
+          highlight ? "bg-primary/4" : "",
+        ].join(" ")}
+      >
         <span
           className={`max-w-48 text-center text-sm leading-snug ${
-            highlight ? "font-semibold text-primary" : "text-zinc-400"
+            highlight ? "font-medium text-primary" : "text-zinc-500"
           }`}
         >
           {status.description}
@@ -218,10 +228,10 @@ export function ComparisonTable({
 
   function FeatureRow({ feature }: { feature: ComparisonFeature }) {
     return (
-      <div className="group grid grid-cols-4 items-center gap-6 rounded-xl border-b border-white/5 px-2 py-2 transition-colors hover:bg-zinc-800/40">
+      <div className="group grid grid-cols-4 items-center gap-6 rounded-xl border-b border-white/5 px-2 py-2.5 transition-colors hover:bg-zinc-800/40">
         <div className="flex items-center gap-3">
           {feature.icon}
-          <span className="text-lg font-semibold text-zinc-100">
+          <span className="text-base font-medium text-zinc-100">
             {feature.title}
           </span>
         </div>
@@ -240,22 +250,23 @@ export function ComparisonTable({
 
   return (
     <div className="mx-auto w-full max-w-6xl py-16">
-      <div className="mb-10 flex w-full flex-col items-center justify-center gap-3 text-white">
-        <h1 className="text-center font-serif text-6xl font-normal">
-          See how GAIA stacks up against the competition.
+      <div className="mb-10 flex w-full flex-col items-center justify-center gap-2 text-white">
+        <h1 className="text-center font-serif text-6xl font-normal tracking-tight">
+          One assistant. Zero excuses.
         </h1>
-        <span className="text-xl font-light text-zinc-300">
-          What makes GAIA better and not just a "chatbot"
+        <span className="text-lg font-light text-zinc-400">
+          GAIA acts. The rest advise.
         </span>
       </div>
 
       <div className="relative overflow-hidden rounded-4xl bg-zinc-900/60 p-8 shadow-xl backdrop-blur-md">
-        <div className="mb-6 grid grid-cols-4 gap-6">
+        <div className="mb-6 grid grid-cols-4 gap-4">
           <div />
           <CompanyHeader
             name="GAIA"
             logo="/images/logos/logo.webp"
             description="Your proactive AI assistant"
+            isGaia
           />
           <CompanyHeader
             name="ChatGPT"
@@ -269,7 +280,7 @@ export function ComparisonTable({
           />
         </div>
 
-        <div className="space-y-6">
+        <div className="space-y-1">
           {comparisonFeatures.map((feature) => (
             <FeatureRow key={feature.title} feature={feature} />
           ))}
@@ -282,7 +293,7 @@ export function ComparisonTable({
               className="rounded-xl text-lg text-black!"
               color="#00bbff"
             >
-              Let's Go!
+              Try GAIA Free
             </RaisedButton>
           </Link>
         </div>

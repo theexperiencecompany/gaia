@@ -18,7 +18,8 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      size="2xl"
+      size="3xl"
+      radius="lg"
       backdrop="blur"
       scrollBehavior="inside"
       classNames={{
@@ -28,24 +29,25 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
       }}
     >
       <ModalContent>
-        <div className="flex flex-col items-center gap-5 px-4 pt-10 pb-8">
-          {/* Header */}
+        <div className="flex flex-col items-center gap-5 py-8 overflow-y-auto">
           <div className="flex flex-col items-center gap-1.5 text-center">
             <h2 className="font-serif text-5xl font-normal tracking-tight">
               Level Up
             </h2>
-            <p className="text-sm text-zinc-400 font-light">
-              Choose the plan that matches your ambition
+            <p className="text-sm font-light text-zinc-400">
+              You've been doing this manually. Let GAIA handle it.
             </p>
           </div>
 
           {/* Tabs + Cards */}
           <div className="w-full flex flex-col items-center">
-            <Tabs aria-label="Billing period" radius="full">
+            <Tabs aria-label="Billing period" radius="lg">
               <Tab key="monthly" title="Monthly">
-                <div className="mt-4">
-                  <PricingCards durationIsMonth initialPlans={plans} />
-                </div>
+                {/* Trust bar */}
+                <p className="mt-3 mb-4 text-center text-xs text-zinc-600">
+                  Secure payment · Cancel anytime · No credit card for Free
+                </p>
+                <PricingCards durationIsMonth initialPlans={plans} />
               </Tab>
               <Tab
                 key="yearly"
@@ -58,9 +60,11 @@ export function PricingModal({ isOpen, onClose, plans }: PricingModalProps) {
                   </div>
                 }
               >
-                <div className="mt-4">
-                  <PricingCards initialPlans={plans} />
-                </div>
+                {/* Trust bar */}
+                <p className="mt-3 mb-4 text-center text-xs text-zinc-600">
+                  Secure payment · Cancel anytime · No credit card for Free
+                </p>
+                <PricingCards initialPlans={plans} />
               </Tab>
             </Tabs>
           </div>
