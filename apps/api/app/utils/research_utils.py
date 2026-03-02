@@ -53,7 +53,8 @@ async def decompose_research_queries(
         match = re.search(r"\[.*\]", content, re.DOTALL)
         if match:
             queries = json.loads(match.group())
-            valid = [str(q).strip() for q in queries if q and str(q).strip()]
+            normalized = [str(q).strip() for q in queries if q and str(q).strip()]
+            valid = list(dict.fromkeys(normalized))[:n_queries]
             if valid:
                 return valid
     except Exception as e:
@@ -88,7 +89,11 @@ def rank_and_deduplicate_urls(
             url = item.get("url", "").strip()
             if not url or not url.startswith("http"):
                 continue
-            score = float(item.get("score", 0.5))
+            raw_score = item.get("score", 0.5)
+            try:
+                score = float(raw_score)
+            except (TypeError, ValueError):
+                score = 0.5
             if url in url_map:
                 url_map[url]["score"] += score
                 url_map[url]["appearances"] += 1

@@ -110,6 +110,7 @@ def parse_args() -> argparse.Namespace:
 
 def load_integration_toolkits() -> dict[str, IntegrationToolkit]:
     toolkits: dict[str, IntegrationToolkit] = {}
+    toolkit_versions: dict[str, str | None] = {}
 
     for integration in OAUTH_INTEGRATIONS:
         composio_config = integration.composio_config
@@ -117,14 +118,12 @@ def load_integration_toolkits() -> dict[str, IntegrationToolkit]:
             continue
 
         toolkit = composio_config.toolkit.upper()
-        if toolkit in toolkits:
-            continue
-
-        toolkits[toolkit] = IntegrationToolkit(
+        toolkit_versions.setdefault(toolkit, composio_config.toolkit_version)
+        toolkits[f"{toolkit}::{integration.id}"] = IntegrationToolkit(
             integration_id=integration.id,
             integration_name=integration.name,
             toolkit=toolkit,
-            toolkit_version=composio_config.toolkit_version,
+            toolkit_version=toolkit_versions[toolkit],
         )
 
     return toolkits
@@ -138,7 +137,7 @@ def resolve_toolkits_to_scan(
     selected: set[str] = set()
 
     integration_to_toolkit = {
-        value.integration_id.lower(): key for key, value in all_toolkits.items()
+        value.integration_id.lower(): value.toolkit for value in all_toolkits.values()
     }
 
     for integration_id in integration_filters:
@@ -154,7 +153,7 @@ def resolve_toolkits_to_scan(
         selected.add(toolkit.upper())
 
     if not selected:
-        selected = set(all_toolkits.keys())
+        selected = {value.toolkit for value in all_toolkits.values()}
 
     return sorted(selected)
 
@@ -165,7 +164,7 @@ def build_toolkit_versions(
     versions: dict[str, str] = {}
     for metadata in all_toolkits.values():
         if metadata.toolkit_version:
-            versions[metadata.toolkit.lower()] = metadata.toolkit_version
+            versions.setdefault(metadata.toolkit.lower(), metadata.toolkit_version)
     return versions
 
 
@@ -310,7 +309,13 @@ def collect_skill_tool_references(
             parse_errors.append({"file": rel_path, "error": str(exc)})
             continue
 
-        metadata = parse_skill_frontmatter(content)
+        try:
+            metadata = parse_skill_frontmatter(content)
+        except yaml.YAMLError as exc:
+            parse_errors.append(
+                {"file": rel_path, "error": f"Invalid frontmatter YAML: {exc}"}
+            )
+            metadata = {}
         skill_name = str(metadata.get("name") or skill_path.parent.name)
         target = str(metadata.get("target") or "executor")
 

@@ -41,17 +41,25 @@ async def deep_research(
         "Research depth: 1=quick (3 searches, 5 sources), 2=standard (6 searches, 10 sources), 3=deep (9 searches, 20 sources)",
     ] = 2,
     focus_areas: Annotated[
-        List[str],
+        Optional[List[str]],
         "Specific subtopics or aspects to prioritize (e.g. ['performance', 'cost', 'adoption'])",
-    ] = [],
+    ] = None,
 ) -> Dict[str, Any]:
+    focus_areas = focus_areas or []
     user_id = get_user_id_from_config(config)
     if not user_id:
         return {"error": "User authentication required", "data": None}
 
     writer = get_stream_writer()
     start_time = time.time()
-    max_sources = 5 * depth  # 1→5, 2→10, 3→20
+    if depth not in (1, 2, 3):
+        return {
+            "error": "Invalid depth. Use 1 (quick), 2 (standard), or 3 (deep).",
+            "query": query,
+            "data": None,
+        }
+    max_sources_by_depth = {1: 5, 2: 10, 3: 20}
+    max_sources = max_sources_by_depth[depth]
 
     # ── Phase 0: Full-result cache check ────────────────────────────────────
     cache_key = build_research_cache_key(query, scope, focus_areas, depth)

@@ -1,17 +1,22 @@
 import asyncio
+import ipaddress
+import socket
 from typing import Optional
+from urllib.parse import urlparse
 
 import html2text
 import httpx
+from bs4 import BeautifulSoup
+from crawl4ai import AsyncWebCrawler
+from firecrawl import FirecrawlApp
+from langgraph.config import get_stream_writer
+from tavily import TavilyClient
+
 from app.config.loggers import search_logger as logger
 from app.config.settings import settings
 from app.constants.cache import ONE_HOUR_TTL
 from app.decorators.caching import Cacheable
 from app.utils.exceptions import FetchError
-from bs4 import BeautifulSoup
-from firecrawl import FirecrawlApp
-from langgraph.config import get_stream_writer
-from tavily import TavilyClient
 
 _HTTPX_HEADERS = {
     "User-Agent": (
@@ -215,8 +220,6 @@ async def fetch_with_crawl4ai(url: str) -> str:
     Falls back from Firecrawl when that service is unavailable or blocked.
     """
     try:
-        from crawl4ai import AsyncWebCrawler
-
         async with AsyncWebCrawler(verbose=False) as crawler:
             result = await asyncio.wait_for(crawler.arun(url=url), timeout=30.0)
 
@@ -292,6 +295,35 @@ async def fetch_page_resilient(url: str) -> str:
     Each tier is independently cached in Redis (1h TTL).
     Raises FetchError only if all three tiers fail.
     """
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise FetchError("Only absolute http(s) URLs are allowed", url=url)
+
+    try:
+        host_ip = ipaddress.ip_address(parsed.hostname)
+        if (
+            host_ip.is_private
+            or host_ip.is_loopback
+            or host_ip.is_link_local
+            or host_ip.is_multicast
+            or host_ip.is_reserved
+        ):
+            raise FetchError("Blocked non-public target URL", url=url)
+    except ValueError:
+        try:
+            for info in socket.getaddrinfo(parsed.hostname, None):
+                resolved_ip = ipaddress.ip_address(info[4][0])
+                if (
+                    resolved_ip.is_private
+                    or resolved_ip.is_loopback
+                    or resolved_ip.is_link_local
+                    or resolved_ip.is_multicast
+                    or resolved_ip.is_reserved
+                ):
+                    raise FetchError("Blocked non-public target URL", url=url)
+        except socket.gaierror as err:
+            raise FetchError(f"Unable to resolve host: {err}", url=url) from err
+
     errors: list[str] = []
 
     # Tier 1: Firecrawl

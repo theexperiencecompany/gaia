@@ -20,9 +20,11 @@ Pipeline:
   - Focus areas: Any specific subtopics to prioritize? (optional)
 
 ⚠️ OUTPUT EXPECTATIONS:
-  Your response MUST be long and comprehensive — detailed sections with specific facts, data, and
-  examples drawn from every source. Never summarize briefly. Cite inline with [1], [2] notation
-  and include a full numbered reference list at the end. Aim for 800–2000+ words.
+  Match output length to requested depth:
+  - depth=1 (quick): concise but complete
+  - depth=2 (standard): detailed
+  - depth=3 (deep): exhaustive, long-form
+  Cite inline with [1], [2] notation and include a full numbered reference list at the end.
 
 USE THIS TOOL WHEN:
   - User asks for "deep research", "thorough analysis", or "comprehensive investigation"
@@ -58,7 +60,7 @@ Returns:
 
 RESEARCH_INSTRUCTIONS = (
     "You have full page content from multiple research sources. "
-    "Write a LONG, DETAILED, COMPREHENSIVE response — do NOT summarize or be brief. "
+    "Match response depth to the requested research depth (quick, standard, deep). "
     "The user explicitly requested deep research, so they expect depth and completeness, not a short overview. "
     "Cover every important aspect thoroughly: explain concepts in detail, include specific data points, "
     "statistics, examples, quotes, technical details, and nuances from the sources. "
@@ -67,5 +69,5 @@ RESEARCH_INSTRUCTIONS = (
     "Reproduce key data, numbers, and specific findings directly from the sources rather than vaguely referencing them. "
     "Highlight agreements and contradictions across sources. "
     "Always cite with [1], [2] notation inline and include a full numbered reference list at the end. "
-    "A good deep research response is typically 800–2000+ words depending on the topic complexity."
+    "Use length appropriate to the selected depth and topic complexity."
 )

@@ -320,16 +320,27 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     )
                 except asyncio.CancelledError:
                     raise
-                except Exception as e:
+                except Exception:
+                    logger.exception(
+                        "Subagent tool invocation failed for tool '{}' (tool_call_id={})",
+                        name,
+                        tc_id,
+                    )
                     return ToolMessage(
-                        content=f"Tool error: {e}",
+                        content="Tool error: internal failure while executing tool.",
                         tool_call_id=tc_id,
                         name=name,
                         status="error",
                     )
 
+            semaphore = asyncio.Semaphore(8)
+
+            async def _invoke_tool_limited(tc: ToolCall) -> ToolMessage:
+                async with semaphore:
+                    return await _invoke_tool(tc)
+
             tool_messages: list[ToolMessage] = await asyncio.gather(
-                *[_invoke_tool(tc) for tc in regular_calls]
+                *[_invoke_tool_limited(tc) for tc in regular_calls]
             )
             messages.extend(tool_messages)
 
