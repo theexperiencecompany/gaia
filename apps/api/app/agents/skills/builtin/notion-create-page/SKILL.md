@@ -13,7 +13,7 @@ User wants to create a new page, document, or wiki entry in Notion.
 
 Before creating, check if a similar page exists:
 ```
-NOTION_SEARCH_NOTION_PAGE(query="<page title>", filter_value="page", page_size=5)
+NOTION_FETCH_DATA(fetch_type="pages", query="<page title>", page_size=20)
 ```
 
 If matches found:
@@ -27,10 +27,7 @@ User may specify a parent or you may need to discover one:
 
 ```
 # Search by name
-NOTION_SEARCH_NOTION_PAGE(query="<parent name>", page_size=5)
-
-# If user wants it in a database
-NOTION_SEARCH_NOTION_PAGE(query="<db name>", filter_value="database", page_size=5)
+NOTION_FETCH_DATA(fetch_type="all", query="<parent name>", page_size=20)
 
 # If unsure, list everything accessible
 NOTION_FETCH_DATA(fetch_type="all", page_size=20)
@@ -51,30 +48,27 @@ NOTION_CREATE_NOTION_PAGE(
 
 ## Step 4: Add Structured Content
 
-After creating the empty page, add content blocks:
+After creating the page, insert structured content via markdown:
 
-**For text-heavy content:**
 ```
-NOTION_APPEND_TEXT_BLOCKS(
-  block_id=page_id,
-  blocks=[
-    {"type": "heading_2", "content": "Attendees"},
-    {"type": "paragraph", "content": "Alice, Bob, Charlie"},
-    {"type": "heading_2", "content": "Agenda"},
-    {"type": "numbered_list", "items": ["Review Q4 results", "Discuss Q1 goals", "Action items"]},
-    {"type": "heading_2", "content": "Notes"},
-    {"type": "paragraph", "content": "Discussion points go here..."},
-    {"type": "heading_2", "content": "Action Items"},
-    {"type": "to_do", "items": ["Alice: Send report by Friday", "Bob: Schedule follow-up"]}
-  ]
-)
-```
+NOTION_INSERT_MARKDOWN(
+  parent_block_id=page_id,
+  markdown="""
+## Attendees
+- Alice
+- Bob
 
-**For rich content:**
-```
-NOTION_ADD_MULTIPLE_CONTENT_BLOCKS(
-  page_id=page_id,
-  children=[...]  # Mix of headings, text, todos, code, callouts
+## Agenda
+1. Review Q4 results
+2. Discuss Q1 goals
+
+## Notes
+...
+
+## Action Items
+- [ ] Alice: Send report by Friday
+- [ ] Bob: Schedule follow-up
+"""
 )
 ```
 

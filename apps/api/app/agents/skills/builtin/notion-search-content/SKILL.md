@@ -20,16 +20,16 @@ User is looking for information in Notion — pages, databases, specific content
 
 **Title search:**
 ```
-NOTION_SEARCH_NOTION_PAGE(query="product roadmap", page_size=10)
+NOTION_FETCH_DATA(fetch_type="all", query="product roadmap", page_size=50)
 ```
 
 **Filter by type:**
 ```
 # Only pages
-NOTION_SEARCH_NOTION_PAGE(query="meeting notes", filter_value="page", page_size=10)
+NOTION_FETCH_DATA(fetch_type="pages", query="meeting notes", page_size=50)
 
 # Only databases
-NOTION_SEARCH_NOTION_PAGE(query="tasks", filter_value="database", page_size=10)
+NOTION_FETCH_DATA(fetch_type="databases", query="tasks", page_size=50)
 ```
 
 **Browse all accessible items:**
@@ -43,7 +43,7 @@ NOTION_FETCH_DATA(fetch_type="all", page_size=100)
 
 When data is in a database (table, board, gallery):
 
-**Simple query (all rows):**
+**All rows (no filter):**
 ```
 NOTION_QUERY_DATABASE(database_id="<uuid>", page_size=50)
 ```
@@ -65,7 +65,7 @@ NOTION_FETCH_DATABASE(database_id="<uuid>") → properties, column types
 ## Step 4: Read Page Content
 
 - **Traversal**: Iterate through promising results.
-- **Reading Content**: Use `NOTION_FETCH_PAGE_AS_MARKDOWN` for pages or `NOTION_QUERY_DATABASE` for databases to understand their schema and entries.
+- **Reading Content**: Use `NOTION_FETCH_PAGE_AS_MARKDOWN` for pages. For databases, fetch schema with `NOTION_FETCH_DATABASE` and query with `NOTION_QUERY_DATABASE` or `NOTION_QUERY_DATABASE_WITH_FILTER`.
 - **Synthesis**: Consolidate findings into a structured report with links and key data points.
 
 ## Step 5: Synthesize Results
@@ -87,11 +87,9 @@ Found 5 results for "product roadmap":
 
 ## Progressive Search Strategy
 
-1. **Start specific:** `NOTION_SEARCH_NOTION_PAGE(query="Q1 product roadmap 2025")`
-2. **Broaden if empty:** `NOTION_SEARCH_NOTION_PAGE(query="product roadmap")`
+1. **Start specific:** `NOTION_FETCH_DATA(fetch_type="all", query="Q1 product roadmap 2025")`
+2. **Broaden if empty:** `NOTION_FETCH_DATA(fetch_type="all", query="product roadmap")`
 3. **Browse if still empty:** `NOTION_FETCH_DATA(fetch_type="all")` → filter client-side
-- **Notion**: `NOTION_SEARCH_NOTION_PAGE`, `NOTION_QUERY_DATABASE`, `NOTION_RETRIEVE_PAGE`, `NOTION_GET_PAGE_PROPERTY_ACTION`
-- **Analysis**: `SEARCH_ANYTHING` (if broader context is needed)
 4. **Check databases:** The info might be a row in a database, not a standalone page
 
 ## Anti-Patterns

@@ -27,6 +27,7 @@ from app.constants.cache import (
     HANDOFF_METADATA_CACHE_PREFIX,
 )
 from app.constants.llm import (
+    AGENT_RECURSION_LIMIT,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -338,7 +339,7 @@ def build_agent_config(
 
     config = {
         "configurable": configurable,
-        "recursion_limit": 75,
+        "recursion_limit": AGENT_RECURSION_LIMIT,
         "metadata": {"user_id": user.get("user_id")},
         "callbacks": callbacks,
         "agent_name": agent_name,

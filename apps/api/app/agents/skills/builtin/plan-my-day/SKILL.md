@@ -15,7 +15,7 @@ This skill orchestrates across multiple providers to build a complete picture of
 
 ## Tools Used
 - **Google Calendar**: `GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY`, `GOOGLECALENDAR_CUSTOM_FETCH_EVENTS`
-- **Todoist**: `TODOIST_FILTER_TASKS`, `TODOIST_LIST_TASKS`
+- **Todoist**: `TODOIST_GET_ALL_TASKS`
 - **Linear**: `LINEAR_CUSTOM_GET_MY_TASKS`, `LINEAR_CUSTOM_GET_ACTIVE_SPRINT`
 - **GitHub**: `GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS`
 
@@ -42,7 +42,7 @@ GOOGLECALENDAR_CUSTOM_FETCH_EVENTS(
 
 ### Phase 1: Context Gathering
 - **Calendar**: Call `GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY` to get the user's schedule, next event, and busy hours for today.
-- **Todos**: Call `TODOIST_FILTER_TASKS` with a query for "overdue | today" to get high-priority tasks.
+- **Todos**: Call `TODOIST_GET_ALL_TASKS` with `filter="overdue | today"` to get high-priority tasks.
 - **Linear**: Call `LINEAR_CUSTOM_GET_MY_TASKS` to see active issues assigned to the user.
 - **GitHub**: Call `GITHUB_SEARCH_ISSUES_AND_PULL_REQUESTS` with `q="assignee:me state:open"` if GitHub integration is active.
 
@@ -50,7 +50,7 @@ GOOGLECALENDAR_CUSTOM_FETCH_EVENTS(
 
 **Todoist/Todo tasks due today:**
 ```
-TODOIST_FILTER_TASKS(query="today | overdue")
+TODOIST_GET_ALL_TASKS(filter="today | overdue")
 ```
 
 **Linear issues assigned to me:**

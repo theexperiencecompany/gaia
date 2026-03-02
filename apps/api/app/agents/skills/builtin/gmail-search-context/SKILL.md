@@ -68,6 +68,12 @@ GMAIL_LIST_THREADS(
 3. **Broaden more:** `"quarterly report has:attachment"`
 4. **Last resort:** `"quarterly report"`
 
+## Persistence & Disambiguation (Critical)
+
+- Do not stop after a small sample (e.g., first 5-10 results). Broaden queries and increase max_results when needed.
+- If multiple strong candidates remain, present the best 2-3 with sender + date + subject, then ask ONE focused question to disambiguate.
+- If no results, list the queries you tried (briefly) and ask ONE clarifying question (sender? timeframe? attachment type?).
+
 ## Step 4: Read Full Context
 
 When you find relevant messages, get full details:

@@ -870,11 +870,25 @@ export const useChatStream = () => {
               useChatStore.getState().activeConversationId;
 
             if (conversationId && refs.current.botMessage.message_id) {
+              // Keep the in-memory store aligned with the latest streamed metadata
+              // before Dexie emits its upsert event.
+              updateBotMessageInStore(conversationId);
+
+              const metadataUpdates: Partial<IMessage> = {
+                tool_data: refs.current.botMessage.tool_data ?? null,
+                follow_up_actions:
+                  refs.current.botMessage.follow_up_actions ?? null,
+                image_data: refs.current.botMessage.image_data ?? null,
+                memory_data: refs.current.botMessage.memory_data ?? null,
+                todo_progress: refs.current.botMessage.todo_progress ?? null,
+              };
+
               // Use updateMessage for atomic merge-update instead of putMessage
               // This only updates content/status/updatedAt while preserving all other fields
               await db.updateMessage(refs.current.botMessage.message_id, {
                 content: refs.current.accumulatedResponse,
                 status: "sent",
+                ...metadataUpdates,
               });
             }
           }

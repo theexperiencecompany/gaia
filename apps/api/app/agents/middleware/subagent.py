@@ -8,7 +8,7 @@ for dynamic discovery instead of binding all tools upfront.
 
 import asyncio
 from collections.abc import Mapping
-from typing import Annotated, Any, Optional
+from typing import Annotated, Any, Optional, cast
 
 from app.agents.prompts.spawn_subagent_prompts import (
     SPAWN_SUBAGENT_DESCRIPTION,
@@ -19,6 +19,7 @@ from app.agents.tools.core.retrieval import (
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
 from app.config.loggers import app_logger as logger
+from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from langchain.agents.middleware.types import (
     AgentMiddleware,
     AgentState,
@@ -27,6 +28,7 @@ from langchain.agents.middleware.types import (
 from langchain.tools import InjectedToolCallId
 from langchain_core.language_models import LanguageModelLike
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages.tool import ToolCall
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool, tool
 from langgraph.prebuilt import InjectedState
@@ -52,7 +54,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         llm: LanguageModelLike | None = None,
         available_tools: list[BaseTool] | None = None,
         tool_registry: Mapping[str, BaseTool] | None = None,
-        max_turns: int = 5,
+        max_turns: int = SUBAGENT_RECURSION_LIMIT,
         system_prompt: str = SPAWN_SUBAGENT_SYSTEM_PROMPT,
         excluded_tool_names: set[str] | None = None,
         tool_space: str = "general",
@@ -224,7 +226,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         if self._llm is None:
             raise ValueError("LLM not configured for subagent execution")
 
-        llm = self._llm
+        llm: Any = self._llm
 
         tools_by_name, dynamic, retrieve_tool = self._build_child_toolset(
             config=config,
@@ -233,9 +235,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         bound_tool_names: set[str] = set(tools_by_name.keys())
 
         llm_with_tools = (
-            llm.bind_tools(list(tools_by_name.values()))  # type: ignore[union-attr, attr-defined]
-            if tools_by_name
-            else llm
+            llm.bind_tools(list(tools_by_name.values())) if tools_by_name else llm
         )
 
         # Build initial messages
@@ -247,17 +247,19 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
 
         # Tool-calling loop
         for _turn in range(self._max_turns):
-            response: AIMessage = await llm_with_tools.ainvoke(messages)  # type: ignore[assignment]
+            response = cast(
+                AIMessage, await llm_with_tools.ainvoke(messages, config=config)
+            )
             messages.append(response)
 
             if not response.tool_calls:
                 return str(response.content) if response.content else "Task completed."
 
+            regular_calls: list[ToolCall] = []
             for tc in response.tool_calls:
                 name = tc["name"]
                 tc_id = tc["id"]
 
-                # --- retrieve_tools: discover/bind tools dynamically ---
                 if (
                     name == _RETRIEVE_TOOLS_NAME
                     and dynamic
@@ -274,7 +276,6 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                             logger.info(
                                 f"Subagent bound {len(newly_bound)} tools: {newly_bound}"
                             )
-
                         content = (
                             "\n".join(result.get("response", [])) or "No tools found."
                         )
@@ -287,52 +288,53 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     messages.append(
                         ToolMessage(content=content, tool_call_id=tc_id, name=name)
                     )
-
                     # Rebind LLM with updated tool set
-                    llm_with_tools = llm.bind_tools(list(tools_by_name.values()))  # type: ignore[union-attr, attr-defined]
-                    continue
+                    llm_with_tools = llm.bind_tools(list(tools_by_name.values()))
+                else:
+                    regular_calls.append(tc)
 
-                # --- Regular tool execution ---
-                if name in tools_by_name:
-                    try:
-                        result = await tools_by_name[name].ainvoke(
-                            {**tc, "type": "tool_call"}, config=config
-                        )
-                        messages.append(
-                            ToolMessage(
-                                content=str(result), tool_call_id=tc_id, name=name
-                            )
-                        )
-                    except asyncio.CancelledError:
-                        raise
-                    except Exception as e:
-                        messages.append(
-                            ToolMessage(
-                                content=f"Tool error: {e}",
-                                tool_call_id=tc_id,
-                                name=name,
-                                status="error",
-                            )
-                        )
-                    continue
+            if not regular_calls:
+                continue
 
-                # --- Unknown tool ---
-                hint = (
-                    " Use retrieve_tools to discover and bind tools first."
-                    if dynamic
-                    else ""
-                )
-                messages.append(
-                    ToolMessage(
+            async def _invoke_tool(tc: ToolCall) -> ToolMessage:
+                name = tc["name"]
+                tc_id = tc["id"]
+                if name not in tools_by_name:
+                    hint = (
+                        " Use retrieve_tools to discover and bind tools first."
+                        if dynamic
+                        else ""
+                    )
+                    return ToolMessage(
                         content=f"Unknown tool: {name}.{hint}",
                         tool_call_id=tc_id,
                         name=name,
                         status="error",
                     )
-                )
+                try:
+                    result = await tools_by_name[name].ainvoke(
+                        {**tc, "type": "tool_call"}, config=config
+                    )
+                    return ToolMessage(
+                        content=str(result), tool_call_id=tc_id, name=name
+                    )
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    return ToolMessage(
+                        content=f"Tool error: {e}",
+                        tool_call_id=tc_id,
+                        name=name,
+                        status="error",
+                    )
+
+            tool_messages: list[ToolMessage] = await asyncio.gather(
+                *[_invoke_tool(tc) for tc in regular_calls]
+            )
+            messages.extend(tool_messages)
 
         # Max turns reached — get final answer without tools
-        final = await llm.ainvoke(messages)  # type: ignore[union-attr]
+        final = await llm.ainvoke(messages, config=config)
         if isinstance(final, AIMessage) and final.content:
             return str(final.content)
         return str(final) if final else "Max turns reached."
@@ -365,7 +367,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             )
 
         if dynamic and retrieve_tool is not None:
-            tools_by_name[_RETRIEVE_TOOLS_NAME] = retrieve_tool  # type: ignore[assignment]
+            tools_by_name[_RETRIEVE_TOOLS_NAME] = retrieve_tool
 
         # If nothing resolved (defensive fallback), bind all eligible tools.
         if not tools_by_name:

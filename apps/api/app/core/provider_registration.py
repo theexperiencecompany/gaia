@@ -7,12 +7,13 @@ This module does two distinct things:
 
 2) Initializes services.
 
-   - In development, we initialize services during startup so problems surface
-     immediately and reload cycles are predictable.
+   - When hot reloading is enabled, we initialize services during startup so
+     problems surface immediately and reload cycles are predictable.
 
-   - In production (FastAPI only), we intentionally *do not block startup* on
-     initialization. Instead, we schedule the same initialization coroutines in
-     the background so the server can begin accepting traffic quickly.
+   - When hot reloading is disabled (FastAPI only), we intentionally *do not
+     block startup* on initialization. Instead, we schedule the same
+     initialization coroutines in the background so the server can begin
+     accepting traffic quickly.
 
 Gotchas:
 - Background warmup failures do not crash the server; they are logged.
@@ -236,10 +237,11 @@ async def unified_startup(context: Literal["main_app", "arq_worker"]) -> None:
     )
     startup_services.append((warmup_tools_cache, "tools_cache_warmup"))
 
-    # Production FastAPI: start serving quickly, warm up in background.
-    if context == "main_app" and settings.ENV == "production":
+    # FastAPI with hot reloading disabled: start serving quickly,
+    # warm up in background.
+    if context == "main_app" and not settings.ENABLE_LAZY_LOADING:
         logger.info(
-            "Production mode: scheduling warmup tasks in background "
+            "Hot reloading disabled: scheduling warmup tasks in background "
             "(non-blocking startup)"
         )
 

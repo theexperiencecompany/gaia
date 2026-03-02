@@ -13,7 +13,7 @@ User wants to post on Reddit for marketing, community engagement, research, or c
 
 **Find relevant subreddits:**
 ```
-REDDIT_SEARCH_SUBREDDITS(search_query="artificial intelligence", limit=10)
+REDDIT_GET_SUBREDDITS_SEARCH(q="artificial intelligence", limit=10)
 ```
 
 **Check subreddit rules (critical before posting):**
@@ -23,7 +23,7 @@ REDDIT_GET_SUBREDDIT_RULES(subreddit="MachineLearning")
 
 **Analyze what works — read top posts:**
 ```
-REDDIT_GET_TOP_POSTS_FROM_SUBREDDIT(subreddit="MachineLearning", max_results=10)
+REDDIT_GET_R_TOP(subreddit="MachineLearning", t="month", limit=10)
 REDDIT_RETRIEVE_REDDIT_POST(subreddit="startup", sort="hot", max_results=10)
 ```
 
@@ -62,7 +62,7 @@ If similar recent post exists → warn user about potential duplicate.
 
 Many subreddits require flair:
 ```
-REDDIT_LIST_SUBREDDIT_POST_FLAIRS(subreddit="startup")
+REDDIT_GET_R_SUBREDDIT_LINK_FLAIR_V2(subreddit="startup")
 ```
 
 Pick the most appropriate flair based on content.
@@ -111,7 +111,7 @@ REDDIT_CREATE_REDDIT_POST(
   title="We cut our customer onboarding time by 60% — here's exactly how",
   text="Full markdown body...",
   kind="self",
-  flair_id="uuid-from-flair-list"  # Must be valid UUID from REDDIT_LIST_SUBREDDIT_POST_FLAIRS
+  flair_id="uuid-from-flair-list"  # Must be valid UUID from REDDIT_GET_R_SUBREDDIT_LINK_FLAIR_V2
 )
 ```
 
@@ -129,8 +129,8 @@ REDDIT_CREATE_REDDIT_POST(
 
 If the user wants to respond to comments:
 ```
-REDDIT_RETRIEVE_COMMENTS_FOR_A_POST(post_id="t3_...", limit=20)
-REDDIT_POST_A_COMMENT(parent_id="t1_...", text="Thanks for the feedback! ...")
+REDDIT_RETRIEVE_POST_COMMENTS(article="t3_...")
+REDDIT_POST_REDDIT_COMMENT(thing_id="t1_...", text="Thanks for the feedback! ...")
 ```
 
 ## Marketing-Specific Guidance

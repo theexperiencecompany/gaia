@@ -25,7 +25,7 @@ Primary discovery tool for listing pages and databases.
 - query: optional title filter
 
 ### NOTION_SEARCH_NOTION_PAGE
-Fuzzy search across pages/databases by title or content.
+Search across pages/databases by title or content (use if needed).
 
 ### NOTION_FETCH_DATABASE
 Get database schema (properties, types). **Always call before inserting rows.**
@@ -33,11 +33,14 @@ Get database schema (properties, types). **Always call before inserting rows.**
 ### NOTION_QUERY_DATABASE_WITH_FILTER
 Query database with property-based filters.
 
+### NOTION_QUERY_DATABASE
+Query database rows without filters (retrieve all rows with pagination).
+
 ## Workflow
 
 ### Finding Pages/Databases
 1. NOTION_FETCH_DATA - List pages or databases (default: 100 results)
-2. NOTION_SEARCH_NOTION_PAGE - Fuzzy search if FETCH_DATA doesn't find target
+2. If needed, use NOTION_SEARCH_NOTION_PAGE for broader search
 
 ### Before Creating Content
 1. Find parent page/database ID
@@ -46,7 +49,7 @@ Query database with property-based filters.
 
 ### Querying Databases
 1. Find database ID
-2. Use NOTION_QUERY_DATABASE_WITH_FILTER with property filters
+2. Use NOTION_QUERY_DATABASE to retrieve rows (or NOTION_QUERY_DATABASE_WITH_FILTER for filtered queries)
 
 ## Tips
 - Start with FETCH_DATA for overview, then SEARCH for specifics

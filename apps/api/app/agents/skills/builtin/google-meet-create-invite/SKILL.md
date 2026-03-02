@@ -14,8 +14,8 @@ target: executor
 
 ## Tools
 
-### GOOGLEMEET_CREATE_SPACE
-Create a new Google Meet space.
+### GOOGLEMEET_CREATE_MEET
+Create a new Google Meet link.
 
 **Returns:**
 - Meeting link (URI)
@@ -33,15 +33,15 @@ Send meeting link to participants on Slack.
 ### GMAIL_GET_CONTACTS
 Get email addresses for participants.
 
-### GMAIL_CREATE_DRAFT
+### GMAIL_CREATE_EMAIL_DRAFT
 Create email with meeting details to send manually.
 
 ## Workflow
 
-### Step 1: Create the Meet Space
+### Step 1: Create the Meet Link
 
 ```
-GOOGLEMEET_CREATE_SPACE()
+GOOGLEMEET_CREATE_MEET()
 ```
 
 Extract the meeting URI from the response.
@@ -70,7 +70,7 @@ SLACK_SEND_MESSAGE(
 
 **Option B: Create email draft**
 ```
-GMAIL_CREATE_DRAFT(
+GMAIL_CREATE_EMAIL_DRAFT(
     to="email@example.com",
     subject="Meeting: [Topic]",
     body="Join the meeting: [MEET_LINK]"
@@ -85,7 +85,7 @@ Report:
 - How the link was shared
 
 ## Important Rules
-1. Always create the Meet space first, then share the link
+1. Always create the Meet link first, then share the link
 2. Verify participant identity before sending invites
 3. Include meeting topic in the invitation
 4. Confirm success to the user

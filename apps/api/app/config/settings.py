@@ -88,6 +88,7 @@ class CommonSettings(BaseAppSettings):
     FRONTEND_URL: str = "https://heygaia.io"
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
+    ENABLE_LAZY_LOADING: bool = True
 
     # ----------------------------------------------
     # Profiling & Performance Monitoring

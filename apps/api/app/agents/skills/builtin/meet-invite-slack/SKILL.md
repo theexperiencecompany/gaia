@@ -9,11 +9,11 @@ target: executor
 ## When to Activate
 User says "Set up a meeting with [Name] now", "Send a meet link to [Name]", or "Create a room and invite [Name]".
 
-## Step 1: Create the Meet Space
+## Step 1: Create the Meet Link
 
-**Generate an instant meeting room:**
+**Generate an instant meeting link:**
 ```
-GOOGLEMEET_CREATE_SPACE() → returns space_id and config
+GOOGLEMEET_CREATE_MEET() → returns meeting metadata and URI
 ```
 
 **Extract the meeting URI:**
@@ -44,7 +44,7 @@ SLACK_SEND_MESSAGE(
 "Created a Google Meet and sent the link to [Name] on Slack."
 
 ## Tools Used
-- **Google Meet**: `GOOGLEMEET_CREATE_SPACE`
+- **Google Meet**: `GOOGLEMEET_CREATE_MEET`
 - **Slack**: `SLACK_FIND_USERS`, `SLACK_SEND_MESSAGE`, `SLACK_OPEN_DM`
 
 ## Anti-Patterns
