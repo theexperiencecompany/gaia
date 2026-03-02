@@ -83,7 +83,7 @@ services:
 
   # Postgres Service
   postgres:
-    image: postgres:alpine
+    image: postgres:17-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
