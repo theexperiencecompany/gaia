@@ -18,7 +18,7 @@ googlecalendar:
 
 gmail:
   # Creates drafts + optional live send tests
-  test_recipient_email: ${TEST_SHARE_EMAIL}
+  test_recipient_email: ${EVAL_USER_EMAIL}
 
 googledocs:
   # Creates temp doc via GOOGLEDOCS_CREATE_DOCUMENT, deletes via Google Drive
