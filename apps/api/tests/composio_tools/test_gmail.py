@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import Any, Dict, Generator
 
 import pytest
-from pytest_check.context_manager import check
+from pytest_check import check
 
 from tests.composio_tools.config_utils import get_integration_config
 from tests.composio_tools.conftest import execute_tool
