@@ -198,9 +198,33 @@ run = "nx affected -t build"
 description = "Test all apps"
 run = "nx run-many -t test"
 
+[tasks."test:api"]
+description = "Run API tests (unit + integration)"
+run = "nx test api"
+
+[tasks."test:api:unit"]
+description = "Run API unit tests only"
+run = "nx test:unit api"
+
+[tasks."test:api:integration"]
+description = "Run API integration tests only"
+run = "nx test:integration api"
+
+[tasks."test:api:e2e"]
+description = "Run API end-to-end tests"
+run = "nx test:e2e api"
+
+[tasks."test:api:coverage"]
+description = "Run API tests with coverage report"
+run = "nx test:coverage api"
+
 [tasks."test:bots"]
 description = "Test all bots (Discord, Slack, Telegram)"
 run = "cd apps/bots && pnpm vitest run"
+
+[tasks."test:cli"]
+description = "Run CLI tests"
+run = "cd packages/cli && pnpm vitest run"
 
 [tasks."test:affected"]
 description = "Test only affected projects"
