@@ -10,7 +10,7 @@ Tests cover:
 """
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.agents.tools.vfs_cmd_parser import (
     VFSCommandParser,
@@ -36,6 +36,7 @@ def mock_vfs():
     mock.read = AsyncMock(return_value="file content")
     mock.write = AsyncMock(return_value="/path/to/file")
     mock.append = AsyncMock(return_value="/path/to/file")
+    mock.move = AsyncMock(return_value="/path/to/moved-file")
     mock.list_dir = AsyncMock()
     mock.tree = AsyncMock()
     mock.search = AsyncMock()
@@ -342,10 +343,13 @@ class TestErrorHandling:
         with pytest.raises(CommandParseError, match="not supported"):
             parser._parse_command("rm file.txt")
 
-    def test_blocked_command_mv(self, parser):
-        """mv command is blocked."""
-        with pytest.raises(CommandParseError, match="not supported"):
-            parser._parse_command("mv old.txt new.txt")
+    def test_mv_command_is_supported(self, parser):
+        """mv command should parse successfully."""
+        cmd, args, redirect = parser._parse_command("mv old.txt new.txt")
+        assert cmd == "mv"
+        assert args.source == "old.txt"
+        assert args.dest == "new.txt"
+        assert redirect is None
 
     def test_blocked_command_cp(self, parser):
         """cp command is blocked."""
@@ -681,6 +685,29 @@ class TestPathResolution:
         )
         assert result == "/system/skills/github_agent/create-pr/SKILL.md"
 
+    def test_resolve_user_visible_path_to_current_session(self, parser):
+        """.user-visible should map into current session scope."""
+        result = parser._resolve_path(
+            ".user-visible/report.md",
+            "user123",
+            "executor",
+            "conv1",
+        )
+        assert (
+            result
+            == "/users/user123/global/executor/sessions/conv1/.user-visible/report.md"
+        )
+
+    def test_resolve_user_visible_without_session_falls_back_to_files(self, parser):
+        """Without session context, .user-visible should stay private."""
+        result = parser._resolve_path(
+            ".user-visible/report.md",
+            "user123",
+            "executor",
+            None,
+        )
+        assert result == "/users/user123/global/executor/files/report.md"
+
 
 # ==================== Command Execution Tests ====================
 
@@ -819,6 +846,67 @@ class TestCommandExecution:
 
         result = await parser.execute("ls", "user123", "executor")
         assert "empty" in result.lower()
+
+    @pytest.mark.asyncio
+    async def test_execute_mv_to_user_visible_emits_artifact_event(
+        self, parser, mock_vfs
+    ):
+        """Moving a file into .user-visible should emit artifact_data."""
+        moved_path = (
+            "/users/user123/global/executor/sessions/conv1/.user-visible/final.md"
+        )
+        mock_vfs.move.return_value = moved_path
+        mock_vfs.info.return_value = MagicMock(size_bytes=88)
+        parser._vfs = mock_vfs
+        writer = MagicMock()
+
+        with patch(
+            "app.agents.tools.vfs_cmd_parser.get_stream_writer",
+            return_value=writer,
+        ):
+            result = await parser.execute(
+                "mv files/draft.md .user-visible/final.md",
+                "user123",
+                "executor",
+                "conv1",
+            )
+
+        assert "Moved" in result
+        mock_vfs.move.assert_awaited_once()
+        writer.assert_called_once()
+        payload = writer.call_args.args[0]
+        artifact = payload["artifact_data"]
+        assert artifact["filename"] == "final.md"
+        assert artifact["content_type"] == "text/markdown"
+
+    @pytest.mark.asyncio
+    async def test_execute_mv_to_user_visible_requires_session(self, parser, mock_vfs):
+        """.user-visible destination requires active conversation session."""
+        parser._vfs = mock_vfs
+
+        result = await parser.execute(
+            "mv files/draft.md .user-visible/final.md",
+            "user123",
+            "executor",
+        )
+
+        assert "requires an active conversation session" in result
+        mock_vfs.move.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_execute_mv_blocks_cross_session_moves(self, parser, mock_vfs):
+        """Session-aware mv should prevent escaping current session namespace."""
+        parser._vfs = mock_vfs
+
+        result = await parser.execute(
+            "mv sessions/other/draft.md .user-visible/final.md",
+            "user123",
+            "executor",
+            "conv1",
+        )
+
+        assert "cannot escape the current session" in result
+        mock_vfs.move.assert_not_awaited()
 
 
 # ==================== Grep Execution Tests ====================

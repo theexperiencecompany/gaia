@@ -5,7 +5,7 @@ Tests the VFS tools: vfs_read, vfs_write, vfs_cmd.
 
 from types import SimpleNamespace
 from typing import cast
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.runnables import RunnableConfig
@@ -19,7 +19,7 @@ def mock_config() -> RunnableConfig:
     return {
         "metadata": {
             "user_id": "user123",
-            "conversation_id": "conv1",
+            "thread_id": "conv1",
             "agent_name": "executor",
         }
     }
@@ -173,6 +173,76 @@ class TestVfsWrite:
 
             assert "Error" in result
 
+    @pytest.mark.asyncio
+    async def test_write_user_visible_emits_artifact_event(self, mock_config, mock_vfs):
+        """Writing to .user-visible emits artifact_data for the UI."""
+        rate_limit_mock = AsyncMock(return_value={})
+        writer = MagicMock()
+        mock_vfs.info = AsyncMock(return_value=SimpleNamespace(size_bytes=42))
+
+        with (
+            patch("app.agents.tools.vfs_tools.get_vfs", return_value=mock_vfs),
+            patch("app.agents.tools.vfs_tools.get_stream_writer", return_value=writer),
+            patch(
+                "app.decorators.rate_limiting._get_cached_subscription",
+                new=AsyncMock(return_value=SimpleNamespace(plan_type=PlanType.FREE)),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=rate_limit_mock,
+            ),
+        ):
+            from app.agents.tools.vfs_tools import vfs_write
+
+            await vfs_write.ainvoke(
+                {
+                    "path": ".user-visible/report.md",
+                    "content": "# Final report",
+                },
+                config=mock_config,
+            )
+
+            writer.assert_called_once()
+            payload = writer.call_args.args[0]
+            artifact_data = payload["artifact_data"]
+            assert artifact_data["filename"] == "report.md"
+            assert "/sessions/conv1/.user-visible/report.md" in artifact_data["path"]
+            assert artifact_data["content_type"] == "text/markdown"
+
+    @pytest.mark.asyncio
+    async def test_write_private_file_does_not_emit_artifact_event(
+        self, mock_config, mock_vfs
+    ):
+        """Writing outside .user-visible should not emit artifact events."""
+        rate_limit_mock = AsyncMock(return_value={})
+        mock_get_stream_writer = MagicMock()
+
+        with (
+            patch("app.agents.tools.vfs_tools.get_vfs", return_value=mock_vfs),
+            patch(
+                "app.agents.tools.vfs_tools.get_stream_writer", mock_get_stream_writer
+            ),
+            patch(
+                "app.decorators.rate_limiting._get_cached_subscription",
+                new=AsyncMock(return_value=SimpleNamespace(plan_type=PlanType.FREE)),
+            ),
+            patch(
+                "app.decorators.rate_limiting.tiered_limiter.check_and_increment",
+                new=rate_limit_mock,
+            ),
+        ):
+            from app.agents.tools.vfs_tools import vfs_write
+
+            await vfs_write.ainvoke(
+                {
+                    "path": "files/draft.md",
+                    "content": "draft",
+                },
+                config=mock_config,
+            )
+
+            mock_get_stream_writer.assert_not_called()
+
 
 # ==================== vfs_cmd Tests ====================
 
@@ -184,9 +254,7 @@ class TestVfsCmd:
     async def test_cmd_pwd(self, mock_config):
         """pwd command returns working directory."""
         with (
-            patch(
-                "app.agents.tools.vfs_cmd_parser.get_vfs_command_parser"
-            ) as mock_parser,
+            patch("app.agents.tools.vfs_tools.get_vfs_command_parser") as mock_parser,
             patch(
                 "app.decorators.rate_limiting._get_cached_subscription",
                 new=AsyncMock(return_value=SimpleNamespace(plan_type=PlanType.FREE)),
@@ -210,14 +278,14 @@ class TestVfsCmd:
             )
 
             assert "/users/user123" in result
+            mock_instance.execute.assert_awaited_once()
+            assert mock_instance.execute.call_args.kwargs["conversation_id"] == "conv1"
 
     @pytest.mark.asyncio
     async def test_cmd_blocked_command(self, mock_config):
         """Blocked commands return error."""
         with (
-            patch(
-                "app.agents.tools.vfs_cmd_parser.get_vfs_command_parser"
-            ) as mock_parser,
+            patch("app.agents.tools.vfs_tools.get_vfs_command_parser") as mock_parser,
             patch(
                 "app.decorators.rate_limiting._get_cached_subscription",
                 new=AsyncMock(return_value=SimpleNamespace(plan_type=PlanType.FREE)),
@@ -372,6 +440,33 @@ class TestPathResolution:
             "/users/user123/global/executor/notes/test.txt", "user123", "executor"
         )
         assert result == "/users/user123/global/executor/notes/test.txt"
+
+    def test_user_visible_path_scoped_to_session(self):
+        """.user-visible paths resolve under the current session."""
+        from app.agents.tools.vfs_tools import _resolve_path
+
+        result = _resolve_path(
+            ".user-visible/final.md",
+            "user123",
+            "executor",
+            "conv1",
+        )
+        assert (
+            result
+            == "/users/user123/global/executor/sessions/conv1/.user-visible/final.md"
+        )
+
+    def test_user_visible_without_session_falls_back_to_files(self):
+        """Without a session, .user-visible writes stay private in files/."""
+        from app.agents.tools.vfs_tools import _resolve_path
+
+        result = _resolve_path(
+            ".user-visible/final.md",
+            "user123",
+            "executor",
+            None,
+        )
+        assert result == "/users/user123/global/executor/files/final.md"
 
 
 # ==================== Tool Export Tests ====================

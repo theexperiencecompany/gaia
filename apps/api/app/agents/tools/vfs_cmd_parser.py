@@ -5,26 +5,33 @@ Uses argparse for robust command-line parsing of each command.
 Supports Unix-like commands for navigating and searching the virtual filesystem.
 
 Supported commands:
-  ls, tree, find, grep, cat, pwd, stat, echo
+  ls, tree, find, grep, cat, pwd, stat, echo, mv
 
 Blocked commands (for safety):
-  rm, mv, cp, mkdir, chmod, chown, touch, rmdir
+  rm, cp, mkdir, chmod, chown, touch, rmdir
 """
 
 import argparse
 import asyncio
+import contextlib
 import shlex
 from dataclasses import dataclass
 from typing import NoReturn, Optional
 
+from app.agents.tools.vfs_constants import (
+    USER_VISIBLE_FOLDER,
+    detect_artifact_content_type,
+    is_user_visible_path,
+)
 from app.config.loggers import app_logger as logger
-from app.services.vfs import MongoVFS, get_vfs
+from app.services.vfs import MongoVFS, VFSAccessError, get_vfs
 from app.services.vfs.path_resolver import (
     get_agent_root,
     normalize_path,
     validate_user_access,
 )
 from app.utils.command_parsing import extract_output_redirect
+from langgraph.config import get_stream_writer
 
 
 class CommandParseError(Exception):
@@ -54,10 +61,19 @@ class RedirectInfo:
 class VFSCommandParser:
     """Parse and execute VFS shell commands using argparse."""
 
-    ALLOWED_COMMANDS = {"ls", "tree", "find", "grep", "cat", "pwd", "stat", "echo"}
+    ALLOWED_COMMANDS = {
+        "ls",
+        "tree",
+        "find",
+        "grep",
+        "cat",
+        "pwd",
+        "stat",
+        "echo",
+        "mv",
+    }
     BLOCKED_COMMANDS = {
         "rm",
-        "mv",
         "cp",
         "mkdir",
         "chmod",
@@ -175,6 +191,12 @@ class VFSCommandParser:
         echo_parser.add_argument("text", nargs="*", help="Text to echo")
         parsers["echo"] = echo_parser
 
+        # mv parser
+        mv_parser = _VFSArgumentParser(prog="mv", add_help=False, exit_on_error=False)
+        mv_parser.add_argument("source", help="Source file or directory path")
+        mv_parser.add_argument("dest", help="Destination path")
+        parsers["mv"] = mv_parser
+
         return parsers
 
     async def _get_vfs(self) -> MongoVFS:
@@ -259,6 +281,7 @@ class VFSCommandParser:
         command_str: str,
         user_id: str,
         agent_name: str = "executor",
+        conversation_id: str | None = None,
     ) -> str:
         """
         Parse and execute a VFS command.
@@ -282,13 +305,25 @@ class VFSCommandParser:
             return f"Error: Command '{cmd}' not implemented."
 
         try:
-            result = await handler(args, redirect, user_id, agent_name)
+            result = await handler(
+                args,
+                redirect,
+                user_id,
+                agent_name,
+                conversation_id,
+            )
             return result
         except Exception as e:
             logger.error(f"VFS command error ({cmd}): {e}")
             return f"Error: {e}"
 
-    def _resolve_path(self, path: str, user_id: str, agent_name: str) -> str:
+    def _resolve_path(
+        self,
+        path: str,
+        user_id: str,
+        agent_name: str,
+        conversation_id: str | None = None,
+    ) -> str:
         """Resolve a relative path to absolute VFS path."""
         path = path.strip()
 
@@ -307,6 +342,32 @@ class VFSCommandParser:
                 return normalized
             # Redirect to user's space if invalid
             logger.warning(f"Access denied: {path} not in user {user_id} scope")
+
+        # .user-visible/ paths map to the current session
+        if path.startswith(f"{USER_VISIBLE_FOLDER}/") or path == USER_VISIBLE_FOLDER:
+            if not conversation_id:
+                logger.warning(
+                    "No conversation_id for .user-visible path, falling back to files/"
+                )
+                agent_root = get_agent_root(user_id, agent_name)
+                relative = (
+                    path[len(f"{USER_VISIBLE_FOLDER}/") :]
+                    if path.startswith(f"{USER_VISIBLE_FOLDER}/")
+                    else ""
+                )
+                if relative:
+                    return normalize_path(f"{agent_root}/files/{relative}")
+                return normalize_path(f"{agent_root}/files")
+
+            agent_root = get_agent_root(user_id, agent_name)
+            relative = (
+                path[len(USER_VISIBLE_FOLDER) :]
+                if len(path) > len(USER_VISIBLE_FOLDER)
+                else ""
+            )
+            return normalize_path(
+                f"{agent_root}/sessions/{conversation_id}/{USER_VISIBLE_FOLDER}{relative}"
+            )
 
         # If starts with /, treat as relative to agent root
         if path.startswith("/"):
@@ -336,12 +397,19 @@ class VFSCommandParser:
         redirect: Optional[RedirectInfo],
         user_id: str,
         agent_name: str,
+        conversation_id: str | None = None,
     ) -> str:
         """Show current working directory."""
         result = get_agent_root(user_id, agent_name)
 
         if redirect:
-            return await self._handle_redirect(result, redirect, user_id, agent_name)
+            return await self._handle_redirect(
+                result,
+                redirect,
+                user_id,
+                agent_name,
+                conversation_id,
+            )
 
         return result
 
@@ -351,11 +419,17 @@ class VFSCommandParser:
         redirect: Optional[RedirectInfo],
         user_id: str,
         agent_name: str,
+        conversation_id: str | None = None,
     ) -> str:
         """List directory contents."""
         vfs = await self._get_vfs()
 
-        resolved_path = self._resolve_path(args.path, user_id, agent_name)
+        resolved_path = self._resolve_path(
+            args.path,
+            user_id,
+            agent_name,
+            conversation_id,
+        )
 
         try:
             result = await vfs.list_dir(resolved_path, user_id=user_id)
@@ -403,7 +477,13 @@ class VFSCommandParser:
         output = "\n".join(lines)
 
         if redirect:
-            return await self._handle_redirect(output, redirect, user_id, agent_name)
+            return await self._handle_redirect(
+                output,
+                redirect,
+                user_id,
+                agent_name,
+                conversation_id,
+            )
 
         return output
 
@@ -413,11 +493,17 @@ class VFSCommandParser:
         redirect: Optional[RedirectInfo],
         user_id: str,
         agent_name: str,
+        conversation_id: str | None = None,
     ) -> str:
         """Show directory tree."""
         vfs = await self._get_vfs()
 
-        resolved_path = self._resolve_path(args.path, user_id, agent_name)
+        resolved_path = self._resolve_path(
+            args.path,
+            user_id,
+            agent_name,
+            conversation_id,
+        )
 
         try:
             tree = await vfs.tree(resolved_path, user_id=user_id, depth=args.level)
@@ -448,7 +534,13 @@ class VFSCommandParser:
         output = "\n".join(result_lines)
 
         if redirect:
-            return await self._handle_redirect(output, redirect, user_id, agent_name)
+            return await self._handle_redirect(
+                output,
+                redirect,
+                user_id,
+                agent_name,
+                conversation_id,
+            )
 
         return output
 
@@ -458,6 +550,7 @@ class VFSCommandParser:
         redirect: Optional[RedirectInfo],
         user_id: str,
         agent_name: str,
+        conversation_id: str | None = None,
     ) -> str:
         """Find files by pattern."""
         vfs = await self._get_vfs()
@@ -465,7 +558,12 @@ class VFSCommandParser:
         # Determine pattern
         pattern = args.name or args.iname or "*"
 
-        resolved_path = self._resolve_path(args.path, user_id, agent_name)
+        resolved_path = self._resolve_path(
+            args.path,
+            user_id,
+            agent_name,
+            conversation_id,
+        )
 
         try:
             result = await vfs.search(pattern, user_id=user_id, base_path=resolved_path)
@@ -497,7 +595,13 @@ class VFSCommandParser:
         output = "\n".join(lines)
 
         if redirect:
-            return await self._handle_redirect(output, redirect, user_id, agent_name)
+            return await self._handle_redirect(
+                output,
+                redirect,
+                user_id,
+                agent_name,
+                conversation_id,
+            )
 
         return output
 
@@ -507,11 +611,17 @@ class VFSCommandParser:
         redirect: Optional[RedirectInfo],
         user_id: str,
         agent_name: str,
+        conversation_id: str | None = None,
     ) -> str:
         """Search file contents."""
         vfs = await self._get_vfs()
 
-        resolved_path = self._resolve_path(args.path, user_id, agent_name)
+        resolved_path = self._resolve_path(
+            args.path,
+            user_id,
+            agent_name,
+            conversation_id,
+        )
 
         pattern = args.pattern
         pattern_cmp = pattern.lower() if args.ignore_case else pattern
@@ -643,7 +753,13 @@ class VFSCommandParser:
             output += f"\n... searched first {self.MAX_GREP_FILES} files (limit)"
 
         if redirect:
-            return await self._handle_redirect(output, redirect, user_id, agent_name)
+            return await self._handle_redirect(
+                output,
+                redirect,
+                user_id,
+                agent_name,
+                conversation_id,
+            )
 
         return output
 
@@ -653,11 +769,17 @@ class VFSCommandParser:
         redirect: Optional[RedirectInfo],
         user_id: str,
         agent_name: str,
+        conversation_id: str | None = None,
     ) -> str:
         """Display file content."""
         vfs = await self._get_vfs()
 
-        resolved_path = self._resolve_path(args.path, user_id, agent_name)
+        resolved_path = self._resolve_path(
+            args.path,
+            user_id,
+            agent_name,
+            conversation_id,
+        )
 
         try:
             content = await vfs.read(resolved_path, user_id=user_id)
@@ -671,7 +793,11 @@ class VFSCommandParser:
 
             if redirect:
                 return await self._handle_redirect(
-                    content, redirect, user_id, agent_name
+                    content,
+                    redirect,
+                    user_id,
+                    agent_name,
+                    conversation_id,
                 )
 
             return content
@@ -684,11 +810,17 @@ class VFSCommandParser:
         redirect: Optional[RedirectInfo],
         user_id: str,
         agent_name: str,
+        conversation_id: str | None = None,
     ) -> str:
         """Show file metadata."""
         vfs = await self._get_vfs()
 
-        resolved_path = self._resolve_path(args.path, user_id, agent_name)
+        resolved_path = self._resolve_path(
+            args.path,
+            user_id,
+            agent_name,
+            conversation_id,
+        )
 
         try:
             info = await vfs.info(resolved_path, user_id=user_id)
@@ -714,7 +846,11 @@ class VFSCommandParser:
 
             if redirect:
                 return await self._handle_redirect(
-                    output, redirect, user_id, agent_name
+                    output,
+                    redirect,
+                    user_id,
+                    agent_name,
+                    conversation_id,
                 )
 
             return output
@@ -727,14 +863,121 @@ class VFSCommandParser:
         redirect: Optional[RedirectInfo],
         user_id: str,
         agent_name: str,
+        conversation_id: str | None = None,
     ) -> str:
         """Echo text, optionally to a file."""
         content = " ".join(args.text) if args.text else ""
 
         if redirect:
-            return await self._handle_redirect(content, redirect, user_id, agent_name)
+            return await self._handle_redirect(
+                content,
+                redirect,
+                user_id,
+                agent_name,
+                conversation_id,
+            )
 
         return content
+
+    async def _cmd_mv(
+        self,
+        args: argparse.Namespace,
+        redirect: Optional[RedirectInfo],
+        user_id: str,
+        agent_name: str,
+        conversation_id: str | None = None,
+    ) -> str:
+        """Move/rename a file or directory."""
+        if redirect:
+            return "mv: output redirection is not supported"
+
+        uses_user_visible = any(
+            value == USER_VISIBLE_FOLDER or value.startswith(f"{USER_VISIBLE_FOLDER}/")
+            for value in (args.source, args.dest)
+        )
+        if uses_user_visible and not conversation_id:
+            return "mv: .user-visible requires an active conversation session"
+
+        vfs = await self._get_vfs()
+
+        resolved_source = self._resolve_path(
+            args.source,
+            user_id,
+            agent_name,
+            conversation_id,
+        )
+        resolved_dest = self._resolve_path(
+            args.dest,
+            user_id,
+            agent_name,
+            conversation_id,
+        )
+
+        if not conversation_id and (
+            "/sessions/" in resolved_source or "/sessions/" in resolved_dest
+        ):
+            return "mv: session paths require an active conversation session"
+
+        if conversation_id:
+            agent_root = get_agent_root(user_id, agent_name)
+            current_session_root = normalize_path(
+                f"{agent_root}/sessions/{conversation_id}"
+            )
+
+            for label, candidate in (
+                ("source", resolved_source),
+                ("destination", resolved_dest),
+            ):
+                if "/sessions/" in candidate and not (
+                    candidate == current_session_root
+                    or candidate.startswith(f"{current_session_root}/")
+                ):
+                    return f"mv: {label} cannot escape the current session"
+
+        try:
+            new_path = await vfs.move(resolved_source, resolved_dest, user_id=user_id)
+
+            if is_user_visible_path(new_path):
+                await self._emit_artifact_event(new_path, user_id)
+
+            return f"Moved '{args.source}' -> '{args.dest}'"
+        except FileNotFoundError:
+            return f"mv: cannot stat '{args.source}': No such file or directory"
+        except VFSAccessError as e:
+            return f"mv: permission denied: {e}"
+        except Exception as e:
+            return f"mv: {e}"
+
+    async def _emit_artifact_event(self, path: str, user_id: str) -> None:
+        """Emit artifact_data custom event for files in .user-visible/."""
+        if not is_user_visible_path(path):
+            return
+
+        vfs = await self._get_vfs()
+        filename = path.rsplit("/", 1)[-1]
+        ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+
+        size_bytes = 0
+        with contextlib.suppress(Exception):
+            info = await vfs.info(path, user_id=user_id)
+            if info and info.size_bytes is not None:
+                size_bytes = info.size_bytes
+
+        try:
+            writer = get_stream_writer()
+        except Exception:
+            return
+
+        writer(
+            {
+                "artifact_data": {
+                    "path": path,
+                    "filename": filename,
+                    "content_type": detect_artifact_content_type(ext),
+                    "size_bytes": size_bytes,
+                }
+            }
+        )
 
     async def _handle_redirect(
         self,
@@ -742,18 +985,28 @@ class VFSCommandParser:
         redirect: RedirectInfo,
         user_id: str,
         agent_name: str,
+        conversation_id: str | None = None,
     ) -> str:
         """Handle redirect to file."""
         vfs = await self._get_vfs()
 
-        resolved_path = self._resolve_path(redirect.filepath, user_id, agent_name)
+        resolved_path = self._resolve_path(
+            redirect.filepath,
+            user_id,
+            agent_name,
+            conversation_id,
+        )
 
         try:
             if redirect.mode == ">>":
                 await vfs.append(resolved_path, content, user_id=user_id)
+                if is_user_visible_path(resolved_path):
+                    await self._emit_artifact_event(resolved_path, user_id)
                 return f"Appended to {redirect.filepath}"
             else:
                 await vfs.write(resolved_path, content, user_id=user_id)
+                if is_user_visible_path(resolved_path):
+                    await self._emit_artifact_event(resolved_path, user_id)
                 return f"Wrote to {redirect.filepath}"
         except Exception as e:
             return f"Error writing to '{redirect.filepath}': {e}"

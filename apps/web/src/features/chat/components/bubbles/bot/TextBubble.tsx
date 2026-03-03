@@ -84,6 +84,7 @@ import type {
 } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type {
   TwitterSearchData,
   TwitterUserData,
@@ -97,6 +98,7 @@ import ContactListSection from "./ContactListSection";
 import DocumentSection from "./DocumentSection";
 import EmailComposeSection from "./EmailComposeSection";
 import EmailSentSection from "./EmailSentSection";
+import FileArtifactSection from "./FileArtifactSection";
 import GoogleDocsSection from "./GoogleDocsSection";
 import GoalSection from "./goals/GoalSection";
 import type { GoalAction } from "./goals/types";
@@ -281,6 +283,12 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     <CodeExecutionSection
       key={`tool-code-${index}`}
       code_data={data as CodeData}
+    />
+  ),
+  artifact_data: (data, index) => (
+    <FileArtifactSection
+      key={`tool-artifact-${index}`}
+      artifact_data={data as ArtifactData | ArtifactData[]}
     />
   ),
 

@@ -204,3 +204,10 @@ export type WorkflowCreatedData = {
   /** Whether workflow is activated */
   activated: boolean;
 };
+
+export interface ArtifactData {
+  path: string;
+  filename: string;
+  content_type: string;
+  size_bytes: number;
+}
