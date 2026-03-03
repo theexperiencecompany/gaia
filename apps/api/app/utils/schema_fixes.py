@@ -4,10 +4,9 @@ Some MCP servers return schemas with edge cases that cause conversion issues.
 This module provides utilities to normalize schemas before conversion.
 """
 
-import logging
 from typing import Any
 
-logger = logging.getLogger(__name__)
+from app.config.loggers import general_logger as logger
 
 
 def normalize_schema_refs(schema: dict[str, Any]) -> dict[str, Any]:

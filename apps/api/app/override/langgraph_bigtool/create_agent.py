@@ -1,23 +1,21 @@
 """
 LANGGRAPH BIGTOOL OVERRIDE
 
-This overrides `create_agent` from langgraph_bigtool to support dynamic model configuration.
+This overrides `create_agent` from langgraph_bigtool to support dynamic model configuration
+and LangChain AgentMiddleware integration.
 
 WHY THIS EXISTS:
 - Need to switch between OpenAI and Gemini models dynamically at runtime
 - Extract model_name and provider from config and apply to LLM before tool binding
+- Support LangChain's official AgentMiddleware system (before_model, after_model, wrap_model_call, wrap_tool_call)
 
 WHAT'S MODIFIED:
-In call_model() and acall_model():
-```python
-# Added dynamic model configuration:
-model_name = config.get("configurable").get("model_name", "gpt-4o-mini")
-provider = config.get("configurable").get("provider", None)
-_llm = llm.with_config(configurable={"model_name": model_name, "provider": provider})
-```
+In acall_model():
+- Dynamic model configuration from config.configurable
+- Middleware execution via MiddlewareExecutor
 
 IMPORT CHANGE REQUIRED:
-Replace library import intool_to build_graph.py:
+Replace library import in build_graph.py:
 ```python
 # Change this:
 from langgraph_bigtool import create_agent
@@ -28,181 +26,55 @@ from app.override.langgraph_bigtool.create_agent import create_agent
 NOTE: Type/linting errors in this file are expected since it's copied from external library.
 """
 
-import asyncio
-import inspect
-from collections.abc import Mapping
-from typing import Any, Awaitable, Callable, TypedDict, Union
+from collections.abc import Mapping, Sequence
+from typing import Any, Awaitable, Callable
 
-from typing import TYPE_CHECKING
-
+from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.messages import AIMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
-from langgraph.prebuilt import ToolNode
+from langgraph.prebuilt.tool_node import ToolCallWithContext
 from langgraph.store.base import BaseStore
 from langgraph.types import Send
 from langgraph.utils.runnable import RunnableCallable
-from langgraph_bigtool.graph import State
 from langgraph_bigtool.tools import get_default_retrieval_tool, get_store_arg
 
-if TYPE_CHECKING:
-    from langgraph.runtime import Runtime
-
+from app.agents.middleware.executor import MiddlewareExecutor
 from app.constants.general import NEW_MESSAGE_BREAKER
+from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
+from app.override.langgraph_bigtool.hooks import (
+    HookType,
+    execute_hooks,
+    sync_execute_hooks,
+)
+from app.override.langgraph_bigtool.utils import (
+    RetrieveToolsResult,
+    State,
+    dedupe_str_list,
+    dedupe_tool_bindings,
+    format_selected_tools,
+)
 
-
-class DynamicToolNode(ToolNode):
-    """
-    A ToolNode that supports dynamically added tools.
-
-    Wraps a tool_registry (DynamicToolDict) and looks up tools at execution time,
-    allowing tools added after graph compilation to be executed.
-
-    Also auto-emits structured progress messages with tool category for frontend
-    icon display.
-    """
-
-    def __init__(self, tool_registry: Mapping[str, BaseTool | Callable], **kwargs):
-        # Initialize with current tools
-        super().__init__(list(tool_registry.values()), **kwargs)
-        self._tool_registry = tool_registry
-
-    def _get_tool(self, name: str) -> BaseTool | Callable | None:
-        """Look up tool dynamically from registry."""
-        # First try the registry (includes dynamically added tools)
-        if name in self._tool_registry:
-            return self._tool_registry[name]
-        # Fall back to parent's tools_by_name
-        return self.tools_by_name.get(name)
-
-    def _func(self, input, config, runtime: "Runtime"):
-        """Override to inject dynamically added tools before execution."""
-        # Sync tools_by_name with current registry state before execution
-        for name in self._tool_registry:
-            if name not in self.tools_by_name:
-                self.tools_by_name[name] = self._tool_registry[name]  # type: ignore[assignment]
-
-        return super()._func(input, config, runtime)
-
-    async def _afunc(self, input, config, runtime: "Runtime"):
-        """Override to inject dynamically added tools before execution."""
-        # Sync tools_by_name with current registry state before execution
-        for name in self._tool_registry:
-            if name not in self.tools_by_name:
-                self.tools_by_name[name] = self._tool_registry[name]  # type: ignore[assignment]
-
-        return await super()._afunc(input, config, runtime)
-
-
-class RetrieveToolsResult(TypedDict):
-    """Result from retrieve_tools function."""
-
-    tools_to_bind: list[str]
-    response: list[str]
-
-
-def _format_selected_tools(
-    selected_tools: dict, tool_registry: dict[str, BaseTool]
-) -> tuple[list[ToolMessage], list[str]]:
-    """Format selected tools, gracefully handling tools not in registry (like subagent: prefixed).
-
-    Args:
-        selected_tools: Dict mapping tool_call_id to list of tool IDs
-        tool_registry: Dict mapping tool ID to tool instance
-
-    Returns:
-        Tuple of (tool_messages, tool_ids) where tool_messages show available tools
-        and tool_ids are the IDs to bind
-    """
-    tool_messages = []
-    tool_ids = []
-    for tool_call_id, batch in selected_tools.items():
-        tool_names = []
-        for result in batch:
-            # Handle tools that exist in registry
-            if result in tool_registry:
-                if isinstance(tool_registry[result], BaseTool):
-                    tool_names.append(tool_registry[result].name)
-                else:
-                    tool_names.append(
-                        getattr(tool_registry[result], "__name__", result)
-                    )
-            else:
-                # Handle tools not in registry (e.g., subagent: prefixed)
-                tool_names.append(result)
-
-        tool_messages.append(
-            ToolMessage(f"Available tools: {tool_names}", tool_call_id=tool_call_id)
-        )
-        tool_ids.extend(batch)
-
-    return tool_messages, tool_ids
-
-
-HookType = Union[
-    Callable[[State, RunnableConfig, BaseStore], State],
-    Callable[[State, RunnableConfig, BaseStore], Awaitable[State]],
-]
-
-
-async def _execute_hooks(
-    hooks: list[HookType] | None,
-    state: State,
-    config: RunnableConfig,
-    store: BaseStore,
-) -> State:
-    """Execute post-model hooks conditionally based on agent type."""
-    if not hooks:
-        return state
-
-    for hook in hooks:
-        result = hook(state, config, store)
-        if inspect.iscoroutine(result):
-            state = await result  # type: ignore[misc]
-        else:
-            state = result  # type: ignore[assignment]
-    return state
-
-
-def _sync_execute_hooks(
-    hooks: list[HookType] | None,
-    state: State,
-    config: RunnableConfig,
-    store: BaseStore,
-) -> State:
-    """Execute post-model hooks conditionally based on agent type in sync context."""
-    if not hooks:
-        return state
-
-    async def _run_with_hooks():
-        return await _execute_hooks(hooks, state, config, store)
-
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    try:
-        state = loop.run_until_complete(_run_with_hooks())
-    finally:
-        loop.close()
-
-    return state
+RetrieveToolsResponse = RetrieveToolsResult | list[str]
 
 
 def create_agent(
     llm: LanguageModelLike,
-    tool_registry: Mapping[str, BaseTool | Callable],
+    tool_registry: Mapping[str, BaseTool],
     *,
     limit: int = 2,
     filter: dict[str, Any] | None = None,
     namespace_prefix: tuple[str, ...] = ("tools",),
-    retrieve_tools_function: Callable[..., RetrieveToolsResult] | None = None,
-    retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResult]]
+    retrieve_tools_function: Callable[..., RetrieveToolsResponse] | None = None,
+    retrieve_tools_coroutine: Callable[..., Awaitable[RetrieveToolsResponse]]
     | None = None,
     initial_tool_ids: list[str] | None = None,
     disable_retrieve_tools: bool = False,
     context_schema=None,
     agent_name: str = "main_agent",
+    middleware: Sequence["AgentMiddleware"] | None = None,
     pre_model_hooks: list[HookType] | None = None,
     end_graph_hooks: list[HookType] | None = None,
 ) -> StateGraph:
@@ -214,7 +86,7 @@ def create_agent(
 
     Args:
         llm: Language model to use for the agent.
-        tool_registry: a dict mapping string IDs to tools or callables.
+        tool_registry: a dict mapping string IDs to BaseTool instances.
         limit: Maximum number of tools to retrieve with each tool selection step.
         filter: Optional key-value pairs with which to filter results.
         namespace_prefix: Hierarchical path prefix to search within the Store. Defaults
@@ -231,13 +103,28 @@ def create_agent(
         disable_retrieve_tools: If True, do not bind or use the retrieve_tools mechanism at all.
             This disables tool retrieval and select_tools path; only initially bound tools and
             any already-selected tools will be available.
-        pre_model_hooks: Optional list of callables to process state after model calls.
+        middleware: Optional list of LangChain AgentMiddleware instances. These provide hooks:
+            - before_model: Called before each LLM invocation
+            - after_model: Called after each LLM response
+            - wrap_model_call: Wraps the model invocation
+            - wrap_tool_call: Wraps each tool execution (replaces post_tool_hooks)
+        pre_model_hooks: Optional list of callables to process state before model calls.
             Hooks are executed in sequence as provided. Each hook has signature:
             (state: State, config: RunnableConfig, store: BaseStore) -> State.
         end_graph_hooks: Optional list of callables to handle final processing before graph ends.
             Hooks are executed in sequence as provided. Each hook has signature:
             (state: State, config: RunnableConfig, store: BaseStore) -> State.
     """
+    middleware_executor = MiddlewareExecutor(list(middleware)) if middleware else None
+
+    # Extract tools from middleware (e.g., SubagentMiddleware)
+    middleware_tools: list[BaseTool] = []
+    for mw in middleware or []:
+        mw_tools = getattr(mw, "tools", [])
+        for tool in mw_tools:
+            if isinstance(tool, BaseTool):
+                middleware_tools.append(tool)
+
     retrieve_tools: StructuredTool | None = None
     store_arg = None
     if not disable_retrieve_tools:
@@ -250,28 +137,26 @@ def create_agent(
         )
         store_arg = get_store_arg(retrieve_tools)
 
-    def execute_end_graph_hooks(
-        state: State, config: RunnableConfig, *, store: BaseStore
-    ) -> State:
-        return _sync_execute_hooks(end_graph_hooks, state, config, store)
-
-    async def aexecute_end_graph_hooks(
-        state: State, config: RunnableConfig, *, store: BaseStore
-    ) -> State:
-        return await _execute_hooks(end_graph_hooks, state, config, store)
-
     def call_model(state: State, config: RunnableConfig, *, store: BaseStore) -> State:
-        _sync_execute_hooks(end_graph_hooks, state, config, store)
+        state = sync_execute_hooks(pre_model_hooks, state, config, store)
+
+        if middleware_executor:
+            raise RuntimeError(
+                "Agent middleware is configured but sync execution was requested. "
+                "Use the async graph execution path (ainvoke/astream)."
+            )
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
         initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        tools_to_bind: list[Any] = []
+        tools_to_bind: list[BaseTool] = []
         if retrieve_tools is not None:
             tools_to_bind.append(retrieve_tools)
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
+        tools_to_bind.extend(middleware_tools)
+        tools_to_bind = dedupe_tool_bindings(tools_to_bind)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
         response = llm_with_tools.invoke(state["messages"])
 
@@ -286,24 +171,40 @@ def create_agent(
     async def acall_model(
         state: State, config: RunnableConfig, *, store: BaseStore
     ) -> State:
-        state = await _execute_hooks(
-            pre_model_hooks,
-            state,
-            config,
-            store,
-        )
+        """Async model invocation with middleware support."""
+        state = await execute_hooks(pre_model_hooks, state, config, store)
+
+        if middleware_executor:
+            state = await middleware_executor.execute_before_model(state, config, store)
 
         model_configurations = config.get("configurable", {})
         _llm = llm.with_config(configurable=model_configurations)
+
         selected_tools = [tool_registry[id] for id in state["selected_tool_ids"]]
         initial_tools = [tool_registry[id] for id in (initial_tool_ids or [])]
-        tools_to_bind: list[Any] = []
+        tools_to_bind: list[BaseTool] = []
         if retrieve_tools is not None:
             tools_to_bind.append(retrieve_tools)
         tools_to_bind.extend(selected_tools)
         tools_to_bind.extend(initial_tools)
+        tools_to_bind.extend(middleware_tools)
+        tools_to_bind = dedupe_tool_bindings(tools_to_bind)
         llm_with_tools = _llm.bind_tools(tools_to_bind)  # type: ignore[attr-defined]
-        response: AIMessage = await llm_with_tools.ainvoke(state["messages"])
+
+        if middleware_executor and middleware_executor.has_wrap_model_call():
+            middleware_tools_for_request: list[BaseTool | dict[str, Any]] = [
+                tool for tool in tools_to_bind
+            ]
+            response = await middleware_executor.wrap_model_invocation(
+                model=_llm,  # type: ignore[arg-type]
+                state=state,
+                config=config,
+                store=store,
+                tools=middleware_tools_for_request,
+                invoke_fn=llm_with_tools.ainvoke,
+            )
+        else:
+            response = await llm_with_tools.ainvoke(state["messages"])
 
         if not response.tool_calls and not response.content:
             response.content = "Empty response from model."
@@ -311,10 +212,25 @@ def create_agent(
         if isinstance(response.content, str) and agent_name == "comms_agent":
             response.content = response.content + NEW_MESSAGE_BREAKER
 
-        return {"messages": [response]}  # type: ignore[return-value]
+        # Build updated state with response for after_model hooks
+        updated_state: State = dict(state)  # type: ignore[assignment]
+        updated_state["messages"] = list(state.get("messages", [])) + [response]
 
-    # Use DynamicToolNode to support tools added after graph compilation
-    tool_node = DynamicToolNode(tool_registry)  # type: ignore[arg-type]
+        # Execute middleware after_model hooks
+        if middleware_executor:
+            updated_state = await middleware_executor.execute_after_model(
+                updated_state, config, store
+            )
+
+        # Return partial state update: new message + any keys added by
+        # after_model (e.g. todos). Messages use an append reducer, so only
+        # return the new response — not the full list.
+        result: dict[str, object] = {"messages": [response]}
+        base_keys = {"messages", "selected_tool_ids"}
+        for key, value in updated_state.items():
+            if key not in base_keys:
+                result[key] = value
+        return result  # type: ignore[return-value]
 
     def select_tools(
         tool_calls: list[dict], config: RunnableConfig, *, store: BaseStore
@@ -330,8 +246,6 @@ def create_agent(
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
-            # Pass config for user_id extraction and namespace filtering
-            # Explicitly pass user_id in kwargs if available in config
             if config:
                 user_id = config.get("configurable", {}).get("user_id")
                 if user_id:
@@ -339,13 +253,24 @@ def create_agent(
 
             result = retrieve_tools.invoke(kwargs, config=config)
 
-            # Handle both RetrieveToolsResult dict and plain list (from default langgraph_bigtool)
+            # Handle both RetrieveToolsResult dict and plain list
             if isinstance(result, dict):
-                tools_to_bind = result.get("tools_to_bind", [])
-                response = result.get("response", [])
+                tools_to_bind = [
+                    tool_id
+                    for tool_id in result.get("tools_to_bind", [])
+                    if isinstance(tool_id, str)
+                ]
+                response = [
+                    tool_id
+                    for tool_id in result.get("response", [])
+                    if isinstance(tool_id, str)
+                ]
             else:
-                # Default langgraph_bigtool returns list[str]
-                tools_to_bind = result if isinstance(result, list) else []
+                tools_to_bind = [
+                    tool_id
+                    for tool_id in (result if isinstance(result, list) else [])
+                    if isinstance(tool_id, str)
+                ]
                 response = tools_to_bind
 
             # Filter out subagent: prefixed tools from binding
@@ -354,11 +279,11 @@ def create_agent(
                 for tool_id in tools_to_bind
                 if not tool_id.startswith("subagent:")
             ]
-            selected_tools[tool_call["id"]] = filtered_bind
-            response_tools[tool_call["id"]] = response  # Keep all tools in response
+            selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
+            response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, tool_ids = _format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
-        _, bind_ids = _format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
+        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
+        _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
 
     async def aselect_tools(
@@ -375,8 +300,6 @@ def create_agent(
             kwargs = {**tool_call["args"]}
             if store_arg:
                 kwargs[store_arg] = store
-            # Pass config for user_id extraction and namespace filtering
-            # Explicitly pass user_id in kwargs if available in config
             if config:
                 user_id = config.get("configurable", {}).get("user_id")
                 if user_id:
@@ -384,13 +307,24 @@ def create_agent(
 
             result = await retrieve_tools.ainvoke(kwargs, config=config)
 
-            # Handle both RetrieveToolsResult dict and plain list (from default langgraph_bigtool)
+            # Handle both RetrieveToolsResult dict and plain list
             if isinstance(result, dict):
-                tools_to_bind = result.get("tools_to_bind", [])
-                response = result.get("response", [])
+                tools_to_bind = [
+                    tool_id
+                    for tool_id in result.get("tools_to_bind", [])
+                    if isinstance(tool_id, str)
+                ]
+                response = [
+                    tool_id
+                    for tool_id in result.get("response", [])
+                    if isinstance(tool_id, str)
+                ]
             else:
-                # Default langgraph_bigtool returns list[str]
-                tools_to_bind = result if isinstance(result, list) else []
+                tools_to_bind = [
+                    tool_id
+                    for tool_id in (result if isinstance(result, list) else [])
+                    if isinstance(tool_id, str)
+                ]
                 response = tools_to_bind
 
             # Filter out subagent: prefixed tools from binding
@@ -399,12 +333,22 @@ def create_agent(
                 for tool_id in tools_to_bind
                 if not tool_id.startswith("subagent:")
             ]
-            selected_tools[tool_call["id"]] = filtered_bind
-            response_tools[tool_call["id"]] = response  # Keep all tools in response
+            selected_tools[tool_call["id"]] = dedupe_str_list(filtered_bind)
+            response_tools[tool_call["id"]] = dedupe_str_list(response)
 
-        tool_messages, tool_ids = _format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
-        _, bind_ids = _format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
+        tool_messages, _ = format_selected_tools(response_tools, tool_registry)  # type: ignore[arg-type]
+        _, bind_ids = format_selected_tools(selected_tools, tool_registry)  # type: ignore[arg-type]
         return {"messages": tool_messages, "selected_tool_ids": bind_ids}  # type: ignore[return-value]
+
+    def execute_end_graph_hooks_node(
+        state: State, config: RunnableConfig, *, store: BaseStore
+    ) -> State:
+        return sync_execute_hooks(end_graph_hooks, state, config, store)
+
+    async def aexecute_end_graph_hooks_node(
+        state: State, config: RunnableConfig, *, store: BaseStore
+    ) -> State:
+        return await execute_hooks(end_graph_hooks, state, config, store)
 
     def should_continue(state: State, *, store: BaseStore):
         messages = state["messages"]
@@ -417,8 +361,19 @@ def create_agent(
                 if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                     destinations.append(Send("select_tools", [call]))
                 else:
-                    # Tool args injection handled internally by ToolNode during execution
-                    destinations.append(Send("tools", [call]))
+                    # Wrap each tool call with ToolCallWithContext so that
+                    # ToolNode receives the full state dict (including
+                    # "todos") for InjectedState injection.
+                    destinations.append(
+                        Send(
+                            "tools",
+                            ToolCallWithContext(
+                                __type="tool_call_with_context",
+                                tool_call=call,
+                                state=state,
+                            ),
+                        )
+                    )
 
             return destinations
 
@@ -437,11 +392,16 @@ def create_agent(
                 "provided."
             )
 
-    builder.set_entry_point("agent")
+    tool_node = DynamicToolNode(
+        tool_registry,  # type: ignore[arg-type]
+        middleware_executor=middleware_executor,
+        middleware_tools=middleware_tools,
+    )
 
+    builder.set_entry_point("agent")
     builder.add_node("agent", RunnableCallable(call_model, acall_model))
     if not disable_retrieve_tools:
-        builder.add_node("select_tools", select_tools_node)  # type: ignore[call-arg]
+        builder.add_node("select_tools", select_tools_node)  # type: ignore[possibly-undefined]
     builder.add_node("tools", tool_node)
 
     path_map = ["tools", END]
@@ -450,7 +410,9 @@ def create_agent(
     if end_graph_hooks:
         builder.add_node(
             "end_graph_hooks",
-            RunnableCallable(execute_end_graph_hooks, aexecute_end_graph_hooks),
+            RunnableCallable(
+                execute_end_graph_hooks_node, aexecute_end_graph_hooks_node
+            ),
         )
         builder.add_edge("end_graph_hooks", END)
         path_map.append("end_graph_hooks")

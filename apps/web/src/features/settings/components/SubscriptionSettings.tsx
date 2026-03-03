@@ -4,7 +4,6 @@ import { Button } from "@heroui/button";
 import { Chip } from "@heroui/chip";
 import { Skeleton } from "@heroui/skeleton";
 import { Tooltip } from "@heroui/tooltip";
-import { useRouter } from "next/navigation";
 import { useUserSubscriptionStatus } from "@/features/pricing/hooks/usePricing";
 import {
   convertToUSDCents,
@@ -15,6 +14,7 @@ import {
   SettingsRow,
   SettingsSection,
 } from "@/features/settings/components/ui";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 const formatDate = (dateString?: string): string => {
   if (!dateString) return "N/A";
@@ -75,9 +75,7 @@ function getStatusText(status: string): string {
 
 export function SubscriptionSettings() {
   const { data: status, isLoading } = useUserSubscriptionStatus();
-  const router = useRouter();
-
-  const handleUpgrade = () => router.push("/pricing");
+  const handleUpgrade = usePricingModalStore((s) => s.openModal);
 
   if (isLoading) {
     return (

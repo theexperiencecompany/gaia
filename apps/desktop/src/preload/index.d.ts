@@ -16,6 +16,7 @@ declare global {
       onAuthCallback: (
         callback: (data: AuthCallbackData) => void,
       ) => () => void;
+      onAuthRedirecting: (callback: () => void) => () => void;
     };
   }
 }

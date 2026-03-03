@@ -5,7 +5,6 @@ import { Chip } from "@heroui/chip";
 import { Progress } from "@heroui/progress";
 import { Tab, Tabs } from "@heroui/tabs";
 import { CalendarIcon, ChartIcon, ChartIncreaseIcon } from "@icons";
-import Link from "next/link";
 import { useState } from "react";
 import Spinner from "@/components/ui/spinner";
 import {
@@ -13,11 +12,13 @@ import {
   SettingsRow,
   SettingsSection,
 } from "@/features/settings/components/ui";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 import { useUsageSummary } from "../hooks/useUsage";
 
 export default function UsageSettings() {
   const [selectedPeriod, setSelectedPeriod] = useState("day");
+  const openPricingModal = usePricingModalStore((s) => s.openModal);
   const { data: summary, isLoading: summaryLoading } = useUsageSummary();
   const periodLabel =
     selectedPeriod === "day"
@@ -59,11 +60,14 @@ export default function UsageSettings() {
               support, and private Discord channels.
             </p>
             <div className="flex w-full justify-end">
-              <Link href="/pricing">
-                <Button color="primary" className="font-medium" size="sm">
-                  Upgrade Now
-                </Button>
-              </Link>
+              <Button
+                color="primary"
+                className="font-medium"
+                size="sm"
+                onPress={openPricingModal}
+              >
+                Upgrade Now
+              </Button>
             </div>
           </div>
         </SettingsSection>

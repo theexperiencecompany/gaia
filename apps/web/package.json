@@ -120,7 +120,7 @@
     "@types/three": "^0.180.0",
     "@types/tinycolor2": "^1.4.6",
     "@use-gesture/react": "^10.3.1",
-    "@vercel/analytics": "^1.5.0",
+    "@vercel/analytics": "^1.6.1",
     "@vercel/speed-insights": "^1.2.0",
     "@xyflow/react": "^12.8.4",
     "animated-number-react": "^0.1.2",

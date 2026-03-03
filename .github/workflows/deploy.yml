@@ -73,9 +73,9 @@ jobs:
               cd /home/aryan/gaia
               COMPOSE_FILE='${{ env.COMPOSE_FILE }}'
               COMPOSE_PROFILE='${{ env.COMPOSE_PROFILE }}'
-              # Intentionally deploy full production stack: core services (always
-              # active) + bots profile.
+              # compose_cmd includes the bots profile; core_cmd targets only core services.
               compose_cmd() { docker compose -f \"\$COMPOSE_FILE\" --profile \"\$COMPOSE_PROFILE\" \"\$@\"; }
+              core_cmd()    { docker compose -f \"\$COMPOSE_FILE\" \"\$@\"; }
 
               git fetch origin master
               git checkout master
@@ -84,15 +84,47 @@ jobs:
               # Authenticate to GHCR on the VM before pulling images.
               echo '${{ secrets.GITHUB_TOKEN }}' | docker login ghcr.io -u '${{ github.actor }}' --password-stdin
 
-              # Pull updated images; ignore failures for bot images not yet pushed to GHCR.
-              compose_cmd pull --ignore-pull-failures
+              # Phase 1 — Pull core service images (must succeed).
+              core_cmd pull
 
-              # Recreate only what changed while keeping the stack online.
-              compose_cmd up -d --remove-orphans
+              # Phase 2 — Pull each bot image individually; failures are
+              # non-fatal since images are only pushed when bot code changes.
+              # Docker Compose v2 --ignore-pull-failures still exits non-zero
+              # for missing registry refs, so we pull bots one-by-one instead.
+              BOT_SERVICES='discord-bot slack-bot telegram-bot'
+              for bot in \$BOT_SERVICES; do
+                compose_cmd pull \"\$bot\" || echo \"⚠️  \$bot pull failed (see error above)\"
+              done
+
+              # Phase 3 — Start core services.
+              # Do NOT use --remove-orphans here: core_cmd excludes the bots
+              # profile, so compose would treat running bot containers as
+              # orphans and remove them.
+              core_cmd up -d
+
+              # Phase 4 — Start bots whose images are available locally.
+              # Failures are non-fatal so a broken bot cannot block API deploys.
+              for bot in \$BOT_SERVICES; do
+                img=\"ghcr.io/theexperiencecompany/gaia-bot-\${bot%-bot}:latest\"
+                if docker image inspect \"\$img\" &>/dev/null; then
+                  compose_cmd up -d \"\$bot\" || echo \"⚠️  \$bot failed to start (see error above)\"
+                else
+                  echo \"ℹ️  \$bot skipped — no local image\"
+                fi
+              done
+
+              # Best-effort orphan cleanup: uses full scope (with bots profile)
+              # so profiled services are not mistakenly removed. --no-recreate
+              # avoids touching already-running containers; errors are expected
+              # if some bot images are missing.
+              compose_cmd up -d --no-recreate --remove-orphans 2>/dev/null || true
+
               docker image prune -f
             "
 
       # Validate that every expected compose service is running and healthy.
+      # Core services are mandatory; bot services are only checked when their
+      # image exists locally (images are only pushed when bot code changes).
       - name: Verify deployment
         env:
           GCP_ZONE: ${{ secrets.GCP_ZONE }}
@@ -105,42 +137,56 @@ jobs:
               COMPOSE_FILE='${{ env.COMPOSE_FILE }}'
               COMPOSE_PROFILE='${{ env.COMPOSE_PROFILE }}'
               compose_cmd() { docker compose -f \"\$COMPOSE_FILE\" --profile \"\$COMPOSE_PROFILE\" \"\$@\"; }
+              core_cmd()    { docker compose -f \"\$COMPOSE_FILE\" \"\$@\"; }
 
-              expected_services=\$(compose_cmd config --services)
-              running_services=\$(compose_cmd ps --status running --services)
+              running=\$(compose_cmd ps --status running --services)
 
-              echo 'Expected services:'
-              echo \"\$expected_services\"
-              echo
-              echo 'Running services:'
-              echo \"\$running_services\"
-              echo
-
-              for svc in \$expected_services; do
-                if ! echo \"\$running_services\" | grep -qx \"\$svc\"; then
-                  echo \"Service not running: \$svc\"
-                  exit 1
-                fi
-
+              verify_svc() {
+                local svc=\$1
                 cid=\$(compose_cmd ps -q \"\$svc\")
                 if [ -z \"\$cid\" ]; then
-                  echo \"Missing container id for service: \$svc\"
-                  exit 1
+                  echo \"FAIL: missing container id for: \$svc\"
+                  return 1
                 fi
-
                 status=\$(docker inspect -f '{{.State.Status}}' \"\$cid\")
                 health=\$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' \"\$cid\")
-                echo \"\$svc => status=\$status health=\$health\"
-
+                echo \"  \$svc => status=\$status health=\$health\"
                 if [ \"\$status\" != \"running\" ]; then
-                  echo \"Service not in running state: \$svc\"
-                  exit 1
+                  echo \"FAIL: not running: \$svc\"
+                  return 1
                 fi
-
                 if [ \"\$health\" != \"none\" ] && [ \"\$health\" != \"healthy\" ]; then
-                  echo \"Service health check failed: \$svc (\$health)\"
+                  echo \"FAIL: unhealthy: \$svc (\$health)\"
+                  return 1
+                fi
+              }
+
+              # --- Core services (mandatory) ---
+              echo 'Core services:'
+              core_expected=\$(core_cmd config --services)
+              for svc in \$core_expected; do
+                if ! echo \"\$running\" | grep -qx \"\$svc\"; then
+                  echo \"FAIL: core service not running: \$svc\"
                   exit 1
                 fi
+                verify_svc \"\$svc\" || exit 1
+              done
+
+              # --- Bot services (advisory — never fail the deploy) ---
+              echo ''
+              echo 'Bot services:'
+              BOT_SERVICES='discord-bot slack-bot telegram-bot'
+              for bot in \$BOT_SERVICES; do
+                img=\"ghcr.io/theexperiencecompany/gaia-bot-\${bot%-bot}:latest\"
+                if ! docker image inspect \"\$img\" &>/dev/null; then
+                  echo \"  \$bot => skipped (no local image)\"
+                  continue
+                fi
+                if ! echo \"\$running\" | grep -qx \"\$bot\"; then
+                  echo \"  ⚠️  \$bot => not running (image exists locally)\"
+                  continue
+                fi
+                verify_svc \"\$bot\" || echo \"  ⚠️  \$bot => unhealthy\"
               done
             ")
 

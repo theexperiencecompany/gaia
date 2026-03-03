@@ -19,7 +19,7 @@ from app.agents.core.subagents.base_subagent import SubAgentFactory
 from app.agents.core.subagents.subagent_helpers import create_agent_context_message
 from app.agents.llm.client import init_llm
 from app.agents.prompts.subagent_prompts import WORKFLOW_AGENT_SYSTEM_PROMPT
-from app.agents.tools.workflow_tool import SUBAGENT_WORKFLOW_TOOLS
+from app.agents.tools.workflow_shared_tools import SUBAGENT_WORKFLOW_TOOLS
 from app.config.loggers import general_logger as logger
 from app.helpers.agent_helpers import build_agent_config
 from langchain_core.messages import (

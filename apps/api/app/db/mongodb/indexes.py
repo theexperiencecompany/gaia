@@ -32,11 +32,13 @@ from app.db.mongodb.collections import (
     processed_webhooks_collection,
     projects_collection,
     reminders_collection,
+    skills_collection,
     subscriptions_collection,
     todos_collection,
     usage_snapshots_collection,
     user_integrations_collection,
     users_collection,
+    vfs_nodes_collection,
     workflow_executions_collection,
     workflows_collection,
 )
@@ -78,6 +80,8 @@ async def create_all_indexes():
             create_integration_indexes(),
             create_user_integration_indexes(),
             create_device_token_indexes(),
+            create_vfs_indexes(),
+            create_installed_skills_indexes(),
             create_workflow_execution_indexes(),
             create_bot_session_indexes(),
         ]
@@ -106,6 +110,8 @@ async def create_all_indexes():
             "integrations",
             "user_integrations",
             "device_tokens",
+            "vfs_nodes",
+            "skills",
             "workflow_executions",
             "bot_sessions",
         ]
@@ -506,9 +512,7 @@ async def create_workflow_indexes():
             workflows_collection.create_index(
                 [("user_id", 1), ("system_workflow_key", 1)],
                 unique=True,
-                partialFilterExpression={
-                    "system_workflow_key": {"$exists": True, "$ne": None}
-                },
+                partialFilterExpression={"system_workflow_key": {"$type": 2}},
             ),
         )
 
@@ -812,6 +816,78 @@ async def create_device_token_indexes():
         raise
 
 
+async def create_vfs_indexes() -> None:
+    """
+    Create indexes for vfs_nodes collection (Virtual Filesystem).
+
+    Query patterns:
+    - Primary path lookups (unique per user)
+    - Directory listing (parent_path queries)
+    - Session-based queries (conversation_id in metadata)
+    - Agent-specific queries (agent_name in metadata)
+    - Cleanup/retention queries (created_at)
+    """
+    try:
+        await asyncio.gather(
+            # Primary unique index: user + path combination
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("path", 1)],
+                unique=True,
+                name="user_path_unique",
+            ),
+            # Directory listing: find all children of a parent path
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("parent_path", 1)],
+                name="user_parent_path",
+            ),
+            # Session-based queries: find files in a conversation
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("metadata.conversation_id", 1)],
+                sparse=True,
+                name="user_conversation",
+            ),
+            # Agent-based queries: find files created by a specific agent
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("metadata.agent_name", 1)],
+                sparse=True,
+                name="user_agent",
+            ),
+            # Tool-based queries: find outputs from a specific tool
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("metadata.tool_name", 1)],
+                sparse=True,
+                name="user_tool",
+            ),
+            # Retention/cleanup queries: order by creation time
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("created_at", 1)],
+                name="user_created",
+            ),
+            # Recent access queries
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("accessed_at", -1)],
+                name="user_accessed",
+            ),
+            # Node type filtering (folders vs files)
+            _create_index_safe(
+                vfs_nodes_collection,
+                [("user_id", 1), ("node_type", 1), ("parent_path", 1)],
+                name="user_type_parent",
+            ),
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating VFS indexes: {e!s}")
+        raise
+
+
 async def create_bot_session_indexes():
     """Create indexes for bot_sessions collection for optimal query performance and automatic cleanup."""
     try:
@@ -833,6 +909,52 @@ async def create_bot_session_indexes():
 
     except Exception as e:
         logger.error(f"Error creating bot session indexes: {str(e)}")
+        raise
+
+
+async def create_installed_skills_indexes() -> None:
+    """
+    Create indexes for skills collection (flat schema).
+
+    Query patterns:
+    - Duplicate detection: user_id + name + target (unique)
+    - Agent skills: enabled + target + $or[user_id, "system"] (get_skills_for_agent)
+    - User listing: user_id + installed_at (list_skills)
+    """
+    try:
+        await asyncio.gather(
+            # Unique: one skill per name per target per user
+            _create_index_safe(
+                skills_collection,
+                [
+                    ("user_id", 1),
+                    ("name", 1),
+                    ("target", 1),
+                ],
+                unique=True,
+                name="user_skill_name_target_unique",
+            ),
+            # Skills for an agent: target + enabled + user_id
+            # Supports the unified $or query in get_skills_for_agent
+            _create_index_safe(
+                skills_collection,
+                [
+                    ("target", 1),
+                    ("enabled", 1),
+                    ("user_id", 1),
+                ],
+                name="target_enabled_user",
+            ),
+            # List all user skills sorted by install date
+            _create_index_safe(
+                skills_collection,
+                [("user_id", 1), ("installed_at", -1)],
+                name="user_installed_at",
+            ),
+        )
+
+    except Exception as e:
+        logger.error(f"Error creating installed_skills indexes: {e!s}")
         raise
 
 
@@ -859,6 +981,8 @@ async def get_index_status() -> Dict[str, List[str]]:
             "notifications": notifications_collection,
             "reminders": reminders_collection,
             "workflows": workflows_collection,
+            "vfs_nodes": vfs_nodes_collection,
+            "skills": skills_collection,
         }
 
         # Get all collection indexes concurrently

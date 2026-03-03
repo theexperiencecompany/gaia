@@ -41,11 +41,13 @@ export default function LandingLayout({ children }: { children: ReactNode }) {
           config={ORIGINAL_BLUR_CONFIG}
         />
 
-        {!isDesktopLogin && <Navbar />}
+        <LazyMotionProvider>
+          {!isDesktopLogin && <Navbar />}
 
-        <main id="main-content" className="min-h-screen">
-          <LazyMotionProvider>{children}</LazyMotionProvider>
-        </main>
+          <main id="main-content" className="min-h-screen">
+            {children}
+          </main>
+        </LazyMotionProvider>
 
         {!isDesktopLogin && <Footer />}
       </div>

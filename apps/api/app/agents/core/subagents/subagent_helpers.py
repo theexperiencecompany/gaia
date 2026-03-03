@@ -10,11 +10,10 @@ import re
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.agents.memory.skill_learning.service import get_skill_learning_service
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
+from app.agents.skills.discovery import get_available_skills_text
 from app.config.loggers import common_logger as logger
 from app.config.oauth_config import get_integration_by_id
-from app.config.settings import settings
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
 from langchain_core.messages import SystemMessage
@@ -210,24 +209,19 @@ async def create_agent_context_message(
         return ""
 
     async def _fetch_skills() -> str:
-        if not (subagent_id and query and settings.SKILL_LEARNING_ENABLED):
+        if not user_id:
             return ""
         try:
-            skill_service = get_skill_learning_service()
-            result = await skill_service.search_skills(
-                query=query,
-                agent_id=subagent_id,
-                limit=3,
+            agent_for_skills = subagent_id or "executor"
+            skills_text = await get_available_skills_text(
+                user_id=user_id,
+                agent_name=agent_for_skills,
             )
-            if result.skills:
-                logger.info(
-                    f"Added {len(result.skills)} skills to {subagent_id} context"
-                )
-                return skill_service.format_skills_for_prompt(
-                    result.skills, subagent_id
-                )
+            if skills_text:
+                logger.info(f"Injected installable skills for {agent_for_skills}")
+                return f"\n\n{skills_text}"
         except Exception as e:
-            logger.warning(f"Error retrieving skills for {subagent_id}: {e}")
+            logger.warning(f"Error injecting installable skills: {e}")
         return ""
 
     memories_section, skills_section = await asyncio.gather(

@@ -10,11 +10,12 @@ This module defines Pydantic models for:
 from datetime import datetime, timezone
 from typing import Dict, List, Literal, Optional, TypedDict, cast
 
-from app.models.mcp_config import MCPConfig
-from app.models.oauth_models import OAuthIntegration
-from app.helpers.integration_helpers import generate_integration_slug
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pydantic.alias_generators import to_camel
+
+from app.helpers.integration_helpers import generate_integration_slug
+from app.models.mcp_config import MCPConfig
+from app.models.oauth_models import OAuthIntegration
 
 # Type alias for auth_type
 AuthType = Literal["none", "oauth", "bearer"]
@@ -99,8 +100,7 @@ class Integration(BaseModel):
         """Coerce None to 0 for clone_count."""
         return v if v is not None else 0
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
 
 class UserIntegration(BaseModel):
@@ -122,8 +122,7 @@ class UserIntegration(BaseModel):
         None, description="When OAuth/auth was completed"
     )
 
-    class Config:
-        json_encoders = {datetime: lambda v: v.isoformat()}
+    model_config = ConfigDict(json_encoders={datetime: lambda v: v.isoformat()})
 
 
 class AddUserIntegrationRequest(BaseModel):

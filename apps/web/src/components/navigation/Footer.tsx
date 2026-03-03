@@ -71,7 +71,15 @@ export default function Footer() {
   return (
     <>
       <JsonLd data={navigationSchema} />
-      <div className="relative z-[1] m-0! flex flex-col items-center gap-6 overflow-hidden p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
+      <div className="relative z-1 m-0! flex flex-col items-center gap-6 p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5 min-h-[50vh] ">
+        <div className="pointer-events-none absolute inset-x-0 -top-20 z-[-1] h-[30vh] bg-linear-to-t from-background to-transparent" />
+
+        <Image
+          src="/images/wallpapers/bands_Gradient_black.png"
+          alt=""
+          fill={true}
+          className="mt-10 z-[-1]"
+        />
         <div className="flex h-fit w-screen items-center justify-center px-2 sm:px-4">
           <div className="grid w-full max-w-5xl grid-cols-5 gap-6 sm:gap-8">
             <div className="relative -top-1 col-span-1 flex h-full w-fit flex-col gap-1 text-foreground-600 sm:-top-2">
@@ -148,7 +156,7 @@ export default function Footer() {
             ))}
           </div>
         </div>
-        <div className="mx-auto mt-6 flex w-full max-w-5xl flex-col items-center justify-between gap-4 border-t-1 border-zinc-800 px-2 py-6 pb-3 text-xs font-light text-zinc-600 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10">
+        <div className="mx-auto mt-6 flex w-full max-w-5xl flex-col items-center justify-between gap-4 px-2 py-6 pb-3 text-xs font-light text-zinc-300 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10 mb-5">
           <div className="order-2 flex items-center gap-3 sm:order-1">
             {connect.map((link) => (
               <Link
@@ -156,7 +164,7 @@ export default function Footer() {
                 href={link.href}
                 target={link.external ? "_blank" : "_self"}
                 rel={link.external ? "noopener noreferrer" : undefined}
-                className="cursor-pointer text-foreground-300 transition-colors hover:text-foreground"
+                className="cursor-pointer text-zinc-300 transition-colors hover:text-foreground"
                 title={link.description}
               >
                 {React.isValidElement(link.icon)
@@ -181,7 +189,7 @@ export default function Footer() {
             >
               Terms of Use
             </Link>
-            <div className="h-4 border-l border-zinc-800" />
+            <div className="h-4 border-l border-zinc-400" />
 
             <Link
               href={"/privacy"}

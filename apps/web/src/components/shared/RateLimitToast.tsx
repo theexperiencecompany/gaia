@@ -3,6 +3,7 @@
 import { Alert01Icon, CheckmarkBadge01Icon, Timer02Icon } from "@icons";
 import type { ReactNode } from "react";
 import { toast } from "@/lib/toast";
+import { usePricingModalStore } from "@/stores/pricingModalStore";
 
 interface ToastConfig {
   duration: number;
@@ -79,9 +80,7 @@ export const showRateLimitToast = ({
       label: isUpgradeRequired
         ? `Upgrade to ${planRequired?.toUpperCase()}`
         : "Upgrade Now",
-      onClick: () => {
-        window.location.href = "/pricing";
-      },
+      onClick: () => usePricingModalStore.getState().openModal(),
     };
   }
 

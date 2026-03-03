@@ -22,6 +22,7 @@ from typing import (
 )
 
 from app.agents.tools.core.registry import get_tool_registry
+from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
@@ -33,7 +34,104 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.prebuilt import InjectedStore
 from langgraph.store.base import BaseStore, SearchItem
 
-WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name]
+WEBPAGE_TOOLS = [web_search_tool.name, fetch_webpages.name, deep_research.name]
+
+# ---------------------------------------------------------------------------
+# retrieve_tools docstring (doubles as LLM-facing tool description)
+# ---------------------------------------------------------------------------
+# The base docstring covers discovery and binding modes. The subagent section
+# is appended only when include_subagents=True so that provider/spawned
+# subagents never see delegation guidance they can't act on.
+
+_RETRIEVE_TOOLS_BASE_DOC = """\
+Discover available tools or load specific tools by exact name.
+
+This is your primary interface to the tool ecosystem. It supports TWO modes:
+
+—DISCOVERY MODE (query)
+Use natural language to semantically search for relevant tools.
+
+IMPORTANT BEHAVIOR:
+- Discovery results are LIMITED and NOT exhaustive
+- Not all relevant tools may be returned in a single query
+- Absence of a tool in results does NOT mean it does not exist
+- You are expected to retry with different wording if needed
+
+You may:
+- Rephrase queries
+- Try broader or narrower intent
+- Use multiple intents in a single query (comma-separated)
+
+Examples of valid queries:
+- "send email"
+- "email operations"
+- "send email, delete draft"
+- "create pull request, list branches"
+
+The query is semantic, not keyword-based. Comma-separated intents
+are treated as a single semantic search and are encouraged when
+exploring related capabilities.
+
+Discovery mode ONLY returns tool names. Tools are NOT loaded.
+
+—BINDING MODE (exact_tool_names)
+Load tools by their exact names.
+- Use this ONLY after discovery or when exact names are already known
+- Invalid or unknown tool names are ignored
+- Successfully validated tools become available for execution
+
+—RECOMMENDED WORKFLOW
+1. Call retrieve_tools(query="your intent") to discover tools
+2. Review returned tool names
+3. Retry discovery with alternate queries if needed
+4. Call retrieve_tools(exact_tool_names=[...]) to bind tools
+5. Execute bound tools
+
+—TOOL NAME FORMATS
+- Regular tools: "GMAIL_SEND_DRAFT", "CREATE_TODO"
+
+—ARGS
+query:
+    Natural language description of intent for discovery.
+    Results are limited and best-effort.
+    Retry with different phrasing if needed.
+
+exact_tool_names:
+    Exact tool names to load and bind for execution.
+
+—RETURNS
+RetrieveToolsResult with:
+- tools_to_bind: tools that are loaded and executable
+- response: tool names discovered or validated
+
+—EXAMPLES
+1. Find and reply to email (Gmail)
+Discover:
+  retrieve_tools(query="find emails, reply to thread")
+  → returns ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
+Bind & Execute:
+  retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS","GMAIL_REPLY_TO_THREAD"])
+  → GMAIL_FETCH_EMAILS(...) returns email list
+  → GMAIL_REPLY_TO_THREAD(...) sends reply
+
+2. Search, delete, and recreate tasks with subtasks (Todo)
+Discover:
+  retrieve_tools(query="search todos, delete task, create with subtasks")
+  → returns ["search_todos", "delete_todo", "create_todo", "add_subtask", ...]
+Bind & Execute:
+  retrieve_tools(exact_tool_names=["search_todos","delete_todo","create_todo","add_subtask"])
+  → search_todos(...) finds matching tasks
+  → delete_todo(...) removes old task
+  → create_todo(...) creates new task
+  → add_subtask(...) adds subtasks"""
+
+_RETRIEVE_TOOLS_SUBAGENT_SECTION = """
+
+—SUBAGENT TOOLS
+Discovery may also return subagent tools alongside regular tools.
+- Subagent tool format: "subagent:gmail", "subagent:fb9dfd7e05f8"
+- Subagent tools require delegation via the `handoff` tool
+- They cannot be executed directly"""
 
 
 class RetrieveToolsResult(TypedDict):
@@ -46,71 +144,62 @@ class RetrieveToolsResult(TypedDict):
 async def _get_user_context(
     user_id: Optional[str],
     tool_space: str,
+    include_subagents: bool = True,
 ) -> tuple[Set[str], Set[str], Set[str]]:
     """Get user's available namespaces and connected integrations.
+
+    When include_subagents is False, skips computing subagent-related data
+    entirely — no integration queries, no internal subagent resolution.
 
     Returns:
         Tuple of (user_namespaces, connected_integrations, internal_subagents)
     """
     user_namespaces: Set[str] = {tool_space, "general"}
     connected_integrations: Set[str] = set()
+    internal_subagents: Set[str] = set()
 
-    # Internal subagents are always available (core platform features)
-    internal_subagents: Set[str] = {
-        integration.id
-        for integration in OAUTH_INTEGRATIONS
-        if integration.managed_by == "internal"
-        and integration.subagent_config
-        and integration.subagent_config.has_subagent
-    }
+    # Only compute subagent data when subagents are included
+    if include_subagents:
+        internal_subagents = {
+            integration.id
+            for integration in OAUTH_INTEGRATIONS
+            if integration.managed_by == "internal"
+            and integration.subagent_config
+            and integration.subagent_config.has_subagent
+        }
 
     if not user_id:
         return user_namespaces, connected_integrations, internal_subagents
 
     try:
-        user_namespaces = await get_user_available_tool_namespaces(user_id)
-        raw_connected = user_namespaces - {"general", "subagents"}
+        user_namespaces = set(await get_user_available_tool_namespaces(user_id))
 
-        # Filter to only integrations with subagent configurations
-        connected_integrations = {
-            integration_id
-            for integration_id in raw_connected
-            if (
-                # Platform integrations with subagent config
-                (
-                    (integ := get_integration_by_id(integration_id))
-                    and integ.subagent_config
-                    and integ.subagent_config.has_subagent
+        if include_subagents:
+            raw_connected = user_namespaces - {"general", "subagents"}
+
+            # Filter to only integrations with subagent configurations
+            connected_integrations = {
+                integration_id
+                for integration_id in raw_connected
+                if (
+                    # Platform integrations with subagent config
+                    (
+                        (integ := get_integration_by_id(integration_id))
+                        and integ.subagent_config
+                        and integ.subagent_config.has_subagent
+                    )
+                    # Custom/public integrations (not in platform config)
+                    or get_integration_by_id(integration_id) is None
                 )
-                # Custom/public integrations (not in platform config)
-                or get_integration_by_id(integration_id) is None
-            )
-        }
+            }
+
+            logger.info(f"User {user_id} connected subagents: {connected_integrations}")
 
         logger.info(f"User {user_id} namespaces: {user_namespaces}")
-        logger.info(f"User {user_id} connected subagents: {connected_integrations}")
     except Exception as e:
         logger.warning(f"Failed to get user namespaces: {e}")
 
     return user_namespaces, connected_integrations, internal_subagents
-
-
-async def _log_store_diagnostics(store: BaseStore) -> None:
-    """Log diagnostic information about store contents."""
-    try:
-        logger.info("DIAGNOSTIC: Inspecting store namespaces...")
-
-        # Check subagents namespace
-        subagents_items = await store.asearch(("subagents",), query="", limit=5)
-        logger.info(f"DIAGNOSTIC: Subagents namespace has {len(subagents_items)} items")
-
-        for item in subagents_items[:3]:
-            logger.info(
-                f"DIAGNOSTIC: Item - key='{item.key}', "
-                f"namespace={getattr(item, 'namespace', 'N/A')}"
-            )
-    except Exception as e:
-        logger.warning(f"DIAGNOSTIC: Failed to inspect store: {e}")
 
 
 def _build_search_tasks(
@@ -187,6 +276,9 @@ def _process_chroma_search_result(
 
         # Handle subagent results from subagents namespace
         if hasattr(item, "namespace") and item.namespace == ("subagents",):
+            if not include_subagents:
+                continue
+
             # Get display name from item.value if available (stored during indexing)
             name = None
             if hasattr(item, "value") and isinstance(item.value, dict):
@@ -203,8 +295,10 @@ def _process_chroma_search_result(
             processed.append({"id": subagent_key, "score": item.score})
             continue
 
-        # Handle keys with subagent: prefix
+        # Handle keys with subagent: prefix — skip if subagents not included
         if tool_key.startswith("subagent:"):
+            if not include_subagents:
+                continue
             processed.append({"id": tool_key, "score": item.score})
             continue
 
@@ -357,93 +451,6 @@ def get_retrieve_tools_function(
         query: Optional[str] = None,
         exact_tool_names: Optional[list[str]] = None,
     ) -> RetrieveToolsResult:
-        """Discover available tools or load specific tools by exact name.
-
-        This is your primary interface to the tool ecosystem. It supports TWO modes:
-
-        —DISCOVERY MODE (query)
-        Use natural language to semantically search for relevant tools.
-
-        IMPORTANT BEHAVIOR:
-        - Discovery results are LIMITED and NOT exhaustive
-        - Not all relevant tools may be returned in a single query
-        - Absence of a tool in results does NOT mean it does not exist
-        - You are expected to retry with different wording if needed
-
-        You may:
-        - Rephrase queries
-        - Try broader or narrower intent
-        - Use multiple intents in a single query (comma-separated)
-
-        Examples of valid queries:
-        - "send email"
-        - "email operations"
-        - "send email, delete draft"
-        - "create pull request, list branches"
-
-        The query is semantic, not keyword-based. Comma-separated intents
-        are treated as a single semantic search and are encouraged when
-        exploring related capabilities.
-
-        Discovery mode ONLY returns tool names. Tools are NOT loaded.
-
-        —BINDING MODE (exact_tool_names)
-        Load tools by their exact names.
-        - Use this ONLY after discovery or when exact names are already known
-        - Invalid or unknown tool names are ignored
-        - Successfully validated tools become available for execution
-
-        —RECOMMENDED WORKFLOW
-        1. Call retrieve_tools(query="your intent") to discover tools
-        2. Review returned tool names
-        3. Retry discovery with alternate queries if needed
-        4. Call retrieve_tools(exact_tool_names=[...]) to bind tools
-        5. Execute bound tools
-
-        —TOOL NAME FORMATS
-        - Regular tools: "GMAIL_SEND_DRAFT", "CREATE_TODO"
-        - Subagent tools: "subagent:gmail", "subagent:fb9dfd7e05f8"
-
-        Note:
-        - Subagent tools require delegation via the `handoff` tool
-        - Discovery may return subagents alongside regular tools
-
-        —ARGS
-        query:
-            Natural language description of intent for discovery.
-            Results are limited and best-effort.
-            Retry with different phrasing if needed.
-
-        exact_tool_names:
-            Exact tool names to load and bind for execution.
-
-        —RETURNS
-        RetrieveToolsResult with:
-        - tools_to_bind: tools that are loaded and executable
-        - response: tool names discovered or validated
-
-        —EXAMPLES
-        1. Find and reply to email (Gmail)
-        Discover:
-          retrieve_tools(query="find emails, reply to thread")
-          → returns ["GMAIL_FETCH_EMAILS", "GMAIL_REPLY_TO_THREAD", ...]
-        Bind & Execute:
-          retrieve_tools(exact_tool_names=["GMAIL_FETCH_EMAILS","GMAIL_REPLY_TO_THREAD"])
-          → GMAIL_FETCH_EMAILS(...) returns email list
-          → GMAIL_REPLY_TO_THREAD(...) sends reply
-
-        2. Search, delete, and recreate tasks with subtasks (Todo)
-        Discover:
-          retrieve_tools(query="search todos, delete task, create with subtasks")
-          → returns ["search_todos", "delete_todo", "create_todo", "add_subtask", ...]
-        Bind & Execute:
-          retrieve_tools(exact_tool_names=["search_todos","delete_todo","create_todo","add_subtask"])
-          → search_todos(...) finds matching tasks
-          → delete_todo(...) removes old task
-          → create_todo(...) creates new task
-          → add_subtask(...) adds subtasks
-        """
-
         if not query and not exact_tool_names:
             raise ValueError(
                 "Either 'query' (for discovery) or 'exact_tool_names' (for binding) is required."
@@ -471,9 +478,10 @@ def get_retrieve_tools_function(
         if exact_tool_names:
             validated_tool_names = []
             for tool_name in exact_tool_names:
-                # Subagent keys don't need binding - pass through for discovery
                 if tool_name.startswith("subagent:"):
-                    validated_tool_names.append(tool_name)
+                    # Only pass through subagent keys when subagents are enabled
+                    if include_subagents:
+                        validated_tool_names.append(tool_name)
                 elif tool_name in available_tool_names:
                     validated_tool_names.append(tool_name)
             return RetrieveToolsResult(
@@ -481,32 +489,21 @@ def get_retrieve_tools_function(
                 response=validated_tool_names,
             )
 
-        # DISCOVERY MODE: Semantic search for tools
-        logger.info(
-            f"DISCOVERY: query='{query}', user_id={user_id}, "
-            f"include_subagents={include_subagents}, tool_space={tool_space}"
-        )
-
-        # Get user context
+        # Get user context (skips subagent computation when include_subagents=False)
         (
             user_namespaces,
             connected_integrations,
             internal_subagents,
-        ) = await _get_user_context(user_id, tool_space)
-
-        logger.info(f"User namespaces: {user_namespaces}")
-        logger.info(f"Internal subagents (always available): {internal_subagents}")
+        ) = await _get_user_context(user_id, tool_space, include_subagents)
 
         # Build and execute search tasks
         search_tasks = _build_search_tasks(
             store, query or "", tool_space, user_namespaces, include_subagents, limit
         )
 
-        logger.info(f"Executing {len(search_tasks)} search tasks")
         results = await asyncio.gather(*search_tasks, return_exceptions=True)
-        logger.info(f"Got {len(results)} search results")
 
-        # Process results (includes filtering webpage tools from general namespace for subagents)
+        # Process results
         all_results = await _process_search_results(
             results,
             set(available_tool_names),
@@ -518,18 +515,28 @@ def get_retrieve_tools_function(
         # Deduplicate and sort
         discovered_tools = _deduplicate_and_sort(all_results, limit)
 
-        # Inject available subagents
-        final_tools = _inject_available_subagents(
-            discovered_tools,
-            internal_subagents,
-            connected_integrations,
-            include_subagents,
-        )
+        # Inject available subagents (no-op when include_subagents=False)
+        if include_subagents:
+            final_tools = _inject_available_subagents(
+                discovered_tools,
+                internal_subagents,
+                connected_integrations,
+                include_subagents,
+            )
+        else:
+            final_tools = discovered_tools
 
-        logger.info(f"Final discovered tools ({len(final_tools)}): {final_tools}")
         return RetrieveToolsResult(
             tools_to_bind=[],
             response=final_tools,
         )
+
+    # Assign the LLM-facing docstring from pre-built constants
+    if include_subagents:
+        retrieve_tools.__doc__ = (
+            _RETRIEVE_TOOLS_BASE_DOC + _RETRIEVE_TOOLS_SUBAGENT_SECTION
+        )
+    else:
+        retrieve_tools.__doc__ = _RETRIEVE_TOOLS_BASE_DOC
 
     return retrieve_tools

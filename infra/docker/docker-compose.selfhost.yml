@@ -4,7 +4,7 @@ services:
   # ─── Infrastructure ───
 
   chromadb:
-    image: chromadb/chroma:1.0.0
+    image: chromadb/chroma:1.5.1
     container_name: chromadb
     volumes:
       - chroma_data:/chroma/chroma
@@ -45,7 +45,7 @@ services:
       - gaia_network
 
   redis:
-    image: redis:alpine
+    image: redis:7.4.8-alpine
     container_name: redis
     ports:
       - "${REDIS_HOST_PORT:-6379}:6379"
@@ -61,7 +61,7 @@ services:
       - gaia_network
 
   mongo:
-    image: mongo:latest
+    image: mongo:8.0.19
     container_name: mongo
     volumes:
       - mongo_data:/data/db
@@ -77,7 +77,7 @@ services:
       - gaia_network
 
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:4.1.8-management
     container_name: rabbitmq
     ports:
       - "${RABBITMQ_HOST_PORT:-5672}:5672"

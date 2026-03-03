@@ -2,10 +2,9 @@
 Service functions for handling contact-related operations.
 """
 
-from typing import Dict, List, Any
+from typing import Any, Dict, List
 
 from app.config.loggers import chat_logger as logger
-from app.services.mail_service import search_messages
 
 
 def _process_message_batch(
@@ -222,7 +221,7 @@ def extract_contacts_from_messages_batch(
 
 
 def get_gmail_contacts(
-    service,
+    service: Any,
     query: str,
     max_results: int = 30,
 ) -> Dict[str, Any]:
@@ -242,13 +241,14 @@ def get_gmail_contacts(
             f"CONTACT_SERVICE: Starting contact search with query: '{query}', max_results: {max_results}"
         )
 
-        # Optimized search strategy - use the most effective single query
-        # Using quoted search which searches across all fields efficiently
-        search_query = f'"{query}"'
-        logger.debug(f"CONTACT_SERVICE: Using optimized search query: '{search_query}'")
+        search_query = query
+        logger.debug(f"CONTACT_SERVICE: Using search query: '{search_query}'")
 
-        search_results = search_messages(
-            service=service, query=search_query, max_results=max_results
+        search_results = (
+            service.users()
+            .messages()
+            .list(userId="me", q=search_query, maxResults=max_results)
+            .execute()
         )
 
         message_ids = [msg.get("id") for msg in search_results.get("messages", [])]

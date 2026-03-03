@@ -14,6 +14,7 @@ import { useUser } from "@/features/auth/hooks/useUser";
 import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
 import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
 import { isOnboardingPhaseUpdateMessage } from "@/features/onboarding/types/websocket";
+import { GlobalPricingModal } from "@/features/pricing/components/GlobalPricingModal";
 import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
@@ -214,6 +215,9 @@ export default function MainLayout({ children }: { children: ReactNode }) {
               {rightSidebarContent}
             </RightSidebar>
           </div>
+
+          {/* Global Pricing Modal */}
+          <GlobalPricingModal />
 
           {/* Global Command Menu */}
           <CommandMenu

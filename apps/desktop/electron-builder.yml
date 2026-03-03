@@ -37,6 +37,10 @@ extraResources:
       - "**/*"
       - "!**/node_modules/.cache/**/*"
 
+  # Window icon accessible at runtime via process.resourcesPath
+  - from: resources/icons/256x256.png
+    to: icons/256x256.png
+
 mac:
   category: public.app-category.productivity
   icon: resources/icons/icon.icns

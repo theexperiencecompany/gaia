@@ -1675,3 +1675,50 @@ FEATURE FLAG USAGE:
 - Rollout patterns
 """,
 )
+
+
+# =============================================================================
+# INTERNAL SKILLS MEMORY PROMPT
+# =============================================================================
+
+SKILLS_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Skills",
+    entity_instructions="""
+## SKILLS-SPECIFIC EXTRACTION:
+
+1. INSTALLED SKILL MAPPINGS:
+   - Skill name <-> VFS path <-> Target scope
+   - "pr-review skill is installed at custom/subagents/github/pr-review/"
+
+2. GITHUB SOURCES:
+   - Repository URLs for installed skills
+   - "pr-review was installed from anthropics/skills"
+
+3. SKILL PREFERENCES:
+   - Which skills the user prefers for which scenarios
+   - Target scope preferences (global vs agent-specific)
+""",
+    provider_specific_instructions="""
+## SKILLS-SPECIFIC MEMORIES:
+
+INSTALLATION PATTERNS:
+- Preferred GitHub repositories for skills
+- Common target scope choices
+- "User prefers scoping skills to specific agents rather than global"
+
+SKILL CREATION PATTERNS:
+- Naming conventions user follows
+- Instruction formatting style
+- Level of detail in skill descriptions
+
+MANAGEMENT PATTERNS:
+- Skills frequently enabled/disabled
+- Skills that were uninstalled and why
+- "User disabled email-templates skill in favor of custom version"
+
+SKILL USAGE CONTEXT:
+- Which skills are used most frequently
+- Which agents benefit most from skills
+- Cross-skill dependencies or complementary skills
+""",
+)

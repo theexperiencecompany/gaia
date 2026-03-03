@@ -1,8 +1,10 @@
 """Utilities for markdown detection and conversion."""
 
 import re
+from typing import Optional
 
 import markdown2
+
 from app.config.loggers import app_logger as logger
 
 
@@ -113,3 +115,36 @@ def convert_markdown_to_plain_text(markdown_text: str) -> str:
     except Exception as e:
         logger.error(f"Error converting markdown to plain text: {e}")
         return markdown_text
+
+
+def split_yaml_frontmatter(content: str) -> Optional[tuple[str, str]]:
+    """Split YAML frontmatter from markdown body.
+
+    Expected format:
+    ---
+    <yaml>
+    ---
+    <body>
+
+    Returns:
+        (frontmatter_yaml, body) if frontmatter exists, else None.
+    """
+    if not content:
+        return None
+
+    lines = content.splitlines(keepends=True)
+    if not lines:
+        return None
+
+    if lines[0].strip() != "---":
+        return None
+
+    frontmatter_lines: list[str] = []
+    for idx in range(1, len(lines)):
+        if lines[idx].strip() == "---":
+            frontmatter_raw = "".join(frontmatter_lines).rstrip("\r\n")
+            body = "".join(lines[idx + 1 :])
+            return frontmatter_raw, body
+        frontmatter_lines.append(lines[idx])
+
+    return None

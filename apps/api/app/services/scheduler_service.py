@@ -3,7 +3,7 @@ Base scheduler service for managing scheduled tasks.
 """
 
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.config.loggers import general_logger as logger
@@ -17,7 +17,6 @@ from app.models.scheduler_models import (
 from app.utils.cron_utils import get_next_run_time
 from arq import create_pool
 from arq.connections import RedisSettings
-from datetime import timedelta
 
 
 class BaseSchedulerService(ABC):
@@ -53,7 +52,7 @@ class BaseSchedulerService(ABC):
     async def close(self):
         """Close ARQ pool connection."""
         if self.arq_pool:
-            await self.arq_pool.close()
+            await self.arq_pool.aclose()
         logger.info(f"{self.__class__.__name__} closed")
 
     async def schedule_task(

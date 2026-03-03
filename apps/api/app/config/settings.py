@@ -88,6 +88,7 @@ class CommonSettings(BaseAppSettings):
     FRONTEND_URL: str = "https://heygaia.io"
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
+    ENABLE_LAZY_LOADING: bool = True
 
     # ----------------------------------------------
     # Profiling & Performance Monitoring
@@ -96,9 +97,13 @@ class CommonSettings(BaseAppSettings):
     PROFILING_SAMPLE_RATE: float = 1.0  # 100% of requests by default
 
     # ----------------------------------------------
-    # Skill Learning (Agent Memory)
+    # GitHub Integration (for Skill Discovery)
     # ----------------------------------------------
-    SKILL_LEARNING_ENABLED: bool = False  # Disabled until ready for production
+    # Optional: Get a token at https://github.com/settings/tokens
+    # - No scopes needed (just public repo read)
+    # - Gives 5,000 API requests/hour vs 60/hour without token
+    # - Used for discovering and installing skills from GitHub
+    GITHUB_TOKEN: Optional[str] = None
 
     # ----------------------------------------------
     # Computed Properties
@@ -181,9 +186,6 @@ class ProductionSettings(CommonSettings):
     OPENAI_API_KEY: str
     GOOGLE_API_KEY: str
     OPENROUTER_API_KEY: str
-
-    # Media & Content Processing
-    ASSEMBLYAI_API_KEY: str
 
     # Weather Services
     OPENWEATHER_API_KEY: str
@@ -335,9 +337,6 @@ class DevelopmentSettings(CommonSettings):
     OPENAI_API_KEY: Optional[str] = None
     GOOGLE_API_KEY: Optional[str] = None
     OPENROUTER_API_KEY: Optional[str] = None
-
-    # Media & Content Processing
-    ASSEMBLYAI_API_KEY: Optional[str] = None
 
     # Weather Services
     OPENWEATHER_API_KEY: Optional[str] = None

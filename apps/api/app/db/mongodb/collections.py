@@ -120,6 +120,8 @@ _COLLECTION_MAPPINGS = {
     "integrations_collection": "integrations",
     "user_integrations_collection": "user_integrations",
     "device_tokens_collection": "device_tokens",
+    "vfs_nodes_collection": "vfs_nodes",
+    "skills_collection": "skills",
     "workflow_executions_collection": "workflow_executions",
     "processed_webhooks_collection": "processed_webhooks",
     "bot_sessions_collection": "bot_sessions",

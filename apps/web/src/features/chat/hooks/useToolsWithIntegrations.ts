@@ -53,7 +53,18 @@ export const useToolsWithIntegrations = (): UseToolsWithIntegrationsReturn => {
     if (!toolsData?.tools) return [];
 
     return toolsData.tools.map((tool: ToolInfo): EnhancedToolInfo => {
-      // Check if integration is connected (use category as integration ID)
+      // Core platform tools (search, memory, weather, etc.) never require a connection
+      if (!tool.requires_integration) {
+        return {
+          name: tool.name,
+          category: tool.category,
+          displayName: tool.display_name,
+          iconUrl: tool.icon_url,
+          isLocked: false,
+        };
+      }
+
+      // Integration-backed tools: locked until the user connects the integration
       const integration = integrations.find(
         (int) => int.id.toLowerCase() === tool.category.toLowerCase(),
       );

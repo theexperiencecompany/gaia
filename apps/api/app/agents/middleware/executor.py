@@ -1,0 +1,390 @@
+"""
+Middleware Executor - Runs LangChain AgentMiddleware hooks.
+
+This module provides a MiddlewareExecutor class that bridges LangChain's
+AgentMiddleware system with langgraph_bigtool's graph structure.
+
+It handles executing middleware hooks at appropriate points:
+- before_model: Before each LLM call
+- after_model: After each LLM response
+- wrap_model_call: Around the actual model invocation
+- wrap_tool_call: Around each tool execution
+"""
+
+import asyncio
+import inspect
+from typing import Any, Awaitable, Callable, Optional
+
+from app.agents.middleware.runtime_adapter import (
+    BigtoolRuntime,
+    BigtoolToolRuntime,
+    create_model_request,
+    create_tool_call_request,
+    to_agent_state,
+)
+from app.config.loggers import app_logger as logger
+from app.override.langgraph_bigtool.utils import State
+from langchain.agents.middleware import AgentMiddleware
+from langchain.agents.middleware.types import (
+    ModelRequest,
+    ModelResponse,
+    ToolCallRequest,
+)
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import AIMessage, ToolMessage
+from langchain_core.runnables import RunnableConfig
+from langchain_core.tools import BaseTool
+from langgraph.store.base import BaseStore
+
+
+def _has_override(mw: AgentMiddleware, method_name: str) -> bool:
+    """Check if middleware actually overrides a method.
+
+    The base AgentMiddleware defines all hook methods (awrap_model_call,
+    wrap_model_call, etc.) but their default implementations raise
+    NotImplementedError. A naive hasattr() check always returns True,
+    causing the executor to call unimplemented methods.
+
+    This function walks the MRO and returns True only if a concrete
+    subclass (not the AgentMiddleware base) defines the method.
+
+    Args:
+        mw: Middleware instance to check
+        method_name: Name of the method to look for
+
+    Returns:
+        True if the method is overridden by a subclass
+    """
+    for cls in type(mw).__mro__:
+        if cls is AgentMiddleware or cls is object:
+            continue
+        if method_name in cls.__dict__:
+            return True
+    return False
+
+
+class MiddlewareExecutor:
+    """
+    Executes LangChain AgentMiddleware hooks in langgraph_bigtool context.
+
+    This class provides methods to run middleware at various points:
+    - execute_before_model: Run before_model hooks on all middleware
+    - execute_after_model: Run after_model hooks on all middleware
+    - wrap_model_invocation: Wrap the model call with all wrap_model_call middleware
+    - wrap_tool_invocation: Wrap a tool call with all wrap_tool_call middleware
+
+    Usage:
+        executor = MiddlewareExecutor(middleware_list)
+
+        # In acall_model:
+        state = await executor.execute_before_model(state, config, store)
+        response = await executor.wrap_model_invocation(model, state, config, store, tools)
+        state = await executor.execute_after_model(state, config, store)
+
+        # In DynamicToolNode:
+        result = await executor.wrap_tool_invocation(tool_call, tool, state, config, store, handler)
+    """
+
+    def __init__(self, middleware: list[AgentMiddleware] | None = None):
+        """
+        Initialize with a list of middleware instances.
+
+        Args:
+            middleware: List of AgentMiddleware instances to execute
+        """
+        self.middleware = middleware or []
+
+    def _create_runtime(
+        self,
+        config: RunnableConfig,
+        store: Optional[BaseStore] = None,
+    ) -> BigtoolRuntime:
+        """Create a BigtoolRuntime from graph context."""
+        return BigtoolRuntime.from_graph_context(
+            config=config,
+            store=store,
+        )
+
+    def _create_tool_runtime(
+        self,
+        config: RunnableConfig,
+        store: Optional[BaseStore] = None,
+        tool_name: Optional[str] = None,
+    ) -> BigtoolToolRuntime:
+        """Create a BigtoolToolRuntime for tool execution."""
+        return BigtoolToolRuntime.from_graph_context(
+            config=config,
+            store=store,
+            tool_name=tool_name,
+        )
+
+    async def execute_before_model(
+        self,
+        state: State,
+        config: RunnableConfig,
+        store: Optional[BaseStore] = None,
+    ) -> State:
+        """
+        Execute before_model hooks on all middleware.
+
+        Middleware are executed in order. Each middleware can modify the state
+        by returning a dict that will be merged into the state.
+
+        Args:
+            state: Current graph state
+            config: RunnableConfig from graph invocation
+            store: Optional BaseStore instance
+
+        Returns:
+            Updated state after all middleware have run
+        """
+        if not self.middleware:
+            return state
+
+        runtime = self._create_runtime(config, store)
+        current_state: dict[str, Any] = dict(state)
+
+        for mw in self.middleware:
+            try:
+                middleware_state = to_agent_state(current_state)
+                # Try async version first
+                if _has_override(mw, "abefore_model"):
+                    result = await mw.abefore_model(middleware_state, runtime)
+                elif _has_override(mw, "before_model"):
+                    result = mw.before_model(middleware_state, runtime)
+                else:
+                    continue
+
+                if result is not None:
+                    current_state.update(result)
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(
+                    f"Middleware {mw.__class__.__name__}.before_model failed: {e}"
+                )
+
+        return State(**current_state)
+
+    async def execute_after_model(
+        self,
+        state: State,
+        config: RunnableConfig,
+        store: Optional[BaseStore] = None,
+    ) -> State:
+        """
+        Execute after_model hooks on all middleware.
+
+        Middleware are executed in order. Each middleware can modify the state
+        by returning a dict that will be merged into the state.
+
+        Args:
+            state: Current graph state (after model response)
+            config: RunnableConfig from graph invocation
+            store: Optional BaseStore instance
+
+        Returns:
+            Updated state after all middleware have run
+        """
+        if not self.middleware:
+            return state
+
+        runtime = self._create_runtime(config, store)
+        current_state: dict[str, Any] = dict(state)
+
+        for mw in self.middleware:
+            try:
+                middleware_state = to_agent_state(current_state)
+                # Try async version first
+                if _has_override(mw, "aafter_model"):
+                    result = await mw.aafter_model(middleware_state, runtime)
+                elif _has_override(mw, "after_model"):
+                    result = mw.after_model(middleware_state, runtime)
+                else:
+                    continue
+
+                if result is not None:
+                    current_state.update(result)
+
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:
+                logger.warning(
+                    f"Middleware {mw.__class__.__name__}.after_model failed: {e}"
+                )
+
+        return State(**current_state)
+
+    async def wrap_model_invocation(
+        self,
+        model: BaseChatModel,
+        state: State,
+        config: RunnableConfig,
+        store: Optional[BaseStore],
+        tools: list[BaseTool | dict[str, Any]],
+        invoke_fn: Callable[..., Awaitable[AIMessage]],
+    ) -> AIMessage:
+        """
+        Wrap the model invocation with all wrap_model_call middleware.
+
+        Creates a chain of handlers where each middleware wraps the next.
+        The innermost handler calls the actual model.
+
+        Args:
+            model: The LLM being used
+            state: Current graph state
+            config: RunnableConfig from graph invocation
+            store: Optional BaseStore instance
+            tools: List of tools bound to the model
+            invoke_fn: The actual model invocation function
+
+        Returns:
+            AIMessage response from the model (possibly modified by middleware)
+        """
+        runtime = self._create_runtime(config, store)
+        request = create_model_request(model, state, runtime, tools)
+
+        # Build the handler chain from inside out
+        async def final_handler(req: ModelRequest) -> ModelResponse:
+            """Innermost handler - actually calls the model."""
+            # Build messages list: prepend system_message if present, then messages
+            messages_to_send: list = []
+            if req.system_message:
+                messages_to_send.append(req.system_message)
+            messages_to_send.extend(req.messages)
+            response = await invoke_fn(messages_to_send)
+            return ModelResponse(result=[response])
+
+        # Wrap with middleware (reverse order so first middleware is outermost)
+        current_handler = final_handler
+        for mw in reversed(self.middleware):
+            if _has_override(mw, "awrap_model_call"):
+                # Create closure to capture current handler and middleware
+                def make_wrapper(middleware, handler):
+                    async def wrapped(req: ModelRequest) -> ModelResponse:
+                        return await middleware.awrap_model_call(req, handler)
+
+                    return wrapped
+
+                current_handler = make_wrapper(mw, current_handler)
+            elif _has_override(mw, "wrap_model_call"):
+
+                def make_sync_wrapper(middleware, handler):
+                    async def wrapped(req: ModelRequest) -> ModelResponse:
+                        # Sync version - call and await if needed
+                        result = middleware.wrap_model_call(req, handler)
+                        if inspect.iscoroutine(result):
+                            result = await result
+                        return result
+
+                    return wrapped
+
+                current_handler = make_sync_wrapper(mw, current_handler)
+
+        # Execute the chain
+        try:
+            result = await current_handler(request)
+            if not result.result:
+                raise ValueError("Model middleware returned empty result list")
+
+            message = result.result[0]
+            if isinstance(message, AIMessage):
+                return message
+
+            return AIMessage(content=str(getattr(message, "content", message)))
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error("Middleware wrap_model_call chain failed: {}", str(e))
+            # Fallback to direct invocation
+            return await invoke_fn(state.get("messages", []))
+
+    async def wrap_tool_invocation(
+        self,
+        tool_call: dict[str, Any],
+        tool: Optional[BaseTool],
+        state: State,
+        config: RunnableConfig,
+        store: Optional[BaseStore],
+        invoke_fn: Callable[..., Awaitable[ToolMessage]],
+    ) -> ToolMessage:
+        """
+        Wrap a tool invocation with all wrap_tool_call middleware.
+
+        Creates a chain of handlers where each middleware wraps the next.
+        The innermost handler calls the actual tool.
+
+        Args:
+            tool_call: The tool call dict with id, name, args
+            tool: The resolved BaseTool instance (if found)
+            state: Current graph state
+            config: RunnableConfig from graph invocation
+            store: Optional BaseStore instance
+            invoke_fn: The actual tool invocation function
+
+        Returns:
+            ToolMessage result (possibly modified by middleware)
+        """
+        tool_name = tool_call.get("name", "unknown")
+        runtime = self._create_tool_runtime(config, store, tool_name)
+        request = create_tool_call_request(tool_call, tool, state, runtime)
+
+        # Build the handler chain from inside out
+        async def final_handler(req: ToolCallRequest) -> ToolMessage:
+            """Innermost handler - actually calls the tool."""
+            return await invoke_fn(req.tool_call)
+
+        # Wrap with middleware (reverse order so first middleware is outermost)
+        current_handler = final_handler
+        for mw in reversed(self.middleware):
+            if _has_override(mw, "awrap_tool_call"):
+
+                def make_wrapper(middleware, handler):
+                    async def wrapped(req: ToolCallRequest) -> ToolMessage:
+                        return await middleware.awrap_tool_call(req, handler)
+
+                    return wrapped
+
+                current_handler = make_wrapper(mw, current_handler)
+            elif _has_override(mw, "wrap_tool_call"):
+
+                def make_sync_wrapper(middleware, handler):
+                    async def wrapped(req: ToolCallRequest) -> ToolMessage:
+                        result = middleware.wrap_tool_call(req, handler)
+                        if inspect.iscoroutine(result):
+                            result = await result
+                        return result
+
+                    return wrapped
+
+                current_handler = make_sync_wrapper(mw, current_handler)
+
+        # Execute the chain
+        try:
+            return await current_handler(request)
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(
+                "Middleware wrap_tool_call chain failed for {}: {}",
+                tool_name,
+                str(e),
+            )
+            # Fallback to direct invocation
+            return await invoke_fn(tool_call)
+
+    def has_wrap_model_call(self) -> bool:
+        """Check if any middleware has wrap_model_call."""
+        return any(
+            _has_override(mw, "wrap_model_call")
+            or _has_override(mw, "awrap_model_call")
+            for mw in self.middleware
+        )
+
+    def has_wrap_tool_call(self) -> bool:
+        """Check if any middleware has wrap_tool_call."""
+        return any(
+            _has_override(mw, "wrap_tool_call") or _has_override(mw, "awrap_tool_call")
+            for mw in self.middleware
+        )

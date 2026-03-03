@@ -1,4 +1,3 @@
-import logging
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 from typing import Optional
@@ -62,7 +61,7 @@ class ApiCallActionHandler(ActionHandler):
         logger.info(api_config)
 
         if api_config is None:
-            logging.error(
+            logger.error(
                 f"API call configuration missing for action {action.id} in notification {notification.id}"
             )
             return ActionResult(
@@ -163,7 +162,7 @@ class RedirectActionHandler(ActionHandler):
         redirect_config = action.config.redirect
 
         if redirect_config is None:
-            logging.error(
+            logger.error(
                 f"Redirect configuration missing for action {action.id} in notification {notification.id}"
             )
             return ActionResult(
@@ -209,7 +208,7 @@ class ModalActionHandler(ActionHandler):
         modal_config = action.config.modal
 
         if modal_config is None:
-            logging.error(
+            logger.error(
                 f"Modal configuration missing for action {action.id} in notification {notification.id}"
             )
             return ActionResult(

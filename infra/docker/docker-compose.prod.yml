@@ -34,13 +34,16 @@ services:
       WORKER_TYPE: main_app
       PYTHONDONTWRITEBYTECODE: 1
       PYTHONPATH: /app/apps/api
-      # Disable output buffering for streaming
       PYTHONIOENCODING: utf-8
     env_file:
       - ../../apps/api/.env
     ports:
       - "8000:80"
     restart: on-failure
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /app/apps/api/logs
     tty: true
     stdin_open: true
     depends_on:
@@ -59,10 +62,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4G
 
   # ChromaDB Service
   chromadb:
-    image: chromadb/chroma:1.0.0
+    image: chromadb/chroma:1.5.1
     container_name: chromadb
     volumes:
       - chroma_data:/chroma/chroma
@@ -105,7 +112,7 @@ services:
 
   # Redis Service
   redis:
-    image: redis:alpine
+    image: redis:7.4.8-alpine
     container_name: redis
     ports:
       - "6379:6379"
@@ -122,7 +129,7 @@ services:
 
   # RabbitMQ Service
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:4.1.8-management
     container_name: rabbitmq
     ports:
       - "5672:5672" # AMQP protocol
@@ -160,8 +167,23 @@ services:
         "app.worker.WorkerSettings",
       ]
     restart: always
+    read_only: true
+    tmpfs:
+      - /tmp
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - gaia_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('redis', 6379), timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   # Discord Bot (optional - enable with --profile bots)
   discord-bot:

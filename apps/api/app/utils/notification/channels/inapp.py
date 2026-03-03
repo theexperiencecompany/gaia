@@ -1,6 +1,6 @@
-import logging
 from typing import Any, Dict
 
+from app.config.loggers import notification_logger as logger
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
@@ -67,12 +67,12 @@ class InAppChannelAdapter(ChannelAdapter):
                     "notification": content,
                 },
             )
-            logging.info(
+            logger.info(
                 f"In-app notification delivered to user {user_id}: {content.get('title')}"
             )
             return self._success()
         except Exception as e:
-            logging.error(
+            logger.error(
                 f"Failed to deliver in-app notification to user {user_id}: {e}"
             )
             return self._error(str(e))

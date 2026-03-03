@@ -100,7 +100,7 @@ class MCPClientPool:
             logger.warning(f"Error closing MCP sessions for user {user_id}: {e}")
         logger.debug(f"Evicted MCPClient for {user_id}")
 
-    async def cleanup_stale(self):
+    async def cleanup_stale(self) -> None:
         """Remove clients that haven't been used within TTL."""
         to_close: list[PooledClient] = []
         async with self._lock:

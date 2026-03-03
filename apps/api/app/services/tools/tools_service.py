@@ -95,6 +95,7 @@ async def _build_tools_response(user_id: Optional[str] = None) -> ToolsListRespo
                 display_name=integration_display_name
                 or category.replace("_", " ").title(),
                 icon_url=None,
+                requires_integration=category_obj.require_integration,
             )
             tool_infos.append(tool_info)
             categories.add(category)

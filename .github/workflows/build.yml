@@ -80,6 +80,14 @@ jobs:
         # env:
         #   NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
+      # Login early so the affected check can query GHCR for missing images.
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
       # Map affected project list to deployable backend scopes.
       - name: Check affected projects
         id: affected
@@ -101,17 +109,33 @@ jobs:
             bots=true
           fi
 
+          # Force build if images don't exist in GHCR yet (first-time bootstrap).
+          # Only check on master branch to avoid unnecessary builds on feature branches.
+          if [ "${{ github.ref }}" = "refs/heads/master" ]; then
+            image_missing() {
+              ! docker manifest inspect "$1" > /dev/null 2>&1
+            }
+
+            if [ "$api" = "false" ]; then
+              if image_missing "ghcr.io/theexperiencecompany/gaia:latest" || \
+                 image_missing "ghcr.io/theexperiencecompany/gaia-voice-agent:latest"; then
+                echo "⚠️ API/voice-agent image missing from GHCR — forcing build"
+                api=true
+              fi
+            fi
+
+            if [ "$bots" = "false" ]; then
+              if image_missing "ghcr.io/theexperiencecompany/gaia-bot-discord:latest" || \
+                 image_missing "ghcr.io/theexperiencecompany/gaia-bot-slack:latest" || \
+                 image_missing "ghcr.io/theexperiencecompany/gaia-bot-telegram:latest"; then
+                echo "⚠️ Bot image(s) missing from GHCR — forcing build"
+                bots=true
+              fi
+            fi
+          fi
+
           echo "api=$api" >> "$GITHUB_OUTPUT"
           echo "bots=$bots" >> "$GITHUB_OUTPUT"
-
-      # Login/build tooling only when a backend image release is needed.
-      - name: Log in to GHCR
-        if: steps.affected.outputs.api == 'true' || steps.affected.outputs.bots == 'true'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup Blacksmith Builder
         uses: useblacksmith/setup-docker-builder@v1

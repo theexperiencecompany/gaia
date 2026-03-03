@@ -150,11 +150,11 @@ class SettingsValidator:
         self.register_group(
             SettingsGroup(
                 name="Speech Processing",
-                keys=["ASSEMBLYAI_API_KEY", "DEEPGRAM_API_KEY"],
-                description="Speech-to-text transcription services (either one is sufficient)",
+                keys=["DEEPGRAM_API_KEY"],
+                description="Speech-to-text transcription service",
                 affected_features="Audio transcription and voice interaction",
                 all_required=False,
-                docs_url="https://www.assemblyai.com/dashboard/",
+                docs_url="https://deepgram.com/",
             )
         )
 
