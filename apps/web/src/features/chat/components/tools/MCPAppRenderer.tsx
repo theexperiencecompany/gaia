@@ -142,14 +142,21 @@ export function MCPAppRenderer({ data }: Props) {
       };
     };
 
-    b.onreadresource = async (params) => {
+    b.onreadresource = async (params, _extra) => {
       const r = await readMCPResource(dataRef.current.server_url, params.uri);
-      const contents = r.contents.flatMap((item) => {
-        const base = { uri: item.uri, mimeType: item.mimeType };
-        if (item.text !== undefined) return [{ ...base, text: item.text }];
-        if (item.blob !== undefined) return [{ ...base, blob: item.blob }];
-        return [];
-      });
+      const contents = r.contents.flatMap(
+        (
+          item,
+        ): (
+          | { uri: string; text: string; mimeType?: string }
+          | { uri: string; blob: string; mimeType?: string }
+        )[] => {
+          const base = { uri: item.uri, mimeType: item.mimeType };
+          if (item.text !== undefined) return [{ ...base, text: item.text }];
+          if (item.blob !== undefined) return [{ ...base, blob: item.blob }];
+          return [];
+        },
+      );
       return { contents };
     };
 
