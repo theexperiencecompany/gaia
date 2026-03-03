@@ -148,27 +148,6 @@ def gmail_compose_before_hook(
                 )
                 return params
 
-            # Keep compose payload schema-accurate and explicit so optional
-            # fields are preserved during downstream execution.
-            if tool == "GMAIL_SEND_EMAIL":
-                pinned_arguments: dict[str, Any] = {
-                    "recipient_email": arguments.get("recipient_email"),
-                    "subject": arguments.get("subject"),
-                    "body": arguments.get("body"),
-                    "cc": arguments.get("cc", []),
-                    "bcc": arguments.get("bcc", []),
-                    "extra_recipients": arguments.get("extra_recipients", []),
-                    "is_html": arguments.get("is_html", False),
-                    "user_id": arguments.get("user_id", "me"),
-                }
-                if "attachment" in arguments:
-                    pinned_arguments["attachment"] = arguments["attachment"]
-                if "from_email" in arguments:
-                    pinned_arguments["from_email"] = arguments["from_email"]
-
-                params["arguments"] = pinned_arguments
-                arguments = pinned_arguments
-
         writer = get_stream_writer()
 
         # Handle different recipient formats based on tool
