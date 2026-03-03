@@ -633,6 +633,9 @@ async def execute_graph_streaming(
                                             ),
                                             "mcp_ui": tool_entry["mcp_ui"],
                                             "timestamp": tool_entry.get("timestamp"),
+                                            "tool_arguments": tool_entry["data"].get(
+                                                "inputs", {}
+                                            ),
                                         }
             continue
 
@@ -650,6 +653,16 @@ async def execute_graph_streaming(
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
+                tool_result_payload = chunk.content
+                try:
+                    json.dumps(tool_result_payload)
+                except TypeError:
+                    if hasattr(tool_result_payload, "model_dump"):
+                        tool_result_payload = tool_result_payload.model_dump()
+                    elif hasattr(tool_result_payload, "__dict__"):
+                        tool_result_payload = dict(tool_result_payload.__dict__)
+                    else:
+                        tool_result_payload = str(tool_result_payload)
                 output = (
                     chunk.content[:3000]
                     if isinstance(chunk.content, str)
@@ -668,12 +681,27 @@ async def execute_graph_streaming(
                 app_meta = pending_mcp_apps.pop(chunk.tool_call_id, None)
                 if app_meta:
                     try:
-                        html_content = await fetch_mcp_ui_resource(
+                        ui_resource = await fetch_mcp_ui_resource(
                             server_url=app_meta["server_url"],
                             resource_uri=app_meta["mcp_ui"]["resource_uri"],
                             user_id=user_id or "",
                         )
+                        html_content = (
+                            ui_resource.get("html")
+                            if isinstance(ui_resource, dict)
+                            else None
+                        )
                         if html_content:
+                            content_csp = (
+                                ui_resource.get("csp")
+                                if isinstance(ui_resource, dict)
+                                else None
+                            )
+                            content_permissions = (
+                                ui_resource.get("permissions")
+                                if isinstance(ui_resource, dict)
+                                else None
+                            )
                             yield format_sse_data(
                                 {
                                     "tool_data": {
@@ -687,10 +715,17 @@ async def execute_graph_streaming(
                                                 "resource_uri"
                                             ],
                                             "html_content": html_content,
-                                            "tool_result": output,
-                                            "csp": app_meta["mcp_ui"].get("csp"),
-                                            "permissions": app_meta["mcp_ui"].get(
+                                            "tool_result": tool_result_payload,
+                                            "csp": content_csp
+                                            if content_csp is not None
+                                            else app_meta["mcp_ui"].get("csp"),
+                                            "permissions": content_permissions
+                                            if content_permissions is not None
+                                            else app_meta["mcp_ui"].get(
                                                 "permissions", []
+                                            ),
+                                            "tool_arguments": app_meta.get(
+                                                "tool_arguments", {}
                                             ),
                                         },
                                         "timestamp": app_meta["timestamp"],
@@ -723,6 +758,9 @@ async def execute_graph_streaming(
                             "server_url": sub_entry.get("mcp_server_url", ""),
                             "mcp_ui": sub_entry["mcp_ui"],
                             "timestamp": sub_entry.get("timestamp"),
+                            "tool_arguments": sub_entry.get("data", {}).get(
+                                "inputs", {}
+                            ),
                         }
 
             # Intercept subagent tool_output events to emit deferred mcp_app
@@ -732,12 +770,27 @@ async def execute_graph_streaming(
                 app_meta = pending_mcp_apps.pop(tc_id, None)
                 if app_meta:
                     try:
-                        html_content = await fetch_mcp_ui_resource(
+                        ui_resource = await fetch_mcp_ui_resource(
                             server_url=app_meta["server_url"],
                             resource_uri=app_meta["mcp_ui"]["resource_uri"],
                             user_id=user_id or "",
                         )
+                        html_content = (
+                            ui_resource.get("html")
+                            if isinstance(ui_resource, dict)
+                            else None
+                        )
                         if html_content:
+                            content_csp = (
+                                ui_resource.get("csp")
+                                if isinstance(ui_resource, dict)
+                                else None
+                            )
+                            content_permissions = (
+                                ui_resource.get("permissions")
+                                if isinstance(ui_resource, dict)
+                                else None
+                            )
                             yield format_sse_data(
                                 {
                                     "tool_data": {
@@ -752,9 +805,16 @@ async def execute_graph_streaming(
                                             ],
                                             "html_content": html_content,
                                             "tool_result": sub_output.get("output"),
-                                            "csp": app_meta["mcp_ui"].get("csp"),
-                                            "permissions": app_meta["mcp_ui"].get(
+                                            "csp": content_csp
+                                            if content_csp is not None
+                                            else app_meta["mcp_ui"].get("csp"),
+                                            "permissions": content_permissions
+                                            if content_permissions is not None
+                                            else app_meta["mcp_ui"].get(
                                                 "permissions", []
+                                            ),
+                                            "tool_arguments": app_meta.get(
+                                                "tool_arguments", {}
                                             ),
                                         },
                                         "timestamp": app_meta["timestamp"],

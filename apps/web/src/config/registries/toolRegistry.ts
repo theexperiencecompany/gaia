@@ -43,9 +43,13 @@ export interface MCPAppData {
   server_url: string;
   resource_uri: string;
   html_content: string;
-  csp?: string;
+  csp?: {
+    connectDomains?: string[];
+    resourceDomains?: string[];
+  };
   permissions?: string[];
   tool_result?: unknown;
+  tool_arguments?: Record<string, unknown>;
 }
 
 // Tool Registry

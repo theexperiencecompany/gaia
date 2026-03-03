@@ -425,7 +425,10 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
   ),
 
   mcp_app: (data, index) => (
-    <MCPAppRenderer key={`tool-mcp-app-${index}`} data={data as MCPAppData} />
+    <MCPAppRenderer
+      key={`tool-mcp-app-${(data as MCPAppData).tool_call_id || index}`}
+      data={data as MCPAppData}
+    />
   ),
 };
 
@@ -495,8 +498,21 @@ export default function TextBubble({
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (!typedData) return null;
 
+        const toolCallId =
+          typeof typedData === "object" &&
+          typedData !== null &&
+          "tool_call_id" in typedData
+            ? String(
+                (typedData as unknown as { tool_call_id?: string })
+                  .tool_call_id ?? "",
+              )
+            : "";
+        const toolKey = toolCallId
+          ? `${baseId}-tool-${toolName}-${toolCallId}`
+          : `${baseId}-tool-${toolName}-${index}`;
+
         return (
-          <React.Fragment key={`${baseId}-tool-${toolName}`}>
+          <React.Fragment key={toolKey}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );

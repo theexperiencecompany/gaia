@@ -19,9 +19,10 @@ class MCPAppData(BaseModel):
     server_url: str
     resource_uri: str
     html_content: str
-    csp: Optional[str] = None
+    csp: Optional[dict[str, Any]] = None
     permissions: list[str] = []
     tool_result: Optional[Any] = None
+    tool_arguments: dict[str, Any] = {}
 
 
 class ToolDataEntry(TypedDict):

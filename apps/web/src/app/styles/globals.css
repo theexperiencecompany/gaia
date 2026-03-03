@@ -679,6 +679,23 @@
     width: 100%;
   }
 
+  .mcp-app-surface {
+    height: 100%;
+    width: 100%;
+  }
+
+  .mcp-app-surface > div {
+    display: block !important;
+    height: 100% !important;
+    width: 100% !important;
+  }
+
+  .mcp-app-surface iframe {
+    display: block;
+    height: 100% !important;
+    width: 100% !important;
+  }
+
   .animate-scale-in {
     animation: scale-in 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
   }
