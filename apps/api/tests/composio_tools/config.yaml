@@ -17,7 +17,8 @@ googlecalendar:
   # Creates events via CUSTOM_CREATE_EVENT, deletes after test
 
 gmail:
-  # Creates drafts for testing (no emails sent)
+  # Creates drafts + optional live send tests
+  test_recipient_email: ${EVAL_USER_EMAIL}
 
 googledocs:
   # Creates temp doc via GOOGLEDOCS_CREATE_DOCUMENT, deletes via Google Drive

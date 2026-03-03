@@ -19,11 +19,6 @@ from app.agents.templates.mail_templates import (
     process_list_messages_response,
 )
 from app.config.loggers import app_logger as logger
-from app.utils.markdown_utils import (
-    convert_markdown_to_html,
-    convert_markdown_to_plain_text,
-    is_markdown_content,
-)
 
 from .registry import (
     register_after_hook,
@@ -44,7 +39,7 @@ def gmail_send_email_schema_modifier(tool: str, toolkit: str, schema: Tool) -> T
     sending emails directly, unless explicitly instructed otherwise.
     """
     draft_guidance = (
-        "\n\n⚠️ IMPORTANT WORKFLOW: Unless the user explicitly requests "
+        "\n\nIMPORTANT WORKFLOW: Unless the user explicitly requests "
         "immediate sending, prefer creating a draft first using "
         "GMAIL_CREATE_EMAIL_DRAFT for user review. "
         "If a draft was already created in the current conversation, "
@@ -154,29 +149,6 @@ def gmail_compose_before_hook(
                 return params
 
         writer = get_stream_writer()
-
-        email_body = arguments.get("body", "")
-        is_html = arguments.get("is_html", False)
-
-        # Detect and convert markdown content
-        if email_body and is_markdown_content(email_body):
-            logger.info(
-                f"Markdown detected in email body for {tool}, converting to {'HTML' if is_html else 'plain text'}"
-            )
-
-            if is_html:
-                # Convert markdown to HTML
-                converted_body = convert_markdown_to_html(email_body)
-                arguments["body"] = converted_body
-                logger.debug(f"Converted markdown to HTML for {tool}")
-            else:
-                # Convert markdown to plain text
-                converted_body = convert_markdown_to_plain_text(email_body)
-                arguments["body"] = converted_body
-                logger.debug(f"Converted markdown to plain text for {tool}")
-
-            # Update params with converted body
-            params["arguments"] = arguments
 
         # Handle different recipient formats based on tool
         if tool == "GMAIL_FORWARD_MESSAGE":
