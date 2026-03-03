@@ -27,13 +27,12 @@ Create a new email draft.
 - `bcc`: BCC recipients
 - `from`: Sender alias (if multiple accounts)
 - `thread_id`: Reply within existing thread
-- `is_html`: Set `true` when body is HTML/Markdown-to-HTML
+- `is_html`: Set `true` only when the user explicitly wants HTML email formatting
 
-**HTML drafting (default):**
-- Default to `is_html=true` for drafts unless the user explicitly asks for plain text.
-- You may write the body as normal email text/Markdown; it will be converted to clean HTML for display.
-- Use an HTML fragment (no `<html>`/`<head>`/`<body>`). Stick to: `p`, `br`, `strong`, `em`, `ul/ol/li`, `a`.
-- Keep it email-safe: no external CSS, no scripts, no images unless user asked.
+**Body formatting:**
+- Default to plain text email body unless the user explicitly asks for HTML.
+- Do not rely on automatic Markdown conversion.
+- If using HTML, provide a safe HTML fragment (no `<html>`/`<head>`/`<body>`).
 
 **Signature:**
 - Use the user's proper name from context (`User Name:`) in the sign-off.
