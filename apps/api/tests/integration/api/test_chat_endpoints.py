@@ -21,6 +21,31 @@ _VALID_BODY = {
 }
 
 
+async def _empty_subscribe_stream(*args, **kwargs):
+    """Async generator that yields nothing — simulates an ended SSE stream.
+
+    stream_manager.subscribe_stream is an async generator.  Without this mock
+    the SSE generator in chat.py would try to subscribe to a real Redis channel
+    and fail with ConnectionError in tests.
+    """
+    return
+    yield  # pragma: no cover – makes this a generator function
+
+
+def _make_mock_task() -> MagicMock:
+    t = MagicMock()
+    t.add_done_callback = MagicMock()
+    return t
+
+
+def _make_subscription_mock():
+    from app.models.payment_models import PlanType
+
+    sub = MagicMock()
+    sub.plan_type = PlanType.FREE
+    return sub
+
+
 # ---------------------------------------------------------------------------
 # Test classes
 # ---------------------------------------------------------------------------
@@ -30,6 +55,25 @@ _VALID_BODY = {
 class TestChatStreamEndpoint:
     """Tests for POST /api/v1/chat-stream."""
 
+    @pytest.fixture(autouse=True)
+    def mock_rate_limiter(self):
+        """Bypass the tiered rate limiter's Redis calls for all chat tests.
+
+        `tiered_limiter` is a module-level TieredRateLimiter() singleton whose
+        .redis attribute is bound to the real redis_cache at import time.
+        Patching check_and_increment directly avoids any real Redis connection.
+        """
+        with patch(
+            "app.api.v1.middleware.tiered_rate_limiter.tiered_limiter.check_and_increment",
+            new_callable=AsyncMock,
+            return_value=None,
+        ):
+            yield
+
+    @patch(
+        "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+        new=_empty_subscribe_stream,
+    )
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.start_stream",
         new_callable=AsyncMock,
@@ -58,19 +102,9 @@ class TestChatStreamEndpoint:
         test_client,
     ):
         """POST /api/v1/chat-stream should return 200 with SSE media type."""
-        from app.models.payment_models import PlanType
-
-        subscription = MagicMock()
-        subscription.plan_type = PlanType.FREE
-        mock_subscription.return_value = subscription
-
-        # Redis is "available" so the stream generator runs
+        mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-
-        # create_task must return a real asyncio.Task-like mock
-        mock_task = MagicMock()
-        mock_task.add_done_callback = MagicMock()
-        mock_create_task.return_value = mock_task
+        mock_create_task.return_value = _make_mock_task()
 
         response = await test_client.post(
             "/api/v1/chat-stream",
@@ -79,6 +113,10 @@ class TestChatStreamEndpoint:
 
         assert response.status_code == 200
 
+    @patch(
+        "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+        new=_empty_subscribe_stream,
+    )
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.start_stream",
         new_callable=AsyncMock,
@@ -107,17 +145,9 @@ class TestChatStreamEndpoint:
         test_client,
     ):
         """POST /api/v1/chat-stream should respond with text/event-stream content type."""
-        from app.models.payment_models import PlanType
-
-        subscription = MagicMock()
-        subscription.plan_type = PlanType.FREE
-        mock_subscription.return_value = subscription
-
+        mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-
-        mock_task = MagicMock()
-        mock_task.add_done_callback = MagicMock()
-        mock_create_task.return_value = mock_task
+        mock_create_task.return_value = _make_mock_task()
 
         response = await test_client.post(
             "/api/v1/chat-stream",
@@ -128,6 +158,10 @@ class TestChatStreamEndpoint:
         content_type = response.headers.get("content-type", "")
         assert "text/event-stream" in content_type
 
+    @patch(
+        "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+        new=_empty_subscribe_stream,
+    )
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.start_stream",
         new_callable=AsyncMock,
@@ -156,17 +190,9 @@ class TestChatStreamEndpoint:
         test_client,
     ):
         """POST /api/v1/chat-stream should include required SSE and stream headers."""
-        from app.models.payment_models import PlanType
-
-        subscription = MagicMock()
-        subscription.plan_type = PlanType.FREE
-        mock_subscription.return_value = subscription
-
+        mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-
-        mock_task = MagicMock()
-        mock_task.add_done_callback = MagicMock()
-        mock_create_task.return_value = mock_task
+        mock_create_task.return_value = _make_mock_task()
 
         response = await test_client.post(
             "/api/v1/chat-stream",
@@ -174,10 +200,13 @@ class TestChatStreamEndpoint:
         )
 
         assert response.status_code == 200
-        # The endpoint sets X-Stream-Id so the client can call cancel-stream
         assert "x-stream-id" in response.headers
         assert response.headers.get("cache-control") == "no-cache"
 
+    @patch(
+        "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+        new=_empty_subscribe_stream,
+    )
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.start_stream",
         new_callable=AsyncMock,
@@ -206,17 +235,9 @@ class TestChatStreamEndpoint:
         test_client,
     ):
         """POST /api/v1/chat-stream must kick off a background asyncio Task."""
-        from app.models.payment_models import PlanType
-
-        subscription = MagicMock()
-        subscription.plan_type = PlanType.FREE
-        mock_subscription.return_value = subscription
-
+        mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-
-        mock_task = MagicMock()
-        mock_task.add_done_callback = MagicMock()
-        mock_create_task.return_value = mock_task
+        mock_create_task.return_value = _make_mock_task()
 
         response = await test_client.post(
             "/api/v1/chat-stream",
@@ -224,9 +245,12 @@ class TestChatStreamEndpoint:
         )
 
         assert response.status_code == 200
-        # asyncio.create_task must have been called once to launch background work
         mock_create_task.assert_called_once()
 
+    @patch(
+        "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+        new=_empty_subscribe_stream,
+    )
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.start_stream",
         new_callable=AsyncMock,
@@ -255,17 +279,9 @@ class TestChatStreamEndpoint:
         test_client,
     ):
         """start_stream must be called with matching conversation and user IDs."""
-        from app.models.payment_models import PlanType
-
-        subscription = MagicMock()
-        subscription.plan_type = PlanType.FREE
-        mock_subscription.return_value = subscription
-
+        mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-
-        mock_task = MagicMock()
-        mock_task.add_done_callback = MagicMock()
-        mock_create_task.return_value = mock_task
+        mock_create_task.return_value = _make_mock_task()
 
         await test_client.post("/api/v1/chat-stream", json=_VALID_BODY)
 
@@ -273,9 +289,12 @@ class TestChatStreamEndpoint:
         call_kwargs = mock_start_stream.call_args.kwargs
         assert "stream_id" in call_kwargs
         assert call_kwargs["conversation_id"] == "conv-test-123"
-        # user_id comes from the injected test_user fixture (integration-test-user-1)
         assert call_kwargs["user_id"] == "integration-test-user-1"
 
+    @patch(
+        "app.api.v1.endpoints.chat.stream_manager.subscribe_stream",
+        new=_empty_subscribe_stream,
+    )
     @patch(
         "app.api.v1.endpoints.chat.stream_manager.start_stream",
         new_callable=AsyncMock,
@@ -304,24 +323,15 @@ class TestChatStreamEndpoint:
         test_client,
     ):
         """When conversation_id is omitted the endpoint generates a fresh UUID."""
-        from app.models.payment_models import PlanType
-
-        subscription = MagicMock()
-        subscription.plan_type = PlanType.FREE
-        mock_subscription.return_value = subscription
-
+        mock_subscription.return_value = _make_subscription_mock()
         mock_redis_cache.redis = MagicMock()
-
-        mock_task = MagicMock()
-        mock_task.add_done_callback = MagicMock()
-        mock_create_task.return_value = mock_task
+        mock_create_task.return_value = _make_mock_task()
 
         body_no_conv = {"message": "Hi!", "messages": []}
         await test_client.post("/api/v1/chat-stream", json=body_no_conv)
 
         mock_start_stream.assert_called_once()
         call_kwargs = mock_start_stream.call_args.kwargs
-        # conversation_id should be a non-empty string even without one supplied
         assert call_kwargs["conversation_id"]
 
     @patch(
@@ -343,22 +353,13 @@ class TestChatStreamEndpoint:
         test_client,
     ):
         """When Redis is unavailable the SSE body should contain [STREAM_ERROR]."""
-        import asyncio
-        from app.models.payment_models import PlanType
-
-        subscription = MagicMock()
-        subscription.plan_type = PlanType.FREE
-        mock_subscription.return_value = subscription
-
-        # Simulate Redis being unavailable
-        mock_redis_cache.redis = None
+        mock_subscription.return_value = _make_subscription_mock()
+        mock_redis_cache.redis = None  # Redis is down
 
         with patch(
             "app.api.v1.endpoints.chat.asyncio.create_task",
         ) as mock_create_task:
-            mock_task = MagicMock()
-            mock_task.add_done_callback = MagicMock()
-            mock_create_task.return_value = mock_task
+            mock_create_task.return_value = _make_mock_task()
 
             response = await test_client.post(
                 "/api/v1/chat-stream",
@@ -378,7 +379,6 @@ class TestChatStreamEndpoint:
 
     async def test_chat_stream_rejects_invalid_body(self, test_client):
         """POST /api/v1/chat-stream with a missing required field returns 422."""
-        # 'message' field is required; omitting it should trigger validation error
         response = await test_client.post(
             "/api/v1/chat-stream",
             json={"messages": []},  # no 'message' key
@@ -448,7 +448,6 @@ class TestCancelStreamEndpoint:
         test_client,
     ):
         """A user must not be able to cancel another user's stream (403)."""
-        # Progress records a different user_id than the authenticated test user
         mock_get_progress.return_value = {
             "user_id": "different-user-id",
             "conversation_id": "conv-other",

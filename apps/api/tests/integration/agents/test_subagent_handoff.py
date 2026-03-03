@@ -35,9 +35,34 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.store.memory import InMemoryStore
 
+from langchain_core.tools import tool
+
 from tests.factories import make_config, make_user
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
 from tests.integration.conftest import SimpleState
+
+
+# ---------------------------------------------------------------------------
+# Stub LangChain tools (DynamicToolNode requires real tool objects, not MagicMock)
+# ---------------------------------------------------------------------------
+
+
+@tool
+def _stub_deep_research(query: str) -> str:
+    """Perform deep research on a topic (test stub)."""
+    return f"Research results for: {query}"
+
+
+@tool
+def _stub_web_search(query: str) -> str:
+    """Search the web for information (test stub)."""
+    return f"Web results for: {query}"
+
+
+@tool
+def _stub_fetch_webpages(urls: str) -> str:
+    """Fetch content from web pages (test stub)."""
+    return f"Fetched: {urls}"
 
 
 # ---------------------------------------------------------------------------
@@ -133,15 +158,15 @@ class TestSubAgentCanBeInstantiated:
             ),
             patch(
                 "app.agents.tools.research_tool.deep_research",
-                new=MagicMock(name="deep_research"),
+                new=_stub_deep_research,
             ),
             patch(
                 "app.agents.tools.webpage_tool.web_search_tool",
-                new=MagicMock(name="web_search_tool"),
+                new=_stub_web_search,
             ),
             patch(
                 "app.agents.tools.webpage_tool.fetch_webpages",
-                new=MagicMock(name="fetch_webpages"),
+                new=_stub_fetch_webpages,
             ),
         ):
             graph = await SubAgentFactory.create_provider_subagent(

@@ -34,11 +34,32 @@ from tests.integration.conftest import SimpleState
 # ---------------------------------------------------------------------------
 
 
+@tool
+def _stub_vfs_read(path: str) -> str:
+    """Read a file from the virtual filesystem (test stub)."""
+    return f"Contents of {path}"
+
+
+@tool
+def _stub_deep_research(query: str) -> str:
+    """Perform deep research on a topic (test stub)."""
+    return f"Research results for: {query}"
+
+
 def _make_mock_tool_registry():
     """Return a minimal ToolRegistry-like mock with the attributes accessed by
-    build_executor_graph / SubAgentFactory."""
+    build_executor_graph / SubAgentFactory.
+
+    The tool_dict includes stubs for vfs_read and deep_research because
+    build_executor_graph passes initial_tool_ids=["handoff", "plan_tasks",
+    "mark_task", "add_task", "vfs_read", "deep_research"] to create_agent,
+    which looks up each ID in the tool_registry dict at runtime.
+    """
     registry = MagicMock()
-    registry.get_tool_dict.return_value = {}
+    registry.get_tool_dict.return_value = {
+        "vfs_read": _stub_vfs_read,
+        "deep_research": _stub_deep_research,
+    }
     registry.get_category_by_space.return_value = None
     registry._categories = {}
     return registry
@@ -60,6 +81,7 @@ def _make_dummy_retrieve_tools_fn():
     """
 
     async def _dummy_retrieve_tools(query: str = "") -> list:
+        """Retrieve tools matching the query (test stub — always returns empty list)."""
         return []
 
     return _dummy_retrieve_tools
@@ -152,14 +174,10 @@ class TestExecutorGraphCompiles:
                 "app.agents.core.graph_builder.build_graph.create_executor_middleware",
                 return_value=[],
             ),
-            patch(
-                "app.agents.core.graph_builder.build_graph.create_todo_tools",
-                return_value=[],
-            ),
-            patch(
-                "app.agents.core.graph_builder.build_graph.create_todo_pre_model_hook",
-                return_value=MagicMock(),
-            ),
+            # create_todo_tools and create_todo_pre_model_hook are NOT mocked here —
+            # they are pure functions with no DB dependencies. The real todo tools
+            # (plan_tasks, mark_task, add_task) must exist in the tool_dict so
+            # acall_model can look them up via initial_tool_ids at runtime.
         ):
             async with build_executor_graph(
                 chat_llm=fake_llm,
@@ -192,7 +210,9 @@ class TestSelectToolsNode:
         # The handoff tool is a real @tool-decorated async function.
         # Just checking the schema / name is enough since we're not invoking it.
         assert handoff_tool.name == "handoff"
-        assert callable(handoff_tool)
+        # LangChain StructuredTool exposes .invoke() / .ainvoke() rather than __call__
+        # in newer langchain-core versions; check for the tool interface instead.
+        assert hasattr(handoff_tool, "invoke") or hasattr(handoff_tool, "run")
 
     async def test_initial_tool_ids_are_registered(self):
         """Executor graph must register all known initial tool IDs in tool_dict.
