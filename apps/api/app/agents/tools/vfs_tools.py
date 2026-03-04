@@ -71,6 +71,10 @@ def _resolve_path(
     if not path or path == ".":
         return get_agent_root(user_id, agent_name)
 
+    # Normalize: "users/..." without a leading slash → treat as absolute "/users/..."
+    if path.startswith("users/"):
+        path = "/" + path
+
     # If already absolute with proper user scope, validate and return
     if path.startswith("/users/"):
         normalized = normalize_path(path)

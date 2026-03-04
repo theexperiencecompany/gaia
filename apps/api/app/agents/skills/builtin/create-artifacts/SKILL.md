@@ -26,10 +26,15 @@ Activate when the user asks for standalone files that are better as viewable/dow
 Files are shown to the user only when they are in `.user-visible/` for the current session.
 
 Use:
-
-    vfs_write(".user-visible/file-name.ext", content)
+vfs_write(".user-visible/file-name.ext", content)
 
 This auto-resolves to the session-scoped location.
+
+## Prerequisites
+
+If `vfs_write` is not already available, bind it before proceeding:
+
+    retrieve_tools(exact_tool_names=["vfs_write", "vfs_cmd"])
 
 ## Preferred Workflow (Robust)
 
