@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.17.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.16.0...api-v0.17.0) (2026-03-04)
+
+
+### Features
+
+* Add custom integration tools to gather context ([#534](https://github.com/theexperiencecompany/gaia/issues/534)) ([e256633](https://github.com/theexperiencecompany/gaia/commit/e256633270452e43e53acf2dcdd6bfca5b4bb0ec))
+* Add script to populate GAIA's knowledge base from markdown and include initial GAIA documentation. ([d359181](https://github.com/theexperiencecompany/gaia/commit/d359181821c53e4237903b33c5b101c387af0af1))
+* Deep research tool, free-tier search fallbacks, and rate limit UI ([#530](https://github.com/theexperiencecompany/gaia/issues/530)) ([8e00025](https://github.com/theexperiencecompany/gaia/commit/8e00025a422426fa36e82e6a6e59f719e5c8e702))
+
+
+### Bug Fixes
+
+* **api:** align builtin skill tool slugs with Composio inventory ([#527](https://github.com/theexperiencecompany/gaia/issues/527)) ([095cfaa](https://github.com/theexperiencecompany/gaia/commit/095cfaaabb7269507dbbb7525ac01127ede95825))
+* Docker version issues & system workflows instructions. ([#542](https://github.com/theexperiencecompany/gaia/issues/542)) ([ef9f3cc](https://github.com/theexperiencecompany/gaia/commit/ef9f3ccf7f2ce66bf63d65fc0c70f4b75e77a5d3))
+* Enhance caching logic in research tool and improve type validation in utility functions ([731be49](https://github.com/theexperiencecompany/gaia/commit/731be4953f2c0e8597c8020c56cb124ea9f57b41))
+* Enhance MCPClient connection handling with token refresh and status updates on auth errors ([#528](https://github.com/theexperiencecompany/gaia/issues/528)) ([420e4dd](https://github.com/theexperiencecompany/gaia/commit/420e4dd4e15724b6641ff74b929e714d121ffe5d))
+* enhance meeting preparation and reminder prompts for calendar and email workflows ([8f2e6df](https://github.com/theexperiencecompany/gaia/commit/8f2e6dfb9ffe75bc1e336c58aa6f433ab8289588))
+* Improve error handling and logging in subagent tool invocation; enhance research tool depth validation; update token management error logging; refine search utility URL validation ([#536](https://github.com/theexperiencecompany/gaia/issues/536)) ([d34b0ae](https://github.com/theexperiencecompany/gaia/commit/d34b0ae0cf1ceb045fe4ad82873bb038f0884ec7))
+
 ## [0.16.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.15.0...api-v0.16.0) (2026-02-27)
 
 

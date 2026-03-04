@@ -1,5 +1,30 @@
 # Changelog
 
+## [0.18.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.17.0...web-v0.18.0) (2026-03-04)
+
+
+### Features
+
+* Add custom integration tools to gather context ([#534](https://github.com/theexperiencecompany/gaia/issues/534)) ([e256633](https://github.com/theexperiencecompany/gaia/commit/e256633270452e43e53acf2dcdd6bfca5b4bb0ec))
+* Create Pricing Page with updated plans and descriptions, including new features and improved layout ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* Deep research tool, free-tier search fallbacks, and rate limit UI ([#530](https://github.com/theexperiencecompany/gaia/issues/530)) ([8e00025](https://github.com/theexperiencecompany/gaia/commit/8e00025a422426fa36e82e6a6e59f719e5c8e702))
+* Implement new Install Page for GAIA CLI with interactive code blocks and installation methods ([#535](https://github.com/theexperiencecompany/gaia/issues/535)) ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+
+
+### Bug Fixes
+
+* Add new wallpaper image for enhanced visual appeal on the pricing page ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* Adjust Final Section layout for better visual hierarchy and responsiveness ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* **api:** align builtin skill tool slugs with Composio inventory ([#527](https://github.com/theexperiencecompany/gaia/issues/527)) ([095cfaa](https://github.com/theexperiencecompany/gaia/commit/095cfaaabb7269507dbbb7525ac01127ede95825))
+* Enhance Footer component with new background image and improved styling ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* enhance integration sorting and category ordering during search ([6266cf9](https://github.com/theexperiencecompany/gaia/commit/6266cf9fbebb4acfa450dd659f01142f6224200d))
+* Improve error handling and logging in subagent tool invocation; enhance research tool depth validation; update token management error logging; refine search utility URL validation ([#536](https://github.com/theexperiencecompany/gaia/issues/536)) ([d34b0ae](https://github.com/theexperiencecompany/gaia/commit/d34b0ae0cf1ceb045fe4ad82873bb038f0884ec7))
+* Improve Pricing Cards layout for better responsiveness and user experience ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* Refactor Comparison Table to improve feature descriptions and layout consistency ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* update Postgres image to version 18-alpine ([#543](https://github.com/theexperiencecompany/gaia/issues/543)) ([4d1d5df](https://github.com/theexperiencecompany/gaia/commit/4d1d5dfbbbb0d0dab5c82687489817042e0a3a18))
+* Update Pricing Card component to streamline pricing display and button interactions ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+* Update Pricing Modal to enhance user experience with trust messaging and improved layout ([eafb920](https://github.com/theexperiencecompany/gaia/commit/eafb920d03307b5cb77863cb48a1743bf77b8c21))
+
 ## [0.17.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.16.0...web-v0.17.0) (2026-02-27)
 
 
