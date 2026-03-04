@@ -151,43 +151,68 @@ def register_notion_custom_tools(composio: Composio) -> List[str]:
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
         # Convert markdown to Notion blocks
-        content_blocks = markdown_to_notion_blocks(request.markdown)
+        all_blocks = markdown_to_notion_blocks(request.markdown)
 
-        if not content_blocks:
+        if not all_blocks:
             raise ValueError(
                 "No content to insert - markdown conversion produced no blocks"
             )
 
-        # Build params for NOTION_ADD_MULTIPLE_PAGE_CONTENT
-        params: Dict[str, Any] = {
-            "parent_block_id": request.parent_block_id,
-            "content_blocks": content_blocks,
-        }
+        # Separate table blocks from regular content blocks
+        table_blocks = [b for b in all_blocks if b.get("type") == "table"]
+        content_blocks = [b for b in all_blocks if b.get("type") != "table"]
 
-        # Add after param if specified
-        if request.after:
-            params["after"] = request.after
+        blocks_added = 0
 
-        # Call NOTION_ADD_MULTIPLE_PAGE_CONTENT
-        response: ToolExecutionResponse = composio.tools.execute(
-            slug="NOTION_ADD_MULTIPLE_PAGE_CONTENT",
-            arguments=params,
-            version=auth_credentials.get("version"),
-            dangerously_skip_version_check=True,
-            user_id=auth_credentials.get("user_id"),
-        )
+        # Insert regular content blocks via NOTION_ADD_MULTIPLE_PAGE_CONTENT
+        if content_blocks:
+            params: Dict[str, Any] = {
+                "parent_block_id": request.parent_block_id,
+                "content_blocks": content_blocks,
+            }
+            if request.after:
+                params["after"] = request.after
 
-        # ToolExecutionResponse format
-        if not response["successful"]:
-            raise ValueError(f"Failed to insert markdown: {response.get('error')}")
+            response: ToolExecutionResponse = composio.tools.execute(
+                slug="NOTION_ADD_MULTIPLE_PAGE_CONTENT",
+                arguments=params,
+                version=auth_credentials.get("version"),
+                dangerously_skip_version_check=True,
+                user_id=auth_credentials.get("user_id"),
+            )
 
-        data = response["data"]
+            if not response["successful"]:
+                raise ValueError(f"Failed to insert markdown: {response.get('error')}")
+
+            blocks_added += len(content_blocks)
+
+        # Insert each table block via NOTION_APPEND_TABLE_BLOCKS
+        for table_block in table_blocks:
+            table_response: ToolExecutionResponse = composio.tools.execute(
+                slug="NOTION_APPEND_TABLE_BLOCKS",
+                arguments={
+                    "block_id": request.parent_block_id,
+                    "table_width": table_block["table_width"],
+                    "has_column_header": table_block.get("has_column_header", True),
+                    "rows": table_block["rows"],
+                },
+                version=auth_credentials.get("version"),
+                dangerously_skip_version_check=True,
+                user_id=auth_credentials.get("user_id"),
+            )
+
+            if not table_response["successful"]:
+                raise ValueError(
+                    f"Failed to insert table: {table_response.get('error')}"
+                )
+
+            blocks_added += 1
 
         return {
             "parent_block_id": request.parent_block_id,
-            "blocks_added": len(content_blocks),
+            "blocks_added": blocks_added,
+            "tables_added": len(table_blocks),
             "after": request.after,
-            "response": data,
         }
 
     @composio.tools.custom_tool(toolkit="NOTION")

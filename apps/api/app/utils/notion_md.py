@@ -627,6 +627,60 @@ def markdown_to_notion_blocks(markdown: str) -> List[Dict[str, Any]]:
             i += 1
             continue
 
+        # Markdown table — detected by a pipe-delimited row
+        # Collects consecutive table lines (header + separator + rows)
+        if stripped.startswith("|") and stripped.endswith("|"):
+            table_lines = []
+            while i < len(lines) and lines[i].strip().startswith("|"):
+                table_lines.append(lines[i].strip())
+                i += 1
+
+            # Parse cells from a pipe-delimited row
+            def _parse_row(row_line: str) -> List[str]:
+                return [cell.strip() for cell in row_line.strip("|").split("|")]
+
+            # Filter out separator rows (e.g. |---|---| or |:---|:---:|)
+            def _is_separator(row_line: str) -> bool:
+                return all(
+                    re.match(r"^:?-+:?$", cell.strip())
+                    for cell in row_line.strip("|").split("|")
+                    if cell.strip()
+                )
+
+            data_rows = [r for r in table_lines if not _is_separator(r)]
+            if not data_rows:
+                continue
+
+            # First row is header
+            header_cells = _parse_row(data_rows[0])
+            table_width = len(header_cells)
+
+            notion_rows = []
+            for row_line in data_rows:
+                cells = _parse_row(row_line)
+                # Pad or trim to table_width
+                while len(cells) < table_width:
+                    cells.append("")
+                cells = cells[:table_width]
+                notion_rows.append(
+                    {
+                        "cells": [
+                            [{"type": "text", "text": {"content": cell}}]
+                            for cell in cells
+                        ]
+                    }
+                )
+
+            blocks.append(
+                {
+                    "type": "table",
+                    "table_width": table_width,
+                    "has_column_header": True,
+                    "rows": notion_rows,
+                }
+            )
+            continue
+
         # Default: paragraph
         blocks.append({"block_property": "paragraph", "content": stripped})
         i += 1

@@ -28,6 +28,7 @@ Gmail supports powerful search operators:
 **Time:**
 - `after:2025/01/01` / `before:2025/02/01`
 - `newer_than:7d` / `older_than:30d`
+- **Fetch all emails for a specific day:** use `after:YYYY/MM/DD before:YYYY/MM/DD+1` (e.g., all emails on Jan 15: `after:2025/01/15 before:2025/01/16`)
 
 **Content:**
 - `subject:meeting` — in subject line
@@ -39,26 +40,60 @@ Gmail supports powerful search operators:
 
 ## Step 2: Execute Search
 
+**Always use `spawn_subagent` for any Gmail fetch** — raw email responses are too large for the parent context regardless of result count. The subagent fetches, summarizes, and returns only a compact digest + `next_page_token`.
+
 **Find specific emails:**
 ```
-GMAIL_FETCH_EMAILS(
-  query="from:sarah@company.com subject:Q1 after:2025/01/01",
-  max_results=20
+result = spawn_subagent(
+  task="""
+    Call GMAIL_FETCH_EMAILS(query="from:sarah@company.com subject:Q1 after:2025/01/01", max_results=30)
+    Summarize all emails: sender, subject, date, key points, action items.
+    digest: <summary>, next_page_token: <token or null>
+  """
 )
 ```
 
-**Find contacts:**
+**Find contacts** (lightweight — safe to call directly):
 ```
 GMAIL_SEARCH_PEOPLE(query="Sarah", pageSize=10)
 ```
 
 **Thread-based search:**
 ```
-GMAIL_LIST_THREADS(
-  query="project proposal from:alex",
-  max_results=10,
-  verbose=true   # Get full thread content
+result = spawn_subagent(
+  task="""
+    Call GMAIL_LIST_THREADS(query="project proposal from:alex", max_results=30, verbose=true)
+    For each thread extract: participants, timeline, key decisions, action items.
+    digest: <summary>, next_page_token: <token or null>
+  """
 )
+```
+
+**Fetch ALL emails for a specific day:**
+
+Use `after:YYYY/MM/DD before:YYYY/MM/DD+1`. Parent orchestrates pagination — spawn a subagent per page, each returning a digest + token. Parent spawns the next only when a token is returned:
+
+```
+# Page 1
+result_1 = spawn_subagent(
+  task="""
+    Call GMAIL_FETCH_EMAILS(query="after:2025/01/15 before:2025/01/16", max_results=30)
+    Summarize all emails: sender, subject, date, key points, action items.
+    digest: <summary>, next_page_token: <token or null>
+  """
+)
+
+# Page 2 — only if token returned
+if result_1.next_page_token:
+  result_2 = spawn_subagent(
+    task="""
+      Call GMAIL_FETCH_EMAILS(query="after:2025/01/15 before:2025/01/16", max_results=30, page_token="<token>")
+      Same summarization instructions.
+      digest: <summary>, next_page_token: <token or null>
+    """
+  )
+
+# Repeat until next_page_token is null. Parent synthesizes all digests.
 ```
 
 ## Step 3: Progressive Search
@@ -74,31 +109,9 @@ GMAIL_LIST_THREADS(
 - If multiple strong candidates remain, present the best 2-3 with sender + date + subject, then ask ONE focused question to disambiguate.
 - If no results, list the queries you tried (briefly) and ask ONE clarifying question (sender? timeframe? attachment type?).
 
-## Step 4: Read Full Context
+## Step 4: Synthesize Findings
 
-When you find relevant messages, get full details:
-```
-GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID(message_id="<msg_id>", format="full")
-```
-
-For thread context:
-```
-GMAIL_LIST_THREADS(query="...", verbose=true) → full thread with all replies
-```
-
-### Using spawn_subagent for Multiple Threads
-
-When reading multiple email threads (Gmail responses can be large - use spawn_subagent to keep context clean):
-
-```
-spawn_subagent(task="Read thread ID xyz123 and extract key points", context="Focus on action items and decisions")
-spawn_subagent(task="Read thread ID abc456 and extract key points", context="Focus on action items and decisions")
-spawn_subagent(task="Read thread ID def789 and extract key points", context="Focus on action items and decisions")
-```
-
-## Step 5: Synthesize Findings
-
-Present organized results:
+Parent collects all subagent digests and presents organized results:
 ```
 Found 8 emails about "Q1 budget proposal":
 
@@ -115,8 +128,8 @@ Thread: "Budget Follow-up" (3 messages)
 ```
 
 ## Anti-Patterns
+- Calling `GMAIL_FETCH_EMAILS` or `GMAIL_LIST_THREADS` in the parent context — always use `spawn_subagent`
 - Using `label:snoozed` (wrong — use `is:snoozed`)
-- Not using `include_payload=true` when content is needed
 - Searching with very long natural language (use operators)
 - Giving up after one search (use progressive strategy)
 - Raw message dumps without synthesis

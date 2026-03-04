@@ -23,7 +23,7 @@ from datetime import datetime
 from typing import Any, Dict, Generator
 
 import pytest
-from pytest_check import check
+from pytest_check.context_manager import check
 
 from tests.composio_tools.config_utils import get_integration_config
 from tests.composio_tools.conftest import execute_tool
@@ -117,12 +117,13 @@ class TestGmailReadOperations:
 
     def test_get_unread_count(self, composio_client, user_id):
         """
-        Test GET_UNREAD_COUNT returns unread count for inbox.
+        Test GET_UNREAD_COUNT returns unread + total counts for inbox.
 
         Expected output schema:
         {
           "data": {
             "unreadCount": 2135,
+            "totalCount": 9876,
             "label_id": "INBOX"
           },
           "error": null,
@@ -141,10 +142,50 @@ class TestGmailReadOperations:
 
         with check:
             assert "unreadCount" in data, "Should have 'unreadCount' field"
-            assert isinstance(data.get("unreadCount"), int), "unreadCount should be int"
             unread_count = data.get("unreadCount")
-            assert unread_count is not None, "unreadCount should be present"
+            assert isinstance(unread_count, int), "unreadCount should be int"
             assert unread_count >= 0, "unreadCount should be non-negative"
+            assert "totalCount" in data, "Should have 'totalCount' field"
+            total_count = data.get("totalCount")
+            assert isinstance(total_count, int), "totalCount should be int"
+            assert total_count >= unread_count, "totalCount should be >= unreadCount"
+
+    def test_get_unread_count_with_query(self, composio_client, user_id):
+        """
+        Test GET_UNREAD_COUNT supports query-based counting.
+
+        Expected output schema:
+        {
+          "data": {
+            "query": "is:unread",
+            "unreadCount": 123,
+            "totalCount": 123,
+            "is_estimate": true
+          },
+          "error": null,
+          "successful": true
+        }
+        """
+        result = execute_tool(
+            composio_client,
+            "GMAIL_GET_UNREAD_COUNT",
+            {"query": "is:unread", "label_ids": ["INBOX"]},
+            user_id,
+        )
+
+        assert result.get("successful"), f"API call failed: {result.get('error')}"
+        data = parse_data(result)
+
+        with check:
+            assert data.get("query") == "is:unread", "Should echo query"
+            assert "unreadCount" in data, "Should have unreadCount"
+            assert "totalCount" in data, "Should have totalCount"
+            unread_count = data.get("unreadCount")
+            total_count = data.get("totalCount")
+            assert isinstance(unread_count, int), "unreadCount should be int"
+            assert isinstance(total_count, int), "totalCount should be int"
+            assert unread_count >= 0, "unreadCount should be non-negative"
+            assert total_count >= unread_count, "totalCount should be >= unreadCount"
 
 
 class TestGmailMessageOperations:
