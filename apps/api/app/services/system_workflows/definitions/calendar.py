@@ -23,9 +23,14 @@ def _meeting_prep() -> CreateWorkflowRequest:
         title="Meeting Briefing",
         description="Researches attendees and prepares a briefing before each meeting.",
         prompt=(
-            "60 minutes before every calendar event, GAIA researches attendees, "
-            "reviews relevant emails and context, prepares talking points and agenda, "
-            "and sends you a briefing so you walk in prepared."
+            "Prepare a meeting briefing for the upcoming calendar event from the trigger. "
+            "Get the event details (title, attendees, description, location/link). "
+            "Skip solo personal events (gym, lunch, focus time). "
+            "For external attendees, search the web for LinkedIn, company info, and recent news. "
+            "Search user memory for past interactions with attendees. "
+            "Search Gmail for recent threads related to the meeting topic. "
+            "Compile a structured brief: who the user is meeting, suggested talking points, "
+            "open action items, relevant background, and the join link if available."
         ),
         is_system_workflow=True,
         source_integration="googlecalendar",
@@ -85,8 +90,9 @@ def _meeting_reminder() -> CreateWorkflowRequest:
         title="Meeting Reminder",
         description="A heads-up 10 minutes before any event with the join link.",
         prompt=(
-            "A simple heads-up 10 minutes before any calendar event so you don't miss it. "
-            "Includes the join link if available."
+            "Send the user a short reminder for the upcoming calendar event from the trigger. "
+            "Include the event title, time, and join link or location if available. "
+            "Keep it to 2-3 lines — this is just a heads-up, not a full briefing."
         ),
         is_system_workflow=True,
         source_integration="googlecalendar",

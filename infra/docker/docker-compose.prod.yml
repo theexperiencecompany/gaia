@@ -83,7 +83,7 @@ services:
 
   # Postgres Service
   postgres:
-    image: postgres:alpine
+    image: postgres:17-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
@@ -104,7 +104,7 @@ services:
 
   # Redis Service
   redis:
-    image: redis:7.4.8-alpine
+    image: redis:8-alpine
     container_name: redis
     ports:
       - "6379:6379"

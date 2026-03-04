@@ -25,7 +25,7 @@ services:
       - gaia_network
 
   postgres:
-    image: postgres:17.9-alpine
+    image: postgres:17-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
@@ -45,7 +45,7 @@ services:
       - gaia_network
 
   redis:
-    image: redis:7.4.8-alpine
+    image: redis:8-alpine
     container_name: redis
     ports:
       - "${REDIS_HOST_PORT:-6379}:6379"
@@ -61,7 +61,7 @@ services:
       - gaia_network
 
   mongo:
-    image: mongo:8.0.19
+    image: mongo:8
     container_name: mongo
     volumes:
       - mongo_data:/data/db

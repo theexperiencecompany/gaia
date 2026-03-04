@@ -23,9 +23,14 @@ def _email_intelligence() -> CreateWorkflowRequest:
         title="Inbox Triage",
         description="Scans new emails, triages by importance, and creates todos for action items.",
         prompt=(
-            "Every 15 minutes, scans new inbox emails. For important emails or ones "
-            "with action items, GAIA creates todos, does relevant research, and sends "
-            "you a briefing. Ignores noise automatically."
+            "Triage the new inbox emails provided by the trigger. "
+            "Classify each as spam, transactional, newsletter, informational, important, or action-required. "
+            "Skip spam, transactional, and newsletters entirely. "
+            "For important or action-required emails: extract action items, deadlines, and urgency "
+            "(critical/high/normal). Create a todo for each action item. "
+            "Search the web and user memory for relevant context on referenced topics or senders. "
+            "Compile a concise briefing for the user covering what was processed, what needs attention, "
+            "and what todos were created."
         ),
         is_system_workflow=True,
         source_integration="gmail",
@@ -78,9 +83,15 @@ def _smart_reply_drafts() -> CreateWorkflowRequest:
         title="Auto-Draft Replies",
         description="Drafts replies for emails that need a response. You always approve before sending.",
         prompt=(
-            "Every 30 minutes, checks new inbox emails for ones that need a reply. "
-            "For direct questions, requests, and important emails from real people, "
-            "GAIA drafts a reply for your review. You always approve before sending."
+            "Check the new inbox emails from the trigger for ones that need a reply. "
+            "Skip newsletters, automated notifications, transactional emails, CC-only threads, "
+            "and threads the user already replied to. "
+            "Draft replies for direct questions, explicit requests, meeting invites, and introductions. "
+            "Search user memory for sender context and the user's writing style. "
+            "Write concise replies matching the original tone. If the request is ambiguous, "
+            "draft a clarifying reply instead of guessing. "
+            "Save as Gmail drafts — never send directly. "
+            "Send the user a summary of drafts created with sender and subject for each."
         ),
         is_system_workflow=True,
         source_integration="gmail",
