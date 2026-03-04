@@ -60,9 +60,9 @@ export default function SoftwareDevClient() {
           transition={{ duration: 0.7, ease, delay: 0.1 }}
           className="font-serif relative z-10 mb-6 max-w-4xl text-5xl font-normal leading-[1.1] text-white sm:text-6xl md:text-7xl"
         >
-          Your editor is open.
+          Ship code.
           <br />
-          Your tools aren&apos;t.
+          Not status updates.
         </m.h1>
         <m.p
           initial={{ opacity: 0, y: 24 }}
@@ -111,7 +111,7 @@ export default function SoftwareDevClient() {
         <SectionHeader
           label="Daily Standup"
           headline="Your standup, written before your first commit."
-          description="Every morning GAIA compiles your merged PRs, completed Linear tickets, and blocked work from GitHub and Slack — and formats it as a ready-to-post standup update. Zero effort."
+          description="Every morning GAIA compiles your merged PRs, completed Linear tickets, and blocked work from GitHub and Slack — and formats it as a ready-to-post standup update. Just show up to standup."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "linear", label: "Linear" },
@@ -170,6 +170,7 @@ export default function SoftwareDevClient() {
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "slack", label: "Slack" },
+            { id: "sentry", label: "Sentry" },
           ]}
         />
         <div className="w-full max-w-3xl">

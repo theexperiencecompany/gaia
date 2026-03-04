@@ -71,9 +71,8 @@ export default function ProductManagerClient() {
           transition={{ duration: 0.7, ease, delay: 0.2 }}
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
         >
-          GAIA connects Linear, Slack, GitHub, and Notion — then handles the
-          status updates, meeting prep, and feature triage so you can spend your
-          time on actual product thinking.
+          GAIA handles the status updates, meeting prep, and feature triage — so
+          you can spend your time on the decisions that actually matter.
         </m.p>
         <m.div
           initial={{ opacity: 0, y: 16 }}
@@ -112,7 +111,7 @@ export default function ProductManagerClient() {
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
           label="Product Brief"
-          headline="Your product pulse. Before your first meeting."
+          headline="Your full picture. Before your first meeting."
           description="Every morning, GAIA compiles sprint progress, deployment status, and team blockers from Linear, GitHub, and Slack — and delivers one crisp brief. Walk into every meeting knowing where things stand."
           integrations={[
             { id: "linear", label: "Linear" },
@@ -130,7 +129,7 @@ export default function ProductManagerClient() {
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
           label="Stakeholder Updates"
-          headline="Write once. Update never again."
+          headline="Write once. Never rewrite it."
           description="GAIA pulls sprint velocity, deployment status, and key wins from Linear and GitHub — then drafts your stakeholder update in the format your audience expects. One review, done."
           integrations={[
             { id: "linear", label: "Linear" },

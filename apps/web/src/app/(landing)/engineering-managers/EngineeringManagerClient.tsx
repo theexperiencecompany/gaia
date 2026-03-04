@@ -61,9 +61,9 @@ export default function EngineeringManagerClient() {
           transition={{ duration: 0.7, ease, delay: 0.1 }}
           className="font-serif relative z-10 mb-6 max-w-4xl text-5xl font-normal leading-[1.1] text-white sm:text-6xl md:text-7xl"
         >
-          Lead your team.
+          Stop watching every thread.
           <br />
-          Without losing the technical context.
+          Start leading every person.
         </m.h1>
         <m.p
           initial={{ opacity: 0, y: 24 }}
@@ -72,8 +72,8 @@ export default function EngineeringManagerClient() {
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
         >
           GAIA monitors GitHub, Linear, and Slack so you don&apos;t have to. It
-          preps your 1:1s, surfaces team blockers, and keeps you technically
-          informed — without reading every thread.
+          preps your 1:1s, surfaces blockers, and knows what&apos;s stuck before
+          you have to ask.
         </m.p>
         <m.div
           initial={{ opacity: 0, y: 16 }}
@@ -93,8 +93,8 @@ export default function EngineeringManagerClient() {
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
           label="Proactive AI"
-          headline="GAIA keeps the technical pulse while you keep the team moving."
-          description="Constantly monitoring every GitHub repo, Linear board, and Slack channel is not leadership — it's surveillance. GAIA watches so you don't have to. It surfaces the blockers, flags the at-risk PRs, and prepares the context before you need it."
+          headline="GAIA watches the code. You lead the team."
+          description="Monitoring every repo, board, and thread isn't leadership — it's surveillance. GAIA watches so you don't have to. It surfaces the blockers, flags at-risk PRs, and prepares the context before you need it."
           integrations={[
             { id: "github", label: "GitHub" },
             { id: "linear", label: "Linear" },
@@ -130,7 +130,7 @@ export default function EngineeringManagerClient() {
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
           label="1:1 Prep"
-          headline="Walk into every 1:1 already knowing what matters."
+          headline="Walk into every 1:1 knowing what matters."
           description="Before each 1:1, GAIA compiles your team member's recent PRs, completed tickets, open blockers, and relevant Slack context — in one briefing doc. Every conversation starts with clarity."
           integrations={[
             { id: "github", label: "GitHub" },

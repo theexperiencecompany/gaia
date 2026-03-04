@@ -129,8 +129,8 @@ export default function SalesClient() {
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
           label="Meeting Prep"
-          headline="Walk into every call knowing everything."
-          description="Before each sales call, GAIA pulls your prospect's LinkedIn activity, recent email history, CRM context, and deal stage — and delivers a one-page brief. You close, not scramble."
+          headline="Walk into every call prepared to close."
+          description="You close, not scramble. Before each sales call, GAIA pulls your prospect's LinkedIn activity, recent email history, CRM context, and deal stage — and delivers a one-page brief so you walk in with an edge."
           integrations={[
             { id: "hubspot", label: "HubSpot" },
             { id: "gmail", label: "Gmail" },

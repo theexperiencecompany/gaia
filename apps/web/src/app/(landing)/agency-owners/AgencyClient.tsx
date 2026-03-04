@@ -70,9 +70,9 @@ export default function AgencyClient() {
           transition={{ duration: 0.7, ease, delay: 0.2 }}
           className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
         >
-          GAIA monitors your entire client portfolio, writes the status reports,
-          and keeps your pipeline moving — while you focus on the work that
-          actually grows the agency.
+          GAIA monitors your client portfolio, writes the status reports, and
+          keeps your pipeline moving — while you focus on the work that actually
+          grows the agency.
         </m.p>
         <m.div
           initial={{ opacity: 0, y: 16 }}
@@ -131,7 +131,7 @@ export default function AgencyClient() {
         <SectionHeader
           label="Client Reports"
           headline="Reports that write themselves. On schedule."
-          description="Every week, GAIA pulls project progress from ClickUp or Asana, compiles the key metrics, and drafts the client status report in your agency's format. Consistent, professional, zero effort."
+          description="Every week, GAIA pulls project progress from ClickUp or Asana, compiles the key metrics, and drafts the client status report in your agency's format. Consistent, professional, every time."
           integrations={[
             { id: "clickup", label: "ClickUp" },
             { id: "asana", label: "Asana" },
@@ -186,7 +186,7 @@ export default function AgencyClient() {
       <section className="flex flex-col items-center px-6 py-20 text-center sm:py-28">
         <SectionHeader
           label="On Autopilot"
-          headline="Client reports. On schedule. Every time."
+          headline="Tell GAIA once. It runs your agency every week."
           description="Weekly client reports every Friday. Portfolio brief every Monday morning. BD pipeline review every Thursday. Tell GAIA once — it connects ClickUp, Gmail, and your sheets, and delivers every time. You never build another status email from scratch."
           integrations={[
             { id: "clickup", label: "ClickUp" },

@@ -1,0 +1,12 @@
+import type { Metadata } from "next";
+import SoftwareDevClient from "./SoftwareDevClient";
+
+export const metadata: Metadata = {
+  title: "GAIA for Software Developers — Ship Code, Not Status Updates",
+  description:
+    "GAIA monitors GitHub, Linear, and Slack in the background — triages what needs you, handles the rest, and delivers your standup before your first commit.",
+};
+
+export default function SoftwareDevelopersPage() {
+  return <SoftwareDevClient />;
+}
