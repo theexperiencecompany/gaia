@@ -64,7 +64,9 @@ export default function SlackDemo() {
               <p className="mb-3 text-sm text-zinc-300">
                 Good morning. Here&apos;s today&apos;s standup:
               </p>
-              <DemoFinalCard type="workflow" />
+              <div className="w-fit outline-1 outline-zinc-800 rounded-2xl">
+                <DemoFinalCard type="workflow" />
+              </div>
             </div>
           </m.div>
         )}

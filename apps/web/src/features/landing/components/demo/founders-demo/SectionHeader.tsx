@@ -1,4 +1,5 @@
 import { m, useInView } from "motion/react";
+import type { ReactNode } from "react";
 import { useRef } from "react";
 import IntegrationStrip from "./IntegrationStrip";
 
@@ -9,11 +10,13 @@ export default function SectionHeader({
   headline,
   description,
   integrations,
+  labelIcon,
 }: {
   label: string;
-  headline: string;
+  headline: ReactNode;
   description: string;
   integrations?: { id: string; label: string }[];
+  labelIcon?: ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, amount: 0.15 });
@@ -24,15 +27,16 @@ export default function SectionHeader({
         initial={{ opacity: 0, y: 8 }}
         animate={inView ? { opacity: 1, y: 0 } : {}}
         transition={{ duration: 0.5, ease }}
-        className="mb-4 text-xs font-medium uppercase tracking-widest text-primary"
+        className="mb-4 flex items-center gap-1.5 text-xs font-medium uppercase tracking-widest text-primary"
       >
+        {labelIcon}
         {label}
       </m.span>
       <m.h2
         initial={{ opacity: 0, y: 16 }}
         animate={inView ? { opacity: 1, y: 0 } : {}}
         transition={{ duration: 0.6, ease, delay: 0.08 }}
-        className="font-serif mb-5 max-w-4xl text-4xl font-normal text-white sm:text-5xl"
+        className="font-serif mb-5 max-w-5xl text-5xl font-normal text-white sm:text-5xl"
       >
         {headline}
       </m.h2>

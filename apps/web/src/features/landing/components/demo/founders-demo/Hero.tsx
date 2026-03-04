@@ -45,9 +45,8 @@ export default function Hero() {
         transition={{ duration: 0.7, ease, delay: 0.2 }}
         className="relative z-10 mb-10 max-w-2xl text-xl font-light leading-relaxed text-white"
       >
-        GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ other
-        tools — then handles the operational work you shouldn&apos;t be doing
-        yourself.
+        GAIA connects to your inbox, Slack, calendar, CRM, and 30+ tools — then
+        does the grunt work for you, automatically.
       </m.p>
       <m.div
         initial={{ opacity: 0, y: 16 }}

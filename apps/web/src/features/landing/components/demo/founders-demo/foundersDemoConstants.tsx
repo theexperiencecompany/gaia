@@ -3,6 +3,7 @@ import type { ToolStep } from "../types";
 import InvestorMetricsCard from "./InvestorMetricsCard";
 import MorningBriefingCard from "./MorningBriefingCard";
 import PipelineCard from "./PipelineCard";
+import ProactiveCard from "./ProactiveCard";
 import type { ChatMessage } from "./types";
 
 // ─── Tool Definitions ────────────────────────────────────────────────
@@ -142,6 +143,29 @@ export const INVESTOR_MESSAGES: ChatMessage[] = [
     content: "",
     cardContent: <DemoFinalCard type="email" />,
     delay: 400,
+  },
+];
+
+export const PROACTIVE_MESSAGES: ChatMessage[] = [
+  {
+    id: "pr1",
+    role: "assistant",
+    content:
+      "While you were in meetings, I noticed a few things and handled them:",
+  },
+  {
+    id: "pr2",
+    role: "card",
+    content: "",
+    cardContent: <ProactiveCard />,
+    delay: 400,
+  },
+  {
+    id: "pr3",
+    role: "assistant",
+    content:
+      "The Acme follow-up is queued — want me to send it? Their trial expires Friday.",
+    delay: 600,
   },
 ];
 
