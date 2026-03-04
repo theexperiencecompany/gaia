@@ -17,6 +17,7 @@ from app.agents.prompts.memory_prompts import (
     CLICKUP_MEMORY_PROMPT,
     CONTEXT7_MEMORY_PROMPT,
     DEEPWIKI_MEMORY_PROMPT,
+    FIGMA_MEMORY_PROMPT,
     GITHUB_MEMORY_PROMPT,
     GMAIL_MEMORY_PROMPT,
     GOALS_MEMORY_PROMPT,
@@ -54,6 +55,7 @@ from app.agents.prompts.subagent_prompts import (
     CLICKUP_AGENT_SYSTEM_PROMPT,
     CONTEXT7_AGENT_SYSTEM_PROMPT,
     DEEPWIKI_AGENT_SYSTEM_PROMPT,
+    FIGMA_AGENT_SYSTEM_PROMPT,
     GITHUB_AGENT_SYSTEM_PROMPT,
     GMAIL_AGENT_SYSTEM_PROMPT,
     GOALS_AGENT_SYSTEM_PROMPT,
@@ -1646,6 +1648,75 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 "CLICKUP_GET_FOLDERS",
             ],
             memory_prompt=CLICKUP_MEMORY_PROMPT,
+        ),
+    ),
+    # MCP Integrations (OAuth-authenticated)
+    OAuthIntegration(
+        id="figma",
+        name="Figma",
+        description="Access and inspect Figma design files, components, variables, and design system assets.",
+        category="design",
+        provider="figma",
+        scopes=[
+            OAuthScope(
+                scope="files:read",
+                description="Read Figma files, frames, and components",
+            ),
+            OAuthScope(
+                scope="file_variables:read",
+                description="Read design tokens and local variable collections",
+            ),
+            OAuthScope(
+                scope="file_comments:write",
+                description="Post and resolve comments on design files",
+            ),
+        ],
+        available=True,
+        is_featured=True,
+        short_name="figma",
+        managed_by="mcp",
+        mcp_config=MCPConfig(
+            server_url="https://mcp.figma.com/mcp",
+            requires_auth=True,
+            auth_type="oauth",
+            client_id_env="FIGMA_MCP_CLIENT_ID",
+            client_secret_env="FIGMA_MCP_CLIENT_SECRET",  # nosec B106  # pragma: allowlist secret
+            oauth_scopes=[
+                "current_user:read",
+                "files:read",
+                "file_versions:read",
+                "file_metadata:read",
+                "file_content:read",
+                "file_comments:read",
+                "file_comments:write",
+                "library_assets:read",
+                "library_content:read",
+                "team_library_content:read",
+                "file_variables:read",
+                "file_variables:write",
+                "library_analytics:read",
+            ],
+            # Figma's RFC 8414 discovery endpoint (api.figma.com/.well-known/oauth-authorization-server)
+            # returns 404, so we hardcode the OAuth endpoints directly.
+            # DCR is blocked (403) — pre-registered app required.
+            oauth_metadata={
+                "authorization_endpoint": "https://www.figma.com/oauth",
+                "token_endpoint": "https://api.figma.com/v1/oauth/token",  # nosec B105
+                "registration_endpoint": "https://api.figma.com/v1/oauth/mcp/register",
+                "code_challenge_methods_supported": ["S256"],
+            },
+        ),
+        subagent_config=SubAgentConfig(
+            has_subagent=True,
+            agent_name="figma_agent",
+            tool_space="figma",
+            handoff_tool_name="call_figma_agent",
+            domain="design file navigation and component inspection",
+            capabilities="reading Figma files, inspecting frames and components, accessing design tokens, browsing variable collections, reading comments",
+            use_cases="design system exploration, component inspection, design token export, file structure navigation, design review",
+            system_prompt=FIGMA_AGENT_SYSTEM_PROMPT,
+            use_direct_tools=False,
+            memory_prompt=FIGMA_MEMORY_PROMPT,
         ),
     ),
     # MCP Integrations (no authentication required)
