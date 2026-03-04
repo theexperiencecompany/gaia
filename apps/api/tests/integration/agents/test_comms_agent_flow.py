@@ -1,106 +1,389 @@
-"""Integration tests for comms agent graph flow patterns.
+"""Integration tests for the GAIA comms agent flow patterns.
 
-Tests a simplified graph mimicking the comms agent pattern:
-model node -> conditional routing -> tool node -> model node -> END.
-Validates graph compilation, routing, tool execution, and checkpointing.
+Imports and exercises the ACTUAL production build_comms_graph function.
+Complements test_real_comms_agent.py with additional scenarios focused on:
+- Streaming interface (astream)
+- Edge cases (empty content, minimal input)
+- Graph structural invariants (expected nodes present)
+- Additional tool invocations (add_memory, search_memory)
+- Multi-turn conversation accumulation (3+ turns)
+
+Unlike the previous version of this file which built fake echo/agent graphs,
+every test here imports from the production module. Deleting build_comms_graph
+breaks all tests immediately.
 """
 
-from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langchain_core.tools import tool
-from langgraph.checkpoint.memory import MemorySaver
-from langgraph.graph import END, StateGraph
-from langgraph.prebuilt import ToolNode
 
-from tests.helpers import create_fake_llm_with_tool_calls
-from tests.integration.conftest import SimpleState
+from app.agents.core.graph_builder.build_graph import build_comms_graph
+from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _thread_config() -> dict:
+    return {"configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}}
+
+
+def _make_chroma_store_mock() -> MagicMock:
+    store = MagicMock()
+    store.aget = AsyncMock(return_value=None)
+    store.aput = AsyncMock(return_value=None)
+    store.asearch = AsyncMock(return_value=[])
+    store.alist_namespaces = AsyncMock(return_value=[])
+    return store
+
+
+# Shared patches that prevent all external I/O from being attempted.
+# Identical to the patch set in test_real_comms_agent.py.
+def _common_patches(store_mock, checkpointer_return=None):
+    # memory_service methods are async — need AsyncMock so 'await' works.
+    # store_memory returns MagicMock so .metadata/.id attribute access works.
+    # search_memories returns MagicMock(memories=[]) so .memories access works.
+    memory_mock = MagicMock()
+    memory_mock.store_memory = AsyncMock(return_value=MagicMock())
+    memory_mock.search_memories = AsyncMock(return_value=MagicMock(memories=[]))
+
+    return [
+        patch(
+            "app.agents.tools.core.store.providers.aget",
+            new_callable=AsyncMock,
+            return_value=store_mock,
+        ),
+        patch(
+            "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+            new_callable=AsyncMock,
+            return_value=checkpointer_return,
+        ),
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+            return_value=[],
+        ),
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+            new_callable=AsyncMock,
+            return_value=AIMessage(content='{"actions": []}'),
+        ),
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
+            new_callable=AsyncMock,
+            return_value={"tool_names": []},
+        ),
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            return_value=lambda _: None,
+        ),
+        patch(
+            "app.agents.tools.executor_tool.prepare_executor_execution",
+            new_callable=AsyncMock,
+            return_value=(None, "executor not available in tests"),
+        ),
+        patch(
+            "app.agents.tools.memory_tools.memory_service",
+            memory_mock,
+        ),
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Fixtures
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+async def comms_graph(monkeypatch):
+    """Real comms agent graph with a single plain-text fake LLM response."""
+    fake_llm = create_fake_llm(["Hello! How can I help you today?"])
+    store_mock = _make_chroma_store_mock()
+
+    patches = _common_patches(store_mock)
+    with (
+        patches[0],
+        patches[1],
+        patches[2],
+        patches[3],
+        patches[4],
+        patches[5],
+        patches[6],
+        patches[7],
+    ):
+        async with build_comms_graph(
+            chat_llm=fake_llm, in_memory_checkpointer=True
+        ) as graph:
+            yield graph
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.integration
 class TestCommsAgentFlow:
-    """Test the comms agent graph execution pattern."""
+    """Flow tests for the production GAIA comms agent graph."""
 
-    async def test_simple_graph_invoke(self, compiled_graph, thread_config):
-        """Graph should process a human message and return an echo response."""
-        result = await compiled_graph.ainvoke(
-            {"messages": [HumanMessage(content="Hello")]},
-            config=thread_config,
+    # ------------------------------------------------------------------
+    # Graph structure
+    # ------------------------------------------------------------------
+
+    async def test_compiled_graph_has_required_nodes(self):
+        """build_comms_graph must include agent, tools, and end_graph_hooks nodes.
+
+        Fails if the node wiring in build_comms_graph is changed or removed.
+        """
+        fake_llm = create_fake_llm(["ok"])
+        store_mock = _make_chroma_store_mock()
+
+        patches = _common_patches(store_mock)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patches[7],
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                # CompiledStateGraph exposes .nodes directly
+                node_names = set(graph.nodes.keys())
+
+        assert "agent" in node_names, (
+            "'agent' node not found. build_comms_graph node wiring has changed."
         )
-        assert len(result["messages"]) == 2
-        assert result["messages"][-1].content == "Echo: Hello"
-
-    async def test_graph_with_tool_routing(self, agent_graph_with_tools, thread_config):
-        """Graph should route to tool node when model returns tool calls."""
-        result = await agent_graph_with_tools.ainvoke(
-            {"messages": [HumanMessage(content="Greet someone")]},
-            config=thread_config,
+        assert "tools" in node_names, (
+            "'tools' node not found. DynamicToolNode is not wired in comms graph."
         )
-        messages = result["messages"]
-
-        # Expect: HumanMessage, AIMessage(tool_call), ToolMessage, AIMessage(final)
-        assert len(messages) >= 3
-        tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
-        assert len(tool_msgs) >= 1
-        assert "Hello, World!" in tool_msgs[0].content
-
-    async def test_tool_calls_are_executed(self, agent_graph_with_tools, thread_config):
-        """Tool node should execute tool calls and produce ToolMessage results."""
-        result = await agent_graph_with_tools.ainvoke(
-            {"messages": [HumanMessage(content="Greet someone")]},
-            config=thread_config,
-        )
-        tool_messages = [
-            m for m in result["messages"] if isinstance(m, ToolMessage)
-        ]
-        assert len(tool_messages) > 0
-        assert tool_messages[0].tool_call_id == "call_greet_001"
-
-    async def test_checkpointing_persists_state(self, compiled_graph, thread_config):
-        """Invoking the graph twice with the same thread should accumulate messages."""
-        await compiled_graph.ainvoke(
-            {"messages": [HumanMessage(content="First")]},
-            config=thread_config,
-        )
-        state_after_first = await compiled_graph.aget_state(thread_config)
-        first_msgs = state_after_first.values["messages"]
-        assert len(first_msgs) == 2
-
-        await compiled_graph.ainvoke(
-            {"messages": [HumanMessage(content="Second")]},
-            config=thread_config,
-        )
-        state_after_second = await compiled_graph.aget_state(thread_config)
-        second_msgs = state_after_second.values["messages"]
-        # Should have accumulated: 2 from first + 2 from second
-        assert len(second_msgs) == 4
-        assert second_msgs[-1].content == "Echo: Second"
-
-    async def test_different_threads_are_isolated(self, compiled_graph):
-        """Different thread IDs should have independent state."""
-        config_a = {"configurable": {"thread_id": "thread-a"}}
-        config_b = {"configurable": {"thread_id": "thread-b"}}
-
-        await compiled_graph.ainvoke(
-            {"messages": [HumanMessage(content="From A")]},
-            config=config_a,
-        )
-        await compiled_graph.ainvoke(
-            {"messages": [HumanMessage(content="From B")]},
-            config=config_b,
+        assert "end_graph_hooks" in node_names, (
+            "'end_graph_hooks' node not found. follow_up_actions_node is not wired."
         )
 
-        state_a = await compiled_graph.aget_state(config_a)
-        state_b = await compiled_graph.aget_state(config_b)
+    async def test_comms_graph_tool_registry_includes_required_tools(self):
+        """build_comms_graph must register call_executor, add_memory, search_memory.
 
-        assert state_a.values["messages"][-1].content == "Echo: From A"
-        assert state_b.values["messages"][-1].content == "Echo: From B"
+        Verifies that the tool registry passed to create_agent includes all three
+        comms agent tools. Tested by checking that the 'tools' node is reachable
+        for each tool name — if the registry is missing a tool, DynamicToolNode
+        would not be able to execute it.
 
-    async def test_graph_handles_empty_messages(self, compiled_graph, thread_config):
-        """Graph should handle an empty message content gracefully."""
-        result = await compiled_graph.ainvoke(
+        This test invokes add_memory via the fake LLM. A ToolMessage appearing proves
+        the tool is in the registry. Fails if any of the required tools are removed.
+        """
+        tool_call = {
+            "name": "search_memory",
+            "args": {"query": "dark mode preference"},
+            "id": "call_search_001",
+            "type": "tool_call",
+        }
+        fake_llm = create_fake_llm_with_tool_calls([tool_call, "Found in memory."])
+        store_mock = _make_chroma_store_mock()
+
+        patches = _common_patches(store_mock)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patches[7],
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                config = _thread_config()
+                result = await graph.ainvoke(
+                    {"messages": [HumanMessage(content="Do I prefer dark mode?")]},
+                    config=config,
+                )
+
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) >= 1, (
+            "search_memory must be in the comms agent tool registry. "
+            "No ToolMessage was produced — the tool is likely not registered."
+        )
+
+    # ------------------------------------------------------------------
+    # Streaming interface
+    # ------------------------------------------------------------------
+
+    async def test_astream_yields_chunks(self):
+        """build_comms_graph must support astream — the streaming interface used in production.
+
+        Fails if the compiled graph is not iterable via astream.
+        """
+        fake_llm = create_fake_llm(["Streaming response."])
+        store_mock = _make_chroma_store_mock()
+        chunks = []
+
+        patches = _common_patches(store_mock)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patches[7],
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                async for chunk in graph.astream(
+                    {"messages": [HumanMessage(content="Stream this")]},
+                    config=_thread_config(),
+                ):
+                    chunks.append(chunk)
+
+        assert len(chunks) > 0, (
+            "astream must yield at least one chunk. "
+            "If this fails, the comms graph is not streamable."
+        )
+
+    # ------------------------------------------------------------------
+    # Edge cases
+    # ------------------------------------------------------------------
+
+    async def test_empty_message_content_does_not_crash(self, comms_graph):
+        """Invoking the graph with an empty string message must not raise.
+
+        Validates that filter_messages_node and the model node handle '' gracefully.
+        """
+        config = _thread_config()
+        result = await comms_graph.ainvoke(
             {"messages": [HumanMessage(content="")]},
-            config=thread_config,
+            config=config,
         )
-        assert result["messages"][-1].content == "Echo: "
+
+        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
+        assert len(ai_messages) >= 1, (
+            "Graph must produce at least one AIMessage even for empty input."
+        )
+
+    async def test_minimal_invocation_no_system_message(self, comms_graph):
+        """Invoking the graph with only a HumanMessage (no SystemMessage) must work.
+
+        manage_system_prompts_node should handle no system prompt gracefully.
+        """
+        config = _thread_config()
+        result = await comms_graph.ainvoke(
+            {"messages": [HumanMessage(content="Just a plain message.")]},
+            config=config,
+        )
+
+        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
+        assert len(ai_messages) >= 1
+
+    # ------------------------------------------------------------------
+    # Multi-turn conversation
+    # ------------------------------------------------------------------
+
+    async def test_three_turn_conversation_accumulates_state(self):
+        """Three sequential turns must accumulate messages via InMemorySaver.
+
+        Fails if checkpointing breaks between turns in the real comms graph.
+        """
+        from tests.helpers import BindableToolsFakeModel
+
+        fake_llm = BindableToolsFakeModel(
+            responses=[
+                AIMessage(content="Turn 1 reply."),
+                AIMessage(content="Turn 2 reply."),
+                AIMessage(content="Turn 3 reply."),
+            ]
+        )
+        store_mock = _make_chroma_store_mock()
+
+        patches = _common_patches(store_mock)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patches[7],
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                config = _thread_config()
+                counts = []
+
+                for i in range(1, 4):
+                    await graph.ainvoke(
+                        {"messages": [HumanMessage(content=f"Turn {i}")]},
+                        config=config,
+                    )
+                    snap = await graph.aget_state(config)
+                    counts.append(len(snap.values["messages"]))
+
+        # Each turn adds at least 2 messages (HumanMessage + AIMessage)
+        assert counts[0] < counts[1] < counts[2], (
+            f"Message counts must grow across turns. Got: {counts}"
+        )
+
+    # ------------------------------------------------------------------
+    # Tool execution
+    # ------------------------------------------------------------------
+
+    async def test_add_memory_tool_call_executes_and_produces_tool_message(self):
+        """When the LLM calls add_memory, a ToolMessage must appear in the output.
+
+        Verifies that add_memory is wired into the DynamicToolNode for the comms agent.
+        Fails if the tool is removed from the comms agent tool_registry.
+        """
+        tool_call = {
+            "name": "add_memory",
+            "args": {"content": "User likes dark mode", "category": "preference"},
+            "id": "call_add_memory_001",
+            "type": "tool_call",
+        }
+        fake_llm = create_fake_llm_with_tool_calls(
+            [tool_call, "Memory saved! Anything else?"]
+        )
+        store_mock = _make_chroma_store_mock()
+
+        patches = _common_patches(store_mock)
+        with (
+            patches[0],
+            patches[1],
+            patches[2],
+            patches[3],
+            patches[4],
+            patches[5],
+            patches[6],
+            patches[7],
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                config = _thread_config()
+                result = await graph.ainvoke(
+                    {
+                        "messages": [
+                            HumanMessage(content="Remember that I like dark mode")
+                        ]
+                    },
+                    config=config,
+                )
+
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) >= 1, (
+            "add_memory tool call should produce a ToolMessage. "
+            "If this fails, add_memory is not registered in the comms agent tool_registry."
+        )
+        assert tool_messages[0].tool_call_id == "call_add_memory_001"

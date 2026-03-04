@@ -7,15 +7,13 @@ and inspecting what happens when the compiled graph is invoked with states
 that have or don't have tool_calls on the last AIMessage.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
-from langgraph.graph import END
 
 from app.override.langgraph_bigtool.create_agent import create_agent
-from app.override.langgraph_bigtool.utils import State
 
 
 def _build_minimal_registry():
@@ -98,7 +96,9 @@ class TestShouldContinueLogicViaCreateAgent:
         )
 
     @pytest.mark.asyncio
-    async def test_no_tool_calls_no_end_graph_hooks_path_map_lacks_end_graph_hooks(self):
+    async def test_no_tool_calls_no_end_graph_hooks_path_map_lacks_end_graph_hooks(
+        self,
+    ):
         """When no end_graph_hooks, 'end_graph_hooks' must not appear in path_map."""
         mock_llm = _make_mock_llm(AIMessage(content="Here is your answer."))
         tool_registry = _build_minimal_registry()
@@ -210,144 +210,244 @@ class TestShouldContinueLogicViaCreateAgent:
 
 
 @pytest.mark.unit
-class TestShouldContinueFunctionDirect:
+class TestShouldContinueBehavior:
     """
-    Direct tests of should_continue logic by invoking the function through
-    a compiled in-memory graph and observing routing destinations.
+    Tests for the should_continue routing behavior via real compiled graph execution.
 
-    We verify the critical routing behavior:
-    - AIMessage with tool_calls → routes to 'tools' (via Send)
-    - AIMessage without tool_calls → routes to END or 'end_graph_hooks'
-    - Non-AIMessage last message → routes to END or 'end_graph_hooks'
+    Instead of copying the production closure (which gave false confidence), these
+    tests invoke the actual create_agent compiled graph and assert on observable
+    output state. If should_continue is changed or deleted, every test here breaks.
+
+    Behaviors verified:
+    - LLM plain text → no ToolMessages produced (routes to END / end_graph_hooks)
+    - LLM tool call → ToolMessage produced with correct tool_call_id (routes to tools)
+    - LLM multiple tool calls → all ToolMessages produced
+    - LLM empty tool_calls list → no ToolMessages (treated as plain text)
+    - end_graph_hooks fires on plain text response
+    - end_graph_hooks fires after full tool-call cycle
+    - Regular tool calls route to 'tools' (DynamicToolNode), not 'select_tools'
     """
 
-    def _run_should_continue(self, messages, end_graph_hooks=None):
+    def _compile_graph(self, llm, end_graph_hooks=None):
+        """Build and compile a minimal create_agent graph for routing behaviour tests."""
+        builder = create_agent(
+            llm=llm,
+            tool_registry=_build_minimal_registry(),
+            disable_retrieve_tools=True,
+            initial_tool_ids=["dummy_tool"],
+            agent_name="test_agent",
+            end_graph_hooks=end_graph_hooks,
+        )
+        from langgraph.checkpoint.memory import MemorySaver
+
+        return builder.compile(checkpointer=MemorySaver())
+
+    @pytest.mark.asyncio
+    async def test_plain_text_produces_no_tool_messages(self):
+        """LLM plain text → should_continue routes to END, no ToolMessages in state.
+
+        Fails if should_continue incorrectly routes plain AIMessages to 'tools'.
         """
-        Reconstruct should_continue logic equivalent to create_agent's closure.
+        from tests.helpers import create_fake_llm
 
-        This mirrors the exact logic from create_agent.py:should_continue so that
-        these tests BREAK if that logic changes.
+        graph = self._compile_graph(create_fake_llm(["I am done."]))
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Hello")]},
+            config={"configurable": {"thread_id": "t1"}},
+        )
+
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) == 0, (
+            "Plain text response must not produce ToolMessages. "
+            "should_continue is incorrectly routing to 'tools'."
+        )
+
+    @pytest.mark.asyncio
+    async def test_tool_call_produces_tool_message_with_correct_id(self):
+        """LLM tool call → should_continue routes to DynamicToolNode → ToolMessage.
+
+        Fails if should_continue stops routing AIMessages with tool_calls to 'tools'.
         """
-        from langgraph.types import Send
+        from tests.helpers import create_fake_llm_with_tool_calls
 
-        state = {"messages": messages, "selected_tool_ids": [], "todos": []}
-        last_message = state["messages"][-1]
+        tool_call = {
+            "name": "dummy_tool",
+            "args": {"query": "routing test"},
+            "id": "tc_routing_001",
+            "type": "tool_call",
+        }
+        graph = self._compile_graph(
+            create_fake_llm_with_tool_calls([tool_call, "Done."])
+        )
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Use the tool")]},
+            config={"configurable": {"thread_id": "t2"}},
+        )
 
-        if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
-            return "end_graph_hooks" if end_graph_hooks else END
-        else:
-            destinations = []
-            for call in last_message.tool_calls:
-                destinations.append(
-                    Send(
-                        "tools",
-                        call,
-                    )
-                )
-            return destinations
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) >= 1, (
+            "should_continue must route tool_calls to DynamicToolNode. "
+            "No ToolMessage was produced."
+        )
+        assert tool_messages[0].tool_call_id == "tc_routing_001", (
+            f"ToolMessage.tool_call_id must match the AIMessage call id. "
+            f"Got: {tool_messages[0].tool_call_id!r}"
+        )
 
-    def test_ai_message_with_tool_calls_returns_send_to_tools(self):
-        from langgraph.types import Send
+    @pytest.mark.asyncio
+    async def test_multiple_tool_calls_all_produce_tool_messages(self):
+        """LLM emits two tool calls → both execute → two ToolMessages in state.
 
-        messages = [
-            HumanMessage(content="Do something"),
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {"id": "tc1", "name": "dummy_tool", "args": {}, "type": "tool_call"}
-                ],
-            ),
-        ]
-        result = self._run_should_continue(messages)
+        Fails if should_continue only routes one call or drops calls entirely.
+        """
+        ai_with_two_calls = AIMessage(
+            content="",
+            tool_calls=[
+                {
+                    "name": "dummy_tool",
+                    "args": {"query": "first"},
+                    "id": "tc_a",
+                    "type": "tool_call",
+                },
+                {
+                    "name": "dummy_tool",
+                    "args": {"query": "second"},
+                    "id": "tc_b",
+                    "type": "tool_call",
+                },
+            ],
+        )
+        from tests.helpers import BindableToolsFakeModel
 
-        assert isinstance(result, list)
-        assert len(result) == 1
-        assert isinstance(result[0], Send)
-        assert result[0].node == "tools"
-
-    def test_ai_message_with_multiple_tool_calls_sends_to_tools_for_each(self):
-        from langgraph.types import Send
-
-        messages = [
-            HumanMessage(content="Do many things"),
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {"id": "tc1", "name": "tool_a", "args": {}, "type": "tool_call"},
-                    {"id": "tc2", "name": "tool_b", "args": {}, "type": "tool_call"},
-                ],
-            ),
-        ]
-        result = self._run_should_continue(messages)
-
-        assert isinstance(result, list)
-        assert len(result) == 2
-        assert all(isinstance(r, Send) for r in result)
-        assert all(r.node == "tools" for r in result)
-
-    def test_ai_message_no_tool_calls_routes_to_end_without_hooks(self):
-        messages = [
-            HumanMessage(content="Hello"),
-            AIMessage(content="I am done."),
-        ]
-        result = self._run_should_continue(messages, end_graph_hooks=None)
-        assert result is END
-
-    def test_ai_message_no_tool_calls_routes_to_end_graph_hooks_when_present(self):
-        messages = [
-            HumanMessage(content="Hello"),
-            AIMessage(content="I am done."),
-        ]
-
-        async def mock_hook(state, config, store):
-            return state
-
-        result = self._run_should_continue(messages, end_graph_hooks=[mock_hook])
-        assert result == "end_graph_hooks"
-
-    def test_human_message_last_routes_to_end(self):
-        messages = [HumanMessage(content="Just a message")]
-        result = self._run_should_continue(messages, end_graph_hooks=None)
-        assert result is END
-
-    def test_tool_message_last_routes_to_end(self):
-        messages = [
-            AIMessage(
-                content="",
-                tool_calls=[{"id": "tc1", "name": "t", "args": {}, "type": "tool_call"}],
-            ),
-            ToolMessage(content="result", tool_call_id="tc1"),
-        ]
-        result = self._run_should_continue(messages, end_graph_hooks=None)
-        assert result is END
-
-    def test_empty_tool_calls_list_routes_to_end(self):
-        messages = [
-            HumanMessage(content="hi"),
-            AIMessage(content="bye", tool_calls=[]),
-        ]
-        result = self._run_should_continue(messages, end_graph_hooks=None)
-        assert result is END
-
-    def test_routing_destination_is_tools_not_select_tools(self):
-        """When tool calls are present, routing goes to 'tools', NOT 'select_tools'."""
-        from langgraph.types import Send
-
-        messages = [
-            HumanMessage(content="Do something"),
-            AIMessage(
-                content="",
-                tool_calls=[
-                    {"id": "tc1", "name": "dummy_tool", "args": {}, "type": "tool_call"}
-                ],
-            ),
-        ]
-        result = self._run_should_continue(messages)
-
-        assert isinstance(result, list)
-        for send in result:
-            assert send.node == "tools", (
-                f"Expected routing to 'tools' but got '{send.node}'. "
-                "If this changes, the routing logic has been modified."
+        graph = self._compile_graph(
+            BindableToolsFakeModel(
+                responses=[ai_with_two_calls, AIMessage(content="Both done.")]
             )
-            assert send.node != "select_tools"
+        )
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Run two tools")]},
+            config={"configurable": {"thread_id": "t3"}},
+        )
+
+        ids = {
+            tm.tool_call_id for tm in result["messages"] if isinstance(tm, ToolMessage)
+        }
+        assert "tc_a" in ids, "First tool call was not executed"
+        assert "tc_b" in ids, "Second tool call was not executed"
+
+    @pytest.mark.asyncio
+    async def test_empty_tool_calls_list_produces_no_tool_messages(self):
+        """LLM returns AIMessage(tool_calls=[]) → treated as plain text → no ToolMessages.
+
+        Fails if should_continue treats empty tool_calls as if there were tool calls.
+        """
+        from tests.helpers import BindableToolsFakeModel
+
+        graph = self._compile_graph(
+            BindableToolsFakeModel(
+                responses=[AIMessage(content="No tools needed.", tool_calls=[])]
+            )
+        )
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="hi")]},
+            config={"configurable": {"thread_id": "t4"}},
+        )
+
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) == 0, (
+            "Empty tool_calls list must not route to tool node."
+        )
+
+    @pytest.mark.asyncio
+    async def test_end_graph_hook_fires_on_plain_text_response(self):
+        """end_graph_hooks must be called when should_continue routes to 'end_graph_hooks'.
+
+        Fails if should_continue stops routing plain text responses to 'end_graph_hooks'
+        when hooks are registered.
+        """
+        from tests.helpers import create_fake_llm
+
+        hook_calls: list[bool] = []
+
+        async def capture_hook(state: object, config: object, store: object) -> dict:
+            hook_calls.append(True)
+            return {}
+
+        graph = self._compile_graph(
+            create_fake_llm(["Plain response."]),
+            end_graph_hooks=[capture_hook],
+        )
+        await graph.ainvoke(
+            {"messages": [HumanMessage(content="Hello")]},
+            config={"configurable": {"thread_id": "t5"}},
+        )
+
+        assert len(hook_calls) >= 1, (
+            "end_graph_hook must fire when LLM returns plain text. "
+            "should_continue is not routing to 'end_graph_hooks'."
+        )
+
+    @pytest.mark.asyncio
+    async def test_end_graph_hook_fires_after_full_tool_cycle(self):
+        """After tool call + final plain text, end_graph_hooks must still fire.
+
+        Verifies the hook runs after the full agent→tools→agent cycle completes.
+        """
+        from tests.helpers import create_fake_llm_with_tool_calls
+
+        hook_calls: list[bool] = []
+
+        async def capture_hook(state: object, config: object, store: object) -> dict:
+            hook_calls.append(True)
+            return {}
+
+        tool_call = {
+            "name": "dummy_tool",
+            "args": {"query": "hook test"},
+            "id": "tc_hook",
+            "type": "tool_call",
+        }
+        graph = self._compile_graph(
+            create_fake_llm_with_tool_calls([tool_call, "All done."]),
+            end_graph_hooks=[capture_hook],
+        )
+        await graph.ainvoke(
+            {"messages": [HumanMessage(content="Do tool then finish")]},
+            config={"configurable": {"thread_id": "t6"}},
+        )
+
+        assert len(hook_calls) >= 1, (
+            "end_graph_hooks must fire after the full tool-call cycle ends."
+        )
+
+    @pytest.mark.asyncio
+    async def test_tool_routes_to_tool_node_not_select_tools(self):
+        """Regular tool calls route to 'tools' (DynamicToolNode), not 'select_tools'.
+
+        With disable_retrieve_tools=True, 'select_tools' is not in the graph.
+        A ToolMessage appearing proves DynamicToolNode ran (not select_tools).
+        Fails if should_continue routes regular calls to 'select_tools'.
+        """
+        from tests.helpers import create_fake_llm_with_tool_calls
+
+        tool_call = {
+            "name": "dummy_tool",
+            "args": {"query": "node check"},
+            "id": "tc_node",
+            "type": "tool_call",
+        }
+        graph = self._compile_graph(
+            create_fake_llm_with_tool_calls([tool_call, "Done."])
+        )
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Run it")]},
+            config={"configurable": {"thread_id": "t7"}},
+        )
+
+        # A ToolMessage proves execution reached DynamicToolNode (tools node),
+        # not select_tools (which would have re-entered the agent node instead).
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) >= 1, (
+            "Tool call must route to 'tools' (DynamicToolNode) and produce a ToolMessage. "
+            "If this fails, routing went to 'select_tools' or was dropped."
+        )
