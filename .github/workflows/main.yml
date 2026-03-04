@@ -106,6 +106,14 @@ jobs:
           NEXT_PUBLIC_API_BASE_URL: "http://fake-api-for-build.example.com"
           # NX_CLOUD_ACCESS_TOKEN: ${{ secrets.NX_CLOUD_ACCESS_TOKEN }}
 
+      # Run API unit tests (excludes integration tests that need live credentials).
+      - name: Run API tests
+        run: |
+          cd apps/api
+          uv run pytest -m "not integration" --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30
+        env:
+          ENV: test
+
   # Only trigger image build/deploy planning on master after quality gate passes.
   trigger-build:
     needs: [quality-checks]
