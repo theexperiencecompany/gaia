@@ -9,7 +9,6 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   getAllPersonaSlugs,
   getPersona,
-  type PersonaData,
 } from "@/features/personas/data/personasData";
 import {
   generateBreadcrumbSchema,
@@ -18,6 +17,8 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+
+const CUSTOM_LANDING_SLUGS = new Set(["startup-founders"]);
 
 interface PageProps {
   params: Promise<{ persona: string }>;
@@ -31,6 +32,27 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { persona } = await params;
+
+  if (CUSTOM_LANDING_SLUGS.has(persona)) {
+    return generatePageMetadata({
+      title:
+        "GAIA for Startup Founders — Your Startup Runs on 20 Tools. Now It Runs on One.",
+      description:
+        "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools — then handles the operational work so you can focus on building.",
+      path: `/for/${persona}`,
+      keywords: [
+        "AI for founders",
+        "startup AI assistant",
+        "AI chief of staff",
+        "founder productivity",
+        "investor update automation",
+        "workflow automation for startups",
+        "startup operations",
+        "AI CRM assistant",
+      ],
+    });
+  }
+
   const data = getPersona(persona);
 
   if (!data) {
@@ -129,6 +151,14 @@ function IntegrationBadge({ name }: { name: string }) {
 
 export default async function PersonaPage({ params }: PageProps) {
   const { persona } = await params;
+
+  if (CUSTOM_LANDING_SLUGS.has(persona)) {
+    const { default: FoundersClient } = await import(
+      "@/app/(landing)/founders/FoundersClient"
+    );
+    return <FoundersClient />;
+  }
+
   const data = getPersona(persona);
 
   if (!data) {

@@ -1,3 +1,5 @@
+import { Chip } from "@heroui/chip";
+import { CircleArrowRight02Icon } from "@icons";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -11,6 +13,8 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+
+const FEATURED_SLUGS = new Set(["startup-founders"]);
 
 export const metadata: Metadata = generatePageMetadata({
   title: "GAIA for Every Role - AI Assistant for Professionals",
@@ -71,20 +75,53 @@ export default function PersonasHubPage() {
         </header>
 
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {personas.map((persona) => (
-            <Link
-              key={persona.slug}
-              href={`/for/${persona.slug}`}
-              className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
-            >
-              <h2 className="mb-2 text-xl font-semibold text-white transition-colors group-hover:text-primary">
-                {persona.role}
-              </h2>
-              <p className="text-sm leading-relaxed text-zinc-400">
-                {persona.metaDescription}
-              </p>
-            </Link>
-          ))}
+          {personas
+            .sort((a, b) => {
+              const aFeatured = FEATURED_SLUGS.has(a.slug) ? 0 : 1;
+              const bFeatured = FEATURED_SLUGS.has(b.slug) ? 0 : 1;
+              return aFeatured - bFeatured;
+            })
+            .map((persona) => {
+              const isFeatured = FEATURED_SLUGS.has(persona.slug);
+
+              return (
+                <Link
+                  key={persona.slug}
+                  href={`/for/${persona.slug}`}
+                  className={`group flex flex-col gap-2 rounded-3xl p-5 transition-all ${
+                    isFeatured
+                      ? "bg-primary/10 md:col-span-2 lg:col-span-3 hover:bg-primary/15"
+                      : "bg-zinc-800 hover:bg-zinc-700/50"
+                  }`}
+                >
+                  <div className="flex items-center gap-3">
+                    <h2
+                      className={`text-xl font-semibold transition-colors group-hover:text-primary ${
+                        isFeatured ? "text-primary" : "text-white"
+                      }`}
+                    >
+                      {persona.role}
+                    </h2>
+                    {isFeatured && (
+                      <Chip variant="flat" color="primary" size="sm">
+                        Featured
+                      </Chip>
+                    )}
+                  </div>
+                  <p
+                    className={`text-sm leading-relaxed ${isFeatured ? "max-w-2xl text-zinc-300" : "text-zinc-400"}`}
+                  >
+                    {persona.metaDescription}
+                  </p>
+                  {isFeatured && (
+                    <span className="mt-1 flex items-center gap-1.5 text-sm font-medium text-primary">
+                      See the full experience
+                      <CircleArrowRight02Icon width={17} height={17} />
+                    </span>
+                  )}
+                </Link>
+              );
+            })}
         </div>
       </div>
       <FinalSection />
