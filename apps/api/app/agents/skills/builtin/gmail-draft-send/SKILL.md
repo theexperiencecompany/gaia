@@ -18,26 +18,24 @@ target: gmail_agent
 Create a new email draft.
 
 **Required parameters:**
-- `to` or `recipient_email`: Recipient email address(es)
+- `recipient_email`: Recipient email address(es)
 - `subject`: Email subject line
 - `body`: Email body content
 
 **Optional parameters:**
 - `cc`: CC recipients
 - `bcc`: BCC recipients
-- `from`: Sender alias (if multiple accounts)
 - `thread_id`: Reply within existing thread
-- `is_html`: Set `true` when body is HTML/Markdown-to-HTML
+- `is_html`: Set `true` only when the user explicitly wants HTML email formatting
 
-**HTML drafting (default):**
-- Default to `is_html=true` for drafts unless the user explicitly asks for plain text.
-- You may write the body as normal email text/Markdown; it will be converted to clean HTML for display.
-- Use an HTML fragment (no `<html>`/`<head>`/`<body>`). Stick to: `p`, `br`, `strong`, `em`, `ul/ol/li`, `a`.
-- Keep it email-safe: no external CSS, no scripts, no images unless user asked.
+**Body formatting:**
+- Default to plain text email body unless the user explicitly asks for HTML.
+- If using HTML, provide a safe HTML fragment (no `<html>`/`<head>`/`<body>`). Stick to: `p`, `br`, `strong`, `em`, `ul/ol/li`, `a`.
+- Do not rely on automatic Markdown conversion.
 
 **Signature:**
 - Use the user's proper name from context (`User Name:`) in the sign-off.
-- Default sign-off: “Best regards,” then the user's name.
+- Default sign-off: "Best regards," then the user's name.
 
 ### GMAIL_SEND_DRAFT
 Send an already-created draft.
