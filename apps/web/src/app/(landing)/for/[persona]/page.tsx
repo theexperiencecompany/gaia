@@ -18,7 +18,14 @@ import {
   siteConfig,
 } from "@/lib/seo";
 
-const CUSTOM_LANDING_SLUGS = new Set(["startup-founders"]);
+const CUSTOM_LANDING_SLUGS = new Set([
+  "startup-founders",
+  "software-developers",
+  "sales-professionals",
+  "product-managers",
+  "engineering-managers",
+  "agency-owners",
+]);
 
 interface PageProps {
   params: Promise<{ persona: string }>;
@@ -33,13 +40,13 @@ export async function generateMetadata({
 }: PageProps): Promise<Metadata> {
   const { persona } = await params;
 
-  if (CUSTOM_LANDING_SLUGS.has(persona)) {
+  if (persona === "startup-founders") {
     return generatePageMetadata({
       title:
         "GAIA for Startup Founders — Your Startup Runs on 20 Tools. Now It Runs on One.",
       description:
         "GAIA connects to your email, Slack, calendar, CRM, GitHub, and 30+ tools — then handles the operational work so you can focus on building.",
-      path: `/for/${persona}`,
+      path: `/for/startup-founders`,
       keywords: [
         "AI for founders",
         "startup AI assistant",
@@ -49,6 +56,105 @@ export async function generateMetadata({
         "workflow automation for startups",
         "startup operations",
         "AI CRM assistant",
+      ],
+    });
+  }
+
+  if (persona === "software-developers") {
+    return generatePageMetadata({
+      title: "GAIA for Software Developers — Ship Code. Not Context Overhead.",
+      description:
+        "GAIA connects to GitHub, Linear, and Slack — then writes your standup, triages your PRs, and monitors production. So you stay in deep work longer.",
+      path: `/for/software-developers`,
+      keywords: [
+        "AI assistant for developers",
+        "developer productivity tool",
+        "GitHub automation",
+        "automated standup generator",
+        "Linear AI integration",
+        "PR review automation",
+        "coding workflow AI",
+        "developer daily briefing",
+      ],
+    });
+  }
+
+  if (persona === "sales-professionals") {
+    return generatePageMetadata({
+      title:
+        "GAIA for Sales Professionals — Close More Deals. Update Your CRM Less.",
+      description:
+        "GAIA monitors your HubSpot pipeline, drafts follow-ups before deals go cold, and preps you for every call — automatically. Spend more time selling.",
+      path: `/for/sales-professionals`,
+      keywords: [
+        "AI assistant for sales",
+        "CRM automation AI",
+        "sales follow-up automation",
+        "HubSpot AI integration",
+        "sales meeting prep tool",
+        "pipeline management AI",
+        "deal intelligence tool",
+        "sales productivity automation",
+      ],
+    });
+  }
+
+  if (persona === "product-managers") {
+    return generatePageMetadata({
+      title:
+        "GAIA for Product Managers — Stop Managing Tools. Build Better Products.",
+      description:
+        "GAIA connects Linear, GitHub, Slack, and Notion — then handles stakeholder updates, feature triage, and sprint reporting so you can focus on product strategy.",
+      path: `/for/product-managers`,
+      keywords: [
+        "AI assistant for product managers",
+        "PM productivity tool",
+        "stakeholder update automation",
+        "Linear AI integration",
+        "feature request triage AI",
+        "sprint reporting automation",
+        "product brief generator",
+        "roadmap management AI",
+      ],
+    });
+  }
+
+  if (persona === "engineering-managers") {
+    return generatePageMetadata({
+      title:
+        "GAIA for Engineering Managers — Lead Your Team. Keep Your Technical Edge.",
+      description:
+        "GAIA monitors GitHub, Linear, and Slack so you don't have to. It preps your 1:1s, builds sprint reports, and surfaces blockers — automatically.",
+      path: `/for/engineering-managers`,
+      keywords: [
+        "AI assistant for engineering managers",
+        "EM productivity tool",
+        "sprint reporting automation",
+        "1:1 preparation AI",
+        "GitHub team analytics",
+        "PR cycle time tracking",
+        "engineering leadership tool",
+        "team velocity monitoring",
+      ],
+    });
+  }
+
+  if (persona === "agency-owners") {
+    return generatePageMetadata({
+      title:
+        "GAIA for Agency Owners — Run Your Portfolio Without the Operational Chaos.",
+      description:
+        "GAIA monitors every client project, writes your weekly status reports, and keeps your pipeline active — automatically. Scale your agency without scaling your overhead.",
+      path: `/for/agency-owners`,
+      keywords: [
+        "AI assistant for agency owners",
+        "agency management automation",
+        "client reporting automation",
+        "ClickUp AI integration",
+        "Asana AI assistant",
+        "agency portfolio management",
+        "automated client reports",
+        "digital agency productivity tool",
       ],
     });
   }
@@ -152,11 +258,46 @@ function IntegrationBadge({ name }: { name: string }) {
 export default async function PersonaPage({ params }: PageProps) {
   const { persona } = await params;
 
-  if (CUSTOM_LANDING_SLUGS.has(persona)) {
+  if (persona === "startup-founders") {
     const { default: FoundersClient } = await import(
       "@/app/(landing)/founders/FoundersClient"
     );
     return <FoundersClient />;
+  }
+
+  if (persona === "software-developers") {
+    const { default: SoftwareDevClient } = await import(
+      "@/app/(landing)/software-developers/SoftwareDevClient"
+    );
+    return <SoftwareDevClient />;
+  }
+
+  if (persona === "sales-professionals") {
+    const { default: SalesClient } = await import(
+      "@/app/(landing)/sales-professionals/SalesClient"
+    );
+    return <SalesClient />;
+  }
+
+  if (persona === "product-managers") {
+    const { default: ProductManagerClient } = await import(
+      "@/app/(landing)/product-managers/ProductManagerClient"
+    );
+    return <ProductManagerClient />;
+  }
+
+  if (persona === "engineering-managers") {
+    const { default: EngineeringManagerClient } = await import(
+      "@/app/(landing)/engineering-managers/EngineeringManagerClient"
+    );
+    return <EngineeringManagerClient />;
+  }
+
+  if (persona === "agency-owners") {
+    const { default: AgencyClient } = await import(
+      "@/app/(landing)/agency-owners/AgencyClient"
+    );
+    return <AgencyClient />;
   }
 
   const data = getPersona(persona);

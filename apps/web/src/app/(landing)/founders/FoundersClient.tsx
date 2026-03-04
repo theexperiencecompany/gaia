@@ -44,7 +44,7 @@ export default function FoundersClient() {
           ]}
         />
         <div className="w-full max-w-3xl">
-          <ChatDemo messages={PROACTIVE_MESSAGES} minHeight={340} />
+          <ChatDemo messages={PROACTIVE_MESSAGES} minHeight={480} />
         </div>
       </section>
 
@@ -62,7 +62,7 @@ export default function FoundersClient() {
           ]}
         />
         <div className="w-full max-w-3xl">
-          <ChatDemo messages={BRIEFING_MESSAGES} minHeight={380} />
+          <ChatDemo messages={BRIEFING_MESSAGES} minHeight={520} />
         </div>
       </section>
 
@@ -79,7 +79,7 @@ export default function FoundersClient() {
           ]}
         />
         <div className="w-full max-w-3xl">
-          <ChatDemo messages={INVESTOR_MESSAGES} minHeight={400} />
+          <ChatDemo messages={INVESTOR_MESSAGES} minHeight={540} />
         </div>
       </section>
 
@@ -127,7 +127,7 @@ export default function FoundersClient() {
           ]}
         />
         <div className="w-full max-w-3xl">
-          <ChatDemo messages={PIPELINE_MESSAGES} minHeight={380} />
+          <ChatDemo messages={PIPELINE_MESSAGES} minHeight={500} />
         </div>
       </section>
 
