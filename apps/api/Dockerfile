@@ -70,6 +70,7 @@ ENV ENV=production \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy \
     UV_SYSTEM_PYTHON=1 \
+    UV_PROJECT_ENVIRONMENT=/usr/local \
     PYTHONPATH=/app/apps/api \
     PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 

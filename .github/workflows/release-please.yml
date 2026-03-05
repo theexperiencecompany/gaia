@@ -38,6 +38,7 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     outputs:
       release_created: ${{ steps.release.outputs.release_created }}
+      releases_created: ${{ steps.release.outputs.releases_created }}
       tag_name: ${{ steps.release.outputs.tag_name }}
       version: ${{ steps.release.outputs.version }}
       paths_released: ${{ steps.release.outputs.paths_released }}
@@ -58,6 +59,28 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: config/release-please-config.json
           manifest-file: config/.release-please-manifest.json
+
+  # After release-please publishes component releases, the most recently
+  # created one becomes GitHub's "Latest" release. electron-updater relies
+  # on /releases/latest to find desktop update metadata (latest-*.yml), so
+  # we must ensure the newest desktop release stays marked as "Latest".
+  preserve-desktop-latest:
+    needs: release-please
+    if: needs.release-please.outputs.releases_created == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Mark latest desktop release as Latest
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DESKTOP_TAG=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 50 --json tagName \
+            | jq -r '[.[] | select(.tagName | startswith("desktop-v"))][0].tagName // empty')
+          if [ -n "$DESKTOP_TAG" ]; then
+            echo "Restoring Latest flag on $DESKTOP_TAG"
+            gh release edit "$DESKTOP_TAG" --repo "$GITHUB_REPOSITORY" --latest
+          else
+            echo "No desktop release found, skipping"
+          fi
 
   # Trigger CLI publish workflow only when a new CLI release is produced.
   trigger-cli-publish:

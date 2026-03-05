@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.2.1](https://github.com/theexperiencecompany/gaia/compare/cli-v0.2.0...cli-v0.2.1) (2026-02-27)
+
+
+### Bug Fixes
+
+* update package dependencies and add new cloudflare config files ([#507](https://github.com/theexperiencecompany/gaia/issues/507)) ([ae0fccd](https://github.com/theexperiencecompany/gaia/commit/ae0fccd9853ad0582b491e9a2f5d5f6e06faa136))
+* update package dependencies and add new cloudflare configuration files ([7ff4a3c](https://github.com/theexperiencecompany/gaia/commit/7ff4a3c1b189ff59573928d94925afeb1a761214))
+
 ## [0.2.0](https://github.com/theexperiencecompany/gaia/compare/cli-v0.1.15...cli-v0.2.0) (2026-02-23)
 
 

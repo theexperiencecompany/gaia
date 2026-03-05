@@ -1,5 +1,20 @@
 # Changelog
 
+## [1.2.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.1.0...bots-v1.2.0) (2026-02-27)
+
+
+### Features
+
+* optimize Docker images, prune unused API deps, fix landing timezone ([1fc1a46](https://github.com/theexperiencecompany/gaia/commit/1fc1a464e691a7db85937db64b7ebf1b2fdd1c21))
+* optimize Docker images, prune unused API deps, fix landing timezone ([#524](https://github.com/theexperiencecompany/gaia/issues/524)) ([5acd831](https://github.com/theexperiencecompany/gaia/commit/5acd8313e1067a22da66d5bb90dcf2ff545ae9b7))
+
+
+### Bug Fixes
+
+* Adjust ownership and permissions in Dockerfiles for better user access ([99637d6](https://github.com/theexperiencecompany/gaia/commit/99637d68c58cff970b7e7f3fbd9c1f38712ea109))
+* update package dependencies and add new cloudflare config files ([#507](https://github.com/theexperiencecompany/gaia/issues/507)) ([ae0fccd](https://github.com/theexperiencecompany/gaia/commit/ae0fccd9853ad0582b491e9a2f5d5f6e06faa136))
+* update package dependencies and add new cloudflare configuration files ([7ff4a3c](https://github.com/theexperiencecompany/gaia/commit/7ff4a3c1b189ff59573928d94925afeb1a761214))
+
 ## [1.1.0](https://github.com/theexperiencecompany/gaia/compare/bots-v1.0.0...bots-v1.1.0) (2026-02-23)
 
 
