@@ -1649,6 +1649,33 @@ BROWSER PATTERNS:
 """,
 )
 
+FIGMA_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Figma",
+    entity_instructions="""
+## FIGMA-SPECIFIC EXTRACTION:
+
+1. FILE REFERENCES:
+   - File keys and names (e.g., "main design system file key: abc123")
+   - Frequently accessed frame or component node IDs
+
+2. COMPONENT PATTERNS:
+   - Component set names and key variants
+   - Design token / variable collection names
+""",
+    provider_specific_instructions="""
+## FIGMA-SPECIFIC MEMORIES:
+
+DESIGN SYSTEM PATTERNS:
+- Preferred component libraries
+- Variable collection naming conventions
+- Frame naming conventions
+
+WORKFLOW PREFERENCES:
+- Export format preferences
+- Inspection depth preferences
+""",
+)
+
 POSTHOG_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
     provider_name="PostHog",
     entity_instructions="""

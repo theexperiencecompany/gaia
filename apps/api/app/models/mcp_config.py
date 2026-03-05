@@ -1,6 +1,6 @@
 """MCP configuration models (Pydantic)."""
 
-from typing import Dict, List, Literal, Optional
+from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -17,7 +17,7 @@ class MCPConfig(BaseModel):
     client_id_env: Optional[str] = None
     client_secret_env: Optional[str] = None
     oauth_scopes: Optional[List[str]] = None
-    oauth_metadata: Optional[Dict[str, str]] = None
+    oauth_metadata: Optional[Dict[str, Any]] = None
 
 
 class OAuthScope(BaseModel):
