@@ -6,6 +6,7 @@ import type React from "react";
 import { useCallback } from "react";
 import { vfsApi } from "@/features/chat/api/vfsApi";
 import FileViewerPanel from "@/features/chat/components/artifacts/FileViewerPanel";
+import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import type { ArtifactData } from "@/types/features/toolDataTypes";
 
@@ -66,9 +67,13 @@ function formatSize(bytes: number): string {
 
 function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
   const { setContent, open } = useRightSidebar();
+  const isMobile = useIsMobile();
   const config = getFileConfig(artifact.filename);
 
   const handleOpen = useCallback(() => {
+    const shouldUseSheet =
+      isMobile || (typeof window !== "undefined" && window.innerWidth < 768);
+
     setContent(
       <FileViewerPanel
         path={artifact.path}
@@ -76,8 +81,8 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
         contentType={artifact.content_type}
       />,
     );
-    open("sidebar");
-  }, [artifact, open, setContent]);
+    open(shouldUseSheet ? "sheet" : "artifact");
+  }, [artifact, isMobile, open, setContent]);
 
   const handleDownload = useCallback(async () => {
     try {
@@ -100,13 +105,13 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
 
   return (
     <Card
-      className="cursor-pointer border-zinc-700 bg-zinc-800"
+      className="group cursor-pointer border border-zinc-700/80 bg-zinc-900/70 transition-colors hover:border-zinc-500 hover:bg-zinc-900"
       isPressable
       onPress={handleOpen}
     >
-      <CardBody className="p-3">
+      <CardBody className="p-3.5">
         <div className="flex items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-1 items-center gap-3">
+          <div className="flex min-w-0 flex-1 items-center gap-2.5">
             <div className="flex-shrink-0">
               {config.icon === "code" ? (
                 <CodeIcon className="h-5 w-5 text-primary" />
@@ -116,10 +121,7 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
             </div>
 
             <div className="min-w-0 flex-1">
-              <div className="mb-1 flex items-center gap-2">
-                <p className="truncate text-sm font-medium text-white">
-                  {artifact.filename}
-                </p>
+              <div className="mb-1 flex items-center gap-2.5">
                 <Chip
                   size="sm"
                   variant="flat"
@@ -128,27 +130,41 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
                 >
                   {config.label}
                 </Chip>
+                <p className="truncate text-sm font-medium text-white">
+                  {artifact.filename}
+                </p>
               </div>
 
-              <p className="text-xs text-zinc-400">
-                {formatSize(artifact.size_bytes)}
+              <p className="text-xs text-zinc-400/90">
+                {formatSize(artifact.size_bytes)} · Click to open
               </p>
             </div>
           </div>
 
-          <Button
-            isIconOnly
-            size="sm"
-            variant="light"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              void handleDownload();
-            }}
-            aria-label="Download artifact"
-          >
-            <Download01Icon size={16} />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="flat"
+              className="font-medium text-zinc-200"
+              onPress={handleOpen}
+            >
+              Open
+            </Button>
+            <Button
+              isIconOnly
+              size="sm"
+              variant="light"
+              className="text-zinc-300 group-hover:text-white"
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                void handleDownload();
+              }}
+              aria-label="Download artifact"
+            >
+              <Download01Icon size={16} />
+            </Button>
+          </div>
         </div>
       </CardBody>
     </Card>

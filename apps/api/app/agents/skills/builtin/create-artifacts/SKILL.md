@@ -60,10 +60,20 @@ This ensures users only see final artifacts, not intermediate drafts.
 
 ## Format Preference
 
-1. Markdown (`.md`) by default for docs/plans/reports
-2. HTML (`.html`) for styled visual artifacts
+1. HTML (`.html`) by default for user-facing artifacts that should look polished
+2. Markdown (`.md`) only when the user asks for markdown or plain docs
 3. Language-specific code extensions for code
 4. Text (`.txt`) only when formatting is unnecessary
+
+## HTML Quality Standard
+
+When generating HTML artifacts, prioritize quality over speed:
+
+1. Use semantic structure (`header`, `main`, `section`, `article`, `footer`)
+2. Make layout responsive (desktop + mobile)
+3. Ensure clear visual hierarchy (headings, spacing, readable body text)
+4. Use cohesive styling with thoughtful typography, color, and contrast
+5. Deliver production-like output (no placeholder text, no broken sections)
 
 ## Response Pattern
 

@@ -37,11 +37,11 @@ export const ChatWithMessages: React.FC<ChatWithMessagesProps> = ({
   composerProps,
 }) => {
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Scrollable chat content */}
       <div
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto"
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain"
         onScroll={handleScroll}
         {...dragHandlers}
       >
