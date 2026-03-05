@@ -20,7 +20,7 @@ import path inside the tool module to keep each test focused.
 """
 
 from typing import Any, Dict
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -35,7 +35,6 @@ from app.models.linkedin_models import (
 )
 from app.utils.linkedin_utils import (
     LINKEDIN_REST_BASE,
-    LINKEDIN_API_BASE,
     get_access_token,
     linkedin_headers,
     get_author_urn,
@@ -55,7 +54,7 @@ AUTH_CREDENTIALS: Dict[str, Any] = {"access_token": FAKE_TOKEN}
 def _make_response(
     status_code: int = 200,
     json_data: Any = None,
-    headers: dict = None,
+    headers: dict | None = None,
 ) -> MagicMock:
     """Build a minimal mock httpx.Response."""
     resp = MagicMock(spec=httpx.Response)
@@ -77,6 +76,7 @@ def _make_response(
 # get_access_token (utility)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.composio
 class TestLinkedInGetAccessToken:
     def test_returns_token(self):
@@ -95,6 +95,7 @@ class TestLinkedInGetAccessToken:
 # linkedin_headers (utility)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.composio
 class TestLinkedInHeaders:
     def test_contains_bearer_token(self):
@@ -111,6 +112,7 @@ class TestLinkedInHeaders:
 # ---------------------------------------------------------------------------
 # get_author_urn (utility)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestGetAuthorUrn:
@@ -147,6 +149,7 @@ class TestGetAuthorUrn:
 # CUSTOM_CREATE_POST
 # ---------------------------------------------------------------------------
 
+
 def _invoke_create_post(request: CreatePostInput, patch_author_urn=FAKE_AUTHOR_URN):
     """Invoke the CUSTOM_CREATE_POST logic with the tool module's _http_client patched."""
     import app.agents.tools.linkedin_tool as lt_module
@@ -163,9 +166,9 @@ class TestCustomCreatePost:
     def _run(
         self,
         request: CreatePostInput,
-        mock_post_resp: MagicMock = None,
-        upload_image_return: str = None,
-        upload_document_return: str = None,
+        mock_post_resp: MagicMock | None = None,
+        upload_image_return: str | None = None,
+        upload_document_return: str | None = None,
     ) -> Dict[str, Any]:
         """Run CUSTOM_CREATE_POST with appropriate mocks."""
         import app.agents.tools.linkedin_tool as lt_module
@@ -176,7 +179,9 @@ class TestCustomCreatePost:
             )
 
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
             patch(
                 "app.utils.linkedin_utils.upload_image_from_url",
@@ -191,30 +196,43 @@ class TestCustomCreatePost:
             # Avoid circular – linkedin_tool imports get_access_token, get_author_urn,
             # upload_* from linkedin_utils.  We reconstruct the function body here
             # so we exercise the actual tool logic without needing Composio.
-            from app.utils.linkedin_utils import get_access_token as _gat, linkedin_headers as _lh
+            from app.utils.linkedin_utils import (
+                get_access_token as _gat,
+                linkedin_headers as _lh,
+            )
 
             access_token = _gat(AUTH_CREDENTIALS)
             headers = _lh(access_token)
             author_urn = FAKE_AUTHOR_URN
 
             media_type = "text"
-            content = None
+            content: Dict[str, Any] | None = None
 
             if request.document_url:
                 media_type = "document"
                 if not request.document_title:
-                    raise ValueError("document_title is required when document_url is provided")
+                    raise ValueError(
+                        "document_title is required when document_url is provided"
+                    )
                 from app.utils.linkedin_utils import upload_document_from_url
-                document_urn = upload_document_from_url(access_token, request.document_url, author_urn)
+
+                document_urn = upload_document_from_url(
+                    access_token, request.document_url, author_urn
+                )
                 if not document_urn:
                     raise RuntimeError("Failed to upload document to LinkedIn")
-                content = {"media": {"title": request.document_title, "id": document_urn}}
+                content = {
+                    "media": {"title": request.document_title, "id": document_urn}
+                }
 
             elif request.image_urls or request.image_url:
-                urls_to_upload = request.image_urls or ([request.image_url] if request.image_url else [])
+                urls_to_upload = request.image_urls or (
+                    [request.image_url] if request.image_url else []
+                )
                 if len(urls_to_upload) > 20:
                     raise ValueError("Maximum 20 images allowed in a carousel post")
                 from app.utils.linkedin_utils import upload_image_from_url
+
                 image_urns = []
                 for url in urls_to_upload:
                     urn = upload_image_from_url(access_token, url, author_urn)
@@ -224,10 +242,17 @@ class TestCustomCreatePost:
 
                 if len(image_urns) == 1:
                     media_type = "image"
-                    content = {"media": {"title": request.image_title or "", "id": image_urns[0]}}
+                    content = {
+                        "media": {
+                            "title": request.image_title or "",
+                            "id": image_urns[0],
+                        }
+                    }
                 else:
                     media_type = "carousel"
-                    content = {"multiImage": {"images": [{"id": urn} for urn in image_urns]}}
+                    content = {
+                        "multiImage": {"images": [{"id": urn} for urn in image_urns]}
+                    }
 
             elif request.article_url:
                 media_type = "article"
@@ -337,7 +362,9 @@ class TestCustomCreatePost:
         import app.agents.tools.linkedin_tool as lt_module
 
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             mock_http.post.return_value = bad_resp
@@ -351,12 +378,17 @@ class TestCustomCreatePost:
         post_calls = []
 
         import app.agents.tools.linkedin_tool as lt_module
+
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             ok_resp = _make_response(status_code=201, headers={"x-restli-id": "id1"})
-            mock_http.post.side_effect = lambda *a, **kw: (post_calls.append(kw) or ok_resp)
+            mock_http.post.side_effect = lambda *a, **kw: (
+                post_calls.append(kw) or ok_resp
+            )
             self._run(CreatePostInput(commentary="visible post"))
 
         assert post_calls[0]["json"]["visibility"] == "PUBLIC"
@@ -366,18 +398,25 @@ class TestCustomCreatePost:
         import app.agents.tools.linkedin_tool as lt_module
 
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             ok_resp = _make_response(status_code=201, headers={"x-restli-id": "id1"})
-            mock_http.post.side_effect = lambda *a, **kw: (post_calls.append(kw) or ok_resp)
-            self._run(CreatePostInput(commentary="private post", visibility="CONNECTIONS"))
+            mock_http.post.side_effect = lambda *a, **kw: (
+                post_calls.append(kw) or ok_resp
+            )
+            self._run(
+                CreatePostInput(commentary="private post", visibility="CONNECTIONS")
+            )
 
         assert post_calls[0]["json"]["visibility"] == "CONNECTIONS"
 
     def test_missing_access_token_raises(self):
         with pytest.raises(ValueError, match="Missing access_token"):
             from app.utils.linkedin_utils import get_access_token as gat
+
             gat({})
 
 
@@ -385,10 +424,14 @@ class TestCustomCreatePost:
 # CUSTOM_ADD_COMMENT
 # ---------------------------------------------------------------------------
 
+
 def _run_add_comment(request: AddCommentInput) -> Dict[str, Any]:
     """Reconstruct and run CUSTOM_ADD_COMMENT logic."""
     import app.agents.tools.linkedin_tool as lt_module
-    from app.utils.linkedin_utils import get_access_token as _gat, linkedin_headers as _lh
+    from app.utils.linkedin_utils import (
+        get_access_token as _gat,
+        linkedin_headers as _lh,
+    )
 
     access_token = _gat(AUTH_CREDENTIALS)
     headers = _lh(access_token)
@@ -421,7 +464,11 @@ def _run_add_comment(request: AddCommentInput) -> Dict[str, Any]:
         result = resp.json()
         comment_id = result.get("id") or resp.headers.get("x-restli-id", "")
 
-    return {"comment_id": comment_id, "post_urn": request.post_urn, "author": author_urn}
+    return {
+        "comment_id": comment_id,
+        "post_urn": request.post_urn,
+        "author": author_urn,
+    }
 
 
 @pytest.mark.composio
@@ -436,14 +483,19 @@ class TestCustomAddComment:
 
     def test_urn_is_url_encoded_in_path(self):
         import app.agents.tools.linkedin_tool as lt_module
-        from app.utils.linkedin_utils import get_access_token as _gat, linkedin_headers as _lh
+        from app.utils.linkedin_utils import (
+            get_access_token as _gat,
+            linkedin_headers as _lh,
+        )
 
         request = AddCommentInput(post_urn="urn:li:share:12345", comment_text="Hi")
         access_token = _gat(AUTH_CREDENTIALS)
         ok_resp = _make_response(json_data={"id": "c1"})
 
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             mock_http.post.return_value = ok_resp
@@ -459,7 +511,6 @@ class TestCustomAddComment:
 
     def test_nested_reply_includes_parent_comment(self):
         import app.agents.tools.linkedin_tool as lt_module
-        from app.utils.linkedin_utils import get_access_token as _gat, linkedin_headers as _lh
 
         request = AddCommentInput(
             post_urn=FAKE_POST_URN,
@@ -468,7 +519,9 @@ class TestCustomAddComment:
         )
         ok_resp = _make_response(json_data={"id": "reply-1"})
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             mock_http.post.return_value = ok_resp
@@ -488,9 +541,12 @@ class TestCustomAddComment:
 
     def test_http_error_propagates(self):
         import app.agents.tools.linkedin_tool as lt_module
+
         bad_resp = _make_response(status_code=403)
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             mock_http.post.return_value = bad_resp
@@ -503,9 +559,13 @@ class TestCustomAddComment:
 # CUSTOM_GET_POST_COMMENTS
 # ---------------------------------------------------------------------------
 
+
 def _run_get_comments(request: GetPostCommentsInput) -> Dict[str, Any]:
     import app.agents.tools.linkedin_tool as lt_module
-    from app.utils.linkedin_utils import get_access_token as _gat, linkedin_headers as _lh
+    from app.utils.linkedin_utils import (
+        get_access_token as _gat,
+        linkedin_headers as _lh,
+    )
 
     access_token = _gat(AUTH_CREDENTIALS)
     headers = _lh(access_token)
@@ -573,7 +633,10 @@ class TestCustomGetPostComments:
 
     def test_pagination_params_sent(self):
         import app.agents.tools.linkedin_tool as lt_module
-        from app.utils.linkedin_utils import linkedin_headers as _lh, get_access_token as _gat
+        from app.utils.linkedin_utils import (
+            linkedin_headers as _lh,
+            get_access_token as _gat,
+        )
 
         request = GetPostCommentsInput(post_urn=FAKE_POST_URN, count=25, start=50)
         ok_resp = _make_response(json_data={"elements": [], "paging": {"total": 0}})
@@ -592,6 +655,7 @@ class TestCustomGetPostComments:
 
     def test_http_error_propagates(self):
         import app.agents.tools.linkedin_tool as lt_module
+
         bad_resp = _make_response(status_code=404)
         with patch.object(lt_module, "_http_client") as mock_http:
             mock_http.get.return_value = bad_resp
@@ -604,9 +668,13 @@ class TestCustomGetPostComments:
 # CUSTOM_REACT_TO_POST
 # ---------------------------------------------------------------------------
 
+
 def _run_react_to_post(request: ReactToPostInput) -> Dict[str, Any]:
     import app.agents.tools.linkedin_tool as lt_module
-    from app.utils.linkedin_utils import get_access_token as _gat, linkedin_headers as _lh
+    from app.utils.linkedin_utils import (
+        get_access_token as _gat,
+        linkedin_headers as _lh,
+    )
 
     access_token = _gat(AUTH_CREDENTIALS)
     headers = _lh(access_token)
@@ -667,9 +735,12 @@ class TestCustomReactToPost:
 
     def test_http_error_propagates(self):
         import app.agents.tools.linkedin_tool as lt_module
+
         bad_resp = _make_response(status_code=429)
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             mock_http.post.return_value = bad_resp
@@ -679,14 +750,19 @@ class TestCustomReactToPost:
 
     def test_reaction_endpoint_uses_likes_path(self):
         import app.agents.tools.linkedin_tool as lt_module
-        from app.utils.linkedin_utils import linkedin_headers as _lh, get_access_token as _gat
+        from app.utils.linkedin_utils import (
+            linkedin_headers as _lh,
+            get_access_token as _gat,
+        )
 
         ok_resp = _make_response(status_code=201)
         request = ReactToPostInput(post_urn=FAKE_POST_URN)
         encoded = request.post_urn.replace(":", "%3A")
 
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             mock_http.post.return_value = ok_resp
@@ -703,9 +779,13 @@ class TestCustomReactToPost:
 # CUSTOM_DELETE_REACTION
 # ---------------------------------------------------------------------------
 
+
 def _run_delete_reaction(request: DeleteReactionInput) -> Dict[str, Any]:
     import app.agents.tools.linkedin_tool as lt_module
-    from app.utils.linkedin_utils import get_access_token as _gat, linkedin_headers as _lh
+    from app.utils.linkedin_utils import (
+        get_access_token as _gat,
+        linkedin_headers as _lh,
+    )
 
     access_token = _gat(AUTH_CREDENTIALS)
     headers = _lh(access_token)
@@ -738,15 +818,19 @@ class TestCustomDeleteReaction:
 
     def test_delete_url_contains_encoded_post_urn_and_author_urn(self):
         import app.agents.tools.linkedin_tool as lt_module
-        from app.utils.linkedin_utils import linkedin_headers as _lh, get_access_token as _gat
+        from app.utils.linkedin_utils import (
+            linkedin_headers as _lh,
+            get_access_token as _gat,
+        )
 
-        request = DeleteReactionInput(post_urn=FAKE_POST_URN)
         ok_resp = _make_response(status_code=204)
         encoded_post = FAKE_POST_URN.replace(":", "%3A")
         encoded_author = FAKE_AUTHOR_URN.replace(":", "%3A")
 
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             mock_http.delete.return_value = ok_resp
@@ -761,9 +845,12 @@ class TestCustomDeleteReaction:
 
     def test_http_error_propagates(self):
         import app.agents.tools.linkedin_tool as lt_module
+
         bad_resp = _make_response(status_code=404)
         with (
-            patch("app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN),
+            patch(
+                "app.utils.linkedin_utils.get_author_urn", return_value=FAKE_AUTHOR_URN
+            ),
             patch.object(lt_module, "_http_client") as mock_http,
         ):
             mock_http.delete.return_value = bad_resp
@@ -774,6 +861,7 @@ class TestCustomDeleteReaction:
     def test_missing_access_token_raises(self):
         with pytest.raises(ValueError, match="Missing access_token"):
             from app.utils.linkedin_utils import get_access_token as gat
+
             gat({})
 
 
@@ -781,9 +869,13 @@ class TestCustomDeleteReaction:
 # CUSTOM_GET_POST_REACTIONS
 # ---------------------------------------------------------------------------
 
+
 def _run_get_reactions(request: GetPostReactionsInput) -> Dict[str, Any]:
     import app.agents.tools.linkedin_tool as lt_module
-    from app.utils.linkedin_utils import get_access_token as _gat, linkedin_headers as _lh
+    from app.utils.linkedin_utils import (
+        get_access_token as _gat,
+        linkedin_headers as _lh,
+    )
 
     access_token = _gat(AUTH_CREDENTIALS)
     headers = _lh(access_token)
@@ -852,7 +944,10 @@ class TestCustomGetPostReactions:
 
     def test_count_param_forwarded(self):
         import app.agents.tools.linkedin_tool as lt_module
-        from app.utils.linkedin_utils import linkedin_headers as _lh, get_access_token as _gat
+        from app.utils.linkedin_utils import (
+            linkedin_headers as _lh,
+            get_access_token as _gat,
+        )
 
         request = GetPostReactionsInput(post_urn=FAKE_POST_URN, count=50)
         ok_resp = _make_response(json_data={"elements": [], "paging": {"total": 0}})
@@ -870,7 +965,6 @@ class TestCustomGetPostReactions:
 
     def test_empty_reactions_list(self):
         import app.agents.tools.linkedin_tool as lt_module
-        from app.utils.linkedin_utils import linkedin_headers as _lh, get_access_token as _gat
 
         ok_resp = _make_response(json_data={"elements": [], "paging": {"total": 0}})
         with patch.object(lt_module, "_http_client") as mock_http:
@@ -887,6 +981,7 @@ class TestCustomGetPostReactions:
 
     def test_http_error_propagates(self):
         import app.agents.tools.linkedin_tool as lt_module
+
         bad_resp = _make_response(status_code=500)
         with patch.object(lt_module, "_http_client") as mock_http:
             mock_http.get.return_value = bad_resp
@@ -898,6 +993,7 @@ class TestCustomGetPostReactions:
 # ---------------------------------------------------------------------------
 # register_linkedin_custom_tools returns correct tool name list
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestRegisterLinkedInCustomTools:

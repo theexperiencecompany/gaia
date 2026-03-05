@@ -10,7 +10,6 @@ from typing import Any
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.prebuilt import ToolNode
 
@@ -45,8 +44,6 @@ def multi_tool_llm():
 @pytest.fixture
 def tool_graph(add_tool, multi_tool_llm, memory_saver):
     """Build a graph with model and tool nodes for add_numbers."""
-
-    call_index = {"i": 0}
 
     def should_continue(state: SimpleState) -> str:
         last = state.messages[-1] if state.messages else None
@@ -84,9 +81,7 @@ class TestToolExecution:
             {"messages": [HumanMessage(content="Add 3 and 7")]},
             config=thread_config,
         )
-        tool_messages = [
-            m for m in result["messages"] if isinstance(m, ToolMessage)
-        ]
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert len(tool_messages) == 1
         assert tool_messages[0].content == "10"
         assert tool_messages[0].tool_call_id == "call_add_001"
@@ -108,12 +103,11 @@ class TestToolExecution:
             config=thread_config,
         )
         ai_messages = [
-            m for m in result["messages"]
+            m
+            for m in result["messages"]
             if isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
         ]
-        tool_messages = [
-            m for m in result["messages"] if isinstance(m, ToolMessage)
-        ]
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert len(ai_messages) >= 1
         assert len(tool_messages) >= 1
         assert ai_messages[0].tool_calls[0]["id"] == tool_messages[0].tool_call_id

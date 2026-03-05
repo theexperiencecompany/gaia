@@ -228,9 +228,7 @@ class TestFollowUpActionsNode:
 
     @pytest.mark.asyncio
     async def test_uses_last_4_messages_when_history_exceeds_4(self):
-        messages = [
-            HumanMessage(content=f"message {i}") for i in range(6)
-        ]
+        messages = [HumanMessage(content=f"message {i}") for i in range(6)]
         state = _make_state(messages)
         config = _make_config(user_id="user-123")
         store = _make_store()
@@ -242,7 +240,7 @@ class TestFollowUpActionsNode:
         mock_parser.get_format_instructions.return_value = "{format}"
         mock_parser.parse.return_value = follow_up
 
-        async def capture_invoke(chain, msgs, config):
+        async def capture_invoke(_chain, msgs, config):
             captured_invocations.append(msgs)
             return "raw output"
 

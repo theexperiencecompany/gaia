@@ -41,15 +41,21 @@ def _make_chroma_store_mock() -> MagicMock:
     return store
 
 
-# Shared patches that prevent all external I/O from being attempted.
-# Identical to the patch set in test_real_comms_agent.py.
-def _common_patches(store_mock, checkpointer_return=None):
-    # memory_service methods are async — need AsyncMock so 'await' works.
-    # store_memory returns MagicMock so .metadata/.id attribute access works.
-    # search_memories returns MagicMock(memories=[]) so .memories access works.
+def _make_memory_mock() -> MagicMock:
+    """Create a memory_service mock. Callers can hold a reference to assert on it."""
     memory_mock = MagicMock()
     memory_mock.store_memory = AsyncMock(return_value=MagicMock())
     memory_mock.search_memories = AsyncMock(return_value=MagicMock(memories=[]))
+    return memory_mock
+
+
+# Shared patches that prevent all external I/O from being attempted.
+# Identical to the patch set in test_real_comms_agent.py.
+# Pass a pre-built memory_mock if you need to assert on it after execution;
+# otherwise a default one is created internally.
+def _common_patches(store_mock, checkpointer_return=None, memory_mock=None):
+    if memory_mock is None:
+        memory_mock = _make_memory_mock()
 
     return [
         patch(
@@ -98,7 +104,7 @@ def _common_patches(store_mock, checkpointer_return=None):
 
 
 @pytest.fixture()
-async def comms_graph(monkeypatch):
+async def comms_graph():
     """Real comms agent graph with a single plain-text fake LLM response."""
     fake_llm = create_fake_llm(["Hello! How can I help you today?"])
     store_mock = _make_chroma_store_mock()
@@ -336,15 +342,32 @@ class TestCommsAgentFlow:
             f"Message counts must grow across turns. Got: {counts}"
         )
 
+        # Verify content from all turns is preserved — not just that count grew
+        final_snap = await graph.aget_state(config)
+        human_contents = [
+            m.content
+            for m in final_snap.values["messages"]
+            if isinstance(m, HumanMessage)
+        ]
+        assert "Turn 1" in human_contents, (
+            f"Turn 1 HumanMessage must survive into final state. Got: {human_contents}"
+        )
+        assert "Turn 2" in human_contents
+        assert "Turn 3" in human_contents
+
     # ------------------------------------------------------------------
     # Tool execution
     # ------------------------------------------------------------------
 
     async def test_add_memory_tool_call_executes_and_produces_tool_message(self):
-        """When the LLM calls add_memory, a ToolMessage must appear in the output.
+        """When the LLM calls add_memory, a ToolMessage must appear and store_memory must be called.
 
-        Verifies that add_memory is wired into the DynamicToolNode for the comms agent.
-        Fails if the tool is removed from the comms agent tool_registry.
+        Verifies that:
+        1. add_memory is wired into the DynamicToolNode for the comms agent.
+        2. The tool actually invokes memory_service.store_memory with the correct content.
+
+        Fails if the tool is removed from the comms agent tool_registry, or if the
+        tool silently fails to persist the memory (e.g. missing user_id extraction).
         """
         tool_call = {
             "name": "add_memory",
@@ -357,7 +380,9 @@ class TestCommsAgentFlow:
         )
         store_mock = _make_chroma_store_mock()
 
-        patches = _common_patches(store_mock)
+        # Hold a reference to memory_mock so we can assert on it after execution
+        memory_mock = _make_memory_mock()
+        patches = _common_patches(store_mock, memory_mock=memory_mock)
         with (
             patches[0],
             patches[1],
@@ -387,3 +412,11 @@ class TestCommsAgentFlow:
             "If this fails, add_memory is not registered in the comms agent tool_registry."
         )
         assert tool_messages[0].tool_call_id == "call_add_memory_001"
+
+        # Verify the tool actually called memory_service — not just that it's registered
+        memory_mock.store_memory.assert_awaited_once()
+        call_args_str = str(memory_mock.store_memory.call_args)
+        assert "User likes dark mode" in call_args_str, (
+            "store_memory must be called with content 'User likes dark mode'. "
+            f"Actual call args: {call_args_str}"
+        )

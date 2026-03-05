@@ -107,7 +107,7 @@ COMMON_PATCHES = [
 
 
 @pytest.fixture()
-async def comms_graph_simple(monkeypatch):
+async def comms_graph_simple():
     """
     Build the REAL comms agent graph with:
     - FakeMessagesListChatModel (single plain-text response, no tool calls)
@@ -165,7 +165,7 @@ async def comms_graph_simple(monkeypatch):
 
 
 @pytest.fixture()
-async def comms_graph_with_tool_call(monkeypatch):
+async def comms_graph_with_tool_call():
     """
     Build the REAL comms agent graph whose fake LLM first returns a tool call
     for `call_executor`, then returns a final text response.

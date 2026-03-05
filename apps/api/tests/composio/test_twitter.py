@@ -54,7 +54,9 @@ FAKE_USER_ID = "111222333"
 AUTH_CREDENTIALS: Dict[str, Any] = {"access_token": FAKE_TOKEN}
 
 
-def _make_response(status_code: int = 200, json_data: Any = None, headers: dict = None) -> MagicMock:
+def _make_response(
+    status_code: int = 200, json_data: Any = None, headers: dict | None = None
+) -> MagicMock:
     """Build a minimal mock httpx.Response."""
     resp = MagicMock(spec=httpx.Response)
     resp.status_code = status_code
@@ -77,6 +79,7 @@ def _make_response(status_code: int = 200, json_data: Any = None, headers: dict 
 # get_access_token (utility)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.composio
 class TestGetAccessToken:
     def test_returns_token_when_present(self):
@@ -95,6 +98,7 @@ class TestGetAccessToken:
 # twitter_headers (utility)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.composio
 class TestTwitterHeaders:
     def test_contains_bearer_token(self):
@@ -106,6 +110,7 @@ class TestTwitterHeaders:
 # ---------------------------------------------------------------------------
 # get_my_user_id (utility)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestGetMyUserId:
@@ -136,6 +141,7 @@ class TestGetMyUserId:
 # ---------------------------------------------------------------------------
 # lookup_user_by_username (utility)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestLookupUserByUsername:
@@ -170,6 +176,7 @@ class TestLookupUserByUsername:
 # ---------------------------------------------------------------------------
 # follow_user / unfollow_user (utilities)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestFollowUnfollowUser:
@@ -212,6 +219,7 @@ class TestFollowUnfollowUser:
 # ---------------------------------------------------------------------------
 # create_tweet (utility)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestCreateTweet:
@@ -264,6 +272,7 @@ class TestCreateTweet:
 # search_tweets (utility)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.composio
 class TestSearchTweets:
     def _search_response(self):
@@ -314,6 +323,7 @@ class TestSearchTweets:
 # CUSTOM_BATCH_FOLLOW tool function logic
 # ---------------------------------------------------------------------------
 
+
 def _make_batch_follow_fn():
     """Reconstruct the CUSTOM_BATCH_FOLLOW body as a standalone callable."""
 
@@ -325,6 +335,7 @@ def _make_batch_follow_fn():
         my_user_id = get_my_user_id(access_token)
         if not my_user_id:
             raise ValueError("Could not get authenticated user ID")
+        assert my_user_id is not None
 
         if not request.usernames and not request.user_ids:
             raise ValueError("Either usernames or user_ids must be provided")
@@ -351,15 +362,23 @@ def _make_batch_follow_fn():
                     )
                 else:
                     results.append(
-                        {"username": username, "success": False, "error": "User not found"}
+                        {
+                            "username": username,
+                            "success": False,
+                            "error": "User not found",
+                        }
                     )
                     failed_count += 1
 
         for user_info in user_ids_to_process:
-            result = follow_user(access_token, my_user_id, user_info["user_id"])
+            result = follow_user(access_token, my_user_id, user_info["user_id"])  # type: ignore[arg-type]
             if result["success"]:
                 results.append(
-                    {"user_id": user_info["user_id"], "username": user_info.get("username"), "success": True}
+                    {
+                        "user_id": user_info["user_id"],
+                        "username": user_info.get("username"),
+                        "success": True,
+                    }
                 )
                 success_count += 1
             else:
@@ -376,7 +395,11 @@ def _make_batch_follow_fn():
         if results and failed_count == len(results):
             raise RuntimeError(f"Failed to follow all users: {results}")
 
-        return {"results": results, "followed_count": success_count, "failed_count": failed_count}
+        return {
+            "results": results,
+            "followed_count": success_count,
+            "failed_count": failed_count,
+        }
 
     return batch_follow
 
@@ -433,7 +456,7 @@ class TestCustomBatchFollow:
 
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.side_effect = [my_id_resp, not_found_resp]
-            result = self.fn(
+            self.fn(
                 BatchFollowInput(usernames=["ghost_user"]),
                 AUTH_CREDENTIALS,
             )
@@ -476,7 +499,10 @@ class TestCustomBatchFollow:
         ok_follow = _make_response(json_data={"data": {"following": True}})
         bad_resp = _make_response(status_code=403)
 
-        follow_responses = [ok_follow, httpx.HTTPStatusError("403", request=MagicMock(), response=bad_resp)]
+        follow_responses = [
+            ok_follow,
+            httpx.HTTPStatusError("403", request=MagicMock(), response=bad_resp),
+        ]
 
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = my_id_resp
@@ -497,6 +523,7 @@ class TestCustomBatchFollow:
 # CUSTOM_BATCH_UNFOLLOW tool function logic
 # ---------------------------------------------------------------------------
 
+
 def _make_batch_unfollow_fn():
     def batch_unfollow(
         request: BatchUnfollowInput,
@@ -506,6 +533,7 @@ def _make_batch_unfollow_fn():
         my_user_id = get_my_user_id(access_token)
         if not my_user_id:
             raise ValueError("Could not get authenticated user ID")
+        assert my_user_id is not None
 
         if not request.usernames and not request.user_ids:
             raise ValueError("Either usernames or user_ids must be provided")
@@ -524,19 +552,30 @@ def _make_batch_unfollow_fn():
                 user_data = lookup_user_by_username(access_token, username)
                 if user_data and user_data.get("id"):
                     user_ids_to_process.append(
-                        {"user_id": user_data["id"], "username": user_data.get("username")}
+                        {
+                            "user_id": user_data["id"],
+                            "username": user_data.get("username"),
+                        }
                     )
                 else:
                     results.append(
-                        {"username": username, "success": False, "error": "User not found"}
+                        {
+                            "username": username,
+                            "success": False,
+                            "error": "User not found",
+                        }
                     )
                     failed_count += 1
 
         for user_info in user_ids_to_process:
-            result = unfollow_user(access_token, my_user_id, user_info["user_id"])
+            result = unfollow_user(access_token, my_user_id, user_info["user_id"])  # type: ignore[arg-type]
             if result["success"]:
                 results.append(
-                    {"user_id": user_info["user_id"], "username": user_info.get("username"), "success": True}
+                    {
+                        "user_id": user_info["user_id"],
+                        "username": user_info.get("username"),
+                        "success": True,
+                    }
                 )
                 success_count += 1
             else:
@@ -553,7 +592,11 @@ def _make_batch_unfollow_fn():
         if results and failed_count == len(results):
             raise RuntimeError(f"Failed to unfollow all users: {results}")
 
-        return {"results": results, "unfollowed_count": success_count, "failed_count": failed_count}
+        return {
+            "results": results,
+            "unfollowed_count": success_count,
+            "failed_count": failed_count,
+        }
 
     return batch_unfollow
 
@@ -639,6 +682,7 @@ class TestCustomBatchUnfollow:
 # CUSTOM_CREATE_THREAD tool function logic
 # ---------------------------------------------------------------------------
 
+
 def _make_create_thread_fn():
     def create_thread(
         request: CreateThreadInput,
@@ -649,7 +693,7 @@ def _make_create_thread_fn():
         if len(request.tweets) < 2:
             raise ValueError("Thread must have at least 2 tweets")
 
-        tweet_ids = []
+        tweet_ids: list[str] = []
         previous_tweet_id = None
 
         for i, tweet_text in enumerate(request.tweets):
@@ -752,7 +796,9 @@ class TestCustomCreateThread:
     def test_raises_for_single_tweet(self):
         with pytest.raises(ValueError, match="at least 2 tweets"):
             self.fn(
-                CreateThreadInput(tweets=["Only one tweet", "second"]),  # pydantic min_length=2 satisfied
+                CreateThreadInput(
+                    tweets=["Only one tweet", "second"]
+                ),  # pydantic min_length=2 satisfied
                 AUTH_CREDENTIALS,
             )
             # The model enforces min 2 at pydantic level; also enforced in logic
@@ -767,7 +813,9 @@ class TestCustomCreateThread:
             mock_client.get.return_value = me_resp
             mock_client.post.side_effect = [
                 self._tweet_post_response("t1"),
-                httpx.HTTPStatusError("429", request=MagicMock(), response=_make_response(429)),
+                httpx.HTTPStatusError(
+                    "429", request=MagicMock(), response=_make_response(429)
+                ),
             ]
             with pytest.raises(RuntimeError, match="Failed at tweet 2"):
                 self.fn(
@@ -817,6 +865,7 @@ class TestCustomCreateThread:
 # CUSTOM_SEARCH_USERS tool function logic
 # ---------------------------------------------------------------------------
 
+
 def _make_search_users_fn():
     def search_users(
         request: SearchUsersInput,
@@ -825,7 +874,9 @@ def _make_search_users_fn():
         access_token = get_access_token(auth_credentials)
 
         search_query = f"{request.query} -is:retweet"
-        result = search_tweets(access_token, search_query, max_results=request.max_results * 3)
+        result = search_tweets(
+            access_token, search_query, max_results=request.max_results * 3
+        )
 
         if not result["success"]:
             raise RuntimeError(f"Search failed: {result.get('error')}")
@@ -902,7 +953,16 @@ class TestCustomSearchUsers:
         assert result["users"][0]["followers"] == 1200
 
     def test_appends_retweet_filter_to_query(self):
-        users = [{"id": "u1", "username": "x", "name": "X", "description": "", "verified": False, "public_metrics": {}}]
+        users = [
+            {
+                "id": "u1",
+                "username": "x",
+                "name": "X",
+                "description": "",
+                "verified": False,
+                "public_metrics": {},
+            }
+        ]
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = self._build_search_resp(users)
             self.fn(SearchUsersInput(query="python dev"), AUTH_CREDENTIALS)
@@ -922,7 +982,10 @@ class TestCustomSearchUsers:
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = _make_response(
                 json_data={
-                    "data": [{"id": "tw1", "author_id": "u1"}, {"id": "tw2", "author_id": "u1"}],
+                    "data": [
+                        {"id": "tw1", "author_id": "u1"},
+                        {"id": "tw2", "author_id": "u1"},
+                    ],
                     "includes": {"users": [duplicate_user, duplicate_user]},
                 }
             )
@@ -931,14 +994,23 @@ class TestCustomSearchUsers:
 
     def test_respects_max_results(self):
         users = [
-            {"id": str(i), "username": f"user{i}", "name": f"U{i}", "description": "", "verified": False, "public_metrics": {}}
+            {
+                "id": str(i),
+                "username": f"user{i}",
+                "name": f"U{i}",
+                "description": "",
+                "verified": False,
+                "public_metrics": {},
+            }
             for i in range(10)
         ]
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = _make_response(
                 json_data={"data": [], "includes": {"users": users}}
             )
-            result = self.fn(SearchUsersInput(query="many users", max_results=3), AUTH_CREDENTIALS)
+            result = self.fn(
+                SearchUsersInput(query="many users", max_results=3), AUTH_CREDENTIALS
+            )
         assert result["count"] == 3
 
     def test_raises_on_search_failure(self):
@@ -984,6 +1056,7 @@ class TestCustomSearchUsers:
 # ---------------------------------------------------------------------------
 # CUSTOM_SCHEDULE_TWEET tool function logic
 # ---------------------------------------------------------------------------
+
 
 def _make_schedule_tweet_fn():
     def schedule_tweet(
@@ -1037,7 +1110,9 @@ class TestCustomScheduleTweet:
 
     def test_optional_fields_default_to_none(self):
         result = self.fn(
-            ScheduleTweetInput(text="Simple tweet", scheduled_time="2026-06-15T09:00:00Z"),
+            ScheduleTweetInput(
+                text="Simple tweet", scheduled_time="2026-06-15T09:00:00Z"
+            ),
             AUTH_CREDENTIALS,
         )
         assert result["draft"]["media_urls"] is None
@@ -1046,14 +1121,18 @@ class TestCustomScheduleTweet:
     def test_missing_access_token_raises(self):
         with pytest.raises(ValueError, match="Missing access_token"):
             self.fn(
-                ScheduleTweetInput(text="no auth", scheduled_time="2026-01-01T00:00:00Z"),
+                ScheduleTweetInput(
+                    text="no auth", scheduled_time="2026-01-01T00:00:00Z"
+                ),
                 {},
             )
 
     def test_does_not_make_any_http_calls(self):
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             self.fn(
-                ScheduleTweetInput(text="offline", scheduled_time="2026-01-01T00:00:00Z"),
+                ScheduleTweetInput(
+                    text="offline", scheduled_time="2026-01-01T00:00:00Z"
+                ),
                 AUTH_CREDENTIALS,
             )
         mock_client.post.assert_not_called()
@@ -1063,6 +1142,7 @@ class TestCustomScheduleTweet:
 # ---------------------------------------------------------------------------
 # register_twitter_custom_tools returns correct tool name list
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestRegisterTwitterCustomTools:

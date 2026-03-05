@@ -21,22 +21,21 @@ DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 """
 
-from typing import Any
 from uuid import uuid4
 
 import pytest
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.agents.tools.todo_tools import (
     TODO_TOOL_NAMES,
     create_todo_pre_model_hook,
     create_todo_tools,
 )
+from langgraph.checkpoint.memory import MemorySaver
 from tests.e2e.conftest import build_gaia_test_graph
-from tests.helpers import assert_tool_called, extract_tool_calls
 
 
 @pytest.mark.e2e
@@ -272,9 +271,7 @@ class TestCreateTodoFlow:
                             "id": "call_mark_001",
                             "name": "mark_task",
                             "args": {
-                                "updates": [
-                                    {"task_id": task_id, "status": "completed"}
-                                ]
+                                "updates": [{"task_id": task_id, "status": "completed"}]
                             },
                             "type": "tool_call",
                         }
@@ -329,10 +326,12 @@ class TestCreateTodoFlow:
         When todos exist in state, the hook appends task context to the
         latest non-memory SystemMessage.
         """
-        from unittest.mock import MagicMock
-        from langchain_core.messages import SystemMessage
 
-        from tests.e2e.conftest import make_gaia_state, make_mock_store, make_node_config
+        from tests.e2e.conftest import (
+            make_gaia_state,
+            make_mock_store,
+            make_node_config,
+        )
 
         hook = create_todo_pre_model_hook(source="test")
 
@@ -363,7 +362,3 @@ class TestCreateTodoFlow:
         assert "abc123" in updated_system.content, (
             "create_todo_pre_model_hook must inject todo ID into the system message"
         )
-
-
-# Import MemorySaver at test-level for phase-2 use
-from langgraph.checkpoint.memory import MemorySaver

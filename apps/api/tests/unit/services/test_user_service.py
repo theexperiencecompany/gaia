@@ -1,7 +1,7 @@
 """Unit tests for user service operations."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 from bson import ObjectId
 from fastapi import HTTPException
@@ -53,9 +53,7 @@ class TestGetUserById:
         assert result is None
 
     async def test_raises_404_on_exception(self, mock_users_collection):
-        mock_users_collection.find_one = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_users_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
 
         with pytest.raises(HTTPException) as exc_info:
             await get_user_by_id("invalid_id")
@@ -82,9 +80,7 @@ class TestGetUserByEmail:
         assert result is None
 
     async def test_raises_404_on_exception(self, mock_users_collection):
-        mock_users_collection.find_one = AsyncMock(
-            side_effect=Exception("DB error")
-        )
+        mock_users_collection.find_one = AsyncMock(side_effect=Exception("DB error"))
 
         with pytest.raises(HTTPException) as exc_info:
             await get_user_by_email("bad@example.com")
@@ -138,7 +134,7 @@ class TestUpdateUserProfile:
             new_callable=AsyncMock,
             return_value=updated_doc,
         ):
-            result = await update_user_profile(oid_str, name="  Trimmed  ")
+            await update_user_profile(oid_str, name="  Trimmed  ")
 
         update_call = mock_users_collection.update_one.call_args
         set_data = update_call[0][1]["$set"]
@@ -203,9 +199,7 @@ class TestUpdateUserProfile:
             assert exc_info.value.status_code == 500
 
     async def test_raises_500_on_unexpected_error(self, mock_users_collection):
-        mock_users_collection.find_one = AsyncMock(
-            side_effect=Exception("Unexpected")
-        )
+        mock_users_collection.find_one = AsyncMock(side_effect=Exception("Unexpected"))
 
         with pytest.raises(HTTPException) as exc_info:
             await update_user_profile(str(ObjectId()), name="Test")

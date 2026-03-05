@@ -8,7 +8,6 @@ Run with:
     uv run pytest tests/composio/ -m composio
 """
 
-from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -665,9 +664,7 @@ class TestGetContactList:
             patch(
                 "app.services.composio.custom_tools.gmail_tools.Credentials"
             ) as MockCreds,
-            patch(
-                "app.services.composio.custom_tools.gmail_tools.build"
-            ) as mock_build,
+            patch("app.services.composio.custom_tools.gmail_tools.build") as mock_build,
             patch(
                 "app.services.composio.custom_tools.gmail_tools.get_gmail_contacts",
                 return_value=fake_contacts_result,
@@ -733,9 +730,7 @@ class TestGetContactList:
                     auth_credentials=mock_gmail_credentials,
                 )
 
-    def test_get_contacts_passes_max_results(
-        self, gmail_tools, mock_gmail_credentials
-    ):
+    def test_get_contacts_passes_max_results(self, gmail_tools, mock_gmail_credentials):
         tool = gmail_tools["GET_CONTACT_LIST"]
 
         from app.services.composio.custom_tools.gmail_tools import GetContactListInput

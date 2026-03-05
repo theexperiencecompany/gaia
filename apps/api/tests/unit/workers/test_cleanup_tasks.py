@@ -33,9 +33,7 @@ class TestCleanupStuckPersonalization:
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
 
-        with patch(
-            "app.workers.tasks.cleanup_tasks.users_collection"
-        ) as mock_col:
+        with patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col:
             mock_col.find = MagicMock(return_value=mock_cursor)
             result = await cleanup_stuck_personalization(ctx)
 
@@ -55,12 +53,8 @@ class TestCleanupStuckPersonalization:
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             mock_redis_mgr.get_pool = AsyncMock(return_value=mock_pool)
@@ -81,12 +75,8 @@ class TestCleanupStuckPersonalization:
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             mock_redis_mgr.get_pool = AsyncMock(return_value=mock_pool)
@@ -106,12 +96,8 @@ class TestCleanupStuckPersonalization:
         mock_pool.enqueue_job = AsyncMock(return_value=None)  # enqueue failure
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             mock_redis_mgr.get_pool = AsyncMock(return_value=mock_pool)
@@ -130,12 +116,8 @@ class TestCleanupStuckPersonalization:
         mock_pool.enqueue_job = AsyncMock(side_effect=RuntimeError("Redis down"))
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             mock_redis_mgr.get_pool = AsyncMock(return_value=mock_pool)
@@ -159,7 +141,7 @@ class TestCleanupStuckPersonalization:
 
         call_count = 0
 
-        async def selective_enqueue(task_name, user_id):
+        async def selective_enqueue(_task_name, user_id):
             nonlocal call_count
             call_count += 1
             if user_id == "id_ok":
@@ -170,12 +152,8 @@ class TestCleanupStuckPersonalization:
         mock_pool.enqueue_job = AsyncMock(side_effect=selective_enqueue)
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             mock_redis_mgr.get_pool = AsyncMock(return_value=mock_pool)
@@ -190,9 +168,7 @@ class TestCleanupStuckPersonalization:
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
 
-        with patch(
-            "app.workers.tasks.cleanup_tasks.users_collection"
-        ) as mock_col:
+        with patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col:
             mock_col.find = MagicMock(return_value=mock_cursor)
             before_call = datetime.now(timezone.utc)
             await cleanup_stuck_personalization(ctx, max_age_minutes=60)
@@ -201,23 +177,23 @@ class TestCleanupStuckPersonalization:
         query = mock_col.find.call_args[0][0]
         # The $or clause contains the updated_at cutoff
         or_clauses = query["$or"]
-        cutoff_clause = next(
-            (c for c in or_clauses if "updated_at" in c), None
-        )
+        cutoff_clause = next((c for c in or_clauses if "updated_at" in c), None)
         assert cutoff_clause is not None
 
         cutoff = cutoff_clause["updated_at"]["$lt"]
         expected_lower = before_call - timedelta(minutes=60)
         expected_upper = after_call - timedelta(minutes=60)
-        assert expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
+        assert (
+            expected_lower - timedelta(seconds=5)
+            <= cutoff
+            <= expected_upper + timedelta(seconds=5)
+        )
 
     async def test_query_only_looks_at_onboarding_completed_users(self, ctx):
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
 
-        with patch(
-            "app.workers.tasks.cleanup_tasks.users_collection"
-        ) as mock_col:
+        with patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col:
             mock_col.find = MagicMock(return_value=mock_cursor)
             await cleanup_stuck_personalization(ctx)
 
@@ -225,9 +201,7 @@ class TestCleanupStuckPersonalization:
         assert query["onboarding.completed"] is True
 
     async def test_db_exception_returns_error_string_not_raises(self, ctx):
-        with patch(
-            "app.workers.tasks.cleanup_tasks.users_collection"
-        ) as mock_col:
+        with patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col:
             mock_col.find = MagicMock(side_effect=RuntimeError("MongoDB down"))
             result = await cleanup_stuck_personalization(ctx)
 
@@ -249,12 +223,8 @@ class TestCleanupStuckPersonalization:
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             mock_redis_mgr.get_pool = AsyncMock(return_value=mock_pool)

@@ -12,10 +12,9 @@ All external dependencies (Redis/stream_manager, MongoDB, agent, LLM) are
 mocked so tests exercise service logic only.
 """
 
-import asyncio
 import json
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict
+from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -98,7 +97,11 @@ class TestExtractToolData:
         payload = json.dumps(
             {
                 "tool_data": [
-                    {"tool_name": "search_results", "data": {"items": []}, "timestamp": "t"}
+                    {
+                        "tool_name": "search_results",
+                        "data": {"items": []},
+                        "timestamp": "t",
+                    }
                 ]
             }
         )
@@ -328,9 +331,7 @@ class TestSaveConversationAsync:
         assert user_msg.type == "user"
         assert bot_msg.type == "bot"
 
-    async def test_user_message_content_comes_from_last_messages_entry(
-        self, test_user
-    ):
+    async def test_user_message_content_comes_from_last_messages_entry(self, test_user):
         body = MessageRequestWithHistory(
             message="Fallback message",
             messages=[
@@ -440,9 +441,7 @@ class TestSaveConversationAsync:
     ):
         mock_token_processor = AsyncMock()
         mock_update = AsyncMock()
-        metadata = {
-            "claude-3-5-sonnet": {"input_tokens": 100, "output_tokens": 50}
-        }
+        metadata = {"claude-3-5-sonnet": {"input_tokens": 100, "output_tokens": 50}}
         with (
             patch("app.services.chat_service.update_messages", new=mock_update),
             patch(
@@ -584,9 +583,7 @@ def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
 
 @pytest.mark.unit
 class TestRunChatStreamBackground:
-    async def test_new_conversation_publishes_init_chunk(
-        self, test_user, basic_body
-    ):
+    async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):
         """When conversation_id is None, an init chunk must be published first."""
 
         async def _agent_stub(*args, **kwargs):
@@ -608,7 +605,10 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service.generate_and_update_description",
                 new=AsyncMock(return_value="Test conv"),
             ),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=_done_only_stream())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -617,7 +617,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_1",
@@ -640,7 +642,10 @@ class TestRunChatStreamBackground:
         sm = _make_stream_manager_mock()
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=_done_only_stream())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -649,7 +654,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_2",
@@ -673,7 +680,10 @@ class TestRunChatStreamBackground:
         sm = _make_stream_manager_mock()
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=_done_only_stream())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -682,7 +692,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_3",
@@ -701,7 +713,10 @@ class TestRunChatStreamBackground:
         sm = _make_stream_manager_mock()
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=_done_only_stream())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -710,7 +725,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_4",
@@ -728,7 +745,10 @@ class TestRunChatStreamBackground:
         sm = _make_stream_manager_mock()
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=_done_only_stream())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -737,7 +757,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_5",
@@ -770,7 +792,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_6",
@@ -800,6 +824,7 @@ class TestRunChatStreamBackground:
         async def track_set_error(stream_id: str, err: str) -> None:
             set_error_calls.append(err)
             # Verify no further publish_chunk called after this
+
         sm.set_error = AsyncMock(side_effect=track_set_error)
 
         with (
@@ -816,7 +841,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_7",
@@ -859,7 +886,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_8",
@@ -887,7 +916,10 @@ class TestRunChatStreamBackground:
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=agent_with_nostream())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=agent_with_nostream()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -896,7 +928,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_9",
@@ -928,7 +962,10 @@ class TestRunChatStreamBackground:
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=agent_with_nostream())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=agent_with_nostream()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -937,7 +974,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_10",
@@ -951,11 +990,8 @@ class TestRunChatStreamBackground:
         for chunk in published_chunks:
             assert "nostream" not in chunk
 
-    async def test_cancellation_stops_stream_loop(
-        self, test_user, existing_conv_body
-    ):
+    async def test_cancellation_stops_stream_loop(self, test_user, existing_conv_body):
         """When is_cancelled returns True, no further agent chunks are processed."""
-        chunks_processed = []
 
         async def agent_that_yields_many():
             for i in range(5):
@@ -966,7 +1002,10 @@ class TestRunChatStreamBackground:
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=agent_that_yields_many())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=agent_that_yields_many()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -975,7 +1014,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_cancel",
@@ -1010,7 +1051,10 @@ class TestRunChatStreamBackground:
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=agent_with_tool_data())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=agent_with_tool_data()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -1019,7 +1063,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_tools",
@@ -1061,7 +1107,10 @@ class TestRunChatStreamBackground:
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=agent_with_output())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=agent_with_output()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -1070,7 +1119,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_merge",
@@ -1109,7 +1160,10 @@ class TestRunChatStreamBackground:
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=agent_with_follow_up())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=agent_with_follow_up()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -1118,7 +1172,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_fu",
@@ -1129,8 +1185,7 @@ class TestRunChatStreamBackground:
             )
 
         follow_up_chunks = [
-            c for c in published
-            if c.startswith("data: ") and "follow_up_actions" in c
+            c for c in published if c.startswith("data: ") and "follow_up_actions" in c
         ]
         assert follow_up_chunks, "Expected a follow_up_actions SSE event"
         payload = json.loads(follow_up_chunks[0][6:])
@@ -1155,7 +1210,10 @@ class TestRunChatStreamBackground:
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=partial_agent())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=partial_agent()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -1164,7 +1222,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=mock_save,
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_recover",
@@ -1189,14 +1249,20 @@ class TestRunChatStreamBackground:
             patch(
                 "app.services.chat_service.create_conversation",
                 new=AsyncMock(
-                    return_value={"conversation_id": "new_id", "description": "New Chat"}
+                    return_value={
+                        "conversation_id": "new_id",
+                        "description": "New Chat",
+                    }
                 ),
             ),
             patch(
                 "app.services.chat_service.generate_and_update_description",
                 new=mock_desc,
             ),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=_done_only_stream())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -1205,7 +1271,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_desc",
@@ -1230,7 +1298,10 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service.generate_and_update_description",
                 new=mock_desc,
             ),
-            patch("app.services.chat_service.call_agent", new=AsyncMock(return_value=_done_only_stream())),
+            patch(
+                "app.services.chat_service.call_agent",
+                new=AsyncMock(return_value=_done_only_stream()),
+            ),
             patch(
                 "app.services.chat_service.get_user_selected_model",
                 new=AsyncMock(return_value=None),
@@ -1239,7 +1310,9 @@ class TestRunChatStreamBackground:
                 "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
             ),
-            patch("app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
+            ),
         ):
             await run_chat_stream_background(
                 stream_id="stream_no_desc",
@@ -1262,9 +1335,7 @@ class TestUpdateConversationMessages:
     def test_schedules_update_messages_task(self, test_user, basic_body):
         background_tasks = MagicMock()
 
-        with patch(
-            "app.services.chat_service._process_token_usage_and_cost"
-        ) as mock_proc:
+        with patch("app.services.chat_service._process_token_usage_and_cost"):
             update_conversation_messages(
                 background_tasks=background_tasks,
                 body=basic_body,
@@ -1316,9 +1387,7 @@ class TestUpdateConversationMessages:
         task_funcs = [call.args[0].__name__ for call in call_args_list]
         assert "_process_token_usage_and_cost" not in task_funcs
 
-    def test_update_request_has_correct_conversation_id(
-        self, test_user, basic_body
-    ):
+    def test_update_request_has_correct_conversation_id(self, test_user, basic_body):
         background_tasks = MagicMock()
 
         update_conversation_messages(

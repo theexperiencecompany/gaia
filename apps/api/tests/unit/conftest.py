@@ -6,7 +6,6 @@ import pytest
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
 )
-from langchain_core.messages import AIMessage
 
 from tests.factories import make_config, make_state, make_user
 from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
@@ -58,16 +57,12 @@ def mock_mongodb():
         "workflow_executions_collection",
         "processed_webhooks_collection",
     ]
-    patches = {}
     mocks = {}
     for col in collections:
         mock = AsyncMock()
-        p = patch(f"app.db.mongodb.collections._get_collection", return_value=mock)
         mocks[col] = mock
 
-    with patch(
-        "app.db.mongodb.collections._get_collection"
-    ) as mock_get_collection:
+    with patch("app.db.mongodb.collections._get_collection") as mock_get_collection:
         collection_mocks = {col: AsyncMock() for col in collections}
         mock_get_collection.side_effect = lambda name: collection_mocks.get(
             name, AsyncMock()
@@ -90,8 +85,12 @@ def mock_mem0():
     with patch("app.services.memory_service.memory_service") as mock_service:
         mock_service.store_memory = AsyncMock(return_value=None)
         mock_service.store_memory_batch = AsyncMock(return_value=True)
-        mock_service.search_memories = AsyncMock(return_value=MagicMock(memories=[], relations=[], total_count=0))
-        mock_service.get_all_memories = AsyncMock(return_value=MagicMock(memories=[], relations=[], total_count=0))
+        mock_service.search_memories = AsyncMock(
+            return_value=MagicMock(memories=[], relations=[], total_count=0)
+        )
+        mock_service.get_all_memories = AsyncMock(
+            return_value=MagicMock(memories=[], relations=[], total_count=0)
+        )
         mock_service.delete_memory = AsyncMock(return_value=True)
         mock_service.delete_all_memories = AsyncMock(return_value=True)
         yield mock_service

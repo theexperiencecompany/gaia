@@ -22,7 +22,6 @@ DELETE ``app/override/langgraph_bigtool/utils.py`` → these tests FAIL.
 DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 """
 
-from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
@@ -35,8 +34,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 
 from app.override.langgraph_bigtool.utils import State
-from tests.e2e.conftest import build_gaia_test_graph, make_gaia_state
-from tests.factories import make_config
+from tests.e2e.conftest import build_gaia_test_graph
 
 
 @pytest.mark.e2e
@@ -140,7 +138,7 @@ class TestWorkflowExecution:
         )
 
         # Second invocation on the SAME thread
-        result = await graph.ainvoke(
+        await graph.ainvoke(
             {"messages": [HumanMessage(content="Second message")]},
             config=config,
         )
@@ -154,9 +152,7 @@ class TestWorkflowExecution:
             "MemorySaver checkpointing must accumulate state across turns."
         )
 
-    async def test_different_thread_ids_have_independent_state(
-        self, in_memory_store
-    ):
+    async def test_different_thread_ids_have_independent_state(self, in_memory_store):
         """Separate thread_ids must not share state (thread isolation).
 
         This mirrors how the production comms agent handles concurrent users:
@@ -184,8 +180,12 @@ class TestWorkflowExecution:
             store=in_memory_store,
         )
 
-        config_a = {"configurable": {"thread_id": "thread-alpha", "user_id": str(uuid4())}}
-        config_b = {"configurable": {"thread_id": "thread-beta", "user_id": str(uuid4())}}
+        config_a = {
+            "configurable": {"thread_id": "thread-alpha", "user_id": str(uuid4())}
+        }
+        config_b = {
+            "configurable": {"thread_id": "thread-beta", "user_id": str(uuid4())}
+        }
 
         await graph_a.ainvoke(
             {"messages": [HumanMessage(content="Message from A")]}, config=config_a
@@ -217,7 +217,6 @@ class TestWorkflowExecution:
 
         If build_graph.py is deleted, this test fails immediately on import.
         """
-        from unittest.mock import AsyncMock, MagicMock, patch
 
         from langchain_core.language_models.fake_chat_models import (
             FakeMessagesListChatModel,
@@ -259,7 +258,6 @@ class TestWorkflowExecution:
 
         If build_graph.py is deleted, this test fails immediately on import.
         """
-        from unittest.mock import AsyncMock, MagicMock, patch
 
         from langchain_core.language_models.fake_chat_models import (
             FakeMessagesListChatModel,
@@ -291,7 +289,9 @@ class TestWorkflowExecution:
             ),
             patch(
                 "app.agents.core.graph_builder.build_graph.get_retrieve_tools_function",
-                return_value=AsyncMock(return_value={"tools_to_bind": [], "response": []}),
+                return_value=AsyncMock(
+                    return_value={"tools_to_bind": [], "response": []}
+                ),
             ),
         ):
             async with build_executor_graph(

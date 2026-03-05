@@ -1,7 +1,7 @@
 """Unit tests for the mail service (app/services/mail/mail_service.py)."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 
 
 # ---------------------------------------------------------------------------
@@ -311,13 +311,16 @@ class TestFetchDetailedMessages:
 
         messages = [{"id": "msg1"}, {"no_id_key": "oops"}, {"id": "msg3"}]
         with patch("app.services.mail.mail_service.time.sleep"):
-            result = await fetch_detailed_messages(USER_ID, messages, batch_size=20)
+            await fetch_detailed_messages(USER_ID, messages, batch_size=20)
 
         # Only 2 valid messages were fetched
         assert mock_invoke_gmail_tool.call_count == 2
 
     async def test_omits_failed_messages_from_result(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = {"successful": False, "error": "not found"}
+        mock_invoke_gmail_tool.return_value = {
+            "successful": False,
+            "error": "not found",
+        }
 
         messages = [{"id": "bad_msg"}]
         with patch("app.services.mail.mail_service.time.sleep"):
@@ -357,7 +360,9 @@ class TestFetchDetailedMessages:
 
 @pytest.mark.unit
 class TestModifyMessageLabels:
-    async def test_returns_empty_list_when_no_labels_given(self, mock_invoke_gmail_tool):
+    async def test_returns_empty_list_when_no_labels_given(
+        self, mock_invoke_gmail_tool
+    ):
         result = await modify_message_labels(USER_ID, ["msg1"])
         assert result == []
         mock_invoke_gmail_tool.assert_not_called()
@@ -409,9 +414,7 @@ class TestModifyMessageLabels:
         mock_invoke_gmail_tool.side_effect = Exception("transient error")
 
         # Should not propagate - returns empty list
-        result = await modify_message_labels(
-            USER_ID, ["msg1"], add_labels=["STARRED"]
-        )
+        result = await modify_message_labels(USER_ID, ["msg1"], add_labels=["STARRED"])
 
         assert result == []
 
@@ -493,7 +496,9 @@ class TestTrashUntrash:
 
         assert result == []
 
-    async def test_untrash_calls_gmail_untrash_per_message(self, mock_invoke_gmail_tool):
+    async def test_untrash_calls_gmail_untrash_per_message(
+        self, mock_invoke_gmail_tool
+    ):
         mock_invoke_gmail_tool.return_value = {"successful": True}
 
         await untrash_messages(USER_ID, ["msg1", "msg2"])
@@ -929,7 +934,10 @@ class TestGetDraft:
         assert "message" in result
 
     async def test_returns_error_on_failure(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = {"successful": False, "error": "not found"}
+        mock_invoke_gmail_tool.return_value = {
+            "successful": False,
+            "error": "not found",
+        }
 
         result = await get_draft(USER_ID, "draft1")
 
@@ -953,7 +961,7 @@ class TestUpdateDraft:
     async def test_updates_draft_with_correct_params(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = {"successful": True}
 
-        result = await update_draft(
+        await update_draft(
             user_id=USER_ID,
             draft_id="draft1",
             sender="me@example.com",
@@ -1052,7 +1060,10 @@ class TestListLabels:
     async def test_returns_labels_with_count(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.return_value = {
             "successful": True,
-            "labels": [{"id": "INBOX", "name": "INBOX"}, {"id": "lbl1", "name": "Work"}],
+            "labels": [
+                {"id": "INBOX", "name": "INBOX"},
+                {"id": "lbl1", "name": "Work"},
+            ],
         }
 
         result = await list_labels(USER_ID)
@@ -1064,7 +1075,10 @@ class TestListLabels:
         assert args[1] == "GMAIL_LIST_LABELS"
 
     async def test_returns_failure_on_tool_error(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = {"successful": False, "error": "auth error"}
+        mock_invoke_gmail_tool.return_value = {
+            "successful": False,
+            "error": "auth error",
+        }
 
         result = await list_labels(USER_ID)
 
@@ -1106,7 +1120,10 @@ class TestGetEmailById:
         assert args[2]["message_id"] == "msg1"
 
     async def test_returns_failure_on_tool_error(self, mock_invoke_gmail_tool):
-        mock_invoke_gmail_tool.return_value = {"successful": False, "error": "not found"}
+        mock_invoke_gmail_tool.return_value = {
+            "successful": False,
+            "error": "not found",
+        }
 
         result = await get_email_by_id(USER_ID, "msg1")
 

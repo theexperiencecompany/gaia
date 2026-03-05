@@ -21,8 +21,16 @@ from app.services.workflow.execution_service import (
 )
 from app.services.workflow.validators import WorkflowValidator
 from app.services.workflow.queue_service import WorkflowQueueService
-from app.models.workflow_execution_models import WorkflowExecution, WorkflowExecutionsResponse
-from app.models.workflow_models import Workflow, TriggerConfig, TriggerType, WorkflowStep
+from app.models.workflow_execution_models import (
+    WorkflowExecution,
+    WorkflowExecutionsResponse,
+)
+from app.models.workflow_models import (
+    Workflow,
+    TriggerConfig,
+    TriggerType,
+    WorkflowStep,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +122,7 @@ class TestCreateExecution:
     ):
         mock_executions_collection.insert_one = AsyncMock()
 
-        result = await create_execution(
+        await create_execution(
             workflow_id=WORKFLOW_ID,
             user_id=USER_ID,
         )
@@ -126,12 +134,12 @@ class TestCreateExecution:
         assert inserted_doc["user_id"] == USER_ID
         assert inserted_doc["trigger_type"] == "manual"
 
-    async def test_returns_workflow_execution_instance(self, mock_executions_collection):
+    async def test_returns_workflow_execution_instance(
+        self, mock_executions_collection
+    ):
         mock_executions_collection.insert_one = AsyncMock()
 
-        result = await create_execution(
-            workflow_id=WORKFLOW_ID, user_id=USER_ID
-        )
+        result = await create_execution(workflow_id=WORKFLOW_ID, user_id=USER_ID)
 
         assert isinstance(result, WorkflowExecution)
         assert result.status == "running"
@@ -164,7 +172,9 @@ class TestCreateExecution:
         doc = mock_executions_collection.insert_one.call_args[0][0]
         assert doc["trigger_type"] == "gmail"
 
-    async def test_stores_conversation_id_when_provided(self, mock_executions_collection):
+    async def test_stores_conversation_id_when_provided(
+        self, mock_executions_collection
+    ):
         mock_executions_collection.insert_one = AsyncMock()
 
         result = await create_execution(
@@ -214,7 +224,9 @@ class TestCompleteExecution:
         assert update_set["status"] == "success"
         assert "completed_at" in update_set
 
-    async def test_calculates_duration_from_started_at(self, mock_executions_collection):
+    async def test_calculates_duration_from_started_at(
+        self, mock_executions_collection
+    ):
         started_at = datetime.now(timezone.utc) - timedelta(seconds=45)
         mock_executions_collection.find_one = AsyncMock(
             return_value=_make_execution_doc(started_at=started_at)
@@ -342,7 +354,7 @@ class TestGetWorkflowExecutions:
         cursor.skip.return_value = cursor
         cursor.limit.return_value = cursor
 
-        async def async_iter(self_cursor):
+        async def async_iter(_):
             for doc in docs:
                 yield doc
 
@@ -713,7 +725,9 @@ class TestWorkflowQueueServiceFlags:
         result = await WorkflowQueueService.is_workflow_generating("todo_abc")
 
         assert result is True
-        mock_redis_pool.get.assert_awaited_once_with("todo_workflow_generating:todo_abc")
+        mock_redis_pool.get.assert_awaited_once_with(
+            "todo_workflow_generating:todo_abc"
+        )
 
     async def test_is_workflow_generating_returns_false_when_flag_absent(
         self, mock_redis_pool
