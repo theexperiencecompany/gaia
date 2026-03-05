@@ -8,6 +8,7 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 import { IntegrationDetailClient } from "./client";
 
@@ -16,9 +17,8 @@ export const revalidate = 60;
 // Fetch integration data for metadata and page
 // Backend accepts both slug and UUID for backward compatibility
 const getIntegration = cache(async (slug: string) => {
-  const apiUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-  const baseUrl = apiUrl.replace(/\/$/, "");
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return null;
 
   try {
     const controller = new AbortController();
@@ -41,9 +41,8 @@ const getIntegration = cache(async (slug: string) => {
 
 // Fetch all integrations for static generation
 async function getAllIntegrations() {
-  const apiUrl =
-    process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-  const baseUrl = apiUrl.replace(/\/$/, "");
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return [];
 
   try {
     const isDev = process.env.NODE_ENV === "development";

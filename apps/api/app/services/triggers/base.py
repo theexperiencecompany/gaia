@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, List, Optional, Set
 
 from app.config.loggers import general_logger as logger
+from app.db.mongodb.collections import workflows_collection
 from app.models.workflow_models import TriggerConfig, Workflow
 from app.services.composio.composio_service import get_composio_service
 from app.services.workflow.queue_service import WorkflowQueueService
@@ -167,7 +168,12 @@ class TriggerHandler(ABC):
                 logger.warning(
                     f"Rolling back {len(successful_ids)} triggers due to partial failure"
                 )
-                await self.unregister(user_id, successful_ids)
+                rollback_ok = await self.unregister(user_id, successful_ids)
+                if not rollback_ok:
+                    logger.error(
+                        f"Rollback FAILED — orphaned Composio triggers: {successful_ids}. "
+                        "Manual cleanup may be required."
+                    )
 
             raise TriggerRegistrationError(
                 f"Failed to register all {trigger_name} triggers: {failure_message}",
@@ -176,6 +182,23 @@ class TriggerHandler(ABC):
             )
 
         return successful_ids
+
+    async def _load_workflows_from_query(
+        self, query: Dict[str, Any], log_context: str
+    ) -> List[Workflow]:
+        """Load and validate workflows for a MongoDB query."""
+        workflows: List[Workflow] = []
+        cursor = workflows_collection.find(query)
+        async for workflow_doc in cursor:
+            try:
+                workflow_doc["id"] = workflow_doc.get("_id")
+                if "_id" in workflow_doc:
+                    del workflow_doc["_id"]
+                workflows.append(Workflow(**workflow_doc))
+            except Exception as e:
+                logger.error(f"Error processing workflow document ({log_context}): {e}")
+
+        return workflows
 
     @abstractmethod
     async def find_workflows(

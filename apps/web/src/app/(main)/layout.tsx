@@ -4,9 +4,8 @@ import { useDrag } from "@use-gesture/react";
 import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
-export const dynamic = "force-dynamic";
-
 import HeaderManager from "@/components/layout/headers/HeaderManager";
+import StatusBanner from "@/components/layout/StatusBanner";
 import Sidebar from "@/components/layout/sidebar/MainSidebar";
 import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -16,10 +15,11 @@ import { useUser } from "@/features/auth/hooks/useUser";
 import ContextGatheringLoader from "@/features/onboarding/components/ContextGatheringLoader";
 import HoloCardModal from "@/features/onboarding/components/HoloCardModal";
 import { isOnboardingPhaseUpdateMessage } from "@/features/onboarding/types/websocket";
+import { GlobalPricingModal } from "@/features/pricing/components/GlobalPricingModal";
 import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
-import { useOAuthSuccessToast } from "@/hooks/useOAuthSuccessToast";
+import ProvidersLayout from "@/layouts/ProvidersLayout";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { apiService } from "@/lib/api";
 import { wsManager } from "@/lib/websocket";
@@ -31,6 +31,8 @@ import {
 } from "@/stores/onboardingStore";
 import { useRightSidebar } from "@/stores/rightSidebarStore";
 import { useUIStoreSidebar } from "@/stores/uiStore";
+
+export const dynamic = "force-dynamic";
 
 const HeaderSidebarTrigger = () => {
   return (
@@ -63,7 +65,6 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   // Check if user needs onboarding
   useOnboardingGuard();
   useBackgroundSync();
-  useOAuthSuccessToast(); // Global OAuth success/error toast handling
 
   // Determine visibility of onboarding UI elements:
   const hasCompletedInitialOnboarding = user.onboarding?.completed === true;
@@ -177,62 +178,74 @@ export default function MainLayout({ children }: { children: ReactNode }) {
   );
 
   return (
-    <TooltipProvider>
-      <SidebarProvider
-        open={currentOpen}
-        onOpenChange={handleOpenChange}
-        defaultOpen={defaultOpen}
-      >
-        <div
-          className="relative flex min-h-screen w-full dark"
-          style={{ touchAction: "pan-y" }}
-          ref={dragRef}
+    <ProvidersLayout>
+      <TooltipProvider>
+        <SidebarProvider
+          open={currentOpen}
+          onOpenChange={handleOpenChange}
+          defaultOpen={defaultOpen}
         >
-          <SidebarLayout>
-            <Sidebar />
-          </SidebarLayout>
-
-          <SidebarInset className="flex h-screen min-w-0 w-auto flex-col bg-primary-bg">
-            <header
-              className="flex shrink-0 items-center justify-between p-2"
-              onClick={closeOnTouch}
-            >
-              <HeaderSidebarTrigger />
-              <HeaderManager />
-            </header>
-            <main className="flex flex-1 flex-col overflow-hidden">
-              {/* <Suspense fallback={<SuspenseLoader />}> */}
-              {children}
-              {/* </Suspense> */}
-            </main>
-          </SidebarInset>
-
-          <RightSidebar isOpen={rightSidebarOpen} variant={rightSidebarVariant}>
-            {rightSidebarContent}
-          </RightSidebar>
-        </div>
-
-        {/* Global Command Menu */}
-        <CommandMenu open={commandMenuOpen} onOpenChange={setCommandMenuOpen} />
-
-        {/* Onboarding Components */}
-        <HoloCardModal
-          isOpen={isHoloCardModalOpen}
-          onClose={closeHoloCardModal}
-        />
-
-        {/* Onboarding assistance cards - shown after completing initial onboarding */}
-        {(shouldShowPersonalizationCard || shouldShowGettingStartedCard) && (
           <div
-            className={`fixed z-40 w-70 space-y-3 overflow-hidden ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
+            className="relative flex min-h-screen w-full dark"
+            style={{ touchAction: "pan-y" }}
+            ref={dragRef}
           >
-            {shouldShowPersonalizationCard && (
-              <ContextGatheringLoader onComplete={openHoloCardModal} />
-            )}
-            {/* {shouldShowGettingStartedCard && <OnboardingStepsCard />} */}
+            <SidebarLayout>
+              <Sidebar />
+            </SidebarLayout>
+
+            <SidebarInset className="flex h-screen min-w-0 w-auto flex-col bg-primary-bg">
+              <StatusBanner />
+              <header
+                className="flex shrink-0 items-center justify-between p-2"
+                onClick={closeOnTouch}
+              >
+                <HeaderSidebarTrigger />
+                <HeaderManager />
+              </header>
+              <main className="flex flex-1 flex-col overflow-hidden">
+                {/* <Suspense fallback={<SuspenseLoader />}> */}
+                {children}
+                {/* </Suspense> */}
+              </main>
+            </SidebarInset>
+
+            <RightSidebar
+              isOpen={rightSidebarOpen}
+              variant={rightSidebarVariant}
+            >
+              {rightSidebarContent}
+            </RightSidebar>
           </div>
-        )}
-      </SidebarProvider>
-    </TooltipProvider>
+
+          {/* Global Pricing Modal */}
+          <GlobalPricingModal />
+
+          {/* Global Command Menu */}
+          <CommandMenu
+            open={commandMenuOpen}
+            onOpenChange={setCommandMenuOpen}
+          />
+
+          {/* Onboarding Components */}
+          <HoloCardModal
+            isOpen={isHoloCardModalOpen}
+            onClose={closeHoloCardModal}
+          />
+
+          {/* Onboarding assistance cards - shown after completing initial onboarding */}
+          {(shouldShowPersonalizationCard || shouldShowGettingStartedCard) && (
+            <div
+              className={`fixed z-40 w-70 space-y-3 overflow-hidden ${pathname === "/integrations" ? "right-4 bottom-16" : "right-4 bottom-4"} `}
+            >
+              {shouldShowPersonalizationCard && (
+                <ContextGatheringLoader onComplete={openHoloCardModal} />
+              )}
+              {/* {shouldShowGettingStartedCard && <OnboardingStepsCard />} */}
+            </div>
+          )}
+        </SidebarProvider>
+      </TooltipProvider>
+    </ProvidersLayout>
   );
 }

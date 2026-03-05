@@ -1,6 +1,6 @@
 import asyncio
 from contextlib import asynccontextmanager
-from typing import Optional
+from typing import Optional, cast
 
 from app.agents.core.graph_builder.checkpointer_manager import (
     get_checkpointer_manager,
@@ -8,20 +8,26 @@ from app.agents.core.graph_builder.checkpointer_manager import (
 from app.agents.core.nodes import (
     follow_up_actions_node,
     manage_system_prompts_node,
-    trim_messages_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
 from app.agents.core.subagents.provider_subagents import register_subagent_providers
 from app.agents.llm.client import init_llm
+from app.agents.middleware import create_comms_middleware, create_executor_middleware
+from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.tools import memory_tools
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.core.retrieval import get_retrieve_tools_function
 from app.agents.tools.core.store import get_tools_store
+from app.agents.tools.core.tool_runtime_config import (
+    build_executor_child_tool_runtime_config,
+)
 from app.agents.tools.executor_tool import call_executor
+from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.config.loggers import app_logger as logger
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.hooks import HookType
 from langchain_core.language_models import LanguageModelLike
 from langgraph.checkpoint.memory import InMemorySaver
 
@@ -40,20 +46,57 @@ async def build_executor_graph(
         get_tools_store(),
     )
 
+    todo_tools = create_todo_tools(source="executor")
+
     tool_dict = tool_registry.get_tool_dict()
     tool_dict.update({"handoff": handoff_tool})
+    tool_dict.update({t.name: t for t in todo_tools})
+
+    todo_hook = create_todo_pre_model_hook(source="executor")
+
+    # Build excluded tool names for spawn_subagent: handoff and all subagent:-prefixed
+    excluded_subagent_tools = {"handoff"}
+
+    middleware = create_executor_middleware(
+        subagent_excluded_tools=excluded_subagent_tools,
+        subagent_tool_runtime_config=build_executor_child_tool_runtime_config(),
+    )
+
+    # Wire SubagentMiddleware with LLM and full tool registry
+    subagent_mw = next(
+        (mw for mw in middleware if isinstance(mw, SubagentMiddleware)),
+        None,
+    )
+    if subagent_mw is None:
+        logger.warning(
+            "SubagentMiddleware not found in middleware stack; spawn_subagent will be unavailable"
+        )
+    else:
+        subagent_mw.set_llm(chat_llm)
+        subagent_mw.set_tools(registry=tool_dict)
+        subagent_mw.set_store(store)
+
+    pre_model_hooks: list[HookType] = [
+        cast(HookType, filter_messages_node),
+        manage_system_prompts_node,
+        todo_hook,
+    ]
 
     builder = create_agent(
         llm=chat_llm,
         agent_name="executor_agent",
         tool_registry=tool_dict,
         retrieve_tools_coroutine=get_retrieve_tools_function(),
-        initial_tool_ids=["handoff"],
-        pre_model_hooks=[
-            filter_messages_node,
-            manage_system_prompts_node,
-            trim_messages_node,
+        initial_tool_ids=[
+            "handoff",
+            "plan_tasks",
+            "mark_task",
+            "add_task",
+            "vfs_read",
+            "deep_research",
         ],
+        middleware=middleware,
+        pre_model_hooks=pre_model_hooks,
     )
 
     checkpointer_manager = await get_checkpointer_manager()
@@ -103,17 +146,21 @@ async def build_comms_graph(
     }
     store = await get_tools_store()
 
+    middleware = create_comms_middleware()
+
+    pre_model_hooks: list[HookType] = [
+        cast(HookType, filter_messages_node),
+        manage_system_prompts_node,
+    ]
+
     builder = create_agent(
         llm=chat_llm,
         agent_name="comms_agent",
         tool_registry=tool_registry,
         disable_retrieve_tools=True,
         initial_tool_ids=["call_executor", "add_memory", "search_memory"],
-        pre_model_hooks=[
-            filter_messages_node,
-            manage_system_prompts_node,
-            trim_messages_node,
-        ],
+        middleware=middleware,
+        pre_model_hooks=pre_model_hooks,
         end_graph_hooks=[
             follow_up_actions_node,
         ],

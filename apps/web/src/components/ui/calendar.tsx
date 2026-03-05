@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowLeft01Icon, ArrowRight01Icon } from "@icons";
+import { ArrowLeft01Icon } from "@icons";
 import type * as React from "react";
 import { DayPicker } from "react-day-picker";
 import { buttonVariants } from "@/components/ui/button";
@@ -62,11 +62,18 @@ function Calendar({
         ...classNames,
       }}
       components={{
-        IconLeft: ({ className, ...props }) => (
-          <ArrowLeft01Icon className={cn("size-4", className)} {...props} />
-        ),
-        IconRight: ({ className, ...props }) => (
-          <ArrowRight01Icon className={cn("size-4", className)} {...props} />
+        Chevron: ({ className, orientation = "left", disabled, ...props }) => (
+          <ArrowLeft01Icon
+            className={cn(
+              "size-4",
+              orientation === "up" && "rotate-90",
+              orientation === "right" && "rotate-180",
+              orientation === "down" && "-rotate-90",
+              disabled && "opacity-50",
+              className,
+            )}
+            {...props}
+          />
         ),
       }}
       {...props}

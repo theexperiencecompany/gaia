@@ -19,6 +19,7 @@ interface ElectronAPI {
   signalReady: () => void;
   openExternal: (url: string) => void;
   onAuthCallback: (callback: (data: AuthCallbackData) => void) => () => void;
+  onAuthRedirecting: (callback: () => void) => () => void;
 }
 
 /**
@@ -115,6 +116,21 @@ export function useElectron() {
     [],
   );
 
+  /**
+   * Register a callback for auth-redirecting events
+   * Fired just before the window navigates to the main app after OAuth
+   * Returns a cleanup function to remove the listener
+   */
+  const onAuthRedirecting = useCallback(
+    (callback: () => void): (() => void) => {
+      if (typeof window !== "undefined" && hasElectronAPI(window)) {
+        return window.api.onAuthRedirecting(callback);
+      }
+      return () => {}; // No-op cleanup if not in Electron
+    },
+    [],
+  );
+
   return {
     isElectron,
     signalReady,
@@ -122,5 +138,6 @@ export function useElectron() {
     getVersion,
     openExternal,
     onAuthCallback,
+    onAuthRedirecting,
   };
 }

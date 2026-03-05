@@ -1,11 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { generateSitemaps } from "@/app/sitemap";
 import { getSiteUrl } from "@/lib/seo";
-
-/**
- * Sitemap IDs must match those in sitemap.ts
- */
-const SITEMAP_IDS = [0, 1, 2, 3, 4];
 
 /**
  * Route handler for the root sitemap index.
@@ -14,14 +10,18 @@ const SITEMAP_IDS = [0, 1, 2, 3, 4];
  */
 export async function GET() {
   const baseUrl = getSiteUrl();
+  const sitemapEntries = await generateSitemaps();
+  const sitemapIds = sitemapEntries.map((entry) => Number(entry.id));
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${SITEMAP_IDS.map(
-  (id) => `  <sitemap>
+${sitemapIds
+  .map(
+    (id) => `  <sitemap>
     <loc>${baseUrl}/sitemap/${id}.xml</loc>
   </sitemap>`,
-).join("\n")}
+  )
+  .join("\n")}
 </sitemapindex>`;
 
   return new NextResponse(xml, {

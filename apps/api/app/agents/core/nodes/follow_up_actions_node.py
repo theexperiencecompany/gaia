@@ -10,6 +10,7 @@ from typing import List, cast
 from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
 from app.agents.tools.core.registry import get_tool_registry
 from app.config.loggers import chat_logger as logger
+from app.override.langgraph_bigtool.utils import State
 from app.services.integrations.user_integrations import (
     get_user_integration_capabilities,
 )
@@ -21,7 +22,6 @@ from langchain_core.output_parsers import PydanticOutputParser
 from langchain_core.runnables import RunnableConfig
 from langgraph.config import get_stream_writer
 from langgraph.store.base import BaseStore
-from langgraph_bigtool.graph import State
 from pydantic import BaseModel, Field
 
 

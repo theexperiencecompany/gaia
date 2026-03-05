@@ -59,6 +59,7 @@ async def run_chat_stream_background(
     complete_message = ""
     tool_data: Dict[str, Any] = {"tool_data": []}
     tool_outputs: Dict[str, str] = {}  # Track tool_call_id -> output for merging
+    todo_progress_accumulated: Dict[str, Any] = {}  # Accumulate todo_progress by source
     user_message_id = str(uuid4())
     bot_message_id = str(uuid4())
     is_new_conversation = body.conversation_id is None
@@ -142,14 +143,33 @@ async def run_chat_stream_background(
 
             # Process complete message marker (internal, not sent to client)
             if chunk.startswith("nostream: "):
-                chunk_json = json.loads(chunk.replace("nostream: ", ""))
-                complete_message = chunk_json.get("complete_message", "")
+                nostream_json = json.loads(chunk.replace("nostream: ", ""))
+                if (
+                    isinstance(nostream_json, dict)
+                    and "complete_message" in nostream_json
+                ):
+                    complete_message = str(nostream_json["complete_message"])
+                else:
+                    complete_message = ""
                 continue
 
             # Process and publish data chunks
             if chunk.startswith("data: "):
                 try:
-                    new_data = extract_tool_data(chunk[6:])
+                    chunk_payload = chunk[6:]
+
+                    chunk_json: dict[str, Any] | None = None
+                    try:
+                        chunk_json = json.loads(chunk_payload)
+                    except json.JSONDecodeError:
+                        chunk_json = None
+
+                    if chunk_json and "todo_progress" in chunk_json:
+                        snapshot = chunk_json["todo_progress"]
+                        source = snapshot.get("source", "executor")
+                        todo_progress_accumulated[source] = snapshot
+
+                    new_data = extract_tool_data(chunk_payload)
                     if new_data:
                         if "other_data" in new_data:
                             other_data_dict = new_data["other_data"]
@@ -182,12 +202,18 @@ async def run_chat_stream_background(
                                 stream_id,
                                 f"data: {json.dumps({'tool_output': output_data})}\n\n",
                             )
+
+                        if chunk_json and "todo_progress" in chunk_json:
+                            await stream_manager.publish_chunk(
+                                stream_id,
+                                f"data: {json.dumps({'todo_progress': chunk_json['todo_progress']})}\n\n",
+                            )
                     else:
                         await stream_manager.publish_chunk(stream_id, chunk)
 
                     # Update progress for recovery
                     response_text = _extract_response_text(chunk)
-                    if response_text:
+                    if response_text or new_data:
                         await stream_manager.update_progress(
                             stream_id,
                             message_chunk=response_text,
@@ -220,7 +246,9 @@ async def run_chat_stream_background(
         await stream_manager.complete_stream(stream_id)
 
     except Exception as e:
-        logger.error(f"Background stream error for {stream_id}: {e}")
+        logger.error(
+            "Background stream error for {}: {}", stream_id, str(e), exc_info=True
+        )
         # IMPORTANT: Publish error chunk FIRST, before calling set_error()
         # set_error() publishes STREAM_ERROR_SIGNAL which breaks the subscriber loop
         # If we call set_error() first, the error message never reaches the client
@@ -236,8 +264,13 @@ async def run_chat_stream_background(
             if progress:
                 complete_message = progress.get("complete_message", "")
                 # Also recover tool_data if we have it
-                if progress.get("tool_data"):
-                    tool_data = progress["tool_data"]
+                progress_tool_data = progress.get("tool_data")
+                if (
+                    isinstance(progress_tool_data, dict)
+                    and progress_tool_data.get("tool_data")
+                    and not tool_data.get("tool_data")
+                ):
+                    tool_data = progress_tool_data
                 logger.debug(
                     f"Recovered {len(complete_message)} chars from Redis progress"
                 )
@@ -251,6 +284,17 @@ async def run_chat_stream_background(
                     tool_call_id = data.get("tool_call_id")
                     if tool_call_id and tool_call_id in tool_outputs:
                         data["output"] = tool_outputs[tool_call_id]
+
+        # Inject accumulated todo_progress as a single tool_data entry
+        # Each source's latest snapshot is kept; frontend merges on render
+        if todo_progress_accumulated:
+            tool_data["tool_data"].append(
+                {
+                    "tool_name": "todo_progress",
+                    "data": todo_progress_accumulated,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            )
 
         # Always save conversation to MongoDB
         await _save_conversation_async(

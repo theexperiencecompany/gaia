@@ -7,6 +7,7 @@ import HeroImage from "@/features/landing/components/hero/HeroImage";
 import HeroSection from "@/features/landing/components/hero/HeroSection";
 import LazyMotionProvider from "@/features/landing/components/LazyMotionProvider";
 import {
+  getTimeOfDay,
   isDarkTimeOfDay,
   type TimeOfDay,
 } from "@/features/landing/utils/timeOfDay";
@@ -71,10 +72,10 @@ const LandingDownloadSection = dynamic(
     })),
   { loading: SectionLoader },
 );
-const CommunitySection = dynamic(
-  () => import("@/features/landing/components/sections/CommunitySection"),
-  { loading: SectionLoader },
-);
+// const CommunitySection = dynamic(
+//   () => import("@/features/landing/components/sections/CommunitySection"),
+//   { loading: SectionLoader },
+// );
 const FinalSection = dynamic(
   () => import("@/features/landing/components/sections/FinalSection"),
   { loading: SectionLoader },
@@ -99,6 +100,11 @@ export default function LandingPageClient({
       });
     }
   };
+
+  useEffect(() => {
+    const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    setTimeOfDay(getTimeOfDay(userTimezone));
+  }, []);
 
   useEffect(() => {
     document.documentElement.style.overflowY = "scroll";

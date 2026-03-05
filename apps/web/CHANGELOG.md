@@ -1,5 +1,72 @@
 # Changelog
 
+## [0.17.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.16.0...web-v0.17.0) (2026-02-27)
+
+
+### Features
+
+* add scripts for analyzing SSR chunks and handler detail, update .gitignore, and enhance wrangler configuration ([6c1d7e7](https://github.com/theexperiencecompany/gaia/commit/6c1d7e7f7889c11741dee686dd27463361674e21))
+* enhance layout structure with new provider components and improve timezone utilities ([ee5e986](https://github.com/theexperiencecompany/gaia/commit/ee5e986fb98e9da5062e01ca43ba7b0b4cc5e34a))
+* enhance workflow creation and error handling; update dependencies and clean up code ([32e7c96](https://github.com/theexperiencecompany/gaia/commit/32e7c960737f2884463a3b4191acafbff158b405))
+* enhance workflow creation and update error handling, improve protocol registration, and add auth redirecting support ([ca47821](https://github.com/theexperiencecompany/gaia/commit/ca47821533ff0046af48ea776dc55776eca69e28))
+* enhance workflow prompts and descriptions for improved clarity and functionality ([9db8395](https://github.com/theexperiencecompany/gaia/commit/9db8395b5b442ec4b34135d3e3d9c50c048e0528))
+* implement getServerApiBaseUrl for consistent API base URL handling across components ([0309da4](https://github.com/theexperiencecompany/gaia/commit/0309da493c315c42891a54f4e1c2547dded00aaf))
+* Implement system workflows for Gmail and Google Calendar integrations ([#503](https://github.com/theexperiencecompany/gaia/issues/503)) ([ff90689](https://github.com/theexperiencecompany/gaia/commit/ff906890d7629ecdd3107b8563b76ba804a48ca4))
+* Implement Vercel Web Analytics for Next.js ([#518](https://github.com/theexperiencecompany/gaia/issues/518)) ([647dd49](https://github.com/theexperiencecompany/gaia/commit/647dd49f90737f80d45b5728a814c079982c19ec))
+* langchain middleware implementation, VFS and skills support ([#515](https://github.com/theexperiencecompany/gaia/issues/515)) ([65d1fde](https://github.com/theexperiencecompany/gaia/commit/65d1fde5bdc988bea0ce617a5994483b076262b6))
+* optimize Docker images, prune unused API deps, fix landing timezone ([1fc1a46](https://github.com/theexperiencecompany/gaia/commit/1fc1a464e691a7db85937db64b7ebf1b2fdd1c21))
+* optimize Docker images, prune unused API deps, fix landing timezone ([#524](https://github.com/theexperiencecompany/gaia/issues/524)) ([5acd831](https://github.com/theexperiencecompany/gaia/commit/5acd8313e1067a22da66d5bb90dcf2ff545ae9b7))
+* reintroduce useOAuthSuccessToast in GlobalInterceptor for global OAuth handling ([0f53f26](https://github.com/theexperiencecompany/gaia/commit/0f53f264aa4807f3032b447722319a196f54b432))
+* Revamp desktop application startup with deep linking, splash screen, auto-updater, and modular window management. ([4a5687c](https://github.com/theexperiencecompany/gaia/commit/4a5687c5855e0a6dd5a9281b1bc98fcdef8850a9))
+* Revamp desktop application with deep linking, splash screen, and modular window management ([#520](https://github.com/theexperiencecompany/gaia/issues/520)) ([78882df](https://github.com/theexperiencecompany/gaia/commit/78882df035643bea672b14eefc0113cfcc7f1df3))
+* **workflows:** split display description and execution prompt ([#504](https://github.com/theexperiencecompany/gaia/issues/504)) ([adf2494](https://github.com/theexperiencecompany/gaia/commit/adf2494a19548ff3cb0a13a1ce250a69ef13e5ad))
+* **workflows:** split display description and execution prompt ([#504](https://github.com/theexperiencecompany/gaia/issues/504)) ([#516](https://github.com/theexperiencecompany/gaia/issues/516)) ([8520838](https://github.com/theexperiencecompany/gaia/commit/85208383971d7ea35ff3fe11026cef34ca6b06b1))
+
+
+### Bug Fixes
+
+* Adjust ownership and permissions in Dockerfiles for better user access ([99637d6](https://github.com/theexperiencecompany/gaia/commit/99637d68c58cff970b7e7f3fbd9c1f38712ea109))
+* **ci:** added build to cloudflare deploy and preview commands ([c53893e](https://github.com/theexperiencecompany/gaia/commit/c53893e1e3dfcef0c54c75f3d89f3f03ed436e7f))
+* enhance desktop server shutdown reliability, update splash screen appearance, and refine login UI styling. ([6934f06](https://github.com/theexperiencecompany/gaia/commit/6934f06586269a5ab4b64101977fd79513d876f1))
+* refactor base URL handling to use siteConfig for consistency ([395953c](https://github.com/theexperiencecompany/gaia/commit/395953c4f13d73be76a42d272930cca7c161c2cf))
+* replace Icon components with Chevron for better consistency in C… ([#509](https://github.com/theexperiencecompany/gaia/issues/509)) ([d338e85](https://github.com/theexperiencecompany/gaia/commit/d338e8509f2d9d9f1a5ab5c29f2c2fa0d545723b))
+* replace Icon components with Chevron for better consistency in Calendar and DateTimePicker ([30f94e3](https://github.com/theexperiencecompany/gaia/commit/30f94e35d450625666d453554a2a2b747b468e93))
+* Set ownership for copied files in Dockerfile to improve security and access ([11d925c](https://github.com/theexperiencecompany/gaia/commit/11d925c9e299b0c935677047a182ede0c9beea1c))
+* simplify deploy and preview scripts in package.json ([95698c6](https://github.com/theexperiencecompany/gaia/commit/95698c68afc865e1a301cb9a6991cd5efd74c991))
+* update package dependencies and add new cloudflare config files ([#507](https://github.com/theexperiencecompany/gaia/issues/507)) ([ae0fccd](https://github.com/theexperiencecompany/gaia/commit/ae0fccd9853ad0582b491e9a2f5d5f6e06faa136))
+* update package dependencies and add new cloudflare configuration files ([7ff4a3c](https://github.com/theexperiencecompany/gaia/commit/7ff4a3c1b189ff59573928d94925afeb1a761214))
+* **web-seo:** consolidate crawl/index signals and remove SEO drift  ([#505](https://github.com/theexperiencecompany/gaia/issues/505)) ([0c91ec5](https://github.com/theexperiencecompany/gaia/commit/0c91ec55c31b500deec1ae751ce1b61b47b583b3))
+* Wrap Navbar and main content in LazyMotionProvider ([#523](https://github.com/theexperiencecompany/gaia/issues/523)) ([43503a5](https://github.com/theexperiencecompany/gaia/commit/43503a5cdb05cd295369ea431b558e0957e0aede))
+* Wrap Navbar and main content in LazyMotionProvider for improved animation handling ([9344494](https://github.com/theexperiencecompany/gaia/commit/93444949941b005e8fe40115582fe9929f0a2f71))
+
+## [0.16.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.15.0...web-v0.16.0) (2026-02-23)
+
+
+### Features
+
+* Add a dedicated bots landing page and remove the unauthenticated bot mention API endpoint. ([6f901af](https://github.com/theexperiencecompany/gaia/commit/6f901affccfaaf63765952956cee627e7f95cec1))
+* Add Bots, CLI, Added skills in codebase ([#487](https://github.com/theexperiencecompany/gaia/issues/487)) ([206675b](https://github.com/theexperiencecompany/gaia/commit/206675bf79e41da50e9f1870e854783a22dee785))
+* Add Telegram bot, enhance platform linking with user profile data, and centralize bot command documentation. ([d8a3b55](https://github.com/theexperiencecompany/gaia/commit/d8a3b55da6c97403d196a193eb92b725ced656be))
+* **bots:** Enhance Discord bot with rotating presence, DM welcome message, and context menu commands ([29ed4b7](https://github.com/theexperiencecompany/gaia/commit/29ed4b77a377e0be9fa7836da9295a188285635b))
+* CLI (Command LIne Interface) to make it easy to self-host and contribute ([#431](https://github.com/theexperiencecompany/gaia/issues/431)) ([c6772df](https://github.com/theexperiencecompany/gaia/commit/c6772dfd60f1e60e7d559638ff133d40b3a65909))
+* Enhance bot streaming stability and implementation, add Discord bot landing page, and update bot documentation. ([82024be](https://github.com/theexperiencecompany/gaia/commit/82024be147391761b2f6f88168d77d9e0739eb61))
+* enhance CLI initialization flow with logging and Docker support; add Docker build workflow ([d6e2e05](https://github.com/theexperiencecompany/gaia/commit/d6e2e0572558a3203388ee832332f14a2ad6430b))
+* Implement secure platform linking using link tokens and enhance WorkOS SSO with return URL handling. ([d0b1caf](https://github.com/theexperiencecompany/gaia/commit/d0b1caf7b72716d24ee740abdf2dca2eee1c7923))
+* Improve docs structure and styling ([#489](https://github.com/theexperiencecompany/gaia/issues/489)) ([3a93bab](https://github.com/theexperiencecompany/gaia/commit/3a93bab27e25bd58401aedc3ab8a4f1d55f2974b))
+* Improve docs structure and styling ([#489](https://github.com/theexperiencecompany/gaia/issues/489)) ([#490](https://github.com/theexperiencecompany/gaia/issues/490)) ([17c9475](https://github.com/theexperiencecompany/gaia/commit/17c94755e9f4b1160ff469eb166f5f042baa96da))
+* Introducing GAIA bots ([#485](https://github.com/theexperiencecompany/gaia/issues/485)) ([c47c6b8](https://github.com/theexperiencecompany/gaia/commit/c47c6b839484181a0b465b87a11261ed4e83cc70))
+* Multi channel notifications - Telegram, Discord ([#493](https://github.com/theexperiencecompany/gaia/issues/493)) ([27f601a](https://github.com/theexperiencecompany/gaia/commit/27f601a475bac044a9db6ca3add8b770dd239336))
+* serialize Telegram message updates, improve Markdown parsing error handling, and refine streaming message break logic ([47390ec](https://github.com/theexperiencecompany/gaia/commit/47390ec2e7a277a2b7cf331f322636c2fac90842))
+* **web:** add bot platform linking UI in settings ([403363f](https://github.com/theexperiencecompany/gaia/commit/403363fb5654c9268e3809a8453671fd8b24b016))
+
+
+### Bug Fixes
+
+* **bots:** Comprehensive audit — fix deployment, security, and functional bugs ([e83a7b7](https://github.com/theexperiencecompany/gaia/commit/e83a7b7b590c512827541567c94c4d12797aef8c))
+* **mcp:** Raise ValueError for missing OAuth token in MCPClient ([b31263f](https://github.com/theexperiencecompany/gaia/commit/b31263f00e6bb42de89db835e6d0f582af20f1fa))
+* minor cli improvements ([#495](https://github.com/theexperiencecompany/gaia/issues/495)) ([9d47723](https://github.com/theexperiencecompany/gaia/commit/9d47723e8fa87f3d5cbffc3f6b596021ce6a5648))
+* update pre-commit config to exclude additional tsconfig.json files and improve code formatting in various scripts ([23e78ad](https://github.com/theexperiencecompany/gaia/commit/23e78ad0275ad623a723f7c4e79076bc651aa96f))
+
 ## [0.15.0](https://github.com/theexperiencecompany/gaia/compare/web-v0.14.0...web-v0.15.0) (2026-02-16)
 
 

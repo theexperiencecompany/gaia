@@ -7,11 +7,13 @@ import { PlayIcon } from "@icons";
 interface WorkflowFooterProps {
   mode: "create" | "edit";
   existingWorkflow: boolean;
+  isSystemWorkflow?: boolean;
   isActivated: boolean;
   isTogglingActivation: boolean;
   onToggleActivation: (activated: boolean) => void;
   hasSteps: boolean;
   onRunWorkflow: () => void;
+  onResetToDefault?: () => void;
   onCancel: () => void;
   onSave: () => void;
   isSaveDisabled: boolean;
@@ -23,11 +25,13 @@ interface WorkflowFooterProps {
 export default function WorkflowFooter({
   mode,
   existingWorkflow,
+  isSystemWorkflow,
   isActivated,
   isTogglingActivation,
   onToggleActivation,
   hasSteps,
   onRunWorkflow,
+  onResetToDefault,
   onCancel,
   onSave,
   isSaveDisabled,
@@ -80,6 +84,17 @@ export default function WorkflowFooter({
                 />
               </Tooltip>
             </div>
+          )}
+
+          {isSystemWorkflow && onResetToDefault && (
+            <Tooltip
+              content="Restore this workflow to its original GAIA-provided definition"
+              placement="top"
+            >
+              <Button variant="flat" size="sm" onPress={onResetToDefault}>
+                Reset to Default
+              </Button>
+            </Tooltip>
           )}
         </div>
 

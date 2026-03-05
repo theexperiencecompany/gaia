@@ -19,6 +19,14 @@ CHANNEL_TYPE_DISCORD = "discord"
 # External channel types that are auto-injected based on platform links
 EXTERNAL_NOTIFICATION_CHANNELS = (CHANNEL_TYPE_TELEGRAM, CHANNEL_TYPE_DISCORD)
 
+# All channel types that are auto-injected when no channels are explicitly specified.
+# inapp is always available; telegram/discord respect user preferences.
+ALL_AUTO_INJECTED_CHANNELS = (
+    CHANNEL_TYPE_INAPP,
+    CHANNEL_TYPE_TELEGRAM,
+    CHANNEL_TYPE_DISCORD,
+)
+
 # Default enabled state for external channels
 DEFAULT_CHANNEL_PREFERENCES: dict[str, bool] = {
     CHANNEL_TYPE_TELEGRAM: True,

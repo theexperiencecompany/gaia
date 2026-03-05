@@ -8,6 +8,7 @@ from app.services.triggers.handlers.asana import asana_trigger_handler
 from app.services.triggers.handlers.calendar import calendar_trigger_handler
 from app.services.triggers.handlers.github import github_trigger_handler
 from app.services.triggers.handlers.gmail import gmail_trigger_handler
+from app.services.triggers.handlers.gmail_poll import gmail_poll_trigger_handler
 from app.services.triggers.handlers.google_docs import google_docs_trigger_handler
 from app.services.triggers.handlers.google_sheets import google_sheets_trigger_handler
 from app.services.triggers.handlers.linear import linear_trigger_handler
@@ -24,6 +25,7 @@ from app.services.triggers.registry import (
 trigger_registry.register(calendar_trigger_handler)
 trigger_registry.register(github_trigger_handler)
 trigger_registry.register(gmail_trigger_handler)
+trigger_registry.register(gmail_poll_trigger_handler)
 trigger_registry.register(google_docs_trigger_handler)
 trigger_registry.register(google_sheets_trigger_handler)
 trigger_registry.register(linear_trigger_handler)

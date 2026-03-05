@@ -6,7 +6,7 @@ import { useDisclosure } from "@heroui/modal";
 import { Spinner } from "@heroui/spinner";
 import { Tooltip } from "@heroui/tooltip";
 import { ZapIcon } from "@icons";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
   CreateWorkflowModal,
   WorkflowModal,
@@ -24,6 +24,7 @@ export default function WorkflowsSidebar() {
     null,
   );
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const clearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleWorkflowClick = (workflow: Workflow) => {
     setSelectedWorkflow(workflow);
@@ -77,9 +78,10 @@ export default function WorkflowsSidebar() {
                 </span>
                 <WorkflowIcons
                   steps={workflow.steps || []}
-                  iconSize={20}
+                  iconSize={17}
                   maxIcons={3}
-                  className="-space-x-2.5!"
+                  spacing="-space-x-3.5!"
+                  showBackground={true}
                 />
               </button>
             ))
@@ -90,19 +92,21 @@ export default function WorkflowsSidebar() {
       <CreateWorkflowModal isOpen={isOpen} onOpenChange={onOpenChange} />
 
       {/* Edit Workflow Modal */}
-      {selectedWorkflow && (
-        <WorkflowModal
-          isOpen={isEditModalOpen}
-          onOpenChange={(open) => {
-            setIsEditModalOpen(open);
-            if (!open) {
-              setSelectedWorkflow(null);
-            }
-          }}
-          existingWorkflow={selectedWorkflow}
-          mode="edit"
-        />
-      )}
+      <WorkflowModal
+        isOpen={isEditModalOpen}
+        onOpenChange={(open) => {
+          setIsEditModalOpen(open);
+          if (!open) {
+            if (clearTimeoutRef.current) clearTimeout(clearTimeoutRef.current);
+            clearTimeoutRef.current = setTimeout(
+              () => setSelectedWorkflow(null),
+              300,
+            );
+          }
+        }}
+        existingWorkflow={selectedWorkflow}
+        mode="edit"
+      />
     </>
   );
 }

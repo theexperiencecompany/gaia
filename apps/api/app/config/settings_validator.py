@@ -130,17 +130,6 @@ class SettingsValidator:
             )
         )
 
-        self.register_group(
-            SettingsGroup(
-                name="Google OAuth",
-                keys=["GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"],
-                description="Google OAuth integration",
-                affected_features="Google login, calendar integration, and email services",
-                all_required=True,
-                docs_url="https://console.cloud.google.com/apis/credentials",
-            )
-        )
-
         # Media Processing
         self.register_group(
             SettingsGroup(
@@ -161,11 +150,11 @@ class SettingsValidator:
         self.register_group(
             SettingsGroup(
                 name="Speech Processing",
-                keys=["ASSEMBLYAI_API_KEY", "DEEPGRAM_API_KEY"],
-                description="Speech-to-text transcription services (either one is sufficient)",
+                keys=["DEEPGRAM_API_KEY"],
+                description="Speech-to-text transcription service",
                 affected_features="Audio transcription and voice interaction",
                 all_required=False,
-                docs_url="https://www.assemblyai.com/dashboard/",
+                docs_url="https://deepgram.com/",
             )
         )
 

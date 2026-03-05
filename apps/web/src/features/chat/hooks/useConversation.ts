@@ -23,6 +23,7 @@ const mapStoredMessageToConversationMessage = (
     follow_up_actions: message.follow_up_actions ?? undefined,
     image_data: message.image_data ?? undefined,
     memory_data: message.memory_data ?? undefined,
+    todo_progress: message.todo_progress ?? undefined,
     pinned: message.pinned ?? undefined,
     isConvoSystemGenerated: message.isConvoSystemGenerated ?? undefined,
     replyToMessage: message.replyToMessageData ?? undefined,

@@ -20,6 +20,7 @@ from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.core.lazy_loader import providers
 from app.db.mongodb.collections import integrations_collection
 from app.helpers.namespace_utils import derive_integration_namespace
+from app.services.mcp.mcp_client import get_mcp_client
 
 from .base_subagent import SubAgentFactory
 
@@ -54,17 +55,17 @@ async def create_subagent(integration_id: str):
 
     # Handle MCP-managed integrations (like DeepWiki)
     elif integration.managed_by == "mcp" and integration.mcp_config:
+        mcp_config = integration.mcp_config
         category_name = integration.id
 
         # Skip auth-required MCPs here - they need user-specific tokens
         # loaded via create_subagent_for_user() with actual user_id
-        if integration.mcp_config.requires_auth:
+        if mcp_config.requires_auth:
             raise ValueError(
                 f"{integration_id} requires authentication - use create_subagent_for_user"
             )
         elif category_name not in tool_registry._categories:
             # Lazy import to avoid circular dependency
-            from app.services.mcp.mcp_client import get_mcp_client
 
             mcp_client = await get_mcp_client(user_id="_system")
             tools = await mcp_client.connect(integration.id)
@@ -100,6 +101,7 @@ async def create_subagent(integration_id: str):
         name=config.agent_name,
         use_direct_tools=config.use_direct_tools,
         disable_retrieve_tools=config.disable_retrieve_tools,
+        auto_bind_tools=config.auto_bind_tools,
     )
 
     logger.info(f"Subagent {config.agent_name} created successfully")
@@ -135,7 +137,8 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
         logger.error(f"{integration_id} integration or subagent config not found")
         return None
 
-    if not (integration.managed_by == "mcp" and integration.mcp_config):
+    mcp_config = integration.mcp_config
+    if not (integration.managed_by == "mcp" and mcp_config):
         logger.error(f"{integration_id} is not an MCP integration")
         return None
 
@@ -146,9 +149,6 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
     category_name = f"mcp_{integration.id}_{user_id}"
 
     if category_name not in tool_registry._categories:
-        # Lazy import to avoid circular dependency
-        from app.services.mcp.mcp_client import get_mcp_client
-
         mcp_client = await get_mcp_client(user_id=user_id)
 
         # Fast path: connect ONLY the needed integration instead of all
@@ -192,6 +192,7 @@ async def create_subagent_for_user(integration_id: str, user_id: str):
         name=config.agent_name,
         use_direct_tools=config.use_direct_tools,
         disable_retrieve_tools=config.disable_retrieve_tools,
+        auto_bind_tools=config.auto_bind_tools,
     )
 
     logger.info(f"User-specific subagent {config.agent_name} created successfully")
@@ -225,11 +226,9 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
     # Use user-specific category name to avoid conflicts
     category_name = f"mcp_{integration_id}_{user_id}"
     tools: list[Any] | None = None  # Track tools for count-based strategy decision
+    tool_namespace: str = ""  # Will be set in either branch below
 
     if category_name not in tool_registry._categories:
-        # Lazy import to avoid circular dependency
-        from app.services.mcp.mcp_client import get_mcp_client
-
         mcp_client = await get_mcp_client(user_id=user_id)
 
         # Fast path: connect ONLY the needed integration instead of all
@@ -267,21 +266,28 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
             f"Registered {len(tools)} custom MCP tools for {integration_id} in namespace '{tool_namespace}'"
         )
     else:
-        # Category exists - get tool count from registry
+        # Category exists - get tool count and namespace from registry
         category = tool_registry.get_category(category_name)
         if category:
             tools = category.tools
+            tool_namespace = category.space
+
+    if not tool_namespace:
+        # Fallback: derive namespace if not set from either branch
+        mcp_cfg = custom_doc.get("mcp_config", {})
+        tool_namespace = derive_integration_namespace(
+            integration_id, mcp_cfg.get("server_url", ""), is_custom=True
+        )
 
     llm = init_llm()
     agent_name = f"custom_mcp_{integration_id}"
 
     logger.info(f"Creating custom MCP subagent {agent_name} for user {user_id}")
 
-    # Check tool count to decide binding strategy
-    # For small MCPs (<= 5 tools): bind all directly for lower latency
-    # For larger MCPs: use retrieve_tools to avoid context pollution
+    # Dynamic tool-count override: if actual tool count is small (1-10),
+    # bind all tools directly and skip retrieve_tools for lower latency.
     tool_count = len(tools) if tools else 0
-    use_direct = tool_count <= 5
+    use_direct = 0 < tool_count <= 10
 
     logger.info(
         f"Custom MCP {integration_id} has {tool_count} tools - "
@@ -294,7 +300,7 @@ async def _create_custom_mcp_subagent(integration_id: str, user_id: str):
         tool_space=tool_namespace,
         name=agent_name,
         use_direct_tools=use_direct,
-        disable_retrieve_tools=use_direct,  # Only disable if using direct binding
+        disable_retrieve_tools=use_direct,
     )
 
     logger.info(f"Custom MCP subagent {agent_name} created successfully")

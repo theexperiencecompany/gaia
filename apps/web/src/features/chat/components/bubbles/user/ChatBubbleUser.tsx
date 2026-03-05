@@ -56,95 +56,99 @@ export default function ChatBubbleUser({
   }
 
   return (
-    <div className="flex w-full items-end justify-end gap-3">
-      <div className="chat_bubble_container user group" id={message_id}>
-        {fileData.length > 0 && <ChatBubbleFilePreview files={fileData} />}
+    <div className="group flex w-full justify-end gap-3">
+      <div className="flex flex-col items-end gap-1">
+        {/* Bubble content + avatar aligned at bottom */}
+        <div className="flex items-end gap-1" id={message_id}>
+          <div className="chat_bubble_container user">
+            {fileData.length > 0 && <ChatBubbleFilePreview files={fileData} />}
 
-        {selectedTool && (
-          <div className="flex justify-end">
-            <SelectedToolIndicator
-              toolName={selectedTool}
-              toolCategory={toolCategory}
-            />
+            {selectedTool && (
+              <div className="flex justify-end top-1.5 relative">
+                <SelectedToolIndicator
+                  toolName={selectedTool}
+                  toolCategory={toolCategory}
+                />
+              </div>
+            )}
+
+            {selectedWorkflow && (
+              <div className="flex justify-end">
+                <SelectedWorkflowIndicator workflow={selectedWorkflow} />
+              </div>
+            )}
+
+            {selectedCalendarEvent && (
+              <div className="flex justify-end">
+                <SelectedCalendarEventIndicator event={selectedCalendarEvent} />
+              </div>
+            )}
+
+            {replyToMessage && (
+              <div className="flex justify-end">
+                <SelectedReplyIndicator
+                  replyToMessage={replyToMessage}
+                  isDisplayOnly={true}
+                  onNavigate={(messageId) => {
+                    const messageElement = document.getElementById(messageId);
+                    if (messageElement) {
+                      messageElement.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      });
+                      messageElement.style.transition = "all 0.3s ease";
+                      messageElement.style.scale = "1.02";
+                      setTimeout(() => {
+                        messageElement.style.scale = "1";
+                      }, 300);
+                    }
+                  }}
+                />
+              </div>
+            )}
+
+            {text?.trim() && (
+              <div className={bubbleClassName}>
+                {!!text && <div className={textClassName}>{text}</div>}
+              </div>
+            )}
           </div>
-        )}
 
-        {selectedWorkflow && (
-          <div className="flex justify-end">
-            <SelectedWorkflowIndicator workflow={selectedWorkflow} />
+          <div className="min-w-10">
+            <Avatar className="rounded-full bg-black">
+              <AvatarImage src={user?.profilePicture} alt="User Avatar" />
+              <AvatarFallback>
+                <Image
+                  src={"/images/avatars/default.webp"}
+                  width={35}
+                  height={35}
+                  alt="Default profile picture"
+                />
+              </AvatarFallback>
+            </Avatar>
           </div>
-        )}
-
-        {selectedCalendarEvent && (
-          <div className="flex justify-end">
-            <SelectedCalendarEventIndicator event={selectedCalendarEvent} />
-          </div>
-        )}
-
-        {replyToMessage && (
-          <div className="flex justify-end">
-            <SelectedReplyIndicator
-              replyToMessage={replyToMessage}
-              isDisplayOnly={true}
-              onNavigate={(messageId) => {
-                const messageElement = document.getElementById(messageId);
-                if (messageElement) {
-                  messageElement.scrollIntoView({
-                    behavior: "smooth",
-                    block: "center",
-                  });
-                  messageElement.style.transition = "all 0.3s ease";
-                  messageElement.style.scale = "1.02";
-                  setTimeout(() => {
-                    messageElement.style.scale = "1";
-                  }, 300);
-                }
-              }}
-            />
-          </div>
-        )}
-
-        {text?.trim() && (
-          <div className={bubbleClassName}>
-            {!!text && <div className={textClassName}>{text}</div>}
-          </div>
-        )}
-
-        <div
-          className={`flex flex-col items-end justify-end gap-1 pb-3 transition-all ${disableActions ? "hidden" : "opacity-0 group-hover:opacity-100"}`}
-        >
-          {date && (
-            <span className="flex flex-col text-xs text-zinc-400 select-text">
-              {parseDate(date)}
-            </span>
-          )}
-
-          {text && !disableActions && (
-            <ChatBubble_Actions
-              loading={false}
-              text={text}
-              message_id={message_id}
-              messageRole="user"
-              onRetry={onRetry}
-              isRetrying={isRetrying}
-            />
-          )}
         </div>
-      </div>
-      <div className="min-w-10">
-        <Avatar
-          className={`relative rounded-full bg-black ${disableActions ? "bottom-0" : "bottom-18"}`}
-        >
-          <AvatarImage src={user?.profilePicture} alt="User Avatar" />
-          <AvatarFallback>
-            <Image
-              src={"/images/avatars/default.webp"}
-              width={35}
-              height={35}
-              alt="Default profile picture"
-            />
-          </AvatarFallback>
-        </Avatar>
+
+        {/* Actions row below bubble, aligned under content (not avatar) */}
+        {!disableActions && (
+          <div className="flex flex-col items-end gap-1 pr-13 pb-1 opacity-0 transition-all group-hover:opacity-100">
+            {date && (
+              <span className="flex flex-col text-xs text-zinc-400 select-text">
+                {parseDate(date)}
+              </span>
+            )}
+            {text && (
+              <ChatBubble_Actions
+                loading={false}
+                text={text}
+                message_id={message_id}
+                messageRole="user"
+                onRetry={onRetry}
+                isRetrying={isRetrying}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -31,6 +31,7 @@ class NotificationSourceEnum(str, Enum):
     BACKGROUND_JOB = "background_job"
     WORKFLOW_COMPLETED = "workflow_completed"
     WORKFLOW_FAILED = "workflow_failed"
+    SYSTEM_WORKFLOWS_PROVISIONED = "system_workflows_provisioned"
 
 
 class ActionType(str, Enum):
@@ -132,7 +133,7 @@ class NotificationRequest(BaseModel):
     source: NotificationSourceEnum
     type: NotificationType = NotificationType.INFO
     priority: int = Field(default=3, ge=1, le=5)  # 1 highest
-    channels: List[ChannelConfig]
+    channels: List[ChannelConfig] = Field(default_factory=list)
     content: NotificationContent
     metadata: Dict[str, Any] = Field(default_factory=dict)
     scheduled_for: Optional[datetime] = None

@@ -1,5 +1,6 @@
 import secrets
 from typing import Optional
+from urllib.parse import quote
 
 import httpx
 from app.config.loggers import auth_logger as logger
@@ -170,7 +171,7 @@ async def workos_mobile_callback(
         await store_user_info(name, email, picture_url)
 
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(url=f"{mobile_redirect}?token={token}")
+        return RedirectResponse(url=f"{mobile_redirect}?token={quote(token, safe='')}")
 
     except HTTPException as e:
         logger.error(f"HTTP error during WorkOS mobile auth: {e.detail}")
@@ -240,7 +241,9 @@ async def workos_desktop_callback(
 
         # Return token via deep link - desktop app will handle storage
         token = auth_response.sealed_session or auth_response.access_token
-        return RedirectResponse(url=f"gaia://auth/callback?token={token}")
+        return RedirectResponse(
+            url=f"gaia://auth/callback?token={quote(token, safe='')}"
+        )
 
     except HTTPException as e:
         logger.error(f"HTTP error during WorkOS desktop auth: {e.detail}")

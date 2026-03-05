@@ -243,6 +243,34 @@ export function ActivationStatus({
   );
 }
 
+interface SystemWorkflowChipProps {
+  size?: "sm" | "md" | "lg";
+}
+
+export function SystemWorkflowChip({ size = "sm" }: SystemWorkflowChipProps) {
+  return (
+    <Tooltip
+      content="Automatically created by GAIA when you connected this integration"
+      placement="top"
+      delay={300}
+      closeDelay={0}
+      classNames={{ content: "bg-zinc-800 text-xs max-w-48 text-center" }}
+    >
+      <Chip
+        color="primary"
+        variant="flat"
+        size={size}
+        className="text-primary"
+        startContent={
+          <Image src="/brand/gaia_logo.svg" alt="GAIA" width={14} height={14} />
+        }
+      >
+        <span className="pl-0.5">System</span>
+      </Chip>
+    </Tooltip>
+  );
+}
+
 // Reusable Creator Avatar
 interface CreatorAvatarProps {
   creator: {

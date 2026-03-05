@@ -4,8 +4,9 @@ from typing import Any, Dict, List, Optional
 
 from app.config.loggers import app_logger as logger
 from app.constants.notifications import (
+    ALL_AUTO_INJECTED_CHANNELS,
+    CHANNEL_TYPE_INAPP,
     DEFAULT_CHANNEL_PREFERENCES,
-    EXTERNAL_NOTIFICATION_CHANNELS,
 )
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
@@ -132,19 +133,23 @@ class NotificationOrchestrator:
                 task = self._deliver_via_channel(notification, adapter)
                 delivery_tasks.append(task)
 
-        # Auto-inject Telegram and Discord if not already in the channel list
-        channel_prefs = await self._get_channel_prefs(notification.user_id)
-        for platform in EXTERNAL_NOTIFICATION_CHANNELS:
-            if platform in explicitly_requested:
-                continue
-            if not channel_prefs.get(platform, True):
-                logger.info(
-                    f"Skipping {platform} delivery for {notification.user_id}: disabled by preference"
-                )
-                continue
-            adapter = self.channel_adapters.get(platform)
-            if adapter and adapter.can_handle(notification.original_request):
-                delivery_tasks.append(self._deliver_via_channel(notification, adapter))
+        # Auto-inject channels only when no explicit channels were requested.
+        # inapp is always available; telegram/discord respect user preferences.
+        if not explicitly_requested:
+            channel_prefs = await self._get_channel_prefs(notification.user_id)
+            for platform in ALL_AUTO_INJECTED_CHANNELS:
+                if platform != CHANNEL_TYPE_INAPP and not channel_prefs.get(
+                    platform, True
+                ):
+                    logger.info(
+                        f"Skipping {platform} delivery for {notification.user_id}: disabled by preference"
+                    )
+                    continue
+                adapter = self.channel_adapters.get(platform)
+                if adapter and adapter.can_handle(notification.original_request):
+                    delivery_tasks.append(
+                        self._deliver_via_channel(notification, adapter)
+                    )
 
         # Execute all deliveries concurrently
         if delivery_tasks:

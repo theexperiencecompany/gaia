@@ -65,6 +65,7 @@ export default function UseCaseDetailClient({
       const workflowRequest = {
         title,
         description,
+        prompt: useCase?.prompt || communityWorkflow?.prompt || description,
         trigger_config: {
           type: "manual" as const,
           enabled: true,

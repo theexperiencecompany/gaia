@@ -9,26 +9,34 @@ invoked via tool-calling pattern similar to executor_agent.
 
 MEMORY LEARNING: Each subagent has memory_learning_node as an end_graph_hook.
 This allows subagents to learn both:
-- Skills: Procedural knowledge (how to do tasks) - stored per agent
 - User memories: IDs, preferences, contacts - stored per user
 Both are stored in separate mem0 namespaces and don't interfere.
 """
 
 import asyncio
+from typing import cast
 
 from app.agents.core.graph_builder.checkpointer_manager import get_checkpointer_manager
 from app.agents.core.nodes import (
     manage_system_prompts_node,
-    memory_learning_node,
-    trim_messages_node,
+    memory_node,
 )
 from app.agents.core.nodes.filter_messages import filter_messages_node
-from app.agents.tools.core.retrieval import get_retrieve_tools_function
+from app.agents.middleware import SubagentMiddleware, create_subagent_middleware
 from app.agents.tools.core.store import get_tools_store
+from app.agents.tools.core.tool_runtime_config import (
+    build_child_tool_runtime_config,
+    build_create_agent_tool_kwargs,
+    build_provider_parent_tool_runtime_config,
+)
 from app.agents.tools.memory_tools import search_memory
+from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
+from app.agents.tools.vfs_tools import vfs_read
 from app.config.loggers import langchain_logger as logger
 from app.override.langgraph_bigtool.create_agent import create_agent
+from app.override.langgraph_bigtool.hooks import HookType
 from langchain_core.language_models import LanguageModelLike
+from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import InMemorySaver
 
 
@@ -43,6 +51,7 @@ class SubAgentFactory:
         tool_space: str = "general",
         use_direct_tools: bool = False,
         disable_retrieve_tools: bool = False,
+        auto_bind_tools: list[str] | None = None,
     ):
         """
         Creates a specialized sub-agent graph for a specific provider with tool registry.
@@ -51,11 +60,17 @@ class SubAgentFactory:
             provider: Provider name (gmail, notion, twitter, linkedin, calendar)
             llm: Language model to use
             tool_space: Tool space to use for retrieval (e.g., "gmail_delegated", "general")
+            use_direct_tools: If True, bind all tools directly without retrieve_tools
+            disable_retrieve_tools: If True, disable retrieve_tools mechanism entirely
+            auto_bind_tools: Tools to auto-bind at startup (only when use_direct_tools=False
+                and disable_retrieve_tools=False). These tools are immediately available
+                without calling retrieve_tools, reducing latency for frequently-used tools.
 
         Returns:
             Compiled LangGraph agent with tool registry, retrieval, and checkpointer
         """
         from app.agents.tools.core.registry import get_tool_registry
+        from app.agents.tools.research_tool import deep_research
         from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 
         logger.info(
@@ -82,42 +97,102 @@ class SubAgentFactory:
         # Add search_memory to scoped_tool_dict so subagents can access user memories
         scoped_tool_dict[search_memory.name] = search_memory
 
-        # Add webpage tools to scoped_tool_dict so subagents can use them when retrieved
-        # These are allowed from general namespace in retrieval.py (lines 212-219)
+        # Add vfs_read so subagents can always read VFS files (e.g. compacted tool outputs)
+        scoped_tool_dict[vfs_read.name] = vfs_read
+
+        # Add search tools to scoped_tool_dict so subagents can bind and execute them
+        # when retrieved (retrieve_tools may return these from the general namespace).
         scoped_tool_dict[web_search_tool.name] = web_search_tool
         scoped_tool_dict[fetch_webpages.name] = fetch_webpages
+        scoped_tool_dict[deep_research.name] = deep_research
+
+        # Get full tool dict so spawned sub-subagents (via spawn_subagent) inherit
+        # all parent tools, not just the provider's scoped tools.
+        # The provider agent itself uses scoped_tool_dict for its own tool access,
+        # but its SubagentMiddleware needs the full registry so that any child
+        # subagent it spawns can access tools like vfs_read, web_search, etc.
+        full_tool_dict = tool_registry.get_tool_dict()
+
+        middleware = create_subagent_middleware(
+            todo_source=provider,
+            subagent_llm=llm,
+            subagent_registry=full_tool_dict,
+            subagent_tool_space=tool_space,
+        )
+
+        subagent_mw = next(
+            (mw for mw in middleware if isinstance(mw, SubagentMiddleware)),
+            None,
+        )
+
+        # Create todo tools and register them in the scoped tool registry
+        todo_tools: list[BaseTool] = create_todo_tools(source=provider)
+        todo_hook = create_todo_pre_model_hook(source=provider)
+        todo_tool_names: list[str] = []
+        for todo_tool in todo_tools:
+            scoped_tool_dict[todo_tool.name] = todo_tool
+            todo_tool_names.append(todo_tool.name)
+
+        if subagent_mw is not None:
+            subagent_mw.set_store(store)
 
         common_kwargs = {
             "llm": llm,
             "tool_registry": scoped_tool_dict,  # Use scoped dict instead of global
             "agent_name": name,
+            "middleware": middleware,
             "pre_model_hooks": [
-                filter_messages_node,
+                cast(HookType, filter_messages_node),
                 manage_system_prompts_node,
-                trim_messages_node,
+                todo_hook,
             ],
-            "end_graph_hooks": [memory_learning_node],  # Always enabled
+            "end_graph_hooks": [memory_node],
         }
 
-        if use_direct_tools:
-            # Direct binding: tools are already extracted above
-            common_kwargs.update(
-                {
-                    "initial_tool_ids": initial_tool_ids,
-                    "disable_retrieve_tools": disable_retrieve_tools,
-                }
+        valid_auto_bind = (
+            [
+                tool_name
+                for tool_name in auto_bind_tools
+                if tool_name in scoped_tool_dict
+            ]
+            if auto_bind_tools
+            else None
+        )
+        if valid_auto_bind and not disable_retrieve_tools:
+            logger.info(
+                f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
             )
-        else:
-            # Use retrieve_tools with scoped tool_space (no subagent nesting)
-            # No initial_tool_ids needed - subagent will retrieve tools dynamically
-            common_kwargs.update(
-                {
-                    "retrieve_tools_coroutine": get_retrieve_tools_function(
-                        tool_space=tool_space,
-                        include_subagents=False,
-                    ),
-                    "initial_tool_ids": [search_memory.name],
-                }
+
+        parent_tool_runtime = build_provider_parent_tool_runtime_config(
+            provider_tool_names=initial_tool_ids,
+            todo_tool_names=todo_tool_names,
+            auto_bind_tool_names=valid_auto_bind,
+            use_direct_tools=use_direct_tools,
+            disable_retrieve_tools=disable_retrieve_tools,
+        )
+        common_kwargs.update(
+            build_create_agent_tool_kwargs(
+                parent_tool_runtime,
+                tool_space=tool_space,
+            )
+        )
+
+        child_tool_runtime = build_child_tool_runtime_config(
+            parent_tool_runtime,
+            use_direct_tools=use_direct_tools,
+            disable_retrieve_tools=disable_retrieve_tools,
+        )
+        spawn_seed_tools = [
+            scoped_tool_dict[name]
+            for name in child_tool_runtime.initial_tool_names
+            if name in scoped_tool_dict
+        ]
+
+        if subagent_mw is not None:
+            subagent_mw.set_tools(
+                registry=full_tool_dict,
+                tools=spawn_seed_tools,
+                tool_runtime_config=child_tool_runtime,
             )
 
         builder = create_agent(**common_kwargs)  # type: ignore[arg-type]

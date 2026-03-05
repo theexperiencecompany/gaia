@@ -8,10 +8,6 @@ services:
     working_dir: /app/apps/api
     command:
       [
-        "uv",
-        "run",
-        "--group",
-        "backend",
         "python",
         "-m",
         "uvicorn",
@@ -34,7 +30,6 @@ services:
       WORKER_TYPE: main_app
       PYTHONDONTWRITEBYTECODE: 1
       PYTHONPATH: /app/apps/api
-      # Disable output buffering for streaming
       PYTHONIOENCODING: utf-8
     env_file:
       - ../../apps/api/.env
@@ -59,10 +54,14 @@ services:
       interval: 30s
       timeout: 10s
       retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 4G
 
   # ChromaDB Service
   chromadb:
-    image: chromadb/chroma:1.0.0
+    image: chromadb/chroma:1.5.1
     container_name: chromadb
     volumes:
       - chroma_data:/chroma/chroma
@@ -84,7 +83,7 @@ services:
 
   # Postgres Service
   postgres:
-    image: postgres:alpine
+    image: postgres:18-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
@@ -105,7 +104,7 @@ services:
 
   # Redis Service
   redis:
-    image: redis:alpine
+    image: redis:8-alpine
     container_name: redis
     ports:
       - "6379:6379"
@@ -122,7 +121,7 @@ services:
 
   # RabbitMQ Service
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:4.1.8-management
     container_name: rabbitmq
     ports:
       - "5672:5672" # AMQP protocol
@@ -150,18 +149,26 @@ services:
       - PYTHONPATH=/app/apps/api
     command:
       [
-        "uv",
-        "run",
-        "--group",
-        "backend",
         "python",
         "-m",
         "arq",
         "app.worker.WorkerSettings",
       ]
     restart: always
+    depends_on:
+      redis:
+        condition: service_healthy
     networks:
       - gaia_network
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; socket.create_connection(('redis', 6379), timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 2G
 
   # Discord Bot (optional - enable with --profile bots)
   discord-bot:

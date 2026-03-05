@@ -74,6 +74,10 @@ flowchart TD
     F_VERCEL --> F_NOTIFY["Discord notify"]:::deploy
   end
 
+  RP --> RP_ANY{"releases_created == true?"}:::decision
+  RP_ANY -- "Yes" --> RP_PRESERVE["preserve-desktop-latest<br/>gh release edit desktop-v* --latest"]:::release
+  RP_ANY -- "No" --> RP_STOP["No releases, stop"]:::terminal
+
   RP --> RP_CLI{"CLI release created?"}:::decision
   RP_CLI -- "Yes" --> RP_DISPATCH["Dispatch publish-cli.yml"]:::release
   RP_CLI -- "No" --> RP_CLI_STOP["No CLI publish"]:::terminal
@@ -87,7 +91,7 @@ flowchart TD
   RP_DESKTOP -- "Yes" --> RP_DESKTOP_PUBLISH["Publish desktop-v* release"]:::release
   RP_DESKTOP_PUBLISH --> DESKTOP_BUILD["desktop-release.yml<br/>build installers"]:::release
   RP_DESKTOP -- "No" --> RP_DESKTOP_SKIP["No desktop release publish"]:::terminal
-  DESKTOP_BUILD --> DESKTOP_UPLOAD["Upload desktop assets to GitHub Release"]:::release
+  DESKTOP_BUILD --> DESKTOP_UPLOAD["Upload assets + mark desktop-v* as Latest"]:::release
 
   RELEASE_EVT["release.published (desktop-v*)"]:::event --> DESKTOP_BUILD
 ```
@@ -121,8 +125,9 @@ flowchart TD
 1. Enforce `master` ref (manual runs on non-master fail fast).
 2. Run Release Please for valid `master` executions.
 3. Open/update release PRs and create component tags/releases.
-4. If CLI release created, dispatch `publish-cli.yml` with resolved tag/version.
-5. Desktop release tags (`desktop-v*`) later trigger `desktop-release.yml` via GitHub `release.published`.
+4. If any releases were created (`releases_created`), run `preserve-desktop-latest`: marks the most recent `desktop-v*` release as GitHub's "Latest". This is required because electron-updater resolves updates via `/releases/latest`, and other component releases (api, web, cli) would otherwise steal the Latest flag from the desktop release, breaking auto-updates.
+5. If CLI release created, dispatch `publish-cli.yml` with resolved tag/version.
+6. Desktop release tags (`desktop-v*`) later trigger `desktop-release.yml` via GitHub `release.published`.
 
 ### `.github/workflows/publish-cli.yml`
 1. Accept release `tag` and `version` via workflow dispatch.
@@ -133,8 +138,8 @@ flowchart TD
 ### `.github/workflows/desktop-release.yml`
 1. Trigger on `release.published`, then continue only for `desktop-v*` tags.
 2. Set desktop package version from release tag.
-3. Build installers across macOS, Windows, Linux.
-4. Upload artifacts to the matching GitHub Release.
+3. Build installers across macOS, Windows, Linux in parallel. electron-builder runs with `--publish never` to prevent it from auto-creating a separate `v*` GitHub release (it still uses `GH_TOKEN` for downloading Electron binaries without rate-limit issues).
+4. Upload artifacts to the matching GitHub Release and mark it as GitHub's "Latest" (`make_latest: true`) so electron-updater can find `latest-*.yml` via `/releases/latest`.
 
 ### `.github/workflows/pr-naming-conventions.yml`
 1. Trigger on PR open/edit/synchronize.

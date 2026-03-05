@@ -7,10 +7,12 @@ This module provides decorators for rate limiting based on user subscription pla
 import inspect
 import json
 from contextvars import ContextVar
+from datetime import datetime, timezone
 from functools import wraps
 from typing import Any, Callable, Dict, Optional
 
 from fastapi import HTTPException
+from langgraph.config import get_stream_writer
 
 from app.api.v1.middleware.tiered_rate_limiter import (
     RateLimitExceededException,
@@ -132,6 +134,31 @@ def with_rate_limiting(
                                 reset_time = e.detail.get("reset_time")
                             elif isinstance(e.detail, str):
                                 detail_dict = {"message": e.detail}
+
+                        # Emit inline rate limit card via LangGraph stream writer
+                        # (only available when executing inside a LangGraph graph)
+                        try:
+                            writer = get_stream_writer()
+                            writer(
+                                {
+                                    "tool_data": {
+                                        "tool_name": "rate_limit_data",
+                                        "tool_category": "system",
+                                        "data": {
+                                            "feature": actual_feature_key,
+                                            "plan_required": detail_dict.get(
+                                                "plan_required"
+                                            ),
+                                            "reset_time": reset_time,
+                                        },
+                                        "timestamp": datetime.now(
+                                            timezone.utc
+                                        ).isoformat(),
+                                    }
+                                }
+                            )
+                        except Exception:  # nosec B110
+                            pass  # Not in a streaming context (e.g. workflows, background tasks)
 
                         raise LangChainRateLimitException(
                             feature=actual_feature_key,

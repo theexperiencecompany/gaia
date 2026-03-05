@@ -6,22 +6,6 @@ Reference: node_modules/@composio/core/generated/<toolkit>.ts
 """
 
 from .base import ComposioResponse
-from .context_tools import (
-    AsanaContextData,
-    CalendarContextData,
-    ClickUpContextData,
-    GatherContextData,
-    GatherContextInput,
-    GitHubContextData,
-    GmailContextData,
-    GoogleTasksContextData,
-    LinearContextData,
-    NotionContextData,
-    ProviderContextData,
-    SlackContextData,
-    TodoistContextData,
-    TrelloContextData,
-)
 from .github import (
     GitHubCommitEventPayload,
     GitHubIssueAddedEventPayload,
@@ -72,21 +56,6 @@ from .slack_tools import (
 
 __all__ = [
     "ComposioResponse",
-    # Context Gathering
-    "AsanaContextData",
-    "CalendarContextData",
-    "ClickUpContextData",
-    "GatherContextData",
-    "GatherContextInput",
-    "GitHubContextData",
-    "GmailContextData",
-    "GoogleTasksContextData",
-    "LinearContextData",
-    "NotionContextData",
-    "ProviderContextData",
-    "SlackContextData",
-    "TodoistContextData",
-    "TrelloContextData",
     # GitHub
     "GitHubCommitEventPayload",
     "GitHubPullRequestEventPayload",

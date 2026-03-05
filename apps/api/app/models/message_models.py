@@ -21,6 +21,7 @@ class SelectedWorkflowData(BaseModel):
     id: str
     title: str
     description: str
+    prompt: Optional[str] = None
     steps: List[Dict[str, Any]]
 
 

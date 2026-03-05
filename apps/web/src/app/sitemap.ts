@@ -6,6 +6,7 @@ import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
 import { getSiteUrl } from "@/lib/seo";
+import { getServerApiBaseUrl } from "@/lib/serverApiBaseUrl";
 
 /**
  * Sitemap IDs for different content types.
@@ -58,17 +59,12 @@ const STATIC_PAGES: Array<{
   { path: "/faq", freq: "monthly", priority: 0.8 },
   { path: "/manifesto", freq: "monthly", priority: 0.8 },
   { path: "/about", freq: "monthly", priority: 0.8 },
-  { path: "/docs", freq: "weekly", priority: 0.8 },
   { path: "/contact", freq: "monthly", priority: 0.7 },
   { path: "/brand", freq: "monthly", priority: 0.7 },
   { path: "/login", freq: "monthly", priority: 0.6 },
   { path: "/signup", freq: "monthly", priority: 0.6 },
-  { path: "/status", freq: "daily", priority: 0.6 },
   { path: "/terms", freq: "monthly", priority: 0.5 },
   { path: "/privacy", freq: "monthly", priority: 0.5 },
-  { path: "/request-feature", freq: "monthly", priority: 0.5 },
-  { path: "/support", freq: "monthly", priority: 0.6 },
-  { path: "/desktop", freq: "monthly", priority: 0.6 },
   { path: "/thanks", freq: "monthly", priority: 0.4 },
 ];
 
@@ -168,9 +164,8 @@ async function getIntegrationPages(
   baseUrl: string,
 ): Promise<MetadataRoute.Sitemap> {
   try {
-    const apiUrl =
-      process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000/api/v1";
-    const apiBaseUrl = apiUrl.replace(/\/$/, "");
+    const apiBaseUrl = getServerApiBaseUrl();
+    if (!apiBaseUrl) return [];
 
     if (isDevelopment()) {
       const response = await fetch(
@@ -247,7 +242,6 @@ function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
   const slugs = getAllComparisonSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/compare/${slug}`,
-    lastModified: new Date(),
     changeFrequency: "monthly" as const,
     priority: 0.8,
   }));
@@ -276,8 +270,7 @@ async function getPersonaPages(
     const slugs = getAllPersonaSlugs();
     return slugs.map((slug) => ({
       url: `${baseUrl}/for/${slug}`,
-      lastModified: new Date(),
-      changeFrequency: "weekly" as const,
+      changeFrequency: "monthly" as const,
       priority: FEATURED_PERSONA_SLUGS.has(slug) ? 0.9 : 0.7,
     }));
   } catch (error) {
@@ -293,7 +286,6 @@ function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
   const slugs = getAllGlossaryTermSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/learn/${slug}`,
-    lastModified: new Date(),
     changeFrequency: "monthly" as const,
     priority: 0.7,
   }));

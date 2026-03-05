@@ -1,13 +1,32 @@
+import asyncio
+import ipaddress
+import socket
 from typing import Optional
+from urllib.parse import urlparse
+
+import html2text
+import httpx
+from bs4 import BeautifulSoup
+from crawl4ai import AsyncWebCrawler
+from firecrawl import FirecrawlApp
+from langgraph.config import get_stream_writer
+from tavily import TavilyClient
 
 from app.config.loggers import search_logger as logger
 from app.config.settings import settings
 from app.constants.cache import ONE_HOUR_TTL
 from app.decorators.caching import Cacheable
 from app.utils.exceptions import FetchError
-from firecrawl import FirecrawlApp
-from langgraph.config import get_stream_writer
-from tavily import TavilyClient
+
+_HTTPX_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+}
 
 # Initialize clients with lazy loading
 _tavily_client = None
@@ -192,3 +211,188 @@ async def fetch_with_firecrawl(url: str, use_stealth: bool = False) -> str:
         raise FetchError(f"Configuration error: {str(ve)}", url=url) from ve
     except Exception as e:
         raise FetchError(f"Firecrawl error: {str(e)}", url=url) from e
+
+
+@Cacheable(key_pattern="crawl4ai:{url}", ttl=ONE_HOUR_TTL, namespace="web")
+async def fetch_with_crawl4ai(url: str) -> str:
+    """
+    Fetch webpage content using crawl4ai (free, no API key required).
+    Falls back from Firecrawl when that service is unavailable or blocked.
+    """
+    try:
+        async with AsyncWebCrawler(verbose=False) as crawler:
+            result = await asyncio.wait_for(crawler.arun(url=url), timeout=30.0)
+
+        if result and result.markdown and result.markdown.strip():
+            logger.info(f"crawl4ai successfully fetched: {url[:60]}")
+            return result.markdown
+        raise FetchError("crawl4ai returned empty content", url=url)
+    except FetchError:
+        raise
+    except Exception as e:
+        raise FetchError(f"crawl4ai error: {str(e)}", url=url) from e
+
+
+@Cacheable(key_pattern="httpx:{url}", ttl=ONE_HOUR_TTL, namespace="web")
+async def fetch_with_httpx(url: str) -> str:
+    """
+    Fetch webpage content using plain httpx + BeautifulSoup + html2text.
+    Last-resort fallback — always available, no external service dependency.
+    Works best for static pages; may miss JS-rendered content.
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=15, follow_redirects=True, headers=_HTTPX_HEADERS
+        ) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "lxml")
+
+        # Strip non-content elements
+        for tag in soup(
+            ["script", "style", "nav", "footer", "aside", "iframe", "noscript", "head"]
+        ):
+            tag.decompose()
+
+        # Prefer semantic main content containers
+        content_node = (
+            soup.find("main")
+            or soup.find("article")
+            or soup.find(id="content")
+            or soup.find(id="main-content")
+            or soup.find(class_="content")
+            or soup.body
+        )
+        html_content = str(content_node) if content_node else str(soup)
+
+        converter = html2text.HTML2Text()
+        converter.ignore_links = False
+        converter.ignore_images = True
+        converter.body_width = 0
+        markdown = converter.handle(html_content).strip()
+
+        if not markdown:
+            raise FetchError("httpx+BS4 returned empty content", url=url)
+
+        logger.info(f"httpx fallback successfully fetched: {url[:60]}")
+        return markdown[:60_000]  # Cap at 60KB
+    except FetchError:
+        raise
+    except httpx.HTTPStatusError as e:
+        raise FetchError(f"HTTP {e.response.status_code}", url=url) from e
+    except Exception as e:
+        raise FetchError(f"httpx error: {str(e)}", url=url) from e
+
+
+async def fetch_page_resilient(url: str) -> str:
+    """
+    Resilient page fetcher with automatic 3-tier fallback chain:
+      1. Firecrawl  — best quality, handles JS, markdown-native
+      2. crawl4ai   — good JS support, free, no API key required
+      3. httpx+BS4  — always available, static pages only
+
+    Each tier is independently cached in Redis (1h TTL).
+    Raises FetchError only if all three tiers fail.
+    """
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise FetchError("Only absolute http(s) URLs are allowed", url=url)
+
+    try:
+        host_ip = ipaddress.ip_address(parsed.hostname)
+        if (
+            host_ip.is_private
+            or host_ip.is_loopback
+            or host_ip.is_link_local
+            or host_ip.is_multicast
+            or host_ip.is_reserved
+        ):
+            raise FetchError("Blocked non-public target URL", url=url)
+    except ValueError:
+        try:
+            for info in socket.getaddrinfo(parsed.hostname, None):
+                resolved_ip = ipaddress.ip_address(info[4][0])
+                if (
+                    resolved_ip.is_private
+                    or resolved_ip.is_loopback
+                    or resolved_ip.is_link_local
+                    or resolved_ip.is_multicast
+                    or resolved_ip.is_reserved
+                ):
+                    raise FetchError("Blocked non-public target URL", url=url)
+        except socket.gaierror as err:
+            raise FetchError(f"Unable to resolve host: {err}", url=url) from err
+
+    errors: list[str] = []
+
+    # Tier 1: Firecrawl
+    try:
+        return await fetch_with_firecrawl(url)
+    except Exception as e:
+        errors.append(f"firecrawl: {e}")
+        logger.warning(f"Firecrawl failed for {url[:60]}, trying crawl4ai: {e}")
+
+    # Tier 2: crawl4ai
+    try:
+        return await fetch_with_crawl4ai(url)
+    except Exception as e:
+        errors.append(f"crawl4ai: {e}")
+        logger.warning(f"crawl4ai failed for {url[:60]}, trying httpx: {e}")
+
+    # Tier 3: httpx + BeautifulSoup
+    try:
+        return await fetch_with_httpx(url)
+    except Exception as e:
+        errors.append(f"httpx: {e}")
+
+    raise FetchError(
+        f"All fetchers failed [{'; '.join(errors)}]",
+        url=url,
+    )
+
+
+@Cacheable(key_pattern="ddg:{query}:{count}", ttl=ONE_HOUR_TTL, namespace="search")
+async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
+    """
+    Search using DuckDuckGo Lite (no API key required).
+    Fallback when Tavily is unavailable or rate-limited.
+    Returns results in the same shape as fetch_tavily_search.
+    """
+    try:
+        async with httpx.AsyncClient(
+            timeout=10, follow_redirects=True, headers=_HTTPX_HEADERS
+        ) as client:
+            response = await client.post(
+                "https://lite.duckduckgo.com/lite/",
+                data={"q": query},
+            )
+            response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, "lxml")
+        results = []
+
+        # DDG Lite returns results in <tr> rows with alternating classes
+        for row in soup.select("tr.result-sponsored, tr:has(a.result-link)")[:count]:
+            link = row.select_one("a.result-link") or row.select_one("a[href]")
+            snippet_cell = row.find_next_sibling("tr")
+            if not link:
+                continue
+            href = str(link.get("href", ""))
+            if not href.startswith("http"):
+                continue
+            snippet = snippet_cell.get_text(strip=True) if snippet_cell else ""
+            results.append(
+                {
+                    "url": href,
+                    "title": link.get_text(strip=True),
+                    "content": snippet,
+                    "score": 0.5,
+                }
+            )
+
+        logger.info(f"DuckDuckGo returned {len(results)} results for: {query[:60]}")
+        return {"results": results}
+    except Exception as e:
+        logger.error(f"DuckDuckGo search failed: {e}")
+        return {"results": []}

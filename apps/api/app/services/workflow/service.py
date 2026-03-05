@@ -119,13 +119,17 @@ class WorkflowService:
             # Step 1: Create workflow in PENDING state (activated=False)
             workflow = Workflow(
                 title=request.title,
-                description=request.description,
+                description=request.description or "",
+                prompt=request.prompt,
                 steps=workflow_steps,
                 trigger_config=trigger_config,
                 activated=False,  # Start in pending state
                 user_id=user_id,
                 is_todo_workflow=is_todo_workflow,
                 source_todo_id=source_todo_id,
+                is_system_workflow=request.is_system_workflow,
+                source_integration=request.source_integration,
+                system_workflow_key=request.system_workflow_key,
             )
 
             # Insert into database
@@ -145,7 +149,10 @@ class WorkflowService:
                     "workflows", create_if_not_exists=True
                 )
                 content = (
-                    f"{workflow.title} | {workflow.description} | {trigger_config.type}"
+                    f"{workflow.title} | "
+                    f"{workflow.description or ''} | "
+                    f"{workflow.prompt or ''} | "
+                    f"{trigger_config.type}"
                 )
                 chroma.add_texts(
                     texts=[content],
@@ -410,13 +417,7 @@ class WorkflowService:
                     old_trigger_name = old_config.trigger_name or ""
                     old_trigger_ids = old_config.composio_trigger_ids or []
 
-                    # Delete old triggers (pass workflow_id for reference counting)
-                    if old_trigger_ids:
-                        await TriggerService.unregister_triggers(
-                            user_id, old_trigger_name, old_trigger_ids, workflow_id
-                        )
-
-                    # Register new triggers (can raise TriggerRegistrationError)
+                    # Register new triggers FIRST (old still active if this fails)
                     registered_trigger_ids = (
                         await WorkflowService._register_integration_triggers(
                             workflow_id=workflow_id,
@@ -424,6 +425,12 @@ class WorkflowService:
                             trigger_config=new_trigger_config,
                         )
                     )
+
+                    # Only unregister old triggers AFTER new ones are confirmed registered
+                    if old_trigger_ids:
+                        await TriggerService.unregister_triggers(
+                            user_id, old_trigger_name, old_trigger_ids, workflow_id
+                        )
 
                 # Convert TriggerConfig back to dict for MongoDB storage
                 update_fields["trigger_config"] = new_trigger_config.model_dump(
@@ -438,27 +445,30 @@ class WorkflowService:
 
             update_data.update(update_fields)
 
-            result = await workflows_collection.update_one(
-                {"_id": workflow_id, "user_id": user_id}, {"$set": update_data}
-            )
+            try:
+                result = await workflows_collection.update_one(
+                    {"_id": workflow_id, "user_id": user_id}, {"$set": update_data}
+                )
+            except Exception as db_err:
+                # Compensate: unregister newly created triggers so they don't become orphaned
+                if registered_trigger_ids is not None:
+                    logger.error(
+                        f"MongoDB update failed for workflow {workflow_id}; "
+                        f"unregistering {len(registered_trigger_ids)} newly registered triggers"
+                    )
+                    await TriggerService.unregister_triggers(
+                        user_id,
+                        new_trigger_config.trigger_name or "",
+                        registered_trigger_ids,
+                        workflow_id,
+                    )
+                raise db_err
 
             if result.matched_count == 0:
                 return None
 
             logger.info(f"Updated workflow {workflow_id} for user {user_id}")
             return await WorkflowService.get_workflow(workflow_id, user_id)
-
-        except TriggerRegistrationError as e:
-            # Compensation: try to restore old triggers
-            logger.error(f"Trigger update failed for workflow {workflow_id}: {e}")
-            if old_trigger_ids and old_trigger_name:
-                logger.info(
-                    f"Attempting to restore {len(old_trigger_ids)} old triggers for workflow {workflow_id}"
-                )
-                # Note: We previously deleted old triggers, but this was before new registration failed
-                # The old triggers are already gone - we just need to inform the user
-                # In a perfect system, we'd re-register old triggers, but that could also fail
-            raise
 
         except Exception as e:
             logger.error(f"Error updating workflow {workflow_id}: {str(e)}")
@@ -739,7 +749,10 @@ class WorkflowService:
 
             # Generate new steps using the existing title and description
             steps_data = await WorkflowGenerationService.generate_steps_with_llm(
-                workflow.description, workflow.title, workflow.trigger_config
+                workflow.effective_prompt,
+                workflow.title,
+                workflow.trigger_config,
+                description=workflow.description,
             )
 
             # Update workflow with new steps
@@ -915,7 +928,8 @@ class WorkflowService:
                 formatted_workflow = {
                     "id": workflow["_id"],
                     "title": workflow["title"],
-                    "description": workflow["description"],
+                    "description": workflow.get("description"),
+                    "prompt": workflow.get("prompt"),
                     "steps": normalized_steps,
                     "created_at": workflow["created_at"],
                     "creator": {
@@ -990,7 +1004,8 @@ class WorkflowService:
                 formatted_workflow = {
                     "id": workflow["_id"],
                     "title": workflow["title"],
-                    "description": workflow["description"],
+                    "description": workflow.get("description", ""),
+                    "prompt": workflow.get("prompt") or workflow.get("description", ""),
                     "steps": normalized_steps,
                     "created_at": workflow["created_at"],
                     "categories": workflow.get("use_case_categories", ["featured"]),
@@ -1024,7 +1039,10 @@ class WorkflowService:
 
             # Generate steps using structured LLM output
             steps_data = await WorkflowGenerationService.generate_steps_with_llm(
-                workflow.description, workflow.title, workflow.trigger_config
+                workflow.effective_prompt,
+                workflow.title,
+                workflow.trigger_config,
+                description=workflow.description,
             )
 
             if steps_data:

@@ -1,59 +1,52 @@
 """Docstrings for context gathering tools."""
 
 GATHER_CONTEXT_DOC = """
-Gather and summarize context from multiple connected providers for a specific date.
+Gather rich, comprehensive context from all the user's connected integrations for a specific date.
 
-This tool aggregates relevant information from the user's connected integrations
-and uses AI to produce a concise, actionable summary. Supports past dates for
-historical context and future dates for planning.
+This tool queries all connected providers in parallel and fetches detailed structured data
+from each — schedule, communications, tasks, and more.
 
-**Use this when you need:**
-- A quick overview of the user's day/context
-- The user's schedule, tasks, and commitments
-- Pending communications and work items
-- Historical context about what happened on a specific day
-- Planning context for upcoming dates
+**Use this when the user asks:**
+- "What's my day looking like?"
+- "What's on my plate / what do I have going on?"
+- "Catch me up", "Any updates?"
+- "What happened yesterday?" / "What's coming up this week?"
+- "What do I need to focus on today?"
+- "Any urgent items?"
 
-**Available providers (12 total):**
+**Providers (auto-detects which are connected):**
 
 | Category | Providers |
 |----------|-----------|
-| Calendar | calendar (Google Calendar) |
-| Email | gmail (with threads) |
-| Project Management | linear, asana, trello, clickup |
-| Task Management | google_tasks, todoist |
-| Code | github (issues, PRs, notifications) |
-| Communication | slack (messages, mentions) |
-| Documents | notion (pages), google_drive (recent files) |
+| Calendar | calendar (Google Calendar — events, attendees, video links), google_meet (upcoming Meet calls) |
+| Email | gmail (inbox unread, snippets, starred, important) |
+| Project Mgmt | linear (issues, priority), asana (tasks), trello (cards), clickup (tasks) |
+| Task Mgmt | google_tasks (with due dates), todoist (with priority) |
+| Code | github (issues, PRs, review requests, notifications) |
+| Communication | slack (messages, @mentions, unread), teams (Microsoft Teams — teams, chats, unread), reddit (subscriptions, unread messages) |
+| Social | twitter (profile, recent tweets), instagram (profile, recent media), linkedin (profile, recent posts) |
+| Documents | notion (recent pages), google_docs (recent docs), google_sheets (recent spreadsheets) |
+| CRM | hubspot (recent contacts and deals) |
+| Database | airtable (bases and tables) |
+| Maps | google_maps (API connectivity, available services) |
+
+Each provider is self-contained — connected integrations are queried in parallel.
 
 **What it returns:**
-1. **Raw context**: Detailed data from each provider
-2. **AI Summary**: Processed, actionable summary including:
-   - Overview: Brief 1-2 sentence context
-   - Calendar highlights: Key meetings
-   - Tasks summary: Important items from all task managers
-   - Communications: Key messages/emails
-   - Documents: Recent document activity
-   - Key items: Top 3-5 items requiring attention
+Structured data per provider (events, emails, tasks, messages, etc.)
+
+**Smart behavior:**
+- Only queries integrations the user has actually connected (skips unconnected ones)
+- Fetches @mentions separately in Slack for high-signal items
+- Fetches inbox unread in Gmail regardless of date filter for actionable context
+- Fetches PR review requests in GitHub (not just assigned items)
 
 **Args:**
-- providers: Optional list of providers to query. If None, queries all available.
+- providers: Optional list of specific providers. If None, auto-detects connected.
 - date: Target date (YYYY-MM-DD). Defaults to today. Supports past and future.
-- query: Optional focus query (e.g., "project X", "urgent items")
-- limit_per_provider: Max items per provider (default: 5, max: 50)
 
-**Context Engineering:**
-Only relevant, processed fields are sent to the summarization LLM:
-- Calendar: Time + event title only
-- Gmail: Sender + subject + unread status
-- Linear/Asana/Todoist: Title + priority + state
-- GitHub: Repo + title + labels + PR status
-- Slack: Channel + user + message preview
-- Drive: Filename + type
-
-**Example queries:**
-- "What's on my plate today?" -> Full context + summary
-- "What happened yesterday?" -> date: yesterday's date
-- "What do I have next Monday?" -> date: next Monday's date
-- "Context for project Alpha" -> query: "project Alpha"
+**Examples:**
+- Full day context: GAIA_GATHER_CONTEXT(date="2026-03-01")
+- Yesterday: GAIA_GATHER_CONTEXT(date="2026-02-28")
+- Just email + calendar: GAIA_GATHER_CONTEXT(providers=["gmail", "calendar"])
 """

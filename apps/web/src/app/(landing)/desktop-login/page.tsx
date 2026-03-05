@@ -25,7 +25,7 @@ export default function DesktopLoginPage() {
   const router = useRouter();
   const [timeOfDay] = useState<TimeOfDay>(() => getTimeOfDay());
   const [status, setStatus] = useState<
-    "ready" | "opened" | "waiting" | "error"
+    "ready" | "opened" | "waiting" | "redirecting" | "error"
   >("ready");
 
   // Redirect to normal login if not in Electron (after brief check)
@@ -40,6 +40,15 @@ export default function DesktopLoginPage() {
 
     return () => clearTimeout(timeout);
   }, [isElectron, router]);
+
+  // Listen for the main process signalling it's about to navigate to /c
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.api?.onAuthRedirecting) return;
+    const cleanup = window.api.onAuthRedirecting(() => {
+      setStatus("redirecting");
+    });
+    return cleanup;
+  }, []);
 
   const handleOpenLogin = () => {
     const apiBaseUrl =
@@ -83,7 +92,7 @@ export default function DesktopLoginPage() {
           <h1 className="mb-2 text-center text-4xl font-semibold text-white">
             Welcome to GAIA Desktop
           </h1>
-          <p className="mb-8 text-center text-zinc-400 text-xl font-light">
+          <p className="mb-8 text-center text-zinc-300 text-xl font-light">
             Sign in to your account to continue
           </p>
 
@@ -100,7 +109,7 @@ export default function DesktopLoginPage() {
 
           {status === "opened" && (
             <div className="flex flex-col items-center gap-4 py-4">
-              <Spinner />
+              <Spinner variant="simple" />
               <p className="text-center text-zinc-400">
                 Opening your browser...
               </p>
@@ -109,42 +118,32 @@ export default function DesktopLoginPage() {
 
           {status === "waiting" && (
             <div className="flex flex-col items-center gap-4 py-4">
-              <div className="relative">
-                <div className="h-12 w-12 animate-pulse rounded-full bg-emerald-500/20" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="24"
-                    height="24"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    className="text-emerald-400"
-                    aria-hidden="true"
-                  >
-                    <path d="M12 22c5.523 0 10-4.477 10-10S17.523 2 12 2 2 6.477 2 12s4.477 10 10 10z" />
-                    <path d="m9 12 2 2 4-4" />
-                  </svg>
-                </div>
-              </div>
+              <Spinner variant="simple" />
               <div className="text-center">
                 <p className="font-medium text-white">
                   Complete login in your browser
                 </p>
-                <p className="mt-1 text-sm text-zinc-500">
+                <p className="mt-1 text-sm text-white">
                   You&apos;ll be redirected back automatically
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setStatus("ready")}
-                className="mt-2 text-sm text-zinc-500 underline-offset-4 hover:text-zinc-300 hover:underline"
+                className="mt-2 text-sm text-white underline-offset-4 hover:text-zinc-200 hover:underline"
               >
                 Try again
               </button>
+            </div>
+          )}
+
+          {status === "redirecting" && (
+            <div className="flex flex-col items-center gap-4 py-4">
+              <Spinner variant="simple" />
+              <div className="text-center">
+                <p className="font-medium text-white">Signing you in…</p>
+                <p className="mt-1 text-sm text-zinc-400">Taking you to GAIA</p>
+              </div>
             </div>
           )}
 

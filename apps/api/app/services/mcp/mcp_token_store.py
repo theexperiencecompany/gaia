@@ -118,9 +118,18 @@ class MCPTokenStore:
     async def is_token_expiring_soon(
         self, integration_id: str, threshold_seconds: int = 300
     ) -> bool:
-        """Check if token expires within threshold (default 5 minutes)."""
+        """Check if token expires within threshold (default 5 minutes).
+
+        Also returns True when token_expires_at is not set but the token
+        was issued more than ``max_age_seconds`` ago — servers can revoke
+        tokens at any time, so proactively refreshing stale tokens avoids
+        connection failures from expired-but-unknown-expiry tokens.
+        """
         cred = await self.get_credential(integration_id)
-        if cred and cred.token_expires_at:
+        if not cred:
+            return False
+
+        if cred.token_expires_at:
             from datetime import timedelta
 
             # Use naive UTC for comparison with stored naive timestamps
@@ -128,6 +137,19 @@ class MCPTokenStore:
                 datetime.now(timezone.utc) + timedelta(seconds=threshold_seconds)
             ).replace(tzinfo=None)
             return cred.token_expires_at < expiry_threshold
+
+        # No expires_at stored — treat tokens older than 1 hour as stale
+        # so we proactively refresh them rather than discovering they're
+        # expired only when mcp-use fails to connect.
+        max_age_seconds = 3600
+        if cred.connected_at:
+            from datetime import timedelta
+
+            age_threshold = (
+                datetime.now(timezone.utc) - timedelta(seconds=max_age_seconds)
+            ).replace(tzinfo=None)
+            return cred.connected_at < age_threshold
+
         return False
 
     async def store_bearer_token(self, integration_id: str, token: str) -> None:
@@ -379,6 +401,27 @@ class MCPTokenStore:
             except json.JSONDecodeError:
                 return None
         return None
+
+    async def delete_dcr_client(self, integration_id: str) -> None:
+        """Delete stored DCR client registration.
+
+        Clears the client_registration field so the next OAuth flow
+        performs fresh Dynamic Client Registration instead of reusing
+        a potentially revoked/invalid client_id.
+        """
+        async with get_db_session() as session:
+            result = await session.execute(
+                select(MCPCredential).where(
+                    MCPCredential.user_id == self.user_id,
+                    MCPCredential.integration_id == integration_id,
+                )
+            )
+            cred = result.scalar_one_or_none()
+            if cred and cred.client_registration:
+                cred.client_registration = None
+                session.add(cred)
+                await session.commit()
+                logger.info(f"Deleted DCR client for {integration_id}")
 
     async def store_dcr_client(self, integration_id: str, dcr_data: dict) -> None:
         """Store DCR client registration from dynamic registration."""

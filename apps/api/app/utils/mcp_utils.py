@@ -33,6 +33,7 @@ def generate_pkce_pair() -> tuple[str, str]:
 _CONNECTION_ERROR_PATTERNS = (
     "timeout",
     "connection reset",
+    "connection reset by peer",
     "broken pipe",
     "unexpected eof",
     "eof error",
@@ -41,6 +42,13 @@ _CONNECTION_ERROR_PATTERNS = (
     "connection closed",
     "server disconnected",
     "connect call failed",
+    "network unreachable",
+    "no route to host",
+    "not connected",
+    "session closed",
+    "session expired",
+    "ssl",
+    "certificate",
 )
 
 

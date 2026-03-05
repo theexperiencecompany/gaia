@@ -328,7 +328,10 @@ async def _resolve_subagent(
             if error_message:
                 return None, None, error_message, False
 
-        subagent_graph = await providers.aget(agent_name)
+        try:
+            subagent_graph = await providers.aget(agent_name)
+        except KeyError:
+            return None, None, f"Error: {agent_name} not available", False
         if not subagent_graph:
             return None, None, f"Error: {agent_name} not available", False
 
@@ -433,6 +436,7 @@ async def handoff(
             configurable=new_configurable,
             task=task,
             user_id=user_id,
+            subagent_id=agent_name,
         )
 
         # Create execution context with stream_id for cancellation
@@ -442,7 +446,7 @@ async def handoff(
             config=subagent_config,
             configurable=new_configurable,
             integration_id=int_id,
-            initial_state={"messages": messages},
+            initial_state={"messages": messages, "todos": []},
             user_id=user_id,
             stream_id=stream_id,
         )
@@ -476,5 +480,5 @@ async def handoff(
         )
 
     except Exception as e:
-        logger.error(f"Error in handoff to {subagent_id}: {e}")
+        logger.error("Error in handoff to %s: %s", subagent_id, str(e), exc_info=True)
         return f"Error executing task: {str(e)}"

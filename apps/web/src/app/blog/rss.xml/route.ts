@@ -1,14 +1,20 @@
 import { blogApi } from "@/features/blog/api/blogApi";
+import { siteConfig } from "@/lib/seo";
 
 export async function GET() {
   try {
     const blogs = await blogApi.getBlogs(true);
-    const baseUrl = "https://heygaia.io";
+    const baseUrl = siteConfig.url;
 
     const rssItems = blogs
       .map((blog) => {
         const pubDate = new Date(blog.date).toUTCString();
         const link = `${baseUrl}/blog/${blog.slug}`;
+        const enclosureUrl = blog.image
+          ? /^https?:\/\//i.test(blog.image)
+            ? blog.image
+            : `${baseUrl}${blog.image.startsWith("/") ? blog.image : `/${blog.image}`}`
+          : null;
         const authors =
           blog.author_details?.map((author) => author.name).join(", ") ||
           blog.authors.join(", ");
@@ -29,7 +35,7 @@ export async function GET() {
       <pubDate>${pubDate}</pubDate>
       <author><![CDATA[${authors}]]></author>
       <category>${blog.category}</category>
-      ${blog.image ? `<enclosure url="${blog.image}" type="image/webp"/>` : ""}
+      ${enclosureUrl ? `<enclosure url="${enclosureUrl}" type="image/webp"/>` : ""}
     </item>`;
       })
       .join("");

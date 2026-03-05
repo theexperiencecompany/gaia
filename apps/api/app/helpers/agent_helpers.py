@@ -27,6 +27,7 @@ from app.constants.cache import (
     HANDOFF_METADATA_CACHE_PREFIX,
 )
 from app.constants.llm import (
+    AGENT_RECURSION_LIMIT,
     DEFAULT_LLM_PROVIDER,
     DEFAULT_MAX_TOKENS,
     DEFAULT_MODEL_NAME,
@@ -338,7 +339,7 @@ def build_agent_config(
 
     config = {
         "configurable": configurable,
-        "recursion_limit": 35,
+        "recursion_limit": AGENT_RECURSION_LIMIT,
         "metadata": {"user_id": user.get("user_id")},
         "callbacks": callbacks,
         "agent_name": agent_name,
@@ -415,6 +416,7 @@ async def execute_graph_silent(
     """
     complete_message = ""
     tool_data: dict = {"tool_data": []}
+    todo_progress_accumulated: dict = {}  # Accumulate todo_progress by source
 
     # Track tool calls to avoid duplicate emissions (same as streaming)
     emitted_tool_calls: set[str] = set()
@@ -445,6 +447,11 @@ async def execute_graph_silent(
                             # Look up metadata based on tool type
                             tool_name = tc.get("name")
                             tool_metadata = {}
+
+                            # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_data noise.
+                            # Safe: doesn't affect agent state; only avoids redundant UI events.
+                            if tool_name in {"plan_tasks", "mark_task", "add_task"}:
+                                continue
 
                             if tool_name == "handoff":
                                 args = tc.get("args", {})
@@ -482,6 +489,12 @@ async def execute_graph_silent(
                     complete_message += content
 
         elif stream_mode == "custom":
+            # Accumulate todo_progress for persistence (payload is a dict here)
+            if isinstance(payload, dict) and "todo_progress" in payload:
+                snapshot = payload["todo_progress"]
+                source = snapshot.get("source", "executor")
+                todo_progress_accumulated[source] = snapshot
+
             new_data = process_custom_event_for_tools(payload)
             if new_data:
                 # Merge custom event tool_data into our array
@@ -493,6 +506,16 @@ async def execute_graph_silent(
                     for key, value in new_data.items():
                         if key != "tool_data":
                             tool_data[key] = value
+
+    # Inject accumulated todo_progress as a single tool_data entry
+    if todo_progress_accumulated:
+        tool_data["tool_data"].append(
+            {
+                "tool_name": "todo_progress",
+                "data": todo_progress_accumulated,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+            }
+        )
 
     return complete_message, tool_data
 
@@ -620,6 +643,14 @@ async def execute_graph_streaming(
 
             # Emit tool_output when ToolMessage arrives
             elif chunk and isinstance(chunk, ToolMessage):
+                # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_output noise.
+                # Safe: doesn't affect agent state; only avoids redundant UI events.
+                if getattr(chunk, "name", None) in {
+                    "plan_tasks",
+                    "mark_task",
+                    "add_task",
+                } or chunk.additional_kwargs.get("todo_tool", False):
+                    continue
                 output = (
                     chunk.content[:3000]
                     if isinstance(chunk.content, str)

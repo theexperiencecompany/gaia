@@ -170,23 +170,44 @@ export const IntegrationsList: React.FC<{
   }, [filteredIntegrations]);
 
   // Group ALL integrations by category, sorted: connected first, then alphabetically
+  // When a search query is active, preserve Fuse.js relevance order instead of sorting alphabetically
   const integrationsByCategory = useMemo(() => {
     const grouped: Record<string, Integration[]> = {};
 
     for (const category of availableCategories) {
-      grouped[category] = filteredIntegrations
-        .filter((i) => i.category === category)
-        .sort((a, b) => {
-          // Connected first
-          if (a.status === "connected" && b.status !== "connected") return -1;
-          if (a.status !== "connected" && b.status === "connected") return 1;
-          // Then alphabetically
-          return a.name.localeCompare(b.name);
-        });
+      const items = filteredIntegrations.filter((i) => i.category === category);
+      grouped[category] = searchQuery.trim()
+        ? items
+        : items.sort((a, b) => {
+            // Connected first
+            if (a.status === "connected" && b.status !== "connected") return -1;
+            if (a.status !== "connected" && b.status === "connected") return 1;
+            // Then alphabetically
+            return a.name.localeCompare(b.name);
+          });
     }
 
     return grouped;
-  }, [filteredIntegrations, availableCategories]);
+  }, [filteredIntegrations, availableCategories, searchQuery]);
+
+  // When searching, order categories by which one contains the top-ranked result
+  const searchOrderedCategories = useMemo(() => {
+    const cats = availableCategories.filter(
+      (cat) => cat !== "created_by_you" && cat !== "custom",
+    );
+    if (!searchQuery.trim()) return cats;
+
+    return [...cats].sort((a, b) => {
+      const aIndex = filteredIntegrations.findIndex((i) => i.category === a);
+      const bIndex = filteredIntegrations.findIndex((i) => i.category === b);
+      if (aIndex !== -1 && bIndex !== -1) {
+        return aIndex - bIndex;
+      }
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+      return 0;
+    });
+  }, [availableCategories, filteredIntegrations, searchQuery]);
 
   // For when a specific category is selected
   const integrationsInSelectedCategory = useMemo(() => {
@@ -271,23 +292,21 @@ export const IntegrationsList: React.FC<{
         // Custom integrations with createdBy set are shown in "Created by You" section.
         // Note: This assumes all user-created integrations have createdBy property set.
         // If createdBy is missing, the integration would appear in duplicate sections.
-        availableCategories
-          .filter((cat) => cat !== "created_by_you" && cat !== "custom")
-          .map((category) => {
-            const categoryIntegrations = integrationsByCategory[category];
-            if (!categoryIntegrations || categoryIntegrations.length === 0)
-              return null;
+        searchOrderedCategories.map((category) => {
+          const categoryIntegrations = integrationsByCategory[category];
+          if (!categoryIntegrations || categoryIntegrations.length === 0)
+            return null;
 
-            return (
-              <IntegrationSection
-                key={category}
-                title={getCategoryLabel(category)}
-                integrations={categoryIntegrations}
-                onConnect={handleConnect}
-                onIntegrationClick={onIntegrationClick}
-              />
-            );
-          })
+          return (
+            <IntegrationSection
+              key={category}
+              title={getCategoryLabel(category)}
+              integrations={categoryIntegrations}
+              onConnect={handleConnect}
+              onIntegrationClick={onIntegrationClick}
+            />
+          );
+        })
       ) : (
         <IntegrationSection
           title={getCategoryLabel(selectedCategory)}

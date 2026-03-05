@@ -61,7 +61,7 @@ services:
 
   # ChromaDB Service
   chromadb:
-    image: chromadb/chroma:1.0.0
+    image: chromadb/chroma:1.5.1
     container_name: chromadb
     volumes:
       - chroma_data:/chroma/chroma
@@ -83,7 +83,7 @@ services:
 
   # Postgres Service
   postgres:
-    image: postgres:alpine
+    image: postgres:18-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
@@ -104,7 +104,7 @@ services:
 
   # Redis Service
   redis:
-    image: redis:alpine
+    image: redis:8-alpine
     container_name: redis
     ports:
       - "${REDIS_HOST_PORT:-6379}:6379"
@@ -121,7 +121,7 @@ services:
 
   # MongoDB Service
   mongo:
-    image: mongo:latest
+    image: mongo:8
     container_name: mongo
     volumes:
       - mongo_data:/data/db
@@ -138,7 +138,7 @@ services:
 
   # RabbitMQ Service
   rabbitmq:
-    image: rabbitmq:3-management
+    image: rabbitmq:4.1.8-management
     container_name: rabbitmq
     ports:
       - "${RABBITMQ_HOST_PORT:-5672}:5672" # AMQP protocol
@@ -200,7 +200,9 @@ services:
     profiles: ["bots", "all"]
     build:
       context: ../..
-      dockerfile: apps/bots/discord/Dockerfile
+      dockerfile: apps/bots/Dockerfile
+      args:
+        BOT_NAME: discord
     env_file:
       - ../../apps/bots/.env
     restart: on-failure
@@ -216,7 +218,9 @@ services:
     profiles: ["bots", "all"]
     build:
       context: ../..
-      dockerfile: apps/bots/slack/Dockerfile
+      dockerfile: apps/bots/Dockerfile
+      args:
+        BOT_NAME: slack
     env_file:
       - ../../apps/bots/.env
     restart: on-failure
@@ -232,7 +236,9 @@ services:
     profiles: ["bots", "all"]
     build:
       context: ../..
-      dockerfile: apps/bots/telegram/Dockerfile
+      dockerfile: apps/bots/Dockerfile
+      args:
+        BOT_NAME: telegram
     # Generate ../../apps/bots/.env from apps/bots/.env.example before enabling bots.
     env_file:
       - ../../apps/bots/.env

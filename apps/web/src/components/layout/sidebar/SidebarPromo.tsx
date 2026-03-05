@@ -2,7 +2,6 @@
 
 import { Button } from "@heroui/button";
 import { CancelIcon, ZapIcon } from "@icons";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 import { RaisedButton } from "@/components/ui/raised-button";
 
@@ -10,9 +9,10 @@ const STORAGE_KEY = "sidebar-promo-collapsed";
 
 interface SidebarPromoProps {
   price: number;
+  onUpgrade: () => void;
 }
 
-export function SidebarPromo({ price }: SidebarPromoProps) {
+export function SidebarPromo({ price, onUpgrade }: SidebarPromoProps) {
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   useEffect(() => {
@@ -56,16 +56,15 @@ export function SidebarPromo({ price }: SidebarPromoProps) {
         </>
       )}
 
-      <Link href="/pricing" className={isCollapsed ? "w-full" : "mt-2"}>
-        <RaisedButton
-          className="w-full rounded-xl! text-black!"
-          color="#00bbff"
-          size={"sm"}
-        >
-          <ZapIcon fill="black" width={17} height={17} />
-          Upgrade to Pro
-        </RaisedButton>
-      </Link>
+      <RaisedButton
+        className={`w-full rounded-xl! text-black! ${isCollapsed ? "" : "mt-2"}`}
+        color="#00bbff"
+        size={"sm"}
+        onClick={onUpgrade}
+      >
+        <ZapIcon fill="black" width={17} height={17} />
+        Upgrade to Pro
+      </RaisedButton>
     </div>
   );
 }

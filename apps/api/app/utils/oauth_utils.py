@@ -99,39 +99,6 @@ async def upload_user_picture(image_bytes: bytes, public_id: str) -> str:
         raise HTTPException(status_code=500, detail="Image upload failed")
 
 
-async def fetch_user_info_from_google(access_token: str):
-    try:
-        response = await http_async_client.get(
-            settings.GOOGLE_USERINFO_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-        )
-
-        response.raise_for_status()
-        return response.json()
-    except httpx.RequestError as e:
-        logger.error(f"Error fetching user info: {e}")
-        raise HTTPException(status_code=500, detail="Error contacting Google API")
-
-
-async def get_tokens_from_code(code: str):
-    try:
-        response = await http_async_client.post(
-            settings.GOOGLE_TOKEN_URL,
-            data={
-                "code": code,
-                "client_id": settings.GOOGLE_CLIENT_ID,
-                "client_secret": settings.GOOGLE_CLIENT_SECRET,
-                "redirect_uri": settings.GOOGLE_CALLBACK_URL,
-                "grant_type": "authorization_code",
-            },
-        )
-        response.raise_for_status()
-        return response.json()
-    except httpx.RequestError as e:
-        logger.error(f"Error fetching tokens: {e}")
-        raise HTTPException(status_code=500, detail="Error contacting Google API")
-
-
 async def get_tokens_by_user_id(user_id: str) -> tuple[str, str, bool]:
     """
     Get valid access and refresh tokens for the user by user ID.

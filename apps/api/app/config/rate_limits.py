@@ -69,6 +69,15 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
             title="File Analysis", description="Analyze and process uploaded files"
         ),
     ),
+    # SKILLS
+    "skill_operations": TieredRateLimits(
+        free=RateLimitConfig(day=5, month=20),
+        pro=RateLimitConfig(day=150, month=4500),
+        info=FeatureInfo(
+            title="Skill Operations",
+            description="Install, create, and manage agent skills",
+        ),
+    ),
     # AI GENERATION (Very Expensive)
     "generate_image": TieredRateLimits(
         free=RateLimitConfig(day=1, month=2),  # Keep very restrictive
@@ -78,10 +87,14 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
         ),
     ),
     "deep_research": TieredRateLimits(
-        free=RateLimitConfig(day=1, month=2),  # Keep very restrictive
-        pro=RateLimitConfig(day=30, month=900),  # +50% (20→30, 600→900)
+        # Each call runs 3-9 parallel searches + up to 20 page fetches internally.
+        # Free: enough to evaluate the feature (2/day, 10/month)
+        # Pro: generous for power users — ~1 deep research every 1.2 hours at daily limit
+        free=RateLimitConfig(day=2, month=10),
+        pro=RateLimitConfig(day=20, month=600),
         info=FeatureInfo(
-            title="Deep Research", description="Perform comprehensive research analysis"
+            title="Deep Research",
+            description="Multi-source parallel research with full content analysis and synthesis",
         ),
     ),
     "document_generation": TieredRateLimits(
@@ -174,6 +187,23 @@ FEATURE_LIMITS: Dict[str, TieredRateLimits] = {
         pro=RateLimitConfig(day=750, month=22500),  # +50% (500→750, 15000→22500)
         info=FeatureInfo(
             title="Memory Operations", description="Store and retrieve memories"
+        ),
+    ),
+    # VFS (Tool-Level)
+    "vfs_write": TieredRateLimits(
+        free=RateLimitConfig(day=200, month=5000),
+        pro=RateLimitConfig(day=5000, month=150000),
+        info=FeatureInfo(
+            title="VFS Write",
+            description="Write files to the virtual filesystem",
+        ),
+    ),
+    "vfs_cmd": TieredRateLimits(
+        free=RateLimitConfig(day=500, month=15000),
+        pro=RateLimitConfig(day=20000, month=600000),
+        info=FeatureInfo(
+            title="VFS Commands",
+            description="Run shell-like commands against the virtual filesystem",
         ),
     ),
     # CREATIVE TOOLS

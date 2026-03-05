@@ -81,6 +81,8 @@ export default function ChatBubbleBot(
     systemPurpose,
   );
 
+  const showBubbleChrome = itShouldShowTextBubble;
+
   return (
     (loading || hasContent) && (
       <div
@@ -91,7 +93,7 @@ export default function ChatBubbleBot(
       >
         <div className="flex items-end gap-1">
           <div className="relative bottom-0 min-w-10 shrink-0">
-            {itShouldShowTextBubble && (
+            {showBubbleChrome && (
               <Image
                 alt="GAIA Logo"
                 src={"/images/logos/logo.webp"}
@@ -115,7 +117,7 @@ export default function ChatBubbleBot(
           </div>
         </div>
 
-        {itShouldShowTextBubble && (
+        {showBubbleChrome && (
           <div className="ml-10.75 flex flex-col">
             {!!follow_up_actions && follow_up_actions?.length > 0 && (
               <FollowUpActions

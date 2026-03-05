@@ -1,66 +1,96 @@
-# ---- Base Stage: Contains system dependencies ----
-FROM python:3.12-slim AS base
+# syntax=docker/dockerfile:1
+
+# ---- Builder: compile dependencies and download browser ----
+FROM python:3.12-slim AS builder
 WORKDIR /app
 
-# Copy uv installer
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
 
-# Install system dependencies
-RUN apt-get update && \
-  apt-get install -y --no-install-recommends \
-  build-essential \
-  libnss3 libatk1.0-0 libx11-xcb1 libxcb-dri3-0 \
-  libdrm2 libxcomposite1 libxdamage1 libxrandr2 \
-  libgbm1 libasound2 curl unzip tesseract-ocr libpq-dev \
-  libdbus-1-3 \
-  pandoc \
-  texlive-xetex \
-  texlive-fonts-recommended \
-  texlive-latex-recommended \
-  texlive-latex-extra \
-  lmodern \
-  texlive-plain-generic && \
-  rm -rf /var/lib/apt/lists/*
+# Install build-time only system deps (not shipped to production)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    libpq-dev \
+    curl
 
-# ---- Dependencies Stage: Install application dependencies ----
-FROM base AS dependencies
-WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_SYSTEM_PYTHON=1 \
+    UV_PROJECT_ENVIRONMENT=/usr/local \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
 
 # Copy workspace structure for uv to resolve dependencies
 COPY pyproject.toml uv.lock ./
 COPY libs ./libs
 COPY apps/api/pyproject.toml ./apps/api/
 
-# Set environment variables
-ENV ENV=production \
-  UV_COMPILE_BYTECODE=1 \
-  UV_LINK_MODE=copy \
-  UV_SYSTEM_PYTHON=1 \
-  UV_LOGGING=1 \
-  PYTHONPATH=/app/apps/api
-
-# Install crawl4ai browser dependencies
-RUN pip install crawl4ai && crawl4ai-setup && rm -rf /root/.cache/pip
-
-# Install torch from CPU index first, then backend dependencies via workspace sync
+# UV_PROJECT_ENVIRONMENT=/usr/local tells uv sync to use the system Python dir
+# instead of creating a .venv — entry points (crawl4ai-setup etc.) land in /usr/local/bin
 RUN --mount=type=cache,target=/root/.cache/uv \
-  uv pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cpu && \
-  uv sync --frozen --package gaia --group backend
+    uv sync --frozen --package gaia --group backend
 
-# ---- Final Stage: Setup application for production ----
-FROM dependencies AS final
+# Download crawl4ai browser (Chromium via Playwright)
+RUN crawl4ai-setup
+
+# ---- Runtime: minimal production image ----
+FROM python:3.12-slim AS runtime
 WORKDIR /app
 
-# Setup non-root user and permissions
-RUN adduser --disabled-password --gecos '' appuser \
-  && mkdir -p /home/appuser/.cache \
-  && chown -R appuser:appuser /home/appuser \
-  && mkdir -p /app/apps/api/logs \
-  && chown -R appuser:appuser /app
+# Install only runtime system libraries (no build-essential / *-dev)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update && apt-get install -y --no-install-recommends \
+    libpq5 \
+    libnss3 libatk1.0-0 libx11-xcb1 libxcb-dri3-0 \
+    libdrm2 libxcomposite1 libxdamage1 libxrandr2 \
+    libgbm1 libasound2 libdbus-1-3 \
+    tesseract-ocr \
+    pandoc \
+    texlive-xetex \
+    texlive-fonts-recommended \
+    texlive-latex-recommended \
+    texlive-latex-extra \
+    lmodern \
+    texlive-plain-generic \
+    curl
 
-# Copy API application code with proper ownership
-COPY --chown=appuser:appuser apps/api/app ./apps/api/app
-COPY --chown=appuser:appuser apps/api/scripts ./apps/api/scripts
+# Copy uv binary (pinned version)
+COPY --from=ghcr.io/astral-sh/uv:0.10.6 /uv /uvx /bin/
+
+# Copy Python packages and entry points from builder
+COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
+COPY --from=builder /usr/local/bin /usr/local/bin
+
+# Copy crawl4ai browser data from builder
+COPY --from=builder /opt/browsers /opt/browsers
+
+ENV ENV=production \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_SYSTEM_PYTHON=1 \
+    UV_PROJECT_ENVIRONMENT=/usr/local \
+    PYTHONPATH=/app/apps/api \
+    PLAYWRIGHT_BROWSERS_PATH=/opt/browsers
+
+# Copy workspace pyproject files (needed for uv run --group)
+COPY pyproject.toml uv.lock ./
+COPY libs ./libs
+COPY apps/api/pyproject.toml ./apps/api/
+
+# Setup non-root user and permissions
+# chown libs so setuptools can create gaia_shared.egg-info during editable install
+RUN adduser --disabled-password --gecos '' appuser \
+    && mkdir -p /home/appuser/.cache \
+    && chown -R appuser:appuser /home/appuser \
+    && mkdir -p /app/apps/api/logs \
+    && chown appuser:appuser /app/apps/api/logs \
+    && chown -R appuser:appuser /app/libs
+
+# Copy API application code (root-owned, readable by appuser)
+COPY apps/api/app ./apps/api/app
+COPY apps/api/scripts ./apps/api/scripts
 
 WORKDIR /app/apps/api
 

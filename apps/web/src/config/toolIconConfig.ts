@@ -61,6 +61,7 @@ export function normalizeCategoryName(name: string): string {
 /** Alias mapping for backwards compatibility and category-to-integration mapping */
 export const iconAliases: Record<string, string> = {
   calendar: "googlecalendar",
+  planner: "plan_tasks",
 };
 
 /** Tool icon configurations - single source of truth */
@@ -437,6 +438,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#60a5fa",
     isImage: false,
   },
+  gaia: {
+    icon: "/brand/gaia_logo.svg",
+    bgColor: "bg-zinc-700",
+    iconColor: "text-zinc-200",
+    bgColorRaw: "#3f3f46",
+    iconColorRaw: "#e4e4e7",
+    isImage: true,
+  },
   general: {
     icon: "ToolsIcon",
     bgColor: "bg-gray-500/20 backdrop-blur",
@@ -461,6 +470,14 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColorRaw: "#38bdf8",
     isImage: false,
   },
+  spawn_subagent: {
+    icon: "WorkflowCircle06Icon",
+    bgColor: "bg-violet-500/20 backdrop-blur",
+    iconColor: "text-violet-400",
+    bgColorRaw: "rgba(139, 92, 246, 0.2)",
+    iconColorRaw: "#a78bfa",
+    isImage: false,
+  },
   retrieve_tools: {
     icon: "PackageOpenIcon",
     bgColor: "bg-indigo-500/20 backdrop-blur",
@@ -475,6 +492,46 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColor: "text-teal-400",
     bgColorRaw: "rgba(20, 184, 166, 0.2)",
     iconColorRaw: "#2dd4bf",
+    isImage: false,
+  },
+  fileSystem: {
+    icon: "FolderFileStorageIcon",
+    bgColor: "bg-fuchsia-500/20 backdrop-blur",
+    iconColor: "text-fuchsia-400",
+    bgColorRaw: "rgba(217, 70, 239, 0.2)",
+    iconColorRaw: "#e879f9",
+    isImage: false,
+  },
+  skills: {
+    icon: "BodyPartMuscleIcon",
+    bgColor: "bg-rose-500/20 backdrop-blur",
+    iconColor: "text-rose-400",
+    bgColorRaw: "rgba(244, 63, 94, 0.2)",
+    iconColorRaw: "#fb7185",
+    isImage: false,
+  },
+  context: {
+    icon: "PuzzleIcon",
+    bgColor: "bg-lime-500/20 backdrop-blur",
+    iconColor: "text-lime-400",
+    bgColorRaw: "rgba(132, 204, 22, 0.2)",
+    iconColorRaw: "#a3e635",
+    isImage: false,
+  },
+  plan_tasks: {
+    icon: "TaskDailyIcon",
+    bgColor: "bg-violet-500/20 backdrop-blur",
+    iconColor: "text-violet-400",
+    bgColorRaw: "rgba(139, 92, 246, 0.2)",
+    iconColorRaw: "#a78bfa",
+    isImage: false,
+  },
+  workflows: {
+    icon: "ZapIcon",
+    bgColor: "bg-yellow-500/20 backdrop-blur",
+    iconColor: "text-yellow-400",
+    bgColorRaw: "rgba(234, 179, 8, 0.2)",
+    iconColorRaw: "#facc15",
     isImage: false,
   },
   unknown: {

@@ -4,9 +4,9 @@ import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { Suspense } from "react";
 
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
-import ProvidersLayout from "@/layouts/ProvidersLayout";
 import {
   generateOrganizationSchema,
   generateWebSiteSchema,
@@ -15,14 +15,8 @@ import {
 
 import { defaultFont, getAllFontVariables } from "./fonts";
 
-// Dynamically determine the base URL based on environment
+// Use a stable canonical base URL resolved in seo.ts
 const getMetadataBase = () => {
-  // if (process.env.NEXT_PUBLIC_APP_URL)
-  //   return new URL(process.env.NEXT_PUBLIC_APP_URL);
-
-  // if (process.env.VERCEL_URL)
-  //   return new URL(`https://${process.env.VERCEL_URL}`);
-
   return new URL(siteConfig.url);
 };
 
@@ -182,7 +176,7 @@ export default function RootLayout({
       </head>
       <body className={`dark ${defaultFont.className}`}>
         <div id="app-root">
-          <ProvidersLayout>{children}</ProvidersLayout>
+          <Suspense fallback={null}>{children}</Suspense>
         </div>
 
         {/* JSON-LD Schema - Organization */}

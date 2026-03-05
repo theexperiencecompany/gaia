@@ -84,6 +84,10 @@ def get_allowed_origins() -> list[str]:
     # Always include configured frontend URL
     allowed_origins = [settings.FRONTEND_URL]
 
+    # Desktop app embedded Next.js server ports (5174 is preferred; 5175-5180
+    # are fallbacks when the preferred port is already in use)
+    desktop_origins = [f"http://localhost:{port}" for port in range(5174, 5181)]
+
     # Add additional origins based on environment
     if settings.ENV == "production":
         # Only allow trusted HTTPS origins in production
@@ -92,6 +96,7 @@ def get_allowed_origins() -> list[str]:
                 "https://heygaia.io",
                 "https://www.heygaia.io",
                 "https://heygaia.app",
+                *desktop_origins,
             ]
         )
     else:
@@ -101,6 +106,7 @@ def get_allowed_origins() -> list[str]:
                 "http://localhost:3000",
                 "http://192.168.138.215:5173",
                 "https://192.168.13.215:5173",
+                *desktop_origins,
             ]
         )
 

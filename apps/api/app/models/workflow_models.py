@@ -8,12 +8,16 @@ from datetime import timezone as dt_timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.config.loggers import general_logger as logger
 from app.models.scheduler_models import BaseScheduledTask
 from app.models.trigger_configs import TriggerConfigData
-from app.utils.cron_utils import get_next_run_time, parse_timezone
+from app.utils.cron_utils import (
+    get_next_run_time,
+    parse_timezone,
+    validate_cron_expression,
+)
 
 
 class TriggerType(str, Enum):
@@ -170,8 +174,6 @@ class TriggerConfig(BaseModel):
     def validate_cron_expression(cls, v):
         """Validate cron expression if provided."""
         if v is not None:
-            from app.utils.cron_utils import validate_cron_expression
-
             if not validate_cron_expression(v):
                 raise ValueError(f"Invalid cron expression: {v}")
         return v
@@ -190,7 +192,12 @@ class Workflow(BaseScheduledTask):
 
     title: str = Field(min_length=1, description="Title of the workflow")
     description: str = Field(
-        min_length=1, description="Description of what this workflow aims to accomplish"
+        default="",
+        description="Short display description for cards/UI (1-2 sentences)",
+    )
+    prompt: str = Field(
+        default="",
+        description="Detailed execution instructions for AI. Falls back to description if not set.",
     )
     steps: List[WorkflowStep] = Field(
         description="List of workflow steps to execute", max_length=10
@@ -243,6 +250,23 @@ class Workflow(BaseScheduledTask):
         description="ID of the source todo if is_todo_workflow=True",
     )
 
+    # System workflow flags (for auto-provisioned workflows created on integration connect)
+    is_system_workflow: bool = Field(
+        default=False,
+        description="Auto-provisioned by GAIA when an integration is connected.",
+    )
+    source_integration: Optional[str] = Field(
+        default=None,
+        description="Which integration provisioned this workflow. e.g. 'gmail', 'googlecalendar'.",
+    )
+    system_workflow_key: Optional[str] = Field(
+        default=None,
+        description=(
+            "Stable identifier linking this document back to its definition in code. "
+            "Used for reset-to-default and idempotency. e.g. 'gmail:email_intelligence'."
+        ),
+    )
+
     def __init__(self, **data):
         """Initialize workflow with mapping from trigger_config to BaseScheduledTask fields."""
         # Ensure user_id is provided (it's required by BaseScheduledTask)
@@ -286,6 +310,22 @@ class Workflow(BaseScheduledTask):
 
         super().__init__(**data)
 
+    @model_validator(mode="before")
+    @classmethod
+    def hydrate_legacy_prompt_and_description(cls, data):
+        """Ensure legacy records still expose prompt and non-null description."""
+        if isinstance(data, dict):
+            description = data.get("description") or ""
+            prompt = data.get("prompt") or description
+            data["description"] = description
+            data["prompt"] = prompt
+        return data
+
+    @property
+    def effective_prompt(self) -> str:
+        """Return the execution prompt with backward-compatible fallback."""
+        return self.prompt or self.description
+
 
 # Request/Response models for API
 
@@ -294,8 +334,12 @@ class CreateWorkflowRequest(BaseModel):
     """Request model for creating a new workflow."""
 
     title: str = Field(min_length=1, description="Title of the workflow")
-    description: str = Field(
-        min_length=1, description="Description of what the workflow should accomplish"
+    description: Optional[str] = Field(
+        default=None,
+        description="Short optional display description (1-2 sentences)",
+    )
+    prompt: str = Field(
+        min_length=1, description="Detailed execution instructions for the AI"
     )
     trigger_config: TriggerConfig = Field(description="Trigger configuration")
     steps: Optional[List[WorkflowStep]] = Field(
@@ -307,12 +351,33 @@ class CreateWorkflowRequest(BaseModel):
         default=False, description="Generate steps immediately vs background"
     )
 
-    @field_validator("title", "description")
+    # System workflow fields — set by provisioner, not by regular API users
+    is_system_workflow: bool = Field(
+        default=False,
+        description="Auto-provisioned by GAIA when an integration is connected.",
+    )
+    source_integration: Optional[str] = Field(
+        default=None,
+        description="Which integration provisioned this workflow.",
+    )
+    system_workflow_key: Optional[str] = Field(
+        default=None,
+        description="Stable key linking to the original definition in code.",
+    )
+
+    @field_validator("title", "prompt")
     @classmethod
     def validate_non_empty_strings(cls, v):
         if not v or not v.strip():
             raise ValueError("Field cannot be empty or contain only whitespace")
         return v.strip()
+
+    @field_validator("description")
+    @classmethod
+    def validate_optional_description(cls, v):
+        if v is not None and not v.strip():
+            return ""
+        return v.strip() if v else None
 
 
 class UpdateWorkflowRequest(BaseModel):
@@ -320,9 +385,27 @@ class UpdateWorkflowRequest(BaseModel):
 
     title: Optional[str] = Field(default=None)
     description: Optional[str] = Field(default=None)
+    prompt: Optional[str] = Field(default=None)
     steps: Optional[List[WorkflowStep]] = Field(default=None)
     trigger_config: Optional[TriggerConfig] = Field(default=None)
     activated: Optional[bool] = Field(default=None)
+
+    @field_validator("title", "prompt")
+    @classmethod
+    def validate_optional_non_empty_strings(cls, v):
+        if v is not None:
+            if not v.strip():
+                raise ValueError("Field cannot be empty or contain only whitespace")
+            return v.strip()
+        return v
+
+    @field_validator("description")
+    @classmethod
+    def validate_optional_update_description(cls, v):
+        if v is None:
+            return None
+        stripped = v.strip()
+        return stripped if stripped else None
 
 
 class WorkflowResponse(BaseModel):
@@ -404,3 +487,74 @@ class PublishWorkflowResponse(BaseModel):
 
     message: str = Field(description="Success message")
     workflow_id: str = Field(description="ID of the published workflow")
+
+
+class GenerateWorkflowPromptRequest(BaseModel):
+    """Request model for AI-generated workflow instructions."""
+
+    title: Optional[str] = None
+    description: Optional[str] = None
+    trigger_config: Optional[Dict[str, Any]] = None
+    existing_prompt: Optional[str] = None  # non-empty → improve mode
+
+
+class SuggestedTrigger(BaseModel):
+    """AI-suggested trigger configuration returned alongside generated instructions."""
+
+    type: str = Field(description="Trigger type: manual, schedule, or integration")
+    cron_expression: Optional[str] = Field(
+        default=None, description="Cron expression for scheduled triggers"
+    )
+    trigger_name: Optional[str] = Field(
+        default=None,
+        description="Specific integration trigger slug (e.g., gmail_new_message)",
+    )
+
+
+class GeneratedPromptOutput(BaseModel):
+    """Structured LLM output for the magic-prompt generator.
+
+    Used by PydanticOutputParser to extract both the prose instructions and
+    a trigger suggestion from a single LLM response.
+    """
+
+    instructions: str = Field(
+        description=(
+            "200-400 words of imperative execution instructions written directly to "
+            "the AI agent. Use second-person present tense ('Fetch...', 'Search...', "
+            "'Send...'). Cover: goal, data gathering, processing, actions, and failure "
+            "handling. No scheduling info, no markdown, no bullet points — flowing "
+            "prose only."
+        )
+    )
+    trigger_type: str = Field(
+        description=(
+            "Suggested trigger type based on the user's intent. Must be one of: "
+            "'manual' (on-demand/one-off tasks), 'schedule' (recurring cadence), "
+            "or 'integration' (external event like email, calendar, webhook)."
+        )
+    )
+    cron_expression: Optional[str] = Field(
+        default=None,
+        description=(
+            "5-field cron expression when trigger_type is 'schedule'. Examples: "
+            "daily 9 AM = '0 9 * * *', weekdays 8 AM = '0 8 * * 1-5', "
+            "every Monday 10 AM = '0 10 * * 1', every hour = '0 * * * *'. "
+            "Must be null when trigger_type is not 'schedule'."
+        ),
+    )
+    trigger_name: Optional[str] = Field(
+        default=None,
+        description=(
+            "When trigger_type is 'integration', the specific trigger slug from the "
+            "available integration triggers list. Must be null when trigger_type is "
+            "not 'integration'."
+        ),
+    )
+
+
+class GenerateWorkflowPromptResponse(BaseModel):
+    """Response model for AI-generated workflow instructions."""
+
+    prompt: str
+    suggested_trigger: Optional[SuggestedTrigger] = None

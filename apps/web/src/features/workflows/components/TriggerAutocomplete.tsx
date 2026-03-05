@@ -50,8 +50,12 @@ export function TriggerAutocomplete({
       setFilterValue(selectedSchema.name);
     } else if (!selectedTrigger) {
       setFilterValue("");
+    } else if (selectedTrigger && triggerSchemas !== undefined) {
+      // Schemas loaded but this trigger slug wasn't found — clear the display
+      // so it doesn't appear as a ghost selection
+      setFilterValue("");
     }
-  }, [selectedTrigger, selectedSchema?.slug]);
+  }, [selectedTrigger, selectedSchema?.slug, triggerSchemas]);
 
   const fuse = useMemo(() => {
     if (!triggerSchemas) return null;

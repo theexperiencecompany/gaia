@@ -64,7 +64,13 @@ export const workflowApi = {
   // Update a workflow
   updateWorkflow: async (
     workflowId: string,
-    updates: Partial<CreateWorkflowRequest>,
+    updates: {
+      title?: string;
+      description?: string;
+      prompt?: string;
+      trigger_config?: CreateWorkflowRequest["trigger_config"];
+      activated?: boolean;
+    },
   ): Promise<WorkflowResponse> => {
     return apiService.put<WorkflowResponse>(
       `/workflows/${workflowId}`,
@@ -248,6 +254,44 @@ export const workflowApi = {
     return apiService.get<WorkflowResponse>(`/workflows/public/${workflowId}`, {
       errorMessage: "Failed to fetch public workflow",
     });
+  },
+
+  // Generate or improve workflow instructions using AI
+  generatePrompt: async (params: {
+    title?: string;
+    description?: string;
+    trigger_config?: Record<string, unknown>;
+    existing_prompt?: string;
+  }): Promise<{
+    prompt: string;
+    suggested_trigger?: {
+      type: "manual" | "schedule" | "integration";
+      cron_expression?: string;
+      trigger_name?: string;
+    };
+  }> => {
+    return apiService.post<{
+      prompt: string;
+      suggested_trigger?: {
+        type: "manual" | "schedule" | "integration";
+        cron_expression?: string;
+        trigger_name?: string;
+      };
+    }>("/workflows/generate-prompt", params, { silent: true });
+  },
+
+  // Reset a system workflow to its default definition
+  resetToDefault: async (
+    workflowId: string,
+  ): Promise<{ success: boolean; message: string }> => {
+    return apiService.post<{ success: boolean; message: string }>(
+      `/workflows/${workflowId}/reset-to-default`,
+      {},
+      {
+        successMessage: "Workflow reset to default",
+        errorMessage: "Failed to reset workflow",
+      },
+    );
   },
 
   // Get available trigger schemas
