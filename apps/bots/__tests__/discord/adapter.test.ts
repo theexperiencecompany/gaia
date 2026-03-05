@@ -514,45 +514,104 @@ describe("DiscordAdapter - extractInteractionArgs", () => {
 // handleMentionMessage — mention stripping
 // ---------------------------------------------------------------------------
 
-describe("DiscordAdapter - mention stripping in handleMentionMessage", () => {
+describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
   /**
-   * The adapter strips the bot mention via:
-   *   message.content.replace(new RegExp(`<@!?${botId}>`, "g"), "").trim()
+   * These tests call the real handleMentionMessage method and assert on
+   * what content reaches handleStreamingChat — the actual production behavior.
    *
-   * We replicate that exact regex to verify correctness without needing
-   * a full adapter instance.
+   * BOT_ID matches the Client mock: user.id = "bot-user-id"
    */
-  const BOT_ID = "123456789";
-  const buildMentionRegex = (id: string) => new RegExp(`<@!?${id}>`, "g");
+  const BOT_ID = "bot-user-id";
+  let adapter: DiscordAdapter;
 
-  it("strips <@botId> mention from content", () => {
-    const raw = `<@${BOT_ID}> remind me to call dentist`;
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("remind me to call dentist");
+  beforeEach(() => {
+    vi.clearAllMocks();
+    adapter = new DiscordAdapter();
   });
 
-  it("strips <@!botId> (nickname mention) from content", () => {
-    const raw = `<@!${BOT_ID}> what time is it?`;
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("what time is it?");
+  it("strips <@botId> mention before passing content to handleStreamingChat", async () => {
+    const message = makeGuildMessage({
+      content: `<@${BOT_ID}> remind me to call dentist`,
+      botId: BOT_ID,
+    });
+
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, BOT_ID);
+
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: "remind me to call dentist" }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.anything(),
+    );
   });
 
-  it("strips multiple mentions", () => {
-    const raw = `<@${BOT_ID}> hello <@${BOT_ID}>`;
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("hello");
+  it("strips <@!botId> nickname mention before passing to handleStreamingChat", async () => {
+    const message = makeGuildMessage({
+      content: `<@!${BOT_ID}> what time is it?`,
+      botId: BOT_ID,
+    });
+
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, BOT_ID);
+
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: "what time is it?" }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.anything(),
+    );
   });
 
-  it("leaves content unchanged when no mention present", () => {
-    const raw = "remind me about something";
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("remind me about something");
+  it("replies 'How can I help you?' when message is only a mention (empty after strip)", async () => {
+    const message = makeGuildMessage({
+      content: `<@${BOT_ID}>`,
+      botId: BOT_ID,
+    });
+
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, BOT_ID);
+
+    expect(message.reply).toHaveBeenCalledWith("How can I help you?");
+    expect(handleStreamingChat).not.toHaveBeenCalled();
   });
 
-  it("returns empty string when message is only a mention", () => {
-    const raw = `<@${BOT_ID}>`;
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("");
+  it("leaves unrelated content unchanged when passed to handleStreamingChat", async () => {
+    const message = makeGuildMessage({
+      content: `<@${BOT_ID}> remind me about something`,
+      botId: BOT_ID,
+    });
+
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, BOT_ID);
+
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: "remind me about something" }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.anything(),
+    );
   });
 });
 

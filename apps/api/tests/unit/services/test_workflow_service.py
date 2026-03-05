@@ -460,15 +460,8 @@ class TestGetWorkflowExecutions:
 class TestWorkflowValidator:
     def test_passes_for_valid_activated_workflow(self):
         wf = _make_workflow(activated=True)
-        # Should not raise
-        # Note: validate_for_execution is expected to raise on invalid workflows
-        # For a fully valid workflow, we verify no exception is raised.
-        try:
-            WorkflowValidator.validate_for_execution(wf)
-            raised = False
-        except Exception:
-            raised = True
-        assert raised is False
+        # Must not raise for a valid, activated workflow with steps and trigger_config.
+        WorkflowValidator.validate_for_execution(wf)
 
     def test_raises_when_workflow_is_deactivated(self):
         wf = _make_workflow(activated=False)
