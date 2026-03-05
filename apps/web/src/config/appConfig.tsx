@@ -1,4 +1,5 @@
 import {
+  ArrowRight02Icon,
   BlushBrush02Icon,
   BookOpen02Icon,
   ConnectIcon,
@@ -302,6 +303,17 @@ export const appConfig = {
         href: "/for/agency-owners",
         label: "Agency Owners",
         description: "Run 10 clients without losing your mind",
+        hideNavbar: true,
+      },
+      {
+        href: "/for",
+        label: (
+          <div className="flex items-center gap-1">
+            <span>View All Roles</span>
+            <ArrowRight02Icon width={15} height={15} />
+          </div>
+        ),
+        description: "See all personas GAIA is built for",
         hideNavbar: true,
       },
     ] as AppLink[],

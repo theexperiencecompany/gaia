@@ -122,7 +122,7 @@ export function WorkflowsDemoBase({
                     transition={{ duration: 0.3, ease }}
                     className="flex items-center gap-3 rounded-xl bg-zinc-800/60 px-3 py-2.5"
                   >
-                    <div className="flex h-[22px] w-[22px] shrink-0 items-center justify-center">
+                    <div className="flex h-5.5 w-5.5 shrink-0 items-center justify-center">
                       {getToolCategoryIcon(step.category, {
                         width: 22,
                         height: 22,
