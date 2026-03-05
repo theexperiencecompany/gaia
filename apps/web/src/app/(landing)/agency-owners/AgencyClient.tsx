@@ -3,6 +3,7 @@
 import { Chip } from "@heroui/chip";
 import { m } from "motion/react";
 import Image from "next/image";
+import FAQAccordion from "@/components/seo/FAQAccordion";
 import ProgressiveImage from "@/components/ui/ProgressiveImage";
 import { AgencySlackDemo } from "@/features/landing/components/demo/agency-demo/AgencySlackDemo";
 import { AgencyWorkflowsDemo } from "@/features/landing/components/demo/agency-demo/AgencyWorkflowsDemo";
@@ -16,6 +17,7 @@ import ChatDemo from "@/features/landing/components/demo/founders-demo/ChatDemo"
 import SectionHeader from "@/features/landing/components/demo/founders-demo/SectionHeader";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import GetStartedButton from "@/features/landing/components/shared/GetStartedButton";
+import { AGENCY_FAQS } from "@/features/landing/data/personaFaqs";
 
 const ease = [0.22, 1, 0.36, 1] as const;
 
@@ -199,6 +201,17 @@ export default function AgencyClient() {
         <div className="w-full max-w-3xl">
           <AgencyWorkflowsDemo />
         </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="mx-auto w-full max-w-3xl px-6 py-20 sm:py-28">
+        <h2 className="mb-2 text-center font-serif text-4xl font-normal text-white sm:text-5xl">
+          Frequently asked questions
+        </h2>
+        <p className="mb-10 text-center text-zinc-400">
+          Everything you need to know about GAIA for agency owners.
+        </p>
+        <FAQAccordion faqs={AGENCY_FAQS} />
       </section>
 
       <FinalSection />

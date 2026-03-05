@@ -166,13 +166,6 @@ export const appConfig = {
         hideNavbar: true,
       },
       {
-        href: "/for",
-        label: "For Your Role",
-        icon: <GlobalIcon width={20} height={20} color={"currentColor"} />,
-        description: "Discover how GAIA fits your role",
-        hideNavbar: true,
-      },
-      {
         href: "/learn",
         label: "Glossary",
         icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
@@ -275,6 +268,45 @@ export const appConfig = {
       },
     ] as AppLink[],
 
+    personas: [
+      {
+        href: "/for/startup-founders",
+        label: "Startup Founders",
+        description: "AI chief of staff for founders",
+        hideNavbar: true,
+      },
+      {
+        href: "/for/software-developers",
+        label: "Software Developers",
+        description: "Automate standups and GitHub workflows",
+        hideNavbar: true,
+      },
+      {
+        href: "/for/sales-professionals",
+        label: "Sales Professionals",
+        description: "AI CRM monitor and follow-up automation",
+        hideNavbar: true,
+      },
+      {
+        href: "/for/product-managers",
+        label: "Product Managers",
+        description: "Automate stakeholder updates and sprint reports",
+        hideNavbar: true,
+      },
+      {
+        href: "/for/engineering-managers",
+        label: "Engineering Managers",
+        description: "1:1 prep, sprint reports, and team analytics",
+        hideNavbar: true,
+      },
+      {
+        href: "/for/agency-owners",
+        label: "Agency Owners",
+        description: "Run 10 clients without losing your mind",
+        hideNavbar: true,
+      },
+    ] as AppLink[],
+
     // Authentication related links
     auth: [
       {
@@ -300,6 +332,7 @@ export const appConfig = {
   footerMapping: {
     Product: ["product"],
     Resources: ["resources"],
+    "Built For": ["personas"],
     Company: ["company"],
     Socials: ["connect"],
   } as Record<string, string[]>,
@@ -320,7 +353,7 @@ const getFooterSections = (): LinkSection[] => {
 export const footerSections = getFooterSections();
 
 // Direct access to link categories for navigation
-export const { main, product, resources, company, connect, auth } =
+export const { main, product, resources, personas, company, connect, auth } =
   appConfig.links;
 
 // Utility function to get description for a link by label

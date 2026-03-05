@@ -73,7 +73,7 @@ export default function Footer() {
       <JsonLd data={navigationSchema} />
       <div className="relative z-[1] m-0! flex flex-col items-center gap-6 overflow-hidden p-4 font-light sm:gap-7 sm:p-5 lg:p-10 lg:pt-20 lg:pb-5">
         <div className="flex h-fit w-screen items-center justify-center px-2 sm:px-4">
-          <div className="grid w-full max-w-5xl grid-cols-5 gap-6 sm:gap-8">
+          <div className="grid w-full max-w-7xl grid-cols-6 gap-6 sm:gap-3">
             <div className="relative -top-1 col-span-1 flex h-full w-fit flex-col gap-1 text-foreground-600 sm:-top-2">
               <div className="flex w-fit items-center justify-center rounded-xl p-1">
                 <iframe
@@ -129,9 +129,11 @@ export default function Footer() {
                       !link.hideFooter,
                   )
                   .sort((a, b) =>
-                    a.label.localeCompare(b.label, undefined, {
-                      sensitivity: "base",
-                    }),
+                    section.title === "Built For"
+                      ? 0
+                      : a.label.localeCompare(b.label, undefined, {
+                          sensitivity: "base",
+                        }),
                   )
                   .map((link) => (
                     <Link
@@ -148,7 +150,7 @@ export default function Footer() {
             ))}
           </div>
         </div>
-        <div className="mx-auto mt-6 flex w-full max-w-5xl flex-col items-center justify-between gap-4 border-t-1 border-zinc-800 px-2 py-6 pb-3 text-xs font-light text-zinc-600 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10">
+        <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col items-center justify-between gap-4 border-t-1 border-zinc-800 px-2 py-6 pb-3 text-xs font-light text-zinc-600 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10">
           <div className="order-2 flex items-center gap-3 sm:order-1">
             {connect.map((link) => (
               <Link

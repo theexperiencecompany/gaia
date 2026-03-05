@@ -253,6 +253,15 @@ function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
   }));
 }
 
+const FEATURED_PERSONA_SLUGS = new Set([
+  "startup-founders",
+  "software-developers",
+  "sales-professionals",
+  "product-managers",
+  "engineering-managers",
+  "agency-owners",
+]);
+
 /**
  * Persona pages (AI assistant for [role])
  * Dynamically imports to avoid circular dependency issues at build time.
@@ -268,8 +277,8 @@ async function getPersonaPages(
     return slugs.map((slug) => ({
       url: `${baseUrl}/for/${slug}`,
       lastModified: new Date(),
-      changeFrequency: "monthly" as const,
-      priority: 0.8,
+      changeFrequency: "weekly" as const,
+      priority: FEATURED_PERSONA_SLUGS.has(slug) ? 0.9 : 0.7,
     }));
   } catch (error) {
     console.error("Error generating persona sitemap pages:", error);

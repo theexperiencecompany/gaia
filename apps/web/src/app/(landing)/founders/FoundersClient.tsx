@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import FAQAccordion from "@/components/seo/FAQAccordion";
 import ChatDemo from "@/features/landing/components/demo/founders-demo/ChatDemo";
 import {
   BRIEFING_MESSAGES,
@@ -13,6 +14,7 @@ import SectionHeader from "@/features/landing/components/demo/founders-demo/Sect
 import SlackDemo from "@/features/landing/components/demo/founders-demo/SlackDemo";
 import WorkflowsDemo from "@/features/landing/components/demo/founders-demo/WorkflowsDemo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { FOUNDERS_FAQS } from "@/features/landing/data/personaFaqs";
 
 const SlackIcon = () => (
   <Image
@@ -148,6 +150,17 @@ export default function FoundersClient() {
         <div className="w-full max-w-3xl">
           <WorkflowsDemo />
         </div>
+      </section>
+
+      {/* FAQ */}
+      <section className="mx-auto w-full max-w-3xl px-6 py-20 sm:py-28">
+        <h2 className="mb-2 text-center font-serif text-4xl font-normal text-white sm:text-5xl">
+          Frequently asked questions
+        </h2>
+        <p className="mb-10 text-center text-zinc-400">
+          Everything you need to know about GAIA for founders.
+        </p>
+        <FAQAccordion faqs={FOUNDERS_FAQS} />
       </section>
 
       <FinalSection />

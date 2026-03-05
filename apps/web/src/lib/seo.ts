@@ -292,6 +292,7 @@ export function generateWebPageSchema(
   description: string,
   url: string,
   breadcrumbs?: Array<{ name: string; url: string }>,
+  publishedDate?: string,
 ): WithContext<WebPage> {
   const schema: WithContext<WebPage> = {
     "@context": "https://schema.org",
@@ -301,10 +302,10 @@ export function generateWebPageSchema(
     url,
     author: {
       "@type": "Organization",
-      name: "The Experience Company",
+      name: siteConfig.short_name,
       url: siteConfig.url,
     },
-    datePublished: "2025-01-01",
+    datePublished: publishedDate ?? "2025-01-01",
     dateModified: new Date().toISOString().split("T")[0],
     isPartOf: {
       "@type": "WebSite",

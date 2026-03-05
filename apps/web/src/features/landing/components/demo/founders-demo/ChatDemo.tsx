@@ -13,10 +13,11 @@ const CHAT_CONTAINER_STYLE = {
 
 function LandingUserBubble({ content }: { content: string }) {
   return (
-    <div className="mb-3 flex justify-end">
-      <div className="chat_bubble imessage-bubble imessage-from-me select-none text-sm">
+    <div className="mb-3 flex items-end justify-end gap-3">
+      <div className="imessage-bubble imessage-from-me select-none text-sm">
         {content}
       </div>
+      <div className="w-[35px] shrink-0" />
     </div>
   );
 }

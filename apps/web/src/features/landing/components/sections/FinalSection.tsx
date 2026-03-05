@@ -171,9 +171,9 @@ export default function FinalSection({
         </div>
 
         <div
-          className={`z-1 mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter sm:px-0 sm:text-xl sm:leading-7 md:text-2xl ${isDark ? "text-white" : "text-white"}`}
+          className={`z-1 mb-6 max-w-(--breakpoint-md) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter sm:px-0 sm:text-xl sm:leading-7 md:text-2xl ${isDark ? "text-white" : "text-white"}`}
         >
-          Join thousands of professionals who gave the grunt work to GAIA.
+          Join thousands of professionals who gave their grunt work to GAIA.
         </div>
         <GetStartedButton
           btnColor={isDark ? "#00bbff" : "#000000"}
