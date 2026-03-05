@@ -223,7 +223,9 @@ class TestToolRegistry:
 
     def test_get_tool_names(self):
         registry = ToolRegistry()
-        registry._add_category("cat1", tools=[_make_mock_tool("a"), _make_mock_tool("b")])
+        registry._add_category(
+            "cat1", tools=[_make_mock_tool("a"), _make_mock_tool("b")]
+        )
         registry._add_category("cat2", tools=[_make_mock_tool("c")])
 
         names = registry.get_tool_names()
@@ -249,9 +251,7 @@ class TestToolRegistry:
     def test_get_all_tools_for_search_includes_delegated(self):
         registry = ToolRegistry()
         registry._add_category("cat1", tools=[_make_mock_tool("a")])
-        registry._add_category(
-            "cat2", tools=[_make_mock_tool("b")], is_delegated=True
-        )
+        registry._add_category("cat2", tools=[_make_mock_tool("b")], is_delegated=True)
 
         all_tools = registry.get_all_tools_for_search(include_delegated=True)
         names = [t.name for t in all_tools]
@@ -261,9 +261,7 @@ class TestToolRegistry:
     def test_get_all_tools_for_search_excludes_delegated(self):
         registry = ToolRegistry()
         registry._add_category("cat1", tools=[_make_mock_tool("a")])
-        registry._add_category(
-            "cat2", tools=[_make_mock_tool("b")], is_delegated=True
-        )
+        registry._add_category("cat2", tools=[_make_mock_tool("b")], is_delegated=True)
 
         non_delegated = registry.get_all_tools_for_search(include_delegated=False)
         names = [t.name for t in non_delegated]

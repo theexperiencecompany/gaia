@@ -162,9 +162,7 @@ class TestMCPTokenManagement:
     @patch("app.services.mcp.mcp_token_store.set_cache", new_callable=AsyncMock)
     async def test_create_oauth_state(self, mock_set_cache, token_store):
         """create_oauth_state should store state and verifier in Redis."""
-        state_token = await token_store.create_oauth_state(
-            "int-oauth", "verifier-abc"
-        )
+        state_token = await token_store.create_oauth_state("int-oauth", "verifier-abc")
 
         assert isinstance(state_token, str)
         assert len(state_token) > 0

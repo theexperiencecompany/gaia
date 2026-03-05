@@ -392,9 +392,7 @@ class TestMCPConnectionFlow:
         ):
             client = _build_client_with_no_auth("user-bearer")
             # Override: return a bearer token from the store
-            client.token_store.get_bearer_token = AsyncMock(
-                return_value=bearer_token
-            )
+            client.token_store.get_bearer_token = AsyncMock(return_value=bearer_token)
 
             tools = await client.connect("bearer-integration")
 

@@ -321,17 +321,6 @@ class TestMultiToolScenario:
             "If hooks crashed, no AIMessage would appear."
         )
 
-        # No NEW unanswered tool calls should be introduced by this graph run
-        # (the model responded with plain text, not a tool invocation)
-        new_tool_call_ids = {
-            tc["id"]
-            for m in final_messages
-            if isinstance(m, AIMessage)
-            for tc in m.tool_calls
-        }
-        assert (
-            "stale_tc" not in new_tool_call_ids or True
-        )  # stale_tc is in input, not new
         # The model's final AIMessage must not contain tool calls
         assert not ai_responses[0].tool_calls, (
             "The model's terminal response must be plain text, not a tool call."

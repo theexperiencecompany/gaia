@@ -283,7 +283,14 @@ class TestSelectToolsNode:
             "handoff tool must be present in executor tool_registry"
         )
 
-        expected_initial = {"handoff", "plan_tasks", "mark_task", "add_task", "vfs_read", "deep_research"}
+        expected_initial = {
+            "handoff",
+            "plan_tasks",
+            "mark_task",
+            "add_task",
+            "vfs_read",
+            "deep_research",
+        }
         actual_initial = set(captured_kwargs.get("initial_tool_ids", []))
         assert expected_initial == actual_initial, (
             f"Executor initial_tool_ids mismatch.\n"
@@ -326,9 +333,7 @@ class TestToolExecutionThroughRealGraph:
             "id": "call_exec_001",
             "type": "tool_call",
         }
-        fake_llm = create_fake_llm_with_tool_calls(
-            [tool_call, "Found the answer."]
-        )
+        fake_llm = create_fake_llm_with_tool_calls([tool_call, "Found the answer."])
 
         def should_continue(state: SimpleState) -> str:
             last = state.messages[-1] if state.messages else None
@@ -363,9 +368,7 @@ class TestToolExecutionThroughRealGraph:
             config={"configurable": {"thread_id": thread_id}},
         )
 
-        tool_messages = [
-            m for m in result["messages"] if isinstance(m, ToolMessage)
-        ]
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
         assert len(tool_messages) == 1
         assert tool_messages[0].tool_call_id == "call_exec_001"
         assert "Data result for: test query" in tool_messages[0].content
@@ -394,9 +397,7 @@ class TestToolExecutionThroughRealGraph:
         )
 
         state = await executor_like_graph.aget_state(config)
-        tool_msgs = [
-            m for m in state.values["messages"] if isinstance(m, ToolMessage)
-        ]
+        tool_msgs = [m for m in state.values["messages"] if isinstance(m, ToolMessage)]
         assert len(tool_msgs) >= 1, "Checkpointed state must include ToolMessages"
 
 

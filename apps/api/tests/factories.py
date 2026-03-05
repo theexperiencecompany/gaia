@@ -47,9 +47,7 @@ def make_state(**overrides) -> State:
     return State(**defaults)
 
 
-def make_tool_call(
-    name: str, args: dict | None = None, id: str | None = None
-) -> dict:
+def make_tool_call(name: str, args: dict | None = None, id: str | None = None) -> dict:
     return {
         "name": name,
         "args": args or {},

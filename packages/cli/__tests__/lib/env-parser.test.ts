@@ -90,11 +90,11 @@ describe("applyPortOverrides", () => {
 
   it("replaces port in URL context", () => {
     const env = {
-      POSTGRES_URL: "postgresql://postgres:postgres@localhost:5432/postgres",
+      POSTGRES_URL: "postgresql://postgres:postgres@localhost:5432/postgres", // pragma: allowlist secret
     };
     applyPortOverrides(env, { 5432: 5433 });
     expect(env.POSTGRES_URL).toBe(
-      "postgresql://postgres:postgres@localhost:5433/postgres",
+      "postgresql://postgres:postgres@localhost:5433/postgres", // pragma: allowlist secret
     );
   });
 

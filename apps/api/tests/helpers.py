@@ -22,9 +22,7 @@ class BindableToolsFakeModel(FakeMessagesListChatModel):
 
 
 def create_fake_llm(responses: list[str]) -> BindableToolsFakeModel:
-    return BindableToolsFakeModel(
-        responses=[AIMessage(content=r) for r in responses]
-    )
+    return BindableToolsFakeModel(responses=[AIMessage(content=r) for r in responses])
 
 
 def create_fake_llm_with_tool_calls(
@@ -33,9 +31,7 @@ def create_fake_llm_with_tool_calls(
     messages: list[BaseMessage] = []
     for item in tool_calls_then_response:
         if isinstance(item, dict):
-            messages.append(
-                AIMessage(content="", tool_calls=[item])
-            )
+            messages.append(AIMessage(content="", tool_calls=[item]))
         else:
             messages.append(AIMessage(content=item))
     return BindableToolsFakeModel(responses=messages)

@@ -68,9 +68,7 @@ class TestCleanupExpiredReminders:
         mock_result = MagicMock()
         mock_result.deleted_count = 7
 
-        with patch(
-            "app.db.mongodb.collections.reminders_collection"
-        ) as mock_col:
+        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
             mock_col.delete_many = AsyncMock(return_value=mock_result)
             result = await cleanup_expired_reminders(ctx)
 
@@ -80,9 +78,7 @@ class TestCleanupExpiredReminders:
         mock_result = MagicMock()
         mock_result.deleted_count = 0
 
-        with patch(
-            "app.db.mongodb.collections.reminders_collection"
-        ) as mock_col:
+        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
             mock_col.delete_many = AsyncMock(return_value=mock_result)
             result = await cleanup_expired_reminders(ctx)
 
@@ -92,9 +88,7 @@ class TestCleanupExpiredReminders:
         mock_result = MagicMock()
         mock_result.deleted_count = 3
 
-        with patch(
-            "app.db.mongodb.collections.reminders_collection"
-        ) as mock_col:
+        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
             mock_col.delete_many = AsyncMock(return_value=mock_result)
             await cleanup_expired_reminders(ctx)
 
@@ -111,9 +105,7 @@ class TestCleanupExpiredReminders:
         mock_result = MagicMock()
         mock_result.deleted_count = 0
 
-        with patch(
-            "app.db.mongodb.collections.reminders_collection"
-        ) as mock_col:
+        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
             mock_col.delete_many = AsyncMock(return_value=mock_result)
             before_call = datetime.now(timezone.utc)
             await cleanup_expired_reminders(ctx)
@@ -126,12 +118,14 @@ class TestCleanupExpiredReminders:
         expected_upper = after_call - timedelta(days=30)
 
         # Allow a 5 second window for the cutoff to account for test execution time
-        assert expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
+        assert (
+            expected_lower - timedelta(seconds=5)
+            <= cutoff
+            <= expected_upper + timedelta(seconds=5)
+        )
 
     async def test_cleanup_exception_propagates(self, ctx):
-        with patch(
-            "app.db.mongodb.collections.reminders_collection"
-        ) as mock_col:
+        with patch("app.db.mongodb.collections.reminders_collection") as mock_col:
             mock_col.delete_many = AsyncMock(
                 side_effect=Exception("MongoDB unavailable")
             )

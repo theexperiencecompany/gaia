@@ -236,9 +236,7 @@ class TestUpdateDescription:
         mock_collection.update_one = AsyncMock(return_value=mock_result)
 
         with pytest.raises(HTTPException) as exc_info:
-            await update_conversation_description(
-                "nonexistent", "New Desc", test_user
-            )
+            await update_conversation_description("nonexistent", "New Desc", test_user)
 
         assert exc_info.value.status_code == 404
 

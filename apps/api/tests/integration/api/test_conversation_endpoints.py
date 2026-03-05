@@ -17,9 +17,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.get_conversations",
         new_callable=AsyncMock,
     )
-    async def test_get_conversations_returns_200(
-        self, mock_get_convos, test_client
-    ):
+    async def test_get_conversations_returns_200(self, mock_get_convos, test_client):
         """GET /api/v1/conversations should return 200 with mocked service."""
         mock_get_convos.return_value = {
             "conversations": [],
@@ -36,9 +34,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.create_conversation_service",
         new_callable=AsyncMock,
     )
-    async def test_create_conversation_returns_200(
-        self, mock_create, test_client
-    ):
+    async def test_create_conversation_returns_200(self, mock_create, test_client):
         """POST /api/v1/conversations should return 200 on success."""
         mock_create.return_value = {
             "conversation_id": "conv-123",
@@ -73,9 +69,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.delete_conversation",
         new_callable=AsyncMock,
     )
-    async def test_delete_conversation_returns_200(
-        self, mock_delete, test_client
-    ):
+    async def test_delete_conversation_returns_200(self, mock_delete, test_client):
         """DELETE /api/v1/conversations/{id} should return 200."""
         mock_delete.return_value = {"message": "Deleted"}
         response = await test_client.delete("/api/v1/conversations/conv-789")
@@ -102,9 +96,7 @@ class TestConversationEndpoints:
         "app.api.v1.endpoints.conversations.star_conversation",
         new_callable=AsyncMock,
     )
-    async def test_star_conversation_returns_200(
-        self, mock_star, test_client
-    ):
+    async def test_star_conversation_returns_200(self, mock_star, test_client):
         """PUT /api/v1/conversations/{id}/star should return 200."""
         mock_star.return_value = {"message": "Starred"}
         response = await test_client.put(

@@ -37,12 +37,8 @@ class TestCheckInactiveUsers:
         mock_cursor.to_list = AsyncMock(return_value=[])
 
         with (
-            patch(
-                "app.db.mongodb.collections.users_collection"
-            ) as mock_col,
-            patch(
-                "app.utils.email_utils.send_inactive_user_email"
-            ) as mock_email,
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
+            patch("app.utils.email_utils.send_inactive_user_email") as mock_email,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             result = await check_inactive_users(ctx)
@@ -60,9 +56,7 @@ class TestCheckInactiveUsers:
         mock_cursor.to_list = AsyncMock(return_value=users)
 
         with (
-            patch(
-                "app.db.mongodb.collections.users_collection"
-            ) as mock_col,
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
                 "app.utils.email_utils.send_inactive_user_email",
                 new_callable=AsyncMock,
@@ -82,9 +76,7 @@ class TestCheckInactiveUsers:
         mock_cursor.to_list = AsyncMock(return_value=[user])
 
         with (
-            patch(
-                "app.db.mongodb.collections.users_collection"
-            ) as mock_col,
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
                 "app.utils.email_utils.send_inactive_user_email",
                 new_callable=AsyncMock,
@@ -114,9 +106,7 @@ class TestCheckInactiveUsers:
             raise RuntimeError("SMTP error")
 
         with (
-            patch(
-                "app.db.mongodb.collections.users_collection"
-            ) as mock_col,
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
                 "app.utils.email_utils.send_inactive_user_email",
                 side_effect=selective_send,
@@ -135,9 +125,7 @@ class TestCheckInactiveUsers:
         mock_cursor.to_list = AsyncMock(return_value=[user])
 
         with (
-            patch(
-                "app.db.mongodb.collections.users_collection"
-            ) as mock_col,
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
                 "app.utils.email_utils.send_inactive_user_email",
                 new_callable=AsyncMock,
@@ -154,9 +142,7 @@ class TestCheckInactiveUsers:
         mock_cursor.to_list = AsyncMock(return_value=[])
 
         with (
-            patch(
-                "app.db.mongodb.collections.users_collection"
-            ) as mock_col,
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch("app.utils.email_utils.send_inactive_user_email"),
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
@@ -170,16 +156,18 @@ class TestCheckInactiveUsers:
         expected_lower = (before_call - timedelta(days=7)).replace(tzinfo=None)
         expected_upper = (after_call - timedelta(days=7)).replace(tzinfo=None)
 
-        assert expected_lower - timedelta(seconds=5) <= cutoff <= expected_upper + timedelta(seconds=5)
+        assert (
+            expected_lower - timedelta(seconds=5)
+            <= cutoff
+            <= expected_upper + timedelta(seconds=5)
+        )
 
     async def test_db_query_excludes_inactive_flagged_users(self, ctx):
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
 
         with (
-            patch(
-                "app.db.mongodb.collections.users_collection"
-            ) as mock_col,
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch("app.utils.email_utils.send_inactive_user_email"),
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
@@ -189,9 +177,7 @@ class TestCheckInactiveUsers:
         assert query["is_active"] == {"$ne": False}
 
     async def test_db_exception_propagates(self, ctx):
-        with patch(
-            "app.db.mongodb.collections.users_collection"
-        ) as mock_col:
+        with patch("app.db.mongodb.collections.users_collection") as mock_col:
             mock_col.find = MagicMock(side_effect=RuntimeError("MongoDB down"))
             with pytest.raises(RuntimeError, match="MongoDB down"):
                 await check_inactive_users(ctx)
@@ -206,9 +192,7 @@ class TestCheckInactiveUsers:
         mock_cursor.to_list = AsyncMock(return_value=users)
 
         with (
-            patch(
-                "app.db.mongodb.collections.users_collection"
-            ) as mock_col,
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
             patch(
                 "app.utils.email_utils.send_inactive_user_email",
                 new_callable=AsyncMock,
