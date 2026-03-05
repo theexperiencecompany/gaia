@@ -120,6 +120,8 @@ def gmail_fetch_emails_before_hook(
     arguments = params.get("arguments", {})
 
     raw_max_results = arguments.get("max_results", 10)
+    if raw_max_results is None:
+        raw_max_results = 10
     try:
         max_results = int(raw_max_results)
     except (TypeError, ValueError):
