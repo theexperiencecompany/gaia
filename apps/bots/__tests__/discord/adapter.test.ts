@@ -620,6 +620,10 @@ describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
 // ---------------------------------------------------------------------------
 
 describe("DiscordAdapter - mention with empty content", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("replies 'How can I help you?' when mention content is empty", async () => {
     const adapter = new DiscordAdapter();
 
