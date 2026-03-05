@@ -24,10 +24,6 @@ DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 """
 
-from typing import Any
-from unittest.mock import MagicMock
-from uuid import uuid4
-
 import pytest
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
@@ -42,7 +38,7 @@ from tests.e2e.conftest import (
     make_mock_store,
     make_node_config,
 )
-from tests.helpers import assert_tool_called, extract_tool_calls
+from tests.helpers import assert_tool_called
 
 
 @tool
@@ -161,7 +157,11 @@ class TestSendEmailFlow:
         )
 
         result = await graph.ainvoke(
-            {"messages": [HumanMessage(content="Send an email to carol about the project")]},
+            {
+                "messages": [
+                    HumanMessage(content="Send an email to carol about the project")
+                ]
+            },
             config=thread_config,
         )
 
@@ -217,18 +217,26 @@ class TestSendEmailFlow:
         """
         dangling_ai = AIMessage(
             content="",
-            tool_calls=[{"id": "stale_001", "name": "send_email", "args": {}, }],
+            tool_calls=[
+                {
+                    "id": "stale_001",
+                    "name": "send_email",
+                    "args": {},
+                }
+            ],
         )
         answered_ai = AIMessage(
             content="",
-            tool_calls=[{"id": "live_002", "name": "send_email", "args": {}, }],
+            tool_calls=[
+                {
+                    "id": "live_002",
+                    "name": "send_email",
+                    "args": {},
+                }
+            ],
         )
-        live_response = ToolMessage(
-            content="Email sent", tool_call_id="live_002"
-        )
-        state = make_gaia_state(
-            messages=[dangling_ai, answered_ai, live_response]
-        )
+        live_response = ToolMessage(content="Email sent", tool_call_id="live_002")
+        state = make_gaia_state(messages=[dangling_ai, answered_ai, live_response])
         config = make_node_config()
         store = make_mock_store()
 
@@ -248,9 +256,7 @@ class TestSendEmailFlow:
         """
         ai = AIMessage(
             content="I will try to send an email for you",
-            tool_calls=[
-                {"id": "no_response_tc", "name": "send_email", "args": {}}
-            ],
+            tool_calls=[{"id": "no_response_tc", "name": "send_email", "args": {}}],
         )
         state = make_gaia_state(messages=[ai])
         config = make_node_config()

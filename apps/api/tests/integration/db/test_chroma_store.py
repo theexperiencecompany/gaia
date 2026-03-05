@@ -14,7 +14,6 @@ Key production modules under test
 - app.db.chroma.chroma_tools_store.delete_tools_by_namespace
 """
 
-from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import chromadb
@@ -165,9 +164,7 @@ class TestChromaStoreCRUD:
             ]
         )
 
-        results = await chroma_store.abatch(
-            [GetOp(namespace=("ns",), key="key1")]
-        )
+        results = await chroma_store.abatch([GetOp(namespace=("ns",), key="key1")])
 
         assert len(results) == 1
         item = results[0]
@@ -212,10 +209,22 @@ class TestChromaStoreCRUD:
         ns = ("ns",)
         key = "tool_a"
         await chroma_store.abatch(
-            [PutOp(namespace=ns, key=key, value={"description": "v1", "tool_hash": "h1"})]
+            [
+                PutOp(
+                    namespace=ns,
+                    key=key,
+                    value={"description": "v1", "tool_hash": "h1"},
+                )
+            ]
         )
         await chroma_store.abatch(
-            [PutOp(namespace=ns, key=key, value={"description": "v2", "tool_hash": "h2"})]
+            [
+                PutOp(
+                    namespace=ns,
+                    key=key,
+                    value={"description": "v2", "tool_hash": "h2"},
+                )
+            ]
         )
 
         results = await chroma_store.abatch([GetOp(namespace=ns, key=key)])
@@ -413,9 +422,7 @@ class TestComputeToolDiff:
     async def test_deleted_tool_is_marked_for_delete(self):
         """A tool in existing but absent from current should appear in tools_to_delete."""
         current: dict = {}
-        existing = {
-            "general::old_tool": {"hash": "oldhash", "namespace": "general"}
-        }
+        existing = {"general::old_tool": {"hash": "oldhash", "namespace": "general"}}
 
         to_upsert, to_delete = _compute_tool_diff(current, existing)
 
@@ -431,8 +438,16 @@ class TestComputeToolDiff:
 
         current = {
             "ns::new_tool": {"hash": "h_new", "namespace": "ns", "tool": mock_new},
-            "ns::stable_tool": {"hash": "h_stable", "namespace": "ns", "tool": mock_stable},
-            "ns::changed_tool": {"hash": "h_changed_new", "namespace": "ns", "tool": mock_changed},
+            "ns::stable_tool": {
+                "hash": "h_stable",
+                "namespace": "ns",
+                "tool": mock_stable,
+            },
+            "ns::changed_tool": {
+                "hash": "h_changed_new",
+                "namespace": "ns",
+                "tool": mock_changed,
+            },
         }
         existing = {
             "ns::stable_tool": {"hash": "h_stable", "namespace": "ns"},
@@ -523,7 +538,10 @@ class TestBuildPutOperations:
         """Both upserts and deletes should appear in the output list."""
         mock_tool = self._make_mock_tool("web_search", "Search the web")
         tools_to_upsert = [
-            ("general::web_search", {"hash": "h_ws", "namespace": "general", "tool": mock_tool})
+            (
+                "general::web_search",
+                {"hash": "h_ws", "namespace": "general", "tool": mock_tool},
+            )
         ]
         tools_to_delete = [("general::old_tool", "general")]
 
@@ -572,9 +590,7 @@ class TestGetExistingToolsFromChroma:
         assert "general::web_search" in result
         assert "gmail::send_email" in result
 
-    async def test_namespace_filter_returns_only_matching(
-        self, collection_with_tools
-    ):
+    async def test_namespace_filter_returns_only_matching(self, collection_with_tools):
         """Filtering by namespace='general' should only return general tools."""
         result = await _get_existing_tools_from_chroma(
             collection_with_tools, namespaces={"general"}

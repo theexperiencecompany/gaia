@@ -1,7 +1,7 @@
 """Unit tests for workflow_tasks ARQ worker."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, call
+from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 from app.workers.tasks.workflow_tasks import (
@@ -26,7 +26,9 @@ def _make_workflow(
     wf.title = title
     wf.description = "A test workflow"
     wf.prompt = "Run the standup"
-    wf.steps = steps or [MagicMock(id="s1", title="Step 1", description="Do it", category="general")]
+    wf.steps = steps or [
+        MagicMock(id="s1", title="Step 1", description="Do it", category="general")
+    ]
     wf.is_todo_workflow = is_todo_workflow
     wf.source_todo_id = source_todo_id
     wf.model_dump = MagicMock(return_value={"id": wf.id, "title": wf.title})
@@ -147,9 +149,7 @@ class TestExecuteWorkflowById:
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 mock_execute_chat,
             ),
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.create_workflow_completion_notification",
                 mock_completion_notif,
@@ -197,9 +197,7 @@ class TestExecuteWorkflowById:
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(return_value=execution_messages),
             ),
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.create_workflow_completion_notification",
                 AsyncMock(return_value={"conversation_id": "conv_1"}),
@@ -244,9 +242,7 @@ class TestExecuteWorkflowById:
                 "app.workers.tasks.workflow_tasks.execute_workflow_as_chat",
                 AsyncMock(side_effect=RuntimeError("LLM timeout")),
             ),
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.notification_service",
             ),
@@ -427,15 +423,9 @@ class TestProcessWorkflowGenerationTask:
         mock_todo_result.modified_count = 1
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.todos_collection"
-            ) as mock_todos,
-            patch(
-                "app.workers.tasks.workflow_tasks.TodoService"
-            ) as mock_todo_svc,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
+            patch("app.workers.tasks.workflow_tasks.TodoService") as mock_todo_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager"
             ) as mock_ws_mgr,
@@ -465,9 +455,7 @@ class TestProcessWorkflowGenerationTask:
         user_id = "user_abc"
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager"
             ) as mock_ws_mgr,
@@ -497,12 +485,8 @@ class TestProcessWorkflowGenerationTask:
         mock_todo_result.modified_count = 0
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.todos_collection"
-            ) as mock_todos,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager"
             ) as mock_ws_mgr,
@@ -530,9 +514,7 @@ class TestProcessWorkflowGenerationTask:
         mock_ws.broadcast_to_user = AsyncMock()
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws,
@@ -574,15 +556,9 @@ class TestProcessWorkflowGenerationTask:
             return workflow
 
         with (
-            patch(
-                "app.workers.tasks.workflow_tasks.WorkflowService"
-            ) as mock_wf_svc,
-            patch(
-                "app.workers.tasks.workflow_tasks.todos_collection"
-            ) as mock_todos,
-            patch(
-                "app.workers.tasks.workflow_tasks.TodoService"
-            ) as mock_todo_svc,
+            patch("app.workers.tasks.workflow_tasks.WorkflowService") as mock_wf_svc,
+            patch("app.workers.tasks.workflow_tasks.todos_collection") as mock_todos,
+            patch("app.workers.tasks.workflow_tasks.TodoService") as mock_todo_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager"
             ) as mock_ws_mgr,
@@ -622,9 +598,7 @@ class TestRegenerateWorkflowSteps:
         workflow_id = str(uuid4())
         user_id = "user_abc"
 
-        with patch(
-            "app.services.workflow.WorkflowService"
-        ) as mock_wf_svc:
+        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock()
             result = await regenerate_workflow_steps(
                 ctx, workflow_id, user_id, "Steps were wrong"
@@ -637,24 +611,18 @@ class TestRegenerateWorkflowSteps:
         workflow_id = str(uuid4())
         user_id = "user_abc"
 
-        with patch(
-            "app.services.workflow.WorkflowService"
-        ) as mock_wf_svc:
+        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock(
                 side_effect=RuntimeError("Service down")
             )
             with pytest.raises(RuntimeError, match="Service down"):
-                await regenerate_workflow_steps(
-                    ctx, workflow_id, user_id, "reason"
-                )
+                await regenerate_workflow_steps(ctx, workflow_id, user_id, "reason")
 
     async def test_force_different_tools_default_is_true(self, ctx):
         workflow_id = str(uuid4())
         user_id = "user_abc"
 
-        with patch(
-            "app.services.workflow.WorkflowService"
-        ) as mock_wf_svc:
+        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
             mock_wf_svc.regenerate_workflow_steps = AsyncMock()
             await regenerate_workflow_steps(ctx, workflow_id, user_id, "reason")
 
@@ -679,9 +647,7 @@ class TestGenerateWorkflowSteps:
         user_id = "user_abc"
         workflow = _make_workflow(workflow_id=workflow_id, is_todo_workflow=False)
 
-        with patch(
-            "app.services.workflow.WorkflowService"
-        ) as mock_wf_svc:
+        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
             mock_wf_svc._generate_workflow_steps = AsyncMock()
             mock_wf_svc.get_workflow = AsyncMock(return_value=workflow)
 
@@ -704,9 +670,7 @@ class TestGenerateWorkflowSteps:
         mock_ws.broadcast_to_user = AsyncMock()
 
         with (
-            patch(
-                "app.services.workflow.WorkflowService"
-            ) as mock_wf_svc,
+            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws,
@@ -735,9 +699,7 @@ class TestGenerateWorkflowSteps:
         mock_ws.broadcast_to_user = AsyncMock()
 
         with (
-            patch(
-                "app.services.workflow.WorkflowService"
-            ) as mock_wf_svc,
+            patch("app.services.workflow.WorkflowService") as mock_wf_svc,
             patch(
                 "app.workers.tasks.workflow_tasks.get_websocket_manager",
                 return_value=mock_ws,
@@ -754,9 +716,7 @@ class TestGenerateWorkflowSteps:
         workflow_id = str(uuid4())
         user_id = "user_abc"
 
-        with patch(
-            "app.services.workflow.WorkflowService"
-        ) as mock_wf_svc:
+        with patch("app.services.workflow.WorkflowService") as mock_wf_svc:
             mock_wf_svc._generate_workflow_steps = AsyncMock(
                 side_effect=RuntimeError("LLM error")
             )

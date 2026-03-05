@@ -20,10 +20,6 @@ DELETE ``app/agents/core/nodes/manage_system_prompts.py`` → these tests FAIL.
 DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 """
 
-from typing import Any
-from unittest.mock import MagicMock
-from uuid import uuid4
-
 import pytest
 from langchain_core.language_models.fake_chat_models import (
     FakeMessagesListChatModel,
@@ -73,7 +69,9 @@ class TestMultiToolScenario:
 
         result = manage_system_prompts_node(state, config, store)
 
-        system_messages = [m for m in result["messages"] if isinstance(m, SystemMessage)]
+        system_messages = [
+            m for m in result["messages"] if isinstance(m, SystemMessage)
+        ]
         assert len(system_messages) == 1, (
             "manage_system_prompts_node must keep only the latest non-memory system prompt"
         )
@@ -99,14 +97,20 @@ class TestMultiToolScenario:
 
         result = manage_system_prompts_node(state, config, store)
 
-        system_messages = [m for m in result["messages"] if isinstance(m, SystemMessage)]
+        system_messages = [
+            m for m in result["messages"] if isinstance(m, SystemMessage)
+        ]
         assert len(system_messages) == 2, (
             "manage_system_prompts_node must keep memory messages AND the latest non-memory prompt"
         )
-        memory_msgs = [m for m in system_messages if m.additional_kwargs.get("memory_message")]
+        memory_msgs = [
+            m for m in system_messages if m.additional_kwargs.get("memory_message")
+        ]
         assert len(memory_msgs) == 1
         assert memory_msgs[0].content == "User prefers concise answers."
-        non_memory_msgs = [m for m in system_messages if not m.additional_kwargs.get("memory_message")]
+        non_memory_msgs = [
+            m for m in system_messages if not m.additional_kwargs.get("memory_message")
+        ]
         assert non_memory_msgs[0].content == "New system prompt"
 
     def test_manage_system_prompts_no_system_messages_is_noop(self):
@@ -171,7 +175,10 @@ class TestMultiToolScenario:
                         {
                             "id": "call_note_001",
                             "name": "create_note",
-                            "args": {"title": "Weather Note", "body": "Sunny in London"},
+                            "args": {
+                                "title": "Weather Note",
+                                "body": "Sunny in London",
+                            },
                             "type": "tool_call",
                         }
                     ],
@@ -277,7 +284,9 @@ class TestMultiToolScenario:
         old_system = SystemMessage(content="Old system prompt - should be removed")
         dangling_ai = AIMessage(
             content="",
-            tool_calls=[{"id": "stale_tc", "name": "get_weather", "args": {"city": "X"}}],
+            tool_calls=[
+                {"id": "stale_tc", "name": "get_weather", "args": {"city": "X"}}
+            ],
         )
         new_system = SystemMessage(content="Current system prompt - should be kept")
 
@@ -297,14 +306,16 @@ class TestMultiToolScenario:
 
         # Verify manage_system_prompts_node removed old_system
         system_msgs = [m for m in final_messages if isinstance(m, SystemMessage)]
-        assert all(m.content != "Old system prompt - should be removed" for m in system_msgs), (
-            "manage_system_prompts_node must remove old non-memory system prompts"
-        )
+        assert all(
+            m.content != "Old system prompt - should be removed" for m in system_msgs
+        ), "manage_system_prompts_node must remove old non-memory system prompts"
 
         # Verify filter_messages_node cleared the dangling tool_call
         ai_msgs_with_calls = [
-            m for m in final_messages
-            if isinstance(m, AIMessage) and m.tool_calls
+            m
+            for m in final_messages
+            if isinstance(m, AIMessage)
+            and m.tool_calls
             and any(tc["id"] == "stale_tc" for tc in m.tool_calls)
         ]
         assert len(ai_msgs_with_calls) == 0, (

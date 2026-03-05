@@ -268,6 +268,20 @@ class TestGraphRouting:
             f"count_after_1={count_after_1}, count_after_2={count_after_2}"
         )
 
+        # Verify original message content is preserved — not just that count grew
+        final_state = await graph.aget_state(config)
+        human_contents = [
+            m.content
+            for m in final_state.values["messages"]
+            if isinstance(m, HumanMessage)
+        ]
+        assert "Turn one" in human_contents, (
+            f"Turn one HumanMessage must survive into final state. Got: {human_contents}"
+        )
+        assert "Turn two" in human_contents, (
+            f"Turn two HumanMessage must be present in final state. Got: {human_contents}"
+        )
+
     async def test_different_thread_ids_have_isolated_state(self):
         """Two threads must not share checkpointed state.
 

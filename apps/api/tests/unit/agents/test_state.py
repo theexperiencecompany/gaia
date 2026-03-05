@@ -1,7 +1,7 @@
 import pytest
 from langchain_core.messages import HumanMessage
 
-from app.agents.core.state import DictLikeModel, State
+from app.agents.core.state import State
 
 
 @pytest.mark.unit

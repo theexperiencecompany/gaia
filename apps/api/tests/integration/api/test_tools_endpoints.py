@@ -4,7 +4,7 @@ Tests the /api/v1/tools endpoints with mocked service layer to verify
 routing, auth enforcement, and response structure.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -143,7 +143,11 @@ class TestToolsEndpoints:
     async def test_list_tools_uses_cache_on_hit(self, mock_cache, test_client):
         """GET /tools should return cached response when cache is available."""
         cached = _make_tools_list_response(
-            [_make_tool_info(name="cached_tool", category="general", display_name="General")]
+            [
+                _make_tool_info(
+                    name="cached_tool", category="general", display_name="General"
+                )
+            ]
         )
         mock_cache.return_value = cached
 
@@ -184,9 +188,7 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tool_categories",
         new_callable=AsyncMock,
     )
-    async def test_list_categories_returns_200(
-        self, mock_categories, test_client
-    ):
+    async def test_list_categories_returns_200(self, mock_categories, test_client):
         """GET /tools/categories should return 200 with category map."""
         mock_categories.return_value = {
             "gmail": 12,
@@ -245,13 +247,15 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tools_by_category",
         new_callable=AsyncMock,
     )
-    async def test_get_tools_in_category_returns_200(
-        self, mock_by_cat, test_client
-    ):
+    async def test_get_tools_in_category_returns_200(self, mock_by_cat, test_client):
         """GET /tools/category/{name} should return 200 with tools in category."""
         mock_by_cat.return_value = ToolsCategoryResponse(
             category="gmail",
-            tools=[_make_tool_info(name="send_email", category="gmail", display_name="Gmail")],
+            tools=[
+                _make_tool_info(
+                    name="send_email", category="gmail", display_name="Gmail"
+                )
+            ],
             count=1,
         )
 
@@ -298,9 +302,7 @@ class TestToolsEndpoints:
         assert response.status_code == 500
         assert "Failed to retrieve tools for category" in response.json()["detail"]
 
-    async def test_get_tools_in_category_requires_auth(
-        self, unauthenticated_client
-    ):
+    async def test_get_tools_in_category_requires_auth(self, unauthenticated_client):
         """GET /tools/category/{name} without auth should return 401."""
         response = await unauthenticated_client.get(f"{_CATEGORY_URL}/gmail")
         assert response.status_code == 401
@@ -309,14 +311,14 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tools_by_category",
         new_callable=AsyncMock,
     )
-    async def test_get_tools_in_category_multiple_tools(
-        self, mock_by_cat, test_client
-    ):
+    async def test_get_tools_in_category_multiple_tools(self, mock_by_cat, test_client):
         """GET /tools/category/{name} should return all tools in the category."""
         tools = [
             _make_tool_info(name="send_email", category="gmail", display_name="Gmail"),
             _make_tool_info(name="read_email", category="gmail", display_name="Gmail"),
-            _make_tool_info(name="delete_email", category="gmail", display_name="Gmail"),
+            _make_tool_info(
+                name="delete_email", category="gmail", display_name="Gmail"
+            ),
         ]
         mock_by_cat.return_value = ToolsCategoryResponse(
             category="gmail",

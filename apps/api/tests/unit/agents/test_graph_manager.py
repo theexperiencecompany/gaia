@@ -11,9 +11,7 @@ class TestGraphManager:
     async def test_set_graph_registers_provider(self):
         mock_graph = MagicMock(name="test_graph")
 
-        with patch(
-            "app.agents.core.graph_manager.providers"
-        ) as mock_providers:
+        with patch("app.agents.core.graph_manager.providers") as mock_providers:
             GraphManager.set_graph(mock_graph, "my_graph")
 
             mock_providers.register.assert_called_once()
@@ -22,12 +20,10 @@ class TestGraphManager:
             assert kwargs["loader_func"]() is mock_graph
 
     @pytest.mark.asyncio
-    async def test_set_and_get_graph_roundtrip(self):
+    async def test_get_graph_calls_provider_with_correct_key(self):
         mock_graph = MagicMock(name="test_graph")
 
-        with patch(
-            "app.agents.core.graph_manager.providers"
-        ) as mock_providers:
+        with patch("app.agents.core.graph_manager.providers") as mock_providers:
             mock_providers.aget = AsyncMock(return_value=mock_graph)
 
             GraphManager.set_graph(mock_graph, "my_graph")
@@ -38,9 +34,7 @@ class TestGraphManager:
 
     @pytest.mark.asyncio
     async def test_get_missing_graph(self):
-        with patch(
-            "app.agents.core.graph_manager.providers"
-        ) as mock_providers:
+        with patch("app.agents.core.graph_manager.providers") as mock_providers:
             mock_providers.aget = AsyncMock(side_effect=KeyError("not found"))
 
             result = await GraphManager.get_graph("nonexistent")
@@ -49,24 +43,22 @@ class TestGraphManager:
 
     @pytest.mark.asyncio
     async def test_get_graph_error(self):
-        with patch(
-            "app.agents.core.graph_manager.providers"
-        ) as mock_providers:
-            mock_providers.aget = AsyncMock(
-                side_effect=RuntimeError("provider failed")
-            )
+        with patch("app.agents.core.graph_manager.providers") as mock_providers:
+            mock_providers.aget = AsyncMock(side_effect=RuntimeError("provider failed"))
 
             result = await GraphManager.get_graph("broken")
 
             assert result is None
 
     @pytest.mark.asyncio
-    async def test_get_graph_returns_none_from_provider(self):
-        with patch(
-            "app.agents.core.graph_manager.providers"
-        ) as mock_providers:
+    async def test_get_graph_returns_none_not_sentinel_when_provider_returns_none(self):
+        """get_graph must return exactly None — not a wrapper — when the provider returns None,
+        and must forward the correct key to the provider."""
+        with patch("app.agents.core.graph_manager.providers") as mock_providers:
             mock_providers.aget = AsyncMock(return_value=None)
 
             result = await GraphManager.get_graph("null_graph")
 
             assert result is None
+            assert type(result) is type(None)
+            mock_providers.aget.assert_awaited_once_with("null_graph")

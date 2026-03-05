@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
@@ -7,6 +7,7 @@ from app.agents.core.nodes.memory_node import (
     _check_worth_learning,
     _extract_text_content,
     _format_messages_for_user_memory,
+    _store_user_memory_background,
     memory_node,
 )
 
@@ -157,40 +158,73 @@ class TestMemoryNode:
 
     @pytest.mark.asyncio
     async def test_skips_without_user_id(self):
+        """memory_node must not spawn a background task when user_id is absent."""
         state = self._rich_state()
-        config = self._make_config()
+        config = self._make_config()  # no user_id, no subagent_id
         store = MagicMock()
 
         with patch(
-            "app.agents.core.nodes.memory_node.get_memory_extraction_prompt",
-            return_value=None,
-        ):
+            "app.agents.core.nodes.memory_node.asyncio.create_task"
+        ) as mock_create:
             result = await memory_node(state, config, store)
 
         assert result is state
+        mock_create.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_spawns_background_task(self):
+        """memory_node must spawn _store_user_memory_background with correct user_id and messages."""
         state = self._rich_state()
         config = self._make_config(user_id="u1")
         store = MagicMock()
 
-        mock_task = MagicMock()
-        mock_task.get_name.return_value = "user_memory"
-        mock_task.add_done_callback = MagicMock()
-
         with (
             patch(
-                "app.agents.core.nodes.memory_node.asyncio.create_task",
-                return_value=mock_task,
-            ) as mock_create,
+                "app.agents.core.nodes.memory_node._store_user_memory_background",
+                new_callable=AsyncMock,
+            ) as mock_background,
             patch(
-                "app.agents.core.nodes.memory_node.get_memory_extraction_prompt",
-                return_value=None,
-            ),
+                "app.agents.core.nodes.memory_node.asyncio.create_task",
+                return_value=MagicMock(add_done_callback=MagicMock()),
+            ) as mock_create,
         ):
             result = await memory_node(state, config, store)
 
         mock_create.assert_called_once()
-        mock_task.add_done_callback.assert_called_once()
+        mock_background.assert_called_once()
+
+        call_kwargs = mock_background.call_args.kwargs
+        assert call_kwargs["user_id"] == "u1"
+        assert call_kwargs["messages"] == state["messages"]
         assert result is state
+
+    @pytest.mark.asyncio
+    async def test_background_task_exception_is_swallowed(self):
+        """store_memory_batch exceptions must be caught inside _store_user_memory_background."""
+        with patch("app.agents.core.nodes.memory_node.memory_service") as mock_svc:
+            mock_svc.store_memory_batch = AsyncMock(
+                side_effect=RuntimeError("mem0 is down")
+            )
+
+            # Must not raise — the except block must absorb RuntimeError
+            await _store_user_memory_background(
+                messages=[
+                    HumanMessage(content="q1"),
+                    AIMessage(
+                        content="",
+                        tool_calls=[
+                            {"id": "tc1", "name": "a", "args": {}},
+                            {"id": "tc2", "name": "b", "args": {}},
+                        ],
+                    ),
+                    ToolMessage(content="r1", tool_call_id="tc1"),
+                    ToolMessage(content="r2", tool_call_id="tc2"),
+                ],
+                user_id="u1",
+                session_id="s1",
+                extraction_prompt=None,
+                subagent_id=None,
+            )
+
+        # If we reach here, the exception was swallowed correctly
+        mock_svc.store_memory_batch.assert_awaited_once()

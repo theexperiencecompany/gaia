@@ -17,7 +17,6 @@ Real production classes and functions are imported so tests fail if code moves.
 
 from __future__ import annotations
 
-import json
 from datetime import datetime, timezone
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -29,7 +28,6 @@ from langchain_core.messages import (
     AIMessageChunk,
     HumanMessage,
     SystemMessage,
-    ToolMessage,
 )
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
@@ -37,8 +35,8 @@ from langgraph.store.memory import InMemoryStore
 
 from langchain_core.tools import tool
 
-from tests.factories import make_config, make_user
-from tests.helpers import create_fake_llm, create_fake_llm_with_tool_calls
+from tests.factories import make_user
+from tests.helpers import create_fake_llm
 from tests.integration.conftest import SimpleState
 
 
@@ -116,7 +114,9 @@ class TestSubAgentCanBeInstantiated:
         from app.agents.core.subagents.base_subagent import SubAgentFactory
 
         method = getattr(SubAgentFactory, "create_provider_subagent", None)
-        assert method is not None, "create_provider_subagent not found on SubAgentFactory"
+        assert method is not None, (
+            "create_provider_subagent not found on SubAgentFactory"
+        )
         assert callable(method)
 
     async def test_create_provider_subagent_compiles_graph(self):
@@ -217,6 +217,7 @@ class TestHandoffToolStructure:
         # For async @tool-decorated functions LangChain stores the original coroutine
         # in `.coroutine`; `.func` is used for sync tools.
         import inspect
+
         underlying = (
             getattr(handoff, "coroutine", None)
             or getattr(handoff, "func", None)
@@ -244,9 +245,7 @@ class TestHandoffToolStructure:
             or getattr(handoff, "func", None)
             or handoff
         )
-        assert inspect.iscoroutinefunction(underlying), (
-            "handoff tool must be async"
-        )
+        assert inspect.iscoroutinefunction(underlying), "handoff tool must be async"
 
     def test_handoff_tool_has_docstring(self):
         """handoff must have a non-empty description for the LLM."""
@@ -351,12 +350,8 @@ class TestSubagentThreadIsolation:
         state_b = await graph_b.aget_state(thread_b)
 
         # Human messages should differ
-        human_a = [
-            m for m in state_a.values["messages"] if isinstance(m, HumanMessage)
-        ]
-        human_b = [
-            m for m in state_b.values["messages"] if isinstance(m, HumanMessage)
-        ]
+        human_a = [m for m in state_a.values["messages"] if isinstance(m, HumanMessage)]
+        human_b = [m for m in state_b.values["messages"] if isinstance(m, HumanMessage)]
 
         assert human_a[0].content == "Task A"
         assert human_b[0].content == "Task B"
@@ -378,7 +373,10 @@ class TestSubagentThreadIsolation:
         assert gmail_thread != calendar_thread
         assert notion_thread != calendar_thread
         # All share the same parent suffix
-        assert all(t.endswith(parent_thread) for t in [gmail_thread, notion_thread, calendar_thread])
+        assert all(
+            t.endswith(parent_thread)
+            for t in [gmail_thread, notion_thread, calendar_thread]
+        )
 
     async def test_same_graph_different_threads_are_isolated(self):
         """The same compiled graph object with different thread configs
@@ -388,8 +386,12 @@ class TestSubagentThreadIsolation:
         config_x = {"configurable": {"thread_id": f"thread-x-{uuid4()}"}}
         config_y = {"configurable": {"thread_id": f"thread-y-{uuid4()}"}}
 
-        await graph.ainvoke({"messages": [HumanMessage(content="From X")]}, config=config_x)
-        await graph.ainvoke({"messages": [HumanMessage(content="From Y")]}, config=config_y)
+        await graph.ainvoke(
+            {"messages": [HumanMessage(content="From X")]}, config=config_x
+        )
+        await graph.ainvoke(
+            {"messages": [HumanMessage(content="From Y")]}, config=config_y
+        )
 
         state_x = await graph.aget_state(config_x)
         state_y = await graph.aget_state(config_y)
@@ -578,7 +580,6 @@ class TestSubagentProviderRegistration:
         from app.agents.core.subagents.provider_subagents import (
             register_subagent_providers,
         )
-        from app.config.oauth_config import OAUTH_INTEGRATIONS
 
         with patch(
             "app.agents.core.subagents.provider_subagents.providers"
@@ -629,7 +630,7 @@ class TestSubagentProviderRegistration:
         from app.agents.core.subagents.provider_subagents import (
             register_subagent_providers,
         )
-        from app.config.oauth_config import OAUTH_INTEGRATIONS, get_subagent_integrations
+        from app.config.oauth_config import get_subagent_integrations
 
         # Pick just the first available subagent integration
         available = get_subagent_integrations()
@@ -666,7 +667,9 @@ class TestSubagentRunnerHelpers:
 
         integrations = get_subagent_integrations()
         assert isinstance(integrations, list)
-        assert len(integrations) > 0, "Expected at least one configured subagent integration"
+        assert len(integrations) > 0, (
+            "Expected at least one configured subagent integration"
+        )
 
     def test_get_subagent_by_id_resolves_known_id(self):
         """get_subagent_by_id must resolve a known integration ID."""
@@ -726,9 +729,7 @@ class TestSubagentRunnerHelpers:
         for integ in get_subagent_integrations():
             cfg = integ.subagent_config
             assert cfg is not None
-            assert cfg.tool_space, (
-                f"Integration '{integ.id}' has empty tool_space"
-            )
+            assert cfg.tool_space, f"Integration '{integ.id}' has empty tool_space"
 
 
 # ---------------------------------------------------------------------------
@@ -754,9 +755,7 @@ class TestBuildInitialMessages:
 
         with patch(
             "app.agents.core.subagents.subagent_runner.create_agent_context_message",
-            new=AsyncMock(
-                return_value=SystemMessage(content="Context: time is now.")
-            ),
+            new=AsyncMock(return_value=SystemMessage(content="Context: time is now.")),
         ):
             messages = await build_initial_messages(
                 system_message=system_msg,
@@ -903,7 +902,10 @@ class TestPrepareSubagentExecutionErrors:
 
         assert ctx is None
         assert error is not None
-        assert "not available" in error.lower() or first.subagent_config.agent_name in error
+        assert (
+            "not available" in error.lower()
+            or first.subagent_config.agent_name in error
+        )
 
 
 # ---------------------------------------------------------------------------

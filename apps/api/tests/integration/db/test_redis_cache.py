@@ -4,7 +4,7 @@ Tests the RedisCache class and module-level wrappers with a mocked
 Redis connection to verify serialization, TTL handling, and CRUD ops.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from pydantic import BaseModel

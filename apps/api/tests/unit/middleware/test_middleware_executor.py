@@ -1,7 +1,7 @@
 """Unit tests for the MiddlewareExecutor."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 from langchain.agents.middleware import AgentMiddleware
 
@@ -135,11 +135,10 @@ class TestExecuteBeforeModel:
         mock_state.__iter__ = MagicMock(return_value=iter([]))
         mock_state.keys = MagicMock(return_value=[])
 
-        with patch(
-            "app.agents.middleware.executor.to_agent_state"
-        ) as mock_to_state, patch(
-            "app.agents.middleware.executor.BigtoolRuntime"
-        ) as mock_runtime_cls:
+        with (
+            patch("app.agents.middleware.executor.to_agent_state") as mock_to_state,
+            patch("app.agents.middleware.executor.BigtoolRuntime") as mock_runtime_cls,
+        ):
             mock_runtime_cls.from_graph_context.return_value = MagicMock()
             mock_to_state.return_value = MagicMock()
             await executor.execute_before_model(mock_state, {})

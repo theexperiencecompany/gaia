@@ -3,7 +3,6 @@
 import pytest
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
-from uuid import uuid4
 
 from pydantic import ValidationError
 
@@ -107,7 +106,10 @@ class TestSkillNameValidation:
 @pytest.mark.unit
 class TestSkillDescriptionValidation:
     def test_valid_description(self):
-        assert _validate_skill_description("Does something useful") == "Does something useful"
+        assert (
+            _validate_skill_description("Does something useful")
+            == "Does something useful"
+        )
 
     def test_rejects_empty(self):
         with pytest.raises(ValueError, match="must not be empty"):
@@ -297,9 +299,7 @@ class TestSkillRegistryCRUD:
         assert skill is not None
         assert skill.id == "s1"
         assert skill.name == "test"
-        mock_collection.find_one.assert_called_once_with(
-            {"_id": "s1", "user_id": "u1"}
-        )
+        mock_collection.find_one.assert_called_once_with({"_id": "s1", "user_id": "u1"})
 
     async def test_get_skill_not_found(self, mock_collection):
         mock_collection.find_one = AsyncMock(return_value=None)

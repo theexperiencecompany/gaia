@@ -111,3 +111,28 @@ class TestFilterMessages:
         filtered_ai = result["messages"][0]
         assert filtered_ai.content == "I will use a tool"
         assert len(filtered_ai.tool_calls) == 0
+
+    def test_cross_message_tool_call_deduplication(self):
+        """ToolMessages following ai2 must not affect filtering of ai1's tool_calls."""
+        ai1 = AIMessage(content="", tool_calls=[{"id": "tc1", "name": "a", "args": {}}])
+        tool_for_ai1 = ToolMessage(content="r1", tool_call_id="tc1")
+        ai2 = AIMessage(
+            content="",
+            tool_calls=[
+                {"id": "tc2", "name": "b", "args": {}},
+                {"id": "tc3", "name": "c", "args": {}},
+            ],
+        )
+        tool_for_tc2 = ToolMessage(content="r2", tool_call_id="tc2")
+        state = self._make_state([ai1, tool_for_ai1, ai2, tool_for_tc2])
+
+        result = filter_messages_node(state, self._config(), self._store())
+
+        ai1_filtered = result["messages"][0]
+        ai2_filtered = result["messages"][2]
+        # tc1 is answered — must be kept
+        assert len(ai1_filtered.tool_calls) == 1
+        assert ai1_filtered.tool_calls[0]["id"] == "tc1"
+        # tc2 answered, tc3 not — only tc2 must be kept
+        assert len(ai2_filtered.tool_calls) == 1
+        assert ai2_filtered.tool_calls[0]["id"] == "tc2"
