@@ -89,14 +89,26 @@ FAKE_USER_2: dict = {
 
 
 def _create_test_app() -> FastAPI:
-    """Create a FastAPI app with a no-op lifespan for testing."""
+    """Create a FastAPI app with a no-op lifespan and minimal middleware for testing."""
+    from fastapi.middleware.cors import CORSMiddleware
 
     @asynccontextmanager
     async def _noop_lifespan(app: FastAPI):
         yield
 
+    def _test_configure_middleware(app: FastAPI) -> None:
+        """Strip Redis/WorkOS middleware — use CORS only so tests don't need Redis."""
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_credentials=True,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+
     with (
         patch("app.core.app_factory.lifespan", _noop_lifespan),
+        patch("app.core.app_factory.configure_middleware", _test_configure_middleware),
         patch(
             "app.services.payments.payment_service.payment_service.get_user_subscription_status",
             new_callable=AsyncMock,
@@ -114,6 +126,12 @@ def _create_test_app() -> FastAPI:
         from app.core.app_factory import create_app
 
         app = create_app()
+
+    # Disable the SlowAPI per-route limiter so payment endpoints don't hit Redis.
+    # This must be done after the app is created (the module is imported then).
+    from app.api.v1.middleware.rate_limiter import limiter
+
+    limiter.enabled = False
 
     from app.api.v1.dependencies.oauth_dependencies import get_current_user
 

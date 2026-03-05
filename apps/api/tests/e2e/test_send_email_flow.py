@@ -25,9 +25,7 @@ DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 """
 
 import pytest
-from langchain_core.language_models.fake_chat_models import (
-    FakeMessagesListChatModel,
-)
+from tests.helpers import BindableToolsFakeModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
@@ -128,7 +126,7 @@ class TestSendEmailFlow:
         The tool execution path uses the real DynamicToolNode from the GAIA
         override package.
         """
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -185,7 +183,7 @@ class TestSendEmailFlow:
         in addition to 'messages'. This confirms the graph is using the real
         GAIA State from app.override.langgraph_bigtool.utils, not a generic state.
         """
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[AIMessage(content="No tool needed here.")]
         )
 

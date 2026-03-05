@@ -7,7 +7,7 @@ Uses REAL GAIA production nodes and graph builder infrastructure:
 - State: from app.override.langgraph_bigtool.utils (the real agent state schema)
 
 Mocks only:
-- LLM: FakeMessagesListChatModel (no real LLM calls)
+- LLM: BindableToolsFakeModel (no real LLM calls; supports bind_tools())
 - Store: langgraph.store.memory.InMemoryStore (no ChromaDB)
 - Checkpointer: MemorySaver (no PostgreSQL)
 
@@ -20,9 +20,6 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from langchain_core.language_models.fake_chat_models import (
-    FakeMessagesListChatModel,
-)
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
@@ -31,10 +28,11 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
+from tests.helpers import BindableToolsFakeModel
 
 
 def build_gaia_test_graph(
-    fake_llm: FakeMessagesListChatModel,
+    fake_llm: BindableToolsFakeModel,
     tool_registry: dict[str, BaseTool],
     initial_tool_ids: list[str] | None = None,
     checkpointer: MemorySaver | None = None,

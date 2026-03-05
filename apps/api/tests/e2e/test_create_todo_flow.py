@@ -24,9 +24,7 @@ DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 from uuid import uuid4
 
 import pytest
-from langchain_core.language_models.fake_chat_models import (
-    FakeMessagesListChatModel,
-)
+from tests.helpers import BindableToolsFakeModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 
 from app.agents.tools.todo_tools import (
@@ -54,7 +52,7 @@ class TestCreateTodoFlow:
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -110,7 +108,7 @@ class TestCreateTodoFlow:
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -163,7 +161,7 @@ class TestCreateTodoFlow:
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 # Turn 1: plan one task
                 AIMessage(
@@ -228,7 +226,7 @@ class TestCreateTodoFlow:
         # We do this with a two-phase graph run.
 
         # Phase 1: plan one task and capture its ID
-        fake_llm_phase1 = FakeMessagesListChatModel(
+        fake_llm_phase1 = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -262,7 +260,7 @@ class TestCreateTodoFlow:
         task_id = todos_after_plan[0]["id"]
 
         # Phase 2: mark the task completed using its real ID
-        fake_llm_phase2 = FakeMessagesListChatModel(
+        fake_llm_phase2 = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
