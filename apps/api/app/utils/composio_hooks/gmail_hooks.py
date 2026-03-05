@@ -9,6 +9,7 @@ for customizing tool descriptions and defaults.
 from typing import Any
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
+from langchain_core.tools import ToolException
 from langgraph.config import get_stream_writer
 
 from app.agents.templates.mail_templates import (
@@ -25,6 +26,8 @@ from .registry import (
     register_before_hook,
     register_schema_modifier,
 )
+
+GMAIL_FULL_FETCH_HARD_LIMIT = 30
 
 # ====================== SCHEMA MODIFIERS ======================
 # These modifiers customize tool schemas before they are seen by agents
@@ -91,7 +94,12 @@ def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
             "• label:labelname - emails with specific label\n"
             "• in:inbox, in:sent, in:drafts - filter by folder"
         )
-        schema.description += search_tips
+        full_mode_limit = (
+            "\n\nHARD LIMIT: In full email mode (verbose=true OR include_payload!=false), "
+            f"max_results must be <= {GMAIL_FULL_FETCH_HARD_LIMIT}. "
+            "If you need more, fetch in chunks."
+        )
+        schema.description += search_tips + full_mode_limit
 
     # Set format default to "full" for detailed content
     if "format" in props and isinstance(props["format"], dict):
@@ -102,6 +110,33 @@ def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
 
 # ====================== BEFORE EXECUTE HOOKS ======================
 # These hooks send progress/streaming data to frontend before tool execution
+
+
+@register_before_hook(tools=["GMAIL_FETCH_EMAILS"])
+def gmail_fetch_emails_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
+    """Validate high-volume Gmail fetch requests before execution."""
+    arguments = params.get("arguments", {})
+
+    raw_max_results = arguments.get("max_results", 10)
+    try:
+        max_results = int(raw_max_results)
+    except (TypeError, ValueError):
+        # Let schema/tool validation handle malformed values.
+        return params
+
+    verbose = arguments.get("verbose", True)
+    include_payload = arguments.get("include_payload", True)
+
+    full_email_mode = verbose is True or include_payload is not False
+
+    if full_email_mode and max_results > GMAIL_FULL_FETCH_HARD_LIMIT:
+        raise ToolException(
+            "result will be too large to handle please call in chunks with max results 30"
+        )
+
+    return params
 
 
 @register_before_hook(

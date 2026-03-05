@@ -29,7 +29,9 @@ Create a new email draft.
 - `is_html`: Set `true` only when the user explicitly wants HTML email formatting
 
 **Body formatting:**
+- Always draft beautiful, readable emails.
 - Default to plain text email body unless the user explicitly asks for HTML.
+- For plain text (`is_html=false`), use clear multi-line formatting with short paragraphs and blank lines between sections so the draft is easy to scan.
 - If using HTML, provide a safe HTML fragment (no `<html>`/`<head>`/`<body>`). Stick to: `p`, `br`, `strong`, `em`, `ul/ol/li`, `a`.
 - Do not rely on automatic Markdown conversion.
 
