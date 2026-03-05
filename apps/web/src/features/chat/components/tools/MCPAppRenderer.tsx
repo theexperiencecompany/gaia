@@ -36,7 +36,7 @@ interface Props {
 }
 
 export function MCPAppRenderer({ data }: Props) {
-  const [appHeight, setAppHeight] = useState(600);
+  const [appHeight, setAppHeight] = useState(500);
   const [displayMode, setDisplayMode] = useState<DisplayMode>("inline");
   const [bridge, setBridge] = useState<AppBridge | null>(null);
   const bridgeRef = useRef<AppBridge | null>(null);
@@ -84,22 +84,30 @@ export function MCPAppRenderer({ data }: Props) {
     });
 
     b.oncalltool = async (params) => {
-      const result = await callMCPAppTool(
-        dataRef.current.server_url,
-        params.name,
-        params.arguments ?? {},
-      );
-      const content = result.content.map((item) => {
-        if (item && typeof item === "object") {
-          const c = { ...(item as Record<string, unknown>) };
-          if (c.annotations == null) delete c.annotations;
-          return c;
-        }
-        return item;
-      });
-      return { content, isError: result.is_error ?? false } as Awaited<
-        ReturnType<NonNullable<typeof b.oncalltool>>
-      >;
+      try {
+        const result = await callMCPAppTool(
+          dataRef.current.server_url,
+          params.name,
+          params.arguments ?? {},
+        );
+        const content = result.content.map((item) => {
+          if (item && typeof item === "object") {
+            const c = { ...(item as Record<string, unknown>) };
+            if (c.annotations == null) delete c.annotations;
+            return c;
+          }
+          return item;
+        });
+        return { content, isError: result.is_error ?? false } as Awaited<
+          ReturnType<NonNullable<typeof b.oncalltool>>
+        >;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : "Tool call failed";
+        return {
+          content: [{ type: "text" as const, text: message }],
+          isError: true,
+        } as Awaited<ReturnType<NonNullable<typeof b.oncalltool>>>;
+      }
     };
 
     b.onopenlink = async ({ url }) => {
@@ -124,48 +132,74 @@ export function MCPAppRenderer({ data }: Props) {
     };
 
     b.onlistresources = async (params) => {
-      const r = await listMCPResources(
-        dataRef.current.server_url,
-        params?.cursor as string | undefined,
-      );
-      return { resources: r.resources, nextCursor: r.next_cursor };
+      try {
+        const r = await listMCPResources(
+          dataRef.current.server_url,
+          params?.cursor as string | undefined,
+        );
+        return { resources: r.resources, nextCursor: r.next_cursor };
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to list resources";
+        throw Object.assign(new Error(message), { code: -32_603 });
+      }
     };
 
     b.onlistresourcetemplates = async (params) => {
-      const r = await listMCPResourceTemplates(
-        dataRef.current.server_url,
-        params?.cursor as string | undefined,
-      );
-      return {
-        resourceTemplates: r.resource_templates,
-        nextCursor: r.next_cursor,
-      };
+      try {
+        const r = await listMCPResourceTemplates(
+          dataRef.current.server_url,
+          params?.cursor as string | undefined,
+        );
+        return {
+          resourceTemplates: r.resource_templates,
+          nextCursor: r.next_cursor,
+        };
+      } catch (err) {
+        const message =
+          err instanceof Error
+            ? err.message
+            : "Failed to list resource templates";
+        throw Object.assign(new Error(message), { code: -32_603 });
+      }
     };
 
     b.onreadresource = async (params, _extra) => {
-      const r = await readMCPResource(dataRef.current.server_url, params.uri);
-      const contents = r.contents.flatMap(
-        (
-          item,
-        ): (
-          | { uri: string; text: string; mimeType?: string }
-          | { uri: string; blob: string; mimeType?: string }
-        )[] => {
-          const base = { uri: item.uri, mimeType: item.mimeType };
-          if (item.text !== undefined) return [{ ...base, text: item.text }];
-          if (item.blob !== undefined) return [{ ...base, blob: item.blob }];
-          return [];
-        },
-      );
-      return { contents };
+      try {
+        const r = await readMCPResource(dataRef.current.server_url, params.uri);
+        const contents = r.contents.flatMap(
+          (
+            item,
+          ): (
+            | { uri: string; text: string; mimeType?: string }
+            | { uri: string; blob: string; mimeType?: string }
+          )[] => {
+            const base = { uri: item.uri, mimeType: item.mimeType };
+            if (item.text !== undefined) return [{ ...base, text: item.text }];
+            if (item.blob !== undefined) return [{ ...base, blob: item.blob }];
+            return [];
+          },
+        );
+        return { contents };
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to read resource";
+        throw Object.assign(new Error(message), { code: -32_603 });
+      }
     };
 
     b.onlistprompts = async (params) => {
-      const r = await listMCPPrompts(
-        dataRef.current.server_url,
-        params?.cursor as string | undefined,
-      );
-      return { prompts: r.prompts, nextCursor: r.next_cursor };
+      try {
+        const r = await listMCPPrompts(
+          dataRef.current.server_url,
+          params?.cursor as string | undefined,
+        );
+        return { prompts: r.prompts, nextCursor: r.next_cursor };
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : "Failed to list prompts";
+        throw Object.assign(new Error(message), { code: -32_603 });
+      }
     };
 
     b.onrequestdisplaymode = async ({ mode }) => {
@@ -198,12 +232,7 @@ export function MCPAppRenderer({ data }: Props) {
           // not a URL
         }
       }
-      if (
-        level === "error" ||
-        level === "critical" ||
-        level === "alert" ||
-        level === "emergency"
-      ) {
+      if (["error", "critical", "alert", "emergency"].includes(level)) {
         console.error("[MCPApp]", logData);
       } else if (level === "warning") {
         console.warn("[MCPApp]", logData);
@@ -214,7 +243,7 @@ export function MCPAppRenderer({ data }: Props) {
 
     b.fallbackRequestHandler = async (request) => {
       const err = new Error(`Method not supported by host: ${request.method}`);
-      (err as unknown as { code: number }).code = -32601;
+      (err as unknown as { code: number }).code = -32_601;
       throw err;
     };
 
@@ -337,7 +366,7 @@ export function MCPAppRenderer({ data }: Props) {
   return (
     <div
       ref={observeContainer}
-      className="mcp-app-container rounded-2xl overflow-hidden border border-default-200 my-2"
+      className="rounded-2xl overflow-hidden border border-default-200 my-2 max-w-2xl"
       style={{ width: "100%", height: `${appHeight}px` }}
     >
       {frame}

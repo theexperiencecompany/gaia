@@ -80,6 +80,11 @@
       try {
         if (document.referrer) {
           expectedParentOrigin = new URL(document.referrer).origin;
+        } else if (
+          window.location.ancestorOrigins &&
+          window.location.ancestorOrigins.length > 0
+        ) {
+          expectedParentOrigin = window.location.ancestorOrigins[0];
         }
       } catch (_err) {}
 
@@ -92,7 +97,10 @@
       }
 
       function postToParent(message) {
-        window.parent.postMessage(message, expectedParentOrigin || "*");
+        window.parent.postMessage(
+          message,
+          expectedParentOrigin || window.location.origin,
+        );
       }
 
       function loadInnerHtml(html) {
