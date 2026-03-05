@@ -24,7 +24,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // ---------------------------------------------------------------------------
 
 vi.mock("discord.js", () => {
-  const EmbedBuilder = vi.fn().mockImplementation(() => {
+  const EmbedBuilder = vi.fn().mockImplementation(function () {
     const self: Record<string, unknown> = {};
     const chain = (name: string) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,22 +45,26 @@ vi.mock("discord.js", () => {
 
   return {
     EmbedBuilder,
-    ActionRowBuilder: vi.fn().mockImplementation(() => ({
-      addComponents: vi.fn().mockReturnThis(),
-    })),
-    ButtonBuilder: vi.fn().mockImplementation(() => ({
-      setLabel: vi.fn().mockReturnThis(),
-      setURL: vi.fn().mockReturnThis(),
-      setStyle: vi.fn().mockReturnThis(),
-    })),
+    ActionRowBuilder: vi.fn().mockImplementation(function () {
+      return { addComponents: vi.fn().mockReturnThis() };
+    }),
+    ButtonBuilder: vi.fn().mockImplementation(function () {
+      return {
+        setLabel: vi.fn().mockReturnThis(),
+        setURL: vi.fn().mockReturnThis(),
+        setStyle: vi.fn().mockReturnThis(),
+      };
+    }),
     ButtonStyle: { Link: 5 },
-    Client: vi.fn().mockImplementation(() => ({
-      once: vi.fn(),
-      on: vi.fn(),
-      login: vi.fn().mockResolvedValue(undefined),
-      destroy: vi.fn(),
-      user: { id: "bot-user-id", tag: "GAIA#0001" },
-    })),
+    Client: vi.fn().mockImplementation(function () {
+      return {
+        once: vi.fn(),
+        on: vi.fn(),
+        login: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn(),
+        user: { id: "bot-user-id", tag: "GAIA#0001" },
+      };
+    }),
     Events: {
       ClientReady: "ready",
       InteractionCreate: "interactionCreate",
@@ -230,11 +234,17 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
     vi.clearAllMocks();
     adapter = new DiscordAdapter();
     // Plant a simple command so dispatchCommand can find it.
+    // The execute calls target.send() so that createInteractionTarget's lazy
+    // deferral fires — allowing deferReply assertions to work correctly.
     const mockCommand = {
       name: "todo",
       description: "Manage todos",
       options: [{ name: "text", description: "Task text", type: "string" as const }],
-      execute: vi.fn().mockResolvedValue(undefined),
+      execute: vi.fn().mockImplementation(
+        async ({ target }: { target: { send: (t: string) => Promise<unknown> } }) => {
+          await target.send("todo response");
+        },
+      ),
     };
     // Access the protected `commands` map via the BaseBotAdapter stub.
     (adapter as unknown as { commands: Map<string, unknown> }).commands.set(
@@ -653,6 +663,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
   });
 
   it("replies 'How can I help you?' when DM content is blank", async () => {
+    vi.clearAllMocks();
     const adapter = new DiscordAdapter();
 
     // Skip welcome for this user so we can isolate the blank-content check.
@@ -687,6 +698,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
 
 describe("DiscordAdapter - context menu interaction", () => {
   it("replies with no-text error when target message has no content", async () => {
+    vi.clearAllMocks();
     const adapter = new DiscordAdapter();
 
     const interaction = {
