@@ -5,15 +5,23 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from fastapi import HTTPException
 
 from app.agents.tools.vfs_constants import (
     USER_VISIBLE_FOLDER,
     detect_artifact_content_type,
     is_user_visible_path,
 )
-from app.models.vfs_models import VFSListResponse, VFSNodeResponse, VFSNodeType
-from app.services.vfs import VFSAccessError
+from app.api.v1.endpoints.vfs import (
+    get_vfs_info,
+    list_vfs_dir,
+    read_vfs_file,
+    router,
+)
 from app.models.chat_models import tool_fields
+from app.models.vfs_models import VFSListResponse, VFSNodeResponse, VFSNodeType
+from app.services.chat_service import extract_tool_data
+from app.services.vfs import VFSAccessError
 
 
 def test_artifact_data_is_registered_for_stream_extraction() -> None:
@@ -47,8 +55,6 @@ def test_is_user_visible_path_detects_only_session_visible_files() -> None:
 
 def test_vfs_http_routes_exist_for_file_viewer() -> None:
     """Frontend file viewer requirements need read/info/list VFS endpoints."""
-    from app.api.v1.endpoints.vfs import router
-
     routes = {getattr(route, "path", "") for route in router.routes}
     assert "/read" in routes
     assert "/info" in routes
@@ -57,8 +63,6 @@ def test_vfs_http_routes_exist_for_file_viewer() -> None:
 
 def test_extract_tool_data_maps_artifact_data_into_tool_data_array() -> None:
     """artifact_data events should normalize into ToolDataEntry shape."""
-    from app.services.chat_service import extract_tool_data
-
     payload = {
         "artifact_data": {
             "path": "/users/u1/global/executor/sessions/conv1/.user-visible/report.md",
@@ -78,8 +82,6 @@ def test_extract_tool_data_maps_artifact_data_into_tool_data_array() -> None:
 @pytest.mark.asyncio
 async def test_read_vfs_file_returns_content_for_viewer() -> None:
     """VFS read endpoint returns content and metadata for artifact viewer."""
-    from app.api.v1.endpoints.vfs import read_vfs_file
-
     mock_vfs = AsyncMock()
     mock_vfs.read = AsyncMock(return_value="# Report")
     mock_vfs.info = AsyncMock(
@@ -103,10 +105,6 @@ async def test_read_vfs_file_returns_content_for_viewer() -> None:
 @pytest.mark.asyncio
 async def test_read_vfs_file_returns_403_on_access_error() -> None:
     """VFS read endpoint should convert access errors into HTTP 403."""
-    from fastapi import HTTPException
-
-    from app.api.v1.endpoints.vfs import read_vfs_file
-
     mock_vfs = AsyncMock()
     mock_vfs.read = AsyncMock(
         side_effect=VFSAccessError(
@@ -131,8 +129,6 @@ async def test_read_vfs_file_returns_403_on_access_error() -> None:
 @pytest.mark.asyncio
 async def test_get_vfs_info_returns_node_metadata() -> None:
     """VFS info endpoint returns file metadata used by frontend."""
-    from app.api.v1.endpoints.vfs import get_vfs_info
-
     mock_vfs = AsyncMock()
     node = VFSNodeResponse(
         path="/users/u1/global/executor/files/data.json",
@@ -160,8 +156,6 @@ async def test_get_vfs_info_returns_node_metadata() -> None:
 @pytest.mark.asyncio
 async def test_list_vfs_dir_honors_recursive_flag() -> None:
     """VFS list endpoint should pass recursive option through unchanged."""
-    from app.api.v1.endpoints.vfs import list_vfs_dir
-
     mock_vfs = AsyncMock()
     listing = VFSListResponse(
         path="/users/u1/global/executor/files", items=[], total_count=0

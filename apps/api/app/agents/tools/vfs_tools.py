@@ -43,9 +43,10 @@ from langgraph.config import get_stream_writer
 def _get_context(config: RunnableConfig) -> Dict[str, Any]:
     """Extract user_id, conversation_id, and agent_name from config."""
     metadata = config.get("metadata", {}) if config else {}
+    configurable = config.get("configurable", {}) if config else {}
     return {
-        "user_id": metadata.get("user_id"),
-        "conversation_id": metadata.get("thread_id"),
+        "user_id": metadata.get("user_id") or configurable.get("user_id"),
+        "conversation_id": configurable.get("thread_id") or metadata.get("thread_id"),
         "agent_name": metadata.get("agent_name", "executor"),
     }
 

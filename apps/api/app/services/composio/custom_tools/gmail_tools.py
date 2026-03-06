@@ -11,7 +11,7 @@ from app.models.common_models import GatherContextInput
 from app.services.contact_service import get_gmail_contacts
 from composio import Composio
 from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+from googleapiclient.discovery import build  # type: ignore
 from pydantic import BaseModel, Field
 
 # Reusable sync HTTP client
@@ -392,7 +392,7 @@ def register_gmail_custom_tools(composio: Composio):
 
         Args:
             request.query: Search query to filter contacts (e.g., name, email, domain)
-            request.max_results: Maximum number of messages to analyze (default: 50)
+            request.max_results: Maximum number of messages to analyze (default: 30)
 
         Returns: Array of contacts with name and email.
 

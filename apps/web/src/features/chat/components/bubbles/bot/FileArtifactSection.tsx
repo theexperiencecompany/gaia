@@ -98,8 +98,8 @@ function ArtifactCard({ artifact }: { artifact: ArtifactData }) {
       link.click();
       document.body.removeChild(link);
       URL.revokeObjectURL(url);
-    } catch (error) {
-      console.error("Error downloading artifact:", error);
+    } catch {
+      // Silent fail - download unavailable
     }
   }, [artifact]);
 

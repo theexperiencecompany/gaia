@@ -61,7 +61,7 @@ This ensures users only see final artifacts, not intermediate drafts.
 ## Format Preference
 
 1. HTML (`.html`) by default for user-facing artifacts that should look polished
-2. Markdown (`.md`) only when the user asks for markdown or plain docs
+2. Markdown (`.md`) only when the user asks for Markdown or plain docs
 3. Language-specific code extensions for code
 4. Text (`.txt`) only when formatting is unnecessary
 

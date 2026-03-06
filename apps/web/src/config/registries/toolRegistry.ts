@@ -119,7 +119,7 @@ export const TOOL_REGISTRY = {
   workflow_created: null as unknown as WorkflowCreatedData,
   todo_progress: null as unknown as TodoProgressData,
   rate_limit_data: null as unknown as RateLimitData,
-  artifact_data: null as unknown as ArtifactData,
+  artifact_data: null as unknown as ArtifactData[],
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
@@ -162,7 +162,4 @@ export const GROUPED_TOOLS = new Set<ToolName>([
   "email_compose_data",
   "email_sent_data",
   "artifact_data",
-  // "email_fetch_data",
-  // "test_data",
-  // Add any tool you want to group here
 ]);

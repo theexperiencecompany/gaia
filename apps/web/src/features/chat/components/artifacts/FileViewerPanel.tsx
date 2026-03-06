@@ -280,8 +280,6 @@ export default function FileViewerPanel({
 
       if ((deltaY < 0 && atTop) || (deltaY > 0 && atBottom)) {
         event.preventDefault();
-      } else {
-        event.preventDefault();
       }
     },
     [isHtmlPreview],

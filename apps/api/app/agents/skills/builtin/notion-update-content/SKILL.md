@@ -91,7 +91,7 @@ NOTION_INSERT_MARKDOWN(
 ```
 NOTION_ADD_MULTIPLE_PAGE_CONTENT(
   parent_block_id="<page_id>",
-  blocks=[
+  content_blocks=[
     {"content": "First paragraph", "block_property": "paragraph"},
     {"content": "## New Heading", "block_property": "heading_2"},
     {"content": "List item", "block_property": "bulleted_list_item"}

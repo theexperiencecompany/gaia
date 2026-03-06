@@ -135,7 +135,8 @@ def gmail_fetch_emails_before_hook(
 
     if full_email_mode and max_results > GMAIL_FULL_FETCH_HARD_LIMIT:
         raise ToolException(
-            "result will be too large to handle please call in chunks with max results 30"
+            f"Result set too large for full email mode. "
+            f"Call in chunks with max_results <= {GMAIL_FULL_FETCH_HARD_LIMIT}."
         )
 
     return params
