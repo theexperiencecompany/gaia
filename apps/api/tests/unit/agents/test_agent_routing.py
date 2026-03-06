@@ -7,13 +7,12 @@ and inspecting what happens when the compiled graph is invoked with states
 that have or don't have tool_calls on the last AIMessage.
 """
 
-from unittest.mock import AsyncMock, MagicMock
-
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from app.override.langgraph_bigtool.create_agent import create_agent
+from tests.helpers import BindableToolsFakeModel
 
 
 def _build_minimal_registry():
@@ -25,14 +24,9 @@ def _build_minimal_registry():
     return {"dummy_tool": dummy_tool}
 
 
-def _make_mock_llm(response: AIMessage):
-    """Create a mock LLM that always returns the given AIMessage."""
-    mock_llm = MagicMock()
-    mock_llm.with_config.return_value = mock_llm
-    mock_llm.bind_tools.return_value = mock_llm
-    mock_llm.ainvoke = AsyncMock(return_value=response)
-    mock_llm.invoke = MagicMock(return_value=response)
-    return mock_llm
+def _make_mock_llm(response: AIMessage) -> BindableToolsFakeModel:
+    """Create a fake LLM that always returns the given AIMessage."""
+    return BindableToolsFakeModel(responses=[response])
 
 
 def _extract_should_continue(builder):
@@ -242,8 +236,6 @@ class TestShouldContinueBehavior:
 
         Fails if should_continue treats empty tool_calls as if there were tool calls.
         """
-        from tests.helpers import BindableToolsFakeModel
-
         graph = self._compile_graph(
             BindableToolsFakeModel(
                 responses=[AIMessage(content="No tools needed.", tool_calls=[])]

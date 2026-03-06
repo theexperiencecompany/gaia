@@ -110,7 +110,7 @@
     "test": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "uv run --group backend --group dev pytest tests/unit tests/integration -v --tb=short --cov=app --cov-report=term-missing",
+        "command": "uv run --group backend --group dev pytest tests/unit tests/integration -v --tb=short",
         "cwd": "{projectRoot}"
       },
       "cache": true,
