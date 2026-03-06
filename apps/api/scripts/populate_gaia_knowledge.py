@@ -190,7 +190,7 @@ def prepare_knowledge_items(
 
 async def populate_knowledge(
     content_path: Optional[str] = None, clear_first: bool = False
-):
+) -> None:
     """
     Populate the GAIA knowledge base from content.md.
 
@@ -281,7 +281,7 @@ async def populate_knowledge(
     print(f"{'=' * 60}")
 
 
-async def _test_knowledge_search():
+async def _test_knowledge_search() -> None:
     """Test knowledge search with a sample query."""
     print(f"\n{'=' * 60}")
     print("🔍 Testing knowledge search...")
@@ -299,7 +299,7 @@ async def _test_knowledge_search():
         print(f"❌ No results found for '{query}'")
 
 
-def main():
+def main() -> None:
     """Main entry point."""
     parser = argparse.ArgumentParser(
         description="Populate GAIA knowledge base from content.md"

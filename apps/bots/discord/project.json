@@ -13,7 +13,7 @@
     "build": {
       "executor": "nx:run-commands",
       "options": {
-        "command": "pnpm tsc",
+        "command": "pnpm tsup",
         "cwd": "{projectRoot}"
       },
       "cache": true

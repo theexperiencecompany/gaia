@@ -1,6 +1,5 @@
 "use client";
 
-import { Button } from "@heroui/button";
 import { Menu01Icon } from "@icons";
 import * as VisuallyHidden from "@radix-ui/react-visually-hidden";
 import Link from "next/link";
@@ -27,7 +26,7 @@ import { useUser } from "@/features/auth/hooks/useUser";
 export default function MobileMenu() {
   const [sheetOpen, setSheetOpen] = useState(false);
   const user = useUser();
-  const isAuthenticated = user?.email; // Check if user has email to determine auth status
+  const isAuthenticated = user?.email;
   const router = useRouter();
 
   return (
@@ -37,176 +36,199 @@ export default function MobileMenu() {
           <Menu01Icon color="foreground" />
         </div>
       </SheetTrigger>
-      <SheetContent className="max-w-[250px] overflow-y-auto! border-none bg-zinc-900 text-foreground dark">
+      <SheetContent className="z-100 w-full overflow-y-auto! border-none bg-zinc-950/50 backdrop-blur-2xl text-foreground dark">
         <SheetHeader>
           <SheetTitle>
             <VisuallyHidden.Root>Menu</VisuallyHidden.Root>
           </SheetTitle>
-          <SheetDescription className="flex flex-col gap-2 pt-12">
+          <SheetDescription className="flex flex-col gap-1 pb-20! pt-3 px-6">
             {/* Main navigation links */}
-            {main.map((link) => (
-              <Button
-                key={link.href}
-                className="flex w-full justify-between"
-                endContent={link.icon}
-                color="default"
-                variant="flat"
-                as={link.external ? Link : undefined}
-                href={link.external ? link.href : undefined}
-                onPress={() => {
-                  if (!link.external) {
-                    router.push(link.href);
-                    setSheetOpen(false);
-                  }
-                }}
-              >
-                {link.label}
-              </Button>
-            ))}
+            {main.map((link) =>
+              link.external ? (
+                <a
+                  key={link.href}
+                  href={link.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                  onClick={() => setSheetOpen(false)}
+                >
+                  {link.label}
+                </a>
+              ) : (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className="py-1.5 text-zinc-200 transition-colors hover:text-white"
+                  onClick={() => setSheetOpen(false)}
+                >
+                  {link.label}
+                </Link>
+              ),
+            )}
 
             {/* Product Section */}
-            <div className="mt-6 flex flex-col gap-2">
-              <p className="mb-2 text-xs tracking-wide text-zinc-400 uppercase">
+            <div className="mt-6 flex flex-col gap-0.5">
+              <p className="mb-2 text-xs tracking-wide text-zinc-500 uppercase">
                 Product
               </p>
               {product.map((link) => {
-                const isCommented = link.commented;
-                return (
-                  <Button
+                const isComingSoon = link.commented;
+                if (isComingSoon) {
+                  return (
+                    <span
+                      key={link.href}
+                      className="cursor-not-allowed py-1.5 text-sm text-zinc-600 opacity-50 select-none"
+                    >
+                      {link.label}
+                    </span>
+                  );
+                }
+                return link.external ? (
+                  <a
                     key={link.href}
-                    className={`flex w-full justify-between ${isCommented ? "cursor-not-allowed opacity-50" : ""}`}
-                    endContent={link.icon}
-                    color="default"
-                    variant="flat"
-                    disabled={isCommented}
-                    as={!isCommented && link.external ? Link : undefined}
-                    href={!isCommented && link.external ? link.href : undefined}
-                    onPress={() => {
-                      if (!isCommented && !link.external) {
-                        router.push(link.href);
-                        setSheetOpen(false);
-                      }
-                    }}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                    onClick={() => setSheetOpen(false)}
                   >
-                    {isCommented ? `${link.label} (Coming Soon)` : link.label}
-                  </Button>
+                    {link.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                    onClick={() => setSheetOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
                 );
               })}
             </div>
 
             {/* Resources Section */}
-            <div className="mt-6 flex flex-col gap-2">
-              <p className="mb-2 text-xs tracking-wide text-zinc-400 uppercase">
+            <div className="mt-6 flex flex-col gap-0.5">
+              <p className="mb-2 text-xs tracking-wide text-zinc-500 uppercase">
                 Resources
               </p>
               {resources.map((link) => {
-                const isCommented = link.commented;
-                return (
-                  <Button
+                const isComingSoon = link.commented;
+                if (isComingSoon) {
+                  return (
+                    <span
+                      key={link.href}
+                      className="cursor-not-allowed py-1.5 text-sm text-zinc-600 opacity-50 select-none"
+                    >
+                      {link.label}
+                    </span>
+                  );
+                }
+                return link.external ? (
+                  <a
                     key={link.href}
-                    className={`flex w-full justify-between ${isCommented ? "cursor-not-allowed opacity-50" : ""}`}
-                    endContent={link.icon}
-                    color="default"
-                    variant="flat"
-                    disabled={isCommented}
-                    as={!isCommented && link.external ? Link : undefined}
-                    href={!isCommented && link.external ? link.href : undefined}
-                    onPress={() => {
-                      if (!isCommented && !link.external) {
-                        router.push(link.href);
-                        setSheetOpen(false);
-                      }
-                    }}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                    onClick={() => setSheetOpen(false)}
                   >
-                    {isCommented ? `${link.label} (Coming Soon)` : link.label}
-                  </Button>
+                    {link.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                    onClick={() => setSheetOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
                 );
               })}
             </div>
 
             {/* Company Section */}
-            <div className="mt-6 flex flex-col gap-2">
-              <p className="mb-2 text-xs tracking-wide text-zinc-400 uppercase">
+            <div className="mt-6 flex flex-col gap-0.5">
+              <p className="mb-2 text-xs tracking-wide text-zinc-500 uppercase">
                 Company
               </p>
-              {company.map((link) => (
-                <Button
-                  key={link.href}
-                  className="flex w-full justify-between"
-                  endContent={link.icon}
-                  color="default"
-                  variant="flat"
-                  as={link.external ? Link : undefined}
-                  href={link.external ? link.href : undefined}
-                  onPress={() => {
-                    if (!link.external) {
-                      router.push(link.href);
-                      setSheetOpen(false);
-                    }
-                  }}
-                >
-                  {link.label}
-                </Button>
-              ))}
+              {company.map((link) =>
+                link.external ? (
+                  <a
+                    key={link.href}
+                    href={link.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                    onClick={() => setSheetOpen(false)}
+                  >
+                    {link.label}
+                  </a>
+                ) : (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                    onClick={() => setSheetOpen(false)}
+                  >
+                    {link.label}
+                  </Link>
+                ),
+              )}
             </div>
 
             {/* Connect Section */}
-            <div className="mt-6 flex flex-col gap-2">
-              <p className="mb-2 text-xs tracking-wide text-zinc-400 uppercase">
+            <div className="mt-6 flex flex-col gap-0.5">
+              <p className="mb-2 text-xs tracking-wide text-zinc-500 uppercase">
                 Connect
               </p>
               {connect.map((link) => (
-                <Button
+                <a
                   key={link.href}
-                  className="flex w-full justify-between"
-                  endContent={link.icon}
-                  color="default"
-                  variant="flat"
-                  as={Link}
                   href={link.href}
                   target={link.external ? "_blank" : undefined}
                   rel={link.external ? "noopener noreferrer" : undefined}
+                  className="py-1.5 text-sm text-zinc-200 transition-colors hover:text-white"
+                  onClick={() => setSheetOpen(false)}
                 >
                   {link.label}
-                </Button>
+                </a>
               ))}
             </div>
 
-            {/* Authentication related links */}
-            {isAuthenticated
-              ? // Show auth links that require login
-                auth
-                  .filter((link) => link.requiresAuth)
-                  .map((link) => (
-                    <Button
-                      key={link.href}
-                      className="font-medium"
-                      color="primary"
-                      endContent={link.icon}
-                      size="md"
-                      onPress={() => {
-                        router.push(link.href);
-                        setSheetOpen(false);
-                      }}
-                    >
-                      {link.label}
-                    </Button>
-                  ))
-              : // Show auth links for guests only
-                auth
-                  .filter((link) => link.guestOnly)
-                  .map((link) => (
-                    <Button
-                      key={link.href}
-                      as={Link}
-                      className="p-0 px-4 font-semibold"
-                      color="primary"
-                      size="md"
-                      href={link.href}
-                    >
-                      {link.label}
-                    </Button>
-                  ))}
+            {/* Authentication links */}
+            <div className="mt-8 flex flex-col gap-2">
+              {isAuthenticated
+                ? auth
+                    .filter((link) => link.requiresAuth)
+                    .map((link) => (
+                      <button
+                        key={link.href}
+                        type="button"
+                        className="text-left text-sm font-semibold text-primary transition-colors hover:text-primary"
+                        onClick={() => {
+                          router.push(link.href);
+                          setSheetOpen(false);
+                        }}
+                      >
+                        {link.label}
+                      </button>
+                    ))
+                : auth
+                    .filter((link) => link.guestOnly)
+                    .map((link) => (
+                      <Link
+                        key={link.href}
+                        href={link.href}
+                        className="text-sm font-semibold text-primary transition-colors hover:text-primary"
+                        onClick={() => setSheetOpen(false)}
+                      >
+                        {link.label}
+                      </Link>
+                    ))}
+            </div>
           </SheetDescription>
         </SheetHeader>
       </SheetContent>

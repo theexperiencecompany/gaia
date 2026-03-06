@@ -66,11 +66,14 @@ export function consumePendingDeepLink(): string | null {
 async function waitForProductionServer(
   serverReady: () => boolean,
 ): Promise<void> {
-  const serverUrl = getServerUrl();
   const maxAttempts = 50; // 50 × 100 ms = 5 s
 
   for (let i = 0; i < maxAttempts; i++) {
     if (serverReady()) {
+      // Read the URL only after the server is ready so that
+      // serverPort reflects the actual bound port (which may differ
+      // from the default when the server picked an alternative port).
+      const serverUrl = getServerUrl();
       console.log("[Main] Server is ready, loading URL:", serverUrl);
       try {
         await mainWindow?.loadURL(`${serverUrl}/desktop-login`);
@@ -82,6 +85,7 @@ async function waitForProductionServer(
     await new Promise((resolve) => setTimeout(resolve, 100));
   }
 
+  const serverUrl = getServerUrl();
   console.log("[Main] Server wait timeout, attempting to load anyway");
   try {
     await mainWindow?.loadURL(`${serverUrl}/desktop-login`);

@@ -160,6 +160,21 @@ jobs:
         if: steps.affected.outputs.bots == 'true'
         run: npx nx release --group=bots --dockerVersionScheme=${{ steps.version.outputs.scheme }} --yes --verbose
 
+      # Fallback: nx release may skip publishing on first run (no prior version
+      # history). Ensure locally-built bot images are pushed to GHCR regardless.
+      - name: Ensure bot images are pushed to GHCR
+        if: steps.affected.outputs.bots == 'true'
+        run: |
+          for bot in discord slack telegram; do
+            img="ghcr.io/theexperiencecompany/gaia-bot-${bot}:latest"
+            if docker image inspect "$img" &>/dev/null; then
+              echo "Pushing $img..."
+              docker push "$img"
+            else
+              echo "⚠️  $img not found locally, skipping"
+            fi
+          done
+
       # Discord command sync is only meaningful for production bot deploys.
       - name: Register Discord slash commands
         if: steps.affected.outputs.bots == 'true' && github.ref == 'refs/heads/master'

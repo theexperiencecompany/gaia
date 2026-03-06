@@ -162,12 +162,12 @@ export default function WorkflowTriggerSection({
             }}
           >
             <Tab key="schedule" title="Schedule">
-              <ScrollShadow className="max-h-40">
+              <ScrollShadow className="max-h-40 min-h-10">
                 {renderScheduleTab()}
               </ScrollShadow>
             </Tab>
             <Tab key="trigger" title="Trigger">
-              <ScrollShadow className="max-h-40">
+              <ScrollShadow className="max-h-40 min-h-10">
                 {renderTriggerTab()}
               </ScrollShadow>
             </Tab>

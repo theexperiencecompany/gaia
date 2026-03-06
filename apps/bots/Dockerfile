@@ -12,7 +12,7 @@ RUN corepack enable && corepack prepare pnpm@10.17.1 --activate
 # Copy workspace config
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 
-# Copy shared lib and the target bot
+# Copy shared lib (bundled into output by tsup) and the target bot
 COPY libs/shared/ts ./libs/shared/ts
 COPY apps/bots/${BOT_NAME} ./apps/bots/${BOT_NAME}
 
@@ -20,26 +20,22 @@ COPY apps/bots/${BOT_NAME} ./apps/bots/${BOT_NAME}
 RUN --mount=type=cache,id=gaia-pnpm-bots,target=/root/.local/share/pnpm/store \
     pnpm install --frozen-lockfile
 
-# Build shared lib and bot in one layer
-RUN pnpm --filter @gaia/shared build && \
-    pnpm --filter @gaia/bot-${BOT_NAME} build
-
-# Deploy with production-only deps scoped to just this bot (eliminates workspace root deps)
-# --legacy is required by pnpm v10 for non-injected workspace packages
-RUN --mount=type=cache,id=gaia-pnpm-bots,target=/root/.local/share/pnpm/store \
-    pnpm --filter @gaia/bot-${BOT_NAME} deploy --prod --legacy /deploy
+# tsup bundles everything (including @gaia/shared and all npm deps) into a
+# single self-contained output — no node_modules needed at runtime.
+RUN pnpm --filter @gaia/bot-${BOT_NAME} build
 
 # ---- Production image ----
 FROM node:20-alpine AS runner
 ARG BOT_NAME
 WORKDIR /app
 
-# The deploy directory contains package.json, dist/, and a scoped node_modules
-COPY --from=builder /deploy ./
+# Only the bundled dist is needed — no node_modules required
+COPY --from=builder /app/apps/bots/${BOT_NAME}/dist ./dist
+COPY --from=builder /app/apps/bots/${BOT_NAME}/package.json ./
 
 ENV NODE_ENV=production \
     BOT_NAME=${BOT_NAME}
 
 USER node
 
-CMD node dist/index.js
+CMD ["node", "dist/index.js"]

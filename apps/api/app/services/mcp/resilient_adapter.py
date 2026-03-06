@@ -83,6 +83,33 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                 # Create a temporary connector with just this one tool
                 # This way if conversion fails, it only affects this tool
                 langchain_tool = await self._convert_single_tool(tool, connector)
+
+                # Attach _meta.ui info if present on the raw MCP tool.
+                # Support both modern nested metadata and legacy flat key.
+                raw_meta = getattr(tool, "meta", None)
+                if not isinstance(raw_meta, dict):
+                    raw_meta = getattr(tool, "_meta", None)
+
+                if isinstance(raw_meta, dict):
+                    ui_meta = raw_meta.get("ui")
+                    if not isinstance(ui_meta, dict):
+                        ui_meta = {}
+
+                    resource_uri = ui_meta.get("resourceUri") or raw_meta.get(
+                        "ui/resourceUri"
+                    )
+                    if isinstance(resource_uri, str) and resource_uri:
+                        if langchain_tool.metadata is None:
+                            langchain_tool.metadata = {}
+                        langchain_tool.metadata["mcp_ui"] = {
+                            "resource_uri": resource_uri,
+                            "csp": ui_meta.get("csp"),
+                            "permissions": ui_meta.get("permissions", []),
+                        }
+                        logger.debug(
+                            f"[{integration_id}] Attached mcp_ui metadata to tool: {tool.name}"
+                        )
+
                 successfully_converted.append(langchain_tool)
                 logger.debug(f"[{integration_id}] ✓ Converted tool: {tool.name}")
             except Exception as e:

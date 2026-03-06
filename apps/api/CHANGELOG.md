@@ -1,5 +1,34 @@
 # Changelog
 
+## [0.16.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.15.0...api-v0.16.0) (2026-02-27)
+
+
+### Features
+
+* enhance workflow creation and error handling; update dependencies and clean up code ([32e7c96](https://github.com/theexperiencecompany/gaia/commit/32e7c960737f2884463a3b4191acafbff158b405))
+* enhance workflow creation and update error handling, improve protocol registration, and add auth redirecting support ([ca47821](https://github.com/theexperiencecompany/gaia/commit/ca47821533ff0046af48ea776dc55776eca69e28))
+* enhance workflow prompts and descriptions for improved clarity and functionality ([9db8395](https://github.com/theexperiencecompany/gaia/commit/9db8395b5b442ec4b34135d3e3d9c50c048e0528))
+* Implement system workflows for Gmail and Google Calendar integrations ([#503](https://github.com/theexperiencecompany/gaia/issues/503)) ([ff90689](https://github.com/theexperiencecompany/gaia/commit/ff906890d7629ecdd3107b8563b76ba804a48ca4))
+* langchain middleware implementation, VFS and skills support ([#515](https://github.com/theexperiencecompany/gaia/issues/515)) ([65d1fde](https://github.com/theexperiencecompany/gaia/commit/65d1fde5bdc988bea0ce617a5994483b076262b6))
+* optimize Docker images, prune unused API deps, fix landing timezone ([1fc1a46](https://github.com/theexperiencecompany/gaia/commit/1fc1a464e691a7db85937db64b7ebf1b2fdd1c21))
+* optimize Docker images, prune unused API deps, fix landing timezone ([#524](https://github.com/theexperiencecompany/gaia/issues/524)) ([5acd831](https://github.com/theexperiencecompany/gaia/commit/5acd8313e1067a22da66d5bb90dcf2ff545ae9b7))
+* remove unused Google OAuth settings and related functions from the codebase ([bc74bac](https://github.com/theexperiencecompany/gaia/commit/bc74bac018b4d01f9325ae8ba8c22a1555d1a63c))
+* Revamp desktop application startup with deep linking, splash screen, auto-updater, and modular window management. ([4a5687c](https://github.com/theexperiencecompany/gaia/commit/4a5687c5855e0a6dd5a9281b1bc98fcdef8850a9))
+* Revamp desktop application with deep linking, splash screen, and modular window management ([#520](https://github.com/theexperiencecompany/gaia/issues/520)) ([78882df](https://github.com/theexperiencecompany/gaia/commit/78882df035643bea672b14eefc0113cfcc7f1df3))
+* **workflows:** split display description and execution prompt ([#504](https://github.com/theexperiencecompany/gaia/issues/504)) ([adf2494](https://github.com/theexperiencecompany/gaia/commit/adf2494a19548ff3cb0a13a1ce250a69ef13e5ad))
+* **workflows:** split display description and execution prompt ([#504](https://github.com/theexperiencecompany/gaia/issues/504)) ([#516](https://github.com/theexperiencecompany/gaia/issues/516)) ([8520838](https://github.com/theexperiencecompany/gaia/commit/85208383971d7ea35ff3fe11026cef34ca6b06b1))
+
+
+### Bug Fixes
+
+* Add Google OAuth client ID and secret to ProductionSettings ([0c5707f](https://github.com/theexperiencecompany/gaia/commit/0c5707f8d65c8a0de871a0b1591daf8ae14cd792))
+* Adjust ownership and permissions in Dockerfiles for better user access ([99637d6](https://github.com/theexperiencecompany/gaia/commit/99637d68c58cff970b7e7f3fbd9c1f38712ea109))
+* **api:** harden explore workflow payload for description/prompt split ([9a6e678](https://github.com/theexperiencecompany/gaia/commit/9a6e678998b6a9f358c864169f1e3e6a29c28692))
+* enhance desktop server shutdown reliability, update splash screen appearance, and refine login UI styling. ([6934f06](https://github.com/theexperiencecompany/gaia/commit/6934f06586269a5ab4b64101977fd79513d876f1))
+* Update deployment scripts and Docker configurations for improved service verification and environment setup ([f5945da](https://github.com/theexperiencecompany/gaia/commit/f5945da2d5e335e3f281c5dcff6c0efc8a2bc837))
+* Update Dockerfiles to set ownership for libs directory ([#526](https://github.com/theexperiencecompany/gaia/issues/526)) ([a500acc](https://github.com/theexperiencecompany/gaia/commit/a500acc60c642ad3133aeb16d44a37f219effa6e))
+* Update Dockerfiles to set ownership for libs directory to ensure setuptools can create gaia_shared.egg-info ([bdbaba5](https://github.com/theexperiencecompany/gaia/commit/bdbaba58ad89ea7ca2a953c942af43152f719198))
+
 ## [0.15.0](https://github.com/theexperiencecompany/gaia/compare/api-v0.14.0...api-v0.15.0) (2026-02-23)
 
 

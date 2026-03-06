@@ -175,6 +175,8 @@ class ProductionSettings(CommonSettings):
     # Authentication & OAuth
     # ----------------------------------------------
     GOOGLE_TOKEN_URL: str = "https://oauth2.googleapis.com/token"
+    GOOGLE_CLIENT_ID: str
+    GOOGLE_CLIENT_SECRET: str
 
     # ----------------------------------------------
     # External API Integration Keys

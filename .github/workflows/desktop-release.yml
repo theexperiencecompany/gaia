@@ -87,10 +87,13 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       # Attach all generated installer/update files to the existing release entry.
+      # make_latest ensures electron-updater (which reads /releases/latest) can
+      # find the desktop release and its latest-*.yml update metadata.
       - name: Upload to Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.release.tag_name }}
+          make_latest: "true"
           files: |
             apps/desktop/release/**/*.dmg
             apps/desktop/release/**/*.zip
