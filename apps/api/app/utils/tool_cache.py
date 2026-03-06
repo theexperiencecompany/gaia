@@ -29,7 +29,7 @@ def cache_gather_context(ttl: int = _DEFAULT_TTL) -> Callable[[F], F]:
             execute_request: Any,
             auth_credentials: Dict[str, Any],
         ) -> Dict[str, Any]:
-            cache_key = _build_cache_key(func.__name__, auth_credentials)
+            cache_key = _build_cache_key(func.__qualname__, auth_credentials)
             redis_client = _get_redis_client()
 
             if redis_client is not None and cache_key:

@@ -142,6 +142,22 @@ async def format_tool_call_entry(
 
     timestamp = datetime.now(timezone.utc).isoformat()
 
+    # Look up mcp_ui metadata from the tool registry
+    mcp_ui: Optional[dict] = None
+    mcp_server_url: Optional[str] = None
+    try:
+        registry_tools = tool_registry.get_all_tools_for_search()
+        for registry_tool in registry_tools:
+            if registry_tool.name == tool_name_raw:
+                base_tool = registry_tool.tool
+                tool_meta = getattr(base_tool, "metadata", None)
+                if tool_meta and isinstance(tool_meta, dict):
+                    mcp_ui = tool_meta.get("mcp_ui")
+                    mcp_server_url = tool_meta.get("mcp_server_url")
+                break
+    except Exception:  # nosec B110
+        pass
+
     return {
         "tool_name": "tool_calls_data",
         "tool_category": tool_category or "",
@@ -156,6 +172,8 @@ async def format_tool_call_entry(
             "integration_name": integration_name,
         },
         "timestamp": timestamp,
+        "mcp_ui": mcp_ui,
+        "mcp_server_url": mcp_server_url,
     }
 
 

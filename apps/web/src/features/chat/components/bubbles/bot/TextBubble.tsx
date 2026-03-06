@@ -18,6 +18,7 @@ import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
+  type MCPAppData,
   type RateLimitData,
   type ToolCallEntry,
   type ToolDataEntry,
@@ -32,6 +33,7 @@ import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
+import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
@@ -468,6 +470,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
 
+  mcp_app: (data, index) => (
+    <MCPAppRenderer
+      key={`tool-mcp-app-${(data as MCPAppData).tool_call_id || index}`}
+      data={data as MCPAppData}
+    />
+  ),
+
   rate_limit_data: (data, index) => {
     // When grouped, data is RateLimitData[] — deduplicate by feature
     const items = (Array.isArray(data) ? data : [data]) as RateLimitData[];
@@ -571,8 +580,21 @@ export default function TextBubble({
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (!typedData) return null;
 
+        const toolCallId =
+          typeof typedData === "object" &&
+          typedData !== null &&
+          "tool_call_id" in typedData
+            ? String(
+                (typedData as unknown as { tool_call_id?: string })
+                  .tool_call_id ?? "",
+              )
+            : "";
+        const toolKey = toolCallId
+          ? `${baseId}-tool-${toolName}-${toolCallId}`
+          : `${baseId}-tool-${toolName}-${index}`;
+
         return (
-          <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
+          <React.Fragment key={toolKey}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );

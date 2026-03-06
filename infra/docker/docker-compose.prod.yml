@@ -8,10 +8,6 @@ services:
     working_dir: /app/apps/api
     command:
       [
-        "uv",
-        "run",
-        "--group",
-        "backend",
         "python",
         "-m",
         "uvicorn",
@@ -40,10 +36,6 @@ services:
     ports:
       - "8000:80"
     restart: on-failure
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /app/apps/api/logs
     tty: true
     stdin_open: true
     depends_on:
@@ -91,7 +83,7 @@ services:
 
   # Postgres Service
   postgres:
-    image: postgres:17.9-alpine
+    image: postgres:18-alpine
     container_name: postgres
     environment:
       POSTGRES_USER: postgres
@@ -112,7 +104,7 @@ services:
 
   # Redis Service
   redis:
-    image: redis:7.4.8-alpine
+    image: redis:8-alpine
     container_name: redis
     ports:
       - "6379:6379"
@@ -157,19 +149,12 @@ services:
       - PYTHONPATH=/app/apps/api
     command:
       [
-        "uv",
-        "run",
-        "--group",
-        "backend",
         "python",
         "-m",
         "arq",
         "app.worker.WorkerSettings",
       ]
     restart: always
-    read_only: true
-    tmpfs:
-      - /tmp
     depends_on:
       redis:
         condition: service_healthy

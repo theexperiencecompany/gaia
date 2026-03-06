@@ -201,8 +201,9 @@ async def deep_research(
             "error": None,
         }
 
-        # Cache for 1 hour — searches and pages are individually cached longer
-        await set_cache(cache_key, result, ttl=ONE_HOUR_TTL)
+        # Only cache when we have content — avoid masking transient fetch failures
+        if valid_sources:
+            await set_cache(cache_key, result, ttl=ONE_HOUR_TTL)
 
         writer({"research_data": result})
 

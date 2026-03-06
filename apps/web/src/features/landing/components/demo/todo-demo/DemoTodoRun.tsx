@@ -1,6 +1,6 @@
 "use client";
 
-import { SparklesIcon } from "@icons";
+import { CheckmarkCircle02Icon, SparklesIcon } from "@icons";
 import { AnimatePresence, m } from "motion/react";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import {
@@ -97,9 +97,9 @@ export default function DemoTodoRun({ phase }: DemoTodoRunProps) {
                     damping: 25,
                     delay: index * 0.28 + 0.1,
                   }}
-                  className="ml-auto text-xs text-success"
+                  className="ml-auto text-success"
                 >
-                  ✓
+                  <CheckmarkCircle02Icon width={14} height={14} />
                 </m.span>
               )}
             </m.div>

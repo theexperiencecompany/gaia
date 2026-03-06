@@ -39,6 +39,21 @@ import type {
   TwitterUserData,
 } from "@/types/features/twitterTypes";
 
+export interface MCPAppData {
+  tool_call_id: string;
+  tool_name: string;
+  server_url: string;
+  resource_uri: string;
+  html_content: string;
+  csp?: {
+    connectDomains?: string[];
+    resourceDomains?: string[];
+  };
+  permissions?: string[];
+  tool_result?: unknown;
+  tool_arguments?: Record<string, unknown>;
+}
+
 // Tool Registry
 // Single source of truth for tool names and their data payload types.
 // When you add a tool here, all downstream types (ToolName, ToolDataMap),
@@ -117,6 +132,7 @@ export const TOOL_REGISTRY = {
   twitter_user_data: null as unknown as TwitterUserData[],
   workflow_draft: null as unknown as WorkflowDraftData,
   workflow_created: null as unknown as WorkflowCreatedData,
+  mcp_app: null as unknown as MCPAppData,
   todo_progress: null as unknown as TodoProgressData,
   rate_limit_data: null as unknown as RateLimitData,
   artifact_data: null as unknown as ArtifactData,

@@ -12,7 +12,15 @@ Usage:
 """
 
 # Re-export from shared library
-from shared.py.logging import get_contextual_logger, configure_loguru, logger
+from shared.py.logging import (
+    configure_file_logging,
+    configure_loguru,
+    get_contextual_logger,
+    logger,
+)
+
+# Enable file logging for the API
+configure_file_logging("./logs")
 
 # Pre-configured contextual loggers for different application domains
 app_logger = get_contextual_logger("main")
@@ -48,6 +56,7 @@ token_repository_logger = get_contextual_logger("token_repository")
 __all__ = [
     "logger",
     "configure_loguru",
+    "configure_file_logging",
     "get_contextual_logger",
     "app_logger",
     "worker_logger",

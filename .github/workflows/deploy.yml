@@ -120,24 +120,13 @@ jobs:
               compose_cmd up -d --no-recreate --remove-orphans 2>/dev/null || true
 
               docker image prune -f
-            "
+              docker container prune -f
+              docker network prune -f
 
-      # Validate that every expected compose service is running and healthy.
-      # Core services are mandatory; bot services are only checked when their
-      # image exists locally (images are only pushed when bot code changes).
-      - name: Verify deployment
-        env:
-          GCP_ZONE: ${{ secrets.GCP_ZONE }}
-        run: |
-          output=$(gcloud compute ssh ubuntu@gaia-backend \
-            --zone=$GCP_ZONE \
-            --command="
-              set -euo pipefail
-              cd /home/aryan/gaia
-              COMPOSE_FILE='${{ env.COMPOSE_FILE }}'
-              COMPOSE_PROFILE='${{ env.COMPOSE_PROFILE }}'
-              compose_cmd() { docker compose -f \"\$COMPOSE_FILE\" --profile \"\$COMPOSE_PROFILE\" \"\$@\"; }
-              core_cmd()    { docker compose -f \"\$COMPOSE_FILE\" \"\$@\"; }
+              # --- Verify deployment ---
+              echo ''
+              echo 'Waiting 30s for services to stabilize...'
+              sleep 30
 
               running=\$(compose_cmd ps --status running --services)
 
@@ -146,6 +135,7 @@ jobs:
                 cid=\$(compose_cmd ps -q \"\$svc\")
                 if [ -z \"\$cid\" ]; then
                   echo \"FAIL: missing container id for: \$svc\"
+                  compose_cmd logs --tail=20 \"\$svc\" 2>&1 || true
                   return 1
                 fi
                 status=\$(docker inspect -f '{{.State.Status}}' \"\$cid\")
@@ -153,29 +143,29 @@ jobs:
                 echo \"  \$svc => status=\$status health=\$health\"
                 if [ \"\$status\" != \"running\" ]; then
                   echo \"FAIL: not running: \$svc\"
+                  compose_cmd logs --tail=20 \"\$svc\" 2>&1 || true
                   return 1
                 fi
                 if [ \"\$health\" != \"none\" ] && [ \"\$health\" != \"healthy\" ]; then
                   echo \"FAIL: unhealthy: \$svc (\$health)\"
+                  compose_cmd logs --tail=20 \"\$svc\" 2>&1 || true
                   return 1
                 fi
               }
 
-              # --- Core services (mandatory) ---
               echo 'Core services:'
               core_expected=\$(core_cmd config --services)
               for svc in \$core_expected; do
                 if ! echo \"\$running\" | grep -qx \"\$svc\"; then
                   echo \"FAIL: core service not running: \$svc\"
+                  compose_cmd logs --tail=20 \"\$svc\" 2>&1 || true
                   exit 1
                 fi
                 verify_svc \"\$svc\" || exit 1
               done
 
-              # --- Bot services (advisory — never fail the deploy) ---
               echo ''
               echo 'Bot services:'
-              BOT_SERVICES='discord-bot slack-bot telegram-bot'
               for bot in \$BOT_SERVICES; do
                 img=\"ghcr.io/theexperiencecompany/gaia-bot-\${bot%-bot}:latest\"
                 if ! docker image inspect \"\$img\" &>/dev/null; then
@@ -188,32 +178,9 @@ jobs:
                 fi
                 verify_svc \"\$bot\" || echo \"  ⚠️  \$bot => unhealthy\"
               done
-            ")
 
-          echo "$output"
-
-          echo "✅ All expected services are running and healthy"
-
-      # Reclaim disk space from dangling artifacts on the VM.
-      - name: Docker Cleanup
-        env:
-          GCP_ZONE: ${{ secrets.GCP_ZONE }}
-        run: |
-          gcloud compute ssh ubuntu@gaia-backend \
-            --zone=$GCP_ZONE \
-            --command="
-              echo 'Starting Docker cleanup...'
-
-              # Remove dangling images
-              docker image prune -f
-
-              # Remove stopped containers
-              docker container prune -f
-
-              # Remove unused networks
-              docker network prune -f
-
-              echo '✅ Docker cleanup completed.'
+              echo ''
+              echo '✅ All expected services are running and healthy'
             "
 
       # Always emit deploy status to Discord for ops visibility.
