@@ -14,9 +14,10 @@ apps that need it (e.g. the API). Console logging is always enabled on import.
 
 Environment variables:
 - LOG_LEVEL: Minimum log level (default: INFO)
+- LOG_FORMAT: Output format — "console" (default) or "json" for production/Loki
 - LOG_DIAGNOSE: Show error diagnosis (default: false)
 - LOG_BACKTRACE: Show stack traces (default: true)
-- LOG_COLORIZE: Colored console output (default: true)
+- LOG_COLORIZE: Colored console output (default: true, ignored in json mode)
 
 Usage:
     from shared.py.logging import get_contextual_logger
@@ -24,6 +25,7 @@ Usage:
     logger.info("Hello world")
 """
 
+import json as _json
 import os
 import sys
 import logging
@@ -36,6 +38,10 @@ _FILE_LOGGING_CONFIGURED = False
 
 LOG_CONFIG = {
     "level": os.getenv("LOG_LEVEL", "INFO"),
+    # Set LOG_FORMAT=json in production Docker to emit newline-delimited JSON to
+    # stdout. Promtail picks this up and ships it to Loki with zero parsing issues.
+    # Default is "console" which keeps the colourised format for local development.
+    "format_mode": os.getenv("LOG_FORMAT", "console"),
     "diagnose": os.getenv("LOG_DIAGNOSE", "false").lower() == "true",
     "backtrace": os.getenv("LOG_BACKTRACE", "true").lower() == "true",
     "colorize": os.getenv("LOG_COLORIZE", "true").lower() == "true",
@@ -59,11 +65,53 @@ LOG_CONFIG = {
 }
 
 
+def _format_json_record(record: dict) -> str:
+    """Serialize a loguru record to a flat JSON line for production log shipping.
+
+    Produces one JSON object per line (NDJSON). Fields from `.bind()` calls are
+    merged into the top-level object so that LogQL `| json` can filter on them
+    directly without nested path expressions.
+
+    Example output:
+        {"time": "2024-01-01T12:00:00+00:00", "level": "INFO", "logger": "REQUEST",
+         "message": "http_request", "method": "GET", "path": "/api/v1/chat",
+         "status_code": 200, "duration_ms": 234.56, "client_ip": "1.2.3.4"}
+    """
+    entry: dict[str, object] = {
+        "time": record["time"].isoformat(),
+        "level": record["level"].name,
+        "logger": record["extra"].get("logger_name", "app"),
+        "message": record["message"],
+        "module": record["module"],
+        "line": record["line"],
+    }
+
+    # Merge all extra fields (skip internal loguru metadata key)
+    for key, value in record["extra"].items():
+        if key != "logger_name":
+            entry[key] = value
+
+    # Include exception type/value when present (not the full traceback — that
+    # goes in `message` via loguru's normal exception formatting)
+    if record["exception"] is not None:
+        exc = record["exception"]
+        entry["exception"] = {
+            "type": exc.type.__name__ if exc.type else None,
+            "value": str(exc.value) if exc.value else None,
+        }
+
+    return _json.dumps(entry, default=str) + "\n"
+
+
 def configure_loguru():
     """
     Configure console logging with standard library interception.
 
     Safe to call multiple times — only configures once.
+
+    When LOG_FORMAT=json, emits newline-delimited JSON to stdout (no ANSI codes)
+    suitable for Promtail/Loki ingestion. Otherwise, uses the colourised console
+    format suited for local development.
 
     Returns:
         Configured logger instance
@@ -75,16 +123,30 @@ def configure_loguru():
 
     logger.remove()
 
-    logger.add(
-        sys.stderr,
-        format=LOG_CONFIG["format"]["console"],
-        level=LOG_CONFIG["level"],
-        colorize=LOG_CONFIG["colorize"],
-        backtrace=LOG_CONFIG["backtrace"],
-        diagnose=LOG_CONFIG["diagnose"],
-        enqueue=True,
-        catch=True,
-    )
+    if LOG_CONFIG["format_mode"] == "json":
+        # Production: one JSON object per line → stdout → Promtail → Loki
+        logger.add(
+            sys.stdout,
+            format=_format_json_record,
+            level=LOG_CONFIG["level"],
+            colorize=False,
+            backtrace=False,
+            diagnose=False,
+            enqueue=True,
+            catch=True,
+        )
+    else:
+        # Development: colourised human-readable format → stderr
+        logger.add(
+            sys.stderr,
+            format=LOG_CONFIG["format"]["console"],
+            level=LOG_CONFIG["level"],
+            colorize=LOG_CONFIG["colorize"],
+            backtrace=LOG_CONFIG["backtrace"],
+            diagnose=LOG_CONFIG["diagnose"],
+            enqueue=True,
+            catch=True,
+        )
 
     # Custom levels
     logger.level("PERFORMANCE", no=5, color="<magenta>", icon="⚡")

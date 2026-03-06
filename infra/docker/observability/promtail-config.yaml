@@ -1,0 +1,47 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/promtail-positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      # Strip the leading slash from container name (e.g. /gaia-backend -> gaia-backend)
+      - source_labels: ["__meta_docker_container_name"]
+        regex: "/(.*)"
+        target_label: "container"
+      # Use the compose service name as the primary service label
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        target_label: "service"
+      # Track which compose project the container belongs to
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_project"]
+        target_label: "compose_project"
+      # stdout vs stderr
+      - source_labels: ["__meta_docker_container_log_stream"]
+        target_label: "stream"
+      # Drop observability infrastructure and mongo — low signal, high noise
+      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
+        regex: "grafana|loki|promtail|mongo$|mongo_express"
+        action: drop
+    pipeline_stages:
+      # Parse JSON log lines emitted by gaia-backend and arq_worker (LOG_FORMAT=json).
+      # Non-JSON lines (postgres, redis, rabbitmq) are passed through untouched.
+      - json:
+          expressions:
+            level: level
+            logger_name: logger
+      # Promote level and logger as indexed Loki labels for fast label-based filtering.
+      # Keep the label cardinality low — query on high-cardinality fields (user_id,
+      # request_id, path) via LogQL `| json` parser inside Grafana, not as labels.
+      - labels:
+          level:
+          logger_name:

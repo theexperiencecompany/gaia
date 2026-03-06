@@ -26,11 +26,13 @@ services:
       ]
     environment:
       PYTHONUNBUFFERED: 1
-      FORCE_COLOR: 1
+      FORCE_COLOR: 0
       WORKER_TYPE: main_app
       PYTHONDONTWRITEBYTECODE: 1
       PYTHONPATH: /app/apps/api
       PYTHONIOENCODING: utf-8
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
     env_file:
       - ../../apps/api/.env
     ports:
@@ -147,6 +149,8 @@ services:
     environment:
       - WORKER_TYPE=arq_worker
       - PYTHONPATH=/app/apps/api
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
     command:
       [
         "python",
@@ -237,12 +241,69 @@ services:
     networks:
       - gaia_network
 
+  # ---------------------------------------------------------------------------
+  # Observability stack — Loki (log store) + Promtail (shipper) + Grafana (UI)
+  # Access Grafana at http://<server-ip>:3000  (admin / see GRAFANA_ADMIN_PASSWORD)
+  # ---------------------------------------------------------------------------
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: loki
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    container_name: promtail
+    volumes:
+      - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+    command: -config.file=/etc/promtail/config.yaml
+    restart: unless-stopped
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana
+    ports:
+      - "${GRAFANA_HOST_PORT:-4000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      # Set GRAFANA_ADMIN_PASSWORD in your .env file — do not leave as default in production
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+    restart: unless-stopped
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
 volumes:
   chroma_data:
   pgdata:
   redis_data:
   rabbitmq_data:
   voice_agent_models:
+  loki_data:
+  grafana_data:
 
 networks:
   gaia_network:
