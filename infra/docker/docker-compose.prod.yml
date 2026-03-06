@@ -242,6 +242,47 @@ services:
       - gaia_network
 
   # ---------------------------------------------------------------------------
+  # Metrics exporters
+  # ---------------------------------------------------------------------------
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: redis_exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # ---------------------------------------------------------------------------
   # Observability stack — Loki (log store) + Promtail (shipper) + Grafana (UI)
   # Access Grafana at http://<server-ip>:3000  (admin / see GRAFANA_ADMIN_PASSWORD)
   # ---------------------------------------------------------------------------
@@ -268,6 +309,8 @@ services:
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
+      # In prod the API always runs in Docker, so this mount is a no-op safety fallback
+      - ../../apps/api/logs:/var/log/gaia-api:ro
     command: -config.file=/etc/promtail/config.yaml
     restart: unless-stopped
     depends_on:
@@ -289,6 +332,8 @@ services:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Set GRAFANA_ROOT_URL if Grafana is behind a reverse proxy (e.g. https://grafana.example.com)
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
     restart: unless-stopped
     depends_on:
       loki:
@@ -304,6 +349,7 @@ volumes:
   voice_agent_models:
   loki_data:
   grafana_data:
+  prometheus_data:
 
 networks:
   gaia_network:

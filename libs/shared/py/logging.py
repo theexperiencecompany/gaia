@@ -65,12 +65,16 @@ LOG_CONFIG = {
 }
 
 
-def _format_json_record(record: dict) -> str:
-    """Serialize a loguru record to a flat JSON line for production log shipping.
+def _build_json_entry(record: dict) -> str:
+    """Serialize a loguru record to a flat NDJSON line.
 
-    Produces one JSON object per line (NDJSON). Fields from `.bind()` calls are
-    merged into the top-level object so that LogQL `| json` can filter on them
-    directly without nested path expressions.
+    Produces one JSON object per line. Fields from `.bind()` calls are merged
+    into the top-level object so that LogQL `| json` can filter on them directly.
+
+    NOTE: must NOT be used as loguru's `format=` parameter — loguru treats
+    callable formats as template generators and calls str.format_map() on the
+    returned string, which breaks on JSON's curly braces. Use as a callable
+    sink instead (see _json_stdout_sink).
 
     Example output:
         {"time": "2024-01-01T12:00:00+00:00", "level": "INFO", "logger": "REQUEST",
@@ -86,13 +90,10 @@ def _format_json_record(record: dict) -> str:
         "line": record["line"],
     }
 
-    # Merge all extra fields (skip internal loguru metadata key)
     for key, value in record["extra"].items():
         if key != "logger_name":
             entry[key] = value
 
-    # Include exception type/value when present (not the full traceback — that
-    # goes in `message` via loguru's normal exception formatting)
     if record["exception"] is not None:
         exc = record["exception"]
         entry["exception"] = {
@@ -101,6 +102,42 @@ def _format_json_record(record: dict) -> str:
         }
 
     return _json.dumps(entry, default=str) + "\n"
+
+
+def _json_stdout_sink(message: object) -> None:
+    """Callable sink that writes flat JSON to stdout.
+
+    Using a callable sink (not format=callable) bypasses loguru's str.format_map()
+    post-processing, which would otherwise choke on the curly braces in JSON output.
+    """
+    record = message.record  # type: ignore[union-attr]
+    sys.stdout.write(_build_json_entry(record))
+    sys.stdout.flush()
+
+
+def _json_file_sink_factory(log_dir: Path) -> callable:
+    """Create a callable sink that writes flat NDJSON to daily rotating files.
+
+    Produces the same flat JSON format as _json_stdout_sink so that Promtail
+    and Grafana dashboards work identically for local dev and Docker.
+    """
+    _handles: dict[str, object] = {}
+
+    def _sink(message: object) -> None:
+        record = message.record  # type: ignore[union-attr]
+        date_str = record["time"].strftime("%Y-%m-%d")
+        resolved = log_dir / f"structured-{date_str}.json"
+        key = str(resolved)
+
+        fh = _handles.get(key)
+        if fh is None or fh.closed:
+            fh = open(resolved, "a", encoding="utf-8")  # noqa: SIM115
+            _handles[key] = fh
+
+        fh.write(_build_json_entry(record))
+        fh.flush()
+
+    return _sink
 
 
 def configure_loguru():
@@ -124,12 +161,12 @@ def configure_loguru():
     logger.remove()
 
     if LOG_CONFIG["format_mode"] == "json":
-        # Production: one JSON object per line → stdout → Promtail → Loki
+        # Production: one JSON object per line → stdout → Promtail → Loki.
+        # Uses a callable sink (not format=callable) to avoid loguru calling
+        # str.format_map() on the JSON output, which breaks on curly braces.
         logger.add(
-            sys.stdout,
-            format=_format_json_record,
+            _json_stdout_sink,
             level=LOG_CONFIG["level"],
-            colorize=False,
             backtrace=False,
             diagnose=False,
             enqueue=True,
@@ -269,16 +306,11 @@ def configure_file_logging(log_dir: str | Path = "./logs") -> None:
     )
 
     logger.add(
-        logs_dir / "structured-{time:YYYY-MM-DD}.json",
-        format=LOG_CONFIG["format"]["json"],
+        _json_file_sink_factory(logs_dir),
         level="INFO",
-        rotation="50 MB",
-        retention="60 days",
-        compression="zip",
-        serialize=True,
         backtrace=False,
         diagnose=False,
-        enqueue=False,
+        enqueue=True,
         catch=True,
     )
 
