@@ -199,8 +199,9 @@ async def client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None]:
     """Async HTTP client bound to the test app."""
     transport = ASGITransport(app=test_app)
     async with AsyncClient(
-        transport=transport, base_url="http://test"
-    ) as ac:  # NOSONAR
+        transport=transport,
+        base_url="http://test",  # NOSONAR
+    ) as ac:
         yield ac
 
 
@@ -213,8 +214,9 @@ async def unauthed_client(test_app: FastAPI) -> AsyncGenerator[AsyncClient, None
     try:
         transport = ASGITransport(app=test_app)
         async with AsyncClient(
-            transport=transport, base_url="http://test"
-        ) as ac:  # NOSONAR
+            transport=transport,
+            base_url="http://test",  # NOSONAR
+        ) as ac:
             yield ac
     finally:
         if original is not None:
