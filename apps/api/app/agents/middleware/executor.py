@@ -11,9 +11,11 @@ It handles executing middleware hooks at appropriate points:
 - wrap_tool_call: Around each tool execution
 """
 
+from __future__ import annotations
+
 import asyncio
 import inspect
-from typing import Any, Awaitable, Callable, Optional
+from typing import TYPE_CHECKING, Any, Awaitable, Callable, Optional
 
 from app.agents.middleware.runtime_adapter import (
     BigtoolRuntime,
@@ -23,8 +25,10 @@ from app.agents.middleware.runtime_adapter import (
     to_agent_state,
 )
 from app.config.loggers import app_logger as logger
-from app.override.langgraph_bigtool.utils import State
 from langchain.agents.middleware import AgentMiddleware
+
+if TYPE_CHECKING:
+    from app.override.langgraph_bigtool.utils import State
 from langchain.agents.middleware.types import (
     ModelRequest,
     ModelResponse,
@@ -142,7 +146,9 @@ class MiddlewareExecutor:
             return state
 
         runtime = self._create_runtime(config, store)
-        current_state: dict[str, Any] = dict(state)
+        current_state: dict[str, Any] = (
+            state.model_dump() if hasattr(state, "model_dump") else dict(state)
+        )
 
         for mw in self.middleware:
             try:
@@ -165,7 +171,7 @@ class MiddlewareExecutor:
                     f"Middleware {mw.__class__.__name__}.before_model failed: {e}"
                 )
 
-        return State(**current_state)
+        return current_state  # type: ignore[return-value]
 
     async def execute_after_model(
         self,
@@ -191,7 +197,9 @@ class MiddlewareExecutor:
             return state
 
         runtime = self._create_runtime(config, store)
-        current_state: dict[str, Any] = dict(state)
+        current_state: dict[str, Any] = (
+            state.model_dump() if hasattr(state, "model_dump") else dict(state)
+        )
 
         for mw in self.middleware:
             try:
@@ -214,7 +222,7 @@ class MiddlewareExecutor:
                     f"Middleware {mw.__class__.__name__}.after_model failed: {e}"
                 )
 
-        return State(**current_state)
+        return current_state  # type: ignore[return-value]
 
     async def wrap_model_invocation(
         self,

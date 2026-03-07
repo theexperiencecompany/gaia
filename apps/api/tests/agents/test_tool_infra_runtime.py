@@ -555,10 +555,6 @@ async def test_retrieval_query_mode_includes_subagents_when_enabled_and_filters_
                 ]
             ),
         ),
-        patch(
-            "app.agents.tools.core.retrieval._log_store_diagnostics",
-            new=AsyncMock(return_value=None),
-        ),
     ):
         result = await retrieve_tools(
             store=store,
