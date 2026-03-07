@@ -84,7 +84,7 @@ class TestChatStreamEndpoint:
     )
     @patch(
         "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: (coro.close() or _make_mock_task()),
+        side_effect=lambda coro: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -128,7 +128,7 @@ class TestChatStreamEndpoint:
     )
     @patch(
         "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: (coro.close() or _make_mock_task()),
+        side_effect=lambda coro: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -174,7 +174,7 @@ class TestChatStreamEndpoint:
     )
     @patch(
         "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: (coro.close() or _make_mock_task()),
+        side_effect=lambda coro: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -220,7 +220,7 @@ class TestChatStreamEndpoint:
     )
     @patch(
         "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: (coro.close() or _make_mock_task()),
+        side_effect=lambda coro: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -265,7 +265,7 @@ class TestChatStreamEndpoint:
     )
     @patch(
         "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: (coro.close() or _make_mock_task()),
+        side_effect=lambda coro: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -310,7 +310,7 @@ class TestChatStreamEndpoint:
     )
     @patch(
         "app.api.v1.endpoints.chat.asyncio.create_task",
-        side_effect=lambda coro: (coro.close() or _make_mock_task()),
+        side_effect=lambda coro: coro.close() or _make_mock_task(),
     )
     @patch(
         "app.api.v1.endpoints.chat.redis_cache",
@@ -364,7 +364,7 @@ class TestChatStreamEndpoint:
 
         with patch(
             "app.api.v1.endpoints.chat.asyncio.create_task",
-            side_effect=lambda coro: (coro.close() or _make_mock_task()),
+            side_effect=lambda coro: coro.close() or _make_mock_task(),
         ):
             response = await test_client.post(
                 "/api/v1/chat-stream",

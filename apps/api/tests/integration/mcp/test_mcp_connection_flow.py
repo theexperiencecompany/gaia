@@ -26,6 +26,7 @@ def _make_fake_tool(name: str = "test_tool") -> MagicMock:
     t = MagicMock(spec=BaseTool)
     t.name = name
     t.description = f"A test tool named {name}"
+    t.metadata = {}
     return t
 
 

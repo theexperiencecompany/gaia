@@ -175,10 +175,7 @@ export class TelegramAdapter extends BaseBotAdapter {
       if (!this.botUsername) return;
       if (!hasTelegramMention(ctx.message.text, this.botUsername)) return;
 
-      const content = stripTelegramMention(
-        ctx.message.text,
-        this.botUsername,
-      );
+      const content = stripTelegramMention(ctx.message.text, this.botUsername);
 
       if (!content) {
         await ctx.reply("How can I help you?");
