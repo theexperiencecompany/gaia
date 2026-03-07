@@ -36,6 +36,18 @@ scrape_configs:
     docker_sd_configs:
       - host: unix:///var/run/docker.sock
         refresh_interval: 5s
+        # Use Docker API filters to only discover application containers.
+        # This is more reliable than relabel_configs keep/drop actions,
+        # which Promtail's docker_sd does not enforce for target filtering.
+        filters:
+          - name: label
+            values:
+              - "com.docker.compose.service=gaia-backend"
+              - "com.docker.compose.service=arq_worker"
+              - "com.docker.compose.service=discord-bot"
+              - "com.docker.compose.service=slack-bot"
+              - "com.docker.compose.service=telegram-bot"
+              - "com.docker.compose.service=voice-agent-worker"
     relabel_configs:
       # Strip the leading slash from container name (e.g. /gaia-backend -> gaia-backend)
       - source_labels: ["__meta_docker_container_name"]
@@ -54,11 +66,6 @@ scrape_configs:
       # stdout vs stderr
       - source_labels: ["__meta_docker_container_log_stream"]
         target_label: "stream"
-      # Only keep application services — everything else (infra, observability,
-      # manually-run containers without compose labels) is dropped automatically.
-      - source_labels: ["__meta_docker_container_label_com_docker_compose_service"]
-        regex: "^(gaia-backend|arq_worker|discord-bot|slack-bot|telegram-bot|voice-agent-worker)$"
-        action: keep
     pipeline_stages:
       # Parse JSON log lines emitted by gaia-backend and arq_worker (LOG_FORMAT=json).
       # Non-JSON lines (postgres, redis, rabbitmq) are passed through untouched.
