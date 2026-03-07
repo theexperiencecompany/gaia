@@ -2,72 +2,59 @@
  * Tests for Telegram-specific mention detection and markdown fallback logic.
  *
  * The Telegram adapter has unique behaviors:
- * 1. Mention stripping: removes "@botUsername" from group messages using
- *    case-sensitive plain-string replaceAll (NOT a regex).
- * 2. Markdown fallback: retries without parse_mode when Telegram rejects markup
- * 3. convertToTelegramMarkdown: the formatter applied to all outbound messages
- *
- * Production logic (from adapter.ts registerEvents):
- *   if (!ctx.message.text.includes(`@${this.botUsername}`)) return;
- *   const content = ctx.message.text.replaceAll(`@${this.botUsername}`, "").trim();
+ * 1. Mention detection/stripping via the exported `hasTelegramMention` and
+ *    `stripTelegramMention` helpers (case-sensitive plain-string, NOT a regex).
+ * 2. Markdown fallback: retries without parse_mode when Telegram rejects markup.
+ * 3. convertToTelegramMarkdown: the formatter applied to all outbound messages.
  */
 
 import { describe, it, expect } from "vitest";
 import { convertToTelegramMarkdown } from "@gaia/shared";
-
-// ---------------------------------------------------------------------------
-// Helpers that mirror the exact production logic in adapter.ts, using the
-// same plain-string includes() and replaceAll() — NOT a regex.
-// ---------------------------------------------------------------------------
-
-function hasMention(text: string, botUsername: string): boolean {
-  return text.includes(`@${botUsername}`);
-}
-
-function stripMention(text: string, botUsername: string): string {
-  return text.replaceAll(`@${botUsername}`, "").trim();
-}
+import {
+  hasTelegramMention,
+  stripTelegramMention,
+} from "../../telegram/src/adapter";
 
 describe("Telegram mention detection", () => {
   it("strips @BotName mention at start", () => {
-    const result = stripMention("@GaiaBot what is the weather", "GaiaBot");
+    const result = stripTelegramMention("@GaiaBot what is the weather", "GaiaBot");
     expect(result).toBe("what is the weather");
   });
 
   it("does not strip @botname when case does not match", () => {
     // Production uses case-sensitive replaceAll — wrong case is not stripped.
-    const result = stripMention("@gaiabot hello", "GaiaBot");
+    const result = stripTelegramMention("@gaiabot hello", "GaiaBot");
     expect(result).toBe("@gaiabot hello");
   });
 
   it("strips mention leaving rest of message intact", () => {
-    const result = stripMention("@GaiaBot hello world", "GaiaBot");
+    const result = stripTelegramMention("@GaiaBot hello world", "GaiaBot");
     expect(result).toBe("hello world");
   });
 
   it("handles message that is only a mention", () => {
     // Production replies "How can I help you?" when content is empty after strip.
     // The stripping itself should produce an empty string.
-    const result = stripMention("@GaiaBot", "GaiaBot");
+    const result = stripTelegramMention("@GaiaBot", "GaiaBot");
     expect(result).toBe("");
   });
 
   it("strips mention anywhere in message", () => {
     // replaceAll removes all occurrences regardless of position.
-    const result = stripMention("hey @GaiaBot what time is it", "GaiaBot");
+    const result = stripTelegramMention("hey @GaiaBot what time is it", "GaiaBot");
     expect(result).toBe("hey  what time is it".trim());
   });
 
   it("does not detect mention when username does not appear", () => {
-    expect(hasMention("@otherbot hello", "GaiaBot")).toBe(false);
+    expect(hasTelegramMention("@otherbot hello", "GaiaBot")).toBe(false);
   });
 
   it("detects mention at start of message", () => {
-    expect(hasMention("@GaiaBot hello", "GaiaBot")).toBe(true);
+    expect(hasTelegramMention("@GaiaBot hello", "GaiaBot")).toBe(true);
   });
 
   it("detects mention anywhere in message", () => {
-    expect(hasMention("help me @GaiaBot please", "GaiaBot")).toBe(true);
+    expect(hasTelegramMention("help me @GaiaBot please", "GaiaBot")).toBe(true);
   });
 });
 

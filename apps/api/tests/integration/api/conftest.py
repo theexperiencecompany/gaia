@@ -81,7 +81,8 @@ async def test_client(test_user):
 
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
+        transport=transport,
+        base_url="http://testserver",  # NOSONAR
     ) as client:
         yield client
 
@@ -94,6 +95,7 @@ async def unauthenticated_client():
 
     transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(
-        transport=transport, base_url="http://testserver"
+        transport=transport,
+        base_url="http://testserver",  # NOSONAR
     ) as client:
         yield client

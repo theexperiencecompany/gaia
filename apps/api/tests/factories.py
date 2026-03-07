@@ -76,7 +76,7 @@ def make_config(
 def make_mcp_config(**overrides) -> dict:
     defaults = {
         "server_name": "test-mcp-server",
-        "server_url": "http://localhost:8080",
+        "server_url": "http://localhost:8080",  # NOSONAR
         "transport": "sse",
         "enabled": True,
         "tools": [],

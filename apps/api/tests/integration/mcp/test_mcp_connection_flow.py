@@ -52,7 +52,7 @@ def _patch_external_io(
     if resolver_return is None:
         mock_resolved = MagicMock()
         mock_resolved.mcp_config = MagicMock()
-        mock_resolved.mcp_config.server_url = "http://test-server"
+        mock_resolved.mcp_config.server_url = "http://test-server"  # NOSONAR
         mock_resolved.mcp_config.transport = "streamable-http"
         mock_resolved.mcp_config.requires_auth = False
         mock_resolved.source = "platform"
@@ -343,7 +343,7 @@ class TestMCPConnectionFlow:
 
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://test-server"
+        resolved.mcp_config.server_url = "http://test-server"  # NOSONAR
         resolved.mcp_config.transport = "streamable-http"
         # Intentionally mark as no-auth at the config level; bearer token
         # overrides that path in _build_config.
@@ -428,7 +428,7 @@ class TestMCPConnectionFlow:
 
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://test-server"
+        resolved.mcp_config.server_url = "http://test-server"  # NOSONAR
         resolved.mcp_config.transport = "streamable-http"
         resolved.mcp_config.requires_auth = True  # OAuth branch
         resolved.source = "platform"
@@ -539,7 +539,7 @@ class TestMCPConnectionFlow:
         """
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://secure-server"
+        resolved.mcp_config.server_url = "http://secure-server"  # NOSONAR
         resolved.mcp_config.transport = "streamable-http"
         resolved.mcp_config.requires_auth = True
         resolved.source = "platform"
@@ -583,7 +583,7 @@ class TestMCPConnectionFlow:
 
         resolved = MagicMock()
         resolved.mcp_config = MagicMock()
-        resolved.mcp_config.server_url = "http://test-server"
+        resolved.mcp_config.server_url = "http://test-server"  # NOSONAR
         resolved.mcp_config.transport = "streamable-http"
         resolved.mcp_config.requires_auth = False
         resolved.source = "platform"
