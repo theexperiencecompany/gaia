@@ -59,7 +59,10 @@ class TestStoreTools:
                 "app.services.mcp.mcp_tools_store.delete_cache",
                 new_callable=AsyncMock,
             ) as mock_delete,
-            patch("app.services.mcp.mcp_tools_store.asyncio.create_task"),
+            patch(
+                "app.services.mcp.mcp_tools_store.asyncio.create_task",
+                side_effect=lambda coro: coro.close(),
+            ),
         ):
             mock_coll.update_one = AsyncMock()
 
@@ -225,7 +228,10 @@ class TestStoreBatch:
                 "app.services.mcp.mcp_tools_store.delete_cache",
                 new_callable=AsyncMock,
             ),
-            patch("app.services.mcp.mcp_tools_store.asyncio.create_task"),
+            patch(
+                "app.services.mcp.mcp_tools_store.asyncio.create_task",
+                side_effect=lambda coro: coro.close(),
+            ),
         ):
             mock_coll.bulk_write = AsyncMock()
 
