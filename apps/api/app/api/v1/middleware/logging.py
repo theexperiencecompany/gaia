@@ -79,28 +79,50 @@ def log_function_call(func):
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
-    """Middleware to log API request and response details."""
+    """Middleware to emit one structured wide event per HTTP request.
+
+    Every field is available for LogQL filtering in Grafana without any
+    pre-processing — just add `| json` to any query.
+    """
+
+    # Paths that are too noisy and add no debugging value
+    _SKIP_PATHS = frozenset(["/health", "/metrics", "/favicon.ico"])
 
     async def dispatch(self, request: Request, call_next):
+        if request.url.path in self._SKIP_PATHS:
+            return await call_next(request)
+
         start = time.time()
         response = await call_next(request)
-        elapsed_ms = (time.time() - start) * 1000
+        duration_ms = round((time.time() - start) * 1000, 2)
 
-        # safe lookup of client IP
-        if request.client:
-            client_ip = request.client.host
-        else:
-            # fallback to header or literal
-            client_ip = request.headers.get("x-forwarded-for", "unknown")
-
-        # status phrase
-        try:
-            phrase = HTTPStatus(response.status_code).phrase
-        except ValueError:
-            phrase = "Unknown"
-
-        logger.info(
-            f"[{client_ip}] {request.method} {request.url.path} "
-            f"{response.status_code} {phrase} - {elapsed_ms:.2f}ms"
+        client_ip = (
+            request.client.host
+            if request.client
+            else request.headers.get("x-forwarded-for", "unknown")
         )
+
+        try:
+            status_phrase = HTTPStatus(response.status_code).phrase
+        except ValueError:
+            status_phrase = "Unknown"
+
+        log = logger.bind(
+            method=request.method,
+            path=request.url.path,
+            status_code=response.status_code,
+            status_phrase=status_phrase,
+            duration_ms=duration_ms,
+            client_ip=client_ip,
+            request_id=request.headers.get("x-request-id"),
+            user_agent=request.headers.get("user-agent"),
+        )
+
+        if response.status_code >= 500:
+            log.error("http_request")
+        elif response.status_code >= 400:
+            log.warning("http_request")
+        else:
+            log.info("http_request")
+
         return response
