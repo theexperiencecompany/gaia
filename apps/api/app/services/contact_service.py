@@ -223,7 +223,7 @@ def extract_contacts_from_messages_batch(
 def get_gmail_contacts(
     service: Any,
     query: str,
-    max_results: int = 30,
+    max_results: int = 50,
 ) -> Dict[str, Any]:
     """
     Search for contacts in Gmail using a query.

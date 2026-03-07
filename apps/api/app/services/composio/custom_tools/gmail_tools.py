@@ -7,11 +7,11 @@ import datetime
 from typing import Any, Dict, List, Optional
 
 import httpx
+from app.models.common_models import GatherContextInput
 from app.services.contact_service import get_gmail_contacts
 from composio import Composio
 from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
-from app.models.common_models import GatherContextInput
+from googleapiclient.discovery import build  # type: ignore
 from pydantic import BaseModel, Field
 
 # Reusable sync HTTP client
@@ -72,9 +72,19 @@ class StarEmailInput(BaseModel):
 class GetUnreadCountInput(BaseModel):
     """Input for getting unread email count."""
 
-    label_id: str = Field(
-        default="INBOX",
-        description="Label ID to count unread emails in (default: INBOX)",
+    label_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Optional list of Gmail label IDs to count. "
+        "Examples: INBOX, CATEGORY_PROMOTIONS, CATEGORY_UPDATES.",
+    )
+    query: Optional[str] = Field(
+        default=None,
+        description="Optional Gmail search query to count matching messages "
+        "without fetching full message payloads.",
+    )
+    include_spam_trash: bool = Field(
+        default=False,
+        description="Whether query counts should include Spam and Trash.",
     )
 
 
@@ -262,27 +272,111 @@ def register_gmail_custom_tools(composio: Composio):
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """Get the unread email count for a Gmail label.
+        """Get message counts using lightweight Gmail APIs.
 
-        Returns the number of unread messages in the specified label.
-        Defaults to INBOX if no label is specified.
+        Supports two modes:
+        1) Label mode (default): returns per-label unread + total counts
+        2) Query mode: returns count estimates for a Gmail search query,
+           with an unread-filtered estimate as well
 
-        Args:
-            request.label_id: Label ID to count unread emails in (default: INBOX)
-
-        Returns:
-            Dict with success status, unread count, label_id, and label_name
+        Notes:
+        - Query counts use ``resultSizeEstimate`` from Gmail API.
+        - For backward compatibility, single-label requests still return
+          top-level ``unreadCount`` and ``label_id``.
         """
-        url = (
-            f"https://gmail.googleapis.com/gmail/v1/users/me/labels/{request.label_id}"
-        )
 
-        resp = _http_client.get(url, headers=_auth_headers(auth_credentials))
-        resp.raise_for_status()
-        data = resp.json()
+        headers = _auth_headers(auth_credentials)
+        resolved_label_ids: List[str] = []
+
+        if request.label_ids:
+            resolved_label_ids = [label for label in request.label_ids if label]
+        elif not request.query:
+            resolved_label_ids = ["INBOX"]
+
+        def _count_messages(query: str) -> int:
+            params: Dict[str, Any] = {
+                "maxResults": 1,
+                "includeSpamTrash": request.include_spam_trash,
+                "q": query,
+            }
+            if resolved_label_ids:
+                params["labelIds"] = resolved_label_ids
+
+            resp = _http_client.get(
+                "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+                headers=headers,
+                params=params,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+
+            estimate = data.get("resultSizeEstimate", 0)
+            if isinstance(estimate, int):
+                return max(0, estimate)
+
+            messages = data.get("messages", [])
+            if isinstance(messages, list):
+                return len(messages)
+            return 0
+
+        query = request.query.strip() if request.query else ""
+        if query:
+            total_count = _count_messages(query)
+            unread_query = (
+                query if "is:unread" in query.lower() else f"{query} is:unread"
+            )
+            unread_count = _count_messages(unread_query)
+
+            result: Dict[str, Any] = {
+                "query": query,
+                "label_ids": resolved_label_ids,
+                "totalCount": total_count,
+                "unreadCount": unread_count,
+                "is_estimate": True,
+            }
+
+            if len(resolved_label_ids) == 1:
+                result["label_id"] = resolved_label_ids[0]
+
+            return result
+
+        counts: Dict[str, Dict[str, Any]] = {}
+        for label_id in resolved_label_ids:
+            url = f"https://gmail.googleapis.com/gmail/v1/users/me/labels/{label_id}"
+            resp = _http_client.get(url, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+
+            counts[label_id] = {
+                "label_id": label_id,
+                "label_name": data.get("name", label_id),
+                "unreadCount": data.get("messagesUnread", 0),
+                "totalCount": data.get("messagesTotal", 0),
+            }
+
+        if not counts:
+            return {
+                "counts": {},
+                "label_ids": [],
+                "unreadCount": 0,
+                "totalCount": 0,
+            }
+
+        if len(resolved_label_ids) == 1:
+            label_id = resolved_label_ids[0]
+            label_stats = counts[label_id]
+            return {
+                "counts": counts,
+                "label_ids": resolved_label_ids,
+                "label_id": label_id,
+                "label_name": label_stats["label_name"],
+                "unreadCount": label_stats["unreadCount"],
+                "totalCount": label_stats["totalCount"],
+            }
+
         return {
-            "unreadCount": data.get("messagesUnread"),
-            "label_id": request.label_id,
+            "counts": counts,
+            "label_ids": resolved_label_ids,
         }
 
     @composio.tools.custom_tool(toolkit="gmail")

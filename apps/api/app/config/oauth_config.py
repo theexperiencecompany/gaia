@@ -1303,7 +1303,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
         composio_config=ComposioConfig(
             auth_config_id="ac_TOjltL3O2kEB",
             toolkit="TODOIST",
-            toolkit_version="20260107_00",
+            toolkit_version="20260227_00",
         ),
         associated_triggers=[
             TriggerConfig(

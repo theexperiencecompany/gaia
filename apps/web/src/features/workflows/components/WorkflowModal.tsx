@@ -633,7 +633,7 @@ export default function WorkflowModal({
       // isDismissable={false}
       hideCloseButton
       size={mode === "create" ? "3xl" : "4xl"}
-      className={`max-h-[70vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
+      className={`max-h-[71vh] bg-secondary-bg ${mode !== "create" ? "min-w-[80vw]" : ""}`}
       backdrop="blur"
     >
       <ModalContent>
@@ -641,7 +641,7 @@ export default function WorkflowModal({
           {creationPhase === "form" ? (
             <div className="flex min-h-0 flex-1 gap-8">
               <div className="flex min-h-0 flex-1 flex-col">
-                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto">
+                <div className="min-h-0 flex-1 space-y-5 overflow-y-auto ">
                   <WorkflowHeader
                     mode={mode}
                     control={control}

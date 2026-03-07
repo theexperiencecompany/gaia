@@ -458,7 +458,6 @@ def get_retrieve_tools_function(
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
-        logger.info(f"Registry has {len(available_tool_names)} available tools")
 
         # Get user_id from config (try configurable first, then metadata as fallback)
         user_id = config.get("configurable", {}).get("user_id")

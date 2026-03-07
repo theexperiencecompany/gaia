@@ -553,7 +553,7 @@ export function LandingDownloadSection() {
   };
 
   return (
-    <section className="relative z-10 mx-auto w-full px-20 sm:px-6 py-24 sm:py-16">
+    <section className="relative z-10 mx-auto w-full px-4 sm:px-6 py-16 sm:py-24">
       <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
         {/* Desktop Card */}
         <DownloadCard

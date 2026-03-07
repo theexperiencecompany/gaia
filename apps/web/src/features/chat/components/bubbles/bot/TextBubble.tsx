@@ -18,6 +18,7 @@ import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
+  type MCPAppData,
   type RateLimitData,
   type ToolCallEntry,
   type ToolDataEntry,
@@ -32,6 +33,7 @@ import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
+import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
@@ -84,6 +86,7 @@ import type {
 } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type {
   TwitterSearchData,
   TwitterUserData,
@@ -97,6 +100,7 @@ import ContactListSection from "./ContactListSection";
 import DocumentSection from "./DocumentSection";
 import EmailComposeSection from "./EmailComposeSection";
 import EmailSentSection from "./EmailSentSection";
+import FileArtifactSection from "./FileArtifactSection";
 import GoogleDocsSection from "./GoogleDocsSection";
 import GoalSection from "./goals/GoalSection";
 import type { GoalAction } from "./goals/types";
@@ -283,6 +287,12 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       code_data={data as CodeData}
     />
   ),
+  artifact_data: (data, index) => (
+    <FileArtifactSection
+      key={`tool-artifact-${index}`}
+      artifact_data={data as ArtifactData | ArtifactData[]}
+    />
+  ),
 
   todo_data: (data, index) => {
     const t = data as TodoToolData;
@@ -460,6 +470,13 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
 
+  mcp_app: (data, index) => (
+    <MCPAppRenderer
+      key={`tool-mcp-app-${(data as MCPAppData).tool_call_id || index}`}
+      data={data as MCPAppData}
+    />
+  ),
+
   rate_limit_data: (data, index) => {
     // When grouped, data is RateLimitData[] — deduplicate by feature
     const items = (Array.isArray(data) ? data : [data]) as RateLimitData[];
@@ -563,8 +580,21 @@ export default function TextBubble({
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (!typedData) return null;
 
+        const toolCallId =
+          typeof typedData === "object" &&
+          typedData !== null &&
+          "tool_call_id" in typedData
+            ? String(
+                (typedData as unknown as { tool_call_id?: string })
+                  .tool_call_id ?? "",
+              )
+            : "";
+        const toolKey = toolCallId
+          ? `${baseId}-tool-${toolName}-${toolCallId}`
+          : `${baseId}-tool-${toolName}-${index}`;
+
         return (
-          <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
+          <React.Fragment key={toolKey}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );
