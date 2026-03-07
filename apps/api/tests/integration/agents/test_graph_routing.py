@@ -283,29 +283,52 @@ class TestGraphRouting:
         )
 
     async def test_different_thread_ids_have_isolated_state(self):
-        """Two threads must not share checkpointed state.
+        """Two threads on the SAME compiled graph must not share checkpointed state.
 
+        Uses a single graph with a single MemorySaver to test the production
+        scenario: one graph instance serving multiple users via different thread_ids.
         Fails if thread isolation is broken in the compiled graph.
         """
-        graph_a = _compile(BindableToolsFakeModel(responses=[AIMessage(content="A")]))
-        graph_b = _compile(BindableToolsFakeModel(responses=[AIMessage(content="B")]))
+        graph = _compile(
+            BindableToolsFakeModel(
+                responses=[
+                    AIMessage(content="Response for A"),
+                    AIMessage(content="Response for B"),
+                ]
+            )
+        )
         config_a = _thread_config()
         config_b = _thread_config()
 
-        await graph_a.ainvoke(
+        await graph.ainvoke(
             {"messages": [HumanMessage(content="From A")]}, config=config_a
         )
-        await graph_b.ainvoke(
+        await graph.ainvoke(
             {"messages": [HumanMessage(content="From B")]}, config=config_b
         )
 
+        state_a = await graph.aget_state(config_a)
+        state_b = await graph.aget_state(config_b)
+
         human_in_a = [
-            m.content
-            for m in (await graph_a.aget_state(config_a)).values["messages"]
-            if isinstance(m, HumanMessage)
+            m.content for m in state_a.values["messages"] if isinstance(m, HumanMessage)
         ]
-        assert "From A" in human_in_a
-        assert "From B" not in human_in_a
+        human_in_b = [
+            m.content for m in state_b.values["messages"] if isinstance(m, HumanMessage)
+        ]
+
+        assert "From A" in human_in_a, (
+            f"Thread A's state must contain its own message. Got: {human_in_a}"
+        )
+        assert "From B" not in human_in_a, (
+            f"Thread A's state must not contain Thread B's message. Got: {human_in_a}"
+        )
+        assert "From B" in human_in_b, (
+            f"Thread B's state must contain its own message. Got: {human_in_b}"
+        )
+        assert "From A" not in human_in_b, (
+            f"Thread B's state must not contain Thread A's message. Got: {human_in_b}"
+        )
 
     async def test_full_tool_cycle_message_sequence(self):
         """Human → AI(tool_call) → ToolMessage → AI(final) completes in correct order.

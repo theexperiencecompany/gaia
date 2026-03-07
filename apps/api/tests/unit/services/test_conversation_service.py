@@ -203,7 +203,7 @@ class TestDeleteConversation:
         mock_collection.delete_many = AsyncMock(return_value=mock_result)
 
         result = await delete_all_conversations(test_user)
-        assert "deleted" in result["message"].lower()
+        assert result["message"] == "All conversations deleted successfully"
 
     async def test_delete_all_raises_404_when_none(self, mock_collection, test_user):
         mock_result = MagicMock()
@@ -248,6 +248,10 @@ class TestMarkAsReadUnread:
 
         result = await mark_conversation_as_read("conv_abc", test_user)
         assert result["conversation_id"] == "conv_abc"
+
+        call_args = mock_collection.update_one.call_args
+        update_doc = call_args[0][1]
+        assert update_doc["$set"] == {"is_unread": False}
 
     async def test_mark_as_read_rejects_unauthenticated(self, mock_collection):
         with pytest.raises(HTTPException) as exc_info:

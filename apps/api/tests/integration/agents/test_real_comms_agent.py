@@ -338,6 +338,8 @@ class TestRealCommsAgent:
         """
         config = _thread_config()
 
+        dangling_tool_call_id = "dangling_call_001"
+
         # An AIMessage with a tool call that has NO corresponding ToolMessage
         dangling_ai = AIMessage(
             content="",
@@ -345,7 +347,7 @@ class TestRealCommsAgent:
                 {
                     "name": "call_executor",
                     "args": {"task": "dangling"},
-                    "id": "dangling_call_001",
+                    "id": dangling_tool_call_id,
                     "type": "tool_call",
                 }
             ],
@@ -363,16 +365,34 @@ class TestRealCommsAgent:
             config=config,
         )
 
+        # The graph must complete and produce at least one AIMessage from the LLM.
+        # filter_messages_node strips dangling tool calls ephemerally (before the
+        # LLM call) but does NOT remove them from the checkpoint. If the filter
+        # didn't work, LangChain would raise an error about unmatched tool calls,
+        # so reaching this point proves the filter ran correctly.
         ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
-        assert len(ai_messages) >= 1
+        assert len(ai_messages) >= 1, (
+            "Graph should have produced at least one AIMessage after stripping the dangling tool call"
+        )
 
-    async def test_duplicate_system_prompts_deduplicated(self, comms_graph_simple):
+        # Verify the graph produced a NEW AIMessage (not just the dangling one).
+        # The new message has no tool_calls (it's a terminal response).
+        new_ai_messages = [m for m in ai_messages if not getattr(m, "tool_calls", None)]
+        assert len(new_ai_messages) >= 1, (
+            "The graph should have produced a new AIMessage with no pending tool calls."
+        )
+
+    async def test_pre_model_hook_does_not_persist_to_checkpoint(
+        self, comms_graph_simple
+    ):
         """
-        manage_system_prompts_node runs as a pre_model_hook — it filters duplicate
-        system prompts for the LLM call only. The persisted graph state still
-        retains all original messages (LangGraph's append reducer). This test
-        verifies the graph completes without error and produces an AI response
-        when fed duplicate non-memory system prompts.
+        manage_system_prompts_node runs as a pre_model_hook — it modifies the
+        messages passed to the model ephemerally (filtering duplicates for the
+        LLM call), but those modifications are NOT written back to the checkpoint.
+        The persisted graph state still retains all original messages
+        (LangGraph's append reducer). This test verifies the graph completes
+        without error and produces an AI response when fed duplicate non-memory
+        system prompts, and that both system prompts remain in the checkpoint.
         """
         config = _thread_config()
 

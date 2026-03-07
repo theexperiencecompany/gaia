@@ -4,6 +4,7 @@ import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 from app.agents.core.nodes.memory_node import (
+    MAX_TOOL_OUTPUT_SIZE,
     _check_worth_learning,
     _extract_text_content,
     _format_messages_for_user_memory,
@@ -26,6 +27,21 @@ class TestCheckWorthLearning:
             AIMessage(content="a1"),
             HumanMessage(content="q2"),
             AIMessage(content="a2"),
+        ]
+        result, reason = _check_worth_learning(msgs)
+        assert result is False
+        assert "tool calls" in reason
+
+    def test_exactly_one_tool_call_is_too_few(self):
+        """Boundary: exactly 1 tool call must still be skipped (threshold is < 2)."""
+        msgs = [
+            HumanMessage(content="q1"),
+            AIMessage(
+                content="",
+                tool_calls=[{"id": "tc1", "name": "a", "args": {}}],
+            ),
+            ToolMessage(content="r1", tool_call_id="tc1"),
+            AIMessage(content="done"),
         ]
         result, reason = _check_worth_learning(msgs)
         assert result is False
@@ -67,7 +83,7 @@ class TestFormatMessagesForUserMemory:
         formatted = _format_messages_for_user_memory(msgs)
         assert len(formatted) == 1
         assert formatted[0]["role"] == "assistant"
-        assert "[TOOL CALL: search(" in formatted[0]["content"]
+        assert formatted[0]["content"] == "[TOOL CALL: search({'q': 'test'})]"
 
     def test_formats_ai_content(self):
         msgs = [AIMessage(content="here is your answer")]
@@ -80,8 +96,16 @@ class TestFormatMessagesForUserMemory:
         msgs = [ToolMessage(content=long_content, tool_call_id="tc1")]
         formatted = _format_messages_for_user_memory(msgs)
         assert len(formatted) == 1
-        assert "... [truncated]" in formatted[0]["content"]
-        assert len(formatted[0]["content"]) < len(long_content) + 50
+        output = formatted[0]["content"]
+        # Format is: [TOOL RESULT: <content[:MAX]>... [truncated]]
+        # The trailing ] closes the [TOOL RESULT: wrapper.
+        assert "... [truncated]" in output
+        prefix = "[TOOL RESULT: "
+        # Strip the outer [TOOL RESULT: ... ] wrapper to get the raw content string
+        inner = output[len(prefix) : -1]  # -1 removes the closing ]
+        assert inner.endswith("... [truncated]")
+        raw_content = inner[: -len("... [truncated]")]
+        assert len(raw_content) == MAX_TOOL_OUTPUT_SIZE
 
     def test_skips_system_messages(self):
         msgs = [SystemMessage(content="you are helpful")]
@@ -196,6 +220,10 @@ class TestMemoryNode:
         call_kwargs = mock_background.call_args.kwargs
         assert call_kwargs["user_id"] == "u1"
         assert call_kwargs["messages"] == state["messages"]
+        assert call_kwargs["session_id"] == "t1"
+        assert call_kwargs["extraction_prompt"] is None or isinstance(
+            call_kwargs["extraction_prompt"], str
+        )
         assert result is state
 
     @pytest.mark.asyncio

@@ -89,25 +89,32 @@ class TestRedisCacheOperations:
     """Test RedisCache get/set/delete with mocked Redis."""
 
     async def test_set_and_get_cache(self):
-        """set() then get() should return the cached value."""
+        """set() then get() should return the cached value.
+
+        Uses a capture-and-replay mock so that what set_cache serializes
+        and writes is exactly what get_cache reads and deserializes.
+        A bug in serialize_any or deserialize_any will cause the final
+        assertion to fail, making this a real serialization roundtrip.
+        """
+        stored: dict[str, str] = {}
+
         cache = RedisCache.__new__(RedisCache)
         cache.default_ttl = 3600
         cache.redis = AsyncMock()
-        cache.redis.setex = AsyncMock()
-        cache.redis.get = AsyncMock()
+        cache.redis.setex = AsyncMock(
+            side_effect=lambda k, ttl, v: stored.update({k: v})
+        )
+        cache.redis.get = AsyncMock(side_effect=lambda name: stored.get(name))
 
         data = {"key": "value", "count": 5}
-        json_str = serialize_any(data)
 
-        # Simulate set
         await cache.set("test:key", data, ttl=300)
+
         cache.redis.setex.assert_awaited_once()
         call_args = cache.redis.setex.call_args
         assert call_args[0][0] == "test:key"
         assert call_args[0][1] == 300
 
-        # Simulate get: return the serialized string
-        cache.redis.get = AsyncMock(return_value=json_str)
         result = await cache.get("test:key")
         assert result == data
 

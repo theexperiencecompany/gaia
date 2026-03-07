@@ -176,6 +176,65 @@ class TestCheckInactiveUsers:
         query = mock_col.find.call_args[0][0]
         assert query["is_active"] == {"$ne": False}
 
+    async def test_query_excludes_recently_emailed_users(self, ctx):
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(return_value=[])
+
+        with (
+            patch("app.db.mongodb.collections.users_collection") as mock_col,
+            patch("app.utils.email_utils.send_inactive_user_email"),
+        ):
+            mock_col.find = MagicMock(return_value=mock_cursor)
+            await check_inactive_users(ctx)
+
+        query = mock_col.find.call_args[0][0]
+
+        # The $or clause must be present to prevent duplicate emails.
+        # Removing it from production code will cause this assertion to fail.
+        assert "$or" in query, (
+            "Query must contain a $or clause to avoid re-sending emails"
+        )
+
+        or_conditions = query["$or"]
+        assert isinstance(or_conditions, list) and len(or_conditions) >= 2, (
+            "$or must have at least two conditions"
+        )
+
+        # Collect all top-level field names referenced across $or branches
+        field_names = [list(cond.keys())[0] for cond in or_conditions]
+        assert field_names.count("last_inactive_email_sent") == 2, (
+            "Both $or branches must reference last_inactive_email_sent"
+        )
+
+        # One branch must check that the field is absent
+        exists_branch = next(
+            (
+                cond["last_inactive_email_sent"]
+                for cond in or_conditions
+                if cond.get("last_inactive_email_sent") == {"$exists": False}
+            ),
+            None,
+        )
+        assert exists_branch is not None, (
+            "One $or branch must check {$exists: False} for last_inactive_email_sent"
+        )
+
+        # The other branch must check that the field is older than the cutoff
+        lt_branch = next(
+            (
+                cond["last_inactive_email_sent"]
+                for cond in or_conditions
+                if "$lt" in cond.get("last_inactive_email_sent", {})
+            ),
+            None,
+        )
+        assert lt_branch is not None, (
+            "One $or branch must check {$lt: <cutoff>} for last_inactive_email_sent"
+        )
+        assert isinstance(lt_branch["$lt"], datetime), (
+            "The $lt value must be a datetime"
+        )
+
     async def test_db_exception_propagates(self, ctx):
         with patch("app.db.mongodb.collections.users_collection") as mock_col:
             mock_col.find = MagicMock(side_effect=RuntimeError("MongoDB down"))

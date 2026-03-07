@@ -34,6 +34,22 @@ from tests.e2e.conftest import (
 )
 from tests.helpers import assert_tool_called, extract_tool_calls
 
+# ---------------------------------------------------------------------------
+# NOTE: The three tests below (test_manage_system_prompts_keeps_only_latest_*,
+# test_manage_system_prompts_no_system_messages_is_noop, and
+# test_manage_system_prompts_single_prompt_is_preserved) are UNIT TESTS of
+# the node's pure logic (input dict → output dict).  They call
+# manage_system_prompts_node directly rather than through the compiled graph
+# because they are testing the node's contract in isolation.
+#
+# Graph-wiring coverage (i.e. that the node is actually registered as a
+# pre-model hook inside create_agent) is provided by the async graph-level
+# tests further below:
+#   - test_graph_calls_two_tools_in_sequence
+#   - test_tool_call_order_is_preserved_in_messages
+#   - test_filter_and_manage_hooks_both_run_as_pre_model_hooks
+# ---------------------------------------------------------------------------
+
 
 @tool
 def get_weather(city: str) -> str:
@@ -47,9 +63,13 @@ def create_note(title: str, body: str) -> str:
     return f"Note '{title}' saved."
 
 
-@pytest.mark.e2e
-class TestMultiToolScenario:
-    """E2E tests verifying manage_system_prompts_node is active in the GAIA graph."""
+@pytest.mark.unit
+class TestManageSystemPromptsNodeUnit:
+    """Unit tests for manage_system_prompts_node pure logic (node called directly).
+
+    These tests verify the node's input→output contract in isolation.
+    Graph-wiring coverage lives in TestMultiToolScenario below.
+    """
 
     def test_manage_system_prompts_keeps_only_latest_non_memory_prompt(self):
         """manage_system_prompts_node must remove all but the latest non-memory SystemMessage.
@@ -144,6 +164,16 @@ class TestMultiToolScenario:
         system_msgs = [m for m in result["messages"] if isinstance(m, SystemMessage)]
         assert len(system_msgs) == 1
         assert system_msgs[0].content == "Only system prompt"
+
+
+@pytest.mark.e2e
+class TestMultiToolScenario:
+    """E2E tests verifying manage_system_prompts_node is active in the GAIA graph.
+
+    These tests invoke the fully compiled create_agent graph and confirm that
+    both pre-model hooks (filter_messages_node, manage_system_prompts_node) are
+    correctly wired.  If either node is removed from the graph, these tests fail.
+    """
 
     async def test_graph_calls_two_tools_in_sequence(
         self, thread_config, in_memory_store, memory_saver

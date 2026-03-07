@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -91,7 +91,7 @@ class TestManageSystemPrompts:
 
         result = manage_system_prompts_node(state, _config(), _store())
 
-        assert result.get("messages", []) == []
+        assert result["messages"] == []
 
     def test_only_memory_messages(self):
         msgs = [
@@ -117,10 +117,12 @@ class TestManageSystemPrompts:
 
         result = manage_system_prompts_node(state, _config(), _store())
 
-        types = [m.type for m in result["messages"]]
+        result_messages = result["messages"]
+        types = [m.type for m in result_messages]
         assert "human" in types
         assert "ai" in types
         assert "tool" in types
+        assert len(result_messages) == 4
 
     def test_mixed_memory_and_non_memory(self):
         msgs = [
@@ -142,3 +144,40 @@ class TestManageSystemPrompts:
         assert "mem2" in contents
         assert "latest non-mem" in contents
         assert len(system_msgs) == 3
+
+    def test_output_message_order_preserved(self):
+        # Mix of system (one to be dropped, one memory, one kept) and non-system
+        # Expected output order after filtering: mem1, human, mem2, ai, latest
+        msgs = [
+            _sys("old prompt"),
+            _sys("mem1", memory=True),
+            HumanMessage(content="hello"),
+            _sys("mem2", memory=True),
+            AIMessage(content="reply"),
+            _sys("latest prompt"),
+        ]
+        state = {"messages": msgs}
+
+        result = manage_system_prompts_node(state, _config(), _store())
+
+        output = result["messages"]
+        expected_contents = ["mem1", "hello", "mem2", "reply", "latest prompt"]
+        actual_contents = [m.content if hasattr(m, "content") else "" for m in output]
+        assert actual_contents == expected_contents
+
+    def test_silent_exception_returns_unmodified_state(self):
+        msgs = [
+            HumanMessage(content="hello"),
+            _sys("latest prompt"),
+        ]
+        state = {"messages": msgs}
+
+        with patch(
+            "app.agents.core.nodes.manage_system_prompts._is_memory_system_message",
+            side_effect=RuntimeError("unexpected failure"),
+        ):
+            result = manage_system_prompts_node(state, _config(), _store())
+
+        # No exception must propagate
+        assert result is state
+        assert result["messages"] is msgs

@@ -98,7 +98,13 @@ class TestExecutorGraphCompiles:
 
     async def test_executor_graph_compiles(self):
         """build_executor_graph must compile to a runnable graph with
-        nodes accessible via graph.nodes."""
+        the expected structural nodes: 'agent', 'tools', and 'select_tools'.
+
+        A graph missing any of these nodes would be structurally broken —
+        e.g. removing 'tools' means tool calls are never executed, and
+        removing 'select_tools' means the retrieval path is dead. Checking
+        len > 0 alone would pass even a single dead-end stub node.
+        """
         from app.agents.core.graph_builder.build_graph import build_executor_graph
 
         fake_llm = create_fake_llm(["Hello from executor"])
@@ -139,11 +145,16 @@ class TestExecutorGraphCompiles:
                 chat_llm=fake_llm,
                 in_memory_checkpointer=True,
             ) as graph:
-                # The graph object must be truthy and expose a nodes mapping
-                assert graph is not None
-                assert hasattr(graph, "nodes")
-                # Must contain at minimum an entry-point node
-                assert len(graph.nodes) > 0
+                node_names = set(graph.nodes)
+                assert "agent" in node_names, (
+                    "Compiled executor graph must contain an 'agent' node"
+                )
+                assert "tools" in node_names, (
+                    "Compiled executor graph must contain a 'tools' node for tool execution"
+                )
+                assert "select_tools" in node_names, (
+                    "Compiled executor graph must contain a 'select_tools' node for tool retrieval"
+                )
 
     async def test_compiled_graph_is_invocable(self):
         """The compiled executor graph should accept ainvoke without raising."""
@@ -204,38 +215,19 @@ class TestSelectToolsNode:
     present in the merged tool_dict that is passed to create_agent."""
 
     async def test_handoff_included_in_tool_dict(self):
-        """handoff tool must be injected into the tool_dict."""
-        from app.agents.core.subagents.handoff_tools import handoff as handoff_tool
+        """handoff tool must be registered in the compiled executor graph's tool node.
 
-        # The handoff tool is a real @tool-decorated async function.
-        # Just checking the schema / name is enough since we're not invoking it.
-        assert handoff_tool.name == "handoff"
-        # LangChain StructuredTool exposes .invoke() / .ainvoke() rather than __call__
-        # in newer langchain-core versions; check for the tool interface instead.
-        assert hasattr(handoff_tool, "invoke") or hasattr(handoff_tool, "run")
-
-    async def test_initial_tool_ids_are_registered(self):
-        """Executor graph must register all known initial tool IDs in tool_dict.
-
-        We capture the keyword arguments passed to create_agent to inspect
-        tool_registry and initial_tool_ids without running the full graph.
+        This tests that build_executor_graph actually injects handoff into the
+        DynamicToolNode's registry — not merely that the handoff tool object
+        exists. Removing the 'tool_dict.update({"handoff": handoff_tool})' line
+        from build_executor_graph would cause this test to fail.
         """
         from app.agents.core.graph_builder.build_graph import build_executor_graph
+        from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
 
-        fake_llm = create_fake_llm(["ok"])
+        fake_llm = create_fake_llm(["Hello from executor"])
         mock_store = _make_mock_store()
         mock_registry = _make_mock_tool_registry()
-
-        captured_kwargs: dict[str, Any] = {}
-
-        def capturing_create_agent(**kwargs):
-            captured_kwargs.update(kwargs)
-            # Return a minimal builder that compiles to a trivial graph
-            builder = StateGraph(SimpleState)
-            builder.add_node("noop", lambda s: {})
-            builder.set_entry_point("noop")
-            builder.add_edge("noop", END)
-            return builder
 
         with (
             patch(
@@ -266,36 +258,97 @@ class TestSelectToolsNode:
                 "app.agents.core.graph_builder.build_graph.create_todo_pre_model_hook",
                 return_value=MagicMock(),
             ),
+        ):
+            async with build_executor_graph(
+                chat_llm=fake_llm,
+                in_memory_checkpointer=True,
+            ) as graph:
+                tool_node = graph.nodes.get("tools")
+                assert tool_node is not None, (
+                    "Compiled executor graph must contain a 'tools' node"
+                )
+                # Unwrap to the underlying DynamicToolNode callable
+                underlying = getattr(tool_node, "bound", tool_node)
+                assert isinstance(underlying, DynamicToolNode), (
+                    "The 'tools' node must be a DynamicToolNode"
+                )
+                assert "handoff" in underlying._tool_registry, (
+                    "handoff must be registered in the executor graph's DynamicToolNode "
+                    "tool registry; build_executor_graph is missing the handoff injection"
+                )
+
+    async def test_initial_tool_ids_are_registered(self):
+        """All initial tool IDs expected by the executor graph must be present
+        in the compiled graph's DynamicToolNode tool registry.
+
+        The production flow in build_executor_graph passes initial_tool_ids to
+        create_agent, which looks each ID up in tool_registry at model-call time
+        (acall_model: `[tool_registry[id] for id in (initial_tool_ids or [])]`).
+        If any ID is absent from the registry a KeyError is raised at runtime.
+        This test verifies the registry is correctly populated for all expected
+        initial tools so that lookup succeeds without patching create_agent away.
+        """
+        from app.agents.core.graph_builder.build_graph import build_executor_graph
+        from app.override.langgraph_bigtool.dynamic_tool_node import DynamicToolNode
+
+        fake_llm = create_fake_llm(["ok"])
+        mock_store = _make_mock_store()
+        mock_registry = _make_mock_tool_registry()
+
+        with (
             patch(
-                "app.agents.core.graph_builder.build_graph.create_agent",
-                side_effect=capturing_create_agent,
+                "app.agents.core.graph_builder.build_graph.get_tool_registry",
+                new=AsyncMock(return_value=mock_registry),
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_tools_store",
+                new=AsyncMock(return_value=mock_store),
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_retrieve_tools_function",
+                return_value=_make_dummy_retrieve_tools_fn(),
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.create_executor_middleware",
+                return_value=[],
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.create_todo_tools",
+                return_value=[],
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.create_todo_pre_model_hook",
+                return_value=MagicMock(),
             ),
         ):
             async with build_executor_graph(
                 chat_llm=fake_llm,
                 in_memory_checkpointer=True,
-            ):
-                pass
+            ) as graph:
+                tool_node = graph.nodes.get("tools")
+                assert tool_node is not None, (
+                    "Compiled executor graph must contain a 'tools' node"
+                )
+                underlying = getattr(tool_node, "bound", tool_node)
+                assert isinstance(underlying, DynamicToolNode), (
+                    "The 'tools' node must be a DynamicToolNode"
+                )
+                registered_tool_ids = set(underlying._tool_registry.keys())
 
-        # The tool_registry passed to create_agent must contain "handoff"
-        tool_registry = captured_kwargs.get("tool_registry", {})
-        assert "handoff" in tool_registry, (
-            "handoff tool must be present in executor tool_registry"
-        )
-
-        expected_initial = {
-            "handoff",
-            "plan_tasks",
-            "mark_task",
-            "add_task",
-            "vfs_read",
-            "deep_research",
-        }
-        actual_initial = set(captured_kwargs.get("initial_tool_ids", []))
-        assert expected_initial == actual_initial, (
-            f"Executor initial_tool_ids mismatch.\n"
-            f"Expected: {expected_initial}\n"
-            f"Got:      {actual_initial}"
+        # Every initial tool ID must be in the registry so that acall_model can
+        # resolve `tool_registry[id]` without raising a KeyError at runtime.
+        # Note: todo tools are mocked to return [] in this test, so plan_tasks /
+        # mark_task / add_task are absent — only handoff, vfs_read, deep_research
+        # (from the mock registry) are guaranteed here.
+        expected_in_registry = {"handoff", "vfs_read", "deep_research"}
+        missing = expected_in_registry - registered_tool_ids
+        assert not missing, (
+            f"The following initial tool IDs are missing from the executor graph's "
+            f"DynamicToolNode registry and would cause a KeyError at runtime: {missing}"
         )
 
 
@@ -457,8 +510,29 @@ class TestTodoPremModelHook:
         # The hook is synchronous: signature is (state, config, store) -> State
         result = hook(state, config, store)
 
-        # Hook may return a Command or a dict; just ensure it doesn't raise
-        assert result is not None
+        # The hook must return a state dict (not None, not raise).
+        # More importantly, it must have injected todo context into the
+        # SystemMessage: the returned messages list must contain a SystemMessage
+        # whose content includes the formatted todo item and the TODO_SYSTEM_PROMPT
+        # marker text. A vacuous `result is not None` check would pass even if
+        # the hook silently returned the input state unchanged or an empty dict.
+        assert isinstance(result, dict), "todo pre-model hook must return a state dict"
+        messages = result.get("messages", [])
+        system_messages = [m for m in messages if isinstance(m, SystemMessage)]
+        assert system_messages, (
+            "todo pre-model hook must produce at least one SystemMessage in state"
+        )
+        combined_content = "\n".join(
+            m.content for m in system_messages if isinstance(m.content, str)
+        )
+        assert "plan_tasks" in combined_content, (
+            "todo pre-model hook must inject TODO_SYSTEM_PROMPT (which references "
+            "'plan_tasks') into the SystemMessage content"
+        )
+        assert "Step 1: complete the task" in combined_content, (
+            "todo pre-model hook must inject the formatted todo item content into "
+            "the SystemMessage so the LLM sees the current task list"
+        )
 
     def test_todo_tool_names_constant_is_correct(self):
         """TODO_TOOL_NAMES must match what build_executor_graph registers."""

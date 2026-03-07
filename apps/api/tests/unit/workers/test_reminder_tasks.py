@@ -72,6 +72,7 @@ class TestCleanupExpiredReminders:
             mock_col.delete_many = AsyncMock(return_value=mock_result)
             result = await cleanup_expired_reminders(ctx)
 
+        assert mock_col.delete_many.called
         assert "Cleaned up 7 expired reminders" == result
 
     async def test_cleanup_zero_deletions_message(self, ctx):
@@ -82,6 +83,7 @@ class TestCleanupExpiredReminders:
             mock_col.delete_many = AsyncMock(return_value=mock_result)
             result = await cleanup_expired_reminders(ctx)
 
+        assert mock_col.delete_many.called
         assert "Cleaned up 0 expired reminders" == result
 
     async def test_cleanup_query_filters_completed_and_cancelled(self, ctx):

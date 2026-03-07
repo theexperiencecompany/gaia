@@ -28,10 +28,11 @@ from uuid import uuid4
 import pytest
 from tests.helpers import BindableToolsFakeModel
 from langchain_core.messages import AIMessage, HumanMessage
+from langgraph.graph.message import add_messages
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 
-from app.override.langgraph_bigtool.utils import State
+from app.override.langgraph_bigtool.utils import _replace_todos, dedupe_str_list
 from tests.e2e.conftest import build_gaia_test_graph
 
 
@@ -39,35 +40,68 @@ from tests.e2e.conftest import build_gaia_test_graph
 class TestWorkflowExecution:
     """E2E tests for GAIA graph lifecycle and state schema correctness."""
 
-    async def test_gaia_state_schema_has_todos_channel(self):
-        """GAIA State must include the 'todos' channel (GAIA-specific extension).
+    async def test_todos_channel_uses_replace_reducer(self):
+        """The 'todos' channel must use last-write-wins (replace) semantics.
 
-        State from app.override.langgraph_bigtool.utils extends the upstream
-        langgraph_bigtool State with a 'todos' channel. This test verifies
-        that channel exists in the schema.
+        _replace_todos is the reducer for the State.todos channel. When two
+        successive updates arrive, the second list must completely replace the
+        first — not merge or append to it.
 
-        If app/override/langgraph_bigtool/utils.py is deleted or the 'todos'
-        channel is removed, this test will fail.
+        If _replace_todos is removed from utils.py or its semantics change,
+        this test will fail.
         """
-        state_fields = State.__annotations__
-        assert "todos" in state_fields, (
-            "GAIA State must have a 'todos' channel. "
-            "This channel is used by plan_tasks, mark_task, and add_task tools."
+        first_todos = ["Buy milk", "Call dentist"]
+        second_todos = ["Submit report"]
+
+        result = _replace_todos(first_todos, second_todos)
+
+        assert result == second_todos, (
+            "_replace_todos must return the right-hand (newest) list, "
+            "not the left-hand one or a merge of both."
+        )
+        assert "Buy milk" not in result, (
+            "Previous todos must be fully replaced, not merged."
         )
 
-    async def test_gaia_state_schema_has_messages_channel(self):
-        """GAIA State must include the 'messages' channel (from MessagesState)."""
-        state_fields = State.__annotations__
-        assert "messages" in state_fields, (
-            "GAIA State must have a 'messages' channel inherited from bigtool State."
-        )
+    async def test_selected_tool_ids_channel_deduplicates(self):
+        """dedupe_str_list must remove duplicate tool IDs while preserving order.
 
-    async def test_gaia_state_schema_has_selected_tool_ids_channel(self):
-        """GAIA State must include 'selected_tool_ids' (used by bigtool tool retrieval)."""
-        state_fields = State.__annotations__
-        assert "selected_tool_ids" in state_fields, (
-            "GAIA State must have 'selected_tool_ids' channel from bigtool State."
+        selected_tool_ids accumulates IDs across tool-retrieval turns. When the
+        same ID appears multiple times, only the first occurrence must be kept.
+
+        If dedupe_str_list is removed from utils.py, this test fails.
+        """
+        ids_with_duplicates = ["tool_a", "tool_b", "tool_a", "tool_c", "tool_b"]
+
+        result = dedupe_str_list(ids_with_duplicates)
+
+        assert result == ["tool_a", "tool_b", "tool_c"], (
+            "dedupe_str_list must remove duplicates while preserving first-seen order."
         )
+        assert len(result) == 3
+
+    async def test_messages_channel_accumulates(self):
+        """The 'messages' channel must accumulate across successive updates.
+
+        add_messages is the LangGraph reducer used by the messages channel in
+        State (inherited from MessagesState). Applying it twice must grow the
+        total message count — i.e., messages are appended, not replaced.
+
+        This exercises the same accumulation contract relied on by the
+        multi-turn checkpointing test below.
+        """
+        first_batch = [HumanMessage(content="Hello")]
+        second_batch = [AIMessage(content="Hi there")]
+
+        after_first = add_messages([], first_batch)
+        after_second = add_messages(after_first, second_batch)
+
+        assert len(after_second) == 2, (
+            "add_messages must accumulate: two successive applications "
+            "must produce a list with both messages."
+        )
+        assert after_second[0].content == "Hello"
+        assert after_second[1].content == "Hi there"
 
     async def test_compiled_graph_returns_gaia_state_on_invoke(
         self, thread_config, in_memory_store, memory_saver
@@ -108,8 +142,12 @@ class TestWorkflowExecution:
     ):
         """MemorySaver checkpointing must accumulate messages across multiple invocations.
 
-        This tests that the same thread_id produces accumulated state after
-        multiple calls — the same pattern used by build_comms_graph in production.
+        This tests GAIA's State schema + MemorySaver integration: the same
+        thread_id must produce accumulated state (messages from turn 1 remain
+        visible in turn 2) — the same pattern used by build_comms_graph in
+        production. It is NOT a test of MemorySaver in isolation; it proves
+        that the GAIA State channels (with their reducers) wire correctly with
+        LangGraph's checkpointing mechanism.
         """
         fake_llm = BindableToolsFakeModel(
             responses=[
@@ -150,19 +188,43 @@ class TestWorkflowExecution:
             "MemorySaver checkpointing must accumulate state across turns."
         )
 
+        # Assert on specific message content to prove both turns were persisted
+        contents = [m.content for m in accumulated]
+        assert "First message" in contents, (
+            "Turn-1 HumanMessage must be present in the accumulated checkpoint."
+        )
+        assert "Second message" in contents, (
+            "Turn-2 HumanMessage must be present in the accumulated checkpoint."
+        )
+        assert "Response to first message." in contents, (
+            "Turn-1 AIMessage must be present in the accumulated checkpoint."
+        )
+        assert "Response to second message." in contents, (
+            "Turn-2 AIMessage must be present in the accumulated checkpoint."
+        )
+
     async def test_different_thread_ids_have_independent_state(self, in_memory_store):
         """Separate thread_ids must not share state (thread isolation).
 
         This mirrors how the production comms agent handles concurrent users:
         each conversation thread is completely isolated.
+
+        Each thread receives a unique sentinel phrase in its human message.
+        After both graphs run, we assert:
+        - Thread A's state contains only thread-A's sentinel (not thread B's).
+        - Thread B's state contains only thread-B's sentinel (not thread A's).
         """
         checkpointer = MemorySaver()
 
+        # Unique sentinel phrases that cannot appear in each other's thread
+        sentinel_a = f"SENTINEL-ALPHA-{uuid4().hex}"
+        sentinel_b = f"SENTINEL-BETA-{uuid4().hex}"
+
         fake_llm_a = BindableToolsFakeModel(
-            responses=[AIMessage(content="Response for thread A.")]
+            responses=[AIMessage(content=f"Acknowledged: {sentinel_a}")]
         )
         fake_llm_b = BindableToolsFakeModel(
-            responses=[AIMessage(content="Response for thread B.")]
+            responses=[AIMessage(content=f"Acknowledged: {sentinel_b}")]
         )
 
         graph_a = build_gaia_test_graph(
@@ -186,25 +248,32 @@ class TestWorkflowExecution:
         }
 
         await graph_a.ainvoke(
-            {"messages": [HumanMessage(content="Message from A")]}, config=config_a
+            {"messages": [HumanMessage(content=f"Message for alpha: {sentinel_a}")]},
+            config=config_a,
         )
         await graph_b.ainvoke(
-            {"messages": [HumanMessage(content="Message from B")]}, config=config_b
+            {"messages": [HumanMessage(content=f"Message for beta: {sentinel_b}")]},
+            config=config_b,
         )
 
         state_a = await graph_a.aget_state(config_a)
         state_b = await graph_b.aget_state(config_b)
 
-        last_a = state_a.values["messages"][-1].content
-        last_b = state_b.values["messages"][-1].content
+        all_content_a = " ".join(m.content for m in state_a.values["messages"])
+        all_content_b = " ".join(m.content for m in state_b.values["messages"])
 
-        assert "thread A" in last_a.lower() or "a" in last_a.lower(), (
-            f"Thread A state should contain thread-A response, got: {last_a}"
+        assert sentinel_a in all_content_a, (
+            f"Thread A must contain its own sentinel phrase. Got: {all_content_a!r}"
         )
-        assert "thread B" in last_b.lower() or "b" in last_b.lower(), (
-            f"Thread B state should contain thread-B response, got: {last_b}"
+        assert sentinel_b not in all_content_a, (
+            f"Thread A must NOT contain thread B's sentinel. Got: {all_content_a!r}"
         )
-        assert last_a != last_b, "Different threads must have independent state"
+        assert sentinel_b in all_content_b, (
+            f"Thread B must contain its own sentinel phrase. Got: {all_content_b!r}"
+        )
+        assert sentinel_a not in all_content_b, (
+            f"Thread B must NOT contain thread A's sentinel. Got: {all_content_b!r}"
+        )
 
     async def test_build_comms_graph_accepts_in_memory_checkpointer_flag(self):
         """build_comms_graph must compile with in_memory_checkpointer=True.
@@ -252,6 +321,24 @@ class TestWorkflowExecution:
                     "build_comms_graph must return a compiled graph with astream()"
                 )
 
+                # Invoke the graph to prove it actually runs, not just compiles
+                thread_id = str(uuid4())
+                result = await graph.ainvoke(
+                    {"messages": [HumanMessage(content="Hello from comms graph test")]},
+                    config={
+                        "configurable": {
+                            "thread_id": thread_id,
+                            "user_id": str(uuid4()),
+                        }
+                    },
+                )
+                assert isinstance(result, dict), (
+                    "ainvoke must return a dict of state values"
+                )
+                assert "messages" in result, (
+                    "Comms graph result must contain 'messages' key"
+                )
+
     async def test_build_executor_graph_accepts_in_memory_checkpointer_flag(self):
         """build_executor_graph must compile with in_memory_checkpointer=True.
 
@@ -264,8 +351,23 @@ class TestWorkflowExecution:
             responses=[AIMessage(content="Executor agent response.")]
         )
 
+        from langchain_core.tools import tool as lc_tool
+
+        @lc_tool
+        def _stub_vfs_read(path: str) -> str:
+            """Read a file from VFS."""
+            return ""
+
+        @lc_tool
+        def _stub_deep_research(query: str) -> str:
+            """Perform deep research."""
+            return ""
+
         mock_registry = MagicMock()
-        mock_registry.get_tool_dict.return_value = {}
+        mock_registry.get_tool_dict.return_value = {
+            "vfs_read": _stub_vfs_read,
+            "deep_research": _stub_deep_research,
+        }
 
         async def _fake_retrieve_tools(
             store, config, query=None, exact_tool_names=None
@@ -304,4 +406,26 @@ class TestWorkflowExecution:
                 assert graph is not None
                 assert hasattr(graph, "ainvoke"), (
                     "build_executor_graph must return a compiled graph with ainvoke()"
+                )
+
+                # Invoke the graph to prove it actually runs, not just compiles
+                thread_id = str(uuid4())
+                result = await graph.ainvoke(
+                    {
+                        "messages": [
+                            HumanMessage(content="Hello from executor graph test")
+                        ]
+                    },
+                    config={
+                        "configurable": {
+                            "thread_id": thread_id,
+                            "user_id": str(uuid4()),
+                        }
+                    },
+                )
+                assert isinstance(result, dict), (
+                    "ainvoke must return a dict of state values"
+                )
+                assert "messages" in result, (
+                    "Executor graph result must contain 'messages' key"
                 )

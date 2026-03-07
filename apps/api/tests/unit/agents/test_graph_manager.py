@@ -1,5 +1,5 @@
 import uuid
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -8,61 +8,59 @@ from app.agents.core.graph_manager import GraphManager
 
 @pytest.mark.unit
 class TestGraphManager:
+    """Behavioural tests for GraphManager using the real ProviderRegistry.
+
+    All tests use UUID-suffixed names to avoid cross-test pollution in the
+    shared registry singleton.  No mocking of `providers` — if GraphManager
+    passes the wrong key to the registry, the real registry will either raise
+    KeyError (returning None via get_graph's except branch) or return the
+    wrong object, and the assertion will fail.
+    """
+
     @pytest.mark.asyncio
     async def test_set_graph_registers_provider(self):
+        unique_name = f"test_sg_register_{uuid.uuid4().hex}"
         mock_graph = MagicMock(name="test_graph")
 
-        with patch("app.agents.core.graph_manager.providers") as mock_providers:
-            GraphManager.set_graph(mock_graph, "my_graph")
+        GraphManager.set_graph(mock_graph, unique_name)
+        result = await GraphManager.get_graph(unique_name)
 
-            mock_providers.register.assert_called_once()
-            args, kwargs = mock_providers.register.call_args
-            assert args[0] == "my_graph"
-            assert kwargs["loader_func"]() is mock_graph
+        assert result is mock_graph, (
+            f"get_graph('{unique_name}') returned {result!r} instead of the "
+            "registered mock_graph. Fails if set_graph uses the wrong registry key."
+        )
 
     @pytest.mark.asyncio
     async def test_get_graph_calls_provider_with_correct_key(self):
+        unique_name = f"test_sg_key_{uuid.uuid4().hex}"
         mock_graph = MagicMock(name="test_graph")
 
-        with patch("app.agents.core.graph_manager.providers") as mock_providers:
-            mock_providers.aget = AsyncMock(return_value=mock_graph)
+        GraphManager.set_graph(mock_graph, unique_name)
+        result = await GraphManager.get_graph(unique_name)
 
-            GraphManager.set_graph(mock_graph, "my_graph")
-            result = await GraphManager.get_graph("my_graph")
-
-            assert result is mock_graph
-            mock_providers.aget.assert_awaited_once_with("my_graph")
+        assert result is mock_graph, (
+            f"get_graph('{unique_name}') returned {result!r}. "
+            "Fails if get_graph forwards a different key to the registry than the one supplied."
+        )
 
     @pytest.mark.asyncio
     async def test_get_missing_graph(self):
-        with patch("app.agents.core.graph_manager.providers") as mock_providers:
-            mock_providers.aget = AsyncMock(side_effect=KeyError("not found"))
+        unregistered_name = f"test_sg_missing_{uuid.uuid4().hex}"
 
-            result = await GraphManager.get_graph("nonexistent")
+        result = await GraphManager.get_graph(unregistered_name)
 
-            assert result is None
-
-    @pytest.mark.asyncio
-    async def test_get_graph_error(self):
-        with patch("app.agents.core.graph_manager.providers") as mock_providers:
-            mock_providers.aget = AsyncMock(side_effect=RuntimeError("provider failed"))
-
-            result = await GraphManager.get_graph("broken")
-
-            assert result is None
+        assert result is None
 
     @pytest.mark.asyncio
     async def test_get_graph_returns_none_not_sentinel_when_provider_returns_none(self):
-        """get_graph must return exactly None — not a wrapper — when the provider returns None,
-        and must forward the correct key to the provider."""
-        with patch("app.agents.core.graph_manager.providers") as mock_providers:
-            mock_providers.aget = AsyncMock(return_value=None)
+        """get_graph must return exactly None — not a wrapper — when the provider
+        yields None, and must look up the correct key in the registry."""
+        unique_name = f"test_sg_null_{uuid.uuid4().hex}"
 
-            result = await GraphManager.get_graph("null_graph")
+        GraphManager.set_graph(None, unique_name)
+        result = await GraphManager.get_graph(unique_name)
 
-            assert result is None
-            assert type(result) is type(None)
-            mock_providers.aget.assert_awaited_once_with("null_graph")
+        assert result is None
 
 
 @pytest.mark.unit

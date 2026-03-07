@@ -334,19 +334,87 @@ class TestChromaStoreSearch:
         )
         assert results[0] == []
 
-    async def test_search_limit_is_respected(self, populated_store):
-        """SearchOp limit should cap the number of returned items."""
-        results = await populated_store.abatch(
+    async def test_search_limit_is_respected(self, chroma_store):
+        """SearchOp limit should cap the number of returned items to exactly the limit.
+
+        The original test used populated_store which only has 2 items in the
+        searched namespace, and asserted ``<= 1`` — that passes even when 0
+        items are returned (false confidence).  This version seeds MORE items
+        than the limit into a dedicated namespace, so a zero-result bug would
+        cause the assertion to fail.
+        """
+        # Seed 3 items into a dedicated namespace.
+        seed_ops = [
+            PutOp(
+                namespace=("limit_ns",),
+                key=f"tool_{i}",
+                value={"description": f"Tool {i}", "tool_hash": f"h{i}"},
+            )
+            for i in range(3)
+        ]
+        await chroma_store.abatch(seed_ops)
+
+        results = await chroma_store.abatch(
             [
                 SearchOp(
-                    namespace_prefix=("tools", "general"),
+                    namespace_prefix=("limit_ns",),
                     query=None,
-                    limit=1,
+                    limit=2,
                     offset=0,
                 )
             ]
         )
-        assert len(results[0]) <= 1
+        # Exactly 2 items should be returned — not 0, not 3.
+        assert len(results[0]) == 2
+
+    async def test_partial_failure_in_gather_does_not_block_successful_puts(
+        self, chroma_store
+    ):
+        """_apply_put_ops uses asyncio.gather(return_exceptions=True).
+
+        If one upsert task raises, the others should still complete and their
+        items should be retrievable afterwards.
+
+        ChromaStore uses __slots__, so we patch at the class level to avoid
+        the 'read-only attribute' error from patch.object on the instance.
+        """
+        from unittest.mock import patch
+
+        success_key = "ok_tool"
+        fail_key = "bad_tool"
+        ns = ("gather_ns",)
+
+        original_upsert_item = type(chroma_store)._upsert_item
+
+        async def selective_upsert(self_arg, doc_id, op, collection):
+            if op.key == fail_key:
+                raise RuntimeError("Simulated upsert failure")
+            return await original_upsert_item(self_arg, doc_id, op, collection)
+
+        with patch.object(type(chroma_store), "_upsert_item", selective_upsert):
+            await chroma_store.abatch(
+                [
+                    PutOp(
+                        namespace=ns,
+                        key=success_key,
+                        value={"description": "ok", "tool_hash": "h_ok"},
+                    ),
+                    PutOp(
+                        namespace=ns,
+                        key=fail_key,
+                        value={"description": "bad", "tool_hash": "h_bad"},
+                    ),
+                ]
+            )
+
+        # The successful item should be present.
+        ok_results = await chroma_store.abatch([GetOp(namespace=ns, key=success_key)])
+        assert ok_results[0] is not None
+        assert ok_results[0].key == success_key
+
+        # The failed item should be absent.
+        bad_results = await chroma_store.abatch([GetOp(namespace=ns, key=fail_key)])
+        assert bad_results[0] is None
 
 
 # ---------------------------------------------------------------------------

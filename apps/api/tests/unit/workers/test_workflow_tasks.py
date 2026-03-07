@@ -4,8 +4,11 @@ import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+from bson import ObjectId
+
 from app.workers.tasks.workflow_tasks import (
     execute_workflow_by_id,
+    execute_workflow_as_chat,
     process_workflow_generation_task,
     regenerate_workflow_steps,
     generate_workflow_steps,
@@ -166,6 +169,7 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = mock_increment
             result = await execute_workflow_by_id(ctx, workflow.id)
 
+        mock_scheduler.initialize.assert_awaited_once()
         assert "executed successfully" in result
         assert workflow.id in result
 
@@ -214,6 +218,7 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = mock_increment
             await execute_workflow_by_id(ctx, workflow.id)
 
+        mock_scheduler.initialize.assert_awaited_once()
         mock_increment.assert_awaited_once_with(
             workflow.id, workflow.user_id, is_successful=True
         )
@@ -258,6 +263,7 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = mock_increment
             result = await execute_workflow_by_id(ctx, workflow.id)
 
+        mock_scheduler.initialize.assert_awaited_once()
         mock_increment.assert_awaited_once_with(
             workflow.id, workflow.user_id, is_successful=False
         )
@@ -308,6 +314,7 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = AsyncMock()
             await execute_workflow_by_id(ctx, workflow.id, context=context)
 
+        mock_scheduler.initialize.assert_awaited_once()
         mock_create_exec.assert_awaited_once_with(
             workflow_id=workflow.id,
             user_id=workflow.user_id,
@@ -356,6 +363,7 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = AsyncMock()
             await execute_workflow_by_id(ctx, workflow.id, context=None)
 
+        mock_scheduler.initialize.assert_awaited_once()
         mock_create_exec.assert_awaited_once_with(
             workflow_id=workflow.id,
             user_id=workflow.user_id,
@@ -396,6 +404,7 @@ class TestExecuteWorkflowById:
             mock_wf_svc.increment_execution_count = AsyncMock()
             await execute_workflow_by_id(ctx, workflow.id)
 
+        mock_scheduler.initialize.assert_awaited_once()
         mock_scheduler.close.assert_awaited_once()
 
 
@@ -507,7 +516,7 @@ class TestProcessWorkflowGenerationTask:
                 )
 
     async def test_websocket_failure_event_sent_on_exception(self, ctx):
-        todo_id = str(uuid4())
+        todo_id = str(ObjectId())
         user_id = "user_abc"
 
         mock_ws = AsyncMock()
@@ -723,3 +732,272 @@ class TestGenerateWorkflowSteps:
 
             with pytest.raises(RuntimeError, match="LLM error"):
                 await generate_workflow_steps(ctx, workflow_id, user_id)
+
+
+# ---------------------------------------------------------------------------
+# execute_workflow_as_chat
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestExecuteWorkflowAsChat:
+    """Dedicated tests for execute_workflow_as_chat.
+
+    The function is decorated with @tiered_rate_limit which is globally
+    patched to a no-op in conftest.py, so rate-limit enforcement is not
+    exercised here; we test the function body directly.
+
+    I/O boundaries mocked:
+      - get_user_by_id
+      - get_user_selected_model
+      - get_or_create_workflow_conversation
+      - call_agent_silent  (the core agent invocation)
+    """
+
+    def _make_workflow(self, workflow_id: str | None = None, user_id: str = "user_abc"):
+        wf = MagicMock()
+        wf.id = workflow_id or str(ObjectId())
+        wf.user_id = user_id
+        wf.title = "Morning Briefing"
+        wf.description = "Daily morning workflow"
+        wf.prompt = "Run the morning briefing"
+        wf.steps = [
+            MagicMock(
+                id="s1", title="Step 1", description="Check mail", category="comms"
+            ),
+            MagicMock(id="s2", title="Step 2", description="Weather", category="info"),
+        ]
+        return wf
+
+    def _patch_io(
+        self,
+        user_data=None,
+        model_config=None,
+        conversation_id="conv_abc",
+        agent_response=("All done.", {}),
+    ):
+        """Return a list of context-manager patches covering every I/O boundary."""
+        return [
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value=user_data or {"user_id": "user_abc", "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_selected_model",
+                new_callable=AsyncMock,
+                return_value=model_config,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": conversation_id},
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=agent_response,
+            ),
+        ]
+
+    async def test_chat_dispatch_called_with_correct_conversation_id(self):
+        """call_agent_silent receives the conversation_id from get_or_create_workflow_conversation."""
+        workflow = self._make_workflow()
+        expected_conv_id = "conv_expected_123"
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": workflow.user_id, "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_selected_model",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": expected_conv_id},
+            ) as mock_get_conv,
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=("Result text", {}),
+            ) as mock_call_agent,
+        ):
+            messages = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+        # Conversation was fetched for this workflow and user
+        mock_get_conv.assert_awaited_once_with(
+            workflow_id=workflow.id,
+            user_id=workflow.user_id,
+            workflow_title=workflow.title,
+        )
+
+        # Agent was invoked with the correct conversation_id
+        call_kwargs = mock_call_agent.call_args
+        assert call_kwargs.kwargs["conversation_id"] == expected_conv_id
+
+        # Returns a user message followed by a bot message
+        assert len(messages) == 2
+        assert messages[0].type == "user"
+        assert messages[1].type == "bot"
+        assert messages[1].response == "Result text"
+
+    async def test_successful_execution_returns_user_then_bot_message(self):
+        """On success the function returns exactly [user_message, bot_message]."""
+        workflow = self._make_workflow()
+        agent_text = "Step 1 done. Step 2 done."
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": workflow.user_id, "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_selected_model",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": "conv_1"},
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=(agent_text, {}),
+            ),
+        ):
+            messages = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+        assert len(messages) == 2
+        user_msg, bot_msg = messages
+        assert user_msg.type == "user"
+        assert bot_msg.type == "bot"
+        assert bot_msg.response == agent_text
+
+    async def test_exception_in_agent_returns_error_message_not_reraise(self):
+        """When call_agent_silent raises, the function catches and returns a single
+        error MessageModel rather than propagating the exception.
+        """
+        workflow = self._make_workflow()
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": workflow.user_id, "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_selected_model",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": "conv_1"},
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                side_effect=RuntimeError("Agent crashed"),
+            ),
+        ):
+            # Must NOT raise — internal exception handling returns an error message
+            messages = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+        assert len(messages) == 1
+        error_msg = messages[0]
+        assert error_msg.type == "bot"
+        assert "Workflow Execution Failed" in error_msg.response
+        assert workflow.title in error_msg.response
+
+    async def test_get_user_by_id_failure_falls_back_to_utc(self):
+        """When get_user_by_id raises, the function falls back gracefully and still
+        calls the agent with a minimal user_data dict.
+        """
+        workflow = self._make_workflow()
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                side_effect=ConnectionError("DB unreachable"),
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_selected_model",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": "conv_fallback"},
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=("Fallback result", {}),
+            ) as mock_call_agent,
+        ):
+            messages = await execute_workflow_as_chat(
+                workflow, {"user_id": workflow.user_id}, {}
+            )
+
+        # Execution completes successfully despite user fetch failing
+        assert len(messages) == 2
+        assert messages[1].response == "Fallback result"
+
+        # Agent was called with a minimal user dict that still includes user_id
+        call_user = mock_call_agent.call_args.kwargs["user"]
+        assert call_user["user_id"] == workflow.user_id
+
+    async def test_workflow_steps_passed_to_agent_as_selected_workflow(self):
+        """All workflow steps are serialised and forwarded inside the request's
+        selectedWorkflow field so the agent knows what to execute.
+        """
+        workflow = self._make_workflow()
+
+        with (
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_by_id",
+                new_callable=AsyncMock,
+                return_value={"user_id": workflow.user_id, "timezone": "UTC"},
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_user_selected_model",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch(
+                "app.workers.tasks.workflow_tasks.get_or_create_workflow_conversation",
+                new_callable=AsyncMock,
+                return_value={"conversation_id": "conv_steps"},
+            ),
+            patch(
+                "app.agents.core.agent.call_agent_silent",
+                new_callable=AsyncMock,
+                return_value=("Done", {}),
+            ) as mock_call_agent,
+        ):
+            await execute_workflow_as_chat(workflow, {"user_id": workflow.user_id}, {})
+
+        request_arg = mock_call_agent.call_args.kwargs["request"]
+        assert request_arg.selectedWorkflow is not None
+        assert request_arg.selectedWorkflow.id == workflow.id
+        # Both steps must be present
+        step_ids = [s["id"] for s in request_arg.selectedWorkflow.steps]
+        assert "s1" in step_ids
+        assert "s2" in step_ids

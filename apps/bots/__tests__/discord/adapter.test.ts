@@ -99,17 +99,33 @@ vi.mock("@gaia/shared", () => {
     commands = new Map();
     protected async dispatchCommand(
       name: string,
-      target: { sendEphemeral: (t: string) => Promise<unknown> },
+      target: { sendEphemeral: (t: string) => Promise<unknown>; userId: string; channelId: string; profile?: { username?: string; displayName?: string } },
+      args: Record<string, string | number | boolean | undefined> = {},
+      rawText?: string,
     ) {
       const cmd = this.commands.get(name);
       if (!cmd) {
         await target.sendEphemeral(`Unknown command: /${name}`);
         return;
       }
-      await cmd.execute({ gaia: this.gaia, target, ctx: {}, args: {} });
+      const ctx = this.buildContext(target.userId, target.channelId, target.profile);
+      try {
+        await cmd.execute({ gaia: this.gaia, target, ctx, args, rawText });
+      } catch (error) {
+        const errMsg = error instanceof Error ? `Error: ${error.message}` : "Something went wrong";
+        try {
+          await target.sendEphemeral(errMsg);
+        } catch {
+          // Target may be expired
+        }
+      }
     }
-    protected buildContext(userId: string, channelId?: string) {
-      return { platform: this.platform, platformUserId: userId, channelId };
+    protected buildContext(
+      userId: string,
+      channelId?: string,
+      profile?: { username?: string; displayName?: string },
+    ) {
+      return { platform: this.platform, platformUserId: userId, channelId, profile };
     }
   };
 
@@ -348,7 +364,7 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
     expect(dispatchSpy).toHaveBeenCalledWith(
       "todo",
       expect.objectContaining({ platform: "discord", userId: "user-123" }),
-      expect.any(Object),
+      expect.any(Object), // args extracted from interaction options
     );
   });
 });
@@ -910,5 +926,158 @@ describe("DiscordAdapter - dispatchCommand unknown command", () => {
     expect(target.sendEphemeral).toHaveBeenCalledWith(
       "Unknown command: /nonexistent",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatchCommand — forwards all args to BaseBotAdapter correctly
+// ---------------------------------------------------------------------------
+
+describe("DiscordAdapter - dispatchCommand args forwarding", () => {
+  it("forwards name, target, and args to BaseBotAdapter.dispatchCommand", async () => {
+    const adapter = new DiscordAdapter();
+
+    // Spy on the prototype method so we assert on the real dispatch being invoked.
+    const dispatchSpy = vi.spyOn(
+      Object.getPrototypeOf(Object.getPrototypeOf(adapter)) as {
+        dispatchCommand: (
+          name: string,
+          target: unknown,
+          args: Record<string, unknown>,
+          rawText?: string,
+        ) => Promise<void>;
+      },
+      "dispatchCommand",
+    ).mockResolvedValue(undefined);
+
+    const target = {
+      platform: "discord" as const,
+      userId: "user-999",
+      channelId: "channel-xyz",
+      send: vi.fn(),
+      sendEphemeral: vi.fn().mockResolvedValue({ id: "x", edit: vi.fn() }),
+      sendRich: vi.fn(),
+      startTyping: vi.fn(),
+    };
+
+    const args = { task: "Buy milk", count: 3 };
+
+    await (
+      adapter as unknown as {
+        dispatchCommand: (
+          name: string,
+          target: typeof target,
+          args: typeof args,
+        ) => Promise<void>;
+      }
+    ).dispatchCommand("todo", target, args);
+
+    expect(dispatchSpy).toHaveBeenCalledWith("todo", target, args);
+
+    dispatchSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatchCommand — error propagation from BaseBotAdapter
+// ---------------------------------------------------------------------------
+
+describe("DiscordAdapter - dispatchCommand error propagation", () => {
+  it("propagates rejection when BaseBotAdapter.dispatchCommand rejects", async () => {
+    const adapter = new DiscordAdapter();
+
+    const boom = new Error("dispatch failed");
+
+    const dispatchSpy = vi.spyOn(
+      Object.getPrototypeOf(Object.getPrototypeOf(adapter)) as {
+        dispatchCommand: (
+          name: string,
+          target: unknown,
+          args: Record<string, unknown>,
+        ) => Promise<void>;
+      },
+      "dispatchCommand",
+    ).mockRejectedValue(boom);
+
+    const target = {
+      platform: "discord" as const,
+      userId: "user-123",
+      channelId: "channel-abc",
+      send: vi.fn(),
+      sendEphemeral: vi.fn().mockResolvedValue({ id: "x", edit: vi.fn() }),
+      sendRich: vi.fn(),
+      startTyping: vi.fn(),
+    };
+
+    await expect(
+      (
+        adapter as unknown as {
+          dispatchCommand: (
+            name: string,
+            target: typeof target,
+            args: Record<string, unknown>,
+          ) => Promise<void>;
+        }
+      ).dispatchCommand("todo", target, {}),
+    ).rejects.toThrow("dispatch failed");
+
+    dispatchSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildContext — constructs expected shape
+// ---------------------------------------------------------------------------
+
+describe("DiscordAdapter - buildContext", () => {
+  it("constructs a context with platform, platformUserId, channelId, and profile", () => {
+    const adapter = new DiscordAdapter();
+
+    const ctx = (
+      adapter as unknown as {
+        buildContext: (
+          userId: string,
+          channelId?: string,
+          profile?: { username?: string; displayName?: string },
+        ) => {
+          platform: string;
+          platformUserId: string;
+          channelId: string | undefined;
+          profile: { username?: string; displayName?: string } | undefined;
+        };
+      }
+    ).buildContext("user-42", "channel-99", {
+      username: "tester",
+      displayName: "Tester Display",
+    });
+
+    expect(ctx).toEqual({
+      platform: "discord",
+      platformUserId: "user-42",
+      channelId: "channel-99",
+      profile: { username: "tester", displayName: "Tester Display" },
+    });
+  });
+
+  it("omits channelId and profile when not provided", () => {
+    const adapter = new DiscordAdapter();
+
+    const ctx = (
+      adapter as unknown as {
+        buildContext: (
+          userId: string,
+        ) => {
+          platform: string;
+          platformUserId: string;
+          channelId: string | undefined;
+          profile: unknown;
+        };
+      }
+    ).buildContext("user-solo");
+
+    expect(ctx.platform).toBe("discord");
+    expect(ctx.platformUserId).toBe("user-solo");
+    expect(ctx.channelId).toBeUndefined();
+    expect(ctx.profile).toBeUndefined();
   });
 });

@@ -250,3 +250,82 @@ class TestShouldContinueBehavior:
         assert len(tool_messages) == 0, (
             "Empty tool_calls list must not route to tool node."
         )
+
+    @pytest.mark.asyncio
+    async def test_tool_calls_route_to_tools_node(self):
+        """LLM returns an AIMessage with tool_calls → routing goes to tools node → ToolMessage produced.
+
+        Fails if should_continue stops routing AIMessages with non-empty tool_calls to 'tools'.
+        """
+
+        @tool
+        def echo_tool(query: str) -> str:
+            """Echo tool for routing test."""
+            return f"echo: {query}"
+
+        tool_call = {
+            "name": "echo_tool",
+            "args": {"query": "routing test"},
+            "id": "call_route_001",
+            "type": "tool_call",
+        }
+        llm = BindableToolsFakeModel(
+            responses=[
+                AIMessage(content="", tool_calls=[tool_call]),
+                AIMessage(content="Done."),
+            ]
+        )
+        builder = create_agent(
+            llm=llm,
+            tool_registry={"echo_tool": echo_tool},
+            disable_retrieve_tools=True,
+            initial_tool_ids=["echo_tool"],
+            agent_name="test_agent",
+        )
+        from langgraph.checkpoint.memory import MemorySaver
+
+        graph = builder.compile(checkpointer=MemorySaver())
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Use the tool")]},
+            config={"configurable": {"thread_id": "t_tool_route"}},
+        )
+
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) >= 1, (
+            "should_continue must route AIMessage with tool_calls to the tools node. "
+            "No ToolMessage was produced — routing did not reach DynamicToolNode."
+        )
+        assert tool_messages[0].tool_call_id == "call_route_001", (
+            f"ToolMessage.tool_call_id must match the AIMessage call ID 'call_route_001'. "
+            f"Got: {tool_messages[0].tool_call_id!r}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_no_tool_calls_route_to_end(self):
+        """LLM returns plain text (no tool_calls) → routing goes to END → only AIMessage in output.
+
+        Fails if should_continue incorrectly routes plain-text AIMessages to the tools node.
+        """
+        plain_response = AIMessage(content="Here is the answer, no tools needed.")
+        llm = BindableToolsFakeModel(responses=[plain_response])
+        graph = self._compile_graph(llm)
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Just answer")]},
+            config={"configurable": {"thread_id": "t_plain_route"}},
+        )
+
+        tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
+        assert len(tool_messages) == 0, (
+            "Plain text AIMessage must not route to the tools node. "
+            f"Unexpected ToolMessages: {tool_messages}"
+        )
+
+        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
+        assert len(ai_messages) >= 1, "Expected at least one AIMessage in output."
+        final_ai = ai_messages[-1]
+        assert final_ai.content == "Here is the answer, no tools needed.", (
+            f"Final AIMessage content must match the fake LLM response. "
+            f"Got: {final_ai.content!r}"
+        )

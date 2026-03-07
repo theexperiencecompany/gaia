@@ -258,6 +258,24 @@ class TestCommsAgentFlow:
             "If this fails, the comms graph is not streamable."
         )
 
+        # Flatten all messages from every chunk dict (chunks are {node_name: state} dicts)
+        all_messages = [
+            msg
+            for chunk in chunks
+            for node_state in chunk.values()
+            if isinstance(node_state, dict)
+            for msg in node_state.get("messages", [])
+        ]
+        ai_messages = [m for m in all_messages if isinstance(m, AIMessage)]
+        assert len(ai_messages) >= 1, (
+            "astream must yield at least one chunk containing an AIMessage. "
+            "Routing logic may be broken if no AIMessage appears in any streamed chunk."
+        )
+        assert any("Streaming response." in (m.content or "") for m in ai_messages), (
+            "Expected AIMessage with content 'Streaming response.' from the fake LLM. "
+            f"Actual AI message contents: {[m.content for m in ai_messages]}"
+        )
+
     # ------------------------------------------------------------------
     # Edge cases
     # ------------------------------------------------------------------
@@ -276,6 +294,15 @@ class TestCommsAgentFlow:
         ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
         assert len(ai_messages) >= 1, (
             "Graph must produce at least one AIMessage even for empty input."
+        )
+        # Verify the routing path was actually exercised, not silently short-circuited.
+        # The comms_graph fixture programs the fake LLM to respond with this exact string.
+        assert any(
+            "Hello! How can I help you today?" in (m.content or "") for m in ai_messages
+        ), (
+            "Expected AIMessage with content 'Hello! How can I help you today?' from the "
+            "fake LLM. If this fails, the agent node may have been bypassed or gutted. "
+            f"Actual AI message contents: {[m.content for m in ai_messages]}"
         )
 
     async def test_minimal_invocation_no_system_message(self, comms_graph):
@@ -396,7 +423,15 @@ class TestCommsAgentFlow:
             async with build_comms_graph(
                 chat_llm=fake_llm, in_memory_checkpointer=True
             ) as graph:
-                config = _thread_config()
+                # add_memory reads user_id from config["metadata"]["user_id"], NOT
+                # config["configurable"]["user_id"].  Both keys must be present: LangGraph
+                # requires "configurable" for checkpointing while the tool requires
+                # "metadata" for the user identity lookup.
+                user_id = str(uuid4())
+                config = {
+                    "configurable": {"thread_id": str(uuid4()), "user_id": user_id},
+                    "metadata": {"user_id": user_id},
+                }
                 result = await graph.ainvoke(
                     {
                         "messages": [
@@ -413,7 +448,9 @@ class TestCommsAgentFlow:
         )
         assert tool_messages[0].tool_call_id == "call_add_memory_001"
 
-        # Verify the tool actually called memory_service — not just that it's registered
+        # Verify the tool actually called memory_service — not just that it's registered.
+        # If store_memory is never awaited, the most likely cause is that user_id was not
+        # found in config["metadata"] (the key the tool actually reads).
         memory_mock.store_memory.assert_awaited_once()
         call_args_str = str(memory_mock.store_memory.call_args)
         assert "User likes dark mode" in call_args_str, (

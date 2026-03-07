@@ -194,3 +194,120 @@ class TestLazyLoader:
         result = loader.get()
         assert result is True
         assert configured["done"] is True
+
+
+@pytest.mark.integration
+class TestProviderRegistryExtended:
+    """Additional coverage for ProviderRegistry methods not covered above."""
+
+    async def test_aget_missing_key_raises(self):
+        """aget() for an unregistered provider name should raise KeyError."""
+        registry = ProviderRegistry()
+        with pytest.raises(KeyError, match="not found"):
+            await registry.aget("does_not_exist")
+
+    def test_warn_once_strategy_logs_once(self):
+        """WARN_ONCE strategy should emit the warning exactly once at registration.
+
+        The warning is emitted in _check_availability_and_warn() during
+        LazyLoader.__init__. Registering twice (re-registering) should still
+        only ever call _log_warning once per LazyLoader instance because the
+        second instance is a brand-new object.  What we verify here is that a
+        single LazyLoader with WARN_ONCE only logs one warning at construction
+        time rather than logging on every get() call.
+
+        The app uses loguru (not stdlib logging), so we mock `logger.warning`
+        at the module level rather than using pytest's caplog fixture.
+        """
+        from unittest.mock import patch
+
+        registry = ProviderRegistry()
+        with patch("app.core.lazy_loader.logger") as mock_logger:
+            registry.register(
+                name="warn_once_provider",
+                loader_func=lambda: "value",
+                required_keys=[None],  # None triggers the missing-key warning
+                strategy=MissingKeyStrategy.WARN_ONCE,
+            )
+            # Calling get() twice should NOT produce additional warnings.
+            registry.get("warn_once_provider")
+            registry.get("warn_once_provider")
+
+        # The registration-time warning fires exactly once; get() is silent.
+        warn_calls = [
+            call
+            for call in mock_logger.warning.call_args_list
+            if "warn_once_provider" in str(call)
+        ]
+        assert len(warn_calls) == 1
+
+    def test_cyclic_dependency_detected(self):
+        """_check_cyclic_dependency should raise ConfigurationError for A -> B -> A."""
+        from app.utils.exceptions import ConfigurationError
+
+        registry = ProviderRegistry()
+        # Register A depending on B, and B depending on A.
+        registry.register(
+            name="dep_a",
+            loader_func=lambda: "a",
+            required_keys=["ok"],
+            strategy=MissingKeyStrategy.WARN,
+            dependencies=["dep_b"],
+        )
+        registry.register(
+            name="dep_b",
+            loader_func=lambda: "b",
+            required_keys=["ok"],
+            strategy=MissingKeyStrategy.WARN,
+            dependencies=["dep_a"],
+        )
+        with pytest.raises(ConfigurationError, match="Cyclic dependency detected"):
+            registry._check_cyclic_dependency("dep_a")
+
+    async def test_initialize_auto_providers_initializes_registered(self):
+        """initialize_auto_providers should call aget() for auto-init providers."""
+        registry = ProviderRegistry()
+        registry.register(
+            name="auto_p",
+            loader_func=lambda: "auto-result",
+            required_keys=["present"],
+            strategy=MissingKeyStrategy.WARN,
+            auto_initialize=True,
+        )
+        # Reset so initialize_auto_providers has something to do.
+        registry._providers["auto_p"].reset()
+        assert not registry.is_initialized("auto_p")
+
+        await registry.initialize_auto_providers()
+
+        assert registry.is_initialized("auto_p")
+        assert registry.get("auto_p") == "auto-result"
+
+    async def test_warmup_all_initializes_available_providers(self):
+        """warmup_all should initialize every available provider."""
+        registry = ProviderRegistry()
+        registry.register(
+            name="warm_p",
+            loader_func=lambda: "warm-result",
+            required_keys=["present"],
+            strategy=MissingKeyStrategy.WARN,
+        )
+        # Provider should not be initialized yet.
+        assert not registry.is_initialized("warm_p")
+
+        await registry.warmup_all()
+
+        assert registry.is_initialized("warm_p")
+
+    async def test_warmup_all_skips_unavailable_providers(self):
+        """warmup_all should skip (not raise for) unavailable providers."""
+        registry = ProviderRegistry()
+        registry.register(
+            name="unavail_p",
+            loader_func=lambda: "should-not-run",
+            required_keys=[None],  # missing -> unavailable
+            strategy=MissingKeyStrategy.WARN,
+        )
+        # Should complete without raising even though the provider is unavailable.
+        await registry.warmup_all()
+        assert not registry.is_initialized("unavail_p")

@@ -465,24 +465,27 @@ class TestWorkflowValidator:
 
     def test_raises_when_workflow_is_deactivated(self):
         wf = _make_workflow(activated=False)
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             WorkflowValidator.validate_for_execution(wf)
 
     def test_raises_when_steps_are_empty(self):
         wf = _make_workflow(steps=[])
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             WorkflowValidator.validate_for_execution(wf)
 
     def test_raises_when_trigger_config_is_none(self):
         wf = _make_workflow()
         # Force trigger_config to None post-construction to test the validator
         object.__setattr__(wf, "trigger_config", None)
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             WorkflowValidator.validate_for_execution(wf)
 
-    def test_is_static_method(self):
-        # validate_for_execution should be callable without instantiation
-        assert callable(WorkflowValidator.validate_for_execution)
+    def test_raises_with_message_for_invalid_workflow(self):
+        # validate_for_execution should raise ValidationError with a descriptive
+        # message when called without instantiation on an invalid workflow.
+        wf = _make_workflow(activated=False)
+        with pytest.raises(ValueError, match="Workflow validation failed"):
+            WorkflowValidator.validate_for_execution(wf)
 
 
 # ---------------------------------------------------------------------------

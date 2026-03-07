@@ -410,6 +410,18 @@ class TestModifyMessageLabels:
         # Should have been called twice: once for add, once for remove
         assert mock_invoke_gmail_tool.call_count == 2
 
+        add_call, remove_call = mock_invoke_gmail_tool.call_args_list
+
+        # First call must be the add-labels operation
+        assert add_call[0][1] == "GMAIL_ADD_LABEL_TO_EMAIL"
+        assert add_call[0][2]["label_ids"] == ["STARRED"]
+        assert add_call[0][2]["message_ids"] == ["msg1"]
+
+        # Second call must be the remove-labels operation
+        assert remove_call[0][1] == "GMAIL_REMOVE_LABEL"
+        assert remove_call[0][2]["label_ids"] == ["UNREAD"]
+        assert remove_call[0][2]["message_ids"] == ["msg1"]
+
     async def test_gracefully_handles_tool_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("transient error")
 
@@ -1262,3 +1274,161 @@ class TestGetContactList:
 
         assert result[0]["name"] == "Alice"
         assert result[1]["name"] == "Zoe"
+
+    async def test_extracts_contacts_from_to_and_cc_headers(
+        self, mock_invoke_gmail_tool
+    ):
+        """All of From, To, and Cc addresses must appear in the result."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "Alice <alice@example.com>"},
+                        {"name": "To", "value": "Bob <bob@example.com>"},
+                        {"name": "Cc", "value": "Carol <carol@example.com>"},
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        emails = {c["email"] for c in result}
+        assert emails == {
+            "alice@example.com",
+            "bob@example.com",
+            "carol@example.com",
+        }
+
+    async def test_deduplicates_contacts_by_email_address(self, mock_invoke_gmail_tool):
+        """The same email address in both To and Cc should appear only once."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {"name": "To", "value": "Bob <bob@example.com>"},
+                        {"name": "Cc", "value": "Bob <bob@example.com>"},
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        assert len(result) == 1
+        assert result[0]["email"] == "bob@example.com"
+
+    async def test_does_not_exclude_user_own_email(self, mock_invoke_gmail_tool):
+        """Production code has no self-filtering; the caller's address is kept."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "Me <me@example.com>"},
+                        {"name": "To", "value": "Other <other@example.com>"},
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        emails = {c["email"] for c in result}
+        # The user's own address is NOT filtered out by the production code
+        assert "me@example.com" in emails
+        assert "other@example.com" in emails
+
+    async def test_extracts_reply_to_header(self, mock_invoke_gmail_tool):
+        """Reply-To addresses should also be collected."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "Sender <sender@example.com>"},
+                        {
+                            "name": "Reply-To",
+                            "value": "replies@example.com",
+                        },
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        emails = {c["email"] for c in result}
+        assert "replies@example.com" in emails
+
+    async def test_skips_detail_fetch_on_failure(self, mock_invoke_gmail_tool):
+        """Messages whose detail fetch returns successful=False are silently skipped."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}, {"id": "msg2"}]},
+            {"successful": False, "error": "not found"},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "Bob <bob@example.com>"},
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        # Only the second message yielded a contact
+        assert len(result) == 1
+        assert result[0]["email"] == "bob@example.com"
+
+    async def test_ignores_addresses_without_at_sign(self, mock_invoke_gmail_tool):
+        """Strings that are not valid email addresses must not appear in result."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "not-an-email"},
+                        {"name": "To", "value": "real@example.com"},
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        assert len(result) == 1
+        assert result[0]["email"] == "real@example.com"
+
+    async def test_handles_multiple_addresses_in_single_header(
+        self, mock_invoke_gmail_tool
+    ):
+        """Comma-separated addresses in a single header are each extracted."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {
+                            "name": "To",
+                            "value": "Alice <alice@example.com>, Bob <bob@example.com>",
+                        },
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        emails = {c["email"] for c in result}
+        assert "alice@example.com" in emails
+        assert "bob@example.com" in emails

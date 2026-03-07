@@ -53,6 +53,14 @@ class TestSendEmailFlow:
     exercised as part of the graph run — not just unit-tested in isolation.
     """
 
+    # -------------------------------------------------------------------------
+    # The four tests below call filter_messages_node directly (unit-test style).
+    # They belong here because they exercise the real production node that is
+    # wired into the E2E graph, acting as a contract check for the node's
+    # public interface. Comprehensive unit coverage lives in:
+    #   tests/unit/agents/nodes/test_filter_messages.py
+    # -------------------------------------------------------------------------
+
     async def test_filter_messages_node_removes_dangling_tool_calls(self):
         """filter_messages_node must strip AI tool_calls with no ToolMessage response.
 
@@ -204,6 +212,23 @@ class TestSendEmailFlow:
         assert "todos" in result, (
             "Result must contain 'todos' key — the GAIA-specific state channel. "
             "If missing, the graph is using a generic state instead of GAIA State."
+        )
+        # Value assertions: confirm the channels hold the right types, not just
+        # that the keys are present. A wrong type here means the State schema
+        # reducers are not functioning correctly.
+        assert isinstance(result["todos"], list), (
+            "'todos' must be a list (last-write-wins reducer returns a list). "
+            f"Got {type(result['todos']).__name__!r} instead."
+        )
+        assert isinstance(result["messages"], list), (
+            "'messages' must be a list (add_messages reducer returns a list). "
+            f"Got {type(result['messages']).__name__!r} instead."
+        )
+        # The graph was invoked with one HumanMessage; the fake LLM produced one
+        # AIMessage. At minimum both must be present.
+        assert len(result["messages"]) >= 2, (
+            "Expected at least a HumanMessage and an AIMessage in the result. "
+            f"Got {len(result['messages'])} message(s)."
         )
 
     async def test_multi_turn_conversation_filter_cleans_between_turns(self):

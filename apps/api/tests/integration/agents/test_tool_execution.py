@@ -1,133 +1,212 @@
-"""Integration tests for tool execution within a LangGraph agent.
+"""Integration tests for tool execution within the real production agent graph.
 
-Tests that tools bound to an agent are invoked correctly when the
-FakeMessagesListChatModel emits tool calls, and that results are
-properly wired back into the graph state.
+Tests that tools registered with create_agent are invoked correctly when the
+fake LLM emits tool calls, and that results are properly wired back into the
+graph state via the real DynamicToolNode.
+
+DELETE app/override/langgraph_bigtool/create_agent.py → every test below fails.
+DELETE app/override/langgraph_bigtool/utils.py → every test below fails.
 """
 
-from typing import Any
+from uuid import uuid4
 
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
-from langgraph.graph import END, StateGraph
-from langgraph.prebuilt import ToolNode
+from langgraph.checkpoint.memory import MemorySaver
 
-from tests.helpers import create_fake_llm_with_tool_calls
-from tests.integration.conftest import SimpleState
+from app.override.langgraph_bigtool.create_agent import create_agent
+from tests.helpers import (
+    BindableToolsFakeModel,
+    create_fake_llm,
+    create_fake_llm_with_tool_calls,
+)
 
 
-@pytest.fixture
-def add_tool():
-    """A tool that adds two numbers."""
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
+
+def _thread_config() -> dict:
+    return {"configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}}
+
+
+def _build_registry():
     @tool
     def add_numbers(a: int, b: int) -> str:
-        """Add two numbers together."""
+        """Add two numbers together and return the result as a string."""
         return str(a + b)
 
-    return add_numbers
+    return {"add_numbers": add_numbers}
 
 
-@pytest.fixture
-def multi_tool_llm():
-    """Fake LLM that calls add_numbers, then returns a final response."""
-    tool_call = {
-        "name": "add_numbers",
-        "args": {"a": 3, "b": 7},
-        "id": "call_add_001",
-        "type": "tool_call",
-    }
-    return create_fake_llm_with_tool_calls([tool_call, "The answer is 10."])
-
-
-@pytest.fixture
-def tool_graph(add_tool, multi_tool_llm, memory_saver):
-    """Build a graph with model and tool nodes for add_numbers."""
-
-    def should_continue(state: SimpleState) -> str:
-        last = state.messages[-1] if state.messages else None
-        if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-            return "tools"
-        return "end"
-
-    def model_node(state: SimpleState) -> dict[str, Any]:
-        response = multi_tool_llm.invoke(state.messages)
-        return {"messages": [response]}
-
-    tool_node = ToolNode([add_tool])
-
-    builder = StateGraph(SimpleState)
-    builder.add_node("model", model_node)
-    builder.add_node("tools", tool_node)
-    builder.set_entry_point("model")
-    builder.add_conditional_edges(
-        "model",
-        should_continue,
-        {"tools": "tools", "end": END},
+def _compile(llm, end_graph_hooks=None):
+    """Compile the real create_agent graph with the add_numbers tool registry."""
+    builder = create_agent(
+        llm=llm,
+        tool_registry=_build_registry(),
+        disable_retrieve_tools=True,
+        initial_tool_ids=["add_numbers"],
+        agent_name="tool_execution_test_agent",
+        end_graph_hooks=end_graph_hooks,
     )
-    builder.add_edge("tools", "model")
+    return builder.compile(checkpointer=MemorySaver())
 
-    return builder.compile(checkpointer=memory_saver)
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
 
 
 @pytest.mark.integration
 class TestToolExecution:
-    """Test tool execution in a compiled agent graph."""
+    """Tool execution verified through real create_agent graph invocation."""
 
-    async def test_tool_is_called_and_result_returned(self, tool_graph, thread_config):
-        """The add_numbers tool should be called and produce a ToolMessage with result."""
-        result = await tool_graph.ainvoke(
-            {"messages": [HumanMessage(content="Add 3 and 7")]},
-            config=thread_config,
+    async def test_tool_call_produces_tool_message(self):
+        """Fake LLM returning a tool call must produce a ToolMessage in state.
+
+        Fails if DynamicToolNode is removed or should_continue stops routing
+        AIMessages with tool_calls to the 'tools' node.
+        """
+        tool_call = {
+            "name": "add_numbers",
+            "args": {"a": 3, "b": 7},
+            "id": "call_add_001",
+            "type": "tool_call",
+        }
+        graph = _compile(
+            create_fake_llm_with_tool_calls([tool_call, "The answer is 10."])
         )
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Add 3 and 7")]},
+            config=_thread_config(),
+        )
+
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
-        assert len(tool_messages) == 1
-        assert tool_messages[0].content == "10"
-        assert tool_messages[0].tool_call_id == "call_add_001"
-
-    async def test_final_response_follows_tool_result(self, tool_graph, thread_config):
-        """After tool execution, the model should produce a final text response."""
-        result = await tool_graph.ainvoke(
-            {"messages": [HumanMessage(content="Add 3 and 7")]},
-            config=thread_config,
+        assert len(tool_messages) >= 1, (
+            "A tool call from the LLM must produce at least one ToolMessage. "
+            "DynamicToolNode may not be executing tools correctly."
         )
-        final_msg = result["messages"][-1]
-        assert isinstance(final_msg, AIMessage)
-        assert "10" in final_msg.content
-
-    async def test_tool_call_id_propagated(self, tool_graph, thread_config):
-        """ToolMessage should carry the same tool_call_id as the AIMessage tool call."""
-        result = await tool_graph.ainvoke(
-            {"messages": [HumanMessage(content="compute")]},
-            config=thread_config,
+        assert tool_messages[0].tool_call_id == "call_add_001", (
+            f"ToolMessage.tool_call_id must match the AIMessage call ID. "
+            f"Got: {tool_messages[0].tool_call_id!r}"
         )
-        ai_messages = [
+        assert tool_messages[0].content == "10", (
+            f"add_numbers(3, 7) must return '10'. Got: {tool_messages[0].content!r}"
+        )
+
+    async def test_full_tool_cycle_message_sequence(self):
+        """Human → AI(tool_call) → ToolMessage → AI(final) completes in correct order.
+
+        Validates the full routing cycle: agent → tools → agent → end.
+        Fails if any node in the real create_agent graph is missing or miswired.
+        """
+        tool_call = {
+            "name": "add_numbers",
+            "args": {"a": 5, "b": 5},
+            "id": "call_cycle_001",
+            "type": "tool_call",
+        }
+        graph = _compile(
+            create_fake_llm_with_tool_calls([tool_call, "Done, the sum is 10."])
+        )
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="What is 5 + 5?")]},
+            config=_thread_config(),
+        )
+
+        messages = result["messages"]
+        types = [type(m).__name__ for m in messages]
+
+        assert any(
+            isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
+            for m in messages
+        ), f"Missing AIMessage with tool_calls. Message types: {types}"
+
+        assert any(isinstance(m, ToolMessage) for m in messages), (
+            f"Missing ToolMessage after tool call. Message types: {types}"
+        )
+
+        final_ai = [
             m
-            for m in result["messages"]
-            if isinstance(m, AIMessage) and getattr(m, "tool_calls", None)
+            for m in messages
+            if isinstance(m, AIMessage) and not getattr(m, "tool_calls", None)
         ]
+        assert len(final_ai) >= 1, (
+            f"Missing final plain-text AIMessage after tool cycle. "
+            f"Message types: {types}"
+        )
+
+    async def test_state_accumulates_across_turns(self):
+        """Consecutive ainvoke calls on the same thread must accumulate messages.
+
+        Fails if InMemorySaver checkpointing is broken in create_agent, or if
+        the State reducer drops messages between turns.
+        """
+        graph = _compile(
+            BindableToolsFakeModel(
+                responses=[
+                    AIMessage(content="First response."),
+                    AIMessage(content="Second response."),
+                ]
+            )
+        )
+        config = _thread_config()
+
+        await graph.ainvoke(
+            {"messages": [HumanMessage(content="Turn one")]}, config=config
+        )
+        count_after_1 = len((await graph.aget_state(config)).values["messages"])
+
+        await graph.ainvoke(
+            {"messages": [HumanMessage(content="Turn two")]}, config=config
+        )
+        count_after_2 = len((await graph.aget_state(config)).values["messages"])
+
+        assert count_after_2 > count_after_1, (
+            "Messages must accumulate across turns via InMemorySaver. "
+            f"count_after_1={count_after_1}, count_after_2={count_after_2}"
+        )
+
+        final_state = await graph.aget_state(config)
+        human_contents = [
+            m.content
+            for m in final_state.values["messages"]
+            if isinstance(m, HumanMessage)
+        ]
+        assert "Turn one" in human_contents, (
+            f"Turn one HumanMessage must survive into final state. Got: {human_contents}"
+        )
+        assert "Turn two" in human_contents, (
+            f"Turn two HumanMessage must be present in final state. Got: {human_contents}"
+        )
+
+    async def test_no_tool_call_produces_only_ai_message(self):
+        """Plain text LLM response must not route to the tool node.
+
+        Fails if should_continue in the real create_agent incorrectly routes
+        plain-text AIMessages to the DynamicToolNode.
+        """
+        graph = _compile(create_fake_llm(["I can help you with that."]))
+
+        result = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Hello")]},
+            config=_thread_config(),
+        )
+
         tool_messages = [m for m in result["messages"] if isinstance(m, ToolMessage)]
-        assert len(ai_messages) >= 1
-        assert len(tool_messages) >= 1
-        assert ai_messages[0].tool_calls[0]["id"] == tool_messages[0].tool_call_id
-
-    async def test_multiple_invocations_with_checkpointing(
-        self, tool_graph, thread_config
-    ):
-        """Subsequent invocations on the same thread should accumulate state."""
-        await tool_graph.ainvoke(
-            {"messages": [HumanMessage(content="First call")]},
-            config=thread_config,
+        assert len(tool_messages) == 0, (
+            "Plain text response must not route to DynamicToolNode. "
+            f"Got unexpected ToolMessages: {tool_messages}"
         )
-        state = await tool_graph.aget_state(thread_config)
-        msg_count_after_first = len(state.values["messages"])
 
-        await tool_graph.ainvoke(
-            {"messages": [HumanMessage(content="Second call")]},
-            config=thread_config,
+        ai_messages = [m for m in result["messages"] if isinstance(m, AIMessage)]
+        assert len(ai_messages) >= 1, (
+            "At least one AIMessage must be present in the final state."
         )
-        state = await tool_graph.aget_state(thread_config)
-        msg_count_after_second = len(state.values["messages"])
-
-        assert msg_count_after_second > msg_count_after_first
+        assert not getattr(ai_messages[-1], "tool_calls", None), (
+            "The final AIMessage must not have tool_calls for a plain text response."
+        )

@@ -317,6 +317,53 @@ class TestSubagentExecutionContext:
         assert ctx.user_id is None
         assert ctx.stream_id is None
 
+    async def test_context_is_consumed_by_execute_subagent_stream(self):
+        """SubagentExecutionContext must be accepted and consumed by the real
+        execute_subagent_stream function — verifying that field names and types
+        match what the production streaming function actually reads."""
+        from app.agents.core.subagents.subagent_runner import (
+            SubagentExecutionContext,
+            execute_subagent_stream,
+        )
+
+        chunk = AIMessageChunk(content="context field test passed")
+        events = [("messages", (chunk, {}))]
+
+        mock_graph = MagicMock()
+        mock_graph.astream = MagicMock(return_value=_async_iter(events))
+
+        thread_id = str(uuid4())
+        user_id = str(uuid4())
+        stream_id = str(uuid4())
+
+        ctx = SubagentExecutionContext(
+            subagent_graph=mock_graph,
+            agent_name="gmail_agent",
+            config={"configurable": {"thread_id": thread_id}},
+            configurable={"thread_id": thread_id, "user_id": user_id},
+            integration_id="gmail",
+            initial_state={"messages": [], "todos": []},
+            user_id=user_id,
+            stream_id=stream_id,
+        )
+
+        # stream_id is set — execute_subagent_stream reads ctx.stream_id to check
+        # cancellation; mock stream_manager so it does not raise
+        with patch(
+            "app.agents.core.subagents.subagent_runner.stream_manager"
+        ) as mock_sm:
+            mock_sm.is_cancelled = AsyncMock(return_value=False)
+            result = await execute_subagent_stream(ctx=ctx, stream_writer=None)
+
+        # The production function read ctx.initial_state, ctx.config, ctx.stream_id
+        # correctly — if any field name were wrong the call would have raised
+        assert "context field test passed" in result
+        mock_graph.astream.assert_called_once_with(
+            ctx.initial_state,
+            stream_mode=["messages", "custom", "updates"],
+            config=ctx.config,
+        )
+
 
 # ---------------------------------------------------------------------------
 # Test: thread ID isolation
@@ -357,26 +404,96 @@ class TestSubagentThreadIsolation:
         assert human_b[0].content == "Task B"
 
     async def test_subagent_thread_id_format(self):
-        """Subagent thread IDs produced by the handoff tool follow the
+        """Thread IDs produced by prepare_subagent_execution follow the
         '{integration_id}_{parent_thread_id}' convention.
 
-        Verify that the naming logic in handoff_tools.py produces distinct IDs
-        for different integration_ids sharing the same parent thread.
+        Calls the real production function with a mocked provider graph and
+        checks that the thread_id embedded in the returned config matches the
+        expected pattern for two different integration IDs sharing the same
+        parent conversation_id.
         """
-        parent_thread = "parent-thread-abc"
+        from datetime import timezone
 
-        gmail_thread = f"gmail_{parent_thread}"
-        notion_thread = f"notion_{parent_thread}"
-        calendar_thread = f"googlecalendar_{parent_thread}"
+        from langchain_core.messages import SystemMessage
 
-        assert gmail_thread != notion_thread
-        assert gmail_thread != calendar_thread
-        assert notion_thread != calendar_thread
-        # All share the same parent suffix
-        assert all(
-            t.endswith(parent_thread)
-            for t in [gmail_thread, notion_thread, calendar_thread]
+        from app.agents.core.subagents.subagent_runner import (
+            get_subagent_integrations,
+            prepare_subagent_execution,
         )
+
+        integrations = get_subagent_integrations()
+        # Need at least two non-auth-required integrations to compare
+        eligible = [
+            i
+            for i in integrations
+            if not (
+                i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth
+            )
+        ]
+        if len(eligible) < 2:
+            pytest.skip("Need at least two non-auth-required subagent integrations")
+
+        integ_a = eligible[0]
+        integ_b = eligible[1]
+        parent_thread = str(uuid4())
+        user = make_user()
+
+        mock_graph = _make_minimal_subagent_graph()
+
+        with (
+            patch(
+                "app.agents.core.subagents.subagent_runner.providers"
+            ) as mock_providers,
+            patch("app.helpers.agent_helpers.providers") as mock_helpers_providers,
+            patch(
+                "app.agents.core.subagents.subagent_runner.create_subagent_system_message",
+                new=AsyncMock(return_value=SystemMessage(content="sys")),
+            ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+                new=AsyncMock(return_value=SystemMessage(content="ctx")),
+            ),
+        ):
+            mock_providers.aget = AsyncMock(return_value=mock_graph)
+            mock_helpers_providers.get = MagicMock(return_value=None)
+
+            ctx_a, err_a = await prepare_subagent_execution(
+                subagent_id=integ_a.id,
+                task="test task",
+                user=user,
+                user_time=datetime.now(timezone.utc),
+                conversation_id=parent_thread,
+            )
+            ctx_b, err_b = await prepare_subagent_execution(
+                subagent_id=integ_b.id,
+                task="test task",
+                user=user,
+                user_time=datetime.now(timezone.utc),
+                conversation_id=parent_thread,
+            )
+
+        assert err_a is None, (
+            f"prepare_subagent_execution failed for {integ_a.id}: {err_a}"
+        )
+        assert err_b is None, (
+            f"prepare_subagent_execution failed for {integ_b.id}: {err_b}"
+        )
+
+        thread_a = ctx_a.config["configurable"]["thread_id"]
+        thread_b = ctx_b.config["configurable"]["thread_id"]
+
+        # Each thread ID must embed the integration ID and parent thread
+        assert thread_a == f"{integ_a.id}_{parent_thread}", (
+            f"Expected '{integ_a.id}_{parent_thread}', got '{thread_a}'"
+        )
+        assert thread_b == f"{integ_b.id}_{parent_thread}", (
+            f"Expected '{integ_b.id}_{parent_thread}', got '{thread_b}'"
+        )
+        # Two different integrations sharing the same parent must have distinct thread IDs
+        assert thread_a != thread_b
+        # Both thread IDs must end with the same parent conversation ID
+        assert thread_a.endswith(parent_thread)
+        assert thread_b.endswith(parent_thread)
 
     async def test_same_graph_different_threads_are_isolated(self):
         """The same compiled graph object with different thread configs
@@ -413,14 +530,79 @@ class TestSubagentRun:
     """Run a subagent through its graph with all external calls mocked."""
 
     async def test_subagent_run_returns_result(self):
-        """Running a minimal subagent graph with a HumanMessage must produce
-        an AIMessage result accessible from the final state."""
-        graph = _make_minimal_subagent_graph()
-        thread_id = str(uuid4())
+        """prepare_subagent_execution must return a valid SubagentExecutionContext
+        whose graph can be invoked to produce an AIMessage result.
 
-        result = await graph.ainvoke(
-            {"messages": [HumanMessage(content="Do some gmail work")]},
-            config={"configurable": {"thread_id": thread_id}},
+        Uses the real production prepare_subagent_execution with all external
+        I/O mocked at the boundary (LLM graph, system message, context message).
+        Asserts on the real context structure and real graph invocation result.
+        """
+        from datetime import timezone
+
+        from langchain_core.messages import SystemMessage
+
+        from app.agents.core.subagents.subagent_runner import (
+            SubagentExecutionContext,
+            get_subagent_integrations,
+            prepare_subagent_execution,
+        )
+
+        integrations = get_subagent_integrations()
+        eligible = [
+            i
+            for i in integrations
+            if not (
+                i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth
+            )
+        ]
+        if not eligible:
+            pytest.skip("No non-auth-required subagent integrations available")
+
+        first = eligible[0]
+        user = make_user()
+        conversation_id = str(uuid4())
+        real_graph = _make_minimal_subagent_graph()
+
+        with (
+            patch(
+                "app.agents.core.subagents.subagent_runner.providers"
+            ) as mock_providers,
+            patch("app.helpers.agent_helpers.providers") as mock_helpers_providers,
+            patch(
+                "app.agents.core.subagents.subagent_runner.create_subagent_system_message",
+                new=AsyncMock(
+                    return_value=SystemMessage(content="You are a test agent.")
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.subagent_runner.create_agent_context_message",
+                new=AsyncMock(return_value=SystemMessage(content="Context: test.")),
+            ),
+        ):
+            mock_providers.aget = AsyncMock(return_value=real_graph)
+            mock_helpers_providers.get = MagicMock(return_value=None)
+
+            ctx, error = await prepare_subagent_execution(
+                subagent_id=first.id,
+                task="Do some work",
+                user=user,
+                user_time=datetime.now(timezone.utc),
+                conversation_id=conversation_id,
+            )
+
+        assert error is None, f"prepare_subagent_execution failed: {error}"
+        assert ctx is not None
+        assert isinstance(ctx, SubagentExecutionContext)
+        assert ctx.agent_name == first.subagent_config.agent_name
+        assert ctx.integration_id == first.id
+        assert ctx.subagent_graph is real_graph
+        assert "messages" in ctx.initial_state
+        assert len(ctx.initial_state["messages"]) == 3
+
+        # Invoke the real graph through the context to confirm it runs end-to-end
+        result = await ctx.subagent_graph.ainvoke(
+            ctx.initial_state,
+            config=ctx.config,
         )
 
         assert result is not None
@@ -626,18 +808,33 @@ class TestSubagentProviderRegistration:
             )
 
     def test_register_subagent_providers_subset_by_id(self):
-        """Passing integration_ids list must restrict registration to only those IDs."""
+        """Passing integration_ids list must restrict registration to only those IDs.
+
+        Picks the first non-auth-required subagent integration so that exactly
+        one provider is registered, then asserts on both the exact count and the
+        specific agent_name that was registered.
+        """
         from app.agents.core.subagents.provider_subagents import (
             register_subagent_providers,
         )
         from app.config.oauth_config import get_subagent_integrations
 
-        # Pick just the first available subagent integration
-        available = get_subagent_integrations()
-        if not available:
-            pytest.skip("No subagent integrations available in OAUTH_INTEGRATIONS")
+        all_available = get_subagent_integrations()
+        # Filter to integrations that will actually be registered (not auth-required MCP)
+        registerable = [
+            i
+            for i in all_available
+            if not (
+                i.managed_by == "mcp" and i.mcp_config and i.mcp_config.requires_auth
+            )
+        ]
+        if not registerable:
+            pytest.skip(
+                "No non-auth-required subagent integrations available in OAUTH_INTEGRATIONS"
+            )
 
-        first = available[0]
+        target = registerable[0]
+        expected_agent_name = target.subagent_config.agent_name
 
         with patch(
             "app.agents.core.subagents.provider_subagents.providers"
@@ -646,10 +843,21 @@ class TestSubagentProviderRegistration:
             mock_providers.register = MagicMock(
                 side_effect=lambda name, **_: registered_names.append(name)
             )
-            count = register_subagent_providers(integration_ids=[first.id])
+            count = register_subagent_providers(integration_ids=[target.id])
 
-        # At most one should be registered (could be zero if auth-required MCP)
-        assert count <= 1
+        # Exactly one provider must be registered for the single requested integration
+        assert count == 1, (
+            f"Expected exactly 1 registered provider for '{target.id}', got {count}"
+        )
+        assert expected_agent_name in registered_names, (
+            f"Expected agent '{expected_agent_name}' to be registered; "
+            f"got: {registered_names}"
+        )
+        # No other agents should have been registered
+        assert registered_names == [expected_agent_name], (
+            f"Only '{expected_agent_name}' should be registered; "
+            f"got: {registered_names}"
+        )
 
 
 # ---------------------------------------------------------------------------

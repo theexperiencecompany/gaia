@@ -79,7 +79,7 @@ async def test_client(test_user):
     app = _create_test_app()
     app.add_middleware(_MockAuthMiddleware, user=test_user)
 
-    transport = httpx.ASGITransport(app=app)
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as client:
@@ -92,7 +92,7 @@ async def unauthenticated_client():
     app = _create_test_app()
     app.add_middleware(_NoAuthMiddleware)
 
-    transport = httpx.ASGITransport(app=app)
+    transport = httpx.ASGITransport(app=app, raise_app_exceptions=False)
     async with httpx.AsyncClient(
         transport=transport, base_url="http://testserver"
     ) as client:

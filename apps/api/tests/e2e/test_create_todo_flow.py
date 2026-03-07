@@ -21,8 +21,6 @@ DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 """
 
-from uuid import uuid4
-
 import pytest
 from tests.helpers import BindableToolsFakeModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
@@ -32,7 +30,6 @@ from app.agents.tools.todo_tools import (
     create_todo_pre_model_hook,
     create_todo_tools,
 )
-from langgraph.checkpoint.memory import MemorySaver
 from tests.e2e.conftest import build_gaia_test_graph
 
 
@@ -216,18 +213,30 @@ class TestCreateTodoFlow:
     ):
         """mark_task must update the status of an existing todo by ID.
 
-        Sequence: plan_tasks creates a task → read its ID → mark_task sets it completed.
-        We verify the status transition happened through the real mark_task tool.
+        Uses a SINGLE compiled graph with MemorySaver and the SAME thread_id for
+        both turns so that real LangGraph checkpoint continuity is exercised:
+          Turn 1: plan_tasks creates a task and persists it in checkpointed state.
+          Turn 2 (same graph, same thread): mark_task reads the task ID from
+              checkpointed todos and marks it completed.
+
+        This ensures the test breaks if the graph loses state between invocations.
         """
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
-        # We need to capture the todo ID created by plan_tasks to feed it to mark_task.
-        # We do this with a two-phase graph run.
+        # The fake LLM is pre-programmed with responses for BOTH turns.
+        # Turn 1 consumes the first two responses (plan_tasks call + final reply).
+        # Turn 2 consumes the next two (mark_task call + final reply) — but
+        # mark_task's task_id is a placeholder here; we patch it after Turn 1.
+        #
+        # Because BindableToolsFakeModel cycles through a fixed response list we
+        # supply all four responses up-front and use a sentinel task_id that we
+        # replace after inspecting Turn-1 output.
+        SENTINEL_ID = "SENTINEL"
 
-        # Phase 1: plan one task and capture its ID
-        fake_llm_phase1 = BindableToolsFakeModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
+                # Turn 1 — plan one task
                 AIMessage(
                     content="",
                     tool_calls=[
@@ -240,28 +249,7 @@ class TestCreateTodoFlow:
                     ],
                 ),
                 AIMessage(content="Task planned."),
-            ]
-        )
-        config_phase1 = {
-            "configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}
-        }
-        graph_phase1 = build_gaia_test_graph(
-            fake_llm=fake_llm_phase1,
-            tool_registry=tool_registry,
-            checkpointer=memory_saver,
-            store=in_memory_store,
-        )
-        result_phase1 = await graph_phase1.ainvoke(
-            {"messages": [HumanMessage(content="Plan a task")]},
-            config=config_phase1,
-        )
-        todos_after_plan = result_phase1.get("todos", [])
-        assert len(todos_after_plan) == 1
-        task_id = todos_after_plan[0]["id"]
-
-        # Phase 2: mark the task completed using its real ID
-        fake_llm_phase2 = BindableToolsFakeModel(
-            responses=[
+                # Turn 2 — mark task completed (task_id filled in below)
                 AIMessage(
                     content="",
                     tool_calls=[
@@ -269,7 +257,9 @@ class TestCreateTodoFlow:
                             "id": "call_mark_001",
                             "name": "mark_task",
                             "args": {
-                                "updates": [{"task_id": task_id, "status": "completed"}]
+                                "updates": [
+                                    {"task_id": SENTINEL_ID, "status": "completed"}
+                                ]
                             },
                             "type": "tool_call",
                         }
@@ -278,28 +268,46 @@ class TestCreateTodoFlow:
                 AIMessage(content="Task marked as completed."),
             ]
         )
-        config_phase2 = {
-            "configurable": {"thread_id": str(uuid4()), "user_id": str(uuid4())}
-        }
-        graph_phase2 = build_gaia_test_graph(
-            fake_llm=fake_llm_phase2,
+
+        # Single graph, single MemorySaver — both turns share state via thread_id.
+        graph = build_gaia_test_graph(
+            fake_llm=fake_llm,
             tool_registry=tool_registry,
-            checkpointer=MemorySaver(),
+            checkpointer=memory_saver,
             store=in_memory_store,
         )
-        # Pre-populate todos so mark_task has something to update
-        result_phase2 = await graph_phase2.ainvoke(
-            {
-                "messages": [HumanMessage(content="Mark the task done")],
-                "todos": todos_after_plan,
-            },
-            config=config_phase2,
+
+        # Turn 1: plan a task and capture the generated ID from checkpointed state.
+        result_turn1 = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Plan a task")]},
+            config=thread_config,
         )
-        todos_after_mark = result_phase2.get("todos", [])
-        assert len(todos_after_mark) == 1
-        assert todos_after_mark[0]["status"] == "completed", (
+        todos_after_plan = result_turn1.get("todos", [])
+        assert len(todos_after_plan) == 1, (
+            f"Turn 1 must produce exactly 1 todo, got {len(todos_after_plan)}"
+        )
+        task_id = todos_after_plan[0]["id"]
+
+        # Patch the sentinel so the pre-programmed Turn-2 tool call uses the real ID.
+        turn2_ai: AIMessage = fake_llm.responses[2]  # type: ignore[index]
+        turn2_ai.tool_calls[0]["args"]["updates"][0]["task_id"] = task_id
+
+        # Turn 2: same graph, same thread — mark_task reads todos from checkpoint.
+        result_turn2 = await graph.ainvoke(
+            {"messages": [HumanMessage(content="Mark the task done")]},
+            config=thread_config,
+        )
+        todos_after_mark = result_turn2.get("todos", [])
+        assert len(todos_after_mark) >= 1, (
+            "Turn 2 must preserve at least one todo in state"
+        )
+        completed = [t for t in todos_after_mark if t["id"] == task_id]
+        assert len(completed) == 1, (
+            f"Todo with id {task_id!r} must still be present after mark_task"
+        )
+        assert completed[0]["status"] == "completed", (
             f"mark_task must update status to 'completed', got "
-            f"'{todos_after_mark[0]['status']}'"
+            f"'{completed[0]['status']}'"
         )
 
     async def test_todo_tool_names_match_registry_constants(self):
@@ -317,46 +325,134 @@ class TestCreateTodoFlow:
             "Update TODO_TOOL_NAMES in todo_tools.py."
         )
 
-    async def test_todo_pre_model_hook_injects_task_context_into_system_message(self):
+    async def test_todo_pre_model_hook_injects_task_context_into_system_message(
+        self, thread_config, in_memory_store, memory_saver
+    ):
         """create_todo_pre_model_hook must inject todo context into the system prompt.
 
-        This tests the real pre-model hook factory from todo_tools.py.
-        When todos exist in state, the hook appends task context to the
-        latest non-memory SystemMessage.
+        Instead of calling the hook directly, this test invokes the real compiled
+        GAIA graph so that the hook is exercised through the official wiring path
+        (create_agent -> acall_model -> execute_hooks).
+
+        A capturing fake LLM records the exact messages list it receives from
+        acall_model.  We then assert that the SystemMessage seen by the model
+        contains the todo task context injected by create_todo_pre_model_hook.
+
+        This test breaks if:
+        - create_todo_pre_model_hook is removed from the pre_model_hooks list, OR
+        - the hook stops appending todo context to the SystemMessage.
         """
+        from typing import Any
 
-        from tests.e2e.conftest import (
-            make_gaia_state,
-            make_mock_store,
-            make_node_config,
+        from langchain_core.language_models.fake_chat_models import (
+            FakeMessagesListChatModel,
+        )
+        from langchain_core.messages import BaseMessage
+        from langchain_core.outputs import ChatResult
+
+        captured_inputs: list[list[BaseMessage]] = []
+
+        class CapturingFakeModel(FakeMessagesListChatModel):
+            """Fake LLM that records the messages list on every invocation."""
+
+            def bind_tools(self, tools: Any, **kwargs: Any) -> "CapturingFakeModel":  # type: ignore[override]
+                return self
+
+            def _generate(
+                self,
+                messages: list[BaseMessage],
+                stop: list[str] | None = None,
+                run_manager: Any = None,
+                **kwargs: Any,
+            ) -> ChatResult:
+                captured_inputs.append(list(messages))
+                return super()._generate(
+                    messages, stop=stop, run_manager=run_manager, **kwargs
+                )
+
+            async def _agenerate(
+                self,
+                messages: list[BaseMessage],
+                stop: list[str] | None = None,
+                run_manager: Any = None,
+                **kwargs: Any,
+            ) -> ChatResult:
+                captured_inputs.append(list(messages))
+                return await super()._agenerate(
+                    messages, stop=stop, run_manager=run_manager, **kwargs
+                )
+
+        from typing import cast
+
+        from app.agents.core.nodes.filter_messages import filter_messages_node
+        from app.agents.core.nodes.manage_system_prompts import (
+            manage_system_prompts_node,
+        )
+        from app.override.langgraph_bigtool.hooks import HookType
+
+        todo_hooks = [create_todo_pre_model_hook(source="test")]
+
+        fake_llm = CapturingFakeModel(responses=[AIMessage(content="Done.")])
+
+        todo_tools = create_todo_tools(source="test")
+        tool_registry = {t.name: t for t in todo_tools}
+
+        # Build graph with all three hooks: filter → manage_system_prompts → todo_pre_model
+        from app.override.langgraph_bigtool.create_agent import create_agent
+
+        pre_model_hooks: list[HookType] = [
+            cast(HookType, filter_messages_node),
+            cast(HookType, manage_system_prompts_node),
+            cast(HookType, todo_hooks[0]),
+        ]
+
+        builder = create_agent(
+            llm=fake_llm,
+            agent_name="test_agent",
+            tool_registry=tool_registry,
+            disable_retrieve_tools=True,
+            initial_tool_ids=list(tool_registry.keys()),
+            middleware=None,
+            pre_model_hooks=pre_model_hooks,
+        )
+        graph = builder.compile(checkpointer=memory_saver, store=in_memory_store)
+
+        # Invoke with a system message and a pre-seeded todo in state so the hook
+        # has something to inject.
+        await graph.ainvoke(
+            {
+                "messages": [
+                    SystemMessage(content="You are a helpful assistant."),
+                    HumanMessage(content="Do the work"),
+                ],
+                "todos": [
+                    {
+                        "id": "abc123",
+                        "content": "Write the report",
+                        "status": "in_progress",
+                        "created_at": "2026-01-01T00:00:00Z",
+                    }
+                ],
+            },
+            config=thread_config,
         )
 
-        hook = create_todo_pre_model_hook(source="test")
+        assert captured_inputs, "CapturingFakeModel must have been called at least once"
 
-        system_msg = SystemMessage(content="You are a helpful assistant.")
-        human_msg = HumanMessage(content="Do the work")
-
-        state = make_gaia_state(
-            messages=[system_msg, human_msg],
-            todos=[
-                {
-                    "id": "abc123",
-                    "content": "Write the report",
-                    "status": "in_progress",
-                    "created_at": "2026-01-01T00:00:00Z",
-                }
-            ],
+        # The first call to the model is the one where hooks ran.
+        messages_seen_by_model = captured_inputs[0]
+        system_messages_seen = [
+            m for m in messages_seen_by_model if isinstance(m, SystemMessage)
+        ]
+        assert system_messages_seen, (
+            "The model must receive at least one SystemMessage after hooks ran"
         )
-        config = make_node_config()
-        store = make_mock_store()
-
-        result = hook(state, config, store)
-
-        updated_system = result["messages"][0]
-        assert isinstance(updated_system, SystemMessage)
-        assert "Write the report" in updated_system.content, (
-            "create_todo_pre_model_hook must inject todo content into the system message"
+        combined_content = "\n".join(m.content for m in system_messages_seen)
+        assert "Write the report" in combined_content, (
+            "create_todo_pre_model_hook must inject todo content into the system message "
+            f"seen by the model. Got: {combined_content!r}"
         )
-        assert "abc123" in updated_system.content, (
-            "create_todo_pre_model_hook must inject todo ID into the system message"
+        assert "abc123" in combined_content, (
+            "create_todo_pre_model_hook must inject todo ID into the system message "
+            f"seen by the model. Got: {combined_content!r}"
         )

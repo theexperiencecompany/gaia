@@ -135,8 +135,14 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=lambda x: written_values.append(x))
 
         mock_parser = MagicMock()
-        mock_parser.get_format_instructions.return_value = "{format}"
+        mock_parser.get_format_instructions.return_value = "FORMAT_SENTINEL"
         mock_parser.parse.return_value = follow_up
+
+        captured_llm_inputs = []
+
+        async def capture_invoke(_chain, msgs, config):
+            captured_llm_inputs.append(msgs)
+            return "raw llm output"
 
         with (
             patch(
@@ -153,15 +159,11 @@ class TestFollowUpActionsNode:
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
-                new=AsyncMock(return_value="raw llm output"),
+                new=capture_invoke,
             ),
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.PydanticOutputParser",
                 return_value=mock_parser,
-            ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.SUGGEST_FOLLOW_UP_ACTIONS",
-                "{conversation_summary}{tool_names}{format_instructions}",
             ),
         ):
             result = await follow_up_actions_node(state, config, store)
@@ -169,6 +171,13 @@ class TestFollowUpActionsNode:
         assert result is state
         assert {"main_response_complete": True} in written_values
         assert {"follow_up_actions": suggested_actions} in written_values
+
+        # The real template must have been formatted with the tool names —
+        # verify they appear in the SystemMessage content sent to the LLM.
+        assert len(captured_llm_inputs) == 1
+        system_msg_content = captured_llm_inputs[0][0].content
+        assert "calendar" in system_msg_content
+        assert "gmail" in system_msg_content
 
     @pytest.mark.asyncio
     async def test_happy_path_no_user_id_falls_back_to_tool_registry(self):
@@ -215,10 +224,6 @@ class TestFollowUpActionsNode:
                 "app.agents.core.nodes.follow_up_actions_node.PydanticOutputParser",
                 return_value=mock_parser,
             ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.SUGGEST_FOLLOW_UP_ACTIONS",
-                "{conversation_summary}{tool_names}{format_instructions}",
-            ),
         ):
             result = await follow_up_actions_node(state, config, store)
 
@@ -237,7 +242,7 @@ class TestFollowUpActionsNode:
         follow_up = FollowUpActions(actions=["action1"])
 
         mock_parser = MagicMock()
-        mock_parser.get_format_instructions.return_value = "{format}"
+        mock_parser.get_format_instructions.return_value = "FORMAT_SENTINEL"
         mock_parser.parse.return_value = follow_up
 
         async def capture_invoke(_chain, msgs, config):
@@ -265,22 +270,27 @@ class TestFollowUpActionsNode:
                 "app.agents.core.nodes.follow_up_actions_node.PydanticOutputParser",
                 return_value=mock_parser,
             ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.SUGGEST_FOLLOW_UP_ACTIONS",
-                "{conversation_summary}{tool_names}{format_instructions}",
-            ),
         ):
             await follow_up_actions_node(state, config, store)
 
         assert len(captured_invocations) == 1
-        # HumanMessage in the invocation should match the last 4 of 6 messages
-        human_msg = captured_invocations[0][1]
-        # The pretty-printed HumanMessage content should contain the last messages (2-5)
+        # The messages list passed to invoke_with_fallback is [SystemMessage, HumanMessage]
+        llm_msgs = captured_invocations[0]
+        assert len(llm_msgs) == 2
+
+        # The HumanMessage content is the pretty-printed slice of recent_messages.
+        # With 6 input messages and a window of 4, only messages 2-5 must appear.
+        human_msg = llm_msgs[1]
         for i in range(2, 6):
             assert f"message {i}" in human_msg.content
 
+        # Messages 0 and 1 must NOT appear — they were cut off.
+        assert "message 0" not in human_msg.content
+        assert "message 1" not in human_msg.content
+
     @pytest.mark.asyncio
     async def test_parse_failure_writes_empty_actions_and_returns_state(self):
+        """LLM succeeds but output cannot be parsed — exercises the inner except block."""
         messages = [
             HumanMessage(content="hi"),
             AIMessage(content="hello"),
@@ -293,7 +303,8 @@ class TestFollowUpActionsNode:
         mock_writer = MagicMock(side_effect=lambda x: written_values.append(x))
 
         mock_parser = MagicMock()
-        mock_parser.get_format_instructions.return_value = "{format}"
+        mock_parser.get_format_instructions.return_value = "FORMAT_SENTINEL"
+        # LLM returns successfully, but the parser chokes on the output.
         mock_parser.parse.side_effect = ValueError("malformed JSON")
 
         with (
@@ -317,18 +328,18 @@ class TestFollowUpActionsNode:
                 "app.agents.core.nodes.follow_up_actions_node.PydanticOutputParser",
                 return_value=mock_parser,
             ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.SUGGEST_FOLLOW_UP_ACTIONS",
-                "{conversation_summary}{tool_names}{format_instructions}",
-            ),
         ):
             result = await follow_up_actions_node(state, config, store)
 
         assert result is state
         assert {"follow_up_actions": []} in written_values
+        # The parser was called — confirming we hit the parse-failure path,
+        # not the LLM-failure path.
+        mock_parser.parse.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_llm_failure_writes_empty_actions_and_returns_state(self):
+        """LLM itself raises — exercises the outer except block, parser is never reached."""
         messages = [
             HumanMessage(content="hi"),
             AIMessage(content="hello"),
@@ -339,6 +350,9 @@ class TestFollowUpActionsNode:
 
         written_values = []
         mock_writer = MagicMock(side_effect=lambda x: written_values.append(x))
+
+        mock_parser = MagicMock()
+        mock_parser.get_format_instructions.return_value = "FORMAT_SENTINEL"
 
         with (
             patch(
@@ -358,14 +372,16 @@ class TestFollowUpActionsNode:
                 new=AsyncMock(side_effect=RuntimeError("LLM timeout")),
             ),
             patch(
-                "app.agents.core.nodes.follow_up_actions_node.SUGGEST_FOLLOW_UP_ACTIONS",
-                "{conversation_summary}{tool_names}{format_instructions}",
+                "app.agents.core.nodes.follow_up_actions_node.PydanticOutputParser",
+                return_value=mock_parser,
             ),
         ):
             result = await follow_up_actions_node(state, config, store)
 
         assert result is state
         assert {"follow_up_actions": []} in written_values
+        # Parser must NOT have been called — the failure happened before parsing.
+        mock_parser.parse.assert_not_called()
 
     @pytest.mark.asyncio
     async def test_second_write_failure_does_not_raise(self):
@@ -436,10 +452,6 @@ class TestFollowUpActionsNode:
                 "app.agents.core.nodes.follow_up_actions_node.PydanticOutputParser",
                 return_value=mock_parser,
             ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.SUGGEST_FOLLOW_UP_ACTIONS",
-                "{conversation_summary}{tool_names}{format_instructions}",
-            ),
         ):
             result = await follow_up_actions_node(state, config, store)
 
@@ -498,10 +510,6 @@ class TestFollowUpActionsNode:
             patch(
                 "app.agents.core.nodes.follow_up_actions_node.PydanticOutputParser",
                 return_value=mock_parser,
-            ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.SUGGEST_FOLLOW_UP_ACTIONS",
-                "{conversation_summary}{tool_names}{format_instructions}",
             ),
         ):
             result = await follow_up_actions_node(state, config, store)

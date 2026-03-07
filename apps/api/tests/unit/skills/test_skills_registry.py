@@ -20,6 +20,8 @@ from app.agents.skills.registry import (
     enable_skill,
     get_skill,
     get_skill_by_name,
+    get_skills_for_agent,
+    install_skill,
     list_skills,
     uninstall_skill,
 )
@@ -328,16 +330,28 @@ class TestSkillRegistryCRUD:
         mock_result.modified_count = 1
         mock_collection.update_one = AsyncMock(return_value=mock_result)
 
-        result = await enable_skill(user_id="u1", skill_id="s1")
+        result = await enable_skill(user_id="test_user", skill_id="s1")
         assert result is True
+
+        call_args = mock_collection.update_one.call_args[0]
+        query_filter, update_doc = call_args
+        assert query_filter["user_id"] == "test_user"  # security boundary
+        assert query_filter["_id"] == "s1"
+        assert update_doc["$set"]["enabled"] is True  # exact boolean value
 
     async def test_disable_skill(self, mock_collection):
         mock_result = MagicMock()
         mock_result.modified_count = 1
         mock_collection.update_one = AsyncMock(return_value=mock_result)
 
-        result = await disable_skill(user_id="u1", skill_id="s1")
+        result = await disable_skill(user_id="test_user", skill_id="s1")
         assert result is True
+
+        call_args = mock_collection.update_one.call_args[0]
+        query_filter, update_doc = call_args
+        assert query_filter["user_id"] == "test_user"  # security boundary
+        assert query_filter["_id"] == "s1"
+        assert update_doc["$set"]["enabled"] is False  # exact boolean value
 
     async def test_enable_skill_not_found(self, mock_collection):
         mock_result = MagicMock()
@@ -428,3 +442,197 @@ class TestSkillRegistryCRUD:
 
         call_args = mock_collection.find_one.call_args[0][0]
         assert call_args["target"] == "gmail_agent"
+
+
+@pytest.mark.unit
+class TestGetSkillsForAgent:
+    """Test get_skills_for_agent — the cached path for agent skill lookup."""
+
+    @pytest.fixture
+    def mock_collection(self):
+        with patch("app.agents.skills.registry._get_collection") as mock_get:
+            mock_col = MagicMock()
+            mock_get.return_value = mock_col
+            yield mock_col
+
+    @pytest.fixture(autouse=True)
+    def bypass_cache(self):
+        """Patch Redis cache helpers so tests always exercise the DB path."""
+        with (
+            patch(
+                "app.decorators.caching.get_cache",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+        ):
+            yield
+
+    def _make_doc(
+        self, skill_id: str, user_id: str, enabled: bool, agent_name: str
+    ) -> dict:
+        return {
+            "_id": skill_id,
+            "user_id": user_id,
+            "name": f"skill-{skill_id}",
+            "description": f"Skill {skill_id}",
+            "target": agent_name,
+            "vfs_path": f"/skills/skill-{skill_id}",
+            "source": "inline",
+            "enabled": enabled,
+            "installed_at": "2024-01-01T00:00:00+00:00",
+            "updated_at": None,
+            "license": None,
+            "compatibility": None,
+            "metadata": {},
+            "allowed_tools": [],
+            "body_content": None,
+            "source_url": None,
+            "files": [],
+        }
+
+    async def test_queries_db_for_enabled_skills(self, mock_collection):
+        mock_cursor = MagicMock()
+        mock_cursor.sort.return_value = mock_cursor
+        mock_cursor.to_list = AsyncMock(return_value=[])
+        mock_collection.find.return_value = mock_cursor
+
+        await get_skills_for_agent(user_id="u1", agent_name="executor")
+
+        query = mock_collection.find.call_args[0][0]
+        assert query["enabled"] is True
+        assert query["target"] == "executor"
+        # Must scope to the requesting user AND system skills
+        or_clause = query["$or"]
+        user_ids_in_query = {clause["user_id"] for clause in or_clause}
+        assert "u1" in user_ids_in_query
+        assert "system" in user_ids_in_query
+
+    async def test_returns_only_enabled_skills(self, mock_collection):
+        # DB returns only enabled docs (the query already filters); verify
+        # that all returned Skill objects are enabled.
+        docs = [
+            self._make_doc("s1", "u1", True, "executor"),
+            self._make_doc("s2", "system", True, "executor"),
+        ]
+        mock_cursor = MagicMock()
+        mock_cursor.sort.return_value = mock_cursor
+        mock_cursor.to_list = AsyncMock(return_value=docs)
+        mock_collection.find.return_value = mock_cursor
+
+        skills = await get_skills_for_agent(user_id="u1", agent_name="executor")
+
+        assert len(skills) == 2
+        assert all(s.enabled is True for s in skills)
+        assert all(isinstance(s, Skill) for s in skills)
+
+    async def test_cache_hit_returns_without_db_call(self, mock_collection):
+        """A warm cache short-circuits the DB entirely."""
+        cached_skills = [
+            Skill(
+                id="s1",
+                user_id="u1",
+                name="cached-skill",
+                description="From cache",
+                target="executor",
+                vfs_path="/skills/cached-skill",
+                source=SkillSource.INLINE,
+                enabled=True,
+            )
+        ]
+        with patch(
+            "app.decorators.caching.get_cache",
+            new_callable=AsyncMock,
+            return_value=cached_skills,
+        ):
+            result = await get_skills_for_agent(user_id="u1", agent_name="executor")
+
+        mock_collection.find.assert_not_called()
+        assert result == cached_skills
+
+
+@pytest.mark.unit
+class TestInstallSkill:
+    """Test install_skill — document shape and return value."""
+
+    @pytest.fixture
+    def mock_collection(self):
+        with patch("app.agents.skills.registry._get_collection") as mock_get:
+            mock_col = MagicMock()
+            mock_get.return_value = mock_col
+            yield mock_col
+
+    @pytest.fixture(autouse=True)
+    def bypass_cache_invalidation(self):
+        """Suppress Redis delete_cache calls from @CacheInvalidator."""
+        with patch("app.decorators.caching.delete_cache", new_callable=AsyncMock):
+            yield
+
+    async def test_inserts_correct_document_shape(self, mock_collection):
+        mock_collection.find_one = AsyncMock(return_value=None)  # no duplicate
+        mock_collection.insert_one = AsyncMock()
+
+        await install_skill(
+            user_id="u1",
+            name="my-skill",
+            description="Does something useful",
+            target="executor",
+            vfs_path="/skills/my-skill",
+            source=SkillSource.GITHUB,
+            source_url="https://github.com/org/repo",
+            license="MIT",
+        )
+
+        mock_collection.insert_one.assert_called_once()
+        inserted_doc = mock_collection.insert_one.call_args[0][0]
+
+        assert inserted_doc["user_id"] == "u1"
+        assert inserted_doc["name"] == "my-skill"
+        assert inserted_doc["description"] == "Does something useful"
+        assert inserted_doc["target"] == "executor"
+        assert inserted_doc["vfs_path"] == "/skills/my-skill"
+        assert inserted_doc["source"] == SkillSource.GITHUB
+        assert inserted_doc["enabled"] is True
+        assert "_id" in inserted_doc  # UUID assigned
+        assert "id" not in inserted_doc  # flat schema: no separate id field
+
+    async def test_returns_installed_skill(self, mock_collection):
+        mock_collection.find_one = AsyncMock(return_value=None)
+        mock_collection.insert_one = AsyncMock()
+
+        skill = await install_skill(
+            user_id="u1",
+            name="my-skill",
+            description="Does something useful",
+            target="executor",
+            vfs_path="/skills/my-skill",
+            source=SkillSource.INLINE,
+        )
+
+        assert isinstance(skill, Skill)
+        assert skill.user_id == "u1"
+        assert skill.name == "my-skill"
+        assert skill.enabled is True
+        assert skill.id is not None
+
+    async def test_raises_on_duplicate(self, mock_collection):
+        existing_doc = {
+            "_id": "existing-id",
+            "user_id": "u1",
+            "name": "my-skill",
+            "target": "executor",
+        }
+        mock_collection.find_one = AsyncMock(return_value=existing_doc)
+        mock_collection.insert_one = AsyncMock()
+
+        with pytest.raises(ValueError, match="already installed"):
+            await install_skill(
+                user_id="u1",
+                name="my-skill",
+                description="Duplicate skill",
+                target="executor",
+                vfs_path="/skills/my-skill",
+                source=SkillSource.INLINE,
+            )
+
+        mock_collection.insert_one.assert_not_called()

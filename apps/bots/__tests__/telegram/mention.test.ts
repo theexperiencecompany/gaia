@@ -2,71 +2,72 @@
  * Tests for Telegram-specific mention detection and markdown fallback logic.
  *
  * The Telegram adapter has unique behaviors:
- * 1. Mention regex: strips "@botUsername" from messages in groups
+ * 1. Mention stripping: removes "@botUsername" from group messages using
+ *    case-sensitive plain-string replaceAll (NOT a regex).
  * 2. Markdown fallback: retries without parse_mode when Telegram rejects markup
  * 3. convertToTelegramMarkdown: the formatter applied to all outbound messages
  *
- * The mention regex pattern is built from the bot's username at runtime.
- * We test the pattern itself to ensure correct group message filtering.
+ * Production logic (from adapter.ts registerEvents):
+ *   if (!ctx.message.text.includes(`@${this.botUsername}`)) return;
+ *   const content = ctx.message.text.replaceAll(`@${this.botUsername}`, "").trim();
  */
 
 import { describe, it, expect } from "vitest";
 import { convertToTelegramMarkdown } from "@gaia/shared";
 
 // ---------------------------------------------------------------------------
-// Mention regex helpers (replicated from adapter internals)
-// These test the exact pattern the Telegram adapter constructs.
+// Helpers that mirror the exact production logic in adapter.ts, using the
+// same plain-string includes() and replaceAll() — NOT a regex.
 // ---------------------------------------------------------------------------
 
-function buildMentionRegex(botUsername: string): RegExp {
-  return new RegExp(`@${botUsername}`, "gi");
+function hasMention(text: string, botUsername: string): boolean {
+  return text.includes(`@${botUsername}`);
 }
 
 function stripMention(text: string, botUsername: string): string {
-  return text.replace(buildMentionRegex(botUsername), "").trim();
+  return text.replaceAll(`@${botUsername}`, "").trim();
 }
 
 describe("Telegram mention detection", () => {
-  it("detects mention at start of message", () => {
-    const regex = buildMentionRegex("gaiabot");
-    expect(regex.test("@gaiabot hello")).toBe(true);
-  });
-
-  it("detects mention at end of message", () => {
-    const regex = buildMentionRegex("gaiabot");
-    expect(regex.test("help me @gaiabot")).toBe(true);
-  });
-
-  it("does not match different bot username", () => {
-    const regex = buildMentionRegex("gaiabot");
-    expect(regex.test("@otherbot hello")).toBe(false);
-  });
-
-  it("is case-insensitive", () => {
-    // Note: create separate regex instances - the `g` flag makes regex stateful
-    // (lastIndex advances after each .test()), so reusing gives wrong results.
-    expect(buildMentionRegex("GaiaBot").test("@GAIABOT hello")).toBe(true);
-    expect(buildMentionRegex("GaiaBot").test("@gaiabot hello")).toBe(true);
-  });
-
-  it("strips mention from start of message", () => {
-    const result = stripMention("@gaiabot what is the weather", "gaiabot");
+  it("strips @BotName mention at start", () => {
+    const result = stripMention("@GaiaBot what is the weather", "GaiaBot");
     expect(result).toBe("what is the weather");
   });
 
-  it("strips mention from middle of message", () => {
-    const result = stripMention("hey @gaiabot what time is it", "gaiabot");
+  it("does not strip @botname when case does not match", () => {
+    // Production uses case-sensitive replaceAll — wrong case is not stripped.
+    const result = stripMention("@gaiabot hello", "GaiaBot");
+    expect(result).toBe("@gaiabot hello");
+  });
+
+  it("strips mention leaving rest of message intact", () => {
+    const result = stripMention("@GaiaBot hello world", "GaiaBot");
+    expect(result).toBe("hello world");
+  });
+
+  it("handles message that is only a mention", () => {
+    // Production replies "How can I help you?" when content is empty after strip.
+    // The stripping itself should produce an empty string.
+    const result = stripMention("@GaiaBot", "GaiaBot");
+    expect(result).toBe("");
+  });
+
+  it("strips mention anywhere in message", () => {
+    // replaceAll removes all occurrences regardless of position.
+    const result = stripMention("hey @GaiaBot what time is it", "GaiaBot");
     expect(result).toBe("hey  what time is it".trim());
   });
 
-  it("strips mention from end of message", () => {
-    const result = stripMention("send email @gaiabot", "gaiabot");
-    expect(result).toBe("send email");
+  it("does not detect mention when username does not appear", () => {
+    expect(hasMention("@otherbot hello", "GaiaBot")).toBe(false);
   });
 
-  it("returns clean text when no mention present", () => {
-    const result = stripMention("just a regular message", "gaiabot");
-    expect(result).toBe("just a regular message");
+  it("detects mention at start of message", () => {
+    expect(hasMention("@GaiaBot hello", "GaiaBot")).toBe(true);
+  });
+
+  it("detects mention anywhere in message", () => {
+    expect(hasMention("help me @GaiaBot please", "GaiaBot")).toBe(true);
   });
 });
 
@@ -113,31 +114,45 @@ describe("convertToTelegramMarkdown - bold conversion", () => {
 // ---------------------------------------------------------------------------
 // Telegram-specific Markdown error scenarios
 // The adapter retries with plain text when parse fails.
-// We verify the error message format it checks against.
+// We verify the exact error substrings the adapter checks in adapter.ts.
+//
+// Production checks (adapter.ts handleTelegramStreaming):
+//   e.message.includes("can't parse entities")
+//   e.message.includes("message is not modified")
 // ---------------------------------------------------------------------------
 
 describe("Telegram markdown error recognition", () => {
+  // These are the exact substrings the production adapter checks.
+  // If the Telegram API changes its error format these assertions will catch it.
   const PARSE_ERROR = "can't parse entities";
   const NOT_MODIFIED_ERROR = "message is not modified";
 
-  it("parse error string is what Telegram API returns", () => {
-    // This ensures our adapter's error check string is correct.
-    // If Telegram changes the error string, this test will remind us.
-    expect(PARSE_ERROR).toBe("can't parse entities");
+  it("parse error substring matches a real Telegram API error message", () => {
+    // Telegram returns: "Bad Request: can't parse entities: Character '@' is reserved"
+    const telegramError = new Error(
+      "Bad Request: can't parse entities: Character '@' is reserved",
+    );
+    expect(telegramError.message.includes(PARSE_ERROR)).toBe(true);
   });
 
-  it("not-modified error string is what Telegram API returns", () => {
-    expect(NOT_MODIFIED_ERROR).toBe("message is not modified");
+  it("not-modified substring matches a real Telegram API error message", () => {
+    // Telegram returns: "Bad Request: message is not modified: specified new message content
+    // and reply markup are exactly the same as a current content and reply markup of the message"
+    const telegramError = new Error(
+      "Bad Request: message is not modified: specified new message content and reply markup are exactly the same",
+    );
+    expect(telegramError.message.includes(NOT_MODIFIED_ERROR)).toBe(true);
   });
 
-  it("error string matching is case-sensitive substring check", () => {
-    const error = new Error("Bad Request: can't parse entities: Character '@' is reserved");
-    expect(error.message.includes(PARSE_ERROR)).toBe(true);
-  });
-
-  it("not-modified is not treated as parse error", () => {
+  it("parse error substring does not match a not-modified error", () => {
     const notModified = new Error("Bad Request: message is not modified");
     expect(notModified.message.includes(PARSE_ERROR)).toBe(false);
-    expect(notModified.message.includes(NOT_MODIFIED_ERROR)).toBe(true);
+  });
+
+  it("not-modified substring does not match a parse-entities error", () => {
+    const parseError = new Error(
+      "Bad Request: can't parse entities: Character '@' is reserved",
+    );
+    expect(parseError.message.includes(NOT_MODIFIED_ERROR)).toBe(false);
   });
 });
