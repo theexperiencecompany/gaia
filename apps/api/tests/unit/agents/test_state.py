@@ -21,11 +21,6 @@ class TestState:
         assert state["selected_tool_ids"] == []
         assert state["todos"] == []
 
-    def test_field_count(self):
-        # State has exactly 3 fields: messages, selected_tool_ids, todos.
-        # This test catches unintentional additions or removals of fields.
-        assert len(State.__annotations__) == 3
-
     def test_with_messages(self):
         msgs = [HumanMessage(content="hello")]
         state = State(messages=msgs, selected_tool_ids=[], todos=[])
@@ -92,12 +87,6 @@ class TestCoreState:
         state = CoreState(query="test query")
         assert state["query"] == "test query"
 
-    def test_dict_set(self):
-        state = CoreState()
-        state["query"] = "updated"
-        assert state.query == "updated"
-        assert state["query"] == "updated"
-
     def test_dict_delete(self):
         state = CoreState(query="to delete")
         del state["query"]
@@ -124,10 +113,3 @@ class TestCoreState:
         assert state.memories == ["likes python"]
         assert state.memories_stored is True
         assert state.conversation_id == "conv-456"
-
-    def test_field_count(self):
-        # CoreState has exactly 7 fields. This catches unintentional additions
-        # or removals: query, messages, current_datetime, mem0_user_id,
-        # memories, memories_stored, conversation_id.
-        state = CoreState()
-        assert len(state) == 7

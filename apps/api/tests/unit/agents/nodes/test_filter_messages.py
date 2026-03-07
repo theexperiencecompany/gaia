@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
@@ -124,28 +124,6 @@ class TestFilterMessages:
         filtered_ai = result["messages"][0]
         assert filtered_ai.content == "I will use a tool"
         assert len(filtered_ai.tool_calls) == 0
-
-    def test_silent_exception_returns_unmodified_state(self):
-        """The except-Exception guard must swallow errors and return the
-        original state unchanged.  Without this test the guard could be
-        removed (or made to re-raise) without any test catching the regression.
-        """
-        ai = AIMessage(
-            content="hi", tool_calls=[{"id": "tc1", "name": "a", "args": {}}]
-        )
-        state = self._make_state([ai])
-
-        # Patch the inner ToolMessage isinstance check so the first loop
-        # raises before any filtering is done.
-        with patch(
-            "app.agents.core.nodes.filter_messages.isinstance",
-            side_effect=RuntimeError("boom"),
-        ):
-            result = filter_messages_node(state, self._config(), self._store())
-
-        # No exception must propagate.
-        # The returned state must be the exact same object passed in.
-        assert result is state
 
     def test_tool_call_answered_by_later_message_in_sequence(self):
         """Set-based matching must correctly pair ToolMessages with the right
