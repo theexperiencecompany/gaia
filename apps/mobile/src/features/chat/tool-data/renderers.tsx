@@ -273,7 +273,11 @@ const TOOL_RENDERERS: Record<
         : [];
 
     return (
-      <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
+      <Card
+        key={baseKey}
+        variant="secondary"
+        className="mx-4 my-2 rounded-2xl bg-[#171920]"
+      >
         <Card.Body className="py-3 px-4">
           <Text className="text-foreground text-sm">
             Suggested Integrations
@@ -331,7 +335,11 @@ const TOOL_RENDERERS: Record<
   },
 
   memory_data: (_data, baseKey) => (
-    <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
+    <Card
+      key={baseKey}
+      variant="secondary"
+      className="mx-4 my-2 rounded-2xl bg-[#171920]"
+    >
       <Card.Body className="py-3 px-4">
         <Text className="text-xs text-muted mb-1">Memory</Text>
         <Text className="text-foreground text-sm">Memory updated</Text>
@@ -353,8 +361,13 @@ const TOOL_RENDERERS: Record<
       status: string;
       source: string;
     }[] = [];
+    const sourceRows: {
+      source: string;
+      todos: { id: string; content: string; status: string }[];
+    }[] = [];
     for (const [source, snapshot] of Object.entries(progress)) {
       if (snapshot?.todos) {
+        sourceRows.push({ source, todos: snapshot.todos });
         for (const todo of snapshot.todos) {
           allTodos.push({ ...todo, source });
         }
@@ -372,7 +385,11 @@ const TOOL_RENDERERS: Record<
       pending: "\u25CB",
     };
     return (
-      <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
+      <Card
+        key={baseKey}
+        variant="secondary"
+        className="mx-4 my-2 rounded-2xl bg-[#171920]"
+      >
         <Card.Body className="py-3 px-4">
           <View className="flex-row items-center justify-between mb-1.5">
             <Text className="text-xs text-muted">Task Progress</Text>
@@ -390,21 +407,51 @@ const TOOL_RENDERERS: Record<
             {completionPct}% complete • {Object.keys(progress).length} source
             {Object.keys(progress).length > 1 ? "s" : ""}
           </Text>
-          {allTodos.map((todo) => (
-            <View
-              key={`${todo.source}-${todo.id}`}
-              className="flex-row items-start gap-2 mb-1"
-            >
-              <Text className="text-xs text-muted w-4">
-                {statusIcon[todo.status] ?? "\u25CB"}
-              </Text>
-              <Text
-                className={`text-xs flex-1 ${todo.status === "completed" ? "text-success" : todo.status === "in_progress" ? "text-primary" : "text-muted"}`}
+          {sourceRows.map(({ source, todos }) => {
+            const sourceCompletedCount = todos.filter(
+              (todo) => todo.status === "completed",
+            ).length;
+            const sourcePct = Math.round(
+              (sourceCompletedCount / todos.length) * 100,
+            );
+
+            return (
+              <View
+                key={source}
+                className="rounded-xl bg-white/5 border border-white/8 px-3 py-2.5 mb-2"
               >
-                {todo.content}
-              </Text>
-            </View>
-          ))}
+                <View className="flex-row items-center justify-between mb-1.5">
+                  <Text className="text-xs text-foreground font-medium capitalize">
+                    {source.replaceAll("_", " ")}
+                  </Text>
+                  <Text className="text-[10px] text-muted">
+                    {sourceCompletedCount}/{todos.length}
+                  </Text>
+                </View>
+                <View className="h-1 rounded-full bg-muted/30 mb-2">
+                  <View
+                    className="h-1 rounded-full bg-primary"
+                    style={{ width: `${sourcePct}%` }}
+                  />
+                </View>
+                {todos.map((todo) => (
+                  <View
+                    key={`${source}-${todo.id}`}
+                    className="flex-row items-start gap-2 mb-1"
+                  >
+                    <Text className="text-xs text-muted w-4">
+                      {statusIcon[todo.status] ?? "\u25CB"}
+                    </Text>
+                    <Text
+                      className={`text-xs flex-1 ${todo.status === "completed" ? "text-success" : todo.status === "in_progress" ? "text-primary" : "text-muted"}`}
+                    >
+                      {todo.content}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            );
+          })}
         </Card.Body>
       </Card>
     );
