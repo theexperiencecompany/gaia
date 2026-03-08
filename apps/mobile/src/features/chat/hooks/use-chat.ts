@@ -1,9 +1,20 @@
+import {
+  extractToolProgressMessage,
+  mergeToolOutputIntoToolData,
+  upsertTodoProgressToolData,
+} from "@gaia/shared";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useChatStore } from "@/stores/chat-store";
-import { chatApi, fetchChatStream, type Message } from "../api/chat-api";
+import {
+  type ApiToolData,
+  cancelStream as cancelStreamRequest,
+  chatApi,
+  fetchChatStream,
+  type Message,
+} from "../api/chat-api";
 import { chatKeys, useConversationQuery } from "../api/queries";
 
 const EMPTY_MESSAGES: Message[] = [];
@@ -33,7 +44,9 @@ export function useChat(
 ): UseChatReturn {
   const flatListRef = useRef<FlashListRef<Message>>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const streamIdRef = useRef<string | null>(null);
   const streamingResponseRef = useRef<string>("");
+  const streamingToolDataRef = useRef<ApiToolData[]>([]);
   const queryClient = useQueryClient();
 
   const storeActiveChatId = useChatStore((state) => state.activeChatId);
@@ -97,6 +110,10 @@ export function useChat(
 
   const cancelStream = useCallback(() => {
     abortControllerRef.current?.abort();
+    if (streamIdRef.current) {
+      cancelStreamRequest(streamIdRef.current);
+      streamIdRef.current = null;
+    }
     abortControllerRef.current = null;
     useChatStore.getState().setStreamingState({
       isStreaming: false,
@@ -122,6 +139,7 @@ export function useChat(
         text: "",
         isUser: false,
         timestamp: new Date(),
+        toolData: [],
       };
 
       const storeKey = activeConvIdRef.current || `temp-${Date.now()}`;
@@ -145,8 +163,10 @@ export function useChat(
         isTyping: true,
         isStreaming: true,
         conversationId: storeKey,
+        progress: null,
       });
       streamingResponseRef.current = "";
+      streamingToolDataRef.current = [];
 
       try {
         const existingConvId = activeConvIdRef.current;
@@ -213,6 +233,59 @@ export function useChat(
             onProgress: (message) => {
               useChatStore.getState().setStreamingState({ progress: message });
             },
+            onToolData: (entry) => {
+              const progressMessage = extractToolProgressMessage(entry);
+              if (progressMessage) {
+                useChatStore
+                  .getState()
+                  .setStreamingState({ progress: progressMessage });
+                return;
+              }
+
+              const normalizedEntry: ApiToolData = {
+                tool_name: entry.tool_name,
+                data:
+                  typeof entry.data === "object" && entry.data !== null
+                    ? (entry.data as Record<string, unknown>)
+                    : { value: entry.data },
+                timestamp: entry.timestamp,
+              };
+
+              streamingToolDataRef.current = [
+                ...streamingToolDataRef.current,
+                normalizedEntry,
+              ];
+
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  toolData: streamingToolDataRef.current,
+                });
+            },
+            onToolOutput: (output) => {
+              streamingToolDataRef.current = mergeToolOutputIntoToolData(
+                streamingToolDataRef.current,
+                output,
+              );
+
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  toolData: streamingToolDataRef.current,
+                });
+            },
+            onTodoProgress: (snapshot) => {
+              streamingToolDataRef.current = upsertTodoProgressToolData(
+                streamingToolDataRef.current,
+                snapshot,
+              );
+
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  toolData: streamingToolDataRef.current,
+                });
+            },
             onFollowUpActions: (actions) => {
               useChatStore
                 .getState()
@@ -238,6 +311,10 @@ export function useChat(
                 progress: null,
               });
               abortControllerRef.current = null;
+              streamIdRef.current = null;
+            },
+            onStreamId: (streamId) => {
+              streamIdRef.current = streamId;
             },
             onError: (error) => {
               console.error("Stream error:", error);
@@ -253,6 +330,7 @@ export function useChat(
                   activeConvIdRef.current!,
                   "Sorry, I encountered an error. Please try again.",
                 );
+              streamIdRef.current = null;
             },
           },
         );

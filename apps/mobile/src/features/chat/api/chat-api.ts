@@ -11,7 +11,7 @@ export interface ApiFileData {
 export interface ApiToolData {
   tool_name: string;
   data: Record<string, unknown>;
-  timestamp: string;
+  timestamp?: string | null;
 }
 
 export interface ApiMessage {
@@ -163,6 +163,16 @@ export async function toggleStarConversation(
   }
 }
 
+export async function cancelStream(streamId: string): Promise<boolean> {
+  try {
+    await apiService.post(`/cancel-stream/${streamId}`, {});
+    return true;
+  } catch (error) {
+    console.debug("Error cancelling stream:", error);
+    return false;
+  }
+}
+
 export const chatApi = {
   fetchConversation,
   fetchMessages,
@@ -170,6 +180,7 @@ export const chatApi = {
   deleteConversation,
   renameConversation,
   toggleStarConversation,
+  cancelStream,
 };
 
 export * from "./chat-stream";

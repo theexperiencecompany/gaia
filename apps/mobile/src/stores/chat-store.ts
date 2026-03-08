@@ -19,6 +19,10 @@ interface ChatState {
   setMessages: (conversationId: string, messages: Message[]) => void;
   clearMessages: (conversationId: string) => void;
   updateLastMessage: (conversationId: string, text: string) => void;
+  updateLastAssistantMessage: (
+    conversationId: string,
+    updates: Partial<Message>,
+  ) => void;
   updateLastMessageFollowUp: (
     conversationId: string,
     actions: string[],
@@ -65,6 +69,28 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       const lastMsg = updatedMessages[updatedMessages.length - 1];
       if (lastMsg && !lastMsg.isUser) {
         updatedMessages[updatedMessages.length - 1] = { ...lastMsg, text };
+      }
+
+      return {
+        messagesByConversation: {
+          ...state.messagesByConversation,
+          [conversationId]: updatedMessages,
+        },
+      };
+    }),
+
+  updateLastAssistantMessage: (conversationId, updates) =>
+    set((state) => {
+      const messages = state.messagesByConversation[conversationId] || [];
+      if (messages.length === 0) return state;
+
+      const updatedMessages = [...messages];
+      const lastMsg = updatedMessages[updatedMessages.length - 1];
+      if (lastMsg && !lastMsg.isUser) {
+        updatedMessages[updatedMessages.length - 1] = {
+          ...lastMsg,
+          ...updates,
+        };
       }
 
       return {

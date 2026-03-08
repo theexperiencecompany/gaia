@@ -1,5 +1,6 @@
 import { FlashList } from "@shopify/flash-list";
 import { LinearGradient } from "expo-linear-gradient";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   Image,
@@ -69,6 +70,8 @@ function ChatContent({
   } = useChat(activeChatId);
 
   const { spacing, moderateScale } = useResponsive();
+  const { setActiveChatId, clearActiveMessages } = useChatContext();
+  const router = useRouter();
   const insets = useSafeAreaInsets();
 
   const [inputValue, setInputValue] = useState("");
@@ -146,6 +149,31 @@ function ChatContent({
     [sendMessage],
   );
 
+  const handleCommand = useCallback(
+    (command: string) => {
+      if (command === "new") {
+        clearActiveMessages();
+        setActiveChatId(null);
+        setInputValue("");
+        setLastUserMessage("");
+        return true;
+      }
+
+      if (command === "integrations") {
+        router.push("/(app)/integrations");
+        return true;
+      }
+
+      if (command === "workflows") {
+        router.push("/(app)/workflows");
+        return true;
+      }
+
+      return false;
+    },
+    [clearActiveMessages, router, setActiveChatId],
+  );
+
   const renderMessage = useCallback(
     ({ item, index }: { item: Message; index: number }) => {
       const isLastMessage = index === messages.length - 1;
@@ -211,15 +239,18 @@ function ChatContent({
             paddingTop: spacing.sm,
 
             paddingBottom: insets.bottom + spacing.md,
-            backgroundColor: "#1c1c1e",
+            backgroundColor: "#131416",
             borderTopLeftRadius: moderateScale(24, 0.5),
             borderTopRightRadius: moderateScale(24, 0.5),
+            borderTopWidth: 1,
+            borderTopColor: "rgba(255,255,255,0.08)",
           }}
         >
           <ChatInput
             onSend={handleSend}
             value={inputValue}
             onChangeText={setInputValue}
+            onCommand={handleCommand}
           />
         </View>
       </View>

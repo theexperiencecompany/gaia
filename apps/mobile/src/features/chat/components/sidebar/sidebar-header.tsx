@@ -1,17 +1,25 @@
 import { Button } from "heroui-native";
 import { Image, Text, TextInput, View } from "react-native";
 import {
+  Flowchart01Icon,
   HugeiconsIcon,
   PencilEdit02Icon,
   Search01Icon,
+  Wrench01Icon,
 } from "@/components/icons";
 import { useResponsive } from "@/lib/responsive";
 
 interface SidebarHeaderProps {
   onNewChat: () => void;
+  onOpenIntegrations: () => void;
+  onOpenWorkflows: () => void;
 }
 
-export function SidebarHeader({ onNewChat }: SidebarHeaderProps) {
+export function SidebarHeader({
+  onNewChat,
+  onOpenIntegrations,
+  onOpenWorkflows,
+}: SidebarHeaderProps) {
   const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
 
   return (
@@ -92,6 +100,42 @@ export function SidebarHeader({ onNewChat }: SidebarHeaderProps) {
             size={iconSize.sm}
             color="#ffffff"
           />
+        </Button>
+      </View>
+
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          marginTop: spacing.sm,
+          gap: spacing.sm,
+        }}
+      >
+        <Button
+          variant="tertiary"
+          size="sm"
+          className="rounded-full"
+          onPress={onOpenIntegrations}
+        >
+          <HugeiconsIcon
+            icon={Wrench01Icon}
+            size={iconSize.sm - 1}
+            color="#ddd"
+          />
+          <Button.Label>Integrations</Button.Label>
+        </Button>
+        <Button
+          variant="tertiary"
+          size="sm"
+          className="rounded-full"
+          onPress={onOpenWorkflows}
+        >
+          <HugeiconsIcon
+            icon={Flowchart01Icon}
+            size={iconSize.sm - 1}
+            color="#ddd"
+          />
+          <Button.Label>Workflows</Button.Label>
         </Button>
       </View>
     </View>

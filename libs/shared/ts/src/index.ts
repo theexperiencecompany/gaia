@@ -5,4 +5,5 @@
  */
 
 export * from "./bots";
+export * from "./chat";
 export * from "./cli";

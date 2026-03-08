@@ -1,3 +1,10 @@
+import {
+  parseChatStreamEvent,
+  type StreamToolDataEntry,
+  type StreamToolOutput,
+  type TodoProgressSnapshot,
+} from "@gaia/shared";
+
 import { createSSEConnection, type SSEEvent } from "@/lib/sse-client";
 import type { ApiFileData, Message } from "./chat-api";
 
@@ -10,6 +17,10 @@ export interface StreamCallbacks {
     description?: string | null,
   ) => void;
   onProgress?: (message: string, toolName?: string) => void;
+  onToolData?: (entry: StreamToolDataEntry) => void;
+  onToolOutput?: (output: StreamToolOutput) => void;
+  onTodoProgress?: (snapshot: TodoProgressSnapshot) => void;
+  onStreamId?: (streamId: string) => void;
   onFollowUpActions?: (actions: string[]) => void;
   onDone: () => void;
   onError?: (error: Error) => void;
@@ -23,37 +34,6 @@ export interface ChatStreamRequest {
   fileData?: ApiFileData[];
   selectedTool?: string | null;
   toolCategory?: string | null;
-}
-
-interface StreamEventData {
-  type?: string;
-  content?: string;
-  conversation_id?: string;
-  conversation_description?: string | null;
-  message_id?: string;
-  response?: string;
-  error?: string;
-  bot_message_id?: string;
-  user_message_id?: string;
-  main_response_complete?: boolean;
-  follow_up_actions?: string[];
-  progress?: {
-    message: string;
-    tool_name?: string;
-    tool_category?: string;
-  };
-}
-
-function parseEventData(data: string): StreamEventData | null {
-  if (data === "[DONE]") {
-    return { type: "done" };
-  }
-
-  try {
-    return JSON.parse(data);
-  } catch {
-    return { type: "content", content: data };
-  }
 }
 
 export async function fetchChatStream(
@@ -88,57 +68,88 @@ export async function fetchChatStream(
     messages: formattedMessages,
   };
 
+  let streamFinished = false;
+  const finishOnce = () => {
+    if (streamFinished) return;
+    streamFinished = true;
+    callbacks.onDone();
+  };
+
   return createSSEConnection(
     "/chat-stream",
     {
       onMessage: (event: SSEEvent) => {
-        const parsed = parseEventData(event.data);
+        const parsedEvents = parseChatStreamEvent(event.data);
 
-        if (!parsed) return;
+        for (const parsed of parsedEvents) {
+          if (parsed.type === "done") {
+            finishOnce();
+            return;
+          }
 
-        if (parsed.type === "done" || event.data === "[DONE]") {
-          callbacks.onDone();
-          return;
-        }
+          if (parsed.type === "error") {
+            callbacks.onError?.(new Error(parsed.error));
+            return;
+          }
 
-        if (parsed.error) {
-          callbacks.onError?.(new Error(parsed.error));
-          return;
-        }
+          if (parsed.type === "conversation_initialized") {
+            if (parsed.stream_id) {
+              callbacks.onStreamId?.(parsed.stream_id);
+            }
 
-        if (
-          parsed.conversation_id &&
-          parsed.bot_message_id &&
-          parsed.user_message_id
-        ) {
-          callbacks.onConversationCreated?.(
-            parsed.conversation_id,
-            parsed.user_message_id,
-            parsed.bot_message_id,
-            parsed.conversation_description,
-          );
-        }
+            if (
+              parsed.conversation_id &&
+              parsed.bot_message_id &&
+              parsed.user_message_id
+            ) {
+              callbacks.onConversationCreated?.(
+                parsed.conversation_id,
+                parsed.user_message_id,
+                parsed.bot_message_id,
+                parsed.conversation_description,
+              );
+            }
+            continue;
+          }
 
-        if (parsed.progress) {
-          callbacks.onProgress?.(
-            parsed.progress.message,
-            parsed.progress.tool_name,
-          );
-        }
+          if (parsed.type === "progress") {
+            callbacks.onProgress?.(parsed.message, parsed.tool_name);
+            continue;
+          }
 
-        if (parsed.response) {
-          callbacks.onChunk(parsed.response);
-        }
+          if (parsed.type === "tool_data") {
+            callbacks.onToolData?.(parsed.entry);
+            continue;
+          }
 
-        if (parsed.follow_up_actions && parsed.follow_up_actions.length > 0) {
-          callbacks.onFollowUpActions?.(parsed.follow_up_actions);
+          if (parsed.type === "tool_output") {
+            callbacks.onToolOutput?.(parsed.output);
+            continue;
+          }
+
+          if (parsed.type === "todo_progress") {
+            callbacks.onTodoProgress?.(parsed.snapshot);
+            continue;
+          }
+
+          if (parsed.type === "response") {
+            callbacks.onChunk(parsed.chunk);
+            continue;
+          }
+
+          if (
+            parsed.type === "follow_up_actions" &&
+            parsed.actions.length > 0
+          ) {
+            callbacks.onFollowUpActions?.(parsed.actions);
+          }
         }
       },
       onError: (error) => {
         callbacks.onError?.(error);
       },
       onClose: () => {
-        callbacks.onDone();
+        finishOnce();
       },
     },
     { body },

@@ -87,13 +87,10 @@ class ComposioService:
         """Get tools for a toolkit with unified master hooks."""
         logger.info(f"Loading {tool_kit} toolkit...")
 
-        custom_tool_names = custom_tools_registry.get_tool_names(tool_kit.lower())
-
         tools = await asyncio.to_thread(
             lambda: self.composio.tools.get(  # type: ignore[call-overload]
                 user_id="",
                 toolkits=[tool_kit],
-                tools=custom_tool_names,
                 limit=1000,
             )
         )
@@ -112,7 +109,6 @@ class ComposioService:
             lambda: self.composio.tools.get(  # type: ignore[call-overload]
                 user_id="",
                 toolkits=[tool_kit],
-                tools=custom_tool_names,
                 modifiers=[
                     master_schema_mod,
                     master_before_modifier,

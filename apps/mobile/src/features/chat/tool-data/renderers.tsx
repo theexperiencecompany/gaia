@@ -6,6 +6,7 @@ import { Text } from "@/components/ui/text";
 import { EmailComposeCard } from "../components/chat/email-compose-card";
 import type { EmailComposeData, ToolDataEntry } from "./registry";
 import {
+  ArtifactCard,
   CalendarDeleteCard,
   type CalendarDeleteOption,
   CalendarEditCard,
@@ -33,10 +34,12 @@ import {
   type GoogleDocsData,
   IntegrationConnectionCard,
   type IntegrationConnectionData,
+  MCPAppCard,
   NotificationCard,
   type NotificationData,
   PeopleSearchCard,
   type PeopleSearchData,
+  RateLimitCard,
   RedditCard,
   type RedditData,
   type SearchResults,
@@ -45,9 +48,45 @@ import {
   type SupportTicketData,
   TodoCard,
   type TodoData,
+  ToolCallsCard,
+  TwitterSearchCard,
+  TwitterUsersCard,
   WeatherCard,
   type WeatherData,
+  WorkflowCreatedCard,
+  WorkflowDraftCard,
 } from "./tool-cards";
+
+const GROUPED_TOOLS = new Set<string>([
+  "search_results",
+  "reddit_data",
+  "tool_calls_data",
+  "integration_connection_required",
+  "integration_list_data",
+  "rate_limit_data",
+  "email_fetch_data",
+  "email_compose_data",
+  "email_sent_data",
+  "artifact_data",
+  "twitter_user_data",
+]);
+
+const flattenOneLevel = (value: unknown): unknown[] => {
+  if (!Array.isArray(value)) return [value];
+  return value.flat(1);
+};
+
+const dedupeToolCalls = (calls: unknown[]): unknown[] => {
+  const seen = new Set<string>();
+  return calls.filter((call) => {
+    if (typeof call !== "object" || call === null) return true;
+    const toolCallId = (call as { tool_call_id?: string }).tool_call_id;
+    if (!toolCallId) return true;
+    if (seen.has(toolCallId)) return false;
+    seen.add(toolCallId);
+    return true;
+  });
+};
 
 function UnsupportedToolCard({
   toolName,
@@ -226,13 +265,56 @@ const TOOL_RENDERERS: Record<
     />
   ),
 
-  integration_list_data: (_data, baseKey) => (
-    <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
-      <Card.Body className="py-3 px-4">
-        <Text className="text-foreground text-sm">Available Integrations</Text>
-      </Card.Body>
-    </Card>
+  integration_list_data: (data, baseKey) => {
+    const source = Array.isArray(data) ? data[0] : data;
+    const suggested =
+      source && typeof source === "object" && "suggested" in source
+        ? ((source as { suggested?: unknown[] }).suggested ?? [])
+        : [];
+
+    return (
+      <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
+        <Card.Body className="py-3 px-4">
+          <Text className="text-foreground text-sm">
+            Suggested Integrations
+          </Text>
+          <Text className="text-xs text-muted mt-1">
+            {suggested.length > 0
+              ? `${suggested.length} suggestion${suggested.length > 1 ? "s" : ""}`
+              : "Open /integrations to connect tools"}
+          </Text>
+        </Card.Body>
+      </Card>
+    );
+  },
+
+  tool_calls_data: (data, baseKey) => (
+    <ToolCallsCard key={baseKey} data={data} />
   ),
+
+  twitter_search_data: (data, baseKey) => (
+    <TwitterSearchCard key={baseKey} data={data} />
+  ),
+
+  twitter_user_data: (data, baseKey) => (
+    <TwitterUsersCard key={baseKey} data={data} />
+  ),
+
+  workflow_draft: (data, baseKey) => (
+    <WorkflowDraftCard key={baseKey} data={data} />
+  ),
+
+  workflow_created: (data, baseKey) => (
+    <WorkflowCreatedCard key={baseKey} data={data} />
+  ),
+
+  mcp_app: (data, baseKey) => <MCPAppCard key={baseKey} data={data} />,
+
+  rate_limit_data: (data, baseKey) => (
+    <RateLimitCard key={baseKey} data={data} />
+  ),
+
+  artifact_data: (data, baseKey) => <ArtifactCard key={baseKey} data={data} />,
 
   reddit_data: (data, baseKey) => {
     const items = Array.isArray(data) ? data : [data];
@@ -282,6 +364,7 @@ const TOOL_RENDERERS: Record<
     const completedCount = allTodos.filter(
       (t) => t.status === "completed",
     ).length;
+    const completionPct = Math.round((completedCount / allTodos.length) * 100);
     const statusIcon: Record<string, string> = {
       completed: "\u2713",
       in_progress: "\u2192",
@@ -291,16 +374,26 @@ const TOOL_RENDERERS: Record<
     return (
       <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
         <Card.Body className="py-3 px-4">
-          <View className="flex-row items-center justify-between mb-1">
+          <View className="flex-row items-center justify-between mb-1.5">
             <Text className="text-xs text-muted">Task Progress</Text>
             <Text className="text-xs text-muted">
               {completedCount}/{allTodos.length}
             </Text>
           </View>
+          <View className="h-1.5 rounded-full bg-muted/30 mb-2">
+            <View
+              className="h-1.5 rounded-full bg-primary"
+              style={{ width: `${completionPct}%` }}
+            />
+          </View>
+          <Text className="text-[10px] text-muted mb-2">
+            {completionPct}% complete • {Object.keys(progress).length} source
+            {Object.keys(progress).length > 1 ? "s" : ""}
+          </Text>
           {allTodos.map((todo) => (
             <View
               key={`${todo.source}-${todo.id}`}
-              className="flex-row items-start gap-2 mb-0.5"
+              className="flex-row items-start gap-2 mb-1"
             >
               <Text className="text-xs text-muted w-4">
                 {statusIcon[todo.status] ?? "\u25CB"}
@@ -327,9 +420,40 @@ export function ToolDataRenderer({ toolData }: ToolDataRendererProps) {
     return null;
   }
 
+  const grouped = new Map<string, unknown[]>();
+  const individual: ToolDataEntry[] = [];
+
+  for (const entry of toolData) {
+    if (GROUPED_TOOLS.has(entry.tool_name)) {
+      if (!grouped.has(entry.tool_name)) {
+        grouped.set(entry.tool_name, []);
+      }
+      grouped.get(entry.tool_name)?.push(entry.data);
+      continue;
+    }
+
+    individual.push(entry);
+  }
+
+  const groupedEntries: ToolDataEntry[] = Array.from(grouped.entries()).map(
+    ([toolName, dataArray]) => {
+      const flattened = flattenOneLevel(dataArray);
+      const normalizedData =
+        toolName === "tool_calls_data" ? dedupeToolCalls(flattened) : flattened;
+
+      return {
+        tool_name: toolName,
+        data: normalizedData,
+        timestamp: null,
+      };
+    },
+  );
+
+  const processedToolData = [...groupedEntries, ...individual];
+
   return (
     <View className="flex-col">
-      {toolData.map((entry, index) => {
+      {processedToolData.map((entry, index) => {
         const toolName = entry.tool_name;
         const renderer = TOOL_RENDERERS[toolName];
         const baseKey = `tool-${toolName}-${entry.timestamp || index}`;

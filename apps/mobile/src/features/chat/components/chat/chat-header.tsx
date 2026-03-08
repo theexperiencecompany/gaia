@@ -6,6 +6,7 @@ import {
   Menu01Icon,
   Search01Icon,
 } from "@/components/icons";
+import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
 interface ChatHeaderProps {
@@ -33,15 +34,29 @@ export function ChatHeader({
       }}
     >
       <PressableFeedback onPress={onMenuPress}>
-        <View style={{ padding: moderateScale(4, 0.5) }}>
+        <View
+          style={{
+            padding: moderateScale(6, 0.5),
+            borderRadius: moderateScale(10, 0.5),
+            backgroundColor: "rgba(255,255,255,0.06)",
+          }}
+        >
           <HugeiconsIcon icon={Menu01Icon} size={iconSize.lg} color="#ffffff" />
         </View>
       </PressableFeedback>
 
+      <Text className="text-sm font-semibold text-white/90">GAIA</Text>
+
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
         {onSearchPress && (
           <PressableFeedback onPress={onSearchPress}>
-            <View style={{ padding: moderateScale(4, 0.5) }}>
+            <View
+              style={{
+                padding: moderateScale(6, 0.5),
+                borderRadius: moderateScale(10, 0.5),
+                backgroundColor: "rgba(255,255,255,0.06)",
+              }}
+            >
               <HugeiconsIcon
                 icon={Search01Icon}
                 size={iconSize.md - 2}
@@ -51,7 +66,13 @@ export function ChatHeader({
           </PressableFeedback>
         )}
         <PressableFeedback onPress={onNewChatPress}>
-          <View style={{ padding: moderateScale(4, 0.5) }}>
+          <View
+            style={{
+              padding: moderateScale(6, 0.5),
+              borderRadius: moderateScale(10, 0.5),
+              backgroundColor: "rgba(255,255,255,0.06)",
+            }}
+          >
             <HugeiconsIcon
               icon={BubbleChatAddIcon}
               size={iconSize.md - 2}
