@@ -4,6 +4,7 @@ import {
   BottomSheetModal,
   BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
+import { useRouter } from "expo-router";
 import { Avatar } from "heroui-native";
 import { forwardRef, useCallback, useMemo } from "react";
 import { Linking, Pressable, View } from "react-native";
@@ -87,6 +88,14 @@ export const SettingsBottomSheet = forwardRef<
   SettingsBottomSheetProps
 >(({ user, onSignOut }, ref) => {
   const snapPoints = useMemo(() => ["80%"], []);
+  const router = useRouter();
+
+  const handleOpenSettingsPage = useCallback(() => {
+    if (ref && "current" in ref) {
+      ref.current?.dismiss();
+    }
+    router.push("/(app)/settings");
+  }, [ref, router]);
 
   const getInitials = (name?: string) => {
     if (!name) return "U";
@@ -231,7 +240,7 @@ export const SettingsBottomSheet = forwardRef<
         <SettingsItem
           icon={Settings01Icon}
           label="Settings"
-          onPress={() => {}}
+          onPress={handleOpenSettingsPage}
         />
 
         {/* Sign Out */}

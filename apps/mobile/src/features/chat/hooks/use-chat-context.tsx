@@ -24,7 +24,14 @@ export function ChatProvider({ children }: ChatProviderProps) {
   const activeChatId = useChatStore((state) => state.activeChatId);
 
   const setActiveChatId = useCallback((chatId: string | null) => {
-    useChatStore.getState().setActiveChatId(chatId);
+    const normalizedChatId = chatId?.trim() || null;
+    const currentActiveChatId = useChatStore.getState().activeChatId;
+
+    if (currentActiveChatId === normalizedChatId) {
+      return;
+    }
+
+    useChatStore.getState().setActiveChatId(normalizedChatId);
   }, []);
 
   const createNewChat = useCallback((): string => {

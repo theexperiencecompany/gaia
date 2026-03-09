@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import { type ReactNode, useCallback } from "react";
 import { Keyboard, View } from "react-native";
 import DrawerLayout, {
@@ -21,19 +22,22 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
   const { setActiveChatId, clearActiveMessages } = useChatContext();
   const { drawerRef, toggleSidebar, closeSidebar } = useSidebar();
   const { sidebarWidth } = useResponsive();
+  const router = useRouter();
 
   const handleSelectChat = useCallback(
     (chatId: string) => {
+      closeSidebar();
       setActiveChatId(chatId);
     },
-    [setActiveChatId],
+    [closeSidebar, setActiveChatId],
   );
 
   const handleNewChat = useCallback(() => {
     closeSidebar();
     clearActiveMessages();
     setActiveChatId(null);
-  }, [closeSidebar, clearActiveMessages, setActiveChatId]);
+    router.replace("/(app)/index");
+  }, [closeSidebar, clearActiveMessages, router, setActiveChatId]);
 
   const renderDrawerContent = useCallback(
     () => (

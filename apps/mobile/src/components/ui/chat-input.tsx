@@ -7,7 +7,13 @@ import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";
 import { Text } from "./text";
 
-const DEFAULT_COMMANDS = ["new", "integrations", "workflows"];
+const DEFAULT_COMMANDS = [
+  "new",
+  "integrations",
+  "notifications",
+  "settings",
+  "workflows",
+];
 
 interface ChatInputProps {
   onSend?: (message: string) => void;

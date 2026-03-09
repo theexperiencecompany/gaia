@@ -1,6 +1,7 @@
 import { Button } from "heroui-native";
 import { Image, Text, TextInput, View } from "react-native";
 import {
+  BubbleChatIcon,
   Flowchart01Icon,
   HugeiconsIcon,
   PencilEdit02Icon,
@@ -12,12 +13,14 @@ import { useResponsive } from "@/lib/responsive";
 interface SidebarHeaderProps {
   onNewChat: () => void;
   onOpenIntegrations: () => void;
+  onOpenNotifications: () => void;
   onOpenWorkflows: () => void;
 }
 
 export function SidebarHeader({
   onNewChat,
   onOpenIntegrations,
+  onOpenNotifications,
   onOpenWorkflows,
 }: SidebarHeaderProps) {
   const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
@@ -111,6 +114,19 @@ export function SidebarHeader({
           gap: spacing.sm,
         }}
       >
+        <Button
+          variant="tertiary"
+          size="sm"
+          className="rounded-full"
+          onPress={onOpenNotifications}
+        >
+          <HugeiconsIcon
+            icon={BubbleChatIcon}
+            size={iconSize.sm - 1}
+            color="#ddd"
+          />
+          <Button.Label>Notifications</Button.Label>
+        </Button>
         <Button
           variant="tertiary"
           size="sm"

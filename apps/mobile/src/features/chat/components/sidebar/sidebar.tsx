@@ -22,6 +22,7 @@ export function SidebarContent({ onSelectChat, onNewChat }: SidebarProps) {
       <SidebarHeader
         onNewChat={onNewChat}
         onOpenIntegrations={() => router.push("/(app)/integrations")}
+        onOpenNotifications={() => router.push("/(app)/notifications")}
         onOpenWorkflows={() => router.push("/(app)/workflows")}
       />
       <ChatHistory onSelectChat={onSelectChat} />

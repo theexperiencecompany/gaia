@@ -58,6 +58,12 @@ export function useChat(
   >(effectiveChatId);
 
   useEffect(() => {
+    if (chatId && storeActiveChatId !== chatId) {
+      useChatStore.getState().setActiveChatId(chatId);
+    }
+  }, [chatId, storeActiveChatId]);
+
+  useEffect(() => {
     const newEffectiveId = chatId ?? storeActiveChatId;
     if (newEffectiveId === null) {
       // Reset to null when starting a new chat

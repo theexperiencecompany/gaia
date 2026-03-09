@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { PressableFeedback } from "heroui-native";
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import {
   BubbleChatIcon,
@@ -134,9 +134,13 @@ export function ChatHistory({ onSelectChat }: ChatHistoryProps) {
     }));
   };
 
-  const handleSelectChat = (chatId: string) => {
-    onSelectChat(chatId);
-  };
+  const handleSelectChat = useCallback(
+    (chatId: string) => {
+      onSelectChat(chatId);
+      router.push(`/(app)/c/${chatId}`);
+    },
+    [onSelectChat, router],
+  );
 
   const groupedChats = groupConversationsByDate(conversations);
 

@@ -32,8 +32,12 @@ export default function AppLayout() {
             }}
           >
             <Stack.Screen name="index" />
+            <Stack.Screen name="c/[id]" />
             <Stack.Screen name="integrations/index" />
             <Stack.Screen name="workflows/index" />
+            <Stack.Screen name="workflows/[id]" />
+            <Stack.Screen name="notifications/index" />
+            <Stack.Screen name="settings/index" />
             <Stack.Screen name="test/index" />
           </Stack>
         </View>
