@@ -71,6 +71,94 @@ class ModelContext(TypedDict, total=False):
     cost_usd: float
 
 
+class ConversationContext(TypedDict, total=False):
+    id: str
+    operation: str  # "create"|"list"|"get"|"delete"|"delete_all"|"star"|"pin_message"|"update_messages"|"batch_sync"|"mark_read"|"mark_unread"|"update_description"
+    page: int
+    limit: int
+    total_returned: int
+    is_new: bool
+    is_starred: bool
+    message_count: int
+
+
+class TodoContext(TypedDict, total=False):
+    id: str
+    operation: str  # "create"|"list"|"get"|"update"|"delete"|"bulk_update"|"bulk_delete"|"bulk_move"|"bulk_complete"|"counts"|"create_project"|"list_projects"|"update_project"|"delete_project"|"subtask_op"
+    priority: str
+    has_due_date: bool
+    project_id: str
+    search_mode: str  # "text"|"semantic"|"hybrid"
+    query: str
+    result_count: int
+    page: int
+    per_page: int
+    filters_applied: list[str]
+    bulk_count: int
+    completion_toggled: bool
+
+
+class MemoryContext(TypedDict, total=False):
+    operation: str  # "create"|"get_all"|"delete"|"delete_all"
+    memory_id: str
+    content_length: int
+    result_count: int
+    success: bool
+
+
+class CalendarContext(TypedDict, total=False):
+    calendar_id: str
+    operation: str  # "list_calendars"|"get_events"|"create_event"|"update_event"|"delete_event"|"get_preferences"|"update_preferences"|"batch_create"|"batch_update"|"batch_delete"
+    event_count: int
+    time_range_days: int
+
+
+class GoalContext(TypedDict, total=False):
+    id: str
+    operation: str  # "create"|"get"|"update"|"delete"|"list"|"generate_roadmap"|"update_node"
+    roadmap_node_count: int
+    result_count: int
+
+
+class ReminderContext(TypedDict, total=False):
+    id: str
+    operation: str  # "create"|"list"|"get"|"update"|"delete"
+    recurrence: str  # "once"|"daily"|"weekly"|"custom"
+    next_run_time: str
+    result_count: int
+
+
+class WorkflowContext(TypedDict, total=False):
+    id: str
+    title: str
+    trigger_type: str
+    steps_count: int
+    operation: str  # "create"|"list"|"get"|"update"|"delete"|"execute"|"status"|"list_executions"|"publish"|"generate_prompt"|"regenerate_steps"
+    execution_id: str
+    is_integration_trigger: bool
+    result_count: int
+
+
+class SearchContext(TypedDict, total=False):
+    query: str
+    mode: str
+    result_count: int
+    scope: list[str]  # which entity types were searched
+
+
+class PaymentContext(TypedDict, total=False):
+    operation: str  # "get_status"|"create_checkout"|"cancel_subscription"|"webhook"|"get_plans"
+    plan_type: str
+    provider: str
+
+
+class OnboardingContext(TypedDict, total=False):
+    operation: str  # "get_status"|"update_step"|"complete"|"set_house"|"update_personality"
+    step: str
+    house: str
+    is_complete: bool
+
+
 class WideEventFields(TypedDict, total=False):
     """Canonical schema for wide event fields set via log.set().
 
@@ -84,6 +172,16 @@ class WideEventFields(TypedDict, total=False):
     user: UserContext
     chat: ChatContext
     model: ModelContext
+    conversation: ConversationContext
+    todo: TodoContext
+    memory: MemoryContext
+    calendar: CalendarContext
+    goal: GoalContext
+    reminder: ReminderContext
+    workflow: WorkflowContext
+    search: SearchContext
+    payment: PaymentContext
+    onboarding: OnboardingContext
     task: str
     outcome: str
     final_level: str
@@ -237,5 +335,15 @@ __all__ = [
     "UserContext",
     "ChatContext",
     "ModelContext",
+    "ConversationContext",
+    "TodoContext",
+    "MemoryContext",
+    "CalendarContext",
+    "GoalContext",
+    "ReminderContext",
+    "WorkflowContext",
+    "SearchContext",
+    "PaymentContext",
+    "OnboardingContext",
     "get_trace_id",
 ]

@@ -7,6 +7,7 @@ This module contains routes related to search functionality and URL metadata fet
 import asyncio
 import re
 
+from shared.py.wide_events import log
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.rate_limiter import limiter
 from app.decorators import tiered_rate_limit
@@ -32,7 +33,22 @@ async def search_messages_endpoint(query: str, user: dict = Depends(get_current_
         dict: A dictionary containing the search results for messages, conversations, and notes.
     """
     user_id = user["user_id"]
-    return await search_messages(query, user_id)
+    log.set(
+        user={"id": user_id},
+        search={
+            "query": query,
+            "mode": "keyword",
+            "scope": ["messages", "conversations", "notes"],
+        },
+    )
+    results = await search_messages(query, user_id)
+    result_count = (
+        len(results.get("messages", []))
+        + len(results.get("conversations", []))
+        + len(results.get("notes", []))
+    )
+    log.set(search={"result_count": result_count})
+    return results
 
 
 def extract_emails(text: str) -> list:
@@ -61,6 +77,13 @@ async def search_email_endpoint(query: str):
     Returns:
         dict: A dictionary containing the extracted email addresses, combined text, and search data.
     """
+    log.set(
+        search={
+            "query": query,
+            "mode": "web",
+            "scope": ["emails"],
+        },
+    )
     search_data = await perform_search(
         query=f"Official contact e-mail address of {query}",
         count=50,
@@ -80,6 +103,7 @@ async def search_email_endpoint(query: str):
     )
 
     emails = list(set(extract_emails(combined_text)))
+    log.set(search={"result_count": len(emails)})
 
     return {
         "emails": emails,

@@ -38,7 +38,10 @@ async def create_goal(goal: GoalCreate, user: dict = Depends(get_current_user)):
     """
     Create a new goal.
     """
-    return await create_goal_service(goal, user)
+    log.set(user={"id": user.get("user_id")}, goal={"operation": "create"})
+    result = await create_goal_service(goal, user)
+    log.set(goal={"operation": "create", "id": str(result.id) if hasattr(result, "id") else None})
+    return result
 
 
 @router.get(
@@ -51,6 +54,7 @@ async def get_goal(goal_id: str, user: dict = Depends(get_current_user)):
     """
     Retrieve a goal by its ID.
     """
+    log.set(user={"id": user.get("user_id")}, goal={"operation": "get", "id": goal_id})
     return await get_goal_service(goal_id, user)
 
 
@@ -64,7 +68,10 @@ async def get_user_goals(user: dict = Depends(get_current_user)):
     """
     List all goals for the current user.
     """
-    return await get_user_goals_service(user)
+    log.set(user={"id": user.get("user_id")}, goal={"operation": "list"})
+    goals = await get_user_goals_service(user)
+    log.set(goal={"operation": "list", "result_count": len(goals) if goals else 0})
+    return goals
 
 
 @router.delete(
@@ -77,6 +84,7 @@ async def delete_goal(goal_id: str, user: dict = Depends(get_current_user)):
     """
     Delete a goal by its ID.
     """
+    log.set(user={"id": user.get("user_id")}, goal={"operation": "delete", "id": goal_id})
     return await delete_goal_service(goal_id, user)
 
 
@@ -95,6 +103,7 @@ async def update_node_status(
     """
     Update the status of a node in the roadmap.
     """
+    log.set(user={"id": user.get("user_id")}, goal={"operation": "update_node", "id": goal_id})
     return await update_node_status_service(goal_id, node_id, update_data, user)
 
 
@@ -117,7 +126,7 @@ async def websocket_generate_roadmap(websocket: WebSocket):
             await websocket.send_json({"error": "Invalid data received"})
             return
 
-        log.set(goal={"id": goal_id, "title": goal_title})
+        log.set(goal={"operation": "generate_roadmap", "id": goal_id, "title": goal_title})
         # Verify goal exists before proceeding
         goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
         if not goal:
