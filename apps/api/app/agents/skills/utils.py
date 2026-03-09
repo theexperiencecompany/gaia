@@ -12,7 +12,7 @@ import os
 from urllib.parse import urlparse
 from typing import List, Optional, Tuple
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 
 GITHUB_API_BASE = "https://api.github.com"
 GITHUB_RAW_BASE = "https://raw.githubusercontent.com"
@@ -154,7 +154,7 @@ def check_tree_truncated(tree_data: dict, owner: str, repo: str) -> None:
         repo: Repository name
     """
     if tree_data.get("truncated"):
-        logger.warning(
+        log.warning(
             f"[skills] Repository {owner}/{repo} tree is truncated. "
             "Some skills may not be discovered."
         )

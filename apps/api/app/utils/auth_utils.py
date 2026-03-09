@@ -1,6 +1,6 @@
 from typing import Any, Dict, Optional, Tuple
 
-from app.config.loggers import auth_logger
+from shared.py.wide_events import log as auth_logger
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
 from workos import AsyncWorkOSClient
@@ -87,6 +87,7 @@ async def authenticate_workos_session(
         # Retrieve user from database
         try:
             user_email = workos_user.email
+            auth_logger.set(auth_provider="workos", user_email=user_email)
             user_data = await users_collection.find_one({"email": user_email})
 
             if not user_data:

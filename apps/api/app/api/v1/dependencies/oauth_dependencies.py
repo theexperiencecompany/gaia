@@ -1,8 +1,8 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from app.config.loggers import auth_logger as logger
 from fastapi import Depends, Header, HTTPException, Request, WebSocket, status
+from shared.py.wide_events import log
 
 
 async def get_current_user(request: Request):
@@ -20,15 +20,24 @@ async def get_current_user(request: Request):
         HTTPException: On authentication failure
     """
     if not hasattr(request.state, "authenticated") or not request.state.authenticated:
-        logger.info("No authenticated user found in request state")
+        log.info("No authenticated user found in request state")
         raise HTTPException(
             status_code=401, detail="Unauthorized: Authentication required"
         )
     if not request.state.user:
-        logger.error("User marked as authenticated but no user data found")
+        log.error("User marked as authenticated but no user data found")
         raise HTTPException(status_code=401, detail="Unauthorized: User data missing")
 
-    return request.state.user
+    user = request.state.user
+    log.set(
+        auth={
+            "user_id": user.get("user_id"),
+            "email": user.get("email"),
+            "method": user.get("auth_provider", "workos"),
+            "is_agent_token": bool(user.get("is_agent_token", False)),
+        }
+    )
+    return user
 
 
 async def get_user_id(user: dict = Depends(get_current_user)) -> str:
@@ -73,7 +82,7 @@ async def get_current_user_ws(websocket: WebSocket):
             wos_session = protocol_header[8:]  # Extract token after "Bearer, "
 
     if not wos_session:
-        logger.info("No session cookie or protocol token in WebSocket request")
+        log.info("No session cookie or protocol token in WebSocket request")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
 
@@ -81,7 +90,7 @@ async def get_current_user_ws(websocket: WebSocket):
     user_info, _ = await authenticate_workos_session(session_token=wos_session)
 
     if not user_info:
-        logger.warning("WebSocket authentication failed")
+        log.warning("WebSocket authentication failed")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return {}
 
@@ -108,7 +117,7 @@ def get_user_timezone(
     user_tz = ZoneInfo(x_timezone)
     now = datetime.now(user_tz)
 
-    logger.debug(f"User timezone: {user_tz}, Current time: {now}")
+    log.debug(f"User timezone: {user_tz}, Current time: {now}")
     return x_timezone, now
 
 
@@ -128,16 +137,16 @@ async def get_user_timezone_from_preferences(
     try:
         # Only check the root level timezone field
         timezone = user.get("timezone")
-        logger.debug(f"User timezone from user.timezone: {timezone}")
+        log.debug(f"User timezone from user.timezone: {timezone}")
 
         if timezone and timezone.strip():
-            logger.debug(f"Using user's stored timezone: {timezone}")
+            log.debug(f"Using user's stored timezone: {timezone}")
             return timezone.strip()
 
         # Fallback to UTC
-        logger.debug("No user timezone found, falling back to UTC")
+        log.debug("No user timezone found, falling back to UTC")
         return "UTC"
 
     except Exception as e:
-        logger.warning(f"Error getting user timezone from preferences: {e}")
+        log.warning(f"Error getting user timezone from preferences: {e}")
         return "UTC"

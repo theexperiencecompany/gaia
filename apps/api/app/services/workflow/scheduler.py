@@ -5,7 +5,7 @@ Workflow scheduler extending BaseSchedulerService for robust scheduling.
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.scheduler_models import (
     BaseScheduledTask,
@@ -58,7 +58,7 @@ class WorkflowScheduler(BaseSchedulerService):
 
             workflow_doc = await workflows_collection.find_one(query)
             if not workflow_doc:
-                logger.warning(f"Workflow {task_id} not found")
+                log.warning(f"Workflow {task_id} not found")
                 return None
 
             # Transform MongoDB document to Workflow object
@@ -68,7 +68,7 @@ class WorkflowScheduler(BaseSchedulerService):
 
             return Workflow(**workflow_doc)
         except Exception as e:
-            logger.error(f"Error fetching workflow {task_id}: {e}")
+            log.error(f"Error fetching workflow {task_id}: {e}")
             return None
 
     async def execute_task(self, task: BaseScheduledTask) -> TaskExecutionResult:
@@ -95,7 +95,8 @@ class WorkflowScheduler(BaseSchedulerService):
 
             from app.workers.tasks import execute_workflow_as_chat
 
-            logger.info(f"Executing workflow {workflow.id}")
+            log.set(workflow={"id": workflow.id, "status": "executing"})
+            log.info(f"Executing workflow {workflow.id}")
 
             if not workflow.id:
                 raise ValueError("Workflow ID is required for execution")
@@ -117,7 +118,7 @@ class WorkflowScheduler(BaseSchedulerService):
                 message=f"Workflow executed via scheduler with {len(execution_messages)} messages",
             )
         except Exception as e:
-            logger.error(f"Error executing workflow {task.id}: {e}")
+            log.error(f"Error executing workflow {task.id}: {e}")
             return TaskExecutionResult(
                 success=False, message=f"Workflow execution failed: {str(e)}"
             )
@@ -160,14 +161,15 @@ class WorkflowScheduler(BaseSchedulerService):
             )
 
             if result.modified_count > 0:
-                logger.info(f"Updated workflow {task_id} status to {status.value}")
+                log.set(workflow={"id": task_id, "status": status.value})
+                log.info(f"Updated workflow {task_id} status to {status.value}")
                 return True
             else:
-                logger.warning(f"No workflow updated for {task_id}")
+                log.warning(f"No workflow updated for {task_id}")
                 return False
 
         except Exception as e:
-            logger.error(f"Error updating workflow {task_id}: {e}")
+            log.error(f"Error updating workflow {task_id}: {e}")
             return False
 
     async def get_pending_task(self, current_time: datetime) -> List[BaseScheduledTask]:
@@ -204,14 +206,14 @@ class WorkflowScheduler(BaseSchedulerService):
                     workflow = Workflow(**workflow_doc)
                     workflows.append(workflow)  # Workflow extends BaseScheduledTask
                 except Exception as e:
-                    logger.error(f"Error creating workflow object: {e}")
+                    log.error(f"Error creating workflow object: {e}")
                     continue
 
-            logger.info(f"Found {len(workflows)} pending workflows")
+            log.info(f"Found {len(workflows)} pending workflows")
             return workflows
 
         except Exception as e:
-            logger.error(f"Error fetching pending workflows: {e}")
+            log.error(f"Error fetching pending workflows: {e}")
             return []
 
     async def create_workflow_with_scheduling(
@@ -256,12 +258,12 @@ class WorkflowScheduler(BaseSchedulerService):
                 )
 
                 await self.schedule_task(workflow.id, schedule_config)
-                logger.info(f"Scheduled workflow {workflow.id} for recurring execution")
+                log.info(f"Scheduled workflow {workflow.id} for recurring execution")
 
             return workflow.id
 
         except Exception as e:
-            logger.error(f"Error creating and scheduling workflow: {e}")
+            log.error(f"Error creating and scheduling workflow: {e}")
             return None
 
     async def schedule_workflow_execution(
@@ -301,17 +303,17 @@ class WorkflowScheduler(BaseSchedulerService):
             success = await self.schedule_task(workflow_id, schedule_config)
 
             if success:
-                logger.info(
+                log.info(
                     f"Scheduled workflow {workflow_id} for execution at {scheduled_at}"
                     + (f" with repeat '{repeat}'" if repeat else "")
                 )
             else:
-                logger.error(f"Failed to schedule workflow {workflow_id}")
+                log.error(f"Failed to schedule workflow {workflow_id}")
 
             return success
 
         except Exception as e:
-            logger.error(f"Error scheduling workflow {workflow_id}: {str(e)}")
+            log.error(f"Error scheduling workflow {workflow_id}: {str(e)}")
             return False
 
     async def cancel_scheduled_workflow_execution(self, workflow_id: str) -> bool:
@@ -334,20 +336,20 @@ class WorkflowScheduler(BaseSchedulerService):
             arq_success = await self.cancel_task(workflow_id, "")
 
             if db_success and arq_success:
-                logger.info(f"Cancelled scheduled execution for workflow {workflow_id}")
+                log.info(f"Cancelled scheduled execution for workflow {workflow_id}")
             elif db_success:
-                logger.warning(
+                log.warning(
                     f"Cancelled workflow {workflow_id} in DB but ARQ cancellation failed"
                 )
             else:
-                logger.warning(
+                log.warning(
                     f"Could not cancel workflow {workflow_id} - may not exist or already executed"
                 )
 
             return db_success
 
         except Exception as e:
-            logger.error(f"Error cancelling workflow {workflow_id}: {str(e)}")
+            log.error(f"Error cancelling workflow {workflow_id}: {str(e)}")
             return False
 
     async def reschedule_workflow(
@@ -380,25 +382,21 @@ class WorkflowScheduler(BaseSchedulerService):
             )
 
             if not db_success:
-                logger.error(f"Failed to update workflow {workflow_id} in database")
+                log.error(f"Failed to update workflow {workflow_id} in database")
                 return False
 
             # Actually reschedule in ARQ queue
             arq_success = await self.reschedule_task(workflow_id, new_scheduled_at)
 
             if arq_success:
-                logger.info(
-                    f"Rescheduled workflow {workflow_id} for {new_scheduled_at}"
-                )
+                log.info(f"Rescheduled workflow {workflow_id} for {new_scheduled_at}")
             else:
-                logger.error(
-                    f"Failed to reschedule workflow {workflow_id} in ARQ queue"
-                )
+                log.error(f"Failed to reschedule workflow {workflow_id} in ARQ queue")
 
             return arq_success
 
         except Exception as e:
-            logger.error(f"Error rescheduling workflow {workflow_id}: {str(e)}")
+            log.error(f"Error rescheduling workflow {workflow_id}: {str(e)}")
             return False
 
     async def get_workflow_status(self, workflow_id: str) -> Optional[str]:
@@ -415,7 +413,7 @@ class WorkflowScheduler(BaseSchedulerService):
             workflow = await self.get_task(workflow_id)
             return workflow.status.value if workflow else None
         except Exception as e:
-            logger.error(f"Error getting workflow status for {workflow_id}: {str(e)}")
+            log.error(f"Error getting workflow status for {workflow_id}: {str(e)}")
             return None
 
 

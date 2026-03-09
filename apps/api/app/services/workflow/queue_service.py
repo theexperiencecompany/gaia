@@ -3,7 +3,7 @@
 from datetime import datetime
 from typing import Optional
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.utils.redis_utils import RedisPoolManager
 
 
@@ -21,18 +21,17 @@ class WorkflowQueueService:
             )
 
             if job:
-                logger.info(
+                log.set(workflow={"id": workflow_id, "status": "generation_queued"})
+                log.info(
                     f"Queued workflow generation for {workflow_id} with job ID {job.job_id}"
                 )
                 return True
             else:
-                logger.error(f"Failed to queue workflow generation for {workflow_id}")
+                log.error(f"Failed to queue workflow generation for {workflow_id}")
                 return False
 
         except Exception as e:
-            logger.error(
-                f"Error queuing workflow generation for {workflow_id}: {str(e)}"
-            )
+            log.error(f"Error queuing workflow generation for {workflow_id}: {str(e)}")
             return False
 
     @staticmethod
@@ -48,18 +47,17 @@ class WorkflowQueueService:
             )
 
             if job:
-                logger.info(
+                log.set(workflow={"id": workflow_id, "status": "execution_queued"})
+                log.info(
                     f"Queued workflow execution for {workflow_id} with job ID {job.job_id}"
                 )
                 return True
             else:
-                logger.error(f"Failed to queue workflow execution for {workflow_id}")
+                log.error(f"Failed to queue workflow execution for {workflow_id}")
                 return False
 
         except Exception as e:
-            logger.error(
-                f"Error queuing workflow execution for {workflow_id}: {str(e)}"
-            )
+            log.error(f"Error queuing workflow execution for {workflow_id}: {str(e)}")
             return False
 
     @staticmethod
@@ -78,18 +76,19 @@ class WorkflowQueueService:
             )
 
             if job:
-                logger.info(
+                log.set(workflow={"id": workflow_id, "status": "scheduled_queued"})
+                log.info(
                     f"Queued scheduled workflow execution for {workflow_id} at {scheduled_at} with job ID {job.job_id}"
                 )
                 return True
             else:
-                logger.error(
+                log.error(
                     f"Failed to queue scheduled workflow execution for {workflow_id}"
                 )
                 return False
 
         except Exception as e:
-            logger.error(
+            log.error(
                 f"Error queuing scheduled workflow execution for {workflow_id}: {str(e)}"
             )
             return False
@@ -114,16 +113,17 @@ class WorkflowQueueService:
             )
 
             if job:
-                logger.info(
+                log.set(workflow={"id": workflow_id, "status": "regeneration_queued"})
+                log.info(
                     f"Queued workflow regeneration for {workflow_id} with job ID {job.job_id}"
                 )
                 return True
             else:
-                logger.error(f"Failed to queue workflow regeneration for {workflow_id}")
+                log.error(f"Failed to queue workflow regeneration for {workflow_id}")
                 return False
 
         except Exception as e:
-            logger.error(
+            log.error(
                 f"Error queuing workflow regeneration for {workflow_id}: {str(e)}"
             )
             return False
@@ -160,18 +160,16 @@ class WorkflowQueueService:
                     ex=300,  # 5 minute TTL
                 )
 
-                logger.info(
+                log.info(
                     f"Queued todo workflow generation for {todo_id} with job ID {job.job_id}"
                 )
                 return True
             else:
-                logger.error(f"Failed to queue todo workflow generation for {todo_id}")
+                log.error(f"Failed to queue todo workflow generation for {todo_id}")
                 return False
 
         except Exception as e:
-            logger.error(
-                f"Error queuing todo workflow generation for {todo_id}: {str(e)}"
-            )
+            log.error(f"Error queuing todo workflow generation for {todo_id}: {str(e)}")
             return False
 
     @staticmethod
@@ -191,4 +189,4 @@ class WorkflowQueueService:
             pool = await RedisPoolManager.get_pool()
             await pool.delete(f"todo_workflow_generating:{todo_id}")
         except Exception as e:
-            logger.warning(f"Failed to clear generating flag for {todo_id}: {e}")
+            log.warning(f"Failed to clear generating flag for {todo_id}: {e}")

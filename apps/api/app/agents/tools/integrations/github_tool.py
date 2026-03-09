@@ -4,7 +4,7 @@ from typing import Any, Dict, List
 
 from composio import Composio
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -22,6 +22,7 @@ def register_github_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns current GitHub state for situational awareness.
         """
+        log.set(tool={"integration": "github", "action": "gather_context"})
         user_id = auth_credentials.get("user_id", "")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
@@ -44,7 +45,7 @@ def register_github_custom_tools(composio: Composio) -> List[str]:
             )
             review_requests = reviews_data.get("items", [])
         except Exception as e:
-            logger.debug(f"GitHub review requests fetch skipped: {e}")
+            log.debug(f"GitHub review requests fetch skipped: {e}")
 
         notifications: List[Dict[str, Any]] = []
         try:
@@ -56,7 +57,7 @@ def register_github_custom_tools(composio: Composio) -> List[str]:
             raw = notif_data.get("notifications", notif_data)
             notifications = raw if isinstance(raw, list) else []
         except Exception as e:
-            logger.debug(f"GitHub notifications fetch skipped: {e}")
+            log.debug(f"GitHub notifications fetch skipped: {e}")
 
         return {
             "assigned_issues": actual_issues,

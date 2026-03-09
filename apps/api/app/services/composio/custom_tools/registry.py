@@ -66,7 +66,7 @@ from app.agents.tools.integrations.microsoft_teams_tool import (
 from app.agents.tools.integrations.urgency_tool import (
     register_urgency_custom_tools,
 )
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.services.composio.custom_tools.gmail_tools import (
     register_gmail_custom_tools,
 )
@@ -152,7 +152,12 @@ class CustomToolsRegistry:
         self._tools_by_toolkit[toolkit.lower()] = tool_names
         self._registered_toolkits.add(toolkit)
 
-        logger.info(f"Registered {len(tool_names)} custom tools for {toolkit} toolkit")
+        log.set(
+            custom_tools_toolkit=toolkit,
+            custom_tools_registered_count=len(tool_names),
+            custom_tools_names=tool_names,
+        )
+        log.info(f"Registered {len(tool_names)} custom tools for {toolkit} toolkit")
 
     def get_tool_names(self, toolkit: str) -> List[str]:
         """

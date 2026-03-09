@@ -1,7 +1,7 @@
 """User workspace integration routes."""
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.models.integration_models import (
     UserIntegrationsListResponse as UserIntegrationsListResponseModel,
 )
@@ -28,9 +28,10 @@ async def list_user_integrations(
     user_id: str = Depends(get_user_id),
 ) -> UserIntegrationsListResponseModel:
     try:
+        log.set(user={"id": user_id})
         return await get_user_integrations(user_id)
     except Exception as e:
-        logger.error(f"Error fetching user integrations: {e}")
+        log.error(f"Error fetching user integrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch user integrations")
 
 
@@ -40,6 +41,7 @@ async def add_integration_to_workspace(
     user_id: str = Depends(get_user_id),
 ) -> AddUserIntegrationResponse:
     try:
+        log.set(user={"id": user_id})
         user_integration = await add_user_integration_service(
             user_id, request.integration_id
         )
@@ -51,7 +53,7 @@ async def add_integration_to_workspace(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error adding integration: {e}")
+        log.error(f"Error adding integration: {e}")
         raise HTTPException(status_code=500, detail="Failed to add integration")
 
 
@@ -61,6 +63,7 @@ async def remove_integration_from_workspace(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
     try:
+        log.set(user={"id": user_id}, integration={"id": integration_id})
         removed = await remove_user_integration(user_id, integration_id)
         if not removed:
             raise HTTPException(
@@ -73,5 +76,5 @@ async def remove_integration_from_workspace(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error removing integration: {e}")
+        log.error(f"Error removing integration: {e}")
         raise HTTPException(status_code=500, detail="Failed to remove integration")

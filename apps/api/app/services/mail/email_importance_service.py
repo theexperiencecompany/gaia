@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional
 
 from app.agents.llm.client import init_llm
 from app.agents.prompts.mail_prompts import EMAIL_COMPREHENSIVE_ANALYSIS
-from app.config.loggers import common_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import mail_collection
 from app.models.mail_models import EmailComprehensiveAnalysis
 from langchain_core.output_parsers import PydanticOutputParser
@@ -28,6 +28,7 @@ async def get_email_importance_summaries(
     Returns:
         Dictionary containing email summaries and metadata
     """
+    log.set(mail_user_id=user_id, mail_limit=limit, mail_important_only=important_only)
     try:
         # Build query filter
         query_filter: Dict[str, Any] = {"user_id": user_id}
@@ -52,7 +53,7 @@ async def get_email_importance_summaries(
             "filtered_by_importance": important_only,
         }
     except Exception as e:
-        logger.error(f"Error retrieving email summaries for user {user_id}: {e}")
+        log.error(f"Error retrieving email summaries for user {user_id}: {e}")
         raise
 
 
@@ -69,6 +70,7 @@ async def get_single_email_importance_summary(
     Returns:
         Dictionary containing email summary
     """
+    log.set(mail_user_id=user_id, mail_message_id=message_id)
     try:
         # Find the email in database
         email = await mail_collection.find_one(
@@ -86,7 +88,7 @@ async def get_single_email_importance_summary(
 
         return {"status": "success", "email": email}
     except Exception as e:
-        logger.error(
+        log.error(
             f"Error retrieving email summary for user {user_id}, message {message_id}: {e}"
         )
         raise
@@ -108,6 +110,7 @@ async def process_email_comprehensive_analysis(
     Returns:
         EmailComprehensiveAnalysis or None if processing fails
     """
+    log.set(mail_subject=subject, mail_sender=sender, mail_date=date)
     try:
         # Initialize Gemini LLM
         llm = init_llm(preferred_provider="gemini")
@@ -133,18 +136,18 @@ async def process_email_comprehensive_analysis(
         try:
             # Parse using the parser directly
             result = email_comprehensive_parser.parse(response_text)
-            logger.info(f"Successfully parsed comprehensive email analysis: {result}")
+            log.info(f"Successfully parsed comprehensive email analysis: {result}")
             return result
 
         except Exception as parse_error:
-            logger.error(f"Failed to parse AI response with parser: {parse_error}")
+            log.error(f"Failed to parse AI response with parser: {parse_error}")
 
             raise ValueError(
                 "Failed to parse AI response. Please check the response format."
             )
 
     except Exception as e:
-        logger.error(f"Error processing email comprehensive analysis with Gemini: {e}")
+        log.error(f"Error processing email comprehensive analysis with Gemini: {e}")
         return None
 
 
@@ -161,6 +164,10 @@ async def get_bulk_email_importance_summaries(
     Returns:
         Dictionary containing email summaries indexed by message_id
     """
+    log.set(
+        mail_user_id=user_id,
+        mail_bulk_message_count=len(message_ids),
+    )
     try:
         # Query for all emails matching the message IDs
         query_filter = {"user_id": user_id, "message_id": {"$in": message_ids}}
@@ -192,5 +199,5 @@ async def get_bulk_email_importance_summaries(
             "missing_message_ids": list(missing_message_ids),
         }
     except Exception as e:
-        logger.error(f"Error retrieving bulk email summaries for user {user_id}: {e}")
+        log.error(f"Error retrieving bulk email summaries for user {user_id}: {e}")
         raise

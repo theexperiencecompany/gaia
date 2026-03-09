@@ -14,7 +14,7 @@ Uses fire-and-forget pattern - node returns immediately with zero latency.
 import asyncio
 from typing import Dict, List, Optional
 
-from app.config.loggers import llm_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import get_memory_extraction_prompt
 from app.override.langgraph_bigtool.utils import State
 from app.services.memory_service import memory_service
@@ -175,11 +175,11 @@ async def _store_user_memory_background(
         )
 
         if success:
-            logger.info(
+            log.info(
                 f"[{subagent_id or 'agent'}] User memory stored for {user_id[:8]}..."
             )
     except Exception as e:
-        logger.error(f"[{subagent_id or 'agent'}] User memory storage failed: {e}")
+        log.error(f"[{subagent_id or 'agent'}] User memory storage failed: {e}")
 
 
 async def memory_node(
@@ -213,7 +213,7 @@ async def memory_node(
     # Quick validation - skip trivial conversations
     should_learn, reason = _check_worth_learning(messages)
     if not should_learn:
-        logger.debug(f"Memory learning skipped: {reason}")
+        log.debug(f"Memory learning skipped: {reason}")
         return state
 
     if user_id:
@@ -230,7 +230,7 @@ async def memory_node(
 
         _background_tasks.add(task)
         task.add_done_callback(_task_done_callback)
-        logger.debug(
+        log.debug(
             f"[{subagent_id or 'agent'}] Memory learning spawned: {task.get_name()}"
         )
 

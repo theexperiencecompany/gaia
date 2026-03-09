@@ -6,7 +6,7 @@ import re
 from typing import Any, Dict, List
 
 from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import SIX_HOUR_TTL
 from app.decorators.caching import Cacheable
 from langchain_core.messages import HumanMessage
@@ -28,6 +28,12 @@ async def decompose_research_queries(
     depth: int,
 ) -> List[str]:
     """Use a cheap LLM to generate diverse, targeted sub-queries for thorough coverage."""
+    log.set(
+        operation="decompose_research_queries",
+        research_query=query,
+        research_scope=scope,
+        research_depth=depth,
+    )
     n_queries = 3 + (depth - 1) * 3  # depth 1→3, 2→6, 3→9
 
     scope_text = f"\nScope/angle: {scope}" if scope else ""
@@ -60,7 +66,7 @@ async def decompose_research_queries(
             if valid:
                 return valid
     except Exception as e:
-        logger.warning(f"Query decomposition LLM call failed: {e}")
+        log.warning(f"Query decomposition LLM call failed: {e}")
 
     # Fallback: heuristic sub-queries matching n_queries contract (depth 1→3, 2→6, 3→9)
     base = [

@@ -4,7 +4,8 @@ Provides functions to format user preferences for agent system prompts.
 """
 
 from typing import Optional, Dict, Any
-from app.config.loggers import app_logger as logger
+
+from shared.py.wide_events import log
 
 
 def format_response_style_instruction(response_style: str) -> str:
@@ -54,6 +55,12 @@ def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
     Returns:
         List of formatted context strings
     """
+    log.set(
+        operation="build_user_context_parts",
+        has_profession=bool(preferences.get("profession")),
+        has_response_style=bool(preferences.get("response_style")),
+        has_custom_instructions=bool(preferences.get("custom_instructions")),
+    )
     parts = []
 
     try:
@@ -77,7 +84,7 @@ def build_user_context_parts(preferences: Dict[str, Any]) -> list[str]:
                 parts.append(f"Special Instructions: {instructions}")
 
     except Exception as e:
-        logger.warning(f"Error building user context parts: {str(e)}")
+        log.warning(f"Error building user context parts: {str(e)}")
 
     return parts
 
@@ -104,7 +111,7 @@ def format_user_preferences_for_agent(preferences: Dict[str, Any]) -> Optional[s
         return None
 
     except Exception as e:
-        logger.error(f"Error formatting user preferences for agent: {str(e)}")
+        log.error(f"Error formatting user preferences for agent: {str(e)}")
         return None
 
 
@@ -140,7 +147,7 @@ def validate_user_preferences(preferences: Dict[str, Any]) -> Dict[str, Any]:
                 validated["custom_instructions"] = instructions
 
     except Exception as e:
-        logger.warning(f"Error validating user preferences: {str(e)}")
+        log.warning(f"Error validating user preferences: {str(e)}")
 
     return validated
 

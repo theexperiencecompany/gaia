@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.models.scheduler_models import BaseScheduledTask
 from app.models.trigger_configs import TriggerConfigData
 from app.utils.cron_utils import (
@@ -149,7 +149,7 @@ class TriggerConfig(BaseModel):
 
             return next_run
         except Exception as e:
-            logger.error(f"Error calculating next run time: {e}")
+            log.error(f"Error calculating next run time: {e}")
             return None
 
     def update_next_run(

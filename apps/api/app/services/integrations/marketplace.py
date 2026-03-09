@@ -3,7 +3,7 @@
 import asyncio
 from typing import Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import integrations_collection, users_collection
 from app.models.integration_models import (
@@ -22,6 +22,9 @@ async def get_all_integrations(
     include_custom_public: bool = True,
 ) -> MarketplaceResponse:
     """Get all available integrations for the marketplace."""
+    log.set(
+        integration={"provider": category or "all", "action": "get_all_integrations"}
+    )
     tools_store = get_mcp_tools_store()
 
     async def fetch_mcp_tools() -> dict[str, dict]:
@@ -44,7 +47,7 @@ async def get_all_integrations(
                     IntegrationResponse.from_integration(integration)
                 )
             except Exception as e:
-                logger.warning(f"Failed to parse custom integration: {e}")
+                log.warning(f"Failed to parse custom integration: {e}")
 
         return custom_integrations
 
@@ -91,6 +94,9 @@ async def get_all_integrations(
 
 async def get_integration_details(integration_id: str) -> Optional[IntegrationResponse]:
     """Get single integration details by ID."""
+    log.set(
+        integration={"provider": integration_id, "action": "get_integration_details"}
+    )
     tools_store = get_mcp_tools_store()
     stored_tools = await tools_store.get_tools(integration_id)
 
@@ -107,7 +113,7 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
             integration = Integration(**resolved.custom_doc)
             response = IntegrationResponse.from_integration(integration)
         except Exception as e:
-            logger.error(f"Failed to parse integration {integration_id}: {e}")
+            log.error(f"Failed to parse integration {integration_id}: {e}")
             return None
     else:
         return None
@@ -131,6 +137,6 @@ async def get_integration_details(integration_id: str) -> Optional[IntegrationRe
                     "picture": creator_doc.get("picture"),
                 }
         except Exception as e:
-            logger.debug(f"Failed to fetch creator info for {response.created_by}: {e}")
+            log.debug(f"Failed to fetch creator info for {response.created_by}: {e}")
 
     return response

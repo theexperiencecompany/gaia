@@ -1,7 +1,7 @@
 import json
 from typing import Annotated, Any, Dict, Optional
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import DEFAULT_CACHE_TTL
 from app.db.mongodb.collections import goals_collection
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -60,13 +60,13 @@ async def invalidate_goal_caches(user_id: str, goal_id: Optional[str] = None) ->
             cache_key_goal = f"goal_cache:{goal_id}"
             await delete_cache(cache_key_goal)
 
-        logger.info(
+        log.info(
             f"Goal caches invalidated for user {user_id}"
             + (f" and goal {goal_id}" if goal_id else "")
         )
 
     except Exception as e:
-        logger.error(f"Error invalidating goal caches: {str(e)}")
+        log.error(f"Error invalidating goal caches: {str(e)}")
         # Don't raise exception as cache invalidation failure shouldn't break the operation
 
 
@@ -79,7 +79,8 @@ async def create_goal(
     description: Annotated[Optional[str], "Detailed description of the goal"] = None,
 ) -> Dict[str, Any]:
     try:
-        logger.info(f"Goal Tool: Creating goal with title '{title}'")
+        log.set(tool={"name": "create_goal", "action": "create"})
+        log.info(f"Goal Tool: Creating goal with title '{title}'")
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "goal": None}
@@ -125,7 +126,7 @@ async def create_goal(
 
     except Exception as e:
         error_msg = f"Error creating goal: {str(e)}"
-        logger.error(error_msg)
+        log.error(error_msg)
         return {"error": error_msg, "goal": None}
 
 
@@ -133,7 +134,8 @@ async def create_goal(
 @with_doc(LIST_GOALS)
 async def list_goals(config: RunnableConfig) -> Dict[str, Any]:
     try:
-        logger.info("Goal Tool: Listing all goals")
+        log.set(tool={"name": "list_goals", "action": "list"})
+        log.info("Goal Tool: Listing all goals")
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "goals": []}
@@ -167,7 +169,7 @@ async def list_goals(config: RunnableConfig) -> Dict[str, Any]:
 
     except Exception as e:
         error_msg = f"Error listing goals: {str(e)}"
-        logger.error(error_msg)
+        log.error(error_msg)
         return {"error": error_msg, "goals": []}
 
 
@@ -178,7 +180,8 @@ async def get_goal(
     goal_id: Annotated[str, "ID of the goal to retrieve (required)"],
 ) -> Dict[str, Any]:
     try:
-        logger.info(f"Goal Tool: Getting goal {goal_id}")
+        log.set(tool={"name": "get_goal", "action": "get"})
+        log.info(f"Goal Tool: Getting goal {goal_id}")
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "goal": None}
@@ -225,7 +228,7 @@ async def get_goal(
 
     except Exception as e:
         error_msg = f"Error getting goal: {str(e)}"
-        logger.error(error_msg)
+        log.error(error_msg)
         return {"error": error_msg, "goal": None}
 
 
@@ -236,7 +239,8 @@ async def delete_goal(
     goal_id: Annotated[str, "ID of the goal to delete (required)"],
 ) -> Dict[str, Any]:
     try:
-        logger.info(f"Goal Tool: Deleting goal {goal_id}")
+        log.set(tool={"name": "delete_goal", "action": "delete"})
+        log.info(f"Goal Tool: Deleting goal {goal_id}")
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "success": False}
@@ -274,7 +278,7 @@ async def delete_goal(
 
     except Exception as e:
         error_msg = f"Error deleting goal: {str(e)}"
-        logger.error(error_msg)
+        log.error(error_msg)
         return {"error": error_msg, "success": False}
 
 
@@ -288,7 +292,8 @@ async def generate_roadmap(
     ] = False,
 ) -> Dict[str, Any]:
     try:
-        logger.info(f"Goal Tool: Generating roadmap for goal {goal_id}")
+        log.set(tool={"name": "generate_roadmap", "action": "generate"})
+        log.info(f"Goal Tool: Generating roadmap for goal {goal_id}")
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "roadmap": None}
@@ -390,7 +395,7 @@ async def generate_roadmap(
 
     except Exception as e:
         error_msg = f"Error generating roadmap: {str(e)}"
-        logger.error(error_msg)
+        log.error(error_msg)
         return {"error": error_msg, "roadmap": None}
 
 
@@ -403,7 +408,8 @@ async def update_goal_node(
     is_complete: Annotated[bool, "Whether the node/task is complete (required)"],
 ) -> Dict[str, Any]:
     try:
-        logger.info(
+        log.set(tool={"name": "update_goal_node", "action": "update"})
+        log.info(
             f"Goal Tool: Updating node {node_id} in goal {goal_id} to complete={is_complete}"
         )
         user_id = get_user_id_from_config(config)
@@ -446,7 +452,7 @@ async def update_goal_node(
 
     except Exception as e:
         error_msg = f"Error updating goal node: {str(e)}"
-        logger.error(error_msg)
+        log.error(error_msg)
         return {"error": error_msg, "goal": None}
 
 
@@ -458,7 +464,8 @@ async def search_goals(
     limit: Annotated[int, "Maximum number of results to return"] = 10,
 ) -> Dict[str, Any]:
     try:
-        logger.info(f"Goal Tool: Searching goals with query '{query}'")
+        log.set(tool={"name": "search_goals", "action": "search"})
+        log.info(f"Goal Tool: Searching goals with query '{query}'")
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "goals": []}
@@ -513,7 +520,7 @@ async def search_goals(
 
     except Exception as e:
         error_msg = f"Error searching goals: {str(e)}"
-        logger.error(error_msg)
+        log.error(error_msg)
         return {"error": error_msg, "goals": []}
 
 
@@ -521,7 +528,8 @@ async def search_goals(
 @with_doc(GET_GOAL_STATISTICS)
 async def get_goal_statistics(config: RunnableConfig) -> Dict[str, Any]:
     try:
-        logger.info("Goal Tool: Getting goal statistics")
+        log.set(tool={"name": "get_goal_statistics", "action": "stats"})
+        log.info("Goal Tool: Getting goal statistics")
         user_id = get_user_id_from_config(config)
         if not user_id:
             return {"error": "User authentication required", "stats": None}
@@ -544,7 +552,7 @@ async def get_goal_statistics(config: RunnableConfig) -> Dict[str, Any]:
         cache_key_stats = f"goal_stats_cache:{user_id}"
         cached_stats = await get_cache(cache_key_stats)
         if cached_stats:
-            logger.info(f"Goal statistics fetched from cache for user {user_id}")
+            log.info(f"Goal statistics fetched from cache for user {user_id}")
             if isinstance(cached_stats, str):
                 stats = json.loads(cached_stats)
             else:
@@ -630,7 +638,7 @@ async def get_goal_statistics(config: RunnableConfig) -> Dict[str, Any]:
 
         # Cache the computed statistics (1 hour to balance freshness with performance)
         await set_cache(cache_key_stats, json.dumps(stats), DEFAULT_CACHE_TTL)
-        logger.info(f"Goal statistics computed and cached for user {user_id}")
+        log.info(f"Goal statistics computed and cached for user {user_id}")
 
         # Stream the stats to frontend
         writer(
@@ -647,7 +655,7 @@ async def get_goal_statistics(config: RunnableConfig) -> Dict[str, Any]:
 
     except Exception as e:
         error_msg = f"Error getting goal statistics: {str(e)}"
-        logger.error(error_msg)
+        log.error(error_msg)
         return {"error": error_msg, "stats": None}
 
 

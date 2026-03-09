@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 
 from composio import Composio
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 from app.utils.context_utils import execute_tool
 
@@ -23,6 +23,7 @@ def register_slack_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns current workspace state for situational awareness.
         """
+        log.set(tool={"integration": "slack", "action": "gather_context"})
         user_id = auth_credentials.get("user_id", "")
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")
@@ -46,7 +47,7 @@ def register_slack_custom_tools(composio: Composio) -> List[str]:
             )
             mentions = mention_data.get("messages", {}).get("matches", [])
         except Exception as e:
-            logger.debug(f"Slack mentions fetch skipped: {e}")
+            log.debug(f"Slack mentions fetch skipped: {e}")
 
         mention_ts = {m.get("ts") for m in mentions}
         other_messages = [m for m in messages if m.get("ts") not in mention_ts]

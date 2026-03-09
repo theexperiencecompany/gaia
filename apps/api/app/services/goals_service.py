@@ -1,7 +1,7 @@
 import json
 from datetime import datetime
 
-from app.config.loggers import goals_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import goals_collection
 from app.db.redis import ONE_YEAR_TTL, get_cache, set_cache
 from app.agents.llm.client import init_llm
@@ -83,19 +83,19 @@ async def generate_roadmap_with_llm_stream(title: str):
                     yield {"progress": "Roadmap generation completed successfully!"}
                     yield {"roadmap": roadmap_data}
                 else:
-                    logger.error("Generated roadmap missing required fields")
+                    log.error("Generated roadmap missing required fields")
                     yield {"error": "Generated roadmap is missing required structure"}
             else:
-                logger.error("No valid JSON found in LLM response")
+                log.error("No valid JSON found in LLM response")
                 yield {"error": "Could not parse roadmap from LLM response"}
 
         except json.JSONDecodeError as e:
-            logger.error(f"JSON parsing error: {e}")
-            logger.error(f"Raw response: {complete_response}")
+            log.error(f"JSON parsing error: {e}")
+            log.error(f"Raw response: {complete_response}")
             yield {"error": f"Failed to parse roadmap JSON: {str(e)}"}
 
     except Exception as e:
-        logger.error(f"LLM Generation Error: {e}")
+        log.error(f"LLM Generation Error: {e}")
         yield {"error": f"Roadmap generation failed: {str(e)}"}
 
 
@@ -117,6 +117,16 @@ async def create_goal_service(goal: GoalCreate, user: dict) -> GoalResponse:
     if not user_id:
         raise HTTPException(status_code=403, detail="Not authenticated")
 
+    log.set(
+        service="goals_service",
+        operation="create_goal",
+        user_id=user_id,
+        goal={
+            "title": goal.title,
+            "node_count": 0,
+            "is_completed": False,
+        },
+    )
     goal_data = {
         "title": goal.title,
         "description": goal.description,
@@ -135,7 +145,7 @@ async def create_goal_service(goal: GoalCreate, user: dict) -> GoalResponse:
         await _invalidate_goal_caches(user_id)
 
         formatted_goal = goal_helper(goal_data)
-        logger.info(f"Goal created successfully for user {user_id}. Cache invalidated.")
+        log.info(f"Goal created successfully for user {user_id}. Cache invalidated.")
         return GoalResponse(**formatted_goal)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to create goal {e}")
@@ -154,13 +164,16 @@ async def get_goal_service(goal_id: str, user: dict) -> dict:
     """
     user_id = user.get("user_id")
     if not user_id:
-        logger.warning("Unauthorized attempt to access goal details.")
+        log.warning("Unauthorized attempt to access goal details.")
         raise HTTPException(status_code=403, detail="Not authenticated")
 
+    log.set(
+        service="goals_service", operation="get_goal", user_id=user_id, goal_id=goal_id
+    )
     cache_key = f"goal_cache:{goal_id}"
     cached_goal = await get_cache(cache_key)
     if cached_goal:
-        logger.info(f"Goal {goal_id} fetched from cache.")
+        log.info(f"Goal {goal_id} fetched from cache.")
         # Handle both string and dict cached data
         if isinstance(cached_goal, str):
             return json.loads(cached_goal)
@@ -169,12 +182,12 @@ async def get_goal_service(goal_id: str, user: dict) -> dict:
 
     goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
     if not goal:
-        logger.error(f"Goal with ID {goal_id} not found.")
+        log.error(f"Goal with ID {goal_id} not found.")
         raise HTTPException(status_code=404, detail="Goal not found")
 
     roadmap = goal.get("roadmap", {})
     if not roadmap.get("nodes") or not roadmap.get("edges"):
-        logger.info(f"Goal {goal_id} has no roadmap. Prompting user to generate one.")
+        log.info(f"Goal {goal_id} has no roadmap. Prompting user to generate one.")
         return {
             "message": "Roadmap not available. Please generate it using the WebSocket.",
             "id": goal_id,
@@ -183,7 +196,7 @@ async def get_goal_service(goal_id: str, user: dict) -> dict:
 
     goal_helper_result = goal_helper(goal)
     await set_cache(cache_key, json.dumps(goal_helper_result), ONE_YEAR_TTL)
-    logger.info(f"Goal {goal_id} details fetched successfully.")
+    log.info(f"Goal {goal_id} details fetched successfully.")
     return goal_helper_result
 
 
@@ -199,13 +212,13 @@ async def get_user_goals_service(user: dict) -> list:
     """
     user_id = user.get("user_id")
     if not user_id:
-        logger.warning("Unauthorized attempt to list user goals.")
+        log.warning("Unauthorized attempt to list user goals.")
         raise HTTPException(status_code=403, detail="Not authenticated")
 
     cache_key = f"goals_cache:{user_id}"
     cached_goals = await get_cache(cache_key)
     if cached_goals:
-        logger.info(f"Fetched user goals from cache for user {user_id}.")
+        log.info(f"Fetched user goals from cache for user {user_id}.")
         # Handle both string and dict cached data
         if isinstance(cached_goals, str):
             parsed_data = json.loads(cached_goals)
@@ -218,7 +231,7 @@ async def get_user_goals_service(user: dict) -> list:
 
     # Cache the goals list as JSON string for consistency
     await set_cache(cache_key, json.dumps({"goals": goals_list}), ONE_YEAR_TTL)
-    logger.info(f"Listed all goals for user {user_id}.")
+    log.info(f"Listed all goals for user {user_id}.")
     return goals_list
 
 
@@ -235,24 +248,24 @@ async def delete_goal_service(goal_id: str, user: dict) -> dict:
     """
     user_id = user.get("user_id")
     if not user_id:
-        logger.warning("Unauthorized attempt to delete goal.")
+        log.warning("Unauthorized attempt to delete goal.")
         raise HTTPException(status_code=403, detail="Not authenticated")
 
     goal = await goals_collection.find_one(
         {"_id": ObjectId(goal_id), "user_id": user_id}
     )
     if not goal:
-        logger.error(f"Goal {goal_id} not found for user {user_id}.")
+        log.error(f"Goal {goal_id} not found for user {user_id}.")
         raise HTTPException(status_code=404, detail="Goal not found")
 
     result = await goals_collection.delete_one({"_id": ObjectId(goal_id)})
     if result.deleted_count == 0:
-        logger.error(f"Failed to delete goal {goal_id}.")
+        log.error(f"Failed to delete goal {goal_id}.")
         raise HTTPException(status_code=500, detail="Failed to delete the goal")
 
     await _invalidate_goal_caches(user_id, goal_id)
 
-    logger.info(f"Goal {goal_id} deleted successfully by user {user_id}.")
+    log.info(f"Goal {goal_id} deleted successfully by user {user_id}.")
     return goal_helper(goal)
 
 
@@ -273,9 +286,19 @@ async def update_node_status_service(
     """
     user_id = user.get("user_id")
     if not user_id:
-        logger.warning("Unauthorized attempt to update node status.")
+        log.warning("Unauthorized attempt to update node status.")
         raise HTTPException(status_code=403, detail="Not authenticated")
 
+    log.set(
+        service="goals_service",
+        operation="update_node_status",
+        user_id=user_id,
+        goal={
+            "id": goal_id,
+            "node_id": node_id,
+            "is_complete": update_data.is_complete,
+        },
+    )
     # Use atomic find_one_and_update with positional operator
     # First, verify the node exists in the goal
     goal = await goals_collection.find_one(
@@ -285,10 +308,10 @@ async def update_node_status_service(
         # Check if goal exists at all
         goal_exists = await goals_collection.find_one({"_id": ObjectId(goal_id)})
         if not goal_exists:
-            logger.error(f"Goal {goal_id} not found.")
+            log.error(f"Goal {goal_id} not found.")
             raise HTTPException(status_code=404, detail="Goal not found")
         else:
-            logger.error(f"Node {node_id} not found in goal {goal_id}.")
+            log.error(f"Node {node_id} not found in goal {goal_id}.")
             raise HTTPException(status_code=404, detail="Node not found in roadmap")
 
     # Atomically update the specific node using positional operator
@@ -303,7 +326,7 @@ async def update_node_status_service(
 
     await _invalidate_goal_caches(user_id, goal_id)
 
-    logger.info(f"Node status updated for node {node_id} in goal {goal_id}.")
+    log.info(f"Node status updated for node {node_id} in goal {goal_id}.")
     return goal_helper(updated_goal)
 
 
@@ -322,11 +345,24 @@ async def update_goal_with_roadmap_service(goal_id: str, roadmap_data: dict) -> 
         # Get the goal to find the user_id - we need this for create_goal_project_and_todo
         goal = await goals_collection.find_one({"_id": ObjectId(goal_id)})
         if not goal:
-            logger.error(f"Goal {goal_id} not found for roadmap update")
+            log.error(f"Goal {goal_id} not found for roadmap update")
             return False
 
         user_id = goal.get("user_id")
         goal_title = goal.get("title", "Untitled Goal")
+        node_count = len(roadmap_data.get("nodes", []))
+        edge_count = len(roadmap_data.get("edges", []))
+
+        log.set(
+            service="goals_service",
+            operation="update_goal_with_roadmap",
+            goal={
+                "id": goal_id,
+                "title": goal_title,
+                "node_count": node_count,
+                "edge_count": edge_count,
+            },
+        )
 
         # Create project and todo with subtasks for the roadmap
         # This function will update the goal with subtask_ids and todo info
@@ -337,15 +373,13 @@ async def update_goal_with_roadmap_service(goal_id: str, roadmap_data: dict) -> 
         # Invalidate relevant caches
         if user_id:
             await _invalidate_goal_caches(user_id, goal_id)
-            logger.info(
-                f"Goal caches invalidated for goal {goal_id} and user {user_id}"
-            )
+            log.info(f"Goal caches invalidated for goal {goal_id} and user {user_id}")
 
-        logger.info(
+        log.info(
             f"Goal {goal_id} successfully updated with roadmap and todo project {project_id}"
         )
         return True
 
     except Exception as e:
-        logger.error(f"Error updating goal {goal_id} with roadmap: {str(e)}")
+        log.error(f"Error updating goal {goal_id} with roadmap: {str(e)}")
         return False

@@ -18,7 +18,7 @@ from typing import Dict, List
 
 import ftfy
 from app.agents.llm.client import init_llm
-from app.config.loggers import memory_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.general import (
     DEDUPLICATION_SIMILARITY_THRESHOLD,
@@ -435,7 +435,7 @@ async def extract_username_with_llm(
 
     # Deduplicate similar emails to avoid sending redundant context
     unique_emails = _deduplicate_emails(emails)
-    logger.info(
+    log.info(
         f"Deduplicated {len(emails)} emails down to {len(unique_emails)} unique emails for {platform}"
     )
 
@@ -541,7 +541,7 @@ async def extract_username_with_llm(
         username = username.replace("@", "").replace("\\n", "").strip()
 
         elapsed = time.time() - start_time
-        logger.info(
+        log.info(
             f"LLM extracted username for {platform}: '{username}' "
             f"(confidence: {confidence}) in {elapsed:.2f}s"
         )
@@ -567,5 +567,5 @@ async def extract_username_with_llm(
 
     except Exception as e:
         elapsed = time.time() - start_time
-        logger.error(f"LLM extraction failed for {platform} after {elapsed:.2f}s: {e}")
+        log.error(f"LLM extraction failed for {platform} after {elapsed:.2f}s: {e}")
         return "NOT_FOUND"

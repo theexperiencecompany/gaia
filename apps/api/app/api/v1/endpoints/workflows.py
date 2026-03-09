@@ -10,7 +10,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.api.v1.middleware.rate_limiter import limiter
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.decorators import tiered_rate_limit
 from app.models.workflow_models import (
@@ -52,6 +52,16 @@ async def create_workflow(
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """Create a new workflow with automatic timezone detection."""
+    log.set(
+        user={"id": user["user_id"]},
+        workflow={
+            "title": request.title,
+            "trigger_type": str(request.trigger_config.type)
+            if request.trigger_config
+            else None,
+        },
+    )
+
     try:
         # Strip system fields — these are set by the provisioner only
         request.is_system_workflow = False
@@ -74,7 +84,7 @@ async def create_workflow(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        logger.error(f"Error creating workflow: {str(e)}")
+        log.error(f"Error creating workflow: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create workflow",
@@ -86,12 +96,14 @@ async def create_workflow(
 @limiter.limit("1000/hour")
 async def list_workflows(request: Request, user: dict = Depends(get_current_user)):
     """List all workflows for the current user."""
+    log.set(user={"id": user["user_id"]})
+
     try:
         workflows = await WorkflowService.list_workflows(user["user_id"])
         return WorkflowListResponse(workflows=workflows)
 
     except Exception as e:
-        logger.error(f"Error listing workflows for user {user['user_id']}: {str(e)}")
+        log.error(f"Error listing workflows for user {user['user_id']}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list workflows",
@@ -108,6 +120,8 @@ async def execute_workflow(
     user: dict = Depends(get_current_user),
 ):
     """Execute a workflow (run now)."""
+    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+
     try:
         result = await WorkflowService.execute_workflow(
             workflow_id, request, user["user_id"]
@@ -117,7 +131,7 @@ async def execute_workflow(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        logger.error(f"Error executing workflow {workflow_id}: {str(e)}")
+        log.error(f"Error executing workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to execute workflow",
@@ -136,6 +150,15 @@ async def get_workflow_executions(
     user: dict = Depends(get_current_user),
 ):
     """Get execution history for a workflow."""
+    log.set(
+        user={"id": user["user_id"]},
+        workflow={
+            "id": workflow_id,
+            "executions_limit": limit,
+            "executions_offset": offset,
+        },
+    )
+
     try:
         limit = max(1, min(limit, 100))
         offset = max(0, offset)
@@ -147,7 +170,7 @@ async def get_workflow_executions(
         )
         return result
     except Exception as e:
-        logger.error(f"Error getting executions for workflow {workflow_id}: {str(e)}")
+        log.error(f"Error getting executions for workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow executions",
@@ -157,6 +180,8 @@ async def get_workflow_executions(
 @router.get("/workflows/{workflow_id}/status", response_model=WorkflowStatusResponse)
 async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current_user)):
     """Get the current status of a workflow (for polling)."""
+    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+
     try:
         status_response = await WorkflowService.get_workflow_status(
             workflow_id, user["user_id"]
@@ -166,7 +191,7 @@ async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
     except Exception as e:
-        logger.error(f"Error getting workflow status {workflow_id}: {str(e)}")
+        log.error(f"Error getting workflow status {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow status",
@@ -180,6 +205,11 @@ async def activate_workflow(
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """Activate a workflow (enable its trigger)."""
+    log.set(
+        user={"id": user["user_id"]},
+        workflow={"id": workflow_id, "timezone": user_timezone},
+    )
+
     try:
         workflow = await WorkflowService.activate_workflow(
             workflow_id, user["user_id"], user_timezone=user_timezone
@@ -203,7 +233,7 @@ async def activate_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error activating workflow {workflow_id}: {str(e)}")
+        log.error(f"Error activating workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to activate workflow",
@@ -217,6 +247,8 @@ async def deactivate_workflow(
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """Deactivate a workflow (disable its trigger)."""
+    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+
     try:
         workflow = await WorkflowService.deactivate_workflow(
             workflow_id, user["user_id"], user_timezone=user_timezone
@@ -234,7 +266,7 @@ async def deactivate_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deactivating workflow {workflow_id}: {str(e)}")
+        log.error(f"Error deactivating workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to deactivate workflow",
@@ -250,6 +282,11 @@ async def regenerate_workflow_steps(
     user: dict = Depends(get_current_user),
 ):
     """Regenerate steps for an existing workflow with optional parameters."""
+    log.set(
+        user={"id": user["user_id"]},
+        workflow={"id": workflow_id, "regeneration_reason": request.reason},
+    )
+
     try:
         workflow = await WorkflowService.regenerate_workflow_steps(
             workflow_id,
@@ -270,7 +307,7 @@ async def regenerate_workflow_steps(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        logger.error(f"Error regenerating workflow steps: {str(e)}")
+        log.error(f"Error regenerating workflow steps: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to regenerate workflow steps",
@@ -285,6 +322,8 @@ async def create_workflow_from_todo(
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """Create a workflow from a todo item with automatic timezone detection."""
+    log.set(user={"id": user["user_id"]})
+
     try:
         todo_id = request.get("todo_id")
         todo_title = request.get("todo_title")
@@ -316,7 +355,7 @@ async def create_workflow_from_todo(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating workflow from todo: {str(e)}")
+        log.error(f"Error creating workflow from todo: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create workflow from todo",
@@ -329,6 +368,8 @@ async def publish_workflow(
     user: dict = Depends(get_current_user),
 ):
     """Publish a workflow to the community marketplace."""
+    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+
     try:
         # Check if workflow exists and belongs to user
         workflow = await workflows_collection.find_one(
@@ -353,7 +394,7 @@ async def publish_workflow(
             },
         )
 
-        logger.info(f"Published workflow {workflow_id} by user {user['user_id']}")
+        log.info(f"Published workflow {workflow_id} by user {user['user_id']}")
 
         return PublishWorkflowResponse(
             message="Workflow published successfully", workflow_id=workflow_id
@@ -362,7 +403,7 @@ async def publish_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error publishing workflow {workflow_id}: {str(e)}")
+        log.error(f"Error publishing workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to publish workflow",
@@ -375,6 +416,8 @@ async def unpublish_workflow(
     user: dict = Depends(get_current_user),
 ):
     """Remove a workflow from the community marketplace."""
+    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+
     try:
         # Check if workflow exists and belongs to user
         workflow = await workflows_collection.find_one(
@@ -395,14 +438,14 @@ async def unpublish_workflow(
             },
         )
 
-        logger.info(f"Unpublished workflow {workflow_id} by user {user['user_id']}")
+        log.info(f"Unpublished workflow {workflow_id} by user {user['user_id']}")
 
         return {"message": "Workflow unpublished successfully"}
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error unpublishing workflow {workflow_id}: {str(e)}")
+        log.error(f"Error unpublishing workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to unpublish workflow",
@@ -421,7 +464,7 @@ async def get_explore_workflows(
     try:
         return await WorkflowService.get_explore_workflows(limit=limit, offset=offset)
     except Exception as e:
-        logger.error(f"Error fetching explore workflows: {str(e)}")
+        log.error(f"Error fetching explore workflows: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch explore workflows",
@@ -442,7 +485,7 @@ async def get_public_workflows(
             limit=limit, offset=offset, user_id=None
         )
     except Exception as e:
-        logger.error(f"Error fetching public workflows: {str(e)}")
+        log.error(f"Error fetching public workflows: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to fetch public workflows",
@@ -475,7 +518,7 @@ async def get_public_workflow(request: Request, workflow_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting public workflow {workflow_id}: {str(e)}")
+        log.error(f"Error getting public workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
@@ -499,7 +542,7 @@ async def generate_workflow_prompt_endpoint(
         )
         return GenerateWorkflowPromptResponse(**result)
     except Exception as e:
-        logger.error(f"Error generating workflow prompt: {e}")
+        log.error(f"Error generating workflow prompt: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to generate workflow prompt",
@@ -513,6 +556,8 @@ async def get_workflow(
     request: Request, workflow_id: str, user: dict = Depends(get_current_user)
 ):
     """Get a specific workflow by ID."""
+    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+
     try:
         workflow = await WorkflowService.get_workflow(workflow_id, user["user_id"])
         if not workflow:
@@ -528,7 +573,7 @@ async def get_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting workflow {workflow_id}: {str(e)}")
+        log.error(f"Error getting workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to get workflow",
@@ -543,6 +588,11 @@ async def update_workflow(
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """Update an existing workflow with automatic timezone detection."""
+    log.set(
+        user={"id": user["user_id"]},
+        workflow={"id": workflow_id, "timezone": user_timezone},
+    )
+
     try:
         workflow = await WorkflowService.update_workflow(
             workflow_id, request, user["user_id"], user_timezone=user_timezone
@@ -566,7 +616,7 @@ async def update_workflow(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating workflow {workflow_id}: {str(e)}")
+        log.error(f"Error updating workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to update workflow",
@@ -585,6 +635,8 @@ async def reset_workflow_to_default(
 
     Only works on workflows where is_system_workflow=True.
     """
+    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+
     try:
         success = await reset_system_workflow_to_default(
             workflow_id=workflow_id,
@@ -600,7 +652,7 @@ async def reset_workflow_to_default(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error resetting workflow {workflow_id}: {str(e)}")
+        log.error(f"Error resetting workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to reset workflow",
@@ -610,6 +662,8 @@ async def reset_workflow_to_default(
 @router.delete("/workflows/{workflow_id}")
 async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_user)):
     """Delete a workflow."""
+    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+
     try:
         success = await WorkflowService.delete_workflow(workflow_id, user["user_id"])
         if not success:
@@ -623,7 +677,7 @@ async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_use
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting workflow {workflow_id}: {str(e)}")
+        log.error(f"Error deleting workflow {workflow_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to delete workflow",

@@ -13,7 +13,6 @@ from app.agents.templates.agent_template import (
     COMMS_PROMPT_TEMPLATE,
     EXECUTOR_PROMPT_TEMPLATE,
 )
-from app.config.loggers import llm_logger as logger
 from app.models.message_models import (
     FileData,
     ReplyToMessageData,
@@ -23,6 +22,7 @@ from app.models.message_models import (
 from app.services.gaia_knowledge_service import gaia_knowledge_service
 from app.services.memory_service import memory_service
 from app.services.workflow import WorkflowService
+from shared.py.wide_events import log
 from app.utils.user_preferences_utils import (
     format_user_preferences_for_agent,
 )
@@ -64,12 +64,12 @@ async def _get_user_memories_section(query: str, user_id: str) -> str:
             query=query, user_id=user_id, limit=5
         )
         if results and (memories := getattr(results, "memories", None)):
-            logger.info(f"Added {len(memories)} memories to context")
+            log.info(f"Added {len(memories)} memories to context")
             return "\n\nBased on our previous conversations:\n" + "\n".join(
                 f"- {mem.content}" for mem in memories
             )
     except Exception as e:
-        logger.warning(f"Error retrieving memories: {e}")
+        log.warning(f"Error retrieving memories: {e}")
 
     return ""
 
@@ -87,12 +87,12 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     try:
         results = await gaia_knowledge_service.search_knowledge(query=query, limit=5)
         if results:
-            logger.info(f"Added {len(results)} knowledge items to context")
+            log.info(f"Added {len(results)} knowledge items to context")
             return "\n\nAbout Gaia (your identity and capabilities):\n" + "\n".join(
                 f"- {result.content}" for result in results
             )
     except Exception as e:
-        logger.warning(f"Error retrieving GAIA knowledge: {e}")
+        log.warning(f"Error retrieving GAIA knowledge: {e}")
 
     return ""
 
@@ -150,7 +150,7 @@ async def get_memory_message(
                 context_parts.append(f"User Timezone: {user_timezone}")
                 context_parts.append(f"User Local Time: {formatted_local_time}")
             except Exception as e:
-                logger.warning(f"Error formatting user local time: {e}")
+                log.warning(f"Error formatting user local time: {e}")
 
         # Search for conversation memories and GAIA knowledge in parallel
         memories_section, gaia_knowledge_section = await asyncio.gather(
@@ -163,7 +163,7 @@ async def get_memory_message(
         return SystemMessage(content=content, memory_message=True)
 
     except Exception as e:
-        logger.error(f"Error creating memory message: {e}")
+        log.error(f"Error creating memory message: {e}")
         # Return minimal context on error
         utc_time_str = datetime.now(timezone.utc).strftime(
             "%A, %B %d, %Y, %H:%M:%S UTC"
@@ -221,7 +221,7 @@ async def format_workflow_execution_message(
         try:
             workflow = await WorkflowService.get_workflow(selected_workflow.id, user_id)
         except Exception as e:
-            logger.error(f"Failed to fetch workflow {selected_workflow.id}: {e}")
+            log.error(f"Failed to fetch workflow {selected_workflow.id}: {e}")
 
     # Use fresh database data if available, otherwise use passed data
     if workflow and workflow.steps:

@@ -17,7 +17,7 @@ import shlex
 from dataclasses import dataclass
 from typing import NoReturn, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import (
     get_agent_root,
@@ -285,7 +285,7 @@ class VFSCommandParser:
             result = await handler(args, redirect, user_id, agent_name)
             return result
         except Exception as e:
-            logger.error(f"VFS command error ({cmd}): {e}")
+            log.error(f"VFS command error ({cmd}): {e}")
             return f"Error: {e}"
 
     def _resolve_path(self, path: str, user_id: str, agent_name: str) -> str:
@@ -306,7 +306,7 @@ class VFSCommandParser:
             if validate_user_access(normalized, user_id):
                 return normalized
             # Redirect to user's space if invalid
-            logger.warning(f"Access denied: {path} not in user {user_id} scope")
+            log.warning(f"Access denied: {path} not in user {user_id} scope")
 
         # If starts with /, treat as relative to agent root
         if path.startswith("/"):

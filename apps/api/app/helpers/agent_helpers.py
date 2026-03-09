@@ -18,8 +18,8 @@ from opik.integrations.langchain import OpikTracer
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.loggers import langchain_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import (
     CUSTOM_INT_METADATA_CACHE_PREFIX,
@@ -121,7 +121,7 @@ async def get_custom_integration_metadata(tool_name: str, user_id: str) -> dict:
         return metadata
 
     except Exception as e:
-        logger.warning(f"Failed to lookup custom integration metadata: {e}")
+        log.warning(f"Failed to lookup custom integration metadata: {e}")
         return {}
 
 
@@ -192,7 +192,7 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
         return metadata
 
     except Exception as e:
-        logger.warning(f"Failed to lookup handoff metadata: {e}")
+        log.warning(f"Failed to lookup handoff metadata: {e}")
         return {}
 
 
@@ -764,7 +764,7 @@ async def execute_graph_streaming(
                                 }
                             )
                     except Exception as _e:
-                        logger.warning("Failed to emit mcp_app event: %s", _e)
+                        log.warning("Failed to emit mcp_app event: %s", _e)
             continue
 
         if stream_mode == "custom":
@@ -853,7 +853,7 @@ async def execute_graph_streaming(
                                 }
                             )
                     except Exception as _e:
-                        logger.warning("Failed to emit mcp_app from subagent: %s", _e)
+                        log.warning("Failed to emit mcp_app from subagent: %s", _e)
 
     # Yield complete message for DB storage
     yield f"nostream: {json.dumps({'complete_message': complete_message})}"

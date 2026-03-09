@@ -9,7 +9,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone_from_preferences,
 )
-from app.config.loggers import todos_logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import projects_collection, todos_collection
 from app.decorators import tiered_rate_limit
 from app.models.todo_models import (
@@ -665,7 +665,7 @@ async def update_subtask(
                     todo_id, subtask_id, updates.completed, user["user_id"]
                 )
             except Exception as e:
-                todos_logger.warning(f"Failed to sync subtask to goal: {str(e)}")
+                log.warning(f"Failed to sync subtask to goal: {str(e)}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:
@@ -793,7 +793,7 @@ async def toggle_subtask_completion(
                 todo_id, subtask_id, new_completed, user["user_id"]
             )
         except Exception as e:
-            todos_logger.warning(f"Failed to sync subtask to goal: {str(e)}")
+            log.warning(f"Failed to sync subtask to goal: {str(e)}")
 
         return TodoResponse(**serialize_document(updated_todo))
     except ValueError as e:

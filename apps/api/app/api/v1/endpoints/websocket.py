@@ -1,5 +1,5 @@
 from app.api.v1.dependencies.oauth_dependencies import get_current_user_ws
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.core.websocket_manager import (
     websocket_manager as connection_manager,
 )
@@ -19,9 +19,10 @@ async def websocket_endpoint(websocket: WebSocket):
 
     # Check if we have a valid user with a user_id
     user_id = user.get("user_id")
+    log.set(user={"id": user_id})
 
     if not user_id or not isinstance(user_id, str):
-        logger.warning("WebSocket connection attempted with invalid user_id")
+        log.warning("WebSocket connection attempted with invalid user_id")
         return
 
     # Accept the connection now that we've verified the user
@@ -45,7 +46,7 @@ async def websocket_endpoint(websocket: WebSocket):
         connection_manager.remove_connection(user_id=user_id, websocket=websocket)
     except Exception as e:
         # Handle any other exceptions
-        logger.error(f"WebSocket error for user {user_id}: {str(e)}")
+        log.error(f"WebSocket error for user {user_id}: {str(e)}")
         connection_manager.remove_connection(user_id=user_id, websocket=websocket)
         try:
             await websocket.close(code=status.WS_1011_INTERNAL_ERROR)

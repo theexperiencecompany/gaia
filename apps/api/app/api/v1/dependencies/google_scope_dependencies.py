@@ -19,8 +19,8 @@ Usage:
 
 import httpx
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.config.loggers import auth_logger as logger
 from app.config.oauth_config import get_integration_by_id, get_short_name_mapping
+from shared.py.wide_events import log
 from app.services.oauth.oauth_service import check_integration_status
 from fastapi import Depends, HTTPException, status
 
@@ -85,7 +85,7 @@ def require_integration(integration_short_name: str):
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error checking integration {integration_short_name}: {e}")
+            log.error(f"Error checking integration {integration_short_name}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to verify integration permissions",

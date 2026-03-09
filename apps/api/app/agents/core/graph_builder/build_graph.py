@@ -24,7 +24,7 @@ from app.agents.tools.core.tool_runtime_config import (
 )
 from app.agents.tools.executor_tool import call_executor
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
@@ -68,7 +68,7 @@ async def build_executor_graph(
         None,
     )
     if subagent_mw is None:
-        logger.warning(
+        log.warning(
             "SubagentMiddleware not found in middleware stack; spawn_subagent will be unavailable"
         )
     else:
@@ -101,17 +101,23 @@ async def build_executor_graph(
 
     checkpointer_manager = await get_checkpointer_manager()
 
+    model_name = getattr(chat_llm, "model_name", None) or getattr(
+        chat_llm, "model", None
+    )
+
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
         graph = builder.compile(
             checkpointer=in_memory_checkpointer_instance, store=store
         )
-        logger.debug("Graph compiled with in-memory checkpointer")
+        log.debug("Graph compiled with in-memory checkpointer")
+        log.set(agent={"model": model_name})
         yield graph
     else:
         postgres_checkpointer = checkpointer_manager.get_checkpointer()
         graph = builder.compile(checkpointer=postgres_checkpointer, store=store)
-        logger.debug("Graph compiled with PostgreSQL checkpointer")
+        log.debug("Graph compiled with PostgreSQL checkpointer")
+        log.set(agent={"model": model_name})
         yield graph
 
 
@@ -123,10 +129,10 @@ async def build_executor_graph(
 )
 async def build_executor_agent():
     """Build and return the executor agent with full tool access."""
-    logger.debug("Building executor agent with lazy providers")
+    log.debug("Building executor agent with lazy providers")
 
     async with build_executor_graph() as graph:
-        logger.info("Executor agent built successfully")
+        log.info("Executor agent built successfully")
     return graph
 
 
@@ -168,17 +174,23 @@ async def build_comms_graph(
 
     checkpointer_manager = await get_checkpointer_manager()
 
+    model_name = getattr(chat_llm, "model_name", None) or getattr(
+        chat_llm, "model", None
+    )
+
     if in_memory_checkpointer or not checkpointer_manager:
         in_memory_checkpointer_instance = InMemorySaver()
         graph = builder.compile(
             checkpointer=in_memory_checkpointer_instance, store=store
         )
-        logger.debug("Comms graph compiled with in-memory checkpointer")
+        log.debug("Comms graph compiled with in-memory checkpointer")
+        log.set(agent={"model": model_name})
         yield graph
     else:
         postgres_checkpointer = checkpointer_manager.get_checkpointer()
         graph = builder.compile(checkpointer=postgres_checkpointer, store=store)
-        logger.debug("Comms graph compiled with PostgreSQL checkpointer")
+        log.debug("Comms graph compiled with PostgreSQL checkpointer")
+        log.set(agent={"model": model_name})
         yield graph
 
 
@@ -190,19 +202,19 @@ async def build_comms_graph(
 )
 async def build_comms_agent():
     """Build and return the comms agent using lazy providers."""
-    logger.debug("Building comms agent with lazy providers")
+    log.debug("Building comms agent with lazy providers")
 
     async with build_comms_graph() as graph:
-        logger.info("Comms agent built successfully")
+        log.info("Comms agent built successfully")
     return graph
 
 
 def build_graphs():
     """Build comms and executor agents and register subagent providers."""
-    logger.info("Building core agent graphs...")
+    log.info("Building core agent graphs...")
 
     register_subagent_providers()
     build_executor_agent()
     build_comms_agent()
 
-    logger.info("Core agent graphs built and registered successfully")
+    log.info("Core agent graphs built and registered successfully")

@@ -3,7 +3,7 @@ from typing import Optional
 
 import pytz
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.db.mongodb.collections import users_collection
 from app.models.user_models import UserUpdateResponse
@@ -42,6 +42,14 @@ async def get_me(
     # Get onboarding status
     onboarding_status = await get_user_onboarding_status(user["user_id"])
 
+    log.set(
+        user={
+            "id": user["user_id"],
+            "email": user.get("email"),
+            "plan": user.get("plan") or user.get("subscription_plan"),
+        }
+    )
+
     return {
         "message": "User retrieved successfully",
         **user,
@@ -60,6 +68,13 @@ async def update_me(
     Supports updating name and profile picture.
     """
     user_id = user.get("user_id")
+    log.set(
+        user={
+            "id": user_id,
+            "email": user.get("email"),
+            "plan": user.get("plan") or user.get("subscription_plan"),
+        }
+    )
 
     if not user_id or not isinstance(user_id, str):
         raise HTTPException(status_code=400, detail="Invalid user ID")
@@ -102,6 +117,7 @@ async def update_user_name(
     """
     try:
         user_id = user.get("user_id")
+        log.set(user={"id": user_id}, name=name)
 
         if not user_id or not isinstance(user_id, str):
             raise HTTPException(status_code=400, detail="Invalid user ID")
@@ -111,7 +127,7 @@ async def update_user_name(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error updating user name: {str(e)}", exc_info=True)
+        log.error(f"Error updating user name: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update name")
 
 
@@ -129,6 +145,7 @@ async def update_user_timezone(
     This updates the root-level timezone field for the user.
     """
     try:
+        log.set(user={"id": user["user_id"]}, timezone=user_timezone.strip())
         try:
             pytz.timezone(user_timezone.strip())
         except pytz.UnknownTimeZoneError:
@@ -159,7 +176,7 @@ async def update_user_timezone(
     except HTTPException as e:
         raise e
     except Exception as e:
-        logger.error(f"Error updating timezone: {str(e)}", exc_info=True)
+        log.error(f"Error updating timezone: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update timezone")
 
 
@@ -217,7 +234,7 @@ async def get_public_holo_card(card_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching holo card: {str(e)}", exc_info=True)
+        log.error(f"Error fetching holo card: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to fetch holo card data")
 
 
@@ -232,6 +249,11 @@ async def update_holo_card_colors(
     """
     try:
         user_id = user.get("user_id")
+        log.set(
+            user={"id": user_id},
+            overlay_color=overlay_color,
+            overlay_opacity=overlay_opacity,
+        )
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
@@ -266,7 +288,7 @@ async def update_holo_card_colors(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating holo card colors: {str(e)}", exc_info=True)
+        log.error(f"Error updating holo card colors: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail="Failed to update holo card colors")
 
 
@@ -308,5 +330,5 @@ async def logout(
         return response
 
     except Exception as e:
-        logger.error(f"Logout error: {e}")
+        log.error(f"Logout error: {e}")
         raise HTTPException(status_code=500, detail="Logout failed")

@@ -20,7 +20,7 @@ Folder Structure (per user):
 from typing import Annotated, Any, Dict
 
 from app.agents.tools.vfs_cmd_parser import get_vfs_command_parser
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_rate_limiting
 from app.services.vfs import get_vfs
 from app.services.vfs.path_resolver import (
@@ -68,7 +68,7 @@ def _resolve_path(
         if validate_user_access(normalized, user_id):
             return normalized
         # User tried to access another user's files - redirect to their space
-        logger.warning(f"Access denied: {path} not in user {user_id} scope")
+        log.warning(f"Access denied: {path} not in user {user_id} scope")
 
     # System paths pass through directly (read-only, accessible to all users)
     if path.startswith("/system/"):
@@ -108,6 +108,7 @@ async def vfs_read(
       vfs_read("sessions/abc123/gmail/emails.json")
       vfs_read("files/data.json")
     """
+    log.set(tool={"name": "vfs_read", "action": "read"})
     ctx = _get_context(config)
     if not ctx["user_id"]:
         return "Error: User ID not found in configuration"
@@ -123,7 +124,7 @@ async def vfs_read(
         return content
 
     except Exception as e:
-        logger.error(f"VFS read error: {e}")
+        log.error(f"VFS read error: {e}")
         return f"Error reading file: {str(e)}"
 
 
@@ -149,6 +150,7 @@ async def vfs_write(
       vfs_write("notes/log.txt", "New log entry\\n", append=True)
       vfs_write("files/data.json", '{"key": "value"}')
     """
+    log.set(tool={"name": "vfs_write", "action": "write"})
     ctx = _get_context(config)
     if not ctx["user_id"]:
         return "Error: User ID not found in configuration"
@@ -172,7 +174,7 @@ async def vfs_write(
         return f"Wrote {len(content)} characters to: {resolved_path}"
 
     except Exception as e:
-        logger.error(f"VFS write error: {e}")
+        log.error(f"VFS write error: {e}")
         return f"Error writing file: {str(e)}"
 
 
@@ -208,6 +210,7 @@ async def vfs_cmd(
 
     NOT supported: rm, mv, cp, mkdir, chmod, chown
     """
+    log.set(tool={"name": "vfs_cmd", "action": "execute"})
     ctx = _get_context(config)
     if not ctx["user_id"]:
         return "Error: User ID not found in configuration"
@@ -222,7 +225,7 @@ async def vfs_cmd(
         return result
 
     except Exception as e:
-        logger.error(f"VFS cmd error: {e}")
+        log.error(f"VFS cmd error: {e}")
         return f"Error executing command: {str(e)}"
 
 

@@ -20,7 +20,7 @@ import json
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, cast
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.summarization import MIN_COMPACTION_SIZE
 from app.services.vfs import MongoVFS, get_vfs
 from app.services.vfs.path_resolver import get_session_path
@@ -122,7 +122,7 @@ class VFSCompactionMiddleware(AgentMiddleware):
             try:
                 result = await self._compact_to_vfs(result, request, reason)
             except Exception as e:
-                logger.error(f"VFS compaction failed for {tool_name}: {e}")
+                log.error(f"VFS compaction failed for {tool_name}: {e}")
 
         return result
 
@@ -217,7 +217,7 @@ class VFSCompactionMiddleware(AgentMiddleware):
         conversation_id = configurable.get("thread_id")
 
         if not user_id or not conversation_id:
-            logger.warning("Skipping VFS compaction due to missing user_id/thread_id")
+            log.warning("Skipping VFS compaction due to missing user_id/thread_id")
             return result
 
         # Generate storage path
@@ -266,7 +266,7 @@ class VFSCompactionMiddleware(AgentMiddleware):
             f"[Use spawn_subagent to read and process this file to keep your context clean]"
         )
 
-        logger.info(
+        log.info(
             f"Compacted {tool_name} output ({len(content_str)} chars) to {vfs_path} ({reason})"
         )
 

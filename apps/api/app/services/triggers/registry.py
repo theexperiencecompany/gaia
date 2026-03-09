@@ -7,7 +7,7 @@ Provides plug-and-play registration for new trigger handlers.
 
 from typing import Dict, Optional, Set
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.services.triggers.base import TriggerHandler
 
 
@@ -30,19 +30,25 @@ class TriggerRegistry:
         Args:
             handler: The handler instance to register
         """
+        log.set(
+            service="trigger_registry",
+            operation="register",
+            handler=type(handler).__name__,
+            trigger_names=list(handler.trigger_names),
+        )
         # Register by trigger names
         for name in handler.trigger_names:
             if name in self._name_handlers:
-                logger.warning(f"Overwriting handler for trigger: {name}")
+                log.warning(f"Overwriting handler for trigger: {name}")
             self._name_handlers[name] = handler
-            logger.info(f"Registered handler for trigger: {name}")
+            log.info(f"Registered handler for trigger: {name}")
 
         # Register by event types
         for event_type in handler.event_types:
             if event_type in self._event_handlers:
-                logger.warning(f"Overwriting handler for event: {event_type}")
+                log.warning(f"Overwriting handler for event: {event_type}")
             self._event_handlers[event_type] = handler
-            logger.info(f"Registered handler for event: {event_type}")
+            log.info(f"Registered handler for event: {event_type}")
 
     def get_by_trigger_name(self, trigger_name: str) -> Optional[TriggerHandler]:
         """Get handler by trigger name (for registration)."""

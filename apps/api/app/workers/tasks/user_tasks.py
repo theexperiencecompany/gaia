@@ -4,7 +4,7 @@ User-related ARQ tasks.
 
 from datetime import datetime, timedelta, timezone
 
-from app.config.loggers import arq_worker_logger as logger
+from shared.py.wide_events import log, wide_task
 
 
 async def check_inactive_users(ctx: dict) -> str:
@@ -18,12 +18,12 @@ async def check_inactive_users(ctx: dict) -> str:
     Returns:
         Processing result message
     """
-    from app.db.mongodb.collections import users_collection
-    from app.utils.email_utils import send_inactive_user_email
+    async with wide_task("check_inactive_users"):
+        from app.db.mongodb.collections import users_collection
+        from app.utils.email_utils import send_inactive_user_email
 
-    logger.info("Checking for inactive users")
+        log.info("Checking for inactive users")
 
-    try:
         now = datetime.now(timezone.utc)
         seven_days_ago = now - timedelta(days=7)
 
@@ -53,18 +53,13 @@ async def check_inactive_users(ctx: dict) -> str:
 
                 if sent:
                     email_count += 1
-                    logger.info(f"Sent inactive email to {user['email']}")
+                    log.info(f"Sent inactive email to {user['email']}")
 
             except Exception as e:
-                logger.error(f"Failed to send email to {user['email']}: {str(e)}")
+                log.error(f"Failed to send email to {user['email']}: {str(e)}")
 
         message = (
             f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"
         )
-        logger.info(message)
+        log.info(message)
         return message
-
-    except Exception as e:
-        error_msg = f"Failed to check inactive users: {str(e)}"
-        logger.error(error_msg)
-        raise

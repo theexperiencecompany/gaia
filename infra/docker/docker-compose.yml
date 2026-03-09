@@ -329,6 +329,8 @@ services:
   loki:
     image: grafana/loki:3.3.2
     container_name: loki
+    ports:
+      - "${LOKI_HOST_PORT:-3100}:3100"
     volumes:
       - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
       - loki_data:/loki

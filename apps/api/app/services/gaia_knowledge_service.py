@@ -8,7 +8,7 @@ This service provides methods to store and search GAIA's self-knowledge
 from dataclasses import dataclass
 from typing import Any, List, Optional
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 from pydantic import BaseModel, Field, field_validator
 
@@ -58,6 +58,12 @@ class GaiaKnowledgeService:
         Returns:
             List of KnowledgeResult objects with content and relevance scores
         """
+        log.set(
+            service="gaia_knowledge_service",
+            operation="search_knowledge",
+            query_preview=query[:50],
+            limit=limit,
+        )
         try:
             # Get langchain client for similarity search
             client = await ChromaClient.get_langchain_client(
@@ -77,13 +83,13 @@ class GaiaKnowledgeService:
                 for doc, score in results
             ]
 
-            logger.info(
+            log.info(
                 f"Found {len(knowledge_results)} knowledge results for query: {query[:50]}..."
             )
             return knowledge_results
 
         except Exception as e:
-            logger.error(f"Error searching GAIA knowledge: {e}")
+            log.error(f"Error searching GAIA knowledge: {e}")
             return []
 
     async def add_knowledge(
@@ -107,11 +113,11 @@ class GaiaKnowledgeService:
             # Add document
             await client.aadd_texts(texts=[content], metadatas=[metadata or {}])
 
-            logger.debug(f"Added knowledge: {content[:50]}...")
+            log.debug(f"Added knowledge: {content[:50]}...")
             return True
 
         except Exception as e:
-            logger.error(f"Error adding knowledge: {e}")
+            log.error(f"Error adding knowledge: {e}")
             return False
 
     async def add_knowledge_batch(self, items: List[KnowledgeItem]) -> int:
@@ -124,8 +130,13 @@ class GaiaKnowledgeService:
         Returns:
             Number of items successfully added
         """
+        log.set(
+            service="gaia_knowledge_service",
+            operation="add_knowledge_batch",
+            item_count=len(items),
+        )
         if not items:
-            logger.warning("add_knowledge_batch called with empty items list")
+            log.warning("add_knowledge_batch called with empty items list")
             return 0
 
         try:
@@ -140,11 +151,11 @@ class GaiaKnowledgeService:
             # Add documents in batch
             await client.aadd_texts(texts=texts, metadatas=metadatas)
 
-            logger.info(f"Added {len(items)} knowledge items to ChromaDB")
+            log.info(f"Added {len(items)} knowledge items to ChromaDB")
             return len(items)
 
         except Exception as e:
-            logger.error(f"Error adding knowledge batch: {e}", exc_info=True)
+            log.error(f"Error adding knowledge batch: {e}", exc_info=True)
             return 0
 
     async def clear_knowledge(self) -> bool:
@@ -160,18 +171,18 @@ class GaiaKnowledgeService:
 
             # Delete and recreate collection
             await async_client.delete_collection(name=self.collection_name)
-            logger.info(f"Cleared knowledge collection: {self.collection_name}")
+            log.info(f"Cleared knowledge collection: {self.collection_name}")
 
             # Recreate empty collection
             await async_client.create_collection(
                 name=self.collection_name, metadata={"hnsw:space": "cosine"}
             )
-            logger.info(f"Recreated empty collection: {self.collection_name}")
+            log.info(f"Recreated empty collection: {self.collection_name}")
 
             return True
 
         except Exception as e:
-            logger.error(f"Error clearing knowledge: {e}")
+            log.error(f"Error clearing knowledge: {e}")
             return False
 
 

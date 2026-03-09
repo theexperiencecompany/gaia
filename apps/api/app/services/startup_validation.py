@@ -2,7 +2,7 @@
 Startup validation for GAIA.
 """
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.core.lazy_loader import lazy_provider
 from app.db.mongodb.collections import (
     ai_models_collection,
@@ -32,22 +32,23 @@ async def is_payment_setup() -> bool:
 )
 async def validate_startup_requirements():
     """Check if models are seeded and payment is set up."""
+    log.set(service="startup_validation", phase="startup")
     try:
-        logger.info("Starting startup scripts validation...")
+        log.info("Starting startup scripts validation...")
         # Check models and payment plans
         models_ok = await are_models_seeded()
         payment_ok = await is_payment_setup()
 
         # Log results and halt startup if requirements are not met
         if not models_ok or not payment_ok:
-            logger.error("Setup incomplete! Please run: ./scripts/setup.sh")
+            log.error("Setup incomplete! Please run: ./scripts/setup.sh")
             if not models_ok:
-                logger.error("❌ AI models not seeded")
+                log.error("❌ AI models not seeded")
             if not payment_ok:
-                logger.error("❌ Payment plans not set up")
+                log.error("❌ Payment plans not set up")
             raise RuntimeError(
                 "Startup requirements not met. Please run: ./scripts/setup.sh"
             )
 
     except Exception as e:
-        logger.error(f"Startup validation failed: {e}")
+        log.error(f"Startup validation failed: {e}")

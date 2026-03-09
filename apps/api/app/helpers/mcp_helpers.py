@@ -9,9 +9,8 @@ Contains helper functions for MCP operations:
 
 from typing import TYPE_CHECKING
 
-
-from app.config.loggers import langchain_logger as logger
 from app.config.settings import settings
+from shared.py.wide_events import log
 from app.constants.keys import OAUTH_STATUS_KEY
 from app.db.redis import delete_cache
 
@@ -34,9 +33,9 @@ async def invalidate_mcp_status_cache(user_id: str) -> None:
     try:
         cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
         await delete_cache(cache_key)
-        logger.info(f"Invalidated MCP status cache for user {user_id}")
+        log.info(f"Invalidated MCP status cache for user {user_id}")
     except Exception as e:
-        logger.warning(f"Failed to invalidate status cache: {e}")
+        log.warning(f"Failed to invalidate status cache: {e}")
 
 
 def get_tool_namespace_from_url(server_url: str, fallback: str = "") -> str:

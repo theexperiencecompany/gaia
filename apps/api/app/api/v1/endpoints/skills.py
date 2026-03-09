@@ -28,7 +28,7 @@ from app.agents.skills.registry import (
     list_skills,
 )
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.decorators import tiered_rate_limit
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi import status as http_status
@@ -72,7 +72,7 @@ async def discover_skills_from_github(
             detail=str(e),
         )
     except Exception as e:
-        logger.error(f"Error discovering skills from {repo}: {e}")
+        log.error(f"Error discovering skills from {repo}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to discover skills from repository",
@@ -107,6 +107,10 @@ async def install_skill_with_auto_discover(
     - /api/v1/skills/install/github?repo_url=owner/repo&skill_path=skills/my-skill
     - /api/v1/skills/install/github?repo_url=owner/repo&skill_name=my-skill
     """
+    log.set(
+        user={"id": user_id},
+        skill={"repo": repo_url, "name": skill_name, "path": skill_path},
+    )
     try:
         install_path = skill_path
 
@@ -140,7 +144,7 @@ async def install_skill_with_auto_discover(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Error installing skill from GitHub: {e}")
+        log.error(f"Error installing skill from GitHub: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to install skill from GitHub",
@@ -158,6 +162,9 @@ async def create_inline_skill_endpoint(
     user_id: str = Depends(_get_user_id),
 ):
     """Create a skill from inline components."""
+    log.set(
+        user={"id": user_id}, skill={"name": request.name, "target": request.target}
+    )
     try:
         installed = await install_from_inline(
             user_id=user_id,
@@ -173,7 +180,7 @@ async def create_inline_skill_endpoint(
             detail=str(e),
         ) from e
     except Exception as e:
-        logger.error(f"Error creating inline skill: {e}")
+        log.error(f"Error creating inline skill: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to create skill",
@@ -197,7 +204,7 @@ async def list_skills_endpoint(
         )
         return SkillListResponse(skills=skills, total=len(skills))
     except Exception as e:
-        logger.error(f"Error listing skills: {e}")
+        log.error(f"Error listing skills: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to list skills",
@@ -221,7 +228,7 @@ async def get_skill_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error getting skill {skill_id}: {e}")
+        log.error(f"Error getting skill {skill_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to retrieve skill",
@@ -238,7 +245,7 @@ async def enable_skill_endpoint(
         success = await enable_skill(user_id, skill_id)
         return {"success": success, "skill_id": skill_id, "enabled": True}
     except Exception as e:
-        logger.error(f"Error enabling skill {skill_id}: {e}")
+        log.error(f"Error enabling skill {skill_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to enable skill",
@@ -255,7 +262,7 @@ async def disable_skill_endpoint(
         success = await disable_skill(user_id, skill_id)
         return {"success": success, "skill_id": skill_id, "enabled": False}
     except Exception as e:
-        logger.error(f"Error disabling skill {skill_id}: {e}")
+        log.error(f"Error disabling skill {skill_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to disable skill",
@@ -278,7 +285,7 @@ async def uninstall_skill_endpoint(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error uninstalling skill {skill_id}: {e}")
+        log.error(f"Error uninstalling skill {skill_id}: {e}")
         raise HTTPException(
             status_code=http_status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to uninstall skill",

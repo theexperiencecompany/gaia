@@ -33,7 +33,7 @@ from typing import (
     cast,
 )
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.utils.exceptions import ConfigurationError
 
 T = TypeVar("T")
@@ -118,19 +118,19 @@ class LazyLoader(Generic[T]):
                 if self.is_async:
                     # For async functions, we can't auto-initialize during __init__
                     # Log a message and defer initialization to first get() call
-                    logger.info(
+                    log.info(
                         f"Async provider '{self.provider_name}' will be auto-initialized on first access"
                     )
                 else:
                     self._initialize_sync()
-                    logger.info(
+                    log.info(
                         f"Auto-initialized provider '{self.provider_name}' at registration time"
                     )
             except Exception as e:
                 if self.strategy == MissingKeyStrategy.ERROR:
                     raise
                 else:
-                    logger.warning(
+                    log.warning(
                         f"Auto-initialization failed for '{self.provider_name}': {e}"
                     )
 
@@ -246,7 +246,7 @@ class LazyLoader(Generic[T]):
                 # For global context providers, call the function for side effects
                 self.loader_func()
                 self._is_configured = True
-                logger.info(
+                log.info(
                     f"Successfully configured global provider: {self.provider_name}"
                 )
                 return True  # type: ignore[return-value]
@@ -258,14 +258,14 @@ class LazyLoader(Generic[T]):
                         f"Sync initialization called on async loader function for '{self.provider_name}'"
                     )
                 self._instance = cast(T, result)
-                logger.info(f"Successfully initialized provider: {self.provider_name}")
+                log.info(f"Successfully initialized provider: {self.provider_name}")
                 return self._instance
 
         except Exception as e:
             error_msg = (
                 f"Failed to initialize provider '{self.provider_name}': {str(e)}"
             )
-            logger.error(error_msg)
+            log.error(error_msg)
 
             if self.strategy == MissingKeyStrategy.ERROR:
                 raise ConfigurationError(error_msg) from e
@@ -302,7 +302,7 @@ class LazyLoader(Generic[T]):
                             f"Unexpected coroutine from sync loader function for '{self.provider_name}'"
                         )
                 self._is_configured = True
-                logger.info(
+                log.info(
                     f"Successfully configured global provider: {self.provider_name}"
                 )
                 return True  # type: ignore[return-value]
@@ -323,14 +323,14 @@ class LazyLoader(Generic[T]):
                             f"Unexpected coroutine from sync loader function for '{self.provider_name}'"
                         )
                     self._instance = cast(T, result)
-                logger.info(f"Successfully initialized provider: {self.provider_name}")
+                log.info(f"Successfully initialized provider: {self.provider_name}")
                 return self._instance
 
         except Exception as e:
             error_msg = (
                 f"Failed to initialize provider '{self.provider_name}': {str(e)}"
             )
-            logger.error(error_msg)
+            log.error(error_msg)
 
             if self.strategy == MissingKeyStrategy.ERROR:
                 raise ConfigurationError(error_msg) from e
@@ -379,7 +379,7 @@ class LazyLoader(Generic[T]):
 
     def _log_warning(self, message: str):
         """Log warning message."""
-        logger.warning(f"[LazyLoader] {message}")
+        log.warning(f"[LazyLoader] {message}")
 
     def is_available(self) -> bool:
         """Check if the provider is available without initializing it."""
@@ -476,7 +476,7 @@ class ProviderRegistry:
         """Register a new provider."""
         with self._lock:
             if name in self._providers:
-                logger.warning(f"Provider '{name}' is being re-registered")
+                log.warning(f"Provider '{name}' is being re-registered")
 
             provider = LazyLoader(
                 loader_func=loader_func,
@@ -530,7 +530,7 @@ class ProviderRegistry:
                         return
 
                     await self.aget(name)
-                    logger.info(f"Auto-initialized provider '{name}'")
+                    log.info(f"Auto-initialized provider '{name}'")
                 except asyncio.CancelledError:
                     # Propagate cancellation so shutdown can stop warmup promptly.
                     raise
@@ -541,9 +541,9 @@ class ProviderRegistry:
                         provider.strategy if provider else MissingKeyStrategy.WARN
                     )
                     if provider_strategy == MissingKeyStrategy.ERROR:
-                        logger.error(f"Auto-initialization failed for '{name}': {e}")
+                        log.error(f"Auto-initialization failed for '{name}': {e}")
                     else:
-                        logger.warning(f"Auto-initialization failed for '{name}': {e}")
+                        log.warning(f"Auto-initialization failed for '{name}': {e}")
 
         with self._lock:
             names = [
@@ -553,7 +553,7 @@ class ProviderRegistry:
             return
 
         await asyncio.gather(*[_init_provider(name) for name in names])
-        logger.info(f"Completed auto-initialization for {len(names)} providers")
+        log.info(f"Completed auto-initialization for {len(names)} providers")
 
         if strict and errors:
             failed = ", ".join(name for name, _ in errors)
@@ -609,7 +609,7 @@ class ProviderRegistry:
                     raise
                 except Exception as e:
                     errors.append((name, e))
-                    logger.error(f"Provider warmup failed for '{name}': {e}")
+                    log.error(f"Provider warmup failed for '{name}': {e}")
 
         if not warmup_names:
             if strict and errors:
@@ -620,12 +620,12 @@ class ProviderRegistry:
         await asyncio.gather(*[_warm(name) for name in warmup_names])
 
         if errors:
-            logger.warning(
+            log.warning(
                 f"Provider warmup completed with {len(errors)} errors "
                 f"({skipped_unavailable} unavailable providers skipped)"
             )
         else:
-            logger.info(
+            log.info(
                 f"Provider warmup completed for {len(warmup_names)} providers "
                 f"({skipped_unavailable} unavailable providers skipped)"
             )

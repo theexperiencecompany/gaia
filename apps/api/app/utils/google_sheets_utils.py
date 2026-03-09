@@ -14,7 +14,7 @@ from typing import Any, Dict, Optional
 
 import httpx
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 
 DRIVE_API_BASE = "https://www.googleapis.com/drive/v3"
 SHEETS_API_BASE = "https://sheets.googleapis.com/v4/spreadsheets"
@@ -85,6 +85,7 @@ def get_sheet_id_by_name(
     spreadsheet_id: str, sheet_name: str, headers: Dict[str, str]
 ) -> Optional[int]:
     """Get sheet ID by its name."""
+    log.set(spreadsheet_id=spreadsheet_id, sheet_name=sheet_name)
     try:
         resp = _http_client.get(
             f"{SHEETS_API_BASE}/{spreadsheet_id}",
@@ -98,7 +99,7 @@ def get_sheet_id_by_name(
                 return sheet["properties"]["sheetId"]
         return None
     except Exception as e:
-        logger.error(f"Error getting sheet ID: {e}")
+        log.error(f"Error getting sheet ID: {e}")
         return None
 
 
@@ -109,6 +110,9 @@ def get_column_index_by_header(
     headers: Dict[str, str],
 ) -> Optional[int]:
     """Get column index by header name (first row)."""
+    log.set(
+        spreadsheet_id=spreadsheet_id, sheet_name=sheet_name, column_name=column_name
+    )
     try:
         resp = _http_client.get(
             f"{SHEETS_API_BASE}/{spreadsheet_id}/values/{sheet_name}!1:1",
@@ -122,5 +126,5 @@ def get_column_index_by_header(
                 return idx
         return None
     except Exception as e:
-        logger.error(f"Error getting column index: {e}")
+        log.error(f"Error getting column index: {e}")
         return None

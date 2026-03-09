@@ -10,7 +10,7 @@ This module provides functionality to:
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import get_toolkit_to_integration_map
 
 
@@ -72,13 +72,13 @@ class WorkflowContextExtractor:
         try:
             messages = await cls._fetch_messages(thread_id)
             if not messages:
-                logger.warning(f"No messages found for thread {thread_id}")
+                log.warning(f"No messages found for thread {thread_id}")
                 return None
 
             return cls._build_context(messages, max_output_chars)
 
         except Exception as e:
-            logger.error(f"Error extracting from thread {thread_id}: {e}")
+            log.error(f"Error extracting from thread {thread_id}: {e}")
             return None
 
     @classmethod

@@ -2,7 +2,7 @@
 
 from typing import Optional
 
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.schemas.integrations.responses import IntegrationResponse, MarketplaceResponse
 from app.services.integrations.marketplace import (
     get_all_integrations,
@@ -18,7 +18,7 @@ async def list_marketplace_integrations(category: Optional[str] = None):
     try:
         return await get_all_integrations(category=category)
     except Exception as e:
-        logger.error(f"Error fetching marketplace: {e}")
+        log.error(f"Error fetching marketplace: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch integrations")
 
 

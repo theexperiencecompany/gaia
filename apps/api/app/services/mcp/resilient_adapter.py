@@ -9,7 +9,7 @@ from typing import Any
 
 from langchain_core.tools import BaseTool
 
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.services.mcp.langchain_adapter import SanitizingLangChainAdapter
 from app.utils.schema_fixes import patch_tool_schema
 
@@ -39,7 +39,7 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
         # Get connectors from active sessions
         sessions = client.get_all_active_sessions()
         if not sessions:
-            logger.warning("No active sessions found in client")
+            log.warning("No active sessions found in client")
             return []
 
         # Get first session (we typically only have one per integration)
@@ -50,15 +50,13 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
         # Get tools from MCP server
         try:
             mcp_tools = await connector.list_tools()
-            logger.info(
-                f"[{integration_id}] MCP server returned {len(mcp_tools)} tools"
-            )
+            log.info(f"[{integration_id}] MCP server returned {len(mcp_tools)} tools")
         except Exception as e:
-            logger.error(f"[{integration_id}] Failed to list tools: {e}")
+            log.error(f"[{integration_id}] Failed to list tools: {e}")
             raise
 
         if not mcp_tools:
-            logger.warning(f"[{integration_id}] No tools returned from MCP server")
+            log.warning(f"[{integration_id}] No tools returned from MCP server")
             return []
 
         # Normalize schemas before conversion
@@ -68,7 +66,7 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                 normalized_tool = patch_tool_schema(tool)
                 normalized_tools.append(normalized_tool)
             except Exception as e:
-                logger.warning(
+                log.warning(
                     f"[{integration_id}] Could not normalize schema for {tool.name}: {e}"
                 )
                 # Still try to use the original tool
@@ -106,15 +104,15 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
                             "csp": ui_meta.get("csp"),
                             "permissions": ui_meta.get("permissions", []),
                         }
-                        logger.debug(
+                        log.debug(
                             f"[{integration_id}] Attached mcp_ui metadata to tool: {tool.name}"
                         )
 
                 successfully_converted.append(langchain_tool)
-                logger.debug(f"[{integration_id}] ✓ Converted tool: {tool.name}")
+                log.debug(f"[{integration_id}] ✓ Converted tool: {tool.name}")
             except Exception as e:
                 failed_tools.append((tool.name, str(e)))
-                logger.warning(
+                log.warning(
                     f"[{integration_id}] ✗ Failed to convert tool '{tool.name}': "
                     f"{type(e).__name__}: {e}"
                 )
@@ -122,12 +120,12 @@ class ResilientLangChainAdapter(SanitizingLangChainAdapter):
 
         # Log summary
         if successfully_converted:
-            logger.info(
+            log.info(
                 f"[{integration_id}] Successfully converted {len(successfully_converted)}/{len(mcp_tools)} tools"
             )
 
         if failed_tools:
-            logger.warning(
+            log.warning(
                 f"[{integration_id}] Skipped {len(failed_tools)} tools with invalid schemas:\n"
                 + "\n".join(f"  - {name}: {error}" for name, error in failed_tools)
             )

@@ -14,7 +14,7 @@ from composio_client.types.connected_account_list_response import (
 )
 from fastapi import HTTPException
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.services.composio.composio_service import get_composio_service
 
@@ -52,6 +52,7 @@ def get_access_token_from_composio(
         >>> # Use token with Google Calendar API
         >>> headers = {"Authorization": f"Bearer {token}"}
     """
+    log.set(user_id=user_id, toolkit=toolkit)
     # Get the auth_config_id for this toolkit
     auth_config_id = TOOLKIT_AUTH_CONFIG_MAP.get(toolkit)
     if not auth_config_id:
@@ -80,7 +81,7 @@ def get_access_token_from_composio(
         ]
 
         if not active_accounts:
-            logger.warning(
+            log.warning(
                 f"No active {toolkit} account found for user {user_id}. "
                 f"User needs to connect their account via Composio."
             )
@@ -107,7 +108,7 @@ def get_access_token_from_composio(
         )
 
         if not access_token:
-            logger.error(
+            log.error(
                 f"Access token not found in state for {toolkit} account {account.id}. "
                 f"Available keys in state: {list(state_dict.keys())}. "
                 f"Credentials may be masked or structure changed."
@@ -122,7 +123,7 @@ def get_access_token_from_composio(
 
         # Check if token is redacted
         if access_token_str == "REDACTED":  # nosec B105
-            logger.error(
+            log.error(
                 f"Access token is REDACTED for {toolkit}. "
                 f"Disable 'Mask Connected Account Secrets' in Composio project settings."
             )
@@ -131,14 +132,14 @@ def get_access_token_from_composio(
                 detail="Access token is masked. Please disable 'Mask Connected Account Secrets' in Composio settings.",
             )
 
-        logger.info(f"Successfully retrieved {toolkit} token for user {user_id}")
+        log.info(f"Successfully retrieved {toolkit} token for user {user_id}")
         return access_token_str
 
     except HTTPException:
         # Re-raise HTTP exceptions as-is
         raise
     except Exception as e:
-        logger.error(
+        log.error(
             f"Unexpected error retrieving {toolkit} token for user {user_id}: {e}",
             exc_info=True,
         )

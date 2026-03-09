@@ -5,7 +5,7 @@ import hashlib
 import json
 from typing import Any, Awaitable, Callable, Dict, Optional, TypeVar
 
-from app.config.loggers import redis_logger as logger
+from shared.py.wide_events import log
 
 F = TypeVar("F", bound=Callable[..., Awaitable[Dict[str, Any]]])
 
@@ -29,6 +29,11 @@ def cache_gather_context(ttl: int = _DEFAULT_TTL) -> Callable[[F], F]:
             execute_request: Any,
             auth_credentials: Dict[str, Any],
         ) -> Dict[str, Any]:
+            log.set(
+                operation="cache_gather_context",
+                tool_func=func.__qualname__,
+                cache_ttl=ttl,
+            )
             cache_key = _build_cache_key(func.__qualname__, auth_credentials)
             redis_client = _get_redis_client()
 
@@ -38,7 +43,7 @@ def cache_gather_context(ttl: int = _DEFAULT_TTL) -> Callable[[F], F]:
                     if cached:
                         return json.loads(cached)  # type: ignore[no-any-return]
                 except Exception as exc:
-                    logger.debug("Cache read miss for %s: %s", cache_key, exc)
+                    log.debug("Cache read miss for %s: %s", cache_key, exc)
 
             result: Dict[str, Any] = await func(
                 request, execute_request, auth_credentials
@@ -48,7 +53,7 @@ def cache_gather_context(ttl: int = _DEFAULT_TTL) -> Callable[[F], F]:
                 try:
                     await redis_client.setex(cache_key, ttl, json.dumps(result))
                 except Exception as exc:
-                    logger.debug("Cache write failed for %s: %s", cache_key, exc)
+                    log.debug("Cache write failed for %s: %s", cache_key, exc)
 
             return result
 

@@ -6,7 +6,7 @@ Handles webhook events and updates database state accordingly.
 from datetime import datetime, timezone
 from typing import Any, Dict
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.db.mongodb.collections import (
     processed_webhooks_collection,
@@ -39,7 +39,7 @@ class PaymentWebhookService:
                 # The secret should be base64 encoded for Standard Webhooks
                 self.webhook_verifier = Webhook(self.webhook_secret)
             except Exception as e:
-                logger.error(f"Failed to initialize webhook verifier: {e}")
+                log.error(f"Failed to initialize webhook verifier: {e}")
                 self.webhook_verifier = None
         else:
             self.webhook_verifier = None
@@ -67,18 +67,18 @@ class PaymentWebhookService:
             headers: Dictionary of headers from the webhook request
         """
         if not self.webhook_verifier:
-            logger.warning(
+            log.warning(
                 "No webhook verifier configured - skipping signature verification"
             )
             return True
 
         # Skip verification in development
         if settings.ENV != "production":
-            logger.info("Development mode - skipping webhook signature verification")
+            log.info("Development mode - skipping webhook signature verification")
             return True
 
         try:
-            logger.info("Verifying webhook signature using Standard Webhooks library")
+            log.info("Verifying webhook signature using Standard Webhooks library")
 
             # The Standard Webhooks library expects headers in the correct format
             # Convert headers to the expected format (lowercase with dashes)
@@ -95,11 +95,11 @@ class PaymentWebhookService:
             # Verify using Standard Webhooks library
             self.webhook_verifier.verify(payload.encode("utf-8"), webhook_headers)
 
-            logger.info("Webhook signature verification successful!")
+            log.info("Webhook signature verification successful!")
             return True
 
         except Exception as e:
-            logger.warning(f"Webhook signature verification failed: {e}")
+            log.warning(f"Webhook signature verification failed: {e}")
             return False
 
     async def _is_webhook_processed(self, webhook_id: str) -> bool:
@@ -126,7 +126,7 @@ class PaymentWebhookService:
                 }
             )
         except Exception as e:
-            logger.error(f"Failed to store processed webhook ID: {e}")
+            log.error(f"Failed to store processed webhook ID: {e}")
 
     async def process_webhook(
         self, webhook_data: Dict[str, Any], webhook_id: str
@@ -142,9 +142,31 @@ class PaymentWebhookService:
             Processing result
         """
         try:
+            event_type_raw = webhook_data.get("type", "unknown")
+            # Extract financial fields from the nested payload (Dodo wraps data under "data")
+            payload_data: Dict[str, Any] = webhook_data.get("data", webhook_data)
+            customer_field = payload_data.get("customer")
+            customer_id = (
+                customer_field.get("customer_id")
+                if isinstance(customer_field, dict)
+                else payload_data.get("customer_id")
+            )
+            log.set(
+                payment={
+                    "event_type": event_type_raw,
+                    "status": "processing",
+                    "webhook_id": webhook_id,
+                    "customer_id": customer_id,
+                    "amount_cents": payload_data.get("amount")
+                    or payload_data.get("amount_paid")
+                    or payload_data.get("total_amount", 0),
+                    "currency": payload_data.get("currency", "usd"),
+                }
+            )
+
             # Check if webhook has already been processed
             if await self._is_webhook_processed(webhook_id):
-                logger.info(f"Webhook {webhook_id} already processed, skipping")
+                log.info(f"Webhook {webhook_id} already processed, skipping")
                 return DodoWebhookProcessingResult(
                     event_type=webhook_data.get("type", "unknown"),
                     status="ignored",
@@ -167,14 +189,14 @@ class PaymentWebhookService:
                 return result
 
             result = await handler(event)
-            logger.info(f"Webhook processed: {event.type} - {result.status}")
+            log.info(f"Webhook processed: {event.type} - {result.status}")
 
             # Store webhook as processed after successful handler execution
             await self._mark_webhook_as_processed(webhook_id, event.type.value, result)
             return result
 
         except Exception as e:
-            logger.error(f"Webhook processing failed: {e}")
+            log.error(f"Webhook processing failed: {e}")
             return DodoWebhookProcessingResult(
                 event_type=webhook_data.get("type", "unknown"),
                 status="failed",
@@ -201,7 +223,7 @@ class PaymentWebhookService:
         if not payment_data:
             raise ValueError("Invalid payment data")
 
-        logger.info(f"Payment succeeded: {payment_data.payment_id}")
+        log.info(f"Payment succeeded: {payment_data.payment_id}")
 
         # Track payment success in PostHog
         user_email = await self._get_user_email_from_metadata(payment_data.metadata)
@@ -232,7 +254,7 @@ class PaymentWebhookService:
         if not payment_data:
             raise ValueError("Invalid payment data")
 
-        logger.warning(f"Payment failed: {payment_data.payment_id}")
+        log.warning(f"Payment failed: {payment_data.payment_id}")
 
         # Track payment failure in PostHog
         user_email = await self._get_user_email_from_metadata(payment_data.metadata)
@@ -302,7 +324,7 @@ class PaymentWebhookService:
         )
 
         if existing:
-            logger.info(f"Subscription already exists: {sub_data.subscription_id}")
+            log.info(f"Subscription already exists: {sub_data.subscription_id}")
             return DodoWebhookProcessingResult(
                 event_type=event.type.value,
                 status="processed",
@@ -316,7 +338,7 @@ class PaymentWebhookService:
         if not user_id:
             user = await users_collection.find_one({"email": user_email})
             if not user:
-                logger.error(
+                log.error(
                     f"User not found for subscription: {sub_data.subscription_id}"
                 )
                 return DodoWebhookProcessingResult(
@@ -367,7 +389,7 @@ class PaymentWebhookService:
         # Send welcome email
         await self._send_welcome_email(user_id)
 
-        logger.info(f"Subscription activated: {sub_data.subscription_id}")
+        log.info(f"Subscription activated: {sub_data.subscription_id}")
         return DodoWebhookProcessingResult(
             event_type=event.type.value,
             status="processed",
@@ -397,7 +419,7 @@ class PaymentWebhookService:
         )
 
         if result.matched_count == 0:
-            logger.warning(
+            log.warning(
                 f"Subscription not found for renewal: {sub_data.subscription_id}"
             )
         else:
@@ -575,9 +597,9 @@ class PaymentWebhookService:
                     user_name=user.get("first_name", "User"),
                     user_email=user["email"],
                 )
-                logger.info(f"Welcome email sent to {user['email']}")
+                log.info(f"Welcome email sent to {user['email']}")
         except Exception as e:
-            logger.error(f"Failed to send welcome email: {e}")
+            log.error(f"Failed to send welcome email: {e}")
 
 
 # Single instance

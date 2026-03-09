@@ -8,8 +8,8 @@ and only updated when their configuration changes.
 import hashlib
 from typing import Any
 
-from app.config.loggers import chroma_logger as logger
 from app.config.oauth_config import OAUTH_INTEGRATIONS
+from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
 from langgraph.store.base import PutOp
@@ -133,7 +133,7 @@ async def _get_existing_triggers_from_chroma(collection) -> dict[str, dict]:
                         "namespace": namespace,
                     }
     except Exception as e:
-        logger.warning(
+        log.warning(
             f"Error fetching existing triggers: {e}, will register all triggers"
         )
 
@@ -236,12 +236,12 @@ async def _execute_batch_operations(
     for i in range(0, total_ops, batch_size):
         batch = put_ops[i : i + batch_size]
         await store.abatch(batch)
-        logger.info(
+        log.info(
             f"Processed triggers batch {i // batch_size + 1}/"
             f"{(total_ops + batch_size - 1) // batch_size}"
         )
 
-    logger.info(f"Successfully updated {total_ops} triggers in ChromaDB")
+    log.info(f"Successfully updated {total_ops} triggers in ChromaDB")
 
 
 @lazy_provider(
@@ -280,7 +280,13 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
     collection = await store._get_collection()
 
     current_triggers = _get_current_triggers_with_hashes()
-    logger.info(f"Found {len(current_triggers)} triggers to manage")
+    log.set(
+        db={
+            "operation": "init_triggers_store",
+            "collection": "langgraph_triggers_store",
+        }
+    )
+    log.info(f"Found {len(current_triggers)} triggers to manage")
 
     existing_triggers = await _get_existing_triggers_from_chroma(collection)
 
@@ -289,10 +295,10 @@ async def initialize_chroma_triggers_store() -> ChromaStore:
     )
 
     if not triggers_to_upsert and not triggers_to_delete:
-        logger.info("ChromaDB triggers store is up-to-date, no changes needed")
+        log.info("ChromaDB triggers store is up-to-date, no changes needed")
         return store
 
-    logger.info(
+    log.info(
         f"Updating ChromaDB triggers store: {len(triggers_to_upsert)} to upsert, "
         f"{len(triggers_to_delete)} to delete"
     )

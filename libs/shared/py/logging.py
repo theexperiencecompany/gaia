@@ -18,6 +18,7 @@ Environment variables:
 - LOG_DIAGNOSE: Show error diagnosis (default: false)
 - LOG_BACKTRACE: Show stack traces (default: true)
 - LOG_COLORIZE: Colored console output (default: true, ignored in json mode)
+- LOG_DIR: Directory to write log files into (default: ./logs)
 
 Usage:
     from shared.py.logging import get_contextual_logger
@@ -45,6 +46,7 @@ LOG_CONFIG = {
     "diagnose": os.getenv("LOG_DIAGNOSE", "false").lower() == "true",
     "backtrace": os.getenv("LOG_BACKTRACE", "true").lower() == "true",
     "colorize": os.getenv("LOG_COLORIZE", "true").lower() == "true",
+    "log_dir": os.getenv("LOG_DIR", "./logs"),
     "format": {
         "console": (
             "<green>{time:MM-DD HH:mm:ss}</green> | "
@@ -160,6 +162,11 @@ def configure_loguru():
 
     logger.remove()
 
+    # Set a global default for logger_name so format strings like
+    # {extra[logger_name]} never raise KeyError on records that didn't
+    # go through InterceptHandler or logger.bind(logger_name=...).
+    logger.configure(extra={"logger_name": "APP"})
+
     if LOG_CONFIG["format_mode"] == "json":
         # Production: one JSON object per line → stdout → Promtail → Loki.
         # Uses a callable sink (not format=callable) to avoid loguru calling
@@ -259,7 +266,7 @@ def configure_loguru():
     return logger
 
 
-def configure_file_logging(log_dir: str | Path = "./logs") -> None:
+def configure_file_logging(log_dir: str | Path | None = None) -> None:
     """
     Add rotating file log sinks. Call this once from apps that need persistent logs.
 
@@ -271,6 +278,8 @@ def configure_file_logging(log_dir: str | Path = "./logs") -> None:
     Args:
         log_dir: Directory to write log files into (default: ./logs)
     """
+    if log_dir is None:
+        log_dir = LOG_CONFIG["log_dir"]
     global _FILE_LOGGING_CONFIGURED
     if _FILE_LOGGING_CONFIGURED:
         return

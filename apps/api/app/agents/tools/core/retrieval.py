@@ -24,7 +24,7 @@ from typing import (
 from app.agents.tools.core.registry import get_tool_registry
 from app.agents.tools.research_tool import deep_research
 from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS, get_integration_by_id
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.services.integrations.integration_service import (
@@ -193,11 +193,11 @@ async def _get_user_context(
                 )
             }
 
-            logger.info(f"User {user_id} connected subagents: {connected_integrations}")
+            log.info(f"User {user_id} connected subagents: {connected_integrations}")
 
-        logger.info(f"User {user_id} namespaces: {user_namespaces}")
+        log.info(f"User {user_id} namespaces: {user_namespaces}")
     except Exception as e:
-        logger.warning(f"Failed to get user namespaces: {e}")
+        log.warning(f"Failed to get user namespaces: {e}")
 
     return user_namespaces, connected_integrations, internal_subagents
 
@@ -215,18 +215,18 @@ def _build_search_tasks(
 
     # Search in tool_space
     if tool_space in user_namespaces or tool_space == "general":
-        logger.info(f"Adding search for tool_space: {tool_space}")
+        log.info(f"Adding search for tool_space: {tool_space}")
         search_tasks.append(store.asearch((tool_space,), query=query, limit=limit))
 
     # For subagents, also search 'general' namespace with small limit
     # to discover core tools like webpage tools
     if tool_space != "general" and "general" in user_namespaces:
-        logger.info("Adding search for general namespace (limited to 5 for core tools)")
+        log.info("Adding search for general namespace (limited to 5 for core tools)")
         search_tasks.append(store.asearch(("general",), query=query, limit=5))
 
     # Search subagents namespace
     if include_subagents:
-        logger.info("Adding search for subagents namespace")
+        log.info("Adding search for subagents namespace")
         search_tasks.append(store.asearch(("subagents",), query=query, limit=15))
         search_tasks.append(search_public_integrations(query=query, limit=15))
 
@@ -339,7 +339,7 @@ async def _process_search_results(
 
     for idx, result in enumerate(results):
         if isinstance(result, BaseException):
-            logger.warning(f"Task {idx}: Search error - {result}")
+            log.warning(f"Task {idx}: Search error - {result}")
             continue
 
         if not result:
@@ -458,7 +458,7 @@ def get_retrieve_tools_function(
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
-        logger.info(f"Registry has {len(available_tool_names)} available tools")
+        log.info(f"Registry has {len(available_tool_names)} available tools")
 
         # Get user_id from config (try configurable first, then metadata as fallback)
         user_id = config.get("configurable", {}).get("user_id")
@@ -470,7 +470,7 @@ def get_retrieve_tools_function(
                 config["configurable"]["user_id"] = user_id
 
         if not user_id:
-            logger.warning(
+            log.warning(
                 "retrieve_tools called with NO user_id (not in configurable or metadata)"
             )
 

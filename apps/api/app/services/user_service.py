@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import users_collection
 from app.utils.oauth_utils import upload_user_picture
 from bson import ObjectId
@@ -10,13 +10,14 @@ from fastapi import HTTPException
 
 async def get_user_by_id(user_id: str) -> Optional[dict]:
     """Get user by ID from database."""
+    log.set(service="user_service", user_id=user_id)
     try:
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if user:
             user["_id"] = str(user["_id"])
         return user
     except Exception as e:
-        logger.error(f"Error fetching user {user_id}: {e}")
+        log.error(f"Error fetching user {user_id}: {e}")
         raise HTTPException(status_code=404, detail="User not found")
 
 
@@ -28,7 +29,7 @@ async def get_user_by_email(email: str) -> Optional[dict]:
             user["_id"] = str(user["_id"])
         return user
     except Exception as e:
-        logger.error(f"Error fetching user by email {email}: {e}")
+        log.error(f"Error fetching user by email {email}: {e}")
         raise HTTPException(status_code=404, detail="User not found")
 
 
@@ -49,6 +50,12 @@ async def update_user_profile(
     Returns:
         Updated user data
     """
+    log.set(
+        service="user_service",
+        user_id=user_id,
+        operation="update_profile",
+        has_picture=picture_data is not None,
+    )
     try:
         user = await users_collection.find_one({"_id": ObjectId(user_id)})
         if not user:
@@ -78,7 +85,7 @@ async def update_user_profile(
                 update_data["picture"] = picture_url
 
             except Exception as e:
-                logger.error(f"Error uploading profile picture: {e}")
+                log.error(f"Error uploading profile picture: {e}")
                 raise HTTPException(
                     status_code=500, detail="Failed to upload profile picture"
                 )
@@ -106,5 +113,5 @@ async def update_user_profile(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating user profile: {e}")
+        log.error(f"Error updating user profile: {e}")
         raise HTTPException(status_code=500, detail="Failed to update profile")

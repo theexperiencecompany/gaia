@@ -2,9 +2,11 @@
 Service module for handling search operations and URL metadata fetching.
 """
 
+import time
+
 from fastapi import HTTPException, status
 
-from app.config.loggers import search_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import (
     conversations_collection,
     notes_collection,
@@ -28,6 +30,17 @@ async def search_messages(query: str, user_id: str) -> dict:
     Raises:
         HTTPException: If an error occurs during the search process.
     """
+    log.set(
+        search={
+            "query": query,
+            "query_length": len(query),
+            "search_type": "keyword",
+            "sources": ["messages", "conversations", "notes"],
+        },
+        user_id=user_id,
+        service="search_service",
+    )
+    search_start = time.monotonic()
     try:
         results = await conversations_collection.aggregate(
             [
@@ -116,13 +129,25 @@ async def search_messages(query: str, user_id: str) -> dict:
             for note in notes_results
         ]
 
+        result_count = len(messages) + len(conversations) + len(notes_with_snippets)
+        duration_ms = int((time.monotonic() - search_start) * 1000)
+        log.set(
+            search={
+                "query": query,
+                "query_length": len(query),
+                "search_type": "keyword",
+                "sources": ["messages", "conversations", "notes"],
+                "result_count": result_count,
+                "duration_ms": duration_ms,
+            }
+        )
         return {
             "messages": messages,
             "conversations": conversations,
             "notes": notes_with_snippets,
         }
     except Exception as e:
-        logger.error(f"Error in search_messages: {e}")
+        log.error(f"Error in search_messages: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to perform search: {str(e)}",

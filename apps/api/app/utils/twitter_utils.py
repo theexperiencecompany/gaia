@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 
 TWITTER_API_BASE = "https://api.twitter.com/2"
 
@@ -34,6 +34,7 @@ def twitter_headers(access_token: str) -> Dict[str, str]:
 
 def get_my_user_id(access_token: str) -> Optional[str]:
     """Get the authenticated user's ID."""
+    log.set(operation="twitter_get_my_user_id")
     try:
         resp = _http_client.get(
             f"{TWITTER_API_BASE}/users/me",
@@ -43,7 +44,7 @@ def get_my_user_id(access_token: str) -> Optional[str]:
         data = resp.json()
         return data.get("data", {}).get("id")
     except Exception as e:
-        logger.error(f"Error getting user ID: {e}")
+        log.error(f"Error getting user ID: {e}")
         return None
 
 
@@ -63,7 +64,7 @@ def lookup_user_by_username(
         data = resp.json()
         return data.get("data")
     except Exception as e:
-        logger.error(f"Error looking up user {username}: {e}")
+        log.error(f"Error looking up user {username}: {e}")
         return None
 
 
@@ -150,6 +151,9 @@ def search_tweets(
     max_results: int = 10,
 ) -> Dict[str, Any]:
     """Search recent tweets."""
+    log.set(
+        operation="twitter_search_tweets", search_query=query, max_results=max_results
+    )
     try:
         resp = _http_client.get(
             f"{TWITTER_API_BASE}/tweets/search/recent",

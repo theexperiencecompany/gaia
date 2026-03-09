@@ -1,7 +1,7 @@
 """Integration config, status, and connection routes."""
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user, get_user_id
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.schemas.integrations.requests import ConnectIntegrationRequest
 from app.schemas.integrations.responses import (
@@ -35,6 +35,7 @@ async def get_integrations_status(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationsStatusResponse:
     try:
+        log.set(user={"id": user_id})
         status_map = await get_all_integrations_status(user_id)
         return IntegrationsStatusResponse(
             integrations=[
@@ -43,7 +44,7 @@ async def get_integrations_status(
             ]
         )
     except Exception as e:
-        logger.error(f"Error checking integration status: {e}")
+        log.error(f"Error checking integration status: {e}")
         return IntegrationsStatusResponse(
             integrations=[
                 IntegrationStatusItem(integration_id=i.id, connected=False)
@@ -59,6 +60,7 @@ async def disconnect_integration_endpoint(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
     try:
+        log.set(user={"id": user_id}, integration={"id": integration_id})
         return await disconnect_integration(user_id, integration_id)
     except ValueError as e:
         error_message = str(e)
@@ -71,7 +73,7 @@ async def disconnect_integration_endpoint(
         # For "no active connected account" or other cases, return 400
         raise HTTPException(status_code=400, detail=error_message)
     except Exception as e:
-        logger.error(f"Error disconnecting {integration_id}: {e}")
+        log.error(f"Error disconnecting {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to disconnect integration")
 
 
@@ -85,6 +87,7 @@ async def connect_integration_endpoint(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
+    log.set(user={"id": user_id}, integration={"id": integration_id})
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:
         raise HTTPException(
@@ -101,6 +104,26 @@ async def connect_integration_endpoint(
             )
 
     try:
+        auth_type: str | None = None
+        if resolved.mcp_config:
+            auth_type = "oauth2" if resolved.mcp_config.requires_auth else "none"
+        elif resolved.managed_by in ("composio", "self"):
+            auth_type = "oauth2"
+
+        provider: str | None = (
+            resolved.platform_integration.provider
+            if resolved.platform_integration
+            else None
+        )
+
+        log.set(
+            integration={
+                "id": integration_id,
+                "managed_by": resolved.managed_by,
+                "auth_type": auth_type,
+                "provider": provider or integration_id,
+            }
+        )
         if resolved.managed_by == "mcp":
             return await connect_mcp_integration(
                 user_id=str(user_id),
@@ -153,7 +176,8 @@ async def connect_integration_endpoint(
                 error=f"Unsupported integration type: {resolved.managed_by}",
             )
     except Exception as e:
-        logger.error(f"Failed to connect {integration_id}: {e}")
+        log.error(f"Failed to connect {integration_id}: {e}")
+        log.set(integration={"id": integration_id, "status": "error"})
         return ConnectIntegrationResponse(
             status="error",
             integration_id=integration_id,

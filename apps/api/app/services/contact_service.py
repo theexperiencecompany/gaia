@@ -4,7 +4,7 @@ Service functions for handling contact-related operations.
 
 from typing import Any, Dict, List
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 
 
 def _process_message_batch(
@@ -29,7 +29,7 @@ def _process_message_batch(
 
         def add_message_callback(request_id, response, exception):
             if exception:
-                logger.warning(
+                log.warning(
                     f"CONTACT_SERVICE: Error in batch request for message {request_id}: {exception}"
                 )
                 return
@@ -81,9 +81,7 @@ def _process_message_batch(
                                     contact_dict[email] = {"name": name, "email": email}
 
             except Exception as e:
-                logger.warning(
-                    f"CONTACT_SERVICE: Error processing message in batch: {e}"
-                )
+                log.warning(f"CONTACT_SERVICE: Error processing message in batch: {e}")
 
         # Add all messages to the batch request
         for msg_id in message_ids:
@@ -97,7 +95,7 @@ def _process_message_batch(
         batch.execute()
 
     except Exception as e:
-        logger.error(f"CONTACT_SERVICE: Error in batch processing: {e}")
+        log.error(f"CONTACT_SERVICE: Error in batch processing: {e}")
         # Fallback to individual requests if batch fails
         return _process_messages_individually(service, message_ids, filter_query)
 
@@ -157,7 +155,7 @@ def _process_messages_individually(
                                 contact_dict[email] = {"name": name, "email": email}
 
         except Exception as e:
-            logger.warning(f"CONTACT_SERVICE: Error processing message {msg_id}: {e}")
+            log.warning(f"CONTACT_SERVICE: Error processing message {msg_id}: {e}")
             continue
 
     return contact_dict
@@ -181,7 +179,7 @@ def extract_contacts_from_messages_batch(
     Returns:
         List of contacts with name and email
     """
-    logger.info(
+    log.info(
         f"CONTACT_SERVICE: Starting to extract contacts from {len(message_ids)} messages using batch processing"
     )
 
@@ -196,7 +194,7 @@ def extract_contacts_from_messages_batch(
         batch_end = min(batch_start + batch_size, len(message_ids))
         batch_ids = message_ids[batch_start:batch_end]
 
-        logger.debug(
+        log.debug(
             f"CONTACT_SERVICE: Processing batch {batch_start // batch_size + 1}: {len(batch_ids)} messages"
         )
 
@@ -212,10 +210,10 @@ def extract_contacts_from_messages_batch(
     # Sort contacts alphabetically by name, then email
     contacts.sort(key=lambda x: x["name"] if x["name"] else x["email"])
 
-    logger.info(
+    log.info(
         f"CONTACT_SERVICE: Extracted {len(contacts)} unique contacts from {len(message_ids)} messages"
     )
-    logger.debug(f"CONTACT_SERVICE: Contacts found: {contacts}")
+    log.debug(f"CONTACT_SERVICE: Contacts found: {contacts}")
 
     return contacts
 
@@ -237,12 +235,12 @@ def get_gmail_contacts(
         Dictionary with contacts information
     """
     try:
-        logger.info(
+        log.info(
             f"CONTACT_SERVICE: Starting contact search with query: '{query}', max_results: {max_results}"
         )
 
         search_query = query
-        logger.debug(f"CONTACT_SERVICE: Using search query: '{search_query}'")
+        log.debug(f"CONTACT_SERVICE: Using search query: '{search_query}'")
 
         search_results = (
             service.users()
@@ -252,11 +250,12 @@ def get_gmail_contacts(
         )
 
         message_ids = [msg.get("id") for msg in search_results.get("messages", [])]
-        logger.info(f"CONTACT_SERVICE: Search returned {len(message_ids)} messages")
+        log.set(contacts={"query": query, "messages_found": len(message_ids)})
+        log.info(f"CONTACT_SERVICE: Search returned {len(message_ids)} messages")
 
         # If messages found, extract contacts using optimized batch processing
         if message_ids:
-            logger.info(
+            log.info(
                 f"CONTACT_SERVICE: Extracting contacts from {len(message_ids)} message IDs using batch processing"
             )
             contacts = extract_contacts_from_messages_batch(
@@ -268,12 +267,13 @@ def get_gmail_contacts(
                 "contacts": contacts,
                 "count": len(contacts),
             }
-            logger.info(
+            log.set(contacts={"query": query, "contacts_extracted": len(contacts)})
+            log.info(
                 f"CONTACT_SERVICE: Returning {len(contacts)} contacts for query '{query}'"
             )
             return result
         else:
-            logger.info(f"CONTACT_SERVICE: No messages found for query '{query}'")
+            log.info(f"CONTACT_SERVICE: No messages found for query '{query}'")
             return {
                 "success": True,
                 "contacts": [],
@@ -283,6 +283,6 @@ def get_gmail_contacts(
 
     except Exception as e:
         error_msg = f"CONTACT_SERVICE: Error getting Gmail contacts for query '{query}': {str(e)}"
-        logger.error(error_msg)
-        logger.exception("CONTACT_SERVICE: Full traceback:")
+        log.error(error_msg)
+        log.exception("CONTACT_SERVICE: Full traceback:")
         return {"success": False, "error": error_msg, "contacts": []}

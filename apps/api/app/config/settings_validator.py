@@ -19,7 +19,7 @@ Add env vars
 
 from typing import Any, List, Optional, Tuple
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 
 
 class SettingsGroup:
@@ -393,7 +393,7 @@ class SettingsValidator:
             if group.affected_features:
                 warning_msg += f"\n  → Affected: {group.affected_features}"
 
-            logger.warning(warning_msg)
+            log.warning(warning_msg)
 
 
 settings_validator = SettingsValidator()

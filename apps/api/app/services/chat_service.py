@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import (
@@ -85,12 +85,28 @@ async def run_chat_stream_background(
 
         # Get user model config
         user_id = user.get("user_id")
+        log.set(
+            user={"id": str(user_id)} if user_id else {},
+            chat={
+                "conversation_id": conversation_id,
+                "stream_id": stream_id,
+                "is_new_conversation": is_new_conversation,
+            },
+        )
         user_model_config = None
         if user_id:
             try:
                 user_model_config = await get_user_selected_model(user_id)
             except Exception as e:
-                logger.warning(f"Could not get user's selected model: {e}")
+                log.warning(f"Could not get user's selected model: {e}")
+
+        if user_model_config:
+            log.set(
+                model={
+                    "name": user_model_config.get("model_id"),
+                    "provider": user_model_config.get("provider"),
+                }
+            )
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
 
@@ -122,7 +138,7 @@ async def run_chat_stream_background(
         ):
             # Check for cancellation
             if await stream_manager.is_cancelled(stream_id):
-                logger.info(f"Stream {stream_id} cancelled by user")
+                log.info(f"Stream {stream_id} cancelled by user")
                 break
 
             # Skip [DONE] marker - we send it after description generation
@@ -137,7 +153,7 @@ async def run_chat_stream_background(
                         f"""data: {json.dumps({"conversation_description": description})}\n\n""",
                     )
                 except Exception as e:
-                    logger.error(f"Failed to get conversation description: {e}")
+                    log.error(f"Failed to get conversation description: {e}")
                 finally:
                     description_task = None  # Clear to prevent duplicate sends
 
@@ -220,13 +236,29 @@ async def run_chat_stream_background(
                             tool_data=new_data,
                         )
                 except Exception as e:
-                    logger.error(f"Error processing chunk: {e}")
+                    log.error(f"Error processing chunk: {e}")
                     await stream_manager.publish_chunk(stream_id, chunk)
             else:
                 await stream_manager.publish_chunk(stream_id, chunk)
 
         # Get usage metadata
         usage_metadata = usage_metadata_callback.usage_metadata or {}
+
+        # Aggregate token totals across all models
+        total_input = sum(
+            v.get("input_tokens", 0)
+            for v in usage_metadata.values()
+            if isinstance(v, dict)
+        )
+        total_output = sum(
+            v.get("output_tokens", 0)
+            for v in usage_metadata.values()
+            if isinstance(v, dict)
+        )
+        log.set(
+            model={"tokens_used": total_input + total_output},
+            response_length=len(complete_message),
+        )
 
         # Await description task if still pending
         if description_task:
@@ -237,7 +269,7 @@ async def run_chat_stream_background(
                     f"""data: {json.dumps({"conversation_description": description})}\n\n""",
                 )
             except Exception as e:
-                logger.error(f"Failed to get conversation description: {e}")
+                log.error(f"Failed to get conversation description: {e}")
 
         # Send [DONE] marker to signal stream completion
         await stream_manager.publish_chunk(stream_id, "data: [DONE]\n\n")
@@ -246,7 +278,7 @@ async def run_chat_stream_background(
         await stream_manager.complete_stream(stream_id)
 
     except Exception as e:
-        logger.error(
+        log.error(
             "Background stream error for {}: {}", stream_id, str(e), exc_info=True
         )
         # IMPORTANT: Publish error chunk FIRST, before calling set_error()
@@ -271,7 +303,7 @@ async def run_chat_stream_background(
                     and not tool_data.get("tool_data")
                 ):
                     tool_data = progress_tool_data
-                logger.debug(
+                log.debug(
                     f"Recovered {len(complete_message)} chars from Redis progress"
                 )
 
@@ -311,7 +343,11 @@ async def run_chat_stream_background(
         # Cleanup Redis
         await stream_manager.cleanup(stream_id)
 
-        logger.debug(f"Background stream {stream_id} completed and saved")
+        log.set(
+            response_length=len(complete_message),
+            tool_calls_count=len(tool_data.get("tool_data", [])),
+        )
+        log.debug(f"Background stream {stream_id} completed and saved")
 
 
 async def _initialize_new_conversation(
@@ -380,7 +416,7 @@ async def _save_conversation_async(
         try:
             await _process_token_usage_and_cost(user_id, metadata)
         except Exception as e:
-            logger.error(f"Failed to process token usage: {e}")
+            log.error(f"Failed to process token usage: {e}")
 
     # Get timestamps
     bot_timestamp = datetime.now(timezone.utc)
@@ -545,7 +581,7 @@ async def initialize_conversation(
         user_id=user.get("user_id"),
         conversation_id=conversation_id,
     )
-    logger.info(f"{uploaded_files=}")
+    log.info(f"{uploaded_files=}")
 
     return conversation_id, init_chunk, user_message_id, bot_message_id
 
@@ -645,4 +681,4 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
             )
 
     except Exception as e:
-        logger.debug(f"Token usage processing failed: {e}")
+        log.debug(f"Token usage processing failed: {e}")

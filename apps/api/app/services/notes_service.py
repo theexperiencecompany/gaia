@@ -5,7 +5,7 @@ Service module for handling note operations.
 from typing import Any, Dict
 
 from app.agents.prompts.convo_prompts import NOTES_PROMPT
-from app.config.loggers import notes_logger as logger
+from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import notes_collection
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -32,25 +32,28 @@ async def get_note(note_id: str, user_id: str) -> NoteResponse:
     Raises:
         HTTPException: If the note is not found.
     """
-    logger.info(f"Retrieving note with id: {note_id} for user: {user_id}")
+    log.info(f"Retrieving note with id: {note_id} for user: {user_id}")
+    log.set(
+        service="notes_service", operation="get_note", note_id=note_id, user_id=user_id
+    )
     cache_key = f"note:{user_id}:{note_id}"
     cached_note = await get_cache(cache_key)
     if cached_note:
-        logger.info("Note found in cache.")
+        log.info("Note found in cache.")
         return NoteResponse(**cached_note)
 
     note = await notes_collection.find_one(
         {"_id": ObjectId(note_id), "user_id": user_id}
     )
     if not note:
-        logger.error("Note not found.")
+        log.error("Note not found.")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
         )
 
     serialized_note = serialize_document(note)
     await set_cache(cache_key, serialized_note)
-    logger.info("Note retrieved from DB and cached.")
+    log.info("Note retrieved from DB and cached.")
     return NoteResponse(**serialized_note)
 
 
@@ -64,12 +67,12 @@ async def get_all_notes(user_id: str) -> list[NoteResponse]:
     Returns:
         list[NoteResponse]: A list of the user's notes.
     """
-    logger.info(f"Retrieving all notes for user: {user_id}")
+    log.info(f"Retrieving all notes for user: {user_id}")
     cache_key = f"notes:{user_id}"
     cached_notes = await get_cache(cache_key)
     if cached_notes and "notes" in cached_notes:
         cached_notes = cached_notes["notes"]
-        logger.info("All notes found in cache.")
+        log.info("All notes found in cache.")
         return [NoteResponse(**note) for note in cached_notes]
 
     notes = await notes_collection.find({"user_id": user_id}).to_list(length=None)
@@ -79,7 +82,7 @@ async def get_all_notes(user_id: str) -> list[NoteResponse]:
     notes_dict = {"notes": serialized_notes}
     await set_cache(cache_key, notes_dict)
 
-    logger.info("Notes retrieved from DB and cached.")
+    log.info("Notes retrieved from DB and cached.")
     return [NoteResponse(**note) for note in serialized_notes]
 
 
@@ -98,7 +101,13 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
     Raises:
         HTTPException: If the note is not found.
     """
-    logger.info(f"Updating note with id: {note_id} for user: {user_id}")
+    log.info(f"Updating note with id: {note_id} for user: {user_id}")
+    log.set(
+        service="notes_service",
+        operation="update_note",
+        note_id=note_id,
+        user_id=user_id,
+    )
 
     update_data = {k: v for k, v in note.model_dump().items() if v is not None}
 
@@ -106,7 +115,7 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
         {"_id": ObjectId(note_id), "user_id": user_id}, {"$set": update_data}
     )
     if result.matched_count == 0:
-        logger.error("Note not found for update.")
+        log.error("Note not found for update.")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
         )
@@ -135,10 +144,10 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
                     page_content=update_data["plaintext"],
                 ),
             )
-            logger.info(f"Note with id {note_id} updated in ChromaDB")
+            log.info(f"Note with id {note_id} updated in ChromaDB")
         except Exception as e:
             # Log the error but don't fail the request if ChromaDB update fails
-            logger.error(f"Failed to update note in ChromaDB: {str(e)}")
+            log.error(f"Failed to update note in ChromaDB: {str(e)}")
 
     # Invalidate caches for this note and for all notes of the user
     await delete_cache(f"note:{user_id}:{note_id}")
@@ -146,7 +155,7 @@ async def update_note(note_id: str, note: NoteModel, user_id: str) -> NoteRespon
 
     # Update the cache with the new note data
     await set_cache(f"note:{user_id}:{note_id}", serialized_note)
-    logger.info("Note updated and cache refreshed.")
+    log.info("Note updated and cache refreshed.")
 
     return NoteResponse(**serialized_note)
 
@@ -162,14 +171,20 @@ async def delete_note(note_id: str, user_id: str) -> None:
     Raises:
         HTTPException: If the note is not found.
     """
-    logger.info(f"Deleting note with id: {note_id} for user: {user_id}")
+    log.info(f"Deleting note with id: {note_id} for user: {user_id}")
+    log.set(
+        service="notes_service",
+        operation="delete_note",
+        note_id=note_id,
+        user_id=user_id,
+    )
 
     # Delete from MongoDB
     result = await notes_collection.delete_one(
         {"_id": ObjectId(note_id), "user_id": user_id}
     )
     if result.deleted_count == 0:
-        logger.error("Note not found for deletion.")
+        log.error("Note not found for deletion.")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Note not found"
         )
@@ -184,12 +199,12 @@ async def delete_note(note_id: str, user_id: str) -> None:
             collection_name="notes"
         )
         await chroma_notes_collection.adelete(ids=[note_id])
-        logger.info(f"Note with id {note_id} deleted from ChromaDB")
+        log.info(f"Note with id {note_id} deleted from ChromaDB")
     except Exception as e:
         # Log the error but don't fail the request if ChromaDB deletion fails
-        logger.error(f"Failed to delete note from ChromaDB: {str(e)}")
+        log.error(f"Failed to delete note from ChromaDB: {str(e)}")
 
-    logger.info("Note successfully deleted from MongoDB and cache invalidated.")
+    log.info("Note successfully deleted from MongoDB and cache invalidated.")
 
 
 async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
@@ -209,7 +224,7 @@ async def create_note_service(note: NoteModel, user_id: str) -> NoteResponse:
     try:
         return await insert_note(note, user_id)
     except Exception as e:
-        logger.error(f"Failed to create note: {str(e)}")
+        log.error(f"Failed to create note: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to create note")
 
 

@@ -17,7 +17,6 @@ from functools import wraps
 from typing import Callable, Dict, List, Optional
 
 import redis.asyncio as redis
-from app.config.loggers import app_logger as logger
 from app.config.rate_limits import (
     FEATURE_LIMITS,
     RateLimitPeriod,
@@ -38,6 +37,7 @@ from app.models.usage_models import (
 from app.services.payments.payment_service import payment_service
 from app.services.usage_service import UsageService
 from fastapi import HTTPException
+from shared.py.wide_events import log
 
 
 class RateLimitExceededException(HTTPException):
@@ -237,7 +237,7 @@ class TieredRateLimiter:
 
         except Exception as e:
             # Log error but don't raise - this shouldn't break the main request
-            logger.error(
+            log.error(
                 f"Real-time usage sync failed for user {user_id}, feature {feature_key}: {str(e)}"
             )
 

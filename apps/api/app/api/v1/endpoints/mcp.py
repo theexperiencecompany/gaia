@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.db.redis import delete_cache
 from app.helpers.mcp_helpers import (
     get_api_base_url,
@@ -39,6 +39,7 @@ async def test_mcp_connection(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
+    log.set(user={"id": user_id}, integration_id=integration_id)
 
     client = await get_mcp_client(user_id=str(user_id))
 
@@ -99,7 +100,7 @@ async def test_mcp_connection(
             }
         )
     except Exception as e:
-        logger.error(f"OAuth URL build failed for {integration_id}: {e}")
+        log.error(f"OAuth URL build failed for {integration_id}: {e}")
         return JSONResponse(
             content={
                 "status": "failed",
@@ -123,6 +124,7 @@ async def mcp_oauth_callback(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
+    log.set(user={"id": user_id})
 
     frontend_url = get_frontend_url()
 
@@ -134,15 +136,16 @@ async def mcp_oauth_callback(
         state_token = parts[0]
         integration_id = parts[1]
         redirect_path = parts[2] if len(parts) > 2 else "/integrations"
+        log.set(integration_id=integration_id)
     except Exception as e:
-        logger.error(f"Failed to parse OAuth state: {e}")
+        log.error("Failed to parse OAuth state", error=str(e))
         return RedirectResponse(
             url=f"{frontend_url}/integrations?status=failed&error=invalid_state"
         )
 
     # Handle OAuth error response from authorization server
     if error:
-        logger.warning(
+        log.warning(
             f"OAuth error for {integration_id}: {error} - {error_description or 'no description'}"
         )
         # Map common OAuth errors to user-friendly codes
@@ -166,7 +169,7 @@ async def mcp_oauth_callback(
 
     # Validate code is present (required for success case)
     if not code:
-        logger.error(f"OAuth callback missing code for {integration_id}")
+        log.error(f"OAuth callback missing code for {integration_id}")
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=failed&error=missing_code"
         )
@@ -188,19 +191,19 @@ async def mcp_oauth_callback(
         # handle_oauth_callback() already calls connect() internally
         # and returns tools, so we don't need to call connect() again
         if tools:
-            logger.info(
+            log.info(
                 f"Connected with {len(tools)} tools for {integration_id} after OAuth"
             )
 
             tool_registry = await get_tool_registry()
             await tool_registry.load_user_mcp_tools(str(user_id))
-            logger.info(f"Indexed MCP tools from {integration_id} to ChromaDB")
+            log.info(f"Indexed MCP tools from {integration_id} to ChromaDB")
 
             try:
                 await delete_cache("api:get_available_tools:*")
-                logger.info("Invalidated tools list cache after MCP connection")
+                log.info("Invalidated tools list cache after MCP connection")
             except Exception as cache_err:
-                logger.warning(f"Failed to invalidate tools cache: {cache_err}")
+                log.warning(f"Failed to invalidate tools cache: {cache_err}")
 
         await invalidate_mcp_status_cache(str(user_id))
 
@@ -213,7 +216,7 @@ async def mcp_oauth_callback(
         )
 
     except Exception as e:
-        logger.error(f"OAuth callback failed for {integration_id}: {e}")
+        log.error(f"OAuth callback failed for {integration_id}: {e}")
         frontend_url = get_frontend_url()
         # Sanitize error - use generic codes instead of raw exception messages
         error_code = "connection_failed"

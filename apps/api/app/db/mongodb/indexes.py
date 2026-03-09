@@ -13,7 +13,7 @@ Index Strategy:
 import asyncio
 from typing import Dict, List
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import (
     ai_models_collection,
     blog_collection,
@@ -56,7 +56,8 @@ async def create_all_indexes():
     - Unique indexes for data integrity    - Compound indexes ordered by: equality → range → sort
     """
     try:
-        logger.info("Starting comprehensive database index creation...")
+        log.set(db={"operation": "create_indexes", "collection": "all"})
+        log.info("Starting comprehensive database index creation...")
 
         # Create all indexes concurrently for better performance
         index_tasks = [
@@ -119,7 +120,7 @@ async def create_all_indexes():
         index_results = {}
         for i, (collection_name, result) in enumerate(zip(collection_names, results)):
             if isinstance(result, Exception):
-                logger.error(
+                log.error(
                     f"Failed to create indexes for {collection_name}: {str(result)}"
                 )
                 index_results[collection_name] = f"FAILED: {str(result)}"
@@ -130,7 +131,7 @@ async def create_all_indexes():
         successful = sum(1 for result in index_results.values() if result == "SUCCESS")
         total = len(index_results)
 
-        logger.info(
+        log.info(
             f"Database index creation completed: {successful}/{total} collections successful"
         )
 
@@ -139,12 +140,12 @@ async def create_all_indexes():
             name for name, result in index_results.items() if result != "SUCCESS"
         ]
         if failed_collections:
-            logger.warning(
+            log.warning(
                 f"Failed to create indexes for collections: {failed_collections}"
             )
 
     except Exception as e:
-        logger.error(f"Critical error during database index creation: {str(e)}")
+        log.error(f"Critical error during database index creation: {str(e)}")
         raise
 
 
@@ -182,7 +183,7 @@ async def create_user_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating user indexes: {str(e)}")
+        log.error(f"Error creating user indexes: {str(e)}")
         raise
 
 
@@ -212,7 +213,7 @@ async def create_conversation_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating conversation indexes: {str(e)}")
+        log.error(f"Error creating conversation indexes: {str(e)}")
         raise
 
 
@@ -252,7 +253,7 @@ async def create_todo_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating todo indexes: {str(e)}")
+        log.error(f"Error creating todo indexes: {str(e)}")
         raise
 
 
@@ -270,7 +271,7 @@ async def create_project_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating project indexes: {str(e)}")
+        log.error(f"Error creating project indexes: {str(e)}")
         raise
 
 
@@ -289,7 +290,7 @@ async def create_goal_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating goal indexes: {str(e)}")
+        log.error(f"Error creating goal indexes: {str(e)}")
         raise
 
 
@@ -311,7 +312,7 @@ async def create_note_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating note indexes: {str(e)}")
+        log.error(f"Error creating note indexes: {str(e)}")
         raise
 
 
@@ -331,7 +332,7 @@ async def create_file_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating file indexes: {str(e)}")
+        log.error(f"Error creating file indexes: {str(e)}")
         raise
 
 
@@ -347,7 +348,7 @@ async def create_mail_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating mail indexes: {str(e)}")
+        log.error(f"Error creating mail indexes: {str(e)}")
         raise
 
 
@@ -367,7 +368,7 @@ async def create_calendar_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating calendar indexes: {str(e)}")
+        log.error(f"Error creating calendar indexes: {str(e)}")
         raise
 
 
@@ -398,7 +399,7 @@ async def create_blog_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating blog indexes: {str(e)}")
+        log.error(f"Error creating blog indexes: {str(e)}")
         raise
 
 
@@ -418,7 +419,7 @@ async def create_notification_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating notification indexes: {str(e)}")
+        log.error(f"Error creating notification indexes: {str(e)}")
         raise
 
 
@@ -435,7 +436,7 @@ async def create_reminder_indexes():
             reminders_collection.create_index([("user_id", 1), ("type", 1)]),
         )
     except Exception as e:
-        logger.error(f"Error creating reminder indexes: {e}")
+        log.error(f"Error creating reminder indexes: {e}")
         raise
 
 
@@ -517,7 +518,7 @@ async def create_workflow_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating workflow indexes: {str(e)}")
+        log.error(f"Error creating workflow indexes: {str(e)}")
         raise
 
 
@@ -537,7 +538,7 @@ async def create_workflow_execution_indexes():
             ),
         )
     except Exception as e:
-        logger.error(f"Error creating workflow execution indexes: {str(e)}")
+        log.error(f"Error creating workflow execution indexes: {str(e)}")
         raise
 
 
@@ -571,7 +572,7 @@ async def create_payment_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating payment indexes: {str(e)}")
+        log.error(f"Error creating payment indexes: {str(e)}")
         raise
 
 
@@ -593,7 +594,7 @@ async def create_processed_webhook_indexes():
             ),
         )
     except Exception as e:
-        logger.error(f"Error creating processed webhook indexes: {str(e)}")
+        log.error(f"Error creating processed webhook indexes: {str(e)}")
         raise
 
 
@@ -634,7 +635,7 @@ async def create_usage_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating usage indexes: {str(e)}")
+        log.error(f"Error creating usage indexes: {str(e)}")
         raise
 
 
@@ -672,7 +673,7 @@ async def create_ai_models_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating AI models indexes: {str(e)}")
+        log.error(f"Error creating AI models indexes: {str(e)}")
         raise
 
 
@@ -752,7 +753,7 @@ async def create_integration_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating integration indexes: {str(e)}")
+        log.error(f"Error creating integration indexes: {str(e)}")
         raise
 
 
@@ -795,7 +796,7 @@ async def create_user_integration_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating user integration indexes: {str(e)}")
+        log.error(f"Error creating user integration indexes: {str(e)}")
         raise
 
 
@@ -812,7 +813,7 @@ async def create_device_token_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating device token indexes: {str(e)}")
+        log.error(f"Error creating device token indexes: {str(e)}")
         raise
 
 
@@ -884,7 +885,7 @@ async def create_vfs_indexes() -> None:
         )
 
     except Exception as e:
-        logger.error(f"Error creating VFS indexes: {e!s}")
+        log.error(f"Error creating VFS indexes: {e!s}")
         raise
 
 
@@ -908,7 +909,7 @@ async def create_bot_session_indexes():
         )
 
     except Exception as e:
-        logger.error(f"Error creating bot session indexes: {str(e)}")
+        log.error(f"Error creating bot session indexes: {str(e)}")
         raise
 
 
@@ -954,7 +955,7 @@ async def create_installed_skills_indexes() -> None:
         )
 
     except Exception as e:
-        logger.error(f"Error creating installed_skills indexes: {e!s}")
+        log.error(f"Error creating installed_skills indexes: {e!s}")
         raise
 
 
@@ -991,7 +992,7 @@ async def get_index_status() -> Dict[str, List[str]]:
                 indexes = await collection.list_indexes().to_list(length=None)
                 return name, [idx.get("name", "unnamed") for idx in indexes]
             except Exception as e:
-                logger.error(f"Failed to get indexes for {name}: {str(e)}")
+                log.error(f"Failed to get indexes for {name}: {str(e)}")
                 return name, [f"ERROR: {str(e)}"]
 
         # Execute all index status queries concurrently
@@ -1007,7 +1008,7 @@ async def get_index_status() -> Dict[str, List[str]]:
         return index_status
 
     except Exception as e:
-        logger.error(f"Error getting index status: {str(e)}")
+        log.error(f"Error getting index status: {str(e)}")
         return {"error": [str(e)]}
 
 
@@ -1016,21 +1017,21 @@ async def log_index_summary():
     try:
         index_status = await get_index_status()
 
-        logger.info("=== DATABASE INDEX SUMMARY ===")
+        log.info("=== DATABASE INDEX SUMMARY ===")
 
         total_indexes = 0
         for collection_name, indexes in index_status.items():
             if not indexes or (len(indexes) == 1 and indexes[0].startswith("ERROR")):
-                logger.warning(f"{collection_name}: No indexes or error")
+                log.warning(f"{collection_name}: No indexes or error")
             else:
                 index_count = len(indexes)
                 total_indexes += index_count
-                logger.info(
+                log.info(
                     f"INDEX CREATED: {collection_name}: {index_count} indexes - {', '.join(indexes)}"
                 )
 
-        logger.info(f"Total indexes across all collections: {total_indexes}")
-        logger.info("=== END INDEX SUMMARY ===")
+        log.info(f"Total indexes across all collections: {total_indexes}")
+        log.info("=== END INDEX SUMMARY ===")
 
     except Exception as e:
-        logger.error(f"Error logging index summary: {str(e)}")
+        log.error(f"Error logging index summary: {str(e)}")

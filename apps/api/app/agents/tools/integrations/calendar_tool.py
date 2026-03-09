@@ -14,7 +14,7 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any, Dict, List
 
 import httpx
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_doc
 from app.models.calendar_models import (
     AddRecurrenceInput,
@@ -93,6 +93,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_calendar", "action": "list_calendars"})
         access_token = _get_access_token(auth_credentials)
         calendars = calendar_service.list_calendars(access_token, short=request.short)
         return {"calendars": calendars}
@@ -104,6 +105,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_calendar", "action": "get_day_summary"})
         access_token = _get_access_token(auth_credentials)
         user_id = _get_user_id(auth_credentials)
 
@@ -221,6 +223,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_calendar", "action": "fetch_events"})
         access_token = _get_access_token(auth_credentials)
         user_id = _get_user_id(auth_credentials)
 
@@ -261,6 +264,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_calendar", "action": "find_event"})
         access_token = _get_access_token(auth_credentials)
         user_id = _get_user_id(auth_credentials)
 
@@ -298,6 +302,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_calendar", "action": "get_event"})
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
 
@@ -317,7 +322,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
                     }
                 )
             except httpx.HTTPStatusError as e:
-                logger.error(f"Error getting event {event_ref.event_id}: {e}")
+                log.error(f"Error getting event {event_ref.event_id}: {e}")
                 errors.append(
                     {
                         "event_id": event_ref.event_id,
@@ -339,6 +344,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_calendar", "action": "delete_event"})
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
         params = {"sendUpdates": request.send_updates}
@@ -358,7 +364,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
                     }
                 )
             except httpx.HTTPStatusError as e:
-                logger.error(f"Error deleting event {event_ref.event_id}: {e}")
+                log.error(f"Error deleting event {event_ref.event_id}: {e}")
                 errors.append(
                     {
                         "event_id": event_ref.event_id,
@@ -382,6 +388,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_calendar", "action": "patch_event"})
         access_token = _get_access_token(auth_credentials)
 
         url = f"{CALENDAR_API_BASE}/calendars/{request.calendar_id}/events/{request.event_id}"
@@ -414,6 +421,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_calendar", "action": "add_recurrence"})
         access_token = _get_access_token(auth_credentials)
 
         url = f"{CALENDAR_API_BASE}/calendars/{request.calendar_id}/events/{request.event_id}"
@@ -454,6 +462,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
         execute_request: Any,
         auth_credentials: Dict[str, Any],
     ) -> Dict[str, Any]:
+        log.set(tool={"integration": "google_calendar", "action": "create_event"})
         access_token = _get_access_token(auth_credentials)
         headers = _auth_headers(access_token)
         headers["Content-Type"] = "application/json"
@@ -577,6 +586,7 @@ def register_calendar_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns today's schedule for situational awareness.
         """
+        log.set(tool={"integration": "google_calendar", "action": "gather_context"})
         user_id = _get_user_id(auth_credentials)
         if not user_id:
             raise ValueError("Missing user_id in auth_credentials")

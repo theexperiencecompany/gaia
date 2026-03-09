@@ -47,13 +47,13 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
-          "expr": "sum(count_over_time({service=\"arq_worker\"} [$__range]))",
+          "expr": "sum(count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\" [$__range]))",
           "instant": true,
           "legendFormat": "",
           "refId": "A"
         }
       ],
-      "title": "Total Log Events",
+      "title": "Total Tasks Completed",
       "type": "stat"
     },
     {
@@ -88,13 +88,13 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
-          "expr": "sum(count_over_time({service=\"arq_worker\", level=\"ERROR\"} [$__range]))",
+          "expr": "sum(count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\", level=\"ERROR\"} [$__range]))",
           "instant": true,
           "legendFormat": "",
           "refId": "A"
         }
       ],
-      "title": "Error Events",
+      "title": "Failed Tasks",
       "type": "stat"
     },
     {
@@ -129,7 +129,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
-          "expr": "sum(count_over_time({service=\"arq_worker\", level=\"WARNING\"} [$__range]))",
+          "expr": "sum(count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\", level=\"WARNING\"} [$__range]))",
           "instant": true,
           "legendFormat": "",
           "refId": "A"
@@ -170,13 +170,13 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
-          "expr": "sum(count_over_time({service=\"arq_worker\"} | json | message =~ \".*took.*s to execute.*\" [$__range]))",
+          "expr": "sum(count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\" | duration_ms > 1000 [$__range]))",
           "instant": true,
           "legendFormat": "",
           "refId": "A"
         }
       ],
-      "title": "Slow Task Warnings (>1s)",
+      "title": "Slow Tasks (>1s)",
       "type": "stat"
     },
     {
@@ -224,10 +224,6 @@
           {
             "matcher": { "id": "byName", "options": "INFO" },
             "properties": [{ "id": "color", "value": { "fixedColor": "blue", "mode": "fixed" } }]
-          },
-          {
-            "matcher": { "id": "byName", "options": "DEBUG" },
-            "properties": [{ "id": "color", "value": { "fixedColor": "gray", "mode": "fixed" } }]
           }
         ]
       },
@@ -245,7 +241,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
-          "expr": "sum by (level) (count_over_time({service=\"arq_worker\"} [$__interval]))",
+          "expr": "sum by (level) (count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} [$__interval]))",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -302,12 +298,12 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
-          "expr": "sum by (logger_name) (count_over_time({service=\"arq_worker\", level=\"ERROR\"} [$__interval]))",
-          "legendFormat": "{{logger_name}}",
+          "expr": "sum by (task) (count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\" [$__interval]))",
+          "legendFormat": "{{task}}",
           "refId": "A"
         }
       ],
-      "title": "Errors by Logger",
+      "title": "Task Executions by Type",
       "type": "timeseries"
     },
     {
@@ -327,7 +323,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
-          "expr": "{service=\"arq_worker\", level=~\"ERROR|WARNING\"} | json",
+          "expr": "{service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\", level=~\"ERROR|WARNING\"} | json",
           "legendFormat": "",
           "refId": "A"
         }
@@ -352,12 +348,12 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
-          "expr": "{service=\"arq_worker\"} | json",
+          "expr": "{service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\"",
           "legendFormat": "",
           "refId": "A"
         }
       ],
-      "title": "All Worker Logs",
+      "title": "All Worker Task Events",
       "type": "logs"
     }
   ],
@@ -386,5 +382,5 @@
   "timezone": "browser",
   "title": "GAIA ARQ Worker",
   "uid": "gaia-arq-worker",
-  "version": 1
+  "version": 2
 }

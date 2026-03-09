@@ -1,6 +1,6 @@
 from typing import Any, Dict
 
-from app.config.loggers import notification_logger as logger
+from shared.py.wide_events import log
 from app.constants.notifications import CHANNEL_TYPE_INAPP
 from app.core.websocket_manager import websocket_manager
 from app.models.notification.notification_models import (
@@ -59,6 +59,12 @@ class InAppChannelAdapter(ChannelAdapter):
     async def deliver(
         self, content: Dict[str, Any], user_id: str
     ) -> ChannelDeliveryStatus:
+        log.set(
+            operation="inapp_deliver",
+            user_id=user_id,
+            notification_id=content.get("id"),
+            channel_type=CHANNEL_TYPE_INAPP,
+        )
         try:
             await websocket_manager.broadcast_to_user(
                 user_id,
@@ -67,12 +73,10 @@ class InAppChannelAdapter(ChannelAdapter):
                     "notification": content,
                 },
             )
-            logger.info(
+            log.info(
                 f"In-app notification delivered to user {user_id}: {content.get('title')}"
             )
             return self._success()
         except Exception as e:
-            logger.error(
-                f"Failed to deliver in-app notification to user {user_id}: {e}"
-            )
+            log.error(f"Failed to deliver in-app notification to user {user_id}: {e}")
             return self._error(str(e))

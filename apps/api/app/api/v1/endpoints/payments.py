@@ -8,7 +8,7 @@ from typing import List
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.api.v1.middleware.rate_limiter import limiter
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.models.payment_models import (
     CreateSubscriptionRequest,
     PaymentVerificationResponse,
@@ -41,6 +41,16 @@ async def create_subscription_endpoint(
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    log.set(
+        user={"id": user_id},
+        payment={
+            "event_type": "create_subscription",
+            "product_id": subscription_data.product_id,
+            "quantity": subscription_data.quantity,
+            "status": "initiated",
+            "provider": "dodo",
+        },
+    )
     return await payment_service.create_subscription(
         user_id, subscription_data.product_id, subscription_data.quantity
     )
@@ -57,6 +67,7 @@ async def verify_payment_endpoint(
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    log.set(user={"id": user_id})
     result = await payment_service.verify_payment_completion(user_id)
     return PaymentVerificationResponse(**result)
 
@@ -72,6 +83,7 @@ async def get_subscription_status_endpoint(
     if not user_id:
         raise HTTPException(status_code=401, detail="Authentication required")
 
+    log.set(user={"id": user_id})
     return await payment_service.get_user_subscription_status(user_id)
 
 
@@ -97,16 +109,25 @@ async def handle_dodo_webhook(
 
         # Verify webhook signature using Standard Webhooks library
         if not payment_webhook_service.verify_webhook_signature(payload, headers):
-            logger.warning("Invalid webhook signature")
+            log.warning("Invalid webhook signature")
             raise HTTPException(status_code=401, detail="Invalid webhook signature")
 
         # Parse webhook data
         webhook_data = json.loads(payload)
 
+        log.set(
+            payment={
+                "event_type": webhook_data.get("type", "unknown"),
+                "webhook_id": webhook_id,
+                "status": "received",
+                "provider": "dodo",
+            }
+        )
+
         # Process the webhook with idempotency check using webhook_id
         result = await payment_webhook_service.process_webhook(webhook_data, webhook_id)
 
-        logger.info(f"Webhook processed: {result.event_type} - {result.status}")
+        log.info(f"Webhook processed: {result.event_type} - {result.status}")
         return {
             "status": "success",
             "event_type": result.event_type,
@@ -117,8 +138,8 @@ async def handle_dodo_webhook(
     except HTTPException:
         raise
     except json.JSONDecodeError:
-        logger.error("Invalid JSON in webhook payload")
+        log.error("Invalid JSON in webhook payload")
         raise HTTPException(status_code=400, detail="Invalid JSON payload")
     except Exception as e:
-        logger.error(f"Error processing webhook: {e}")
+        log.error(f"Error processing webhook: {e}")
         raise HTTPException(status_code=500, detail="Webhook processing failed")

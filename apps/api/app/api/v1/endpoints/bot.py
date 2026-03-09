@@ -4,7 +4,7 @@ import secrets
 from datetime import datetime, timezone
 from uuid import uuid4
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import PLATFORM_LINK_TOKEN_PREFIX, PLATFORM_LINK_TOKEN_TTL
 from app.core.stream_manager import stream_manager
@@ -145,6 +145,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
     user_id = user.get("user_id") or str(user.get("_id", ""))
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
+    log.set(user={"id": user_id}, platform=body.platform)
 
     conversation_id = await BotService.get_or_create_session(
         body.platform, body.platform_user_id, body.channel_id, user
@@ -188,7 +189,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
     def task_done_callback(t: asyncio.Task):
         _background_tasks.discard(t)
         if t.exception():
-            logger.error(f"Background stream task failed: {t.exception()}")
+            log.error(f"Background stream task failed: {t.exception()}")
 
     task.add_done_callback(task_done_callback)
     _background_tasks.add(task)
@@ -248,7 +249,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
                 except json.JSONDecodeError:
                     continue
         except Exception as e:
-            logger.error(f"Bot stream subscription error: {e}")
+            log.error(f"Bot stream subscription error: {e}")
             yield f"data: {json.dumps({'error': 'Stream error occurred'})}\n\n"
 
     return StreamingResponse(stream_from_redis(), media_type="text/event-stream")
@@ -274,6 +275,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
 
     user_id = user.get("user_id") or str(user.get("_id", ""))
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
+    log.set(user={"id": user_id}, platform=body.platform)
 
     new_conversation_id = await BotService.reset_session(
         body.platform, body.platform_user_id, body.channel_id, user
@@ -352,7 +354,7 @@ async def get_settings(
                         )
                     )
     except Exception as e:
-        logger.error(f"Error fetching integrations for settings: {e}")
+        log.error(f"Error fetching integrations for settings: {e}")
 
     selected_model_name = None
     selected_model_icon_url = None
@@ -362,7 +364,7 @@ async def get_settings(
             selected_model_name = model.name
             selected_model_icon_url = model.logo_url
     except Exception as e:
-        logger.error(f"Error fetching model for settings: {e}")
+        log.error(f"Error fetching model for settings: {e}")
 
     user_name = user.get("name") or user.get("username")
     profile_image_url = user.get("profile_image_url") or user.get("avatar_url")

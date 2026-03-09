@@ -20,7 +20,7 @@ from typing import List
 
 from app.agents.skills.models import Skill
 from app.agents.skills.registry import get_skills_for_agent
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import (
     SKILLS_TEXT_CACHE_KEY,
     SKILLS_TEXT_CACHE_TTL,
@@ -47,16 +47,20 @@ async def get_available_skills_text(
     Returns:
         Plain text string for system prompt injection, or empty string if no skills
     """
+    log.set(
+        user_id=user_id, agent_name=agent_name, skill_op="get_available_skills_text"
+    )
     try:
         skills = await get_skills_for_agent(user_id, agent_name)
 
         if not skills:
             return ""
 
+        log.set(skill_count=len(skills))
         return _format_skills(skills)
 
     except Exception as e:
-        logger.warning(f"[skills] Failed to generate skills text for {agent_name}: {e}")
+        log.warning(f"[skills] Failed to generate skills text for {agent_name}: {e}")
         return ""
 
 

@@ -36,7 +36,7 @@ from app.agents.core.subagents.subagent_helpers import (  # noqa: E402
     build_subagent_system_prompt,
 )
 from app.agents.llm.client import init_llm  # noqa: E402
-from app.config.loggers import app_logger as logger  # noqa: E402
+from shared.py.wide_events import log  # noqa: E402
 from app.config.oauth_config import get_integration_by_id  # noqa: E402
 from app.config.settings import settings  # noqa: E402
 from app.core.lazy_loader import providers  # noqa: E402
@@ -184,7 +184,7 @@ class SubagentEvaluator:
             raise ValueError("OPIK_API_KEY and OPIK_WORKSPACE must be set")
 
         self.opik_client = opik.Opik()
-        logger.info(f"Opik initialized for workspace: {settings.OPIK_WORKSPACE}")
+        log.info(f"Opik initialized for workspace: {settings.OPIK_WORKSPACE}")
 
         # Store judge prompt in Opik for versioning
         self.judge_prompt = opik.Prompt(
@@ -192,9 +192,7 @@ class SubagentEvaluator:
             prompt=SUBAGENT_EVALUATION_PROMPT,
             metadata={"type": "llm_as_judge", "version": "1.0"},
         )
-        logger.info(
-            f"Judge prompt stored/retrieved from Opik: {self.judge_prompt.commit}"
-        )
+        log.info(f"Judge prompt stored/retrieved from Opik: {self.judge_prompt.commit}")
 
         # Sync subagent system prompt to Opik if available in config
         if self.config.system_prompt:
@@ -204,7 +202,7 @@ class SubagentEvaluator:
                 metadata={"type": "subagent_system_prompt", "subagent": self.config.id},
             )
             self.system_prompt = self.config.system_prompt
-            logger.info(
+            log.info(
                 f"Subagent prompt '{self.config.prompt_name}' synced to Opik: {self.subagent_prompt.commit}"
             )
 
@@ -223,7 +221,7 @@ class SubagentEvaluator:
                 self.system_prompt = integration.subagent_config.system_prompt
 
         self.judge_llm = init_llm()
-        logger.info(f"Evaluator initialized for {self.config.name}")
+        log.info(f"Evaluator initialized for {self.config.name}")
 
     def _load_dataset_file(self) -> dict[str, Any]:
         """Load dataset from JSON file."""
@@ -253,9 +251,7 @@ class SubagentEvaluator:
         ]
 
         dataset.insert(items)
-        logger.info(
-            f"Dataset '{self.config.dataset_name}' synced with {len(items)} items"
-        )
+        log.info(f"Dataset '{self.config.dataset_name}' synced with {len(items)} items")
 
     async def _run_subagent(
         self, query: str
@@ -321,7 +317,7 @@ class SubagentEvaluator:
             output = str(final_messages[-1].content) if final_messages else ""
 
         except Exception as e:
-            logger.error(f"Subagent error: {e}")
+            log.error(f"Subagent error: {e}")
             output = f"Error: {e}"
             errors.append(str(e))
 
@@ -355,7 +351,7 @@ class SubagentEvaluator:
 
     async def run_evaluation(self) -> Any:
         """Run evaluation using Opik's experiment framework."""
-        logger.info(f"Starting evaluation for {self.config.name}...")
+        log.info(f"Starting evaluation for {self.config.name}...")
 
         dataset = self.opik_client.get_dataset(name=self.config.dataset_name)
         experiment_name = (
@@ -368,7 +364,7 @@ class SubagentEvaluator:
             system_prompt=self.system_prompt or "",
         )
 
-        logger.info(f"Running experiment: {experiment_name}")
+        log.info(f"Running experiment: {experiment_name}")
 
         eval_results = evaluate(
             experiment_name=experiment_name,
@@ -386,7 +382,7 @@ class SubagentEvaluator:
             task_threads=8,
             project_name="GAIA",
         )
-        logger.info(f"Evaluation complete: {experiment_name}")
+        log.info(f"Evaluation complete: {experiment_name}")
         return eval_results
 
     def print_results(self, eval_results: Any) -> None:

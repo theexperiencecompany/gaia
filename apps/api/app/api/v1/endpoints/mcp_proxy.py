@@ -4,7 +4,7 @@ MCP proxy endpoints for MCP Apps iframe tool call proxying.
 
 from __future__ import annotations
 
-import logging
+from shared.py.wide_events import log
 
 from app.api.v1.dependencies.oauth_dependencies import get_current_user
 from app.schemas.mcp import (
@@ -21,8 +21,6 @@ from app.schemas.mcp import (
 )
 from app.services.mcp.mcp_client import get_mcp_client
 from fastapi import APIRouter, Depends, HTTPException, status
-
-logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -60,7 +58,7 @@ async def proxy_mcp_tool_call(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("MCP proxy tool call failed: %s", e)
+        log.error("MCP proxy tool call failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Tool call failed: {str(e)}",
@@ -99,7 +97,7 @@ async def proxy_mcp_resources_list(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("MCP proxy resources/list failed: %s", e)
+        log.error("MCP proxy resources/list failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/list failed: {str(e)}",
@@ -140,7 +138,7 @@ async def proxy_mcp_resource_templates_list(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("MCP proxy resources/templates/list failed: %s", e)
+        log.error("MCP proxy resources/templates/list failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/templates/list failed: {str(e)}",
@@ -178,7 +176,7 @@ async def proxy_mcp_resource_read(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("MCP proxy resources/read failed: %s", e)
+        log.error("MCP proxy resources/read failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"resources/read failed: {str(e)}",
@@ -217,7 +215,7 @@ async def proxy_mcp_prompts_list(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error("MCP proxy prompts/list failed: %s", e)
+        log.error("MCP proxy prompts/list failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"prompts/list failed: {str(e)}",

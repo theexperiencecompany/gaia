@@ -5,7 +5,7 @@ from typing import Optional
 
 import markdown2
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 
 
 def is_markdown_content(text: str) -> bool:
@@ -52,6 +52,7 @@ def convert_markdown_to_html(markdown_text: str) -> str:
     Returns:
         str: HTML string
     """
+    log.set(operation="convert_markdown_to_html", input_length=len(markdown_text))
     try:
         html = markdown2.markdown(
             markdown_text,
@@ -66,7 +67,7 @@ def convert_markdown_to_html(markdown_text: str) -> str:
         )
         return html
     except Exception as e:
-        logger.error(f"Error converting markdown to HTML: {e}")
+        log.error(f"Error converting markdown to HTML: {e}")
         return markdown_text
 
 
@@ -113,7 +114,7 @@ def convert_markdown_to_plain_text(markdown_text: str) -> str:
 
         return text.strip()
     except Exception as e:
-        logger.error(f"Error converting markdown to plain text: {e}")
+        log.error(f"Error converting markdown to plain text: {e}")
         return markdown_text
 
 

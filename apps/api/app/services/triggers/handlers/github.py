@@ -5,7 +5,7 @@ GitHub trigger handler.
 import asyncio
 from typing import Any, Dict, List, Optional, Set
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     GitHubCommitEventPayload,
@@ -82,7 +82,7 @@ class GitHubTriggerHandler(TriggerHandler):
             user_id=user_id,
         )
         if not tool:
-            logger.error("GitHub list repositories tool not found")
+            log.error("GitHub list repositories tool not found")
             return []
 
         # Invoke tool with typed input
@@ -102,7 +102,7 @@ class GitHubTriggerHandler(TriggerHandler):
 
         # Check response status
         if not result["successful"]:
-            logger.error(f"GitHub API error: {result['error']}")
+            log.error(f"GitHub API error: {result['error']}")
             return []
 
         # Extract and parse data
@@ -122,7 +122,7 @@ class GitHubTriggerHandler(TriggerHandler):
             if repo.full_name:
                 options.append({"value": repo.full_name, "label": repo.full_name})
 
-        logger.info(f"Returning {len(options)} GitHub repository options")
+        log.info(f"Returning {len(options)} GitHub repository options")
         return options
 
     async def register(
@@ -206,6 +206,7 @@ class GitHubTriggerHandler(TriggerHandler):
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:
         """Find workflows matching a GitHub trigger event."""
+        log.set(trigger={"provider": "github", "event": event_type})
         try:
             # Validate payload based on event type
             try:
@@ -218,7 +219,7 @@ class GitHubTriggerHandler(TriggerHandler):
                 elif "issue_added" in event_type.lower():
                     GitHubIssueAddedEventPayload.model_validate(data)
             except Exception as e:
-                logger.debug(f"GitHub payload validation failed: {e}")
+                log.debug(f"GitHub payload validation failed: {e}")
 
             query = {
                 "activated": True,
@@ -238,13 +239,13 @@ class GitHubTriggerHandler(TriggerHandler):
                     workflow = Workflow(**workflow_doc)
                     workflows.append(workflow)
                 except Exception as e:
-                    logger.error(f"Error processing workflow document: {e}")
+                    log.error(f"Error processing workflow document: {e}")
                     continue
 
             return workflows
 
         except Exception as e:
-            logger.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
 
