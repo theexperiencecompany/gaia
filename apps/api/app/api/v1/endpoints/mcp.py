@@ -39,7 +39,7 @@ async def test_mcp_connection(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
-    log.set(user={"id": user_id}, integration_id=integration_id)
+    log.set(user={"id": user_id}, integration_id=integration_id, operation="test_mcp_connection")
 
     client = await get_mcp_client(user_id=str(user_id))
 
@@ -52,8 +52,15 @@ async def test_mcp_connection(
 
     # Probe the server
     probe_result = await client.probe_connection(server_url)
+    log.set(
+        probe=dict(
+            requires_auth=probe_result.get("requires_auth", False),
+            has_error=bool(probe_result.get("error")),
+        )
+    )
 
     if probe_result.get("error"):
+        log.set(outcome="failed")
         return JSONResponse(
             content={
                 "status": "failed",
@@ -67,6 +74,7 @@ async def test_mcp_connection(
             tools = await client.connect(integration_id)
             # Note: status update now handled in connect()
             await invalidate_mcp_status_cache(str(user_id))
+            log.set(outcome="connected", tools_count=len(tools) if tools else 0)
             return JSONResponse(
                 content={
                     "status": "connected",
@@ -74,6 +82,7 @@ async def test_mcp_connection(
                 }
             )
         except Exception as e:
+            log.set(outcome="failed")
             return JSONResponse(
                 content={
                     "status": "failed",
@@ -93,6 +102,7 @@ async def test_mcp_connection(
             redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
             redirect_path="/integrations",
         )
+        log.set(outcome="requires_oauth")
         return JSONResponse(
             content={
                 "status": "requires_oauth",
@@ -124,7 +134,7 @@ async def mcp_oauth_callback(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
-    log.set(user={"id": user_id})
+    log.set(user={"id": user_id}, operation="mcp_oauth_callback")
 
     frontend_url = get_frontend_url()
 
@@ -211,11 +221,13 @@ async def mcp_oauth_callback(
 
         frontend_url = get_frontend_url()
 
+        log.set(outcome="connected", tools_count=len(tools) if tools else 0)
         return RedirectResponse(
             url=f"{frontend_url}{redirect_path}?id={integration_id}&status=connected&name={quote(integration_name)}"
         )
 
     except Exception as e:
+        log.set(outcome="failed")
         log.error(f"OAuth callback failed for {integration_id}: {e}")
         frontend_url = get_frontend_url()
         # Sanitize error - use generic codes instead of raw exception messages

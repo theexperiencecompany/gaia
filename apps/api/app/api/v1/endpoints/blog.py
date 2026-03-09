@@ -19,6 +19,7 @@ from app.api.v1.dependencies.blog_auth import verify_blog_token
 from app.decorators.caching import Cacheable
 from app.models.blog_models import BlogPost, BlogPostCreate, BlogPostUpdate
 from app.services.blog_service import BlogService
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -39,20 +40,30 @@ async def get_blogs(
     ),
 ):
     """Get all blog posts with pagination and populated author details."""
+    log.set(operation="list_blogs")
     if search:
-        return await BlogService.search_blogs(
+        results = await BlogService.search_blogs(
             search, page=page, limit=limit, include_content=include_content
         )
-    return await BlogService.get_all_blogs(
+        log.set(result_count=len(results))
+        log.set(outcome="success")
+        return results
+    results = await BlogService.get_all_blogs(
         page=page, limit=limit, include_content=include_content
     )
+    log.set(result_count=len(results))
+    log.set(outcome="success")
+    return results
 
 
 @router.get("/blogs/{slug}", response_model=BlogPost)
 @Cacheable(key_pattern="blog:{slug}", ttl=21600, model=BlogPost)  # 6 hours
 async def get_blog(slug: str):
     """Get a specific blog post with populated author details."""
-    return await BlogService.get_blog_by_slug(slug)
+    log.set(operation="get_blog", slug=slug)
+    result = await BlogService.get_blog_by_slug(slug)
+    log.set(outcome="success")
+    return result
 
 
 @router.post("/blogs", response_model=BlogPost, status_code=status.HTTP_201_CREATED)
@@ -67,6 +78,7 @@ async def create_blog(
     _token: str = Depends(verify_blog_token),
 ):
     """Create a new blog post with optional image upload. Requires bearer token authentication."""
+    log.set(operation="create_blog", slug=slug)
 
     # Parse authors from JSON string
     try:
@@ -129,7 +141,9 @@ async def create_blog(
         image=image_url,
     )
 
-    return await BlogService.create_blog(blog_data)
+    result = await BlogService.create_blog(blog_data)
+    log.set(outcome="success")
+    return result
 
 
 @router.put("/blogs/{slug}", response_model=BlogPost)
@@ -137,13 +151,18 @@ async def update_blog(
     slug: str, blog: BlogPostUpdate, _token: str = Depends(verify_blog_token)
 ):
     """Update a blog post. Requires bearer token authentication."""
-    return await BlogService.update_blog(slug, blog)
+    log.set(operation="update_blog", slug=slug)
+    result = await BlogService.update_blog(slug, blog)
+    log.set(outcome="success")
+    return result
 
 
 @router.delete("/blogs/{slug}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_blog(slug: str, _token: str = Depends(verify_blog_token)):
     """Delete a blog post. Requires bearer token authentication."""
+    log.set(operation="delete_blog", slug=slug)
     await BlogService.delete_blog(slug)
+    log.set(outcome="success")
     return
 
 
@@ -151,5 +170,8 @@ async def delete_blog(slug: str, _token: str = Depends(verify_blog_token)):
 @Cacheable(smart_hash=True, ttl=21600)  # 6 hours
 async def get_blog_count():
     """Get total count of blog posts."""
+    log.set(operation="get_blog_count")
     count = await BlogService.get_blog_count()
+    log.set(result_count=count)
+    log.set(outcome="success")
     return {"count": count}

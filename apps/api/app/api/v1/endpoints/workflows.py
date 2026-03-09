@@ -10,7 +10,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_user_timezone_from_preferences,
 )
 from app.api.v1.middleware.rate_limiter import limiter
-from shared.py.wide_events import log
+from shared.py.wide_events import log, WorkflowContext
 from app.db.mongodb.collections import workflows_collection
 from app.decorators import tiered_rate_limit
 from app.models.workflow_models import (
@@ -54,12 +54,13 @@ async def create_workflow(
     """Create a new workflow with automatic timezone detection."""
     log.set(
         user={"id": user["user_id"]},
-        workflow={
-            "title": request.title,
-            "trigger_type": str(request.trigger_config.type)
+        workflow=WorkflowContext(
+            operation="create",
+            title=request.title,
+            trigger_type=str(request.trigger_config.type)
             if request.trigger_config
             else None,
-        },
+        ),
     )
 
     try:
@@ -70,6 +71,17 @@ async def create_workflow(
         # Pass user timezone to the service for automatic population
         workflow = await WorkflowService.create_workflow(
             request, user["user_id"], user_timezone=user_timezone
+        )
+        log.set(
+            workflow=WorkflowContext(
+                id=str(workflow.id),
+                title=workflow.title,
+                steps_count=len(workflow.steps) if workflow.steps else None,
+                trigger_type=str(workflow.trigger_type)
+                if hasattr(workflow, "trigger_type") and workflow.trigger_type
+                else None,
+            ),
+            outcome="success",
         )
         return WorkflowResponse(
             workflow=workflow, message="Workflow created successfully"
@@ -96,10 +108,17 @@ async def create_workflow(
 @limiter.limit("1000/hour")
 async def list_workflows(request: Request, user: dict = Depends(get_current_user)):
     """List all workflows for the current user."""
-    log.set(user={"id": user["user_id"]})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(operation="list"),
+    )
 
     try:
         workflows = await WorkflowService.list_workflows(user["user_id"])
+        log.set(
+            workflow=WorkflowContext(result_count=len(workflows)),
+            outcome="success",
+        )
         return WorkflowListResponse(workflows=workflows)
 
     except Exception as e:
@@ -120,11 +139,22 @@ async def execute_workflow(
     user: dict = Depends(get_current_user),
 ):
     """Execute a workflow (run now)."""
-    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(operation="execute", id=workflow_id),
+    )
 
     try:
         result = await WorkflowService.execute_workflow(
             workflow_id, request, user["user_id"]
+        )
+        log.set(
+            workflow=WorkflowContext(
+                execution_id=str(result.execution_id)
+                if hasattr(result, "execution_id") and result.execution_id
+                else None,
+            ),
+            outcome="success",
         )
         return result
 
@@ -152,11 +182,7 @@ async def get_workflow_executions(
     """Get execution history for a workflow."""
     log.set(
         user={"id": user["user_id"]},
-        workflow={
-            "id": workflow_id,
-            "executions_limit": limit,
-            "executions_offset": offset,
-        },
+        workflow=WorkflowContext(operation="list_executions", id=workflow_id),
     )
 
     try:
@@ -167,6 +193,14 @@ async def get_workflow_executions(
             user_id=user["user_id"],
             limit=limit,
             offset=offset,
+        )
+        log.set(
+            workflow=WorkflowContext(
+                result_count=len(result.executions)
+                if hasattr(result, "executions") and result.executions is not None
+                else None,
+            ),
+            outcome="success",
         )
         return result
     except Exception as e:
@@ -180,11 +214,23 @@ async def get_workflow_executions(
 @router.get("/workflows/{workflow_id}/status", response_model=WorkflowStatusResponse)
 async def get_workflow_status(workflow_id: str, user: dict = Depends(get_current_user)):
     """Get the current status of a workflow (for polling)."""
-    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(operation="status", id=workflow_id),
+    )
 
     try:
         status_response = await WorkflowService.get_workflow_status(
             workflow_id, user["user_id"]
+        )
+        log.set(
+            workflow=WorkflowContext(
+                execution_id=str(status_response.execution_id)
+                if hasattr(status_response, "execution_id")
+                and status_response.execution_id
+                else None,
+            ),
+            outcome="success",
         )
         return status_response
 
@@ -207,7 +253,7 @@ async def activate_workflow(
     """Activate a workflow (enable its trigger)."""
     log.set(
         user={"id": user["user_id"]},
-        workflow={"id": workflow_id, "timezone": user_timezone},
+        workflow=WorkflowContext(id=workflow_id),
     )
 
     try:
@@ -220,6 +266,7 @@ async def activate_workflow(
                 detail=f"Workflow {workflow_id} not found",
             )
 
+        log.set(outcome="success")
         return WorkflowResponse(
             workflow=workflow, message="Workflow activated successfully"
         )
@@ -247,7 +294,10 @@ async def deactivate_workflow(
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """Deactivate a workflow (disable its trigger)."""
-    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(id=workflow_id),
+    )
 
     try:
         workflow = await WorkflowService.deactivate_workflow(
@@ -259,6 +309,7 @@ async def deactivate_workflow(
                 detail=f"Workflow {workflow_id} not found",
             )
 
+        log.set(outcome="success")
         return WorkflowResponse(
             workflow=workflow, message="Workflow deactivated successfully"
         )
@@ -284,7 +335,7 @@ async def regenerate_workflow_steps(
     """Regenerate steps for an existing workflow with optional parameters."""
     log.set(
         user={"id": user["user_id"]},
-        workflow={"id": workflow_id, "regeneration_reason": request.reason},
+        workflow=WorkflowContext(operation="regenerate_steps", id=workflow_id),
     )
 
     try:
@@ -300,6 +351,7 @@ async def regenerate_workflow_steps(
                 detail="Workflow not found",
             )
 
+        log.set(outcome="success")
         return WorkflowResponse(
             workflow=workflow, message="Workflow regeneration started"
         )
@@ -322,7 +374,10 @@ async def create_workflow_from_todo(
     user_timezone: str = Depends(get_user_timezone_from_preferences),
 ):
     """Create a workflow from a todo item with automatic timezone detection."""
-    log.set(user={"id": user["user_id"]})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(operation="create"),
+    )
 
     try:
         todo_id = request.get("todo_id")
@@ -348,6 +403,14 @@ async def create_workflow_from_todo(
             workflow_request, user["user_id"], user_timezone=user_timezone
         )
 
+        log.set(
+            workflow=WorkflowContext(
+                id=str(workflow.id),
+                title=workflow.title,
+                steps_count=len(workflow.steps) if workflow.steps else None,
+            ),
+            outcome="success",
+        )
         return WorkflowResponse(
             workflow=workflow, message="Workflow created from todo successfully"
         )
@@ -368,7 +431,10 @@ async def publish_workflow(
     user: dict = Depends(get_current_user),
 ):
     """Publish a workflow to the community marketplace."""
-    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(operation="publish", id=workflow_id),
+    )
 
     try:
         # Check if workflow exists and belongs to user
@@ -394,6 +460,7 @@ async def publish_workflow(
             },
         )
 
+        log.set(outcome="success")
         log.info(f"Published workflow {workflow_id} by user {user['user_id']}")
 
         return PublishWorkflowResponse(
@@ -416,7 +483,10 @@ async def unpublish_workflow(
     user: dict = Depends(get_current_user),
 ):
     """Remove a workflow from the community marketplace."""
-    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(id=workflow_id),
+    )
 
     try:
         # Check if workflow exists and belongs to user
@@ -438,6 +508,7 @@ async def unpublish_workflow(
             },
         )
 
+        log.set(outcome="success")
         log.info(f"Unpublished workflow {workflow_id} by user {user['user_id']}")
 
         return {"message": "Workflow unpublished successfully"}
@@ -533,6 +604,10 @@ async def generate_workflow_prompt_endpoint(
     user: dict = Depends(get_current_user),
 ) -> GenerateWorkflowPromptResponse:
     """Generate or improve workflow instructions using AI."""
+    log.set(
+        workflow=WorkflowContext(operation="generate_prompt"),
+    )
+
     try:
         result = await WorkflowGenerationService.generate_workflow_prompt(
             title=request.title,
@@ -540,6 +615,7 @@ async def generate_workflow_prompt_endpoint(
             trigger_config=request.trigger_config,
             existing_prompt=request.existing_prompt,
         )
+        log.set(outcome="success")
         return GenerateWorkflowPromptResponse(**result)
     except Exception as e:
         log.error(f"Error generating workflow prompt: {e}")
@@ -556,7 +632,10 @@ async def get_workflow(
     request: Request, workflow_id: str, user: dict = Depends(get_current_user)
 ):
     """Get a specific workflow by ID."""
-    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(operation="get", id=workflow_id),
+    )
 
     try:
         workflow = await WorkflowService.get_workflow(workflow_id, user["user_id"])
@@ -566,6 +645,15 @@ async def get_workflow(
                 detail=f"Workflow {workflow_id} not found",
             )
 
+        log.set(
+            workflow=WorkflowContext(
+                title=workflow.title,
+                steps_count=len(workflow.steps)
+                if hasattr(workflow, "steps") and workflow.steps
+                else None,
+            ),
+            outcome="success",
+        )
         return WorkflowResponse(
             workflow=workflow, message="Workflow retrieved successfully"
         )
@@ -590,7 +678,7 @@ async def update_workflow(
     """Update an existing workflow with automatic timezone detection."""
     log.set(
         user={"id": user["user_id"]},
-        workflow={"id": workflow_id, "timezone": user_timezone},
+        workflow=WorkflowContext(operation="update", id=workflow_id),
     )
 
     try:
@@ -603,6 +691,7 @@ async def update_workflow(
                 detail=f"Workflow {workflow_id} not found",
             )
 
+        log.set(outcome="success")
         return WorkflowResponse(
             workflow=workflow, message="Workflow updated successfully"
         )
@@ -635,7 +724,10 @@ async def reset_workflow_to_default(
 
     Only works on workflows where is_system_workflow=True.
     """
-    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(id=workflow_id),
+    )
 
     try:
         success = await reset_system_workflow_to_default(
@@ -647,6 +739,7 @@ async def reset_workflow_to_default(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Workflow not found or is not a resettable system workflow.",
             )
+        log.set(outcome="success")
         return {"success": True, "message": "Workflow reset to default."}
 
     except HTTPException:
@@ -662,7 +755,10 @@ async def reset_workflow_to_default(
 @router.delete("/workflows/{workflow_id}")
 async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_user)):
     """Delete a workflow."""
-    log.set(user={"id": user["user_id"]}, workflow={"id": workflow_id})
+    log.set(
+        user={"id": user["user_id"]},
+        workflow=WorkflowContext(operation="delete", id=workflow_id),
+    )
 
     try:
         success = await WorkflowService.delete_workflow(workflow_id, user["user_id"])
@@ -672,6 +768,7 @@ async def delete_workflow(workflow_id: str, user: dict = Depends(get_current_use
                 detail=f"Workflow {workflow_id} not found",
             )
 
+        log.set(outcome="success")
         return {"message": "Workflow deleted successfully"}
 
     except HTTPException:

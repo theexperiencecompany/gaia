@@ -65,9 +65,11 @@ async def webhook_composio(request: Request):
     # Each handler decides how to find workflows and execute them:
     # - Default: find_workflows by trigger_id + WorkflowQueueService
     # - Gmail: queries by user_id instead of trigger_id
-    return await handler.process_event(
+    result = await handler.process_event(
         event_type=event_data.type,
         trigger_id=event_data.trigger_id,
         user_id=event_data.user_id,
         data=event_data.data,
     )
+    log.set(operation="webhook_received", outcome="success")
+    return result

@@ -56,6 +56,7 @@ async def create_link_token(
     else's platform user ID to hijack their account linking.
     """
     await require_bot_api_key(request)
+    log.set(operation="create_link_token", platform=body.platform)
 
     # Validate body matches the authenticated platform headers to prevent any
     # API key holder from generating tokens for arbitrary platform users.
@@ -91,6 +92,7 @@ async def create_link_token(
 
     auth_url = f"{settings.FRONTEND_URL}/auth/link-platform?platform={body.platform}&token={token}"
 
+    log.set(outcome="success")
     return CreateLinkTokenResponse(token=token, auth_url=auth_url)
 
 
@@ -107,11 +109,14 @@ async def get_link_token_info(token: str) -> dict:
     Only returns non-sensitive display fields (platform, username, display_name).
     Does NOT consume the token.
     """
+    log.set(operation="get_link_token_info")
     redis_client = redis_cache.client
     token_key = f"{PLATFORM_LINK_TOKEN_PREFIX}:{token}"
     data = await redis_client.hgetall(token_key)
     if not data:
         raise HTTPException(status_code=404, detail="Token not found or expired")
+    log.set(platform=data.get("platform"))
+    log.set(outcome="success")
     return {
         "platform": data.get("platform"),
         "username": data.get("username"),
@@ -127,6 +132,7 @@ async def get_link_token_info(token: str) -> dict:
 )
 async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingResponse:
     await require_bot_api_key(request)
+    log.set(operation="bot_chat_stream", platform=body.platform)
     await BotService.enforce_rate_limit(body.platform, body.platform_user_id)
 
     # Use middleware-resolved user if available
@@ -145,7 +151,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 
     user_id = user.get("user_id") or str(user.get("_id", ""))
     user["user_id"] = user_id  # Ensure user_id is always set in the dict
-    log.set(user={"id": user_id}, platform=body.platform)
+    log.set(user={"id": user_id}, platform=body.platform, outcome="success")
 
     conversation_id = await BotService.get_or_create_session(
         body.platform, body.platform_user_id, body.channel_id, user
@@ -263,6 +269,7 @@ async def bot_chat_stream(request: Request, body: BotChatRequest) -> StreamingRe
 )
 async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
     await require_bot_api_key(request)
+    log.set(operation="reset_session", platform=body.platform)
 
     user = getattr(request.state, "user", None)
     if not user or not getattr(request.state, "authenticated", False):
@@ -280,6 +287,7 @@ async def reset_session(request: Request, body: ResetSessionRequest) -> dict:
     new_conversation_id = await BotService.reset_session(
         body.platform, body.platform_user_id, body.channel_id, user
     )
+    log.set(outcome="success")
     return {"success": True, "conversation_id": new_conversation_id}
 
 
@@ -296,9 +304,11 @@ async def check_auth_status(
     platform_user_id: str,
 ) -> BotAuthStatusResponse:
     await require_bot_api_key(request)
+    log.set(operation="check_auth_status", platform=platform)
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
     user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
+    log.set(outcome="success")
     return BotAuthStatusResponse(
         authenticated=user is not None,
         platform=platform,
@@ -319,6 +329,7 @@ async def get_settings(
     platform_user_id: str,
 ) -> BotSettingsResponse:
     await require_bot_api_key(request)
+    log.set(operation="get_bot_settings", platform=platform)
     if not Platform.is_valid(platform):
         raise HTTPException(status_code=400, detail="Invalid platform")
     user = await PlatformLinkService.get_user_by_platform_id(platform, platform_user_id)
@@ -372,6 +383,7 @@ async def get_settings(
     if user.get("created_at"):
         account_created_at = user["created_at"].isoformat()
 
+    log.set(outcome="success")
     return BotSettingsResponse(
         authenticated=True,
         user_name=user_name,
@@ -392,6 +404,7 @@ async def get_settings(
 async def unlink_account(request: Request) -> dict:
     """Unlink a platform user from their GAIA account."""
     await require_bot_api_key(request)
+    log.set(operation="unlink_account")
 
     platform = request.headers.get("X-Bot-Platform")
     platform_user_id = request.headers.get("X-Bot-Platform-User-Id")
@@ -412,4 +425,5 @@ async def unlink_account(request: Request) -> dict:
     cache_key = f"bot_user:{platform}:{platform_user_id}"
     await redis_cache.client.delete(cache_key)
 
+    log.set(platform=platform, outcome="success")
     return {"success": True}

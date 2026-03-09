@@ -43,6 +43,7 @@ async def proxy_mcp_tool_call(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
+    log.set(user={"id": user_id}, operation="mcp_proxy_tool_call", tool_name=request.tool_name)
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -51,9 +52,11 @@ async def proxy_mcp_tool_call(
             tool_name=request.tool_name,
             arguments=request.arguments,
         )
+        is_error = result.get("is_error") or result.get("isError") or False
+        log.set(outcome="success", is_error=is_error)
         return MCPProxyToolCallResponse(
             content=result.get("content", []),
-            is_error=result.get("is_error") or result.get("isError") or False,
+            is_error=is_error,
         )
     except HTTPException:
         raise
@@ -83,6 +86,7 @@ async def proxy_mcp_resources_list(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
+    log.set(user={"id": user_id}, operation="mcp_proxy_resources_list")
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -90,6 +94,7 @@ async def proxy_mcp_resources_list(
             server_url=request.server_url,
             cursor=request.cursor,
         )
+        log.set(outcome="success", result_count=len(result.get("resources", [])))
         return MCPProxyResourcesListResponse(
             resources=result.get("resources", []),
             next_cursor=result.get("next_cursor") or result.get("nextCursor"),
@@ -122,6 +127,7 @@ async def proxy_mcp_resource_templates_list(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
+    log.set(user={"id": user_id}, operation="mcp_proxy_resource_templates_list")
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -129,6 +135,7 @@ async def proxy_mcp_resource_templates_list(
             server_url=request.server_url,
             cursor=request.cursor,
         )
+        log.set(outcome="success", result_count=len(result.get("resource_templates") or result.get("resourceTemplates") or []))
         return MCPProxyResourceTemplatesListResponse(
             resource_templates=result.get("resource_templates")
             or result.get("resourceTemplates")
@@ -163,6 +170,7 @@ async def proxy_mcp_resource_read(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
+    log.set(user={"id": user_id}, operation="mcp_proxy_resource_read", resource_uri=request.uri)
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -170,6 +178,7 @@ async def proxy_mcp_resource_read(
             server_url=request.server_url,
             uri=request.uri,
         )
+        log.set(outcome="success", result_count=len(result.get("contents", [])))
         return MCPProxyResourceReadResponse(
             contents=result.get("contents", []),
         )
@@ -201,6 +210,7 @@ async def proxy_mcp_prompts_list(
     user_id = user.get("user_id")
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
+    log.set(user={"id": user_id}, operation="mcp_proxy_prompts_list")
 
     try:
         mcp_client = await get_mcp_client(user_id=str(user_id))
@@ -208,6 +218,7 @@ async def proxy_mcp_prompts_list(
             server_url=request.server_url,
             cursor=request.cursor,
         )
+        log.set(outcome="success", result_count=len(result.get("prompts", [])))
         return MCPProxyPromptsListResponse(
             prompts=result.get("prompts", []),
             next_cursor=result.get("next_cursor") or result.get("nextCursor"),

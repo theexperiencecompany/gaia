@@ -76,6 +76,11 @@ async def get_notifications(
             ),
         )
 
+        log.set(
+            operation="list",
+            result_count=len(notifications),
+            outcome="success",
+        )
         return PaginatedNotificationsResponse(
             notifications=notifications,
             total=notification_count,
@@ -103,6 +108,7 @@ async def get_channel_preferences(
 
     try:
         prefs = await fetch_channel_preferences(user_id)
+        log.set(operation="get_channel_preferences", outcome="success")
         return ChannelPreferences(telegram=prefs["telegram"], discord=prefs["discord"])
     except Exception as e:
         log.error(f"Failed to get channel preferences: {e}")
@@ -141,6 +147,7 @@ async def update_channel_preferences(
             )
 
         prefs = await fetch_channel_preferences(user_id)
+        log.set(operation="update_channel_preferences", outcome="success")
         return ChannelPreferences(telegram=prefs["telegram"], discord=prefs["discord"])
     except Exception as e:
         log.error(f"Failed to update channel preferences: {e}")
@@ -174,6 +181,7 @@ async def execute_action(
         if not result.success:
             raise HTTPException(status_code=400, detail=result.message)
 
+        log.set(operation="execute_action", outcome="success")
         return NotificationResponse(
             success=True,
             message=result.message or "Action executed successfully",
@@ -208,6 +216,7 @@ async def mark_as_read(
         if not updated_notification:
             raise HTTPException(status_code=404, detail="Notification not found")
 
+        log.set(operation="mark_read", notification_id=notification_id, outcome="success")
         return NotificationResponse(
             success=True,
             message="Notification marked as read",
@@ -327,7 +336,7 @@ async def register_device_token(
         )
 
         if success:
-            log.info(f"Device token registered for user {user_id}")
+            log.set(operation="register_device", outcome="success")
             return DeviceTokenResponse(
                 success=True, message="Device registered successfully"
             )
@@ -367,7 +376,7 @@ async def unregister_device_token(
         success = await device_token_service.unregister_device_token(token, user_id)
 
         if success:
-            log.info(f"Device token unregistered for user {user_id}")
+            log.set(operation="unregister_device", outcome="success")
             return DeviceTokenResponse(
                 success=True, message="Device unregistered successfully"
             )
@@ -402,6 +411,7 @@ async def get_notification(
         if not notification:
             raise HTTPException(status_code=404, detail="Notification not found")
 
+        log.set(operation="get", notification_id=notification_id, outcome="success")
         return NotificationResponse(
             success=True,
             message="Notification retrieved successfully",

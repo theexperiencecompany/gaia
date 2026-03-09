@@ -17,7 +17,7 @@ from uuid import uuid4
 
 from app.agents.core.agent import call_agent
 from app.api.v1.middleware.tiered_rate_limiter import tiered_limiter
-from shared.py.wide_events import log
+from shared.py.wide_events import ChatContext, ModelContext, log, wide_task
 from app.config.model_pricing import calculate_token_cost
 from app.core.stream_manager import stream_manager
 from app.models.chat_models import (
@@ -56,6 +56,27 @@ async def run_chat_stream_background(
         user_time: User's local time
         conversation_id: Conversation ID (may be new or existing)
     """
+    async with wide_task(
+        "chat_stream",
+        conversation_id=conversation_id,
+        stream_id=stream_id,
+    ):
+        await _run_chat_stream(
+            stream_id=stream_id,
+            body=body,
+            user=user,
+            user_time=user_time,
+            conversation_id=conversation_id,
+        )
+
+
+async def _run_chat_stream(
+    stream_id: str,
+    body: MessageRequestWithHistory,
+    user: dict,
+    user_time: datetime,
+    conversation_id: str,
+) -> None:
     complete_message = ""
     tool_data: Dict[str, Any] = {"tool_data": []}
     tool_outputs: Dict[str, str] = {}  # Track tool_call_id -> output for merging
@@ -65,6 +86,7 @@ async def run_chat_stream_background(
     is_new_conversation = body.conversation_id is None
     usage_metadata: Dict[str, Any] = {}
     follow_up_actions: List[str] = []
+    is_cancelled = False
 
     try:
         description_task = None
@@ -87,11 +109,20 @@ async def run_chat_stream_background(
         user_id = user.get("user_id")
         log.set(
             user={"id": str(user_id)} if user_id else {},
-            chat={
-                "conversation_id": conversation_id,
-                "stream_id": stream_id,
-                "is_new_conversation": is_new_conversation,
-            },
+            chat=ChatContext(
+                conversation_id=conversation_id,
+                stream_id=stream_id,
+                is_new_conversation=is_new_conversation,
+                message_count=len(body.messages) if body.messages else None,
+                has_files=bool(body.fileIds or body.fileData),
+                file_count=len(body.fileIds or []) + len(body.fileData or []),
+                tool_category=body.toolCategory,
+                has_reply=bool(body.replyToMessage),
+                has_calendar_event=bool(body.selectedCalendarEvent),
+                selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
+            ),
+            user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+            selected_tool=body.selectedTool,
         )
         user_model_config = None
         if user_id:
@@ -102,10 +133,10 @@ async def run_chat_stream_background(
 
         if user_model_config:
             log.set(
-                model={
-                    "name": user_model_config.get("model_id"),
-                    "provider": user_model_config.get("provider"),
-                }
+                model=ModelContext(
+                    name=user_model_config.get("model_id"),
+                    provider=user_model_config.get("provider"),
+                )
             )
 
         usage_metadata_callback = UsageMetadataCallbackHandler()
@@ -138,6 +169,7 @@ async def run_chat_stream_background(
         ):
             # Check for cancellation
             if await stream_manager.is_cancelled(stream_id):
+                is_cancelled = True
                 log.info(f"Stream {stream_id} cancelled by user")
                 break
 
@@ -256,8 +288,14 @@ async def run_chat_stream_background(
             if isinstance(v, dict)
         )
         log.set(
-            model={"tokens_used": total_input + total_output},
+            model=ModelContext(
+                tokens_used=total_input + total_output,
+                input_tokens=total_input,
+                output_tokens=total_output,
+            ),
             response_length=len(complete_message),
+            follow_up_actions_count=len(follow_up_actions),
+            is_cancelled=is_cancelled,
         )
 
         # Await description task if still pending
@@ -288,6 +326,7 @@ async def run_chat_stream_background(
             stream_id, f"data: {json.dumps({'error': str(e)})}\n\n"
         )
         await stream_manager.set_error(stream_id, str(e))
+        raise
     finally:
         # On cancellation, complete_message may be empty because nostream: marker
         # never arrives. Recover from Redis progress which tracks accumulated text.
@@ -343,9 +382,12 @@ async def run_chat_stream_background(
         # Cleanup Redis
         await stream_manager.cleanup(stream_id)
 
+        tool_entries = tool_data.get("tool_data", [])
         log.set(
             response_length=len(complete_message),
-            tool_calls_count=len(tool_data.get("tool_data", [])),
+            tool_calls_count=len(tool_entries),
+            tool_types=list({e["tool_name"] for e in tool_entries if "tool_name" in e}),
+            todo_progress_sources=list(todo_progress_accumulated.keys()),
         )
         log.debug(f"Background stream {stream_id} completed and saved")
 
@@ -679,6 +721,12 @@ async def _process_token_usage_and_cost(user_id: str, metadata: Dict[str, Any]) 
                 user_plan=user_plan,
                 credits_used=total_credits,
             )
+
+        existing_model = log.get().get("model", {})
+        log.set(
+            model={**existing_model, "cost_usd": round(total_credits, 6)},
+            user_plan=str(user_plan),
+        )
 
     except Exception as e:
         log.debug(f"Token usage processing failed: {e}")

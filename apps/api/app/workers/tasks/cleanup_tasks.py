@@ -59,6 +59,8 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
             if not stuck_users:
                 return f"No stuck users found (checked users older than {max_age_minutes}m)"
 
+            log.set(stuck_users_detected=len(stuck_users))
+
             # Get ARQ pool to queue jobs
             pool = await RedisPoolManager.get_pool()
 
@@ -93,6 +95,7 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                     )
                     error_count += 1
 
+            log.set(jobs_queued=queued_count)
             return (
                 f"Cleanup completed: {queued_count} users re-queued, "
                 f"{error_count} errors (found {len(stuck_users)} stuck users)"

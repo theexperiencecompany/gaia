@@ -58,8 +58,11 @@ async def discover_skills_from_github(
 
     Example: GET /api/v1/skills/discover?repo=vercel-labs/agent-skills
     """
+    log.set(operation="discover_skills", skill_name=repo)
     try:
         skills = await discover_skills_from_repo(repo, branch)
+        log.set(result_count=len(skills))
+        log.set(outcome="success")
         return {
             "repo": repo,
             "branch": branch,
@@ -135,6 +138,8 @@ async def install_skill_with_auto_discover(
             skill_path=install_path,
             target_override=target,
         )
+        log.set(skill_id=installed.id if hasattr(installed, "id") else None)
+        log.set(outcome="success")
         return installed
     except HTTPException:
         raise
@@ -173,6 +178,8 @@ async def create_inline_skill_endpoint(
             instructions=request.instructions,
             target=request.target,
         )
+        log.set(skill_id=installed.id if hasattr(installed, "id") else None)
+        log.set(outcome="success")
         return installed
     except ValueError as e:
         raise HTTPException(
@@ -196,12 +203,15 @@ async def list_skills_endpoint(
     enabled_only: bool = Query(False, description="Only return enabled skills"),
 ):
     """List all installed skills for the current user."""
+    log.set(operation="list_skills")
     try:
         skills = await list_skills(
             user_id=user_id,
             target=target,
             enabled_only=enabled_only,
         )
+        log.set(result_count=len(skills))
+        log.set(outcome="success")
         return SkillListResponse(skills=skills, total=len(skills))
     except Exception as e:
         log.error(f"Error listing skills: {e}")
@@ -217,6 +227,7 @@ async def get_skill_endpoint(
     user_id: str = Depends(_get_user_id),
 ):
     """Get a specific installed skill by ID."""
+    log.set(operation="get_skill", skill_id=skill_id)
     try:
         skill = await get_skill(user_id, skill_id)
         if not skill:
@@ -224,6 +235,8 @@ async def get_skill_endpoint(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Skill {skill_id} not found",
             )
+        log.set(skill_name=skill.name if hasattr(skill, "name") else None)
+        log.set(outcome="success")
         return skill
     except HTTPException:
         raise
@@ -241,8 +254,10 @@ async def enable_skill_endpoint(
     user_id: str = Depends(_get_user_id),
 ):
     """Enable a disabled skill."""
+    log.set(operation="enable_skill", skill_id=skill_id)
     try:
         success = await enable_skill(user_id, skill_id)
+        log.set(outcome="success")
         return {"success": success, "skill_id": skill_id, "enabled": True}
     except Exception as e:
         log.error(f"Error enabling skill {skill_id}: {e}")
@@ -258,8 +273,10 @@ async def disable_skill_endpoint(
     user_id: str = Depends(_get_user_id),
 ):
     """Disable a skill without uninstalling it."""
+    log.set(operation="disable_skill", skill_id=skill_id)
     try:
         success = await disable_skill(user_id, skill_id)
+        log.set(outcome="success")
         return {"success": success, "skill_id": skill_id, "enabled": False}
     except Exception as e:
         log.error(f"Error disabling skill {skill_id}: {e}")
@@ -275,6 +292,7 @@ async def uninstall_skill_endpoint(
     user_id: str = Depends(_get_user_id),
 ):
     """Uninstall a skill and remove its files from VFS."""
+    log.set(operation="uninstall_skill", skill_id=skill_id)
     try:
         success = await uninstall_skill_full(user_id, skill_id)
         if not success:
@@ -282,6 +300,7 @@ async def uninstall_skill_endpoint(
                 status_code=http_status.HTTP_404_NOT_FOUND,
                 detail=f"Skill {skill_id} not found",
             )
+        log.set(outcome="success")
     except HTTPException:
         raise
     except Exception as e:

@@ -47,9 +47,11 @@ async def get_me(
             "id": user["user_id"],
             "email": user.get("email"),
             "plan": user.get("plan") or user.get("subscription_plan"),
-        }
+        },
+        operation="get_me",
     )
 
+    log.set(outcome="success")
     return {
         "message": "User retrieved successfully",
         **user,
@@ -73,7 +75,9 @@ async def update_me(
             "id": user_id,
             "email": user.get("email"),
             "plan": user.get("plan") or user.get("subscription_plan"),
-        }
+        },
+        operation="update_me",
+        has_picture_upload=bool(picture and picture.size and picture.size > 0),
     )
 
     if not user_id or not isinstance(user_id, str):
@@ -98,12 +102,14 @@ async def update_me(
             )
 
         picture_data = await picture.read()
+        log.set(picture_size_bytes=picture.size)
 
     # Update user profile
     updated_user = await update_user_profile(
         user_id=user_id, name=name, picture_data=picture_data
     )
 
+    log.set(outcome="success")
     return UserUpdateResponse(**updated_user)
 
 
@@ -117,12 +123,13 @@ async def update_user_name(
     """
     try:
         user_id = user.get("user_id")
-        log.set(user={"id": user_id}, name=name)
+        log.set(user={"id": user_id}, operation="update_user_name")
 
         if not user_id or not isinstance(user_id, str):
             raise HTTPException(status_code=400, detail="Invalid user ID")
 
         updated_user = await update_user_profile(user_id=user_id, name=name)
+        log.set(outcome="success")
         return UserUpdateResponse(**updated_user)
     except HTTPException as e:
         raise e
@@ -145,7 +152,7 @@ async def update_user_timezone(
     This updates the root-level timezone field for the user.
     """
     try:
-        log.set(user={"id": user["user_id"]}, timezone=user_timezone.strip())
+        log.set(user={"id": user["user_id"]}, operation="update_user_timezone", timezone=user_timezone.strip())
         try:
             pytz.timezone(user_timezone.strip())
         except pytz.UnknownTimeZoneError:
@@ -168,6 +175,7 @@ async def update_user_timezone(
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.set(outcome="success")
         return {
             "success": True,
             "message": "Timezone updated successfully",
@@ -188,6 +196,8 @@ async def get_public_holo_card(card_id: str):
     Returns basic profile info without sensitive data like workflows.
     """
     try:
+        log.set(operation="get_public_holo_card", card_id=card_id)
+
         if not ObjectId.is_valid(card_id):
             raise HTTPException(status_code=400, detail="Invalid card ID")
 
@@ -220,6 +230,7 @@ async def get_public_holo_card(card_id: str):
                 created_at.strftime("%b %d, %Y") if created_at else "Nov 21, 2024"
             )
 
+        log.set(outcome="success")
         return {
             "house": onboarding.get("house"),
             "personality_phrase": onboarding.get("personality_phrase"),
@@ -251,6 +262,7 @@ async def update_holo_card_colors(
         user_id = user.get("user_id")
         log.set(
             user={"id": user_id},
+            operation="update_holo_card_colors",
             overlay_color=overlay_color,
             overlay_opacity=overlay_opacity,
         )
@@ -278,6 +290,7 @@ async def update_holo_card_colors(
         if result.matched_count == 0:
             raise HTTPException(status_code=404, detail="User not found")
 
+        log.set(outcome="success")
         return {
             "success": True,
             "message": "Holo card colors updated successfully",
@@ -305,6 +318,8 @@ async def logout(
         raise HTTPException(status_code=401, detail="No active session")
 
     try:
+        log.set(operation="logout")
+
         session = workos.user_management.load_sealed_session(
             sealed_session=wos_session,
             cookie_password=settings.WORKOS_COOKIE_PASSWORD,
@@ -327,6 +342,7 @@ async def logout(
             samesite="lax",
         )
 
+        log.set(outcome="success")
         return response
 
     except Exception as e:

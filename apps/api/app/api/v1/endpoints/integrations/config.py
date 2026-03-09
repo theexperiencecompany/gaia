@@ -27,7 +27,10 @@ router = APIRouter()
 
 @router.get("/config", response_model=IntegrationsConfigResponse)
 async def get_integrations_config() -> IntegrationsConfigResponse:
-    return build_integrations_config()
+    log.set(operation="get_integrations_config")
+    result = build_integrations_config()
+    log.set(outcome="success")
+    return result
 
 
 @router.get("/status", response_model=IntegrationsStatusResponse)
@@ -35,8 +38,10 @@ async def get_integrations_status(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationsStatusResponse:
     try:
-        log.set(user={"id": user_id})
+        log.set(operation="get_integrations_status", user={"id": user_id})
         status_map = await get_all_integrations_status(user_id)
+        log.set(result_count=len(status_map))
+        log.set(outcome="success")
         return IntegrationsStatusResponse(
             integrations=[
                 IntegrationStatusItem(integration_id=iid, connected=connected)
@@ -60,8 +65,10 @@ async def disconnect_integration_endpoint(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
     try:
-        log.set(user={"id": user_id}, integration={"id": integration_id})
-        return await disconnect_integration(user_id, integration_id)
+        log.set(operation="disconnect_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
+        result = await disconnect_integration(user_id, integration_id)
+        log.set(outcome="success")
+        return result
     except ValueError as e:
         error_message = str(e)
         # Only return 404 if the integration itself doesn't exist
@@ -87,7 +94,7 @@ async def connect_integration_endpoint(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
-    log.set(user={"id": user_id}, integration={"id": integration_id})
+    log.set(operation="connect_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:
         raise HTTPException(
@@ -117,6 +124,7 @@ async def connect_integration_endpoint(
         )
 
         log.set(
+            integration_name=resolved.name,
             integration={
                 "id": integration_id,
                 "managed_by": resolved.managed_by,
@@ -125,7 +133,7 @@ async def connect_integration_endpoint(
             }
         )
         if resolved.managed_by == "mcp":
-            return await connect_mcp_integration(
+            result = await connect_mcp_integration(
                 user_id=str(user_id),
                 integration_id=integration_id,
                 integration_name=resolved.name,
@@ -137,6 +145,8 @@ async def connect_integration_endpoint(
                 is_platform=resolved.source == "platform",
                 bearer_token=request.bearer_token,
             )
+            log.set(outcome="success")
+            return result
         elif resolved.managed_by == "composio":
             provider = (
                 resolved.platform_integration.provider
@@ -145,13 +155,15 @@ async def connect_integration_endpoint(
             )
             if not provider:
                 raise HTTPException(status_code=400, detail="Provider not configured")
-            return await connect_composio_integration(
+            result = await connect_composio_integration(
                 user_id=str(user_id),
                 integration_id=integration_id,
                 integration_name=resolved.name,
                 provider=provider,
                 redirect_path=request.redirect_path,
             )
+            log.set(outcome="success")
+            return result
         elif resolved.managed_by == "self":
             provider = (
                 resolved.platform_integration.provider
@@ -160,7 +172,7 @@ async def connect_integration_endpoint(
             )
             if not provider:
                 raise HTTPException(status_code=400, detail="Provider not configured")
-            return await connect_self_integration(
+            result = await connect_self_integration(
                 user_id=str(user_id),
                 user_email=user.get("email", ""),
                 integration_id=integration_id,
@@ -168,6 +180,8 @@ async def connect_integration_endpoint(
                 provider=provider,
                 redirect_path=request.redirect_path,
             )
+            log.set(outcome="success")
+            return result
         else:
             return ConnectIntegrationResponse(
                 status="error",

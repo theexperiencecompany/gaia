@@ -174,7 +174,7 @@ async def prepare_subagent_execution(
 
     subagent_cfg = integration.subagent_config
     agent_name = subagent_cfg.agent_name
-    log.set(subagent={"name": agent_name, "provider": integration.provider})
+    log.set(subagent={"name": agent_name, "provider": integration.provider, "task_length": len(task)})
 
     # Load subagent graph
     subagent_graph = await providers.aget(agent_name)
@@ -318,6 +318,7 @@ async def execute_subagent_stream(
             "name": ctx.agent_name,
             "provider": ctx.integration_id,
             "response_length": len(final_message),
+            "messages_count": len(ctx.initial_state.get("messages", [])),
         }
     )
     return final_message

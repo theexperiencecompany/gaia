@@ -484,6 +484,13 @@ def get_retrieve_tools_function(
                         validated_tool_names.append(tool_name)
                 elif tool_name in available_tool_names:
                     validated_tool_names.append(tool_name)
+            log.set(
+                tool_retrieval=dict(
+                    mode="binding",
+                    tools_requested=len(exact_tool_names),
+                    tools_bound=len(validated_tool_names),
+                )
+            )
             return RetrieveToolsResult(
                 tools_to_bind=validated_tool_names,
                 response=validated_tool_names,
@@ -526,6 +533,14 @@ def get_retrieve_tools_function(
         else:
             final_tools = discovered_tools
 
+        log.set(
+            tool_retrieval=dict(
+                mode="discovery",
+                query=query,
+                namespaces_searched=list(user_namespaces),
+                tools_discovered=len(final_tools),
+            )
+        )
         return RetrieveToolsResult(
             tools_to_bind=[],
             response=final_tools,

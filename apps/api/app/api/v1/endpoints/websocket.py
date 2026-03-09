@@ -22,6 +22,7 @@ async def websocket_endpoint(websocket: WebSocket):
     log.set(user={"id": user_id})
 
     if not user_id or not isinstance(user_id, str):
+        log.set(disconnect_reason="auth_failure")
         log.warning("WebSocket connection attempted with invalid user_id")
         return
 
@@ -29,9 +30,13 @@ async def websocket_endpoint(websocket: WebSocket):
     # If client used subprotocol auth, echo back "Bearer" to complete handshake
     protocol_header = websocket.headers.get("sec-websocket-protocol", "")
     if protocol_header.startswith("Bearer, "):
+        auth_token_type = "subprotocol"
         await websocket.accept(subprotocol="Bearer")
     else:
+        auth_token_type = "cookie"
         await websocket.accept()
+
+    log.set(auth_token_type=auth_token_type)
 
     # Add the connection to our manager
     connection_manager.add_connection(user_id=user_id, websocket=websocket)
@@ -43,9 +48,11 @@ async def websocket_endpoint(websocket: WebSocket):
             await websocket.receive_text()
     except WebSocketDisconnect:
         # Handle disconnection - WebSocket is already closed, so just clean up
+        log.set(disconnect_reason="client_close")
         connection_manager.remove_connection(user_id=user_id, websocket=websocket)
     except Exception as e:
         # Handle any other exceptions
+        log.set(disconnect_reason="server_error")
         log.error(f"WebSocket error for user {user_id}: {str(e)}")
         connection_manager.remove_connection(user_id=user_id, websocket=websocket)
         try:

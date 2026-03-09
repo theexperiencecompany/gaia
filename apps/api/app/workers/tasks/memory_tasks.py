@@ -28,6 +28,8 @@ async def store_memories_batch(
         Processing result message
     """
     async with wide_task("store_memories_batch", user_id=user_id):
+        log.set(email_batch_size=len(emails_batch))
+
         if not emails_batch:
             return f"No emails to process for user {user_id}"
 
@@ -117,6 +119,7 @@ Example: "User works as Software Engineer at Acme Corp", "User's email is john@e
         )
 
         if result:
+            log.set(emails_stored=len(messages), emails_filtered=0)
             log.info(
                 f"✓ Batch completed for user {user_id}: stored {len(messages)} emails successfully"
             )
@@ -124,6 +127,7 @@ Example: "User works as Software Engineer at Acme Corp", "User's email is john@e
         else:
             # Note: result=False means Mem0 filtered all emails (returned 0 memories)
             # This is NOT an error - it's a valid outcome
+            log.set(emails_stored=0, emails_filtered=len(messages))
             log.warning(
                 f"Mem0 filtered all {len(messages)} emails for user {user_id} (deemed non-memorable)"
             )

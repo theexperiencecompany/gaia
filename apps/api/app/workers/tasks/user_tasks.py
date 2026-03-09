@@ -42,7 +42,10 @@ async def check_inactive_users(ctx: dict) -> str:
             }
         ).to_list(length=None)
 
+        log.set(inactive_users_detected=len(inactive_users))
+
         email_count = 0
+        email_failures = 0
         for user in inactive_users:
             try:
                 sent = await send_inactive_user_email(
@@ -56,8 +59,10 @@ async def check_inactive_users(ctx: dict) -> str:
                     log.info(f"Sent inactive email to {user['email']}")
 
             except Exception as e:
+                email_failures += 1
                 log.error(f"Failed to send email to {user['email']}: {str(e)}")
 
+        log.set(emails_sent=email_count, email_failures=email_failures)
         message = (
             f"Processed {len(inactive_users)} inactive users, sent {email_count} emails"
         )

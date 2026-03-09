@@ -62,12 +62,19 @@ class ChatContext(TypedDict, total=False):
     is_new_conversation: bool
     message_count: int
     has_files: bool
+    file_count: int
+    tool_category: str
+    has_reply: bool
+    has_calendar_event: bool
+    selected_workflow_id: str
 
 
 class ModelContext(TypedDict, total=False):
     name: str
     provider: str
     tokens_used: int
+    input_tokens: int
+    output_tokens: int
     cost_usd: float
 
 

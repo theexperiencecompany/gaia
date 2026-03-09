@@ -1249,6 +1249,12 @@ class MCPClient:
             if tools:
                 all_tools[integration_id] = tools
 
+        log.set(
+            mcp=dict(
+                servers_connected=len(all_tools),
+                tools_loaded=sum(len(t) for t in all_tools.values()),
+            )
+        )
         return all_tools
 
     async def ensure_connected(self, integration_id: str) -> list[BaseTool]:

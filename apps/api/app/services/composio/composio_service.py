@@ -126,12 +126,12 @@ class ComposioService:
 
         result = [tool for tool in tools if tool.name not in exclude_tools]
         await self._store_tool_metadata(tool_kit, result)
+        existing = log.get().get("composio", {})
         log.set(
             composio={
-                "toolkit": tool_kit,
-                "action": "get_tools",
-                "tool_count": len(result),
-                "success": True,
+                **existing,
+                "toolkits": existing.get("toolkits", []) + [tool_kit],
+                "tools_loaded": existing.get("tools_loaded", 0) + len(result),
             }
         )
         return result
@@ -197,13 +197,11 @@ class ComposioService:
 
         tools_time = time.time() - start_time
         log.info(f"Tools loaded: {len(result)} tools in {tools_time:.3f}s")
+        existing = log.get().get("composio", {})
         log.set(
             composio={
-                "action": "get_tools_by_name",
-                "requested_count": len(tool_names),
-                "loaded_count": len(result),
-                "latency_ms": int(tools_time * 1000),
-                "success": True,
+                **existing,
+                "tools_loaded": existing.get("tools_loaded", 0) + len(result),
             }
         )
         return result

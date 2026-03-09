@@ -148,6 +148,7 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
             integ.short_name and integ.short_name.lower() == clean_id
         ):
             if integ.subagent_config and integ.subagent_config.has_subagent:
+                log.set(integration_type="platform")
                 return {
                     "icon_url": None,  # Platform integrations use category-based icons
                     "integration_id": integ.id,
@@ -188,6 +189,7 @@ async def get_handoff_metadata(subagent_id: str) -> dict:
             "integration_name": custom.get("name"),
         }
 
+        log.set(integration_type="custom")
         await set_cache(cache_key, metadata, ttl=CUSTOM_INT_METADATA_TTL)
         return metadata
 
@@ -309,6 +311,10 @@ def build_agent_config(
     )
     max_tokens = (
         user_model_config.max_tokens if user_model_config else DEFAULT_MAX_TOKENS
+    )
+
+    log.set(
+        model_config_source="user_selected" if user_model_config else "default"
     )
 
     # Cherry-pick specific keys from base_configurable if provided

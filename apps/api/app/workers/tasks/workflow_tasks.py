@@ -17,7 +17,7 @@ from app.api.v1.middleware.tiered_rate_limiter import (
     tiered_rate_limit,
 )
 from app.core.websocket_manager import get_websocket_manager
-from shared.py.wide_events import log, wide_task
+from shared.py.wide_events import WorkflowContext, log, wide_task
 from app.db.mongodb.collections import todos_collection
 from app.models.chat_models import MessageModel
 from app.models.message_models import (
@@ -118,6 +118,13 @@ async def process_workflow_generation_task(
                     log.info(
                         f"Successfully generated and linked standalone workflow {workflow.id} for todo {todo_id} with {len(workflow.steps)} steps"
                     )
+                    log.set(
+                        workflow=WorkflowContext(
+                            id=workflow.id,
+                            steps_count=len(workflow.steps),
+                            trigger_type=TriggerType.MANUAL.value,
+                        )
+                    )
 
                     await TodoService._invalidate_cache(
                         user_id, None, todo_id, "update"
@@ -133,8 +140,10 @@ async def process_workflow_generation_task(
                                 "workflow": workflow.model_dump(mode="json"),
                             },
                         )
+                        log.set(websocket_broadcast_success=True)
                         log.info(f"WebSocket event sent for workflow {workflow.id}")
                     except Exception as ws_error:
+                        log.set(websocket_broadcast_success=False)
                         log.warning(f"Failed to send WebSocket event: {ws_error}")
 
                     # Clear the generating flag
@@ -173,8 +182,10 @@ async def process_workflow_generation_task(
                         "error": str(e),
                     },
                 )
+                log.set(websocket_broadcast_success=True)
                 log.info(f"WebSocket failure event sent for todo {todo_id}")
             except Exception as ws_error:
+                log.set(websocket_broadcast_success=False)
                 log.warning(f"Failed to send failure WebSocket event: {ws_error}")
 
             raise
@@ -210,6 +221,13 @@ async def execute_workflow_by_id(
             # Determine trigger type from context
             trigger_type = (
                 context.get("trigger_type", "manual") if context else "manual"
+            )
+            log.set(
+                workflow=WorkflowContext(
+                    id=workflow_id,
+                    trigger_type=trigger_type,
+                    steps_count=len(workflow.steps),
+                )
             )
 
             # Create execution record at start
@@ -421,6 +439,7 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             user_id=user_id,
             workflow_title=workflow.title,
         )
+        log.set(conversation_context_found=bool(conversation and conversation.get("conversation_id")))
 
         # Convert workflow steps to the format expected by SelectedWorkflowData
         workflow_steps = []
@@ -579,6 +598,14 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
         # Fetch the updated workflow to get the generated steps
         updated_workflow = await WorkflowService.get_workflow(workflow_id, user_id)
 
+        if updated_workflow:
+            log.set(
+                workflow=WorkflowContext(
+                    id=workflow_id,
+                    steps_count=len(updated_workflow.steps),
+                )
+            )
+
         # If this is a todo workflow, send WebSocket event
         if (
             updated_workflow
@@ -595,8 +622,10 @@ async def generate_workflow_steps(ctx: dict, workflow_id: str, user_id: str) -> 
                         "workflow": updated_workflow.model_dump(mode="json"),
                     },
                 )
+                log.set(websocket_broadcast_success=True)
                 log.info(f"WebSocket event sent for todo workflow {workflow_id}")
             except Exception as ws_error:
+                log.set(websocket_broadcast_success=False)
                 log.warning(f"Failed to send WebSocket event: {ws_error}")
 
         result = f"Successfully generated steps for workflow {workflow_id}"

@@ -17,7 +17,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
-from shared.py.wide_events import log
+from shared.py.wide_events import ChatContext, log
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
@@ -58,23 +58,20 @@ async def chat_stream_endpoint(
         )
     log.set(
         user={"id": user_id},
-        chat={
-            "conversation_id": conversation_id,
-            "stream_id": stream_id,
-            "is_new_conversation": body.conversation_id is None,
-            "message_count": len(body.messages) if body.messages else 0,
-            "user_message_length": len(body.messages[-1]["content"])
-            if body.messages
-            else 0,
-            "selected_tool": body.selectedTool
-            if hasattr(body, "selectedTool")
-            else None,
-            "selected_workflow": body.selectedWorkflow
-            if hasattr(body, "selectedWorkflow")
-            else None,
-            "has_files": bool(getattr(body, "files", None)),
-            "file_count": len(getattr(body, "files", None) or []),
-        },
+        chat=ChatContext(
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            is_new_conversation=body.conversation_id is None,
+            message_count=len(body.messages) if body.messages else 0,
+            has_files=bool(body.fileIds or body.fileData),
+            file_count=len(body.fileIds or []) + len(body.fileData or []),
+            tool_category=body.toolCategory,
+            has_reply=bool(body.replyToMessage),
+            has_calendar_event=bool(body.selectedCalendarEvent),
+            selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
+        ),
+        user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+        selected_tool=body.selectedTool,
     )
 
     # Initialize stream tracking in Redis

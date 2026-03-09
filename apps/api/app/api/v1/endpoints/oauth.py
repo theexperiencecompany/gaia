@@ -113,6 +113,7 @@ async def login_workos_mobile(redirect_uri: Optional[str] = None):
     mobile_callback = redirect_uri or "gaiamobile://auth/callback"
     await _store_mobile_redirect(state, mobile_callback)
 
+    log.set(oauth_flow_type="mobile")
     log.info(
         f"Mobile OAuth started with redirect_uri: {mobile_callback}, state: {state[:8]}..."
     )
@@ -145,6 +146,7 @@ async def workos_mobile_callback(
             f"No stored redirect URI for state, using default: {mobile_redirect}"
         )
 
+    log.set(oauth_flow_type="mobile")
     log.info(f"Mobile OAuth callback, redirecting to: {mobile_redirect}")
 
     try:
@@ -166,6 +168,13 @@ async def workos_mobile_callback(
         last = auth_response.user.last_name or ""
         name = f"{first} {last}".strip()
         picture_url = auth_response.user.profile_picture_url
+
+        fields_extracted = [
+            field
+            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            if value
+        ]
+        log.set(fields_extracted=fields_extracted)
 
         # Store user info in DB
         await store_user_info(name, email, picture_url)
@@ -215,6 +224,7 @@ async def workos_desktop_callback(
     Returns:
         RedirectResponse to gaia:// deep link with token
     """
+    log.set(oauth_flow_type="desktop")
     try:
         # Validate code parameter
         if not code:
@@ -235,6 +245,13 @@ async def workos_desktop_callback(
         last = auth_response.user.last_name or ""
         name = f"{first} {last}".strip()
         picture_url = auth_response.user.profile_picture_url
+
+        fields_extracted = [
+            field
+            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            if value
+        ]
+        log.set(fields_extracted=fields_extracted)
 
         # Store user info in our database
         await store_user_info(name, email, picture_url)
@@ -277,6 +294,7 @@ async def workos_callback(
         if return_url:
             await redis_cache.client.delete(key)
 
+    log.set(oauth_flow_type="web")
     try:
         # Validate code parameter
         if not code:
@@ -299,6 +317,13 @@ async def workos_callback(
         last = auth_response.user.last_name or ""
         name = f"{first} {last}".strip()
         picture_url = auth_response.user.profile_picture_url
+
+        fields_extracted = [
+            field
+            for field, value in [("email", email), ("name", name), ("picture", picture_url)]
+            if value
+        ]
+        log.set(fields_extracted=fields_extracted)
 
         # Store user info in our database
         await store_user_info(name, email, picture_url)

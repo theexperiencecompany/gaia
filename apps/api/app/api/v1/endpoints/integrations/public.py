@@ -35,6 +35,7 @@ async def get_public_integration(
 ) -> PublicIntegrationDetailResponse:
     """Get public integration details by slug."""
     try:
+        log.set(operation="get_public_integration", integration_id=identifier)
         slug_parts = parse_integration_slug(identifier)
         short_id = slug_parts.get("shortid")
 
@@ -52,6 +53,8 @@ async def get_public_integration(
             raise HTTPException(status_code=404, detail="Integration not found")
 
         response_data = format_public_integration_response(docs[0])
+        log.set(integration_name=response_data.get("name"))
+        log.set(outcome="success")
         return PublicIntegrationDetailResponse(**response_data)
 
     except HTTPException:
@@ -69,7 +72,7 @@ async def add_public_integration(
 ) -> AddIntegrationResponse:
     """Add a public integration to user's workspace and trigger connection."""
     try:
-        log.set(user={"id": user_id}, integration={"id": integration_id})
+        log.set(operation="add_public_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
         original_doc = await integrations_collection.find_one(
             {"integration_id": integration_id, "is_public": True}
         )
@@ -133,6 +136,8 @@ async def add_public_integration(
             bearer_token=request.bearer_token,
         )
 
+        log.set(integration_name=integration_name)
+        log.set(outcome="success")
         return AddIntegrationResponse(
             integration_id=integration_id,
             name=integration_name,
@@ -153,11 +158,16 @@ async def add_public_integration(
 async def search_integrations(q: str) -> SearchIntegrationsResponse:
     """Search public integrations using semantic search."""
     try:
+        log.set(operation="search_integrations")
         if not q or not q.strip():
+            log.set(result_count=0)
+            log.set(outcome="success")
             return SearchIntegrationsResponse(integrations=[], query=q)
 
         results = await search_public_integrations(query=q.strip(), limit=20)
         if not results:
+            log.set(result_count=0)
+            log.set(outcome="success")
             return SearchIntegrationsResponse(integrations=[], query=q)
 
         relevance_map = {r["integration_id"]: r["relevance_score"] for r in results}
@@ -195,6 +205,8 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
                 )
             )
 
+        log.set(result_count=len(formatted))
+        log.set(outcome="success")
         return SearchIntegrationsResponse(integrations=formatted, query=q)
 
     except Exception as e:

@@ -1,6 +1,7 @@
 import json
 from typing import Any, List, Optional
 
+from shared.py.wide_events import log
 from app.agents.prompts.mail_prompts import EMAIL_COMPOSER
 from app.api.v1.dependencies.google_scope_dependencies import require_integration
 from app.decorators import tiered_rate_limit
@@ -73,6 +74,11 @@ async def list_labels(
         result = await list_labels_service(user_id=str(user_id))
 
         if result.get("success"):
+            log.set(
+                operation="get_labels",
+                result_count=result.get("count", 0),
+                outcome="success",
+            )
             return {
                 "labels": result.get("labels", []),
                 "count": result.get("count", 0),
@@ -107,6 +113,12 @@ async def list_messages(
             page_token=pageToken,
         )
 
+        log.set(
+            operation="list_emails",
+            result_count=len(search_results.get("messages", [])),
+            folder="inbox",
+            outcome="success",
+        )
         return {
             "messages": search_results.get("messages", []),
             "nextPageToken": search_results.get("nextPageToken"),
@@ -136,6 +148,11 @@ async def get_email_by_id(
         )
 
         if result.get("success"):
+            log.set(
+                operation="get_email",
+                email_id=message_id,
+                outcome="success",
+            )
             return {
                 "message": result.get("message"),
                 "status": "Message retrieved successfully",
@@ -229,6 +246,13 @@ async def search_emails(
             page_token=page_token,
         )
 
+        log.set(
+            operation="search_emails",
+            result_count=len(search_results.get("messages", [])),
+            has_attachment=has_attachment,
+            label=label,
+            outcome="success",
+        )
         return search_results
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -328,6 +352,13 @@ async def send_email_route(
             thread_id=thread_id,
         )
 
+        log.set(
+            operation="send_email",
+            thread_id=thread_id,
+            has_attachment=bool(attachments),
+            attachments_count=len(attachments) if attachments else 0,
+            outcome="success",
+        )
         return {
             "message_id": sent_message.get("id"),
             "status": "Email sent successfully",
@@ -370,6 +401,11 @@ async def send_email_json(
             attachments=None,
         )
 
+        log.set(
+            operation="send_email",
+            has_attachment=False,
+            outcome="success",
+        )
         return {
             "message_id": sent_message.get("id"),
             "status": "Email sent successfully",
@@ -434,6 +470,11 @@ async def mark_as_read(
             user_id=str(user_id), message_ids=request.message_ids
         )
 
+        log.set(
+            operation="mark_read",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "marked_as_read": [msg["id"] for msg in modified_messages],
@@ -469,6 +510,11 @@ async def mark_as_unread(
             user_id=str(user_id), message_ids=request.message_ids
         )
 
+        log.set(
+            operation="mark_unread",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "marked_as_unread": [msg["id"] for msg in modified_messages],
@@ -504,6 +550,11 @@ async def star_emails(
             user_id=str(user_id), message_ids=request.message_ids
         )
 
+        log.set(
+            operation="star_emails",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "starred": [msg["id"] for msg in modified_messages],
@@ -539,6 +590,11 @@ async def unstar_emails(
             user_id=str(user_id), message_ids=request.message_ids
         )
 
+        log.set(
+            operation="unstar_emails",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "unstarred": [msg["id"] for msg in modified_messages],
@@ -574,6 +630,11 @@ async def trash_emails(
             user_id=str(user_id), message_ids=request.message_ids
         )
 
+        log.set(
+            operation="delete_email",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "trashed": [msg["id"] for msg in modified_messages],
@@ -609,6 +670,11 @@ async def untrash_emails(
             user_id=str(user_id), message_ids=request.message_ids
         )
 
+        log.set(
+            operation="untrash_emails",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "restored": [msg["id"] for msg in modified_messages],
@@ -644,6 +710,11 @@ async def archive_emails(
             user_id=str(user_id), message_ids=request.message_ids
         )
 
+        log.set(
+            operation="archive_email",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "archived": [msg["id"] for msg in modified_messages],
@@ -679,6 +750,12 @@ async def move_emails_to_inbox(
             user_id=str(user_id), message_ids=request.message_ids
         )
 
+        log.set(
+            operation="move_email",
+            folder="inbox",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "moved_to_inbox": [msg["id"] for msg in modified_messages],
@@ -710,6 +787,12 @@ async def get_thread(
         # Get thread using the new async function
         thread = await fetch_thread(user_id=str(user_id), thread_id=thread_id)
 
+        log.set(
+            operation="get_thread",
+            thread_id=thread_id,
+            result_count=len(thread.get("messages", [])),
+            outcome="success",
+        )
         return {
             "thread_id": thread_id,
             "messages_count": len(thread.get("messages", [])),
@@ -750,6 +833,11 @@ async def create_label_route(
             label_list_visibility=request.label_list_visibility or "labelShow",
             message_list_visibility=request.message_list_visibility or "show",
         )
+        log.set(
+            operation="create_label",
+            label=request.name,
+            outcome="success",
+        )
         return new_label
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -787,6 +875,11 @@ async def update_label_route(
             label_list_visibility=request.label_list_visibility,
             message_list_visibility=request.message_list_visibility,
         )
+        log.set(
+            operation="update_label",
+            label=label_id,
+            outcome="success",
+        )
         return updated_label
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -812,6 +905,7 @@ async def delete_label_route(
         # Delete label using the new async function
         success = await delete_label(user_id=str(user_id), label_id=label_id)
         if success:
+            log.set(operation="delete_label", label=label_id, outcome="success")
             return {"status": "success", "message": "Label deleted successfully"}
         else:
             return {"status": "error", "message": "Failed to delete label"}
@@ -845,6 +939,11 @@ async def apply_labels_route(
             label_ids=request.label_ids,
         )
 
+        log.set(
+            operation="apply_label",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "modified_messages": [msg["id"] for msg in modified_messages],
@@ -881,6 +980,11 @@ async def remove_labels_route(
             label_ids=request.label_ids,
         )
 
+        log.set(
+            operation="remove_label",
+            result_count=len(modified_messages),
+            outcome="success",
+        )
         return {
             "success": True,
             "modified_messages": [msg["id"] for msg in modified_messages],
@@ -926,6 +1030,11 @@ async def create_draft_route(
             bcc_list=request.bcc,
         )
 
+        log.set(
+            operation="create_draft",
+            email_id=draft.get("message", {}).get("id"),
+            outcome="success",
+        )
         return {
             "draft_id": draft.get("id"),
             "message_id": draft.get("message", {}).get("id"),
@@ -961,6 +1070,11 @@ async def list_drafts_route(
             page_token=page_token,
         )
 
+        log.set(
+            operation="list_drafts",
+            result_count=len(drafts.get("drafts", [])) if isinstance(drafts, dict) else 0,
+            outcome="success",
+        )
         return drafts
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -985,6 +1099,11 @@ async def get_draft_route(
         # Get draft using the new async function
         draft = await get_draft(user_id=str(user_id), draft_id=draft_id)
 
+        log.set(
+            operation="get_draft",
+            email_id=draft_id,
+            outcome="success",
+        )
         return draft
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1028,6 +1147,11 @@ async def update_draft_route(
             bcc_list=request.bcc,
         )
 
+        log.set(
+            operation="update_draft",
+            email_id=draft_id,
+            outcome="success",
+        )
         return {
             "draft_id": updated_draft.get("id"),
             "message_id": updated_draft.get("message", {}).get("id"),
@@ -1058,6 +1182,7 @@ async def delete_draft_route(
         success = await delete_draft(user_id=str(user_id), draft_id=draft_id)
 
         if success:
+            log.set(operation="delete_draft", email_id=draft_id, outcome="success")
             return {"status": "success", "message": "Draft deleted successfully"}
         else:
             return {"status": "error", "message": "Failed to delete draft"}
@@ -1086,6 +1211,12 @@ async def send_draft_route(
         sent_message = await send_draft(user_id=str(user_id), draft_id=draft_id)
 
         if sent_message.get("successful", True):
+            log.set(
+                operation="send_draft",
+                email_id=draft_id,
+                thread_id=sent_message.get("threadId", ""),
+                outcome="success",
+            )
             return {
                 "message_id": sent_message.get("id", ""),
                 "thread_id": sent_message.get("threadId", ""),
@@ -1121,7 +1252,13 @@ async def get_email_importance_summaries(
             raise HTTPException(status_code=401, detail="User ID not found")
 
         # Use service function to get email summaries
-        return await get_importance_summaries_service(user_id, limit, important_only)
+        result = await get_importance_summaries_service(user_id, limit, important_only)
+        log.set(
+            operation="get_importance_summaries",
+            important_only=important_only,
+            outcome="success",
+        )
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error retrieving email summaries: {str(e)}"
@@ -1153,6 +1290,11 @@ async def get_single_email_importance_summary(
         if result is None:
             raise HTTPException(status_code=404, detail="Email summary not found")
 
+        log.set(
+            operation="get_importance_summary",
+            email_id=message_id,
+            outcome="success",
+        )
         return result
     except HTTPException:
         raise
@@ -1182,7 +1324,13 @@ async def get_bulk_email_importance_summaries(
             raise HTTPException(status_code=401, detail="User ID not found")
 
         # Use service function to get bulk email summaries
-        return await get_bulk_importance_summaries_service(user_id, request.message_ids)
+        result = await get_bulk_importance_summaries_service(user_id, request.message_ids)
+        log.set(
+            operation="get_bulk_importance_summaries",
+            result_count=len(request.message_ids),
+            outcome="success",
+        )
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error retrieving bulk email summaries: {str(e)}"
