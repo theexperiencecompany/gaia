@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Object-based personal knowledge management studio for your mind",
   description:
     "Capacities is a personal knowledge management tool built around an object-oriented philosophy — every note is a typed object (person, book, project, daily note) that can be linked, queried, and organized relationally. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, connecting your entire work context in a graph-based memory rather than a manually-curated knowledge studio.",
-  metaTitle: "GAIA vs Capacities: AI Productivity OS vs Object-Based PKM",
+  metaTitle: "Capacities Alternative with AI Email & Automation | GAIA vs Capacities",
   metaDescription:
     "Compare GAIA and Capacities. Capacities builds a rich personal knowledge studio, but GAIA manages email, calendar, tasks, and workflows proactively with AI-driven graph memory.",
   keywords: [

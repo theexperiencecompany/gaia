@@ -30,6 +30,8 @@ export interface GlossaryTerm {
   howGaiaUsesIt: string;
   relatedTerms: string[];
   faqs: Array<{ question: string; answer: string }>;
+  /** When set, this page's canonical points to /learn/{canonicalSlug} — concentrates PageRank on the primary entry. */
+  canonicalSlug?: string;
 }
 
 export const glossaryTerms: Record<string, GlossaryTerm> = {
@@ -309,6 +311,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
 
   "vector-embeddings": {
     slug: "vector-embeddings",
+    canonicalSlug: "embeddings",
     term: "Vector Embeddings",
     metaTitle: "What Are Vector Embeddings? AI Search and Similarity",
     metaDescription:
@@ -1428,6 +1431,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
 
   "large-language-model": {
     slug: "large-language-model",
+    canonicalSlug: "llm",
     term: "Large Language Model (LLM)",
     metaTitle: "What Is a Large Language Model (LLM)? Definition & Examples",
     metaDescription:
@@ -2645,6 +2649,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
 
   "mcp-model-context-protocol": {
     slug: "mcp-model-context-protocol",
+    canonicalSlug: "model-context-protocol",
     term: "MCP (Model Context Protocol)",
     metaTitle: "What Is MCP? Model Context Protocol for AI Integrations",
     metaDescription:
@@ -3508,6 +3513,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
 
   "embedding": {
     slug: "embedding",
+    canonicalSlug: "embeddings",
     term: "Embedding",
     metaTitle: "What Is an Embedding in AI? Converting Text to Vectors",
     metaDescription: "An embedding is a numerical vector representation of text that captures semantic meaning. Learn how GAIA uses embeddings for semantic memory and search.",

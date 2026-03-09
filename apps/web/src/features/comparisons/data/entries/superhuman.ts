@@ -19,6 +19,11 @@ export const entry: ComparisonData = {
     "proactive AI email assistant",
     "email automation tool",
     "open source Superhuman alternative",
+    "Superhuman free alternative",
+    "Superhuman alternative reddit",
+    "Superhuman alternative 2026",
+    "best Superhuman replacement",
+    "Superhuman vs GAIA",
   ],
   intro:
     "Superhuman built its reputation on speed. With 100+ keyboard shortcuts, split-inbox views, and a polished interface, it genuinely helps high-volume email users move faster — reaching inbox zero through disciplined manual processing. At $30/month it is the most expensive email client on the market, and its value proposition is squarely about human speed, not AI autonomy. GAIA approaches email from a fundamentally different angle: instead of helping you process email faster, it handles email on your behalf. GAIA reads your inbox continuously, triages messages by urgency, drafts context-aware replies, converts emails into tasks, applies labels automatically, and runs inbox-zero workflows — without you having to open a client at all. The core distinction is not speed but agency: Superhuman makes you faster at a manual process; GAIA removes the manual process.",

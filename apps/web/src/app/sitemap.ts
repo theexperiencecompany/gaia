@@ -76,7 +76,6 @@ const STATIC_PAGES: Array<{
   { path: "/open-source-ai-assistant", freq: "monthly", priority: 0.9 },
   { path: "/ai-chief-of-staff", freq: "monthly", priority: 0.9 },
   { path: "/inbox-zero-ai", freq: "monthly", priority: 0.9 },
-  { path: "/integrations", freq: "weekly", priority: 0.9 },
 ];
 
 function getStaticPages(baseUrl: string): MetadataRoute.Sitemap {

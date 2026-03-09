@@ -15,6 +15,12 @@ export const entry: ComparisonData = {
       "Claude alternative",
       "Claude AI comparison",
       "AI assistant vs productivity tool",
+      "Claude free alternative",
+      "Claude alternative reddit",
+      "Claude alternative 2026",
+      "best Claude replacement",
+      "open source alternative to Claude",
+      "Claude vs GAIA",
     ],
     intro:
       "Claude by Anthropic is one of the most capable conversational AI models available. It excels at reasoning, analysis, coding, and thoughtful conversation. But like ChatGPT, Claude is fundamentally reactive: it waits for your prompts and responds within a conversation window. GAIA takes a different approach as a proactive productivity operating system that continuously manages your digital workflow.",

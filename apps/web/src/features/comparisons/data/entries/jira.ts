@@ -17,6 +17,13 @@ export const entry: ComparisonData = {
     "personal productivity vs team management",
     "AI task management",
     "Jira replacement",
+    "Jira free alternative",
+    "Jira alternative reddit",
+    "Jira alternative 2026",
+    "best Jira replacement",
+    "open source alternative to Jira",
+    "self-hosted alternative to Jira",
+    "Jira vs GAIA",
   ],
   intro:
     "Jira is the dominant issue tracker in enterprise software development. It gives engineering teams a structured system for planning sprints, tracking bugs, and managing backlogs at scale. But Jira was built for team process visibility, not personal productivity. Every workflow requires manual setup, every task must be created by hand, and the tool does nothing proactively. GAIA takes the opposite approach: it is an AI assistant that monitors your email, calendar, and connected tools to surface what matters, create tasks automatically, and execute multi-step workflows on your behalf, without you having to file a ticket for any of it.",

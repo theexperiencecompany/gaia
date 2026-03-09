@@ -42,6 +42,7 @@ export async function generateMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/integrations/${combo}`,
+    canonicalPath: data.canonicalSlug ? `/integrations/${data.canonicalSlug}` : undefined,
     keywords: data.keywords,
   });
 }

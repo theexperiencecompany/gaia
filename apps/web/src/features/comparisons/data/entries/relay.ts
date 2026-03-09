@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Human-in-the-loop workflow automation combining AI and human judgment",
   description:
     "Relay.app is a workflow automation platform distinguished by its human-in-the-loop architecture — workflows can pause and wait for human approval, review, or input at any step, blending AI actions with human judgment. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and 50+ integrations autonomously through natural language, built for individuals who want AI to handle the operational layer of their work rather than build and maintain approval-gated workflow chains.",
-  metaTitle: "GAIA vs Relay.app: Proactive AI Assistant vs Human-in-the-Loop Automation",
+  metaTitle: "Relay App Alternative with Proactive AI | GAIA vs Relay",
   metaDescription:
     "Compare GAIA and Relay.app. Relay blends automation with human approval steps, but GAIA manages email, calendar, tasks, and cross-tool workflows proactively through natural language.",
   keywords: [

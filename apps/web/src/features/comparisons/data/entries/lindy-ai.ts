@@ -17,6 +17,12 @@ export const entry: ComparisonData = {
       "AI assistant comparison",
       "AI productivity agent",
       "AI workflow assistant",
+      "Lindy AI free alternative",
+      "Lindy AI alternative reddit",
+      "Lindy AI alternative 2026",
+      "best Lindy AI replacement",
+      "open source alternative to Lindy AI",
+      "Lindy AI vs GAIA",
     ],
     intro:
       'Lindy AI lets you create AI agents (called "Lindies") that handle specific tasks like email triage, meeting scheduling, and CRM updates. It is a practical approach to AI-powered productivity with a focus on delegating individual workflows. GAIA takes a more integrated approach: rather than separate agents for separate tasks, GAIA is a unified assistant with graph-based memory that understands the connections between your email, calendar, tasks, and tools. It sees the full picture, not isolated tasks.',

@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Connected notes and superpowers for thought with AI and Supertags",
   description:
     "Tana is an advanced knowledge management tool that combines a powerful outliner with Supertags, AI automation, daily notes, and a connected knowledge graph — giving power users one place to capture, organize, and act on everything. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and 50+ integrations through autonomous action and natural language, building its knowledge graph automatically from your live digital activity rather than requiring manual Supertag curation.",
-  metaTitle: "GAIA vs Tana: AI Productivity OS vs Connected Knowledge Graph",
+  metaTitle: "Tana Alternative with AI Email & Calendar | GAIA vs Tana",
   metaDescription:
     "Compare GAIA and Tana. Tana builds a powerful connected knowledge graph with Supertags and AI, but GAIA manages email, calendar, tasks, and workflows proactively and autonomously.",
   keywords: [

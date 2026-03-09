@@ -21,6 +21,11 @@ export const entry: ComparisonData = {
     "all-in-one workspace comparison",
     "open source Notion alternative",
     "self-hosted workspace",
+    "Notion free alternative",
+    "Notion alternative reddit",
+    "Notion alternative 2026",
+    "best Notion replacement",
+    "Notion vs GAIA",
   ],
   intro:
     "Notion has become the default workspace for millions of individuals and teams. Its flexible blocks, powerful databases, and polished doc editor make it the go-to place to capture knowledge, plan projects, and build internal wikis. But Notion is fundamentally a place you go to write and organise — it waits for you to open it. GAIA takes the opposite approach: it monitors your email, calendar, and connected tools continuously, acts on your behalf before you ask, and integrates directly with Notion so your workspace stays in sync with everything happening around it. Where Notion organises information, GAIA orchestrates work.",

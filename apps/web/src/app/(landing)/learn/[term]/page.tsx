@@ -40,6 +40,7 @@ export async function generateMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/learn/${term}`,
+    canonicalPath: data.canonicalSlug ? `/learn/${data.canonicalSlug}` : undefined,
     keywords: data.keywords,
   });
 }

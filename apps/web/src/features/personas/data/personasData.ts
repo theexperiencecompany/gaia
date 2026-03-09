@@ -36,6 +36,7 @@ export interface PersonaData {
   howGaiaHelps: PersonaFeature[];
   relevantIntegrations: string[];
   faqs: Array<{ question: string; answer: string }>;
+  relatedComparisons?: string[];
 }
 
 export const personas: Record<string, PersonaData> = {
@@ -119,6 +120,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA is fully open source and self-hostable. You can run it on your own infrastructure with complete data control. GAIA never trains on your data or shares it with third parties.",
       },
     ],
+    relatedComparisons: ["linear", "jira", "notion"],
   },
 
   "product-managers": {
@@ -200,6 +202,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA automatically compiles progress data from your engineering tools, drafts status updates in your preferred format, and can send them via email or Slack on a schedule. It ensures stakeholders stay informed without you manually building reports.",
       },
     ],
+    relatedComparisons: ["linear", "asana", "notion"],
   },
 
   designers: {
@@ -275,6 +278,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA monitors Slack, Gmail, and other connected channels for design-related discussions. It aggregates feedback by project, identifies action items, and creates organized summaries so you have a single view of all stakeholder input.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "linear"],
   },
 
   "startup-founders": {
@@ -361,6 +365,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA integrates with Google Calendar to optimize your schedule, block focus time, prepare meeting briefs, and coordinate across multiple calendars. It proactively suggests schedule adjustments when conflicts arise.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "todoist"],
   },
 
   students: {
@@ -434,6 +439,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA integrates with Perplexity for AI-powered research, organizes findings in Notion or Google Docs, and helps structure your work. It manages the logistics of research so you can focus on analysis and writing.",
       },
     ],
+    relatedComparisons: ["notion", "todoist", "google-calendar"],
   },
 
   "remote-workers": {
@@ -509,6 +515,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA operates 24/7 and understands time zone contexts. It schedules meetings considering all participants' availability, batches notifications appropriately, and delivers morning briefings tailored to your local time.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "clickup"],
   },
 
   freelancers: {
@@ -589,6 +596,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA tracks invoice status through Gmail, identifies overdue payments, and drafts professional follow-up emails for your review. It automates the tedious payment tracking process so you can focus on client work.",
       },
     ],
+    relatedComparisons: ["notion", "todoist", "asana"],
   },
 
   entrepreneurs: {
@@ -665,6 +673,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA integrates with HubSpot and Gmail to track customer communications, ensure timely follow-ups, and flag important customer interactions. It helps you maintain strong relationships even as your customer base grows.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "todoist"],
   },
 
   marketers: {
@@ -742,6 +751,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA integrates with PostHog for product analytics and can pull data from connected tools to compile marketing reports. It automates the reporting process so you spend more time on strategy and less on data gathering.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "monday"],
   },
 
   "content-creators": {
@@ -819,6 +829,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA integrates with Twitter, LinkedIn, Instagram, and Reddit to monitor mentions, comments, and engagement metrics. It consolidates cross-platform data into unified summaries and surfaces the interactions that matter most.",
       },
     ],
+    relatedComparisons: ["notion", "obsidian", "evernote"],
   },
 
   "data-scientists": {
@@ -896,6 +907,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA uses Perplexity for AI-powered research and DeepWiki for documentation discovery. It organizes findings in Notion, creates structured reading lists, and alerts you to new relevant publications in your research areas.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "linear"],
   },
 
   "project-managers": {
@@ -983,6 +995,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA understands time zones, monitors async communication channels, ensures handoffs between team members are smooth, and compiles updates that keep distributed teams aligned regardless of geography.",
       },
     ],
+    relatedComparisons: ["asana", "clickup", "jira"],
   },
 
   "engineering-managers": {
@@ -1057,6 +1070,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA summarizes key technical discussions from Slack and GitHub, surfaces important architectural decisions, and helps you maintain technical context without reading every thread. It keeps you informed without requiring constant channel monitoring.",
       },
     ],
+    relatedComparisons: ["linear", "jira", "clickup"],
   },
 
   "sales-professionals": {
@@ -1143,6 +1157,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. Before every meeting, GAIA compiles a briefing document with prospect background research, recent interaction history, deal stage context, and suggested talking points. You walk into every call prepared and confident.",
       },
     ],
+    relatedComparisons: ["monday", "notion", "asana"],
   },
 
   "customer-success": {
@@ -1218,6 +1233,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA compiles usage metrics, support history, communication logs, and success milestones from your connected tools into structured QBR documents. It reduces prep time from hours to minutes.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "todoist"],
   },
 
   researchers: {
@@ -1283,6 +1299,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA coordinates multi-institution collaborations by managing email communications, scheduling meetings across time zones, maintaining shared documents, and tracking action items from research meetings. It ensures smooth collaboration without constant manual coordination.",
       },
     ],
+    relatedComparisons: ["notion", "obsidian", "logseq"],
   },
 
   consultants: {
@@ -1358,6 +1375,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA monitors your calendar and task completions to help categorize time spent. While it is not a time-tracking tool, it automates the administrative tasks that typically consume non-billable hours, effectively increasing your utilization rate.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "todoist"],
   },
 
   "agency-owners": {
@@ -1440,6 +1458,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA triages inbound leads, researches prospects, drafts initial outreach emails, and tracks the sales pipeline via HubSpot. It ensures business development activities continue consistently even during heavy delivery periods.",
       },
     ],
+    relatedComparisons: ["asana", "clickup", "monday"],
   },
 
   "indie-hackers": {
@@ -1517,6 +1536,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA monitors your GitHub activity, product metrics, and social channels. It can help you compile weekly progress updates, track public milestones, and engage with your community across Twitter, HackerNews, and Reddit.",
       },
     ],
+    relatedComparisons: ["notion", "todoist", "linear"],
   },
 
   solopreneurs: {
@@ -1592,6 +1612,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA can be set up in minutes. Connect your Gmail, Google Calendar, and task management tools, and GAIA begins learning your patterns immediately. Most solopreneurs see productivity gains within the first week.",
       },
     ],
+    relatedComparisons: ["notion", "todoist", "asana"],
   },
 
   "operations-managers": {
@@ -1668,6 +1689,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA organizes vendor communications, tracks response timelines, drafts follow-up messages, and maintains vendor interaction history. It ensures consistent vendor management without the manual overhead of tracking dozens of email threads.",
       },
     ],
+    relatedComparisons: ["asana", "notion", "monday"],
   },
 
   "team-leads": {
@@ -1743,6 +1765,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA monitors project boards for stalled tickets, tracks PR review times on GitHub, and surfaces Slack conversations about blockers. It proactively alerts you to issues before they impact team velocity.",
       },
     ],
+    relatedComparisons: ["linear", "asana", "clickup"],
   },
 
   executives: {
@@ -1825,6 +1848,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA uses AI to assess urgency, strategic relevance, and sender importance. It learns your priorities over time through graph-based memory, ensuring the information hierarchy it presents aligns with your actual decision-making needs.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "todoist"],
   },
 
   "real-estate-agents": {
@@ -1906,6 +1930,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA integrates with HubSpot for CRM management and can track client relationships through Gmail. Custom MCP integrations can connect GAIA to specialized real estate platforms.",
       },
     ],
+    relatedComparisons: ["notion", "todoist", "google-calendar"],
   },
 
   lawyers: {
@@ -1981,6 +2006,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA integrates with Perplexity for AI-powered research and organizes findings in Notion. While it does not replace specialized legal research platforms, it accelerates the research process and helps organize findings by case matter for easy reference.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "evernote"],
   },
 
   "data-analysts": {
@@ -2065,6 +2091,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA is fully open source and self-hostable, making it suitable for enterprise deployments with strict data governance requirements. Teams can run GAIA on their own infrastructure with complete control over data access and integrations.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "linear"],
   },
 
   "hr-managers": {
@@ -2150,6 +2177,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA tracks review deadlines in Todoist, schedules 1:1 review meetings on Google Calendar, compiles feedback from Notion or email, and drafts summary documents. It manages the logistics of the review cycle so you can focus on the conversations that matter.",
       },
     ],
+    relatedComparisons: ["asana", "notion", "monday"],
   },
 
   recruiters: {
@@ -2235,6 +2263,7 @@ export const personas: Record<string, PersonaData> = {
           "Yes. GAIA manages scheduling across time zones, sends preparation briefs to all interviewers via Slack or email, collects feedback reminders after interviews, and keeps hiring managers informed throughout the process without manual coordination.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "monday"],
   },
 
   "teachers-educators": {
@@ -2319,6 +2348,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA is fully open source and self-hostable, making it suitable for school deployments with data privacy requirements. Institutions can run GAIA on their own infrastructure with complete control over educator and student data.",
       },
     ],
+    relatedComparisons: ["notion", "todoist", "google-calendar"],
   },
 
   "financial-advisors": {
@@ -2410,6 +2440,7 @@ export const personas: Record<string, PersonaData> = {
           "GAIA maintains per-client context through email history and Notion notes, tracks review cadence schedules on Google Calendar, and surfaces clients who are due for outreach or follow-up. It helps you maintain a high-touch relationship standard across a large book of business.",
       },
     ],
+    relatedComparisons: ["notion", "todoist", "asana"],
   },
 
   "healthcare-professionals": {
@@ -2500,6 +2531,267 @@ export const personas: Record<string, PersonaData> = {
           "GAIA monitors your Gmail for administrative messages, categorizes them by type and urgency, drafts responses for routine requests, and ensures high-priority items surface promptly. Physicians report that administrative email management alone can consume an hour or more daily, which GAIA significantly reduces.",
       },
     ],
+    relatedComparisons: ["notion", "asana", "todoist"],
+  },
+
+  "adhd-professionals": {
+    slug: "adhd-professionals",
+    title: "GAIA for ADHD Professionals",
+    role: "ADHD Professionals",
+    metaTitle: "GAIA for ADHD Professionals — Less Overhead, More Focus",
+    metaDescription:
+      "GAIA captures tasks before ideas vanish, surfaces what's urgent without you having to remember to check, and handles follow-ups automatically — reducing the executive function tax of managing a modern workday.",
+    keywords: [
+      "ai assistant for adhd",
+      "ai assistant for adhd reddit",
+      "adhd productivity tool",
+      "ai task manager adhd",
+      "adhd ai tool",
+      "best ai for adhd professionals",
+      "ai executive function support",
+      "adhd assistant app",
+      "ai tool for adhd professionals",
+      "ai for adhd productivity",
+    ],
+    intro:
+      "For professionals with ADHD, the modern workplace's constant context-switching isn't just annoying — it's a system that actively works against the way your brain operates. The moment attention shifts, tasks escape capture, emails pile into a doom stack, and the guilt of unread notifications quietly compounds. GAIA was built to remove the executive function overhead from your day: it captures tasks from wherever they surface, proactively tells you what needs attention right now, and handles follow-ups in the background so your working memory doesn't have to.",
+    painPoints: [
+      "Tasks that surface mid-conversation or in passing emails vanish the moment attention shifts to the next thing",
+      "The unread email doom pile grows faster than motivation to tackle it, until avoidance becomes the default",
+      "Important follow-ups get forgotten entirely — not because they aren't a priority, but because there was no system to surface them at the right moment",
+      "Hyperfocus pulls attention deep into low-priority work while genuinely urgent items quietly pile up unnoticed",
+      "The paralysis of opening a task list with 40 undifferentiated items and no clear signal of where to start",
+    ],
+    howGaiaHelps: [
+      {
+        title: "Proactive Task Capture from Email and Chat",
+        description:
+          "GAIA monitors your Gmail and Slack for action items and adds them to Todoist automatically — so tasks get captured before your attention moves on, even if you never explicitly wrote them down.",
+      },
+      {
+        title: "Automatic Prioritization Surface",
+        description:
+          "Instead of requiring you to review every item in every tool, GAIA proactively surfaces what's most urgent each morning based on deadlines, email context, and calendar pressure — removing the paralysis of choosing where to start.",
+      },
+      {
+        title: "Follow-up Reminders Without Manual Setup",
+        description:
+          "When GAIA detects you've sent an email that likely needs a reply, it schedules a follow-up reminder automatically — no manual reminder creation required, no thread forgotten.",
+      },
+      {
+        title: "Unified Inbox Across All Tools",
+        description:
+          "GAIA consolidates email, Slack messages, calendar events, and tasks into a single context — reducing the tool-switching tax that fragments attention and drains working memory throughout the day.",
+      },
+      {
+        title: "Natural Language Task Entry",
+        description:
+          "Add tasks in plain language through chat, email, or voice without navigating menus or opening apps. GAIA parses intent, sets due dates, and routes the task to the right list so low-friction capture actually happens.",
+      },
+      {
+        title: "Open Source and Self-Hostable",
+        description:
+          "GAIA is fully open source and free to self-host — no subscription required to get started — with a Pro plan at $20/month flat if you want the managed version, giving you full control over your data and no vendor lock-in.",
+      },
+    ],
+    relevantIntegrations: ["gmail", "todoist", "google-calendar", "slack"],
+    faqs: [
+      {
+        question:
+          "How is GAIA different from a regular task manager for ADHD?",
+        answer:
+          "Most task managers require you to remember to open them and manually enter tasks — which is exactly the step that breaks down with ADHD. GAIA is proactive: it captures tasks from your existing tools automatically, surfaces what's urgent without you having to check, and sends follow-up reminders it sets itself. It reduces the number of deliberate actions required to stay on top of your day.",
+      },
+      {
+        question: "Can GAIA help with email avoidance?",
+        answer:
+          "Yes. GAIA triages your Gmail inbox, categorizes messages by urgency and type, drafts responses for routine emails, and surfaces only the messages that genuinely need your attention. The doom pile shrinks because GAIA handles the low-stakes noise, leaving you with a manageable set of real decisions.",
+      },
+      {
+        question: "Does GAIA work with the tools I already use?",
+        answer:
+          "GAIA connects to Gmail, Google Calendar, Slack, and Todoist out of the box, with 50+ additional integrations available via MCP. It works within your existing stack rather than requiring you to adopt a new system, which means lower switching cost and faster habit formation.",
+      },
+    ],
+    relatedComparisons: ["todoist", "notion", "asana"],
+  },
+
+  "chiefs-of-staff": {
+    slug: "chiefs-of-staff",
+    title: "GAIA for Chiefs of Staff",
+    role: "Chiefs of Staff",
+    metaTitle: "GAIA for Chiefs of Staff — Executive Support at Scale",
+    metaDescription:
+      "GAIA prepares pre-meeting briefings, extracts action items from all communications, drafts stakeholder updates, and manages the executive inbox — so you can run the office without manually tracking every thread.",
+    keywords: [
+      "ai chief of staff app",
+      "ai for chiefs of staff",
+      "ai assistant for chief of staff",
+      "chief of staff productivity tool",
+      "ai executive support tool",
+      "ai for cxo support",
+      "chief of staff ai assistant",
+      "ai tool for chief of staff",
+      "executive operations ai",
+      "ai for executive office management",
+    ],
+    intro:
+      "A Chief of Staff is only as effective as their ability to hold context across the entire organization at once — which means any tool that reduces the manual overhead of tracking, briefing, and following up is a direct force multiplier on leadership impact. GAIA acts as that force multiplier: pulling context from the executive's calendar, inbox, and communication channels to prepare briefings before meetings happen, extract action items the moment a meeting ends, and keep stakeholders informed without the CoS writing every update by hand.",
+    painPoints: [
+      "Back-to-back executive meetings leave zero buffer for preparation, so briefings get skipped or rushed even when the stakes are high",
+      "Action items scatter across emails, Slack threads, and meeting notes with no single system pulling them into an accountable list",
+      "Keeping cross-functional stakeholders informed requires writing essentially the same update in five different places",
+      "Managing the executive's inbox and calendar simultaneously while also running your own operational workload creates constant context collapse",
+      "Losing the thread on 10+ active initiatives when context switches happen every 20 minutes across a typical CoS day",
+    ],
+    howGaiaHelps: [
+      {
+        title: "Pre-Meeting Briefing Generation",
+        description:
+          "GAIA reads the executive's upcoming calendar events, pulls relevant email threads and Notion documents, and generates a structured briefing — attendees, context, open action items, and suggested talking points — before each meeting begins.",
+      },
+      {
+        title: "Action Item Extraction from All Comms",
+        description:
+          "GAIA monitors Gmail, Slack, and meeting transcripts to extract explicit and implied action items, assigns owners, and syncs them to Todoist or Notion — so nothing falls through the cracks after a meeting ends.",
+      },
+      {
+        title: "Automated Stakeholder Update Drafts",
+        description:
+          "GAIA drafts status update emails and Slack messages for cross-functional stakeholders based on current project state, reducing the time spent writing repetitive updates across initiatives from hours to minutes.",
+      },
+      {
+        title: "Executive Inbox Management",
+        description:
+          "GAIA triages the executive's Gmail inbox, flags messages that need a decision, drafts responses for routine communications, and surfaces time-sensitive threads — enabling the CoS to manage the exec's email without reading every message individually.",
+      },
+      {
+        title: "Cross-Tool Task Coordination",
+        description:
+          "With 50+ integrations via MCP, GAIA connects Gmail, Google Calendar, Slack, Notion, and Todoist into a unified operational layer — so the CoS can track deliverables, deadlines, and decisions across tools from a single interface.",
+      },
+      {
+        title: "Open Source and Self-Hostable",
+        description:
+          "GAIA is fully open source and self-hostable for organizations with data residency requirements, with a Pro plan at $20/month flat for the managed version — no per-seat pricing that makes executive support tooling prohibitively expensive.",
+      },
+    ],
+    relevantIntegrations: [
+      "gmail",
+      "google-calendar",
+      "slack",
+      "notion",
+      "todoist",
+    ],
+    faqs: [
+      {
+        question:
+          "Can GAIA actually prepare briefings before meetings automatically?",
+        answer:
+          "Yes. GAIA reads the executive's Google Calendar, identifies upcoming meetings, pulls relevant email threads and documents from connected tools, and generates a structured briefing including attendee context, open items, and suggested talking points. The briefing is delivered before the meeting starts so preparation happens even on days when there's no buffer time.",
+      },
+      {
+        question:
+          "How does GAIA handle action item tracking across tools like email, Slack, and meetings?",
+        answer:
+          "GAIA monitors all connected communication channels simultaneously and extracts action items — explicit requests, implied commitments, and flagged follow-ups — as they surface. It syncs these to Todoist or Notion with owner and due date context, creating a single accountable list that doesn't require manual curation after every conversation.",
+      },
+      {
+        question:
+          "Is GAIA appropriate for managing a C-suite executive's sensitive communications?",
+        answer:
+          "GAIA is fully open source and self-hostable, meaning your organization can deploy it entirely within your own infrastructure with no third-party data access. For organizations that need full control over executive communications, self-hosting provides complete data sovereignty. The managed Pro plan at $20/month is also available for teams comfortable with a hosted deployment.",
+      },
+    ],
+    relatedComparisons: ["notion", "asana", "clickup"],
+  },
+
+  "virtual-assistants": {
+    slug: "virtual-assistants",
+    title: "GAIA for Virtual Assistants",
+    role: "Virtual Assistants",
+    metaTitle: "GAIA for Virtual Assistants — Handle More Clients, Less Grind",
+    metaDescription:
+      "GAIA helps VAs manage multiple client inboxes, automate routine communications, coordinate scheduling across client calendars, and track deliverables — so you can scale capacity without burning out.",
+    keywords: [
+      "ai for virtual assistants",
+      "ai tools for virtual assistants",
+      "ai assistant for vas",
+      "virtual assistant productivity tool",
+      "ai va tools",
+      "best ai for vas",
+      "ai for online business management",
+      "virtual assistant ai automation",
+      "ai tool for virtual assistants",
+      "ai assistant for remote work",
+    ],
+    intro:
+      "The ceiling on a VA's income is almost always capacity — there are only so many hours in a day to track tasks, write emails, and coordinate schedules across multiple clients. GAIA raises that ceiling by automating the repeatable parts of VA work: drafting routine client communications, managing multi-client inboxes, handling scheduling coordination, and tracking deliverables across client contexts. The result is more time for the high-judgment work that actually requires a skilled human, and room to take on additional clients without the workload scaling linearly.",
+    painPoints: [
+      "Manually tracking tasks, deadlines, and deliverables across three to five client contexts in parallel with no shared system",
+      "Writing essentially the same category of email — meeting confirmations, follow-up nudges, scheduling requests — over and over for different clients",
+      "Scheduling coordination eats a disproportionate share of the day: finding times, sending invites, handling reschedules, chasing confirmations",
+      "Context collapse when switching between clients mid-day, leading to errors, missed details, or time wasted re-reading threads to reorient",
+      "Billing hours on tasks that are fully automatable, which is both inefficient for the VA and a difficult value conversation with cost-conscious clients",
+    ],
+    howGaiaHelps: [
+      {
+        title: "Multi-Client Inbox Management",
+        description:
+          "GAIA manages Gmail inboxes across multiple client accounts, triaging messages by client and urgency, drafting responses for routine communications, and surfacing items that need a human decision — so no client inbox becomes a neglected pile.",
+      },
+      {
+        title: "Routine Email Drafting with Client Context",
+        description:
+          "GAIA drafts client-specific emails — meeting confirmations, follow-up nudges, status updates, scheduling requests — using each client's tone, context, and history, reducing the repetitive writing load without producing generic copy.",
+      },
+      {
+        title: "Scheduling Automation Across Client Calendars",
+        description:
+          "GAIA handles the full scheduling loop for multiple client Google Calendars: finding available times, sending invites, managing reschedules, and following up on unconfirmed meetings — without the VA manually coordinating each exchange.",
+      },
+      {
+        title: "Deliverable Tracking Across Clients",
+        description:
+          "GAIA extracts commitments and deadlines from client emails and Slack messages, syncs them to Todoist or Notion organized by client, and surfaces upcoming due dates proactively — replacing the manual spreadsheet or sticky note system.",
+      },
+      {
+        title: "Integration with Client Tools via MCP",
+        description:
+          "With 50+ integrations via MCP, GAIA connects to the tools each client already uses — Notion, Slack, Todoist, Google Workspace — so the VA can operate within the client's existing stack rather than asking every client to adopt something new.",
+      },
+      {
+        title: "Open Source and Free to Start",
+        description:
+          "GAIA is fully open source with a free tier for self-hosted deployments, and a Pro plan at $20/month flat — no per-client or per-seat pricing that erodes margins as the client roster grows.",
+      },
+    ],
+    relevantIntegrations: [
+      "gmail",
+      "google-calendar",
+      "slack",
+      "todoist",
+      "notion",
+    ],
+    faqs: [
+      {
+        question: "Can GAIA manage inboxes for multiple clients at once?",
+        answer:
+          "Yes. GAIA connects to multiple Gmail accounts simultaneously, triages each inbox independently with client-specific context, and drafts responses in each client's voice. Switching between client contexts is handled by GAIA rather than requiring the VA to manually re-read threads and reorient each time.",
+      },
+      {
+        question:
+          "Will GAIA make me less valuable to clients by automating my work?",
+        answer:
+          "GAIA automates the repeatable, low-judgment tasks — scheduling, routine email drafting, deliverable tracking — which frees your time for the work clients actually pay a premium for: relationship management, judgment calls, complex coordination, and proactive problem-solving. Automation of the grind makes the high-value work more visible, not less.",
+      },
+      {
+        question: "How does GAIA handle client confidentiality?",
+        answer:
+          "GAIA is fully open source and self-hostable, meaning you can deploy it within your own infrastructure with no third-party access to client data. For VAs managing sensitive client communications, self-hosting provides complete data control. The managed Pro plan at $20/month is also available for VAs comfortable with a hosted deployment.",
+      },
+    ],
+    relatedComparisons: ["notion", "asana", "todoist"],
   },
 };
 

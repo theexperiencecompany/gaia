@@ -16,6 +16,12 @@ export const entry: ComparisonData = {
       "AI task management",
       "smart to-do list",
       "task automation AI",
+      "Todoist free alternative",
+      "Todoist alternative reddit",
+      "Todoist alternative 2026",
+      "best Todoist replacement",
+      "open source alternative to Todoist",
+      "Todoist vs GAIA",
     ],
     intro:
       "Todoist is one of the most polished task management apps available. It nails the basics: clean design, natural language input, projects, labels, filters, and reliable cross-platform sync. Millions of people rely on it daily, and for good reason. But Todoist is fundamentally a place where you organize tasks yourself. GAIA takes a different approach: it creates tasks from your emails, prioritizes based on context, automates follow-ups, and connects task management to your entire digital workflow.",

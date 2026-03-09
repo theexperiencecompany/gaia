@@ -19,6 +19,13 @@ export const entry: ComparisonData = {
     "developer productivity AI",
     "Linear integration",
     "issue tracker comparison",
+    "Linear free alternative",
+    "Linear alternative reddit",
+    "Linear alternative 2026",
+    "best Linear replacement",
+    "open source alternative to Linear",
+    "self-hosted alternative to Linear",
+    "Linear vs GAIA",
   ],
   intro:
     "Linear has set the bar for developer-focused issue tracking. Its speed, keyboard-driven interface, and tight GitHub integration have made it the go-to choice for engineering teams that care about craft. But Linear solves one specific problem: tracking work inside your team. It does not read your emails, manage your calendar, remind you about the PR that is blocking a colleague, or surface what needs your attention across every tool you use. GAIA works alongside Linear, integrating directly with it through MCP, while also handling the broader personal productivity layer that no issue tracker can replace.",

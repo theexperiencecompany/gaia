@@ -17,6 +17,12 @@ export const entry: ComparisonData = {
     "inbox zero AI",
     "email filtering vs AI assistant",
     "SaneBox vs AI productivity",
+    "SaneBox free alternative",
+    "SaneBox alternative reddit",
+    "SaneBox alternative 2026",
+    "best SaneBox replacement",
+    "open source alternative to SaneBox",
+    "SaneBox vs GAIA",
   ],
   intro:
     "SaneBox has helped people reclaim their inboxes for over a decade by automatically sorting low-priority email into smart folders like SaneLater and SaneNews. It works with any email client, requires no plugins, and stays quietly in the background. But filtering is all it does — it never reads your email to understand context, never drafts a reply, never creates a task, and never touches anything outside your inbox. GAIA approaches email as one node in a connected productivity graph. It triages messages by urgency, drafts context-aware replies, auto-labels threads, creates tasks and calendar events from email content, and chains those actions into cross-tool workflows spanning Slack, Notion, GitHub, and 50+ other integrations. Where SaneBox is a smart filter, GAIA is a proactive assistant.",

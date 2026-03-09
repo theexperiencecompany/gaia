@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
     tagline: "AI productivity assistant",
     description:
       "Martin AI offers AI-powered productivity features. GAIA provides a more comprehensive approach with 50+ integrations, proactive automation, and complete open-source transparency.",
-    metaTitle: "GAIA vs Martin AI: Open-Source Productivity OS vs AI Assistant",
+    metaTitle: "Martin AI Alternative — Self-Hosted with Email & Calendar | GAIA vs Martin AI",
     metaDescription:
       "Compare GAIA and Martin AI for AI productivity. GAIA offers open-source code, 50+ integrations, proactive automation, and graph-based memory for comprehensive workflow management.",
     keywords: [

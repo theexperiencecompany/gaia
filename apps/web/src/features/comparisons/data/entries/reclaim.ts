@@ -16,6 +16,12 @@ export const entry: ComparisonData = {
       "AI time management",
       "smart scheduling",
       "AI calendar optimization",
+      "Reclaim free alternative",
+      "Reclaim alternative reddit",
+      "Reclaim alternative 2026",
+      "best Reclaim replacement",
+      "open source alternative to Reclaim",
+      "Reclaim vs GAIA",
     ],
     intro:
       "Reclaim.ai has built a strong product around intelligent time management, automatically finding the best slots for tasks, habits, and meetings. For teams juggling packed calendars, it provides real value. But time management is just one dimension of productivity. GAIA addresses the entire workflow, from the email that triggers a task to the document that completes it.",

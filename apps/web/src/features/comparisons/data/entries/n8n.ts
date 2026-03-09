@@ -16,6 +16,13 @@ export const entry: ComparisonData = {
       "AI workflow automation",
       "intelligent automation",
       "no-code automation",
+      "n8n free alternative",
+      "n8n alternative reddit",
+      "n8n alternative 2026",
+      "best n8n replacement",
+      "open source alternative to n8n",
+      "self-hosted alternative to n8n",
+      "n8n vs GAIA",
     ],
     intro:
       "n8n is a powerful open-source workflow automation platform that lets you connect apps and build complex workflows with a visual editor. It shines at deterministic automation: if this happens, do that. GAIA takes a fundamentally different approach. Rather than requiring you to define every rule, GAIA uses AI to understand context, make intelligent decisions, and act proactively on your behalf.",

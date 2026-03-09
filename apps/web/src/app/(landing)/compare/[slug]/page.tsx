@@ -6,6 +6,7 @@ import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import { getAlternative } from "@/features/alternatives/data/alternativesData";
 import {
+  getAllComparisons,
   getAllComparisonSlugs,
   getComparison,
 } from "@/features/comparisons/data/comparisonsData";
@@ -45,6 +46,80 @@ export async function generateMetadata({
   });
 }
 
+const COMPARISON_CATEGORIES: Record<string, string> = {
+  // AI Assistants
+  chatgpt: "AI Assistants",
+  "chatgpt-teams": "AI Assistants",
+  claude: "AI Assistants",
+  gemini: "AI Assistants",
+  copilot: "AI Assistants",
+  "cursor-ai": "AI Assistants",
+  "google-assistant": "AI Assistants",
+  perplexity: "AI Assistants",
+  "lindy-ai": "AI Assistants",
+  "limitless-ai": "AI Assistants",
+  "rewind-ai": "AI Assistants",
+  "martin-ai": "AI Assistants",
+  poke: "AI Assistants",
+  "mem-ai": "AI Assistants",
+  // Automation
+  zapier: "Automation",
+  n8n: "Automation",
+  make: "Automation",
+  bardeen: "Automation",
+  activepieces: "Automation",
+  pipedream: "Automation",
+  relay: "Automation",
+  // Task Management
+  todoist: "Task Management",
+  ticktick: "Task Management",
+  things3: "Task Management",
+  anydo: "Task Management",
+  omnifocus: "Task Management",
+  // Project Management
+  asana: "Project Management",
+  clickup: "Project Management",
+  jira: "Project Management",
+  linear: "Project Management",
+  trello: "Project Management",
+  height: "Project Management",
+  monday: "Project Management",
+  basecamp: "Project Management",
+  // Calendar & Scheduling
+  "google-calendar": "Calendar & Scheduling",
+  fantastical: "Calendar & Scheduling",
+  "notion-calendar": "Calendar & Scheduling",
+  clockwise: "Calendar & Scheduling",
+  reclaim: "Calendar & Scheduling",
+  motion: "Calendar & Scheduling",
+  cal: "Calendar & Scheduling",
+  savvycal: "Calendar & Scheduling",
+  calendly: "Calendar & Scheduling",
+  akiflow: "Calendar & Scheduling",
+  // Email
+  superhuman: "Email",
+  sanebox: "Email",
+  shortwave: "Email",
+  "hey-email": "Email",
+  missive: "Email",
+  spark: "Email",
+  // Notes & Knowledge
+  notion: "Notes & Knowledge",
+  obsidian: "Notes & Knowledge",
+  logseq: "Notes & Knowledge",
+  "roam-research": "Notes & Knowledge",
+  evernote: "Notes & Knowledge",
+  craft: "Notes & Knowledge",
+  "reflect-app": "Notes & Knowledge",
+  capacities: "Notes & Knowledge",
+  tana: "Notes & Knowledge",
+  "notion-ai": "Notes & Knowledge",
+  // Task Management (additional)
+  "apple-reminders": "Task Management",
+  sunsama: "Calendar & Scheduling",
+  openclaw: "Automation",
+};
+
 function ComparisonTableRow({
   feature,
   gaia,
@@ -72,6 +147,14 @@ export default async function ComparisonPage({ params }: PageProps) {
   }
 
   const hasAlternativePage = getAlternative(slug) !== undefined;
+
+  const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
+  const relatedComparisons = getAllComparisons()
+    .filter(
+      (c) =>
+        c.slug !== slug && COMPARISON_CATEGORIES[c.slug] === currentCategory,
+    )
+    .slice(0, 3);
 
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
@@ -233,6 +316,29 @@ export default async function ComparisonPage({ params }: PageProps) {
                 2026
               </Link>
             </p>
+          </section>
+        )}
+
+        {/* Related Comparisons */}
+        {relatedComparisons.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-3xl font-semibold text-white">
+              Compare More {currentCategory} Tools
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {relatedComparisons.map((comp) => (
+                <Link
+                  key={comp.slug}
+                  href={`/compare/${comp.slug}`}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                    GAIA vs {comp.name}
+                  </h3>
+                  <p className="text-xs text-zinc-400">{comp.tagline}</p>
+                </Link>
+              ))}
+            </div>
           </section>
         )}
 

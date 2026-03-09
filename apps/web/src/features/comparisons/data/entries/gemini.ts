@@ -15,6 +15,12 @@ export const entry: ComparisonData = {
       "Gemini alternative",
       "Google AI comparison",
       "AI assistant comparison",
+      "Gemini free alternative",
+      "Gemini alternative reddit",
+      "Gemini alternative 2026",
+      "best Gemini replacement",
+      "open source alternative to Gemini",
+      "Gemini vs GAIA",
     ],
     intro:
       "Google Gemini brings AI capabilities to the Google ecosystem with integration into Gmail, Docs, Sheets, and more. It makes Google Workspace smarter with AI-powered suggestions, summaries, and content generation. But Gemini fundamentally enhances existing Google tools rather than orchestrating your entire workflow. GAIA connects all your tools, not just Google products, and acts proactively on your behalf.",

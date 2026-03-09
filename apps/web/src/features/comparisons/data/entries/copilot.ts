@@ -16,6 +16,12 @@ export const entry: ComparisonData = {
     "AI assistant open source",
     "Microsoft 365 Copilot comparison",
     "AI productivity assistant",
+    "Microsoft Copilot free alternative",
+    "Microsoft Copilot alternative reddit",
+    "Microsoft Copilot alternative 2026",
+    "best Microsoft Copilot replacement",
+    "open source alternative to Microsoft Copilot",
+    "Microsoft Copilot vs GAIA",
   ],
   intro:
     "Microsoft Copilot is a powerful AI layer built directly into Microsoft 365, offering deep assistance within Outlook, Word, Excel, PowerPoint, and Teams. For organizations already fully committed to the Microsoft stack, it delivers genuine value. However, Copilot's capabilities are gated behind costly Microsoft 365 licenses and work exclusively with Microsoft-hosted accounts — Gmail, Google Calendar, Slack, and other non-Microsoft tools are not supported. GAIA takes the opposite approach: an open-source, cross-platform AI assistant that connects your entire digital life — email, calendar, tasks, workflows, and 50+ integrations — regardless of which tools you already use.",

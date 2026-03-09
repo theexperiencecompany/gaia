@@ -15,6 +15,12 @@ export const entry: ComparisonData = {
       "Perplexity alternative",
       "AI search vs AI assistant",
       "AI productivity comparison",
+      "Perplexity free alternative",
+      "Perplexity alternative reddit",
+      "Perplexity alternative 2026",
+      "best Perplexity replacement",
+      "open source alternative to Perplexity",
+      "Perplexity vs GAIA",
     ],
     intro:
       "Perplexity has reimagined web search with AI, providing instant answers backed by cited sources. It is the best tool for research and information discovery. But search and research are one small part of daily productivity. GAIA manages your entire workflow: emails, calendar, tasks, documents, and integrations. While Perplexity helps you find information, GAIA helps you act on it.",

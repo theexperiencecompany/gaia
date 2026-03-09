@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
     tagline: "AI-powered productivity assistant",
     description:
       "Poke offers AI-driven productivity features. GAIA provides a comprehensive open-source productivity OS with 50+ integrations and proactive automation.",
-    metaTitle: "GAIA vs Poke: Open-Source AI Assistant vs Productivity Tool",
+    metaTitle: "Poke Alternative with Proactive AI | GAIA vs Poke",
     metaDescription:
       "Compare GAIA and Poke for AI productivity. GAIA is open-source with 50+ integrations, proactive automation, and graph-based memory for comprehensive workflow management.",
     keywords: [

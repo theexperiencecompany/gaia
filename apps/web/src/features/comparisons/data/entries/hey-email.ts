@@ -21,6 +21,11 @@ export const entry: ComparisonData = {
     "open source HEY alternative",
     "HEY email replacement",
     "email workflow automation",
+    "HEY Email free alternative",
+    "HEY Email alternative reddit",
+    "HEY Email alternative 2026",
+    "best HEY Email replacement",
+    "HEY Email vs GAIA",
   ],
   intro:
     "HEY Email, built by 37signals, is one of the most opinionated email services ever shipped. Its three-section model — the Imbox for important messages, The Feed for newsletters, and Paper Trail for receipts — is a well-considered philosophy about how email should work. It is a product with genuine conviction. But that conviction comes with significant constraints: HEY requires a @hey.com address or a custom domain through a separate plan, offers no Gmail support, has no third-party API, and has almost no AI beyond basic writing assistance. GAIA approaches email from a fundamentally different angle. Rather than reimagining what an inbox looks like, GAIA deploys AI to manage your existing Gmail inbox proactively — triaging by urgency, drafting context-aware replies, converting emails into tasks, applying labels, and running multi-step workflows across your entire tool stack. HEY asks you to change how you relate to email; GAIA removes most of the work of dealing with it.",

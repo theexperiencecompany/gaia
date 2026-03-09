@@ -19,6 +19,12 @@ export const entry: ComparisonData = {
     "AI project management",
     "kanban alternative",
     "proactive AI assistant",
+    "Trello free alternative",
+    "Trello alternative reddit",
+    "Trello alternative 2026",
+    "best Trello replacement",
+    "open source alternative to Trello",
+    "Trello vs GAIA",
   ],
   intro:
     "Trello built its reputation on simplicity: drag-and-drop cards across lists on a board. For teams that need a lightweight visual way to track work, it delivers a familiar and frictionless experience. But a board is only as smart as the person moving the cards. GAIA takes a fundamentally different approach — instead of giving you a surface to organize work manually, it acts as a proactive AI assistant that captures tasks from your emails, schedules them against your calendar, automates repetitive workflows, and remembers context across every tool you use. Where Trello shows you what needs doing, GAIA helps get it done.",

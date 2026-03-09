@@ -30,6 +30,89 @@ export const metadata: Metadata = generatePageMetadata({
   ],
 });
 
+const COMPARISON_CATEGORIES: Record<string, string> = {
+  // AI Assistants
+  chatgpt: "AI Assistants",
+  "chatgpt-teams": "AI Assistants",
+  claude: "AI Assistants",
+  gemini: "AI Assistants",
+  copilot: "AI Assistants",
+  "cursor-ai": "AI Assistants",
+  "google-assistant": "AI Assistants",
+  perplexity: "AI Assistants",
+  "lindy-ai": "AI Assistants",
+  "limitless-ai": "AI Assistants",
+  "rewind-ai": "AI Assistants",
+  "martin-ai": "AI Assistants",
+  poke: "AI Assistants",
+  "mem-ai": "AI Assistants",
+  // Automation
+  zapier: "Automation",
+  n8n: "Automation",
+  make: "Automation",
+  bardeen: "Automation",
+  activepieces: "Automation",
+  pipedream: "Automation",
+  relay: "Automation",
+  // Task Management
+  todoist: "Task Management",
+  ticktick: "Task Management",
+  things3: "Task Management",
+  anydo: "Task Management",
+  omnifocus: "Task Management",
+  // Project Management
+  asana: "Project Management",
+  clickup: "Project Management",
+  jira: "Project Management",
+  linear: "Project Management",
+  trello: "Project Management",
+  height: "Project Management",
+  monday: "Project Management",
+  basecamp: "Project Management",
+  // Calendar & Scheduling
+  "google-calendar": "Calendar & Scheduling",
+  fantastical: "Calendar & Scheduling",
+  "notion-calendar": "Calendar & Scheduling",
+  clockwise: "Calendar & Scheduling",
+  reclaim: "Calendar & Scheduling",
+  motion: "Calendar & Scheduling",
+  cal: "Calendar & Scheduling",
+  savvycal: "Calendar & Scheduling",
+  calendly: "Calendar & Scheduling",
+  akiflow: "Calendar & Scheduling",
+  // Email
+  superhuman: "Email",
+  sanebox: "Email",
+  shortwave: "Email",
+  "hey-email": "Email",
+  missive: "Email",
+  spark: "Email",
+  // Notes & Knowledge
+  notion: "Notes & Knowledge",
+  obsidian: "Notes & Knowledge",
+  logseq: "Notes & Knowledge",
+  "roam-research": "Notes & Knowledge",
+  evernote: "Notes & Knowledge",
+  craft: "Notes & Knowledge",
+  "reflect-app": "Notes & Knowledge",
+  capacities: "Notes & Knowledge",
+  tana: "Notes & Knowledge",
+  "notion-ai": "Notes & Knowledge",
+  "apple-reminders": "Task Management",
+  sunsama: "Calendar & Scheduling",
+  openclaw: "Automation",
+};
+
+const CATEGORY_ORDER = [
+  "AI Assistants",
+  "Automation",
+  "Task Management",
+  "Project Management",
+  "Calendar & Scheduling",
+  "Email",
+  "Notes & Knowledge",
+];
+
 export default function ComparisonsHubPage() {
   const comparisons = getAllComparisons();
 
@@ -57,6 +140,21 @@ export default function ComparisonsHubPage() {
     "Article",
   );
 
+  // Group comparisons by category
+  const grouped: Record<string, typeof comparisons> = {};
+  for (const comparison of comparisons) {
+    const category = COMPARISON_CATEGORIES[comparison.slug] ?? "Other";
+    if (!grouped[category]) {
+      grouped[category] = [];
+    }
+    grouped[category].push(comparison);
+  }
+
+  const orderedCategories = [
+    ...CATEGORY_ORDER.filter((cat) => grouped[cat]),
+    ...(grouped["Other"] ? ["Other"] : []),
+  ];
+
   return (
     <>
       <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
@@ -73,48 +171,55 @@ export default function ComparisonsHubPage() {
           </p>
         </header>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {comparisons.map((comparison) => (
-            <Link
-              key={comparison.slug}
-              href={`/compare/${comparison.slug}`}
-              className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
-            >
-              <div className="flex items-center -space-x-2">
-                <div
-                  className="relative flex h-9 w-9 items-center justify-center p-0"
-                  style={{ rotate: "-9deg", zIndex: 1 }}
+        {orderedCategories.map((category) => (
+          <div key={category} className="mb-14">
+            <h2 className="mb-6 border-b border-zinc-700 pb-3 text-xl font-semibold text-zinc-300">
+              {category}
+            </h2>
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              {grouped[category].map((comparison) => (
+                <Link
+                  key={comparison.slug}
+                  href={`/compare/${comparison.slug}`}
+                  className="group flex flex-col gap-3 rounded-3xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
                 >
-                  <Image
-                    src="/images/logos/macos.webp"
-                    alt="GAIA"
-                    width={50}
-                    height={50}
-                  />
-                </div>
-                <div
-                  className="relative flex h-8 w-8 items-center justify-center rounded-md overflow-hidden p-0"
-                  style={{ rotate: "9deg", zIndex: 0 }}
-                >
-                  <Image
-                    src={`https://www.google.com/s2/favicons?domain=${comparison.domain}&sz=128`}
-                    alt={comparison.name}
-                    width={40}
-                    height={40}
-                    unoptimized
-                  />
-                </div>
-              </div>
-              <h2 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
-                GAIA vs {comparison.name}
-              </h2>
-              <p className="text-sm text-zinc-500">{comparison.tagline}</p>
-              <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
-                {comparison.description}
-              </p>
-            </Link>
-          ))}
-        </div>
+                  <div className="flex items-center -space-x-2">
+                    <div
+                      className="relative flex h-9 w-9 items-center justify-center p-0"
+                      style={{ rotate: "-9deg", zIndex: 1 }}
+                    >
+                      <Image
+                        src="/images/logos/macos.webp"
+                        alt="GAIA"
+                        width={50}
+                        height={50}
+                      />
+                    </div>
+                    <div
+                      className="relative flex h-8 w-8 items-center justify-center rounded-md overflow-hidden p-0"
+                      style={{ rotate: "9deg", zIndex: 0 }}
+                    >
+                      <Image
+                        src={`https://www.google.com/s2/favicons?domain=${comparison.domain}&sz=128`}
+                        alt={comparison.name}
+                        width={40}
+                        height={40}
+                        unoptimized
+                      />
+                    </div>
+                  </div>
+                  <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
+                    GAIA vs {comparison.name}
+                  </h3>
+                  <p className="text-sm text-zinc-500">{comparison.tagline}</p>
+                  <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
+                    {comparison.description}
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       <FinalSection />

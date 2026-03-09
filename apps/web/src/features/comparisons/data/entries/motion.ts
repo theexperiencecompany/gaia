@@ -16,6 +16,12 @@ export const entry: ComparisonData = {
       "AI calendar scheduling",
       "AI task scheduler",
       "productivity AI comparison",
+      "Motion free alternative",
+      "Motion alternative reddit",
+      "Motion alternative 2026",
+      "best Motion replacement",
+      "open source alternative to Motion",
+      "Motion vs GAIA",
     ],
     intro:
       "Motion has earned its reputation as an intelligent calendar tool that auto-schedules tasks around your meetings. It solves a real problem: the mental overhead of deciding when to do what. But calendar scheduling is one piece of a much larger puzzle. GAIA takes a fundamentally different approach by managing your entire digital workflow, not just your calendar.",

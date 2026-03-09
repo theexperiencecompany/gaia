@@ -19,6 +19,12 @@ export const entry: ComparisonData = {
     "Shortwave vs AI assistant",
     "proactive AI productivity",
     "email automation AI",
+    "Shortwave free alternative",
+    "Shortwave alternative reddit",
+    "Shortwave alternative 2026",
+    "best Shortwave replacement",
+    "open source alternative to Shortwave",
+    "Shortwave vs GAIA",
   ],
   intro:
     "Shortwave has built one of the most capable AI email clients available today. It layers powerful writing assistance, instant AI replies, intelligent thread summarization, and natural-language filters directly onto your Gmail account. For users whose biggest bottleneck is their inbox, Shortwave is a genuinely compelling upgrade over the stock Gmail experience. But email is only one dimension of a modern knowledge worker's digital life. GAIA takes a fundamentally different approach: rather than making a single tool smarter, it acts as a proactive assistant that operates across your entire workflow — reading and triaging email, managing your calendar, organizing tasks, running multi-step automations, and maintaining a persistent memory of your work. Where Shortwave is a better email client, GAIA is an assistant that runs your digital life.",

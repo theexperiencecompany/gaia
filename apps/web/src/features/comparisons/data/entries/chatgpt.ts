@@ -16,6 +16,12 @@ export const entry: ComparisonData = {
     "ChatGPT vs AI assistant",
     "proactive AI assistant",
     "ChatGPT email calendar automation",
+    "ChatGPT free alternative",
+    "ChatGPT alternative reddit",
+    "ChatGPT alternative 2026",
+    "best ChatGPT replacement",
+    "open source alternative to ChatGPT",
+    "ChatGPT vs GAIA",
   ],
   intro:
     "ChatGPT is the world's most recognized AI chatbot, built for on-demand conversation: ask it something, get an answer. It has expanded into scheduling reminders, connecting to Gmail and Google Calendar for paid users, and browsing the web, but it remains fundamentally reactive. GAIA is built on an entirely different premise: it monitors your digital life continuously and acts on your behalf before you think to ask. Where ChatGPT waits for a prompt, GAIA triages your inbox, prepares your meeting briefings, and executes multi-step workflows automatically. The distinction is not capability but posture — ChatGPT is a powerful tool you use; GAIA is an assistant that works for you.",

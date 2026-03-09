@@ -16,6 +16,12 @@ export const entry: ComparisonData = {
       "ClickUp AI comparison",
       "AI project management",
       "AI vs project management tool",
+      "ClickUp free alternative",
+      "ClickUp alternative reddit",
+      "ClickUp alternative 2026",
+      "best ClickUp replacement",
+      "open source alternative to ClickUp",
+      "ClickUp vs GAIA",
     ],
     intro:
       "ClickUp has built one of the most feature-dense project management platforms available. It combines tasks, docs, goals, whiteboards, dashboards, and time tracking into a single product. It even has its own AI assistant for writing and summarization. But ClickUp is still a tool you manage. You create tasks, update statuses, and move things through workflows manually. GAIA flips this model: instead of you managing a tool, an AI assistant manages your work for you.",

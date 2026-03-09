@@ -19,6 +19,11 @@ export const entry: ComparisonData = {
     "proactive AI assistant vs Obsidian",
     "AI task manager vs Obsidian",
     "Obsidian vs AI productivity tool",
+    "Obsidian free alternative",
+    "Obsidian alternative reddit",
+    "Obsidian alternative 2026",
+    "open source alternative to Obsidian",
+    "Obsidian vs GAIA",
   ],
   intro:
     "Obsidian has built a devoted following among knowledge workers, researchers, and writers who want a local-first, Markdown-based system for capturing and connecting ideas. Its bidirectional linking, graph view, and extensive plugin ecosystem make it one of the most flexible personal knowledge bases available. But Obsidian is fundamentally a note-taking and knowledge management tool — it does not manage your inbox, automate your calendar, or execute tasks on your behalf. GAIA operates in an entirely different category. Rather than giving you a place to store and connect your notes, GAIA actively monitors your digital life: triaging email, preparing meeting briefings, managing your todos, and running multi-step automations across 50+ tools without being prompted. If Obsidian is your second brain for knowledge, GAIA is the assistant that handles your workflow.",

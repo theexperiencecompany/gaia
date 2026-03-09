@@ -23,6 +23,7 @@ import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -364,6 +365,7 @@ export default async function PersonaPage({ params }: PageProps) {
             ),
             generateBreadcrumbSchema(breadcrumbs),
             generateFAQSchema(config.faqs),
+            generateProductSchema(),
           ]}
         />
         <Client />
@@ -398,7 +400,7 @@ export default async function PersonaPage({ params }: PageProps) {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema]} />
+      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, generateProductSchema()]} />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -490,6 +492,38 @@ export default async function PersonaPage({ params }: PageProps) {
           </h2>
           <FAQAccordion faqs={data.faqs} />
         </section>
+
+        {/* Relevant Tool Comparisons */}
+        {data.relatedComparisons && data.relatedComparisons.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-3xl font-semibold text-white">
+              Tools {data.role} Often Compare
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {data.relatedComparisons.map((slug) => (
+                <Link
+                  key={slug}
+                  href={`/compare/${slug}`}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                    GAIA vs{" "}
+                    {slug
+                      .split("-")
+                      .map(
+                        (w: string) =>
+                          w.charAt(0).toUpperCase() + w.slice(1),
+                      )
+                      .join(" ")}
+                  </h3>
+                  <p className="text-xs text-zinc-400">
+                    See the full comparison
+                  </p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Explore More */}
         <section className="mb-16">

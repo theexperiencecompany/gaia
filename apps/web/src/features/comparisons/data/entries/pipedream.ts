@@ -7,7 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Developer-focused workflow automation with serverless code execution",
   description:
     "Pipedream is a developer-centric automation platform that combines a 2,800+ app integration library with full Node.js code execution in serverless workflow steps — ideal for engineers building production-grade integrations. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations through natural language and autonomous action, built for knowledge workers who want AI to handle their digital life rather than an iPaaS platform to program.",
-  metaTitle: "GAIA vs Pipedream: AI Personal Assistant vs Developer Automation",
+  metaTitle: "Pipedream Alternative with AI-Native Automation | GAIA vs Pipedream",
   metaDescription:
     "Compare GAIA and Pipedream. Pipedream gives developers code-level automation power, but GAIA manages email, calendar, tasks, and workflows through natural language — no code required.",
   keywords: [

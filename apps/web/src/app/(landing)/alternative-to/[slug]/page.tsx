@@ -8,13 +8,17 @@ import {
   getAllAlternativeSlugs,
   getAlternative,
 } from "@/features/alternatives/data/alternativesData";
-import { getComparison } from "@/features/comparisons/data/comparisonsData";
+import {
+  getAllComparisons,
+  getComparison,
+} from "@/features/comparisons/data/comparisonsData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generateHowToSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -45,6 +49,79 @@ export async function generateMetadata({
   });
 }
 
+const COMPARISON_CATEGORIES: Record<string, string> = {
+  // AI Assistants
+  chatgpt: "AI Assistants",
+  "chatgpt-teams": "AI Assistants",
+  claude: "AI Assistants",
+  gemini: "AI Assistants",
+  copilot: "AI Assistants",
+  "cursor-ai": "AI Assistants",
+  "google-assistant": "AI Assistants",
+  perplexity: "AI Assistants",
+  "lindy-ai": "AI Assistants",
+  "limitless-ai": "AI Assistants",
+  "rewind-ai": "AI Assistants",
+  "martin-ai": "AI Assistants",
+  poke: "AI Assistants",
+  "mem-ai": "AI Assistants",
+  // Automation
+  zapier: "Automation",
+  n8n: "Automation",
+  make: "Automation",
+  bardeen: "Automation",
+  activepieces: "Automation",
+  pipedream: "Automation",
+  relay: "Automation",
+  // Task Management
+  todoist: "Task Management",
+  ticktick: "Task Management",
+  things3: "Task Management",
+  anydo: "Task Management",
+  omnifocus: "Task Management",
+  // Project Management
+  asana: "Project Management",
+  clickup: "Project Management",
+  jira: "Project Management",
+  linear: "Project Management",
+  trello: "Project Management",
+  height: "Project Management",
+  monday: "Project Management",
+  basecamp: "Project Management",
+  // Calendar & Scheduling
+  "google-calendar": "Calendar & Scheduling",
+  fantastical: "Calendar & Scheduling",
+  "notion-calendar": "Calendar & Scheduling",
+  clockwise: "Calendar & Scheduling",
+  reclaim: "Calendar & Scheduling",
+  motion: "Calendar & Scheduling",
+  cal: "Calendar & Scheduling",
+  savvycal: "Calendar & Scheduling",
+  calendly: "Calendar & Scheduling",
+  akiflow: "Calendar & Scheduling",
+  // Email
+  superhuman: "Email",
+  sanebox: "Email",
+  shortwave: "Email",
+  "hey-email": "Email",
+  missive: "Email",
+  spark: "Email",
+  // Notes & Knowledge
+  notion: "Notes & Knowledge",
+  obsidian: "Notes & Knowledge",
+  logseq: "Notes & Knowledge",
+  "roam-research": "Notes & Knowledge",
+  evernote: "Notes & Knowledge",
+  craft: "Notes & Knowledge",
+  "reflect-app": "Notes & Knowledge",
+  capacities: "Notes & Knowledge",
+  tana: "Notes & Knowledge",
+  "notion-ai": "Notes & Knowledge",
+  "apple-reminders": "Task Management",
+  sunsama: "Calendar & Scheduling",
+  openclaw: "Automation",
+};
+
 function FitScorePip({ filled }: { filled: boolean }) {
   return (
     <span
@@ -74,6 +151,14 @@ export default async function AlternativePage({ params }: PageProps) {
   }
 
   const hasComparisonPage = getComparison(slug) !== undefined;
+
+  const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
+  const relatedComparisons = getAllComparisons()
+    .filter(
+      (c) =>
+        c.slug !== slug && COMPARISON_CATEGORIES[c.slug] === currentCategory,
+    )
+    .slice(0, 3);
 
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
@@ -108,7 +193,7 @@ export default async function AlternativePage({ params }: PageProps) {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, howToSchema]} />
+      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, howToSchema, generateProductSchema()]} />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -233,6 +318,29 @@ export default async function AlternativePage({ params }: PageProps) {
           </h2>
           <FAQAccordion faqs={data.faqs} />
         </section>
+
+        {/* People Also Compare */}
+        {relatedComparisons.length >= 1 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-3xl font-semibold text-white">
+              People Also Compare
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {relatedComparisons.map((comp) => (
+                <Link
+                  key={comp.slug}
+                  href={`/compare/${comp.slug}`}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                    GAIA vs {comp.name}
+                  </h3>
+                  <p className="text-xs text-zinc-400">{comp.tagline}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Cross-link to comparison page */}
         {hasComparisonPage && (
