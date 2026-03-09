@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import {
   getAllGlossaryTermSlugs,
@@ -173,16 +174,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
           <h2 className="mb-6 text-3xl font-semibold text-white">
             Frequently Asked Questions
           </h2>
-          <div className="space-y-6">
-            {data.faqs.map((faq) => (
-              <div key={faq.question} className="rounded-2xl bg-zinc-800 p-6">
-                <h3 className="mb-2 text-lg font-medium text-white">
-                  {faq.question}
-                </h3>
-                <p className="leading-relaxed text-zinc-400">{faq.answer}</p>
-              </div>
-            ))}
-          </div>
+          <FAQAccordion faqs={data.faqs} />
         </section>
 
         {/* Explore More */}
