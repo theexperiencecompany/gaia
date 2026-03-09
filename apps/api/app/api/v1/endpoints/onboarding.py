@@ -42,7 +42,10 @@ async def complete_user_onboarding(
     - If user has Gmail connected: Email processor will trigger personalization after parsing
     - If no Gmail: Queue personalization ARQ job directly
     """
-    log.set(user={"id": user["user_id"]}, onboarding={"timezone": tz_info[0]})
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={"operation": "complete", "is_complete": True, "timezone": tz_info[0]},
+    )
 
     try:
         updated_user = await complete_onboarding(
@@ -105,7 +108,13 @@ async def get_onboarding_status(user: dict = Depends(get_current_user)):
     """
     Get the current user's onboarding status and preferences.
     """
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={"operation": "get_status"},
+    )
     status = await get_user_onboarding_status(user["user_id"])
+    is_complete = status.get("is_complete", False) if isinstance(status, dict) else False
+    log.set(onboarding={"operation": "get_status", "is_complete": is_complete})
     return status
 
 
@@ -121,7 +130,10 @@ async def update_onboarding_phase(
         user_id = user.get("user_id")
         phase = request.phase.value
 
-        log.set(user={"id": user_id}, onboarding={"phase": phase})
+        log.set(
+            user={"id": user_id},
+            onboarding={"operation": "update_step", "step": phase},
+        )
 
         if not user_id or not isinstance(user_id, str):
             log.error("[update_onboarding_phase] user_id is missing or not a string")
@@ -190,7 +202,10 @@ async def update_user_preferences(
     Update user's onboarding preferences.
     This can be used from the settings page to update preferences after onboarding.
     """
-    log.set(user={"id": user["user_id"]})
+    log.set(
+        user={"id": user["user_id"]},
+        onboarding={"operation": "update_personality"},
+    )
 
     try:
         updated_user = await update_onboarding_preferences(user["user_id"], preferences)
@@ -216,7 +231,10 @@ async def get_onboarding_personalization(user: dict = Depends(get_current_user))
     """
     try:
         user_id = user.get("user_id")
-        log.set(user={"id": user_id})
+        log.set(
+            user={"id": user_id},
+            onboarding={"operation": "get_personalization"},
+        )
         log.info(
             f"[get_onboarding_personalization] Fetching personalization for user {user_id}"
         )
