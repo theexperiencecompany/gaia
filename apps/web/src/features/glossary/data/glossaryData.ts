@@ -5778,6 +5778,434 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     ],
   },
 
+  "rlhf": {
+    slug: "rlhf",
+    term: "Reinforcement Learning from Human Feedback (RLHF)",
+    metaTitle: "What Is RLHF? Reinforcement Learning from Human Feedback Explained",
+    metaDescription:
+      "RLHF is the training technique used to align large language models with human preferences. Learn how reinforcement learning from human feedback shapes AI assistants like GAIA.",
+    definition:
+      "Reinforcement Learning from Human Feedback (RLHF) is a machine learning technique that trains AI models to produce outputs preferred by humans by learning from human-provided rankings or ratings rather than purely from raw data.",
+    extendedDescription:
+      "RLHF was instrumental in turning raw large language models into the helpful, harmless, and honest assistants seen in products like ChatGPT and Claude. The process typically involves three stages: supervised fine-tuning on high-quality demonstrations, training a reward model from human preference data (humans rank multiple model outputs from best to worst), and then using reinforcement learning — specifically Proximal Policy Optimization (PPO) — to fine-tune the original model to maximize the learned reward signal.\n\nThe key insight behind RLHF is that it is easier for humans to compare outputs (\"A is better than B\") than to specify exactly what a good output looks like. This comparative preference signal can be aggregated into a reward model that generalizes beyond the rated examples.\n\nRLHF significantly improves the helpfulness and safety of deployed models but is not without limitations. Models can learn to 'reward hack' — producing outputs that score highly on the reward model without genuinely being better. The quality of RLHF is bounded by the quality of human raters, who may have inconsistent or biased preferences. Alternatives and extensions include Direct Preference Optimization (DPO), which achieves similar alignment without a separate reward model, and Constitutional AI (CAI), which uses AI feedback rather than human feedback.",
+    keywords: [
+      "RLHF",
+      "reinforcement learning from human feedback",
+      "what is RLHF",
+      "AI alignment training",
+      "LLM fine-tuning",
+      "human feedback AI",
+    ],
+    category: "ai-concepts",
+    howGaiaUsesIt:
+      "GAIA's underlying language models are trained with RLHF to produce helpful, accurate, and safe responses. The alignment instilled through RLHF is what allows GAIA to handle sensitive personal data — emails, calendar events, tasks — and make reasonable judgments about what requires user attention versus what can be handled autonomously. GAIA benefits from RLHF without exposing users to the raw, unaligned model behavior.",
+    relatedTerms: [
+      "constitutional-ai",
+      "fine-tuning",
+      "large-language-model",
+      "human-in-the-loop",
+      "prompt-engineering",
+    ],
+    faqs: [
+      {
+        question: "Why is RLHF important for AI assistants?",
+        answer:
+          "RLHF aligns AI model behavior with what humans actually find helpful and appropriate. Without RLHF, large language models produce technically fluent but often unhelpful, unsafe, or off-topic responses. RLHF is what turns a raw language model into a trustworthy assistant capable of handling personal and professional tasks.",
+      },
+      {
+        question: "Does RLHF make AI completely safe?",
+        answer:
+          "No. RLHF substantially improves alignment but does not eliminate all failure modes. Models can still produce incorrect information, misinterpret context, or be manipulated through adversarial prompts. GAIA addresses this by implementing human-in-the-loop controls for sensitive actions, ensuring you can review and approve decisions before they take effect.",
+      },
+    ],
+  },
+
+  "constitutional-ai": {
+    slug: "constitutional-ai",
+    term: "Constitutional AI",
+    metaTitle: "What Is Constitutional AI? Anthropic's AI Safety Approach",
+    metaDescription:
+      "Constitutional AI is Anthropic's technique for training AI systems to be helpful, harmless, and honest using a set of written principles. Learn how it shapes the AI assistants you use.",
+    definition:
+      "Constitutional AI (CAI) is a training methodology developed by Anthropic that aligns AI models with human values by having the AI evaluate and revise its own outputs against a written set of principles — a 'constitution' — rather than relying exclusively on human-labeled preference data.",
+    extendedDescription:
+      "Introduced by Anthropic in 2022, Constitutional AI was designed to address scalability limitations of RLHF: as models become more capable, human evaluators may struggle to reliably judge which outputs are better. CAI replaces some human feedback with AI feedback: the model is prompted to critique its own responses against a constitution of principles (e.g., 'Is this response harmful?', 'Is this response honest?') and then revise them.\n\nThe process has two main phases. In supervised learning, the model generates responses, critiques them against constitutional principles, and revises them — creating a synthetic dataset of improved responses. In RL from AI Feedback (RLAIF), a separate AI model is trained as a preference model using AI-generated comparisons rather than human comparisons, which is then used to fine-tune the base model with reinforcement learning.\n\nThe 'constitution' itself is a human-authored document: a list of principles that describe what the AI should and should not do. Anthropic's constitution draws from sources including the UN Declaration of Human Rights and existing AI ethics frameworks. By encoding values explicitly in language rather than implicitly through human preference ratings, CAI makes the alignment process more interpretable and adjustable.\n\nConstitutional AI is most associated with Claude, Anthropic's family of AI models. It complements rather than replaces RLHF — most deployed models use both techniques.",
+    keywords: [
+      "constitutional AI",
+      "what is constitutional AI",
+      "Anthropic constitutional AI",
+      "AI safety alignment",
+      "RLAIF",
+      "AI values training",
+    ],
+    category: "ai-concepts",
+    howGaiaUsesIt:
+      "GAIA can be configured to run on Claude, Anthropic's Constitutional AI-trained model family, which brings the safety and helpfulness guarantees of CAI to GAIA's autonomous operations. When GAIA manages sensitive personal data across email, calendar, and task systems, the underlying model's alignment — including its reluctance to take harmful actions or violate user privacy — directly shapes what GAIA will and will not do autonomously.",
+    relatedTerms: [
+      "rlhf",
+      "human-in-the-loop",
+      "large-language-model",
+      "fine-tuning",
+      "ai-agent",
+    ],
+    faqs: [
+      {
+        question: "How does Constitutional AI differ from RLHF?",
+        answer:
+          "RLHF uses human raters to compare outputs and build a reward model from those comparisons. Constitutional AI uses a written set of principles and AI-generated feedback to achieve similar alignment, reducing dependence on large-scale human labeling. In practice, most frontier models use both techniques in combination.",
+      },
+      {
+        question: "Can the AI's constitution be changed?",
+        answer:
+          "Yes — that is one of Constitutional AI's advantages. Because values are encoded in explicit written principles, they can be audited, debated, and updated. This is more transparent than alignment embedded implicitly in millions of human preference labels, where the criteria for what is 'good' may not be clearly documented.",
+      },
+    ],
+  },
+
+  "para-method": {
+    slug: "para-method",
+    term: "PARA Method",
+    metaTitle: "What Is the PARA Method? Tiago Forte's Organization System",
+    metaDescription:
+      "The PARA Method is a universal organizational system by Tiago Forte for managing digital information across Projects, Areas, Resources, and Archives. Learn how GAIA supports PARA.",
+    definition:
+      "The PARA Method is a personal organization system created by Tiago Forte that categorizes all information into four top-level buckets — Projects, Areas, Resources, and Archives — to create a consistent structure across every digital tool you use.",
+    extendedDescription:
+      "PARA stands for Projects, Areas, Resources, and Archives. Each category is defined precisely:\n\n**Projects** are short-term efforts with a specific outcome and deadline (e.g., 'Launch Q3 marketing campaign,' 'Write annual performance review'). They have a clear finish line.\n\n**Areas** are ongoing responsibilities with a standard to maintain but no end date (e.g., 'Health,' 'Finances,' 'Team management'). Areas don't get 'done' — you just maintain the standard.\n\n**Resources** are topics or interests that may be useful in the future (e.g., 'Web design inspiration,' 'Python resources,' 'Travel ideas'). They're reference material you might want to return to.\n\n**Archives** are inactive items from the other three categories. Projects that are completed or cancelled, areas of responsibility you've handed off, and resources you no longer need all move to Archives.\n\nThe system's power comes from its universality. You use the same four categories in every tool — your note-taking app, your file system, your task manager, your email folders. This consistency reduces the cognitive overhead of deciding where something belongs: it always fits into one of four buckets.\n\nPARA pairs naturally with Getting Things Done (GTD): GTD governs your tasks and actions, while PARA governs your notes and reference material. Together they create a comprehensive external system for managing both commitments and knowledge.",
+    keywords: [
+      "PARA method",
+      "what is PARA method",
+      "Tiago Forte PARA",
+      "projects areas resources archives",
+      "personal organization system",
+      "PARA productivity",
+    ],
+    category: "knowledge-management",
+    howGaiaUsesIt:
+      "GAIA's task and project management integrations align with PARA's structure: tasks are linked to active projects, recurring responsibilities map to areas, and reference materials are stored in GAIA's knowledge graph. When GAIA captures action items from emails and meetings, it can categorize them as belonging to a specific project or area, keeping your PARA system current without manual filing.",
+    relatedTerms: [
+      "personal-knowledge-management",
+      "second-brain",
+      "getting-things-done",
+      "weekly-review",
+      "deep-work",
+    ],
+    faqs: [
+      {
+        question: "How does PARA differ from GTD?",
+        answer:
+          "GTD is a workflow system for managing tasks and commitments — it governs what you do. PARA is an organizational system for managing information and reference material — it governs where things live. They complement each other: GTD processes your inbox into next actions, while PARA organizes the notes and resources that support those actions.",
+      },
+      {
+        question: "Can GAIA help me implement PARA across my tools?",
+        answer:
+          "GAIA can help maintain PARA consistency by linking tasks to their parent projects, organizing reference materials in its knowledge graph by area or project, and surfacing relevant resources when you're working on a specific project. GAIA's integrations with Notion and task management tools provide a foundation for building PARA-structured workspaces.",
+      },
+    ],
+  },
+
+  "langchain": {
+    slug: "langchain",
+    term: "LangChain",
+    metaTitle: "What Is LangChain? The LLM Application Framework Explained",
+    metaDescription:
+      "LangChain is an open-source framework for building applications powered by large language models. Learn how it relates to agent frameworks and tools like LangGraph.",
+    definition:
+      "LangChain is an open-source Python and JavaScript framework that provides abstractions and components for building applications that use large language models, including chains, agents, memory, and tool integrations.",
+    extendedDescription:
+      "Released in October 2022, LangChain became one of the most widely adopted frameworks in the LLM application ecosystem. It introduced standardized abstractions for the most common patterns in LLM-powered applications: connecting a model to external data sources, chaining multiple prompts together, enabling LLMs to use tools, and persisting context across interactions.\n\nLangChain's core primitives include:\n\n**Chains**: Sequences of LLM calls and other operations composed into a pipeline. A chain might retrieve relevant documents, inject them into a prompt, call the LLM, and parse the output.\n\n**Agents**: LLM-driven decision loops that choose which tools to use and in what order to accomplish a goal. LangChain popularized the ReAct (Reasoning + Acting) agent pattern.\n\n**Memory**: Mechanisms for persisting context across multiple LLM calls, from simple conversation buffers to vector-store-based long-term memory.\n\n**Tool integrations**: A large ecosystem of pre-built connectors to external APIs, databases, and services.\n\nAs agent use cases became more sophisticated, the LangChain team built LangGraph as a separate library for complex, stateful, multi-agent workflows. LangGraph provides more explicit control over agent execution flow using a graph-based model, addressing limitations of LangChain's sequential chain abstraction for production agentic systems.\n\nLangChain remains widely used for prototyping and simpler LLM applications, while LangGraph is preferred for production-grade agent systems that require fine-grained control, human-in-the-loop workflows, and persistent state.",
+    keywords: [
+      "LangChain",
+      "what is LangChain",
+      "LangChain framework",
+      "LLM application framework",
+      "LangChain vs LangGraph",
+      "AI agent framework",
+    ],
+    category: "development",
+    howGaiaUsesIt:
+      "GAIA's backend is built on LangGraph rather than LangChain's chain-based abstraction, giving it fine-grained control over the multi-agent execution graph that orchestrates tasks across 50+ integrations. LangGraph's stateful, graph-based approach is better suited to GAIA's complex, long-running agent workflows than LangChain's simpler sequential chains. The LangChain ecosystem's tool integrations and community patterns informed GAIA's architecture.",
+    relatedTerms: [
+      "langgraph",
+      "agent-loop",
+      "large-language-model",
+      "function-calling",
+      "ai-orchestration",
+    ],
+    faqs: [
+      {
+        question: "What is the difference between LangChain and LangGraph?",
+        answer:
+          "LangChain provides high-level abstractions for building LLM applications including chains, agents, and memory. LangGraph is a library built by the LangChain team specifically for complex agentic workflows, using a directed graph model that gives developers explicit control over execution flow, state persistence, and human-in-the-loop interruption points. GAIA uses LangGraph for its agent orchestration because of the finer control it provides over multi-step, stateful workflows.",
+      },
+      {
+        question: "Is LangChain still relevant in 2025?",
+        answer:
+          "Yes. LangChain remains widely used for prototyping and simpler LLM applications. For production agentic systems with complex state management, many teams have migrated to LangGraph or other graph-based frameworks. The LangChain ecosystem — its tool integrations, documentation, and community patterns — continues to be a valuable resource for developers building LLM-powered applications.",
+      },
+    ],
+  },
+
+  "token": {
+    slug: "token",
+    term: "Token",
+    metaTitle: "What Is a Token in AI? Context Windows & API Costs Explained",
+    metaDescription:
+      "In AI, a token is the basic unit of text processed by language models — roughly 4 characters or ¾ of a word. Learn how tokens affect context windows and API costs.",
+    definition:
+      "In AI, a token is the basic unit of text that language models process — roughly equivalent to 4 characters or ¾ of an average English word. Tokens are used to measure context window capacity and determine API usage costs.",
+    extendedDescription:
+      "Language models do not process text character-by-character or word-by-word. Instead, they operate on tokens — sub-word units produced by a tokenizer that breaks text into chunks based on frequency patterns in the training corpus. Common short words like 'the' or 'is' are typically single tokens, while longer or rare words may be split into two or more tokens.\n\nUnderstanding tokens is essential for two reasons. First, every model has a context window measured in tokens — the maximum amount of text it can consider at once. GPT-4o has a 128,000-token context window; Claude 3.5 Sonnet supports 200,000. Second, most LLM APIs charge per token consumed (input + output), so token awareness directly impacts cost.\n\nAs a rough rule: 1,000 tokens ≈ 750 words, or about 1,500 characters. A typical business email is 200–400 tokens. A long research paper may exceed 8,000 tokens. When building AI applications, prompt design often involves carefully managing token usage to maximize context efficiency while controlling costs.",
+    keywords: [
+      "token AI",
+      "what is a token in AI",
+      "LLM token",
+      "context window tokens",
+      "AI token cost",
+      "tokenization",
+    ],
+    category: "ai-concepts",
+    howGaiaUsesIt:
+      "GAIA manages token usage efficiently across all its language model calls to balance capability with cost. When processing long documents like email threads or meeting transcripts, GAIA uses chunking and summarization strategies to stay within model context windows. It selects the appropriate model tier — from lightweight models for simple tasks to frontier models for complex reasoning — partly based on the token budget required for each operation.",
+    relatedTerms: [
+      "large-language-model",
+      "context-window",
+      "prompt-engineering",
+      "hallucination",
+      "fine-tuning",
+    ],
+    faqs: [
+      {
+        question: "How many tokens is a typical conversation?",
+        answer:
+          "A typical back-and-forth conversation of 10 messages averages 500–2,000 tokens depending on message length. A detailed technical discussion with long responses can reach 5,000–10,000 tokens. Most modern frontier models support context windows large enough to hold hours of conversation history.",
+      },
+      {
+        question: "Do tokens affect AI response quality?",
+        answer:
+          "Not directly — but running out of context window space does. When a conversation exceeds the model's token limit, earlier messages are truncated or summarized, causing the model to 'forget' earlier context. Good token management, like GAIA's rolling summarization, preserves important context across long sessions.",
+      },
+      {
+        question: "Why are API costs measured in tokens?",
+        answer:
+          "Tokens represent the actual computational work the model performs. Processing (input tokens) and generating (output tokens) each require GPU computation proportional to the token count. Billing by token gives a consistent, language-agnostic measure of usage that reflects actual compute costs.",
+      },
+      {
+        question: "Is a token the same in every language?",
+        answer:
+          "No. Tokenizers are trained primarily on English text, so non-English languages typically require more tokens to represent the same amount of information. For example, Korean or Arabic text may use 2–3x more tokens than equivalent English text, which affects both context window usage and API costs.",
+      },
+    ],
+  },
+
+  "webhook-vs-polling": {
+    slug: "webhook-vs-polling",
+    term: "Webhook vs Polling",
+    metaTitle: "Webhook vs Polling: Which Is Better for Real-Time Integrations?",
+    metaDescription:
+      "Webhooks push data instantly when events occur; polling repeatedly checks for updates on a schedule. Learn which approach is better for AI integrations and how GAIA uses webhooks.",
+    definition:
+      "Webhooks push data to your application immediately when an event occurs, while polling involves your application repeatedly querying an external service on a schedule to check for new data. Webhooks are more efficient for real-time integrations.",
+    extendedDescription:
+      "The choice between webhooks and polling is fundamental in integration architecture. With polling, your application sends a request to an API on a regular interval — say, every 60 seconds — and asks 'is there anything new?' Most of the time, the answer is no, making the vast majority of requests wasteful. Polling is simple to implement but inefficient: it adds latency (up to one full poll interval before detecting an event), wastes API rate-limit quota, and consumes server resources unnecessarily.\n\nWebhooks invert this relationship. Instead of your app asking the service for updates, the service pushes a notification to your app the moment an event occurs. This delivers near-zero latency, eliminates wasted requests, and scales efficiently. The trade-off is that webhooks require your application to have a publicly accessible endpoint and to handle incoming requests reliably.\n\nFor AI assistants and automation tools, webhooks are almost always the preferred approach. Reacting to a new email, Slack message, or calendar change in real time requires the low latency that only webhooks can provide. Polling-based systems introduce delays that defeat the purpose of real-time automation.",
+    keywords: [
+      "webhook vs polling",
+      "webhooks vs polling",
+      "real-time integration",
+      "polling API",
+      "webhook integration",
+      "event-driven vs polling",
+    ],
+    category: "automation",
+    howGaiaUsesIt:
+      "GAIA uses webhooks wherever available to receive real-time notifications from connected services — Gmail, Google Calendar, Slack, Notion, and others. This means GAIA can react to a new email or urgent Slack message within seconds rather than waiting for a polling interval. For services that do not support webhooks, GAIA employs intelligent polling with adaptive intervals that increase frequency when activity is high and back off when quiet, minimizing unnecessary API calls.",
+    relatedTerms: [
+      "webhook",
+      "api-integration",
+      "event-driven-automation",
+      "workflow-automation",
+      "rate-limiting",
+    ],
+    faqs: [
+      {
+        question: "Why are webhooks better than polling for real-time automation?",
+        answer:
+          "Webhooks deliver events instantly with no wasted requests, while polling introduces latency equal to the poll interval and makes many unnecessary API calls. For AI automation that needs to react to emails or messages promptly, webhooks are far more efficient.",
+      },
+      {
+        question: "When should you use polling instead of webhooks?",
+        answer:
+          "Polling is appropriate when the data source does not support webhooks, when you need to query a service that changes on a known schedule, or when you are building a simple integration and the latency introduced by polling is acceptable for your use case.",
+      },
+      {
+        question: "What happens if a webhook delivery fails?",
+        answer:
+          "Most webhook providers implement retry logic, attempting redelivery with exponential backoff if your endpoint returns an error. Your application should respond with a 200 status immediately upon receipt and process events asynchronously to avoid timeouts. GAIA handles webhook failures gracefully and falls back to polling when needed.",
+      },
+      {
+        question: "Does polling or webhooks use more API rate limit?",
+        answer:
+          "Polling consumes API rate limit quota with every request, even when there is no new data. Webhooks only consume resources when events actually occur, making them dramatically more rate-limit-efficient for integrations where events are infrequent.",
+      },
+    ],
+  },
+
+  "rate-limiting": {
+    slug: "rate-limiting",
+    term: "Rate Limiting",
+    metaTitle: "What Is Rate Limiting? API Limits Explained | GAIA",
+    metaDescription:
+      "Rate limiting controls how many API requests a client can make in a given time period, protecting servers from overload. Learn how GAIA handles rate limits across 50+ integrations.",
+    definition:
+      "Rate limiting is a technique used by APIs and servers to control the number of requests a client can make within a specified time window, protecting infrastructure from overload and preventing abuse.",
+    extendedDescription:
+      "Every major API — Gmail, Slack, GitHub, OpenAI, and hundreds of others — enforces rate limits to ensure fair usage and system stability. These limits are expressed in various ways: requests per second, requests per minute, requests per day, or tokens per minute for LLM APIs. When a client exceeds its limit, the server returns an HTTP 429 'Too Many Requests' response, often with a Retry-After header indicating when requests can resume.\n\nFor applications like AI assistants that integrate with many services simultaneously, rate limits present a significant engineering challenge. A single workflow might touch Gmail, Google Calendar, Slack, and Notion in sequence. If any step hits a rate limit, the entire workflow must pause and retry gracefully.\n\nEffective rate limit handling requires exponential backoff (waiting progressively longer between retries), request queuing and throttling, caching responses to avoid redundant calls, and intelligent prioritization when competing requests need the same API. For LLM APIs specifically, token-per-minute limits often matter more than request counts, requiring careful batching of prompts.\n\nRate limits also directly affect system design choices like webhook-vs-polling: webhooks are more rate-limit-efficient because they only consume quota when events occur, whereas polling consumes quota on every request regardless of whether data has changed.",
+    keywords: [
+      "rate limiting",
+      "API rate limit",
+      "what is rate limiting",
+      "429 too many requests",
+      "API throttling",
+      "rate limit handling",
+    ],
+    category: "development",
+    howGaiaUsesIt:
+      "GAIA manages rate limits across 50+ integrations using a centralized request scheduler that tracks quota consumption per service. It prioritizes urgent operations, queues lower-priority tasks, and applies exponential backoff when limits are hit. For LLM API rate limits, GAIA batches related prompts and selects appropriately-sized models to stay within token-per-minute budgets while maximizing throughput across concurrent workflows.",
+    relatedTerms: [
+      "webhook",
+      "api-integration",
+      "webhook-vs-polling",
+      "event-driven-automation",
+      "workflow-automation",
+    ],
+    faqs: [
+      {
+        question: "What does a 429 error mean?",
+        answer:
+          "HTTP 429 'Too Many Requests' means you have exceeded the API provider's rate limit for your account or IP address. The response often includes a Retry-After header telling you how many seconds to wait before making another request. Applications should implement exponential backoff to handle these gracefully.",
+      },
+      {
+        question: "How do rate limits affect AI assistants?",
+        answer:
+          "AI assistants that integrate with many services can hit rate limits when processing a burst of activity — for example, processing 50 emails at once. Without proper rate limit handling, workflows fail mid-execution. GAIA queues and throttles requests intelligently so that rate limits cause delays rather than failures.",
+      },
+      {
+        question: "What is exponential backoff?",
+        answer:
+          "Exponential backoff is a retry strategy where each successive retry waits twice as long as the previous one (e.g., 1s, 2s, 4s, 8s). Adding random jitter prevents multiple clients from retrying simultaneously. This is the standard approach for handling 429 and 503 errors from APIs.",
+      },
+      {
+        question: "Do different API tiers have different rate limits?",
+        answer:
+          "Yes. Most API providers offer higher rate limits on paid or enterprise tiers. For example, OpenAI's rate limits increase significantly with higher usage tiers. GAIA is designed to work within standard rate limits but benefits from higher tiers for power users processing large volumes of data.",
+      },
+    ],
+  },
+
+  "ical": {
+    slug: "ical",
+    term: "iCal (iCalendar)",
+    metaTitle: "What Is iCal? iCalendar Format for Calendar Sharing | GAIA",
+    metaDescription:
+      "iCal (iCalendar) is the standard format for sharing calendar data across applications, enabling Google Calendar, Outlook, and Apple Calendar to interoperate. Learn how GAIA uses iCal.",
+    definition:
+      "iCal, short for iCalendar, is an open standard file format (RFC 5545) for sharing and syncing calendar data across different applications and platforms, enabling interoperability between Google Calendar, Microsoft Outlook, Apple Calendar, and other calendar tools.",
+    extendedDescription:
+      "The iCalendar standard was published in 1998 and has become the universal language of calendar data. An .ics file (or iCal feed) contains structured text describing calendar events, including their title, start and end times, recurrence rules, attendees, location, and description. Any calendar application that supports iCalendar can read, import, and subscribe to these files regardless of which platform created them.\n\nThe standard supports two primary use cases. First, static .ics file export/import — you download a file from one calendar and import it into another. Second, live calendar subscriptions — your calendar application subscribes to a URL that returns an up-to-date .ics file, which it refreshes periodically so changes made at the source propagate to subscribers.\n\nFor personal productivity, iCal is the mechanism that makes cross-platform calendar sharing possible. Adding a conference schedule, sports team fixtures, or public holiday calendar to your personal calendar almost always uses an iCal subscription URL. For developers, the iCalendar format is essential for building anything that creates, reads, or syncs calendar events across platforms.\n\nCommon iCalendar fields include DTSTART and DTEND for event times, RRULE for recurrence patterns (e.g., 'every Monday at 9am'), ATTENDEE for participant email addresses, and ORGANIZER for the event creator. VTIMEZONE components handle time zone conversions, which are a frequent source of bugs in calendar integrations.",
+    keywords: [
+      "iCal",
+      "iCalendar",
+      "ics file",
+      "calendar sharing format",
+      "calendar subscription",
+      "iCal vs Google Calendar",
+    ],
+    category: "productivity",
+    howGaiaUsesIt:
+      "GAIA supports iCal subscription URLs for importing external calendars — conference schedules, team rosters, project timelines — directly into your unified calendar view. When GAIA creates calendar events and exports them to connected tools, it uses the iCalendar format to ensure compatibility across Google Calendar, Outlook, and Apple Calendar. GAIA also parses iCal data to understand recurring event patterns and attendee lists when performing calendar analysis.",
+    relatedTerms: [
+      "ai-calendar-management",
+      "calendar-automation",
+      "meeting-scheduling",
+      "time-blocking",
+      "smart-scheduling",
+    ],
+    faqs: [
+      {
+        question: "What is an .ics file?",
+        answer:
+          "An .ics file is a plain-text file in iCalendar format containing one or more calendar events. You can open it in any calendar application — Google Calendar, Outlook, Apple Calendar — to import the events. It is the standard way to share calendar events across different platforms.",
+      },
+      {
+        question: "What is the difference between an iCal import and an iCal subscription?",
+        answer:
+          "Importing an .ics file adds events as a one-time snapshot — future changes to the source are not reflected. Subscribing to an iCal URL sets up a live feed that your calendar app periodically refreshes, so events added or changed at the source appear automatically.",
+      },
+      {
+        question: "Does GAIA support iCal?",
+        answer:
+          "Yes. GAIA can subscribe to iCal feeds and import .ics files, allowing you to include external calendars — conference schedules, public holidays, team calendars — in your unified schedule. GAIA then factors these events into scheduling decisions, focus time blocking, and meeting conflict detection.",
+      },
+      {
+        question: "Is iCal the same as Google Calendar?",
+        answer:
+          "No. iCalendar (iCal) is an open file format standard, while Google Calendar is a calendar application. Google Calendar supports iCalendar — it can export .ics files and accept iCal subscription URLs — but the two are distinct. iCal is the format; Google Calendar is one of many apps that uses it.",
+      },
+    ],
+  },
+
+  "inbox-management": {
+    slug: "inbox-management",
+    term: "Inbox Management",
+    metaTitle: "What Is Inbox Management? AI Email Organization | GAIA",
+    metaDescription:
+      "Inbox management refers to the practices and systems used to keep an email inbox organized and manageable. Learn how GAIA automates inbox management with AI.",
+    definition:
+      "Inbox management refers to the strategies, habits, and tools used to keep an email inbox organized, actionable, and manageable — including triage, labeling, archiving, snoozing, delegation, and maintaining Inbox Zero.",
+    extendedDescription:
+      "The average knowledge worker receives 120+ emails per day and spends 2.5 hours managing them — a significant productivity drain. Without a systematic approach, inboxes become a chaotic mix of urgent requests, newsletters, CC'd threads, receipts, and spam, making it difficult to identify what actually requires attention.\n\nEffective inbox management typically involves several practices. Triage is the first-pass review that categorizes each email: does it require action, waiting, reference, or deletion? Labeling or foldering organizes messages by project, sender, or priority. Archiving removes handled messages from the inbox without deleting them. Snoozing hides an email until a future date when it becomes relevant. Delegation routes emails requiring action by someone else directly to them.\n\nPopular inbox management philosophies include Inbox Zero (process all emails to empty the inbox daily), the GTD email workflow (convert emails to tasks immediately), and the Three-Folder System (Action, Waiting, Archive). Each has different trade-offs between thoroughness and speed.\n\nAI is increasingly central to inbox management. AI can classify emails by urgency and category, draft replies, unsubscribe from unwanted lists, summarize long threads, and take autonomous action on routine messages. The goal is to reduce the time spent on email triage so humans can focus on messages that genuinely require their judgment.",
+    keywords: [
+      "inbox management",
+      "email inbox management",
+      "email organization",
+      "inbox zero",
+      "email triage",
+      "manage email inbox",
+    ],
+    category: "productivity",
+    howGaiaUsesIt:
+      "GAIA automates inbox management by continuously monitoring your email, classifying incoming messages by urgency and required action, and taking autonomous steps on routine items — unsubscribing from unwanted lists, archiving notifications, flagging urgent emails, and drafting replies for your review. GAIA learns your communication patterns over time, becoming more accurate at distinguishing the messages that need your attention from those it can handle independently, dramatically reducing daily email processing time.",
+    relatedTerms: [
+      "email-triage",
+      "inbox-zero",
+      "ai-email-management",
+      "smart-notifications",
+      "async-communication",
+    ],
+    faqs: [
+      {
+        question: "What is the best system for inbox management?",
+        answer:
+          "The best system is one you will actually maintain. Inbox Zero works well for people who process email in dedicated batches. A simple three-folder system (Action, Waiting, Archive) works for others. AI-powered inbox management like GAIA removes the burden of manual triage entirely by automating classification and routine actions.",
+      },
+      {
+        question: "How much time does good inbox management save?",
+        answer:
+          "Studies show knowledge workers spend 2.5 hours daily on email. A systematic inbox management approach can reduce active email time by 30–50%. AI-assisted inbox management can cut it further — GAIA users typically reduce email processing time by handling routine messages autonomously and batching everything else for efficient review.",
+      },
+      {
+        question: "What is the difference between inbox management and Inbox Zero?",
+        answer:
+          "Inbox Zero is one specific inbox management philosophy that aims to end each day with an empty inbox by processing every email to completion. Inbox management is the broader category of practices for keeping email organized and actionable — Inbox Zero is one approach within it.",
+      },
+      {
+        question: "Can AI fully automate inbox management?",
+        answer:
+          "AI can automate a large portion of inbox management — classification, archiving, unsubscribing, drafting routine replies, and flagging priorities. Messages requiring nuanced judgment, sensitive decisions, or personal responses still benefit from human review. GAIA is designed to handle the high-volume routine work so you can focus your attention on the emails that matter.",
+      },
+    ],
+  },
+
 };
 
 export function getGlossaryTerm(slug: string): GlossaryTerm | undefined {

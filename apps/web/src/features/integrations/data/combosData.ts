@@ -1,3 +1,11 @@
+import { combosBatchB } from "./combosData-b";
+import { combosBatchC } from "./combosData-c";
+import { combosBatchD } from "./combosData-d";
+import { combosBatchE } from "./combosData-e";
+import { combosBatchF } from "./combosData-f";
+import { combosBatchG } from "./combosData-g";
+import { combosBatchH } from "./combosData-h";
+
 export interface IntegrationCombo {
   slug: string;
   toolA: string;
@@ -3562,6 +3570,13 @@ export const combos: Record<string, IntegrationCombo> = {
       },
     ],
   },
+  ...combosBatchB,
+  ...combosBatchC,
+  ...combosBatchD,
+  ...combosBatchE,
+  ...combosBatchF,
+  ...combosBatchG,
+  ...combosBatchH,
 };
 
 export function getCombo(slug: string): IntegrationCombo | undefined {
