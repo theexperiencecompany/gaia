@@ -20,7 +20,7 @@ export interface IntegrationCombo {
   useCases: Array<{ title: string; description: string }>;
   howItWorks: Array<{ step: string; description: string }>;
   faqs: Array<{ question: string; answer: string }>;
-  /** When set, this page's canonical points to /integrations/{canonicalSlug} — use for reverse-order duplicate combos (e.g. github-slack → slack-github). */
+  /** When set, this page's canonical points to /automate/{canonicalSlug} — use for reverse-order duplicate combos (e.g. github-slack → slack-github). */
   canonicalSlug?: string;
 }
 

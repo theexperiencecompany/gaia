@@ -12,7 +12,7 @@ export const metadata: Metadata = generatePageMetadata({
   title: "Install GAIA CLI",
   description:
     "Install the GAIA CLI tool to quickly set up and manage your self-hosted GAIA instance. One command to get started with your AI assistant.",
-  path: "/install",
+  path: "/cli",
   keywords: [
     "GAIA CLI",
     "Install GAIA",
@@ -29,15 +29,15 @@ export default function InstallPage() {
   const webPageSchema = generateWebPageSchema(
     "Install GAIA CLI",
     "Quick installation guide for the GAIA CLI tool",
-    `${siteConfig.url}/install`,
+    `${siteConfig.url}/cli`,
     [
       { name: "Home", url: siteConfig.url },
-      { name: "Install", url: `${siteConfig.url}/install` },
+      { name: "Install", url: `${siteConfig.url}/cli` },
     ],
   );
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
-    { name: "Install", url: `${siteConfig.url}/install` },
+    { name: "Install", url: `${siteConfig.url}/cli` },
   ]);
 
   return (

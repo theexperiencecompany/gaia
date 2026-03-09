@@ -124,7 +124,7 @@ export const appConfig = {
 
     resources: [
       {
-        href: "/install",
+        href: "/cli",
         label: "Install CLI",
         icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
         description: "Install the GAIA CLI for self-hosting",
@@ -170,6 +170,22 @@ export const appConfig = {
         label: "Glossary",
         icon: <BookOpen02Icon width={20} height={20} color={"currentColor"} />,
         description: "AI and productivity terms explained",
+        hideNavbar: true,
+      },
+      {
+        href: "/alternative-to",
+        label: "Alternatives",
+        icon: (
+          <ArrowRight02Icon width={20} height={20} color={"currentColor"} />
+        ),
+        description: "See which tools GAIA replaces and how it compares",
+        hideNavbar: true,
+      },
+      {
+        href: "/automate",
+        label: "Automation Combos",
+        icon: <ConnectIcon width={20} height={20} color={"currentColor"} />,
+        description: "Automate any two tools together with GAIA",
         hideNavbar: true,
       },
     ] as AppLink[],

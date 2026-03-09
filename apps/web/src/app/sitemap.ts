@@ -63,6 +63,7 @@ const STATIC_PAGES: Array<{
   { path: "/download", freq: "weekly", priority: 0.9 },
   { path: "/compare", freq: "weekly", priority: 0.9 },
   { path: "/alternative-to", freq: "weekly", priority: 0.9 },
+  { path: "/automate", freq: "weekly", priority: 0.8 },
   { path: "/for", freq: "weekly", priority: 0.9 },
   { path: "/learn", freq: "weekly", priority: 0.8 },
   { path: "/faq", freq: "monthly", priority: 0.8 },
@@ -331,7 +332,7 @@ function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
   return allCombos
     .filter((c) => !c.canonicalSlug)
     .map((combo) => ({
-      url: `${baseUrl}/integrations/${combo.slug}`,
+      url: `${baseUrl}/automate/${combo.slug}`,
       lastModified: BUILD_DATE,
       changeFrequency: "monthly" as const,
       priority: 0.7,

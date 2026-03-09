@@ -43,15 +43,15 @@ export async function generateMetadata({
   return generatePageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
-    path: `/integrations/${combo}`,
+    path: `/automate/${combo}`,
     canonicalPath: data.canonicalSlug
-      ? `/integrations/${data.canonicalSlug}`
+      ? `/automate/${data.canonicalSlug}`
       : undefined,
     keywords: data.keywords,
   });
 }
 
-export default async function IntegrationComboPage({ params }: PageProps) {
+export default async function AutomateComboPage({ params }: PageProps) {
   const { combo } = await params;
   const data = getCombo(combo);
 
@@ -72,11 +72,11 @@ export default async function IntegrationComboPage({ params }: PageProps) {
     )
     .slice(0, 3);
 
-  const pageUrl = `${siteConfig.url}/integrations/${combo}`;
+  const pageUrl = `${siteConfig.url}/automate/${combo}`;
 
   const breadcrumbItems = [
     { name: "Home", url: siteConfig.url },
-    { name: "Integrations", url: `${siteConfig.url}/integrations` },
+    { name: "Marketplace", url: `${siteConfig.url}/marketplace` },
     {
       name: `${data.toolA} + ${data.toolB}`,
       url: pageUrl,
@@ -262,7 +262,7 @@ export default async function IntegrationComboPage({ params }: PageProps) {
               {relatedCombos.map((related) => (
                 <Link
                   key={related.slug}
-                  href={`/integrations/${related.slug}`}
+                  href={`/automate/${related.slug}`}
                   className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
