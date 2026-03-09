@@ -631,7 +631,7 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
       "google drive trello integration",
       "connect google drive trello",
       "google drive trello automation",
-      "gaia google drive trello",",
+      "gaia google drive trello",
       "google drive trello workflow",
     ],
     intro:
