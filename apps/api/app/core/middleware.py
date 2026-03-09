@@ -5,6 +5,7 @@ This module provides functions to configure middleware for the FastAPI applicati
 """
 
 from app.config.settings import settings
+from shared.py.wide_events import log as wide_log
 from app.api.v1.middleware import (
     LoggingMiddleware,
     ProfilingMiddleware,
@@ -22,6 +23,13 @@ from workos import AsyncWorkOSClient
 
 async def rate_limit_handler(request: Request, exc: Exception) -> JSONResponse:
     """Handle rate limit exceeded exceptions."""
+    wide_log.warning(
+        "rate_limit_exceeded",
+        client_ip=request.client.host if request.client else request.headers.get("x-forwarded-for", "unknown"),
+        path=request.url.path,
+        method=request.method,
+        retry_after=getattr(exc, "retry_after", None),
+    )
     return JSONResponse(
         status_code=429,
         content={

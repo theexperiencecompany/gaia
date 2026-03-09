@@ -119,6 +119,15 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     # If session was refreshed, store new session token
                     if new_session:
                         request.state.new_session = new_session
+                else:
+                    # Session token was present but authentication failed (expired, invalid, etc.)
+                    log.set(
+                        auth={
+                            "method": "jwt",
+                            "failure_reason": "invalid_or_expired_session",
+                            "authenticated": False,
+                        }
+                    )
 
             except Exception as e:
                 log.error(f"Authentication middleware error: {e}")

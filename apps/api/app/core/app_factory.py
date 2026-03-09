@@ -7,6 +7,7 @@ This module provides functions to create and configure the FastAPI application.
 import secrets
 
 from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse, UJSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
@@ -74,6 +75,41 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=exc.status_code,
             content=exc.to_dict(),
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(
+        request: Request, exc: RequestValidationError
+    ) -> JSONResponse:
+        """Log validation errors with field-level detail and return 422."""
+        errors = [
+            {"loc": list(err["loc"]), "msg": err["msg"], "type": err["type"]}
+            for err in exc.errors()
+        ]
+        wide_log.warning(
+            "validation_failed",
+            validation_errors=errors,
+            error_count=len(errors),
+        )
+        return JSONResponse(
+            status_code=422,
+            content={"detail": exc.errors()},
+        )
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(
+        request: Request, exc: Exception
+    ) -> JSONResponse:
+        """Catch all unhandled exceptions, log them, and return 500."""
+        wide_log.error(
+            "unhandled_exception",
+            error_type=type(exc).__name__,
+            error_message=str(exc),
+        )
+        wide_log.set(outcome="failed")
+        return JSONResponse(
+            status_code=500,
+            content={"error": "internal_server_error"},
         )
 
     app.include_router(api_router, prefix="/api/v1")

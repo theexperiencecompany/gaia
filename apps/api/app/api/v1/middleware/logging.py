@@ -143,8 +143,54 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         if incoming_trace_id:
             wide_log.set(trace_id=incoming_trace_id)
 
+        # Capture request size from Content-Length header (available without reading body)
+        try:
+            request_size_bytes = int(request.headers.get("content-length", 0))
+        except (ValueError, TypeError):
+            request_size_bytes = 0
+
         start = time.time()
-        response = await call_next(request)
+        status_code = 500
+        status_phrase = "Internal Server Error"
+        response = None
+        try:
+            response = await call_next(request)
+            status_code = response.status_code
+            try:
+                status_phrase = HTTPStatus(response.status_code).phrase
+            except ValueError:
+                status_phrase = "Unknown"
+        except Exception as exc:
+            wide_log.error(
+                "unhandled_exception",
+                error_type=type(exc).__name__,
+                error_message=str(exc),
+            )
+            wide_log.set(outcome="failed")
+            # Still emit the wide event before re-raising
+            duration_ms = round((time.time() - start) * 1000, 2)
+            wide_log.set(final_level="ERROR")
+            wide_event_context = wide_log.get()
+            client_ip = (
+                request.client.host
+                if request.client
+                else request.headers.get("x-forwarded-for", "unknown")
+            )
+            context = {
+                **_ENV_CONTEXT,
+                **wide_event_context,
+                "method": request.method,
+                "path": request.url.path,
+                "status_code": 500,
+                "status_phrase": "Internal Server Error",
+                "duration_ms": duration_ms,
+                "client_ip": client_ip,
+                "request_id": request.headers.get("x-request-id"),
+                "user_agent": request.headers.get("user-agent"),
+                "request_size_bytes": request_size_bytes,
+            }
+            request_logger.bind(**context).log("ERROR", "http_request")
+            raise
         duration_ms = round((time.time() - start) * 1000, 2)
 
         client_ip = (
@@ -153,17 +199,12 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             else request.headers.get("x-forwarded-for", "unknown")
         )
 
-        try:
-            status_phrase = HTTPStatus(response.status_code).phrase
-        except ValueError:
-            status_phrase = "Unknown"
-
         # Final level = worst of: HTTP status code + explicit warning/error calls
         level = wide_log.get_max_level()
-        if response.status_code >= 500:
+        if status_code >= 500:
             level = "ERROR"
         elif (
-            response.status_code >= 400
+            status_code >= 400
             and _LEVEL_ORDER[level] < _LEVEL_ORDER["WARNING"]
         ):
             level = "WARNING"
@@ -183,12 +224,14 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             # --- HTTP request characteristics (always authoritative) ---
             "method": request.method,
             "path": request.url.path,
-            "status_code": response.status_code,
+            "status_code": status_code,
             "status_phrase": status_phrase,
             "duration_ms": duration_ms,
             "client_ip": client_ip,
             "request_id": request.headers.get("x-request-id"),
             "user_agent": request.headers.get("user-agent"),
+            "request_size_bytes": request_size_bytes,
+            "response_size_bytes": int(response.headers.get("content-length", 0) or 0),
         }
 
         request_logger.bind(**context).log(level, "http_request")
