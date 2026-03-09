@@ -91,6 +91,13 @@ class CommonSettings(BaseAppSettings):
     ENABLE_LAZY_LOADING: bool = True
 
     # ----------------------------------------------
+    # Observability
+    # ----------------------------------------------
+    # Secret token Prometheus sends as "Authorization: Bearer <token>" when
+    # scraping /metrics. Generate with: openssl rand -hex 32
+    METRICS_TOKEN: Optional[str] = None
+
+    # ----------------------------------------------
     # Profiling & Performance Monitoring
     # ----------------------------------------------
     ENABLE_PROFILING: bool = False  # Must be explicitly enabled via .env

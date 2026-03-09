@@ -4,9 +4,13 @@ Application factory for the GAIA FastAPI application.
 This module provides functions to create and configure the FastAPI application.
 """
 
-from fastapi import FastAPI, Request
+import secrets
+
+from fastapi import Depends, FastAPI, HTTPException, Request, status
 from fastapi.responses import JSONResponse, UJSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
+from prometheus_fastapi_instrumentator import Instrumentator
 from shared.py.wide_events import log as wide_log
 
 from app.api.v1.endpoints.health import router as health_router
@@ -39,6 +43,29 @@ def create_app() -> FastAPI:
     )
 
     configure_middleware(app)
+
+    # Expose /metrics for Prometheus scraping.
+    # In production, guard with a bearer token so /metrics is not publicly readable.
+    # The LoggingMiddleware already skips /metrics so it won't pollute request logs.
+    instrumentator = Instrumentator().instrument(app)
+    if settings.METRICS_TOKEN:
+        _bearer = HTTPBearer(auto_error=True)
+
+        def _verify_metrics_token(
+            credentials: HTTPAuthorizationCredentials = Depends(_bearer),
+        ) -> None:
+            if not secrets.compare_digest(
+                credentials.credentials, settings.METRICS_TOKEN
+            ):
+                raise HTTPException(status_code=status.HTTP_403_FORBIDDEN)
+
+        instrumentator.expose(
+            app, include_in_schema=False, dependencies=[Depends(_verify_metrics_token)]
+        )
+    else:
+        # No token configured — only expose in non-production environments.
+        if settings.ENV != "production":
+            instrumentator.expose(app, include_in_schema=False)
 
     @app.exception_handler(AppError)
     async def app_error_handler(request: Request, exc: AppError) -> JSONResponse:
