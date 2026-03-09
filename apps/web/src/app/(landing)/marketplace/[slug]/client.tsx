@@ -25,13 +25,16 @@ import { BearerTokenModal } from "@/features/integrations/components/BearerToken
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 import ShareButton from "@/features/use-cases/components/ShareButton";
 import { toast } from "@/lib/toast";
+import { IntegrationRichContent } from "./IntegrationRichContent";
 
 interface IntegrationDetailClientProps {
   integration: PublicIntegrationResponse;
+  comparisonSlug?: string;
 }
 
 export function IntegrationDetailClient({
   integration,
+  comparisonSlug,
 }: IntegrationDetailClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
@@ -344,6 +347,12 @@ export function IntegrationDetailClient({
               )}
             </CardBody>
           </Card>
+
+          {/* Rich content sections for SEO and user education */}
+          <IntegrationRichContent
+            integration={integration}
+            comparisonSlug={comparisonSlug}
+          />
         </div>
       </div>
 

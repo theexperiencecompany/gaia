@@ -244,6 +244,7 @@ export function generateOrganizationSchema(): WithContext<Organization> {
       siteConfig.links.youtube,
       siteConfig.links.discord,
       siteConfig.url,
+      "https://docs.heygaia.io",
     ],
     contactPoint: {
       "@type": "ContactPoint",

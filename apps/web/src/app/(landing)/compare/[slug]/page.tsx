@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { getAlternative } from "@/features/alternatives/data/alternativesData";
 import {
   getAllComparisonSlugs,
   getComparison,
@@ -13,6 +14,7 @@ import {
   generateBreadcrumbSchema,
   generateFAQSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -69,6 +71,8 @@ export default async function ComparisonPage({ params }: PageProps) {
     notFound();
   }
 
+  const hasAlternativePage = getAlternative(slug) !== undefined;
+
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
     data.metaDescription,
@@ -93,10 +97,11 @@ export default async function ComparisonPage({ params }: PageProps) {
   ]);
 
   const faqSchema = generateFAQSchema(data.faqs);
+  const productSchema = generateProductSchema();
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema]} />
+      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, productSchema]} />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -214,6 +219,22 @@ export default async function ComparisonPage({ params }: PageProps) {
           </h2>
           <FAQAccordion faqs={data.faqs} />
         </section>
+
+        {/* Cross-link to alternative-to page */}
+        {hasAlternativePage && (
+          <section className="mb-16 border-t border-zinc-800 pt-8">
+            <p className="text-sm text-zinc-500">
+              Looking for the best {data.name} alternative?{" "}
+              <Link
+                href={`/alternative-to/${slug}`}
+                className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
+              >
+                See our complete guide &rarr; Best {data.name} Alternative in
+                2026
+              </Link>
+            </p>
+          </section>
+        )}
 
         {/* Explore More */}
         <section className="mb-16">

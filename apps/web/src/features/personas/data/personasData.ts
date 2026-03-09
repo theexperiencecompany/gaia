@@ -1,3 +1,24 @@
+/**
+ * Persona pages data — `/for/[slug]`
+ *
+ * Each entry generates a page at heygaia.io/for/{slug} targeting "AI assistant for [role]" searches.
+ * Currently 33 personas covering developers, founders, executives, recruiters, etc.
+ *
+ * ## Architecture
+ * - Interface: `PersonaData` — the shape every entry must match
+ * - Record: `personas` — keyed by slug (e.g. `"software-developers"`, `"startup-founders"`)
+ * - Exports: `getAllPersonaSlugs()`, `getPersona(slug)`, etc.
+ *
+ * ## Keyword strategy
+ * Best opportunities (less Copilot/Gemini competition):
+ * - `freelancers`, `startup-founders`, `remote-workers`, `students`
+ * - Each persona should have 12-15 keywords; 5 is too thin
+ * - Use intent-specific phrases: "AI for [specific task the role does]" not just "AI assistant for [role]"
+ *
+ * ## Adding a new persona
+ * Add to `personas` Record with all required fields. Add the slug to the sitemap's
+ * `FEATURED_PERSONA_SLUGS` set if it should get priority 0.9 (vs 0.7).
+ */
 export interface PersonaFeature {
   title: string;
   description: string;
@@ -32,6 +53,16 @@ export const personas: Record<string, PersonaData> = {
       "GitHub automation",
       "Linear AI integration",
       "coding workflow automation",
+      "AI for code review automation",
+      "GitHub AI assistant",
+      "Linear AI automation",
+      "developer workflow automation",
+      "best AI for software developers",
+      "open source AI for developers",
+      "self-hosted AI developer tool",
+      "AI standup summary generator",
+      "developer context switching tool",
+      "Slack automation for developers",
     ],
     intro:
       "Software developers spend an estimated 58% of their time on non-coding tasks according to GitHub's 2024 Octoverse report. Context-switching between Slack threads, GitHub notifications, Linear tickets, and email drains the deep focus required for quality code. GAIA acts as a proactive AI assistant that manages your developer workflow end-to-end, from triaging GitHub notifications to preparing daily standup summaries, so you can spend more time in your editor and less time managing tools.",
@@ -104,6 +135,16 @@ export const personas: Record<string, PersonaData> = {
       "roadmap management AI",
       "stakeholder update automation",
       "PM productivity tool",
+      "AI for feature request tracking",
+      "Linear AI for product managers",
+      "Notion roadmap automation",
+      "product manager workflow tool",
+      "best AI for product managers",
+      "open source AI for PMs",
+      "AI for sprint planning",
+      "stakeholder reporting AI tool",
+      "product manager meeting prep AI",
+      "Asana AI integration for PMs",
     ],
     intro:
       "Product managers operate at the intersection of engineering, design, business, and customer success. A 2024 Productboard survey found that PMs spend over 40% of their week on status updates, meeting prep, and tool management rather than strategic product thinking. GAIA serves as your proactive AI copilot, synthesizing information across Linear, Slack, Gmail, and Notion so you can focus on building the right product instead of managing the process.",
@@ -174,6 +215,16 @@ export const personas: Record<string, PersonaData> = {
       "design operations AI",
       "design feedback management",
       "creative productivity tool",
+      "AI for UX designers",
+      "design operations AI tool",
+      "designer productivity tool",
+      "AI for product designers",
+      "design review scheduling AI",
+      "Figma workflow automation",
+      "best AI for designers",
+      "design handoff automation",
+      "design feedback aggregation AI",
+      "UX designer workflow tool",
     ],
     intro:
       "Designers spend a disproportionate amount of time on operations rather than craft. Research from InVision found that designers dedicate roughly 35% of their time to non-design activities like managing feedback, writing documentation, and coordinating with stakeholders. GAIA automates the operational side of design work, managing feedback collection, scheduling reviews, and keeping handoff documentation current so you can focus on creating exceptional user experiences.",
@@ -239,6 +290,16 @@ export const personas: Record<string, PersonaData> = {
       "startup automation",
       "investor update automation",
       "founder workflow AI",
+      "AI for writing investor updates",
+      "founder email triage tool",
+      "startup hiring pipeline automation",
+      "best AI for startup founders",
+      "open source AI for founders",
+      "self-hosted AI for startups",
+      "AI chief of staff for startups",
+      "founder calendar management AI",
+      "Notion AI for startup operations",
+      "Gmail automation for founders",
     ],
     intro:
       "Startup founders wear every hat simultaneously. A First Round Capital survey revealed that 72% of founders cite time management as their biggest challenge, with the average founder context-switching between 12+ tools daily. GAIA acts as your AI chief of staff, proactively managing investor communications, hiring pipelines, team updates, and the operational overhead that scales with your company, freeing you to focus on the decisions that only you can make.",
@@ -315,6 +376,16 @@ export const personas: Record<string, PersonaData> = {
       "academic task management AI",
       "study planner AI",
       "assignment tracker automation",
+      "homework AI",
+      "college productivity tool",
+      "AI for university students",
+      "student research AI tool",
+      "deadline tracker for students",
+      "best AI for students",
+      "AI study scheduler",
+      "college assignment management AI",
+      "student workflow automation",
+      "AI for academic productivity",
     ],
     intro:
       "Students juggle coursework, research, extracurriculars, and social commitments with limited time and cognitive bandwidth. Studies from the National Survey of Student Engagement show that effective time management is the single strongest predictor of academic success. GAIA helps students organize their academic lives by managing assignments, scheduling study sessions, tracking deadlines, and surfacing relevant research, acting as a personal academic assistant that keeps everything on track.",
@@ -378,6 +449,16 @@ export const personas: Record<string, PersonaData> = {
       "async communication AI",
       "remote team collaboration tool",
       "work from home assistant",
+      "remote work AI",
+      "distributed team productivity tool",
+      "AI for remote teams",
+      "async update automation",
+      "work from home productivity AI",
+      "best AI for remote workers",
+      "Slack automation for remote teams",
+      "time zone meeting scheduler AI",
+      "remote worker status update tool",
+      "notification management AI for remote work",
     ],
     intro:
       "Remote workers face a unique paradox: more flexibility but more fragmentation. Buffer's 2024 State of Remote Work report found that 23% of remote workers struggle with loneliness and 21% cite communication challenges as their biggest obstacle. The average remote worker checks 8+ tools throughout the day. GAIA bridges the gaps by centralizing communication, automating status updates, and ensuring nothing gets lost across time zones and tool silos.",
@@ -443,6 +524,16 @@ export const personas: Record<string, PersonaData> = {
       "client management automation",
       "freelance workflow AI",
       "solo business automation",
+      "freelance invoicing AI",
+      "client billing automation",
+      "freelancer email management AI",
+      "AI for freelance client management",
+      "invoice follow-up automation",
+      "best AI for freelancers",
+      "freelancer scheduling tool",
+      "overdue payment reminder AI",
+      "Gmail automation for freelancers",
+      "freelancer project tracking AI",
     ],
     intro:
       "Freelancers are simultaneously the CEO, accountant, project manager, and individual contributor. Upwork's 2024 Freelance Forward study found that freelancers spend 33% of their working hours on non-billable administrative tasks including client communication, invoicing, and project management. GAIA handles the business side of freelancing so you can maximize billable hours and deliver exceptional work to clients.",
@@ -514,6 +605,16 @@ export const personas: Record<string, PersonaData> = {
       "entrepreneur productivity",
       "small business AI tool",
       "business workflow automation",
+      "AI for small business owners",
+      "entrepreneur time management AI",
+      "startup operations automation",
+      "business operations AI tool",
+      "AI for growing a business",
+      "entrepreneur email automation",
+      "best AI for entrepreneurs",
+      "customer follow-up automation",
+      "business scaling AI assistant",
+      "AI chief of staff for founders",
     ],
     intro:
       "Entrepreneurs must move fast while managing an ever-growing list of operational responsibilities. Harvard Business Review research shows that entrepreneurs who effectively delegate and automate operational tasks are 3x more likely to scale successfully. GAIA serves as your AI operations manager, handling email triage, customer follow-ups, team coordination, and the daily administrative burden so you can focus on growth and strategy.",
@@ -657,6 +758,16 @@ export const personas: Record<string, PersonaData> = {
       "creator economy AI",
       "publishing automation",
       "content calendar AI",
+      "YouTube productivity AI",
+      "newsletter AI assistant",
+      "podcast workflow tool",
+      "content creator productivity tool",
+      "AI for content scheduling",
+      "social media content automation",
+      "best AI for content creators",
+      "content research AI tool",
+      "creator workflow automation",
+      "audience engagement AI",
     ],
     intro:
       "Content creators are one-person media companies. Whether you publish newsletters, YouTube videos, podcasts, or social media content, the operational demands of scheduling, research, audience engagement, and cross-platform distribution consume time that should go toward creating. The creator economy now exceeds $250 billion globally, yet most creators lack the operational support that traditional media teams provide. GAIA fills that gap as your AI production assistant.",
@@ -724,6 +835,16 @@ export const personas: Record<string, PersonaData> = {
       "ML workflow automation",
       "data team collaboration",
       "data science operations",
+      "AI for experiment documentation",
+      "GitHub AI for data scientists",
+      "Notion AI for ML projects",
+      "data scientist workflow tool",
+      "best AI for data scientists",
+      "open source AI for data science",
+      "AI for stakeholder reporting in data science",
+      "Perplexity AI for research tracking",
+      "data science team coordination tool",
+      "AI for literature review automation",
     ],
     intro:
       "Data scientists spend an estimated 45% of their time on data preparation and operational tasks according to Anaconda's State of Data Science report, leaving insufficient time for modeling and analysis. Between managing stakeholder expectations, documenting experiments, coordinating with engineering teams, and presenting findings, the operational burden is substantial. GAIA automates the non-analytical aspects of data science work so you can focus on extracting insights.",
@@ -791,6 +912,16 @@ export const personas: Record<string, PersonaData> = {
       "status report automation",
       "team coordination AI",
       "project tracking automation",
+      "AI for PMs",
+      "project manager productivity tool",
+      "Asana AI automation",
+      "AI alternative to ClickUp AI",
+      "stakeholder reporting AI tool",
+      "best AI for project managers",
+      "project risk monitoring AI",
+      "meeting action item tracking AI",
+      "distributed team coordination AI",
+      "project status update automation",
     ],
     intro:
       "Project managers are the glue that holds teams together, but the PMI Pulse of the Profession report consistently shows that PMs spend over 50% of their time on communication and administrative tasks rather than strategic project oversight. Tracking deliverables across Asana, Linear, or ClickUp while managing stakeholder emails and scheduling meetings creates a coordination tax that scales with every new project. GAIA automates the operational layer of project management.",
@@ -867,6 +998,16 @@ export const personas: Record<string, PersonaData> = {
       "sprint reporting AI",
       "team velocity tracking",
       "engineering leadership tool",
+      "AI for 1:1 preparation",
+      "GitHub AI for engineering managers",
+      "Linear sprint analytics AI",
+      "engineering manager productivity tool",
+      "best AI for engineering managers",
+      "open source AI for engineering leadership",
+      "AI for PR cycle time tracking",
+      "self-hosted AI for engineering teams",
+      "Slack automation for engineering managers",
+      "AI for cross-team dependency tracking",
     ],
     intro:
       "Engineering managers balance technical leadership with people management, and the split rarely favors deep work. A Jellyfish State of Engineering Management report found that EMs spend an average of 22 hours per week in meetings and communications. Keeping pulse on team health, sprint velocity, PR review times, and cross-team dependencies while preparing for 1:1s and stakeholder meetings creates a constant operational burden. GAIA automates the data gathering and reporting so you can focus on unblocking your team.",
@@ -932,6 +1073,16 @@ export const personas: Record<string, PersonaData> = {
       "CRM automation tool",
       "sales productivity AI",
       "deal management automation",
+      "AI for sales follow-up automation",
+      "HubSpot AI automation",
+      "AI for sales call preparation",
+      "sales professional workflow tool",
+      "best AI for sales professionals",
+      "LinkedIn AI for prospect research",
+      "Gmail automation for sales",
+      "AI for pipeline management",
+      "sales activity reporting AI",
+      "Perplexity AI for prospect research",
     ],
     intro:
       "Sales professionals spend only 28% of their time actually selling according to Salesforce's State of Sales report. The rest goes to CRM data entry, email follow-ups, meeting prep, and administrative tasks. Every minute spent on busywork is a minute not spent building relationships and closing deals. GAIA automates the operational side of sales so you can focus on what generates revenue: meaningful conversations with prospects and customers.",
@@ -1008,6 +1159,16 @@ export const personas: Record<string, PersonaData> = {
       "account management AI",
       "renewal management tool",
       "CS operations automation",
+      "churn prevention AI",
+      "renewal management AI",
+      "customer success manager productivity tool",
+      "AI for CSMs",
+      "account health monitoring AI",
+      "best AI for customer success",
+      "QBR preparation AI tool",
+      "customer churn risk detection AI",
+      "proactive customer outreach AI",
+      "customer success workflow automation",
     ],
     intro:
       "Customer success managers own the critical post-sale relationship that determines retention and expansion. Gainsight's 2024 CS report found that CSMs managing 40+ accounts spend more time on operational tasks than strategic conversations. Tracking account health signals across email, support channels, and usage data while managing QBRs and renewals creates a constant juggling act. GAIA proactively monitors your accounts and surfaces the signals that matter before churn risks materialize.",
@@ -1137,6 +1298,16 @@ export const personas: Record<string, PersonaData> = {
       "client engagement automation",
       "consulting workflow AI",
       "billable utilization tool",
+      "management consulting AI",
+      "consultant email management AI",
+      "AI for management consultants",
+      "consultant meeting prep tool",
+      "multi-client project tracking AI",
+      "best AI for consultants",
+      "consulting deliverable automation",
+      "client communication AI for consultants",
+      "consultant workflow automation",
+      "non-billable time reduction AI",
     ],
     intro:
       "Consultants sell their expertise by the hour, making non-billable time directly expensive. McKinsey research suggests that management consultants spend up to 40% of their time on internal operations, client communication management, and deliverable coordination rather than strategic advisory work. GAIA maximizes your billable utilization by automating the operational overhead of consulting engagements.",
@@ -1202,6 +1373,16 @@ export const personas: Record<string, PersonaData> = {
       "client portfolio management AI",
       "agency operations tool",
       "digital agency productivity",
+      "marketing agency AI",
+      "creative agency automation tool",
+      "agency owner productivity tool",
+      "AI for agency operations",
+      "client reporting automation AI",
+      "agency business development AI",
+      "best AI for agency owners",
+      "multi-client management AI",
+      "agency team coordination tool",
+      "AI for digital marketing agencies",
     ],
     intro:
       "Agency owners manage the complexity of multiple client relationships, team coordination, business development, and financial oversight simultaneously. Agency Management Institute data shows that most agency owners spend less than 20% of their time on growth-driving activities because operational demands consume the majority of their week. GAIA acts as your AI operations manager, automating client reporting, team coordination, and administrative tasks so you can focus on growing your agency.",
@@ -1275,6 +1456,16 @@ export const personas: Record<string, PersonaData> = {
       "indie hacker automation",
       "bootstrapped startup AI",
       "build in public AI tool",
+      "solo founder AI",
+      "SaaS builder AI assistant",
+      "indie hacker productivity tool",
+      "AI for bootstrapped founders",
+      "solo SaaS operator automation",
+      "product launch automation AI",
+      "best AI for indie hackers",
+      "customer support automation for indie hackers",
+      "micro-SaaS AI tool",
+      "indie hacker workflow automation",
     ],
     intro:
       "Indie hackers build, launch, market, support, and grow products single-handedly. Every operational task you handle manually is time not spent shipping features or talking to users. The most successful indie hackers automate relentlessly. GAIA acts as your AI co-founder, handling customer emails, monitoring product metrics, managing your social presence, and keeping the operational side of your business running while you focus on building.",
@@ -1341,6 +1532,16 @@ export const personas: Record<string, PersonaData> = {
       "one-person business AI",
       "solo business productivity",
       "solopreneur workflow tool",
+      "AI for one-person businesses",
+      "solopreneur email management AI",
+      "virtual assistant alternative for solopreneurs",
+      "solopreneur calendar automation",
+      "online business automation AI",
+      "best AI for solopreneurs",
+      "solopreneur task management tool",
+      "AI for digital product creators",
+      "service business automation AI",
+      "solopreneur client management AI",
     ],
     intro:
       "Solopreneurs generate revenue that rivals small teams, but they do it alone. A Hiscox survey found that the average solopreneur works 52 hours per week, with nearly half that time spent on business operations rather than revenue-generating work. GAIA functions as your AI team, handling email management, client scheduling, task coordination, and administrative overhead so your solo operation runs with the efficiency of a fully-staffed business.",
@@ -1407,6 +1608,16 @@ export const personas: Record<string, PersonaData> = {
       "process management tool",
       "operational efficiency AI",
       "ops workflow automation",
+      "business operations AI tool",
+      "operations manager productivity tool",
+      "AI for operations teams",
+      "operational reporting automation",
+      "KPI tracking AI tool",
+      "vendor management automation AI",
+      "best AI for operations managers",
+      "cross-department coordination AI",
+      "process monitoring AI assistant",
+      "operations workflow AI",
     ],
     intro:
       "Operations managers ensure the machinery of business runs smoothly, but the role is inherently reactive. McKinsey research on operational excellence shows that companies with automated operations workflows achieve 25% higher efficiency than those relying on manual processes. GAIA brings AI-powered automation to your operational workflows, proactively monitoring processes, managing vendor communications, and surfacing the data you need to keep operations running at peak efficiency.",
@@ -1472,6 +1683,16 @@ export const personas: Record<string, PersonaData> = {
       "standup automation AI",
       "team management tool",
       "team coordination AI",
+      "AI for tech leads",
+      "team lead productivity tool",
+      "automated standup collection tool",
+      "team progress tracking AI",
+      "Slack standup bot alternative",
+      "best AI for team leads",
+      "team blocker tracking AI",
+      "upward reporting automation",
+      "team lead workflow tool",
+      "AI for engineering leads",
     ],
     intro:
       "Team leads occupy the critical middle layer between individual contributors and management. Atlassian's research on team effectiveness shows that team leads spend an average of 62% of their time on coordination and communication rather than their own deliverables. Collecting standups, tracking team progress, managing blockers, and communicating upward creates a coordination tax that grows with team size. GAIA automates the coordination layer so you can focus on coaching, mentoring, and removing obstacles for your team.",
@@ -1538,6 +1759,16 @@ export const personas: Record<string, PersonaData> = {
       "CEO assistant tool",
       "executive communication automation",
       "C-suite productivity",
+      "executive AI assistant",
+      "AI for C-suite leaders",
+      "CEO productivity tool",
+      "AI chief of staff",
+      "executive email triage AI",
+      "board meeting prep AI",
+      "best AI for executives",
+      "executive decision intelligence AI",
+      "AI for CEOs and founders",
+      "strategic briefing automation",
     ],
     intro:
       "Executives make decisions that shape entire organizations, yet a Harvard Business Review study found that CEOs have only 28% of their time for actual strategic work. The rest is consumed by email, meetings, travel, and operational firefighting. The quality of executive decisions depends directly on the quality and timeliness of information they receive. GAIA acts as your AI executive assistant, ensuring you have the right information at the right time while automating the operational overhead that fragments your attention.",
@@ -1609,6 +1840,16 @@ export const personas: Record<string, PersonaData> = {
       "real estate CRM AI",
       "showing scheduler AI",
       "real estate lead management",
+      "AI for real estate lead follow-up",
+      "HubSpot AI for realtors",
+      "Google Calendar showing scheduler",
+      "real estate agent productivity tool",
+      "best AI for real estate agents",
+      "AI for client communication in real estate",
+      "Gmail automation for realtors",
+      "real estate workflow automation",
+      "AI for property briefing preparation",
+      "real estate agent lead response AI",
     ],
     intro:
       "Real estate is a relationship-driven business where response time directly impacts conversion rates. NAR research shows that agents who respond to leads within 5 minutes are 21x more likely to convert them compared to 30-minute response times. Yet most agents manage 20+ active clients while prospecting for new business, making instant response nearly impossible without automation. GAIA ensures every lead gets a prompt response and every client stays informed throughout their transaction.",
@@ -1738,6 +1979,525 @@ export const personas: Record<string, PersonaData> = {
         question: "Can GAIA help with legal research?",
         answer:
           "GAIA integrates with Perplexity for AI-powered research and organizes findings in Notion. While it does not replace specialized legal research platforms, it accelerates the research process and helps organize findings by case matter for easy reference.",
+      },
+    ],
+  },
+
+  "data-analysts": {
+    slug: "data-analysts",
+    title: "AI Assistant for Data Analysts",
+    role: "Data Analysts",
+    metaTitle:
+      "AI Assistant for Data Analysts - Automate Reports and BI Workflows",
+    metaDescription:
+      "GAIA helps data analysts automate recurring reports, set up data threshold alerts, schedule analytical briefings, and eliminate manual data pulls across Excel, Tableau, and SQL tools.",
+    keywords: [
+      "AI assistant for data analysts",
+      "data analyst productivity tool",
+      "automate Excel reports AI",
+      "Google Sheets AI automation",
+      "BI reporting automation",
+      "data analyst workflow tool",
+      "AI for business intelligence",
+      "SQL workflow automation",
+      "data reporting AI assistant",
+      "analyst productivity AI",
+      "automate stakeholder reports",
+      "data team AI tool",
+    ],
+    intro:
+      "Data analysts are the engine behind business intelligence, yet a 2024 TDWI report found that analysts spend up to 60% of their time on repetitive data pulls, report formatting, and responding to ad-hoc stakeholder requests rather than surfacing strategic insights. GAIA automates the operational side of analytical work, from scheduling recurring reports to alerting on data thresholds, so you can focus on the analysis that actually moves decisions forward.",
+    painPoints: [
+      "Repetitive report generation across Excel, Tableau, and Power BI consumes hours every week",
+      "Ad-hoc data requests from stakeholders constantly interrupt deep analytical work",
+      "Manual data pulls and copy-pasting between tools introduce errors and slow delivery",
+      "Updating dashboards and notifying stakeholders of metric changes requires manual monitoring",
+      "Scheduling time for deep analysis is difficult when reactive requests dominate the calendar",
+    ],
+    howGaiaHelps: [
+      {
+        title: "Recurring Report Automation",
+        description:
+          "GAIA schedules and triggers recurring report generation workflows, compiles outputs from Google Sheets or connected BI tools, and distributes formatted summaries to stakeholders via Gmail or Slack on your preferred cadence.",
+      },
+      {
+        title: "Data Threshold Alerts",
+        description:
+          "GAIA monitors key metrics tracked in Google Sheets or connected dashboards and sends proactive email or Slack alerts when values exceed defined thresholds, ensuring stakeholders are informed without constant manual checks.",
+      },
+      {
+        title: "Stakeholder Request Triage",
+        description:
+          "GAIA manages your email and Slack inbox for incoming data requests, prioritizes them by urgency and requester, and drafts acknowledgment responses so no request is lost and you can batch analytical work efficiently.",
+      },
+      {
+        title: "Deep Work Calendar Protection",
+        description:
+          "GAIA analyzes your Google Calendar and blocks dedicated focus time for deep analytical work, protecting uninterrupted sessions from meeting creep and scheduling conflicts.",
+      },
+    ],
+    relevantIntegrations: [
+      "gmail",
+      "google-calendar",
+      "slack",
+      "google-sheets",
+      "notion",
+      "todoist",
+      "google-docs",
+      "google-meet",
+    ],
+    faqs: [
+      {
+        question:
+          "Can GAIA connect directly to my SQL databases or BI tools?",
+        answer:
+          "GAIA focuses on the operational and communication layer around analytical work: report distribution, stakeholder triage, scheduling, and alerting via Google Sheets and email. Custom MCP integrations can extend GAIA to connect with BigQuery, Tableau, or other BI platforms in your stack.",
+      },
+      {
+        question:
+          "How does GAIA help reduce ad-hoc data request interruptions?",
+        answer:
+          "GAIA monitors your Gmail and Slack for incoming data requests, categorizes them by urgency, drafts acknowledgment responses, and creates organized task entries in Todoist. This allows you to batch ad-hoc work into dedicated blocks rather than responding reactively throughout the day.",
+      },
+      {
+        question: "Is GAIA suitable for enterprise data teams?",
+        answer:
+          "GAIA is fully open source and self-hostable, making it suitable for enterprise deployments with strict data governance requirements. Teams can run GAIA on their own infrastructure with complete control over data access and integrations.",
+      },
+    ],
+  },
+
+  "hr-managers": {
+    slug: "hr-managers",
+    title: "AI Assistant for HR Managers",
+    role: "HR Managers",
+    metaTitle:
+      "AI Assistant for HR Managers - Automate Recruiting and HR Operations",
+    metaDescription:
+      "GAIA helps HR managers automate interview scheduling, triage the HR inbox, draft offer letters, manage onboarding task lists, and prepare for performance review cycles.",
+    keywords: [
+      "AI assistant for HR managers",
+      "HR automation AI",
+      "recruiting workflow AI",
+      "interview scheduling automation",
+      "HR productivity tool",
+      "onboarding automation AI",
+      "HR operations AI",
+      "human resources AI assistant",
+      "AI for HR teams",
+      "employee management AI",
+      "performance review automation",
+      "HR inbox triage AI",
+    ],
+    intro:
+      "HR managers sit at the intersection of every employee lifecycle stage, from sourcing candidates to offboarding. SHRM research shows that HR professionals spend over 50% of their time on administrative tasks including scheduling, documentation, email correspondence, and compliance tracking. GAIA automates the high-volume operational work of HR management so you can focus on the human decisions that define culture and employee experience.",
+    painPoints: [
+      "Coordinating interview schedules across candidates, hiring managers, and panel members consumes hours per role",
+      "Onboarding coordination across IT, finance, and team leads requires constant follow-up",
+      "Tracking employee requests, leave applications, and policy questions across email lacks structure",
+      "Policy document management and distribution to employees is manual and version-prone",
+      "Performance review cycles involve collecting, organizing, and synthesizing input from multiple stakeholders",
+      "Benefits administration emails and open enrollment coordination create seasonal inbox overload",
+    ],
+    howGaiaHelps: [
+      {
+        title: "Interview Scheduling Automation",
+        description:
+          "GAIA coordinates interview logistics across candidates, hiring managers, and panel members via Gmail and Google Calendar. It finds available slots, sends calendar invites with context, and handles reschedule requests automatically.",
+      },
+      {
+        title: "HR Inbox Triage",
+        description:
+          "GAIA reads and categorizes your HR inbox by request type, including leave requests, policy questions, onboarding tasks, and benefits queries. It drafts responses for routine questions and flags items that require your direct attention.",
+      },
+      {
+        title: "Onboarding Task Management",
+        description:
+          "GAIA creates and tracks onboarding task lists in Notion or Todoist, coordinates with IT and finance via Slack, sends reminders to stakeholders, and ensures every new hire has a complete onboarding experience without manual orchestration.",
+      },
+      {
+        title: "Performance Review Preparation",
+        description:
+          "GAIA compiles performance review materials from Notion and email, schedules review meetings on Google Calendar, and drafts summary documents so managers walk into review cycles prepared with complete context.",
+      },
+    ],
+    relevantIntegrations: [
+      "gmail",
+      "google-calendar",
+      "slack",
+      "notion",
+      "todoist",
+      "google-docs",
+      "google-sheets",
+      "google-meet",
+      "linkedin",
+    ],
+    faqs: [
+      {
+        question:
+          "Can GAIA integrate with BambooHR, Greenhouse, or Workday?",
+        answer:
+          "GAIA focuses on communication and coordination workflows through Gmail, Google Calendar, Slack, and Notion. Custom MCP integrations can connect GAIA to specialized HR platforms like BambooHR, Greenhouse, or Workday to extend its automation capabilities.",
+      },
+      {
+        question: "How does GAIA handle sensitive HR communications?",
+        answer:
+          "GAIA is fully open source and self-hostable. HR teams can deploy it on their own infrastructure with complete data control, ensuring employee information stays within organizational boundaries. No data is shared with third parties.",
+      },
+      {
+        question: "Can GAIA help manage the performance review cycle?",
+        answer:
+          "Yes. GAIA tracks review deadlines in Todoist, schedules 1:1 review meetings on Google Calendar, compiles feedback from Notion or email, and drafts summary documents. It manages the logistics of the review cycle so you can focus on the conversations that matter.",
+      },
+    ],
+  },
+
+  recruiters: {
+    slug: "recruiters",
+    title: "AI Assistant for Recruiters",
+    role: "Recruiters",
+    metaTitle:
+      "AI Assistant for Recruiters - Automate Sourcing, Scheduling, and Outreach",
+    metaDescription:
+      "GAIA helps recruiters draft personalized outreach at scale, auto-schedule interviews across time zones, summarize candidate profiles, and manage follow-up sequences for every open role.",
+    keywords: [
+      "AI assistant for recruiters",
+      "recruiting automation AI",
+      "candidate sourcing AI",
+      "interview scheduling AI",
+      "recruiting productivity tool",
+      "AI for talent acquisition",
+      "recruiter workflow automation",
+      "ATS automation AI",
+      "hiring automation tool",
+      "recruiter email AI",
+      "candidate outreach automation",
+      "talent acquisition AI",
+    ],
+    intro:
+      "Recruiters manage the full candidate lifecycle across multiple open roles simultaneously. LinkedIn's Global Talent Trends report found that recruiters spend over 30% of their time on manual, repetitive tasks including email outreach, interview coordination, and ATS data entry. For every hour spent on administration, that is an hour not spent building relationships with top candidates. GAIA automates the operational side of recruiting so you can focus on talent evaluation and candidate experience.",
+    painPoints: [
+      "Candidate outreach at scale requires personalizing messages across dozens of prospects per role",
+      "Scheduling interviews across time zones with multiple stakeholders creates back-and-forth coordination chains",
+      "ATS data entry and candidate tracking requires constant manual updates",
+      "Writing and refining job descriptions for new roles is repetitive and time-consuming",
+      "Following up with candidates at the right cadence prevents offer losses but is easy to miss",
+      "Coordinating with hiring managers on candidate feedback and next steps requires constant follow-through",
+    ],
+    howGaiaHelps: [
+      {
+        title: "Personalized Outreach at Scale",
+        description:
+          "GAIA drafts personalized candidate outreach emails for each LinkedIn profile or candidate brief, incorporating role-specific context and messaging. Send high-quality outreach at volume without sacrificing personalization.",
+      },
+      {
+        title: "Interview Scheduling Automation",
+        description:
+          "GAIA coordinates multi-party interview scheduling via Gmail and Google Calendar, finds available slots for candidates and hiring teams, sends invites with preparation context, and handles time zone conversions automatically.",
+      },
+      {
+        title: "Candidate Briefing Summaries",
+        description:
+          "Before every candidate call or interview debrief, GAIA compiles a summary of the candidate's profile, recent communications, and interview stage history so you and hiring managers walk in prepared.",
+      },
+      {
+        title: "Follow-Up Sequence Management",
+        description:
+          "GAIA tracks every active candidate and open role in Notion or Todoist, identifies when follow-ups are overdue, and drafts timely outreach to keep candidates engaged throughout the pipeline.",
+      },
+    ],
+    relevantIntegrations: [
+      "gmail",
+      "google-calendar",
+      "slack",
+      "notion",
+      "todoist",
+      "google-docs",
+      "google-sheets",
+      "google-meet",
+      "linkedin",
+    ],
+    faqs: [
+      {
+        question:
+          "Does GAIA integrate with Greenhouse, Lever, or Ashby directly?",
+        answer:
+          "GAIA works with Gmail, Google Calendar, Notion, and Slack to automate recruiting workflows. Custom MCP integrations can connect GAIA to ATS platforms like Greenhouse, Lever, or Ashby to extend automation into those systems.",
+      },
+      {
+        question: "How does GAIA help with high-volume outreach?",
+        answer:
+          "GAIA drafts personalized outreach emails based on candidate context you provide, manages follow-up sequences, and tracks response rates. It enables you to maintain personalization quality at a volume that would otherwise require a team.",
+      },
+      {
+        question: "Can GAIA help coordinate with distributed hiring teams?",
+        answer:
+          "Yes. GAIA manages scheduling across time zones, sends preparation briefs to all interviewers via Slack or email, collects feedback reminders after interviews, and keeps hiring managers informed throughout the process without manual coordination.",
+      },
+    ],
+  },
+
+  "teachers-educators": {
+    slug: "teachers-educators",
+    title: "AI Assistant for Teachers and Educators",
+    role: "Teachers and Educators",
+    metaTitle:
+      "AI Assistant for Teachers and Educators - Reduce Admin, Focus on Teaching",
+    metaDescription:
+      "GAIA helps teachers draft parent communications, organize lesson plans, schedule parent-teacher conferences, manage assignment deadlines, and triage school administrative emails.",
+    keywords: [
+      "AI assistant for teachers",
+      "teacher productivity tool",
+      "AI for educators",
+      "classroom AI assistant",
+      "lesson planning AI",
+      "teacher workflow automation",
+      "education AI tool",
+      "AI for schools",
+      "teaching assistant AI",
+      "educator productivity AI",
+      "school administration AI",
+      "parent communication AI",
+    ],
+    intro:
+      "Teaching is one of the most demanding professions in terms of cognitive and emotional labor. A Gates Foundation survey found that teachers work an average of 10.5 hours per day, with over three hours spent on non-instructional administrative tasks. Lesson planning, parent communication, grading coordination, and school administrative requirements consume time that could otherwise go toward student engagement and educational quality. GAIA handles the administrative burden so educators can stay focused on what matters most: their students.",
+    painPoints: [
+      "Drafting and sending parent communications for updates, concerns, and event coordination is time-consuming",
+      "Lesson plan preparation and curriculum organization requires significant time outside classroom hours",
+      "Scheduling and preparing for parent-teacher conferences involves logistical coordination with dozens of families",
+      "Administrative paperwork for school requirements adds bureaucratic overhead to an already full workload",
+      "Tracking student progress and assignment deadlines across multiple classes is difficult to manage manually",
+    ],
+    howGaiaHelps: [
+      {
+        title: "Parent Communication Management",
+        description:
+          "GAIA drafts professional parent emails for routine updates, event notifications, progress reports, and individual student concerns. It manages your Gmail inbox by categorizing parent messages and ensuring timely responses.",
+      },
+      {
+        title: "Lesson Plan and Curriculum Organization",
+        description:
+          "GAIA organizes lesson plans, curriculum resources, and teaching materials in Notion or Google Docs. It creates structured planning documents and tracks what has been covered across classes.",
+      },
+      {
+        title: "Parent-Teacher Conference Scheduling",
+        description:
+          "GAIA coordinates parent-teacher conference scheduling via Google Calendar and Gmail, sends invitations with conference details, handles rescheduling requests, and prepares student progress summaries for each meeting.",
+      },
+      {
+        title: "Assignment and Deadline Tracking",
+        description:
+          "GAIA tracks assignment deadlines and school calendar events in Todoist or Google Calendar, sends proactive reminders, and helps manage the administrative rhythm of the academic year.",
+      },
+    ],
+    relevantIntegrations: [
+      "gmail",
+      "google-calendar",
+      "notion",
+      "todoist",
+      "google-docs",
+      "google-sheets",
+      "slack",
+      "google-meet",
+      "google-tasks",
+    ],
+    faqs: [
+      {
+        question: "Can GAIA help manage communications with many parents?",
+        answer:
+          "Yes. GAIA triages your Gmail inbox, drafts responses for common parent inquiries, and helps you manage high-volume communication periods like grade releases or school events. It ensures no parent email goes unanswered.",
+      },
+      {
+        question: "How does GAIA assist with lesson planning?",
+        answer:
+          "GAIA organizes your curriculum materials in Notion or Google Docs, helps structure lesson plans by unit and objective, and tracks what resources have been used. It handles the organizational work so you can focus on the pedagogical decisions.",
+      },
+      {
+        question:
+          "Is GAIA suitable for use in schools and educational institutions?",
+        answer:
+          "GAIA is fully open source and self-hostable, making it suitable for school deployments with data privacy requirements. Institutions can run GAIA on their own infrastructure with complete control over educator and student data.",
+      },
+    ],
+  },
+
+  "financial-advisors": {
+    slug: "financial-advisors",
+    title: "AI Assistant for Financial Advisors",
+    role: "Financial Advisors",
+    metaTitle:
+      "AI Assistant for Financial Advisors - Automate Client Prep and Follow-Ups",
+    metaDescription:
+      "GAIA helps financial advisors prepare pre-meeting client briefings, draft compliant client communications, manage follow-up tasks, schedule portfolio review cadences, and triage client requests by urgency.",
+    keywords: [
+      "AI assistant for financial advisors",
+      "wealth management AI",
+      "financial advisor productivity tool",
+      "client meeting prep AI",
+      "financial workflow automation",
+      "advisor email automation",
+      "compliance workflow AI",
+      "financial services AI assistant",
+      "portfolio review automation",
+      "RIA productivity tool",
+      "financial advisor CRM automation",
+      "client communication AI",
+    ],
+    intro:
+      "Financial advisors manage deeply personal client relationships while navigating complex compliance requirements and a constant stream of market-driven client inquiries. Cerulli Associates research shows that advisors spend less than a third of their time in meaningful client-facing interactions, with the majority consumed by administrative tasks, meeting preparation, and documentation. GAIA automates the operational layer of advisory work so you can invest more time in the advice that clients actually value.",
+    painPoints: [
+      "Client meeting preparation requires manually reviewing email history, account notes, and recent market context",
+      "Compliance documentation requirements add significant overhead to every client communication",
+      "Tracking client requests across email threads makes timely follow-through difficult at scale",
+      "Scheduling quarterly portfolio reviews across a large client book creates calendar coordination complexity",
+      "Preparing performance summaries and account reports for client meetings is manually intensive",
+    ],
+    howGaiaHelps: [
+      {
+        title: "Pre-Meeting Client Briefings",
+        description:
+          "Before every client meeting, GAIA compiles a briefing from your Gmail history with that client, open action items from Todoist, and recent account notes from Notion. Walk into every conversation with complete context and no last-minute scrambling.",
+      },
+      {
+        title: "Compliant Client Communication Drafts",
+        description:
+          "GAIA drafts client-facing emails in your voice and style, following the communication templates and compliance guidelines you establish. It handles routine client correspondence while keeping you in the review and approval loop.",
+      },
+      {
+        title: "Follow-Up Task Management",
+        description:
+          "After every client meeting, GAIA captures commitments and action items, creates tasks in Todoist with appropriate deadlines, and sends reminders so every client follow-through happens on time.",
+      },
+      {
+        title: "Portfolio Review Cadence Scheduling",
+        description:
+          "GAIA manages your Google Calendar to schedule and maintain quarterly review cadences across your client book, sends preparation reminders ahead of each review, and helps track which clients are due for outreach.",
+      },
+      {
+        title: "Client Request Triage",
+        description:
+          "GAIA monitors your Gmail for incoming client requests, categorizes them by urgency and type, drafts acknowledgment responses, and creates prioritized task lists so high-urgency requests surface immediately.",
+      },
+    ],
+    relevantIntegrations: [
+      "gmail",
+      "google-calendar",
+      "slack",
+      "notion",
+      "todoist",
+      "google-docs",
+      "google-sheets",
+      "google-meet",
+      "hubspot",
+    ],
+    faqs: [
+      {
+        question:
+          "How does GAIA handle the compliance sensitivity of financial communications?",
+        answer:
+          "GAIA drafts client communications based on templates and guidelines you provide, and keeps you in the review and approval loop before anything is sent. It is fully open source and self-hostable, so RIAs and broker-dealers can deploy it within their own infrastructure with complete data control.",
+      },
+      {
+        question:
+          "Can GAIA integrate with Salesforce or financial CRM tools?",
+        answer:
+          "GAIA works with Gmail, Google Calendar, Notion, and HubSpot out of the box. Custom MCP integrations can connect GAIA to Salesforce or specialized financial advisory CRM platforms to extend its workflow automation.",
+      },
+      {
+        question:
+          "How does GAIA help advisors manage large client books?",
+        answer:
+          "GAIA maintains per-client context through email history and Notion notes, tracks review cadence schedules on Google Calendar, and surfaces clients who are due for outreach or follow-up. It helps you maintain a high-touch relationship standard across a large book of business.",
+      },
+    ],
+  },
+
+  "healthcare-professionals": {
+    slug: "healthcare-professionals",
+    title: "AI Assistant for Healthcare Professionals",
+    role: "Healthcare Professionals",
+    metaTitle:
+      "AI Assistant for Healthcare Professionals - Reduce Administrative Burden",
+    metaDescription:
+      "GAIA helps healthcare professionals triage non-clinical email, manage scheduling, organize research, and handle administrative correspondence. Self-hostable for HIPAA-compliant administrative workflows.",
+    keywords: [
+      "AI assistant for doctors",
+      "healthcare productivity AI",
+      "medical workflow automation",
+      "physician administrative AI",
+      "healthcare AI tool",
+      "doctor productivity tool",
+      "clinical workflow AI",
+      "hospital administration AI",
+      "medical professional AI assistant",
+      "HIPAA compliant AI assistant",
+      "healthcare administrative automation",
+      "physician email management AI",
+    ],
+    intro:
+      "Healthcare professionals face one of the heaviest administrative burdens of any profession. A 2024 AMA survey found that physicians spend an average of 15.5 hours per week on administrative tasks, with electronic communication and paperwork consuming time that could go toward patient care. Importantly, GAIA operates strictly in the administrative and productivity layer: it does not access clinical systems, electronic health records, or protected health information. For healthcare organizations with compliance requirements, GAIA is fully open source and self-hostable, enabling deployment within your own infrastructure for HIPAA-compliant administrative workflows.",
+    painPoints: [
+      "Administrative email volume including scheduling requests, referrals, and departmental communications creates daily inbox overload",
+      "Scheduling complexity across clinics, hospitals, and patient appointments requires constant coordination",
+      "Staying current with medical research and literature is difficult given time constraints",
+      "Documentation overhead for administrative correspondence and inter-departmental coordination adds non-clinical workload",
+      "Coordinating between departments, specialists, and administrative staff involves extensive back-and-forth communication",
+    ],
+    howGaiaHelps: [
+      {
+        title: "Non-Clinical Email Triage",
+        description:
+          "GAIA triages your administrative Gmail inbox, categorizing messages by type including scheduling requests, departmental communications, research updates, and administrative tasks. It drafts responses for routine correspondence and surfaces urgent items immediately. GAIA does not access or process clinical records or protected health information.",
+      },
+      {
+        title: "Scheduling and Appointment Coordination",
+        description:
+          "GAIA manages administrative scheduling through Google Calendar, coordinates meeting and appointment logistics via email, and handles the back-and-forth of multi-party scheduling across departments and specialist referrals.",
+      },
+      {
+        title: "Research and Literature Organization",
+        description:
+          "GAIA uses Perplexity to surface relevant medical research and literature, organizes findings in Notion by specialty and topic, and creates structured reading lists so staying current with your field becomes systematic rather than sporadic.",
+      },
+      {
+        title: "Administrative Correspondence Drafting",
+        description:
+          "GAIA drafts professional administrative correspondence including inter-departmental emails, referral coordination messages, meeting agendas, and administrative documentation, reducing the time spent on non-clinical writing.",
+      },
+      {
+        title: "Consultation Round Preparation",
+        description:
+          "GAIA organizes administrative materials and schedules for patient consultation rounds, prepares agenda documents from Notion, and ensures all coordination logistics are handled before rounds begin.",
+      },
+    ],
+    relevantIntegrations: [
+      "gmail",
+      "google-calendar",
+      "slack",
+      "notion",
+      "todoist",
+      "google-docs",
+      "google-sheets",
+      "google-meet",
+      "perplexity",
+    ],
+    faqs: [
+      {
+        question:
+          "Does GAIA access electronic health records or patient data?",
+        answer:
+          "No. GAIA operates strictly in the administrative and productivity layer. It does not connect to EHR systems, access protected health information, or process any clinical data. It manages administrative email, scheduling, research organization, and non-clinical correspondence only.",
+      },
+      {
+        question: "Can GAIA be deployed in a HIPAA-compliant manner?",
+        answer:
+          "Yes. GAIA is fully open source and self-hostable. Healthcare organizations can deploy GAIA entirely within their own infrastructure, maintaining complete control over data flows and ensuring compliance with organizational and regulatory requirements for administrative systems.",
+      },
+      {
+        question:
+          "How does GAIA help physicians manage their administrative email load?",
+        answer:
+          "GAIA monitors your Gmail for administrative messages, categorizes them by type and urgency, drafts responses for routine requests, and ensures high-priority items surface promptly. Physicians report that administrative email management alone can consume an hour or more daily, which GAIA significantly reduces.",
       },
     ],
   },

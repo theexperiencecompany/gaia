@@ -3,8 +3,11 @@ import { notFound } from "next/navigation";
 import { cache } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
+import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import {
   generateBreadcrumbSchema,
+  generateFAQSchema,
+  generateHowToSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -99,6 +102,55 @@ interface Props {
   params: Promise<{ slug: string }>;
 }
 
+function generateIntegrationDescription(integration: {
+  name: string;
+  category: string;
+  description?: string;
+  toolCount?: number;
+}): string {
+  const name = integration.name;
+  const toolCount = integration.toolCount || 0;
+  const toolsNote = toolCount > 0 ? ` ${toolCount} actions available.` : "";
+
+  const categoryDescriptions: Record<string, string> = {
+    email: `GAIA reads and triages your ${name} inbox, drafts context-aware replies, auto-labels threads, and creates tasks from emails — automatically, without manual prompts.${toolsNote}`,
+    calendar: `GAIA schedules meetings, prepares pre-meeting briefings, finds free slots, and manages your ${name} calendar proactively — triggered by email, conversation, or automation.${toolsNote}`,
+    task: `GAIA creates, updates, and prioritizes ${name} tasks automatically from your emails, calendar events, and conversations — no copy-pasting required.${toolsNote}`,
+    tasks: `GAIA creates, updates, and prioritizes ${name} tasks automatically from your emails, calendar events, and conversations — no copy-pasting required.${toolsNote}`,
+    productivity: `GAIA connects ${name} to your email, calendar, and workflows — automating the repetitive parts so you can focus on deep work.${toolsNote}`,
+    communication: `GAIA monitors your ${name} channels, summarizes threads, surfaces what needs your attention, and creates tasks from messages — automatically.${toolsNote}`,
+    crm: `GAIA updates ${name} contacts and deals automatically from email threads, meeting notes, and calendar events — keeping your CRM current without manual entry.${toolsNote}`,
+    notes: `GAIA saves meeting notes, email summaries, and task context directly to ${name} — automatically building your knowledge base without copy-pasting.${toolsNote}`,
+    development: `GAIA creates ${name} issues from email threads, tracks PR status, prepares standup summaries, and syncs your engineering workflow with your calendar.${toolsNote}`,
+    automation: `GAIA triggers ${name} workflows from natural language — describe what you want to automate, and GAIA handles the execution across your connected tools.${toolsNote}`,
+    storage: `GAIA organizes files and documents in ${name} automatically — saving meeting notes, email attachments, and project artifacts in the right place.${toolsNote}`,
+    finance: `GAIA tracks ${name} activity, summarizes transactions, creates follow-up tasks from financial events, and integrates your financial data into your workflow.${toolsNote}`,
+    marketing: `GAIA automates ${name} tasks from email campaigns, tracks results, and creates follow-up workflows — connecting your marketing tool to your full productivity stack.${toolsNote}`,
+  };
+
+  const categoryKey = integration.category?.toLowerCase();
+  if (categoryKey && categoryDescriptions[categoryKey]) {
+    return categoryDescriptions[categoryKey];
+  }
+
+  return `Connect ${name} to GAIA and automate your workflows with AI. GAIA proactively manages your email, calendar, tasks, and connected tools — including ${name}.${toolsNote} Free MCP integration.`;
+}
+
+function generateIntegrationTitle(name: string, category: string): string {
+  const categoryTitles: Record<string, string> = {
+    email: `${name} AI Email Integration - Triage & Automate ${name} with GAIA`,
+    calendar: `${name} AI Calendar Integration - Smart Scheduling with GAIA`,
+    task: `${name} AI Task Integration - Create Tasks Automatically with GAIA`,
+    tasks: `${name} AI Task Integration - Create Tasks Automatically with GAIA`,
+    communication: `${name} AI Integration - Monitor & Automate ${name} with GAIA`,
+    crm: `${name} AI CRM Integration - Auto-Update ${name} with GAIA`,
+    development: `${name} AI Integration - Automate ${name} Engineering Workflows`,
+    notes: `${name} AI Notes Integration - Auto-Save to ${name} with GAIA`,
+  };
+  const key = category?.toLowerCase();
+  return categoryTitles[key] ?? `${name} AI Integration - Automate ${name} with GAIA`;
+}
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params;
   const integration = await getIntegration(slug);
@@ -116,9 +168,9 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
     integration.category.charAt(0).toUpperCase() +
     integration.category.slice(1);
 
-  const seoDescription = `Automate ${integrationName} with AI using GAIA. ${integration.description ? integration.description.slice(0, 120).trim() : `Connect ${integrationName} to your AI assistant`}. Free MCP integration with ${integration.toolCount || 0} tools.`;
+  const seoDescription = generateIntegrationDescription(integration);
 
-  const title = `${integrationName} AI Integration - Automate ${integrationName} with AI | GAIA`;
+  const title = `${generateIntegrationTitle(integrationName, integration.category)} | GAIA`;
   const ogTitle = `${integrationName} AI Integration - Connect ${integrationName} to Your AI Assistant`;
 
   return {
@@ -218,10 +270,61 @@ export default async function IntegrationPage({ params }: Props) {
     }),
   };
 
+  const howToSchema = generateHowToSchema(
+    `How to automate ${integration.name} with GAIA`,
+    `Connect ${integration.name} to GAIA and start automating your ${categoryLabel.toLowerCase()} workflows in plain English — no code required.`,
+    [
+      {
+        name: `Connect ${integration.name} to GAIA`,
+        text: `Open the GAIA Marketplace, find the ${integration.name} integration, and click "Add to your GAIA". Authorise access via OAuth or bearer token in under two minutes.`,
+      },
+      {
+        name: "Tell GAIA what to automate in plain English",
+        text: `Describe the task you want to automate in natural language. For example: "summarise my ${integration.name} activity every morning" or "notify me on Slack when a new ${categoryLabel.toLowerCase()} event happens in ${integration.name}".`,
+      },
+      {
+        name: "GAIA handles it automatically, 24/7",
+        text: `GAIA runs your ${integration.name} automations in the background around the clock, delivering results to you without any manual intervention or scripts to maintain.`,
+      },
+    ],
+  );
+
+  const faqSchema = generateFAQSchema([
+    {
+      question: `How do I connect ${integration.name} to GAIA?`,
+      answer: `Connecting ${integration.name} to GAIA takes under two minutes. Open the GAIA Marketplace, find the ${integration.name} integration, and click "Add to your GAIA". Depending on the integration type, you will be redirected to an OAuth consent screen or asked to paste a bearer token. Once authorised, GAIA immediately gains access to all ${integration.name} tools.`,
+    },
+    {
+      question: `Is the ${integration.name} integration free?`,
+      answer: `Yes. GAIA offers a generous free tier that includes access to community integrations like ${integration.name}. You can connect ${integration.name}, run automations, and use all available tools at no cost. Paid plans unlock higher usage limits and advanced workflow features.`,
+    },
+    {
+      question: `What can GAIA do with ${integration.name}?`,
+      answer: `GAIA exposes ${integration.toolCount > 0 ? `all ${integration.toolCount} ${integration.name} tools` : `the available ${integration.name} tools`} to its AI agent, meaning you can perform any ${categoryLabel.toLowerCase()} action supported by ${integration.name} by describing it in plain English. GAIA can also combine ${integration.name} with other connected integrations to build cross-tool automations.`,
+    },
+    {
+      question: `Does GAIA's ${integration.name} integration work on mobile?`,
+      answer: `Absolutely. GAIA runs on web, desktop (macOS and Windows), and mobile (iOS and Android). Your ${integration.name} integration is available across all platforms with your account.`,
+    },
+  ]);
+
+  const comparisonSlug = getComparison(slug) ? slug : undefined;
+
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, integrationSchema]} />
-      <IntegrationDetailClient integration={integration} />
+      <JsonLd
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          integrationSchema,
+          howToSchema,
+          faqSchema,
+        ]}
+      />
+      <IntegrationDetailClient
+        integration={integration}
+        comparisonSlug={comparisonSlug}
+      />
     </>
   );
 }

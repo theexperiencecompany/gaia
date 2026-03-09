@@ -1,7 +1,9 @@
 import type { MetadataRoute } from "next";
 
+import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
+import { getAllComboSlugs } from "@/features/integrations/data/combosData";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
@@ -21,6 +23,8 @@ const SITEMAP_IDS = {
   COMPARISONS: 5,
   PERSONAS: 6,
   GLOSSARY: 7,
+  ALTERNATIVES: 8,
+  INTEGRATION_COMBOS: 9,
 } as const;
 
 /**
@@ -38,6 +42,8 @@ export async function generateSitemaps() {
     { id: SITEMAP_IDS.COMPARISONS },
     { id: SITEMAP_IDS.PERSONAS },
     { id: SITEMAP_IDS.GLOSSARY },
+    { id: SITEMAP_IDS.ALTERNATIVES },
+    { id: SITEMAP_IDS.INTEGRATION_COMBOS },
   ];
 }
 
@@ -54,6 +60,7 @@ const STATIC_PAGES: Array<{
   { path: "/use-cases", freq: "weekly", priority: 0.9 },
   { path: "/download", freq: "weekly", priority: 0.9 },
   { path: "/compare", freq: "weekly", priority: 0.9 },
+  { path: "/alternative-to", freq: "weekly", priority: 0.9 },
   { path: "/for", freq: "weekly", priority: 0.9 },
   { path: "/learn", freq: "weekly", priority: 0.8 },
   { path: "/faq", freq: "monthly", priority: 0.8 },
@@ -66,6 +73,10 @@ const STATIC_PAGES: Array<{
   { path: "/terms", freq: "monthly", priority: 0.5 },
   { path: "/privacy", freq: "monthly", priority: 0.5 },
   { path: "/thanks", freq: "monthly", priority: 0.4 },
+  { path: "/open-source-ai-assistant", freq: "monthly", priority: 0.9 },
+  { path: "/ai-chief-of-staff", freq: "monthly", priority: 0.9 },
+  { path: "/inbox-zero-ai", freq: "monthly", priority: 0.9 },
+  { path: "/integrations", freq: "weekly", priority: 0.9 },
 ];
 
 function getStaticPages(baseUrl: string): MetadataRoute.Sitemap {
@@ -254,6 +265,10 @@ const FEATURED_PERSONA_SLUGS = new Set([
   "product-managers",
   "engineering-managers",
   "agency-owners",
+  "financial-advisors",
+  "healthcare-professionals",
+  "data-analysts",
+  "hr-managers",
 ]);
 
 /**
@@ -292,6 +307,30 @@ function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
 }
 
 /**
+ * Alternative-to pages (GAIA as alternative to competitors)
+ */
+function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
+  const slugs = getAllAlternativeSlugs();
+  return slugs.map((slug) => ({
+    url: `${baseUrl}/alternative-to/${slug}`,
+    changeFrequency: "monthly" as const,
+    priority: 0.8,
+  }));
+}
+
+/**
+ * Integration combo pages ([toolA] + [toolB] automation)
+ */
+function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
+  const slugs = getAllComboSlugs();
+  return slugs.map((slug) => ({
+    url: `${baseUrl}/integrations/${slug}`,
+    changeFrequency: "monthly" as const,
+    priority: 0.7,
+  }));
+}
+
+/**
  * Generate dynamic sitemap for GAIA.
  * Uses sitemap index pattern with separate sitemaps for each content type.
  * Note: In Next.js 16.0.0+, the id is passed as a Promise that resolves to a string.
@@ -320,6 +359,10 @@ export default async function sitemap(props: {
       return getPersonaPages(baseUrl);
     case SITEMAP_IDS.GLOSSARY:
       return getGlossaryPages(baseUrl);
+    case SITEMAP_IDS.ALTERNATIVES:
+      return getAlternativePages(baseUrl);
+    case SITEMAP_IDS.INTEGRATION_COMBOS:
+      return getIntegrationComboPages(baseUrl);
     default:
       return [];
   }
