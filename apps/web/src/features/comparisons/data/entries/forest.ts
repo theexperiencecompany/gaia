@@ -4,7 +4,8 @@ export const entry: ComparisonData = {
   slug: "forest",
   name: "Forest",
   domain: "forestapp.cc",
-  tagline: "Gamified Pomodoro focus app that grows virtual trees while you work",
+  tagline:
+    "Gamified Pomodoro focus app that grows virtual trees while you work",
   description:
     "Forest is a focus app that helps you stay off your phone by growing a virtual tree during focus sessions. GAIA takes a proactive approach to focus — scheduling protected work blocks, managing distracting email, and automating routine tasks so you can focus on the work that actually matters.",
   metaTitle:
@@ -72,8 +73,7 @@ The two tools also sit at entirely different price points and capability scopes.
     {
       feature: "Workflow automation",
       gaia: "Natural language multi-step workflows across 50+ tools that handle routine coordination automatically",
-      competitor:
-        "No workflow automation capability",
+      competitor: "No workflow automation capability",
     },
     {
       feature: "Platform",
@@ -90,8 +90,7 @@ The two tools also sit at entirely different price points and capability scopes.
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — your data stays in your own infrastructure",
-      competitor:
-        "Proprietary closed-source mobile application",
+      competitor: "Proprietary closed-source mobile application",
     },
     {
       feature: "Memory and context",
@@ -168,7 +167,8 @@ The two tools also sit at entirely different price points and capability scopes.
         "Most focus apps — Forest, Focusmate, Be Focused, Centered — operate during a work session to help you stay on task or avoid distractions. GAIA operates continuously in the background, managing the workflow conditions that determine whether your sessions are productive: clearing your inbox, surfacing priorities, protecting calendar time, and automating routine coordination tasks. GAIA reduces the cognitive overhead that precedes a focus session rather than managing the session itself.",
     },
     {
-      question: "How does GAIA help with calendar management compared to Forest?",
+      question:
+        "How does GAIA help with calendar management compared to Forest?",
       answer:
         "Forest has no calendar integration. GAIA has full Google Calendar integration — it reads your calendar continuously, creates protected work blocks before meetings can fill your day, prepares briefing notes before calls, and manages event creation and updates via natural language. For knowledge workers whose focus problem is as much about calendar fragmentation as phone distraction, GAIA's calendar management is a more direct solution.",
     },

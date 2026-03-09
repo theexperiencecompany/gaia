@@ -182,7 +182,8 @@ The economics also differ substantially. Zoho One costs $37 per user per month w
         "GAIA is available as a web application, a native Electron desktop app for macOS, Windows, and Linux, and a React Native mobile app for iOS and Android. Zoho One applications are accessible on web and mobile with dedicated iOS and Android apps for each Zoho product. GAIA's cross-platform desktop app provides a unified AI productivity layer that works consistently across all your devices.",
     },
     {
-      question: "Does GAIA work with Google Workspace like Zoho One does with Zoho apps?",
+      question:
+        "Does GAIA work with Google Workspace like Zoho One does with Zoho apps?",
       answer:
         "Yes. GAIA is deeply integrated with Google Workspace — it reads your Gmail inbox proactively, manages your Google Calendar, and uses both as the primary sources of context for its proactive AI. Zoho One offers Zoho Mail and Zoho Calendar as alternatives to Google Workspace, but requires migrating away from Gmail. GAIA enhances Google Workspace with AI rather than asking you to replace it.",
     },
@@ -192,7 +193,8 @@ The economics also differ substantially. Zoho One costs $37 per user per month w
         "Yes — especially for startups already using Gmail, Slack, and GitHub. GAIA adds proactive AI management on top of those tools at $20/month flat, without requiring any migration or new vendor relationships. Zoho One can be appealing for startups starting from scratch, but the switching cost from established tools is often higher than anticipated. GAIA's approach — enhance what you have rather than replace it — is usually lower friction and faster to deliver value.",
     },
     {
-      question: "How does GAIA's memory compare to Zoho One's unified data model?",
+      question:
+        "How does GAIA's memory compare to Zoho One's unified data model?",
       answer:
         "Zoho One's unified data model means all Zoho apps share the same contact, company, and deal records — a genuine integration advantage within the Zoho ecosystem. GAIA's graph-based persistent memory builds contextual connections across all connected tools: linking tasks to email threads, meetings to projects, and contacts to their related communications across Gmail, Slack, and other tools. GAIA's memory spans tools you already use rather than requiring centralisation within a single vendor's ecosystem.",
     },

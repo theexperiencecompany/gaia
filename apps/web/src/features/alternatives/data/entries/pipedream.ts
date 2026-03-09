@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Pipedream",
   domain: "pipedream.com",
   category: "automation",
-  tagline: "Developer-focused workflow automation with code-first API integration",
+  tagline:
+    "Developer-focused workflow automation with code-first API integration",
   painPoints: [
     "Requires JavaScript/Node.js knowledge to build advanced workflows",
     "Free plan limits to 3 active workflows — quickly constraining",
@@ -59,17 +60,20 @@ export const entry: AlternativeData = {
         "Pipedream's code-first approach gives developers virtually unlimited flexibility with custom Node.js logic. GAIA is more constrained but far more accessible and adds proactive AI reasoning that Pipedream lacks. For personal AI assistance, GAIA is the better tool.",
     },
     {
-      question: "Can non-technical users use GAIA where Pipedream is too complex?",
+      question:
+        "Can non-technical users use GAIA where Pipedream is too complex?",
       answer:
         "Yes. GAIA's natural language workflow builder does not require any coding knowledge. You describe what you want to automate and GAIA handles the implementation.",
     },
     {
-      question: "Does GAIA support HTTP triggers and cron schedules like Pipedream?",
+      question:
+        "Does GAIA support HTTP triggers and cron schedules like Pipedream?",
       answer:
         "GAIA supports scheduled automations and can receive webhook triggers. For highly customized trigger logic and raw API access, Pipedream remains more flexible.",
     },
     {
-      question: "Is GAIA open-source like some Pipedream workflows are shareable?",
+      question:
+        "Is GAIA open-source like some Pipedream workflows are shareable?",
       answer:
         "Yes. GAIA is fully open-source on GitHub. You can inspect the code, self-host, and contribute to the project — providing more transparency than Pipedream's closed cloud platform.",
     },

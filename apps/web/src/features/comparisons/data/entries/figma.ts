@@ -73,7 +73,8 @@ These tools serve fundamentally different jobs. Figma AI accelerates the creatio
     {
       feature: "Workflow automation",
       gaia: "Multi-step automations connecting design review outcomes to tasks, Slack notifications, and document updates",
-      competitor: "No workflow automation engine; relies on Zapier for basic integrations",
+      competitor:
+        "No workflow automation engine; relies on Zapier for basic integrations",
     },
     {
       feature: "Collaboration context",
@@ -120,7 +121,8 @@ These tools serve fundamentally different jobs. Figma AI accelerates the creatio
         "GAIA connects to the tools design teams use alongside Figma: Linear and Jira for issue tracking, Notion for documentation, Slack for team communication, Gmail for stakeholder feedback, and Google Calendar for sprint planning. It automates the coordination between these tools so designers spend less time on project management.",
     },
     {
-      question: "Can GAIA create Jira or Linear tickets from Figma design reviews?",
+      question:
+        "Can GAIA create Jira or Linear tickets from Figma design reviews?",
       answer:
         "Yes. GAIA can parse design review feedback — from emails, meeting notes, or direct input — and create properly structured tickets in Jira, Linear, or Asana with appropriate assignees, priorities, and context. This automates the handoff from design review to engineering task.",
     },

@@ -168,7 +168,8 @@ The pricing structures also contrast meaningfully. Pipedrive has no free plan �
         "Yes. GAIA is fully open source on GitHub and can be self-hosted on your own infrastructure at no cost. Pipedrive is a proprietary SaaS platform with no self-hosting option. For users who want complete data ownership over their sales communications and workflow data, GAIA's self-hosted deployment provides a level of privacy that Pipedrive's hosted model cannot match.",
     },
     {
-      question: "What is the best alternative to Pipedrive for individual sales professionals?",
+      question:
+        "What is the best alternative to Pipedrive for individual sales professionals?",
       answer:
         "For individual sales professionals who want AI to handle the workflow overhead around their pipeline — email triage, meeting prep, follow-up task creation — GAIA is the strongest option. It does not replace the shared pipeline visibility that Pipedrive provides for a sales team, but it substantially reduces the manual coordination work that each rep must do to keep their pipeline current and their prospects engaged.",
     },

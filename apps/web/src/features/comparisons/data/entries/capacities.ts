@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Object-based personal knowledge management studio for your mind",
   description:
     "Capacities is a personal knowledge management tool built around an object-oriented philosophy — every note is a typed object (person, book, project, daily note) that can be linked, queried, and organized relationally. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, connecting your entire work context in a graph-based memory rather than a manually-curated knowledge studio.",
-  metaTitle: "Capacities Alternative with AI Email & Automation | GAIA vs Capacities",
+  metaTitle:
+    "Capacities Alternative with AI Email & Automation | GAIA vs Capacities",
   metaDescription:
     "Compare GAIA and Capacities. Capacities builds a rich personal knowledge studio, but GAIA manages email, calendar, tasks, and workflows proactively with AI-driven graph memory.",
   keywords: [
@@ -104,12 +105,14 @@ export const entry: ComparisonData = {
     "Capacities is the right choice if building and maintaining a rich personal knowledge base is a core part of your work — researchers, writers, and knowledge workers who think in structured relationships and invest deliberately in their second brain will find it exceptional. GAIA is the right choice if you want an AI that reduces the operational overhead of your daily work — managing your inbox, calendar, tasks, and cross-tool workflows proactively without requiring you to maintain a knowledge studio. For many users, the two tools are genuinely complementary.",
   faqs: [
     {
-      question: "Can GAIA replace Capacities for personal knowledge management?",
+      question:
+        "Can GAIA replace Capacities for personal knowledge management?",
       answer:
         "GAIA builds a graph-based memory from your live digital activity automatically, but it is not a dedicated PKM studio like Capacities. GAIA does not provide typed object creation, custom properties, or the rich relational knowledge architecture that Capacities offers. If building a curated, structured knowledge base is a primary need, Capacities remains the stronger dedicated tool. GAIA is a better fit if your primary pain point is managing your inbox, calendar, and task list rather than organizing accumulated knowledge.",
     },
     {
-      question: "How is GAIA's memory different from Capacities' knowledge graph?",
+      question:
+        "How is GAIA's memory different from Capacities' knowledge graph?",
       answer:
         "Capacities builds its knowledge graph from objects you deliberately create and link — the richness depends on your manual curation effort. GAIA's graph-based memory builds automatically from your live digital activity: emails generate thread nodes, calendar events create meeting nodes, and tasks link to the emails and projects that generated them. GAIA's memory compounds through use without requiring you to maintain it; Capacities' knowledge graph requires deliberate investment to reach its full potential.",
     },

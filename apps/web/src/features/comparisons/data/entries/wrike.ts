@@ -31,12 +31,14 @@ GAIA takes the complementary angle. Rather than replacing structured project man
     {
       feature: "Core approach",
       gaia: "Proactive AI assistant that manages email, tasks, calendar, and cross-tool workflows",
-      competitor: "Enterprise work management platform with advanced project tracking and reporting",
+      competitor:
+        "Enterprise work management platform with advanced project tracking and reporting",
     },
     {
       feature: "Task management",
       gaia: "AI auto-creates and prioritizes tasks from emails, Slack messages, and tool activity",
-      competitor: "Comprehensive task and subtask management with custom fields and workflows",
+      competitor:
+        "Comprehensive task and subtask management with custom fields and workflows",
     },
     {
       feature: "Email integration",
@@ -46,27 +48,32 @@ GAIA takes the complementary angle. Rather than replacing structured project man
     {
       feature: "Resource management",
       gaia: "Workload surfacing via AI prioritization across connected tools",
-      competitor: "Full resource allocation, capacity planning, and workload charts",
+      competitor:
+        "Full resource allocation, capacity planning, and workload charts",
     },
     {
       feature: "Workflow automation",
       gaia: "Multi-step AI-driven workflows across 50+ tools with triggers and conditions",
-      competitor: "Custom workflow automation with approval chains and request forms",
+      competitor:
+        "Custom workflow automation with approval chains and request forms",
     },
     {
       feature: "Reporting",
       gaia: "AI-generated summaries of project activity, priorities, and blockers",
-      competitor: "Advanced dashboards, custom reports, and executive-level analytics",
+      competitor:
+        "Advanced dashboards, custom reports, and executive-level analytics",
     },
     {
       feature: "Integrations",
       gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Jira, and more via MCP",
-      competitor: "400+ integrations with enterprise SSO, SAML, and compliance tools",
+      competitor:
+        "400+ integrations with enterprise SSO, SAML, and compliance tools",
     },
     {
       feature: "Proactive behavior",
       gaia: "Monitors tools and initiates actions — surfaces blockers, creates tasks, sends alerts",
-      competitor: "Automated notifications and status updates; no autonomous action",
+      competitor:
+        "Automated notifications and status updates; no autonomous action",
     },
     {
       feature: "Open source",
@@ -76,7 +83,8 @@ GAIA takes the complementary angle. Rather than replacing structured project man
     {
       feature: "Pricing",
       gaia: "Free tier available, Pro from $20/month, self-hosting free",
-      competitor: "Free plan very limited; paid from $9.80/user/month up to enterprise contracts",
+      competitor:
+        "Free plan very limited; paid from $9.80/user/month up to enterprise contracts",
     },
   ],
   gaiaAdvantages: [

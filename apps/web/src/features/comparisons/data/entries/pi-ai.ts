@@ -39,17 +39,20 @@ For professionals who value both conversational quality and operational capabili
     {
       feature: "Proactive behavior",
       gaia: "Continuously monitors inbox, calendar, and connected tools; executes tasks and surfaces insights autonomously",
-      competitor: "Fully reactive — responds to conversation; no autonomous monitoring or action",
+      competitor:
+        "Fully reactive — responds to conversation; no autonomous monitoring or action",
     },
     {
       feature: "Email management",
       gaia: "Full Gmail automation: proactive triage, reply drafting, auto-labeling, task creation from email",
-      competitor: "Can help think through how to respond to an email; no inbox integration or automation",
+      competitor:
+        "Can help think through how to respond to an email; no inbox integration or automation",
     },
     {
       feature: "Task management",
       gaia: "Native AI todo management with automatic task creation, priorities, deadlines, and semantic search",
-      competitor: "Can help plan tasks and think through priorities conversationally; no task execution",
+      competitor:
+        "Can help plan tasks and think through priorities conversationally; no task execution",
     },
     {
       feature: "Calendar integration",

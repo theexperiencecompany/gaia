@@ -1,10 +1,10 @@
 "use client";
 
-import Link from "next/link";
 import {
   ArrowRightIcon,
   CheckmarkCircleIcon,
 } from "@theexperiencecompany/gaia-icons/stroke-rounded";
+import Link from "next/link";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 
@@ -126,8 +126,7 @@ function generateFAQs(
   integration: PublicIntegrationResponse,
 ): Array<{ question: string; answer: string }> {
   const { name, toolCount, category } = integration;
-  const categoryLabel =
-    category.charAt(0).toUpperCase() + category.slice(1);
+  const categoryLabel = category.charAt(0).toUpperCase() + category.slice(1);
 
   return [
     {
@@ -156,8 +155,7 @@ export function IntegrationRichContent({
   const useCases = generateUseCases(integration);
   const faqs = generateFAQs(integration);
   const { name, category } = integration;
-  const categoryLabel =
-    category.charAt(0).toUpperCase() + category.slice(1);
+  const categoryLabel = category.charAt(0).toUpperCase() + category.slice(1);
 
   return (
     <div className="space-y-12 mt-4">

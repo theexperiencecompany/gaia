@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "AI meeting transcription and notes",
   description:
     "Otter.ai automatically transcribes meetings, generates summaries, and identifies action items from calls. GAIA is a proactive AI assistant that goes further by connecting meeting outcomes to your tasks, calendar, and entire tool stack.",
-  metaTitle: "Otter.ai Alternative That Acts on Meeting Outcomes | GAIA vs Otter.ai",
+  metaTitle:
+    "Otter.ai Alternative That Acts on Meeting Outcomes | GAIA vs Otter.ai",
   metaDescription:
     "Otter.ai transcribes meetings but won't create tasks or update your tools. GAIA is an open-source alternative that manages your full workflow — prep, transcription, follow-ups, and task automation across 50+ integrations.",
   keywords: [
@@ -85,7 +86,8 @@ For users who specifically need high-quality, real-time transcription during liv
     {
       feature: "Open source / self-hosting",
       gaia: "Fully open source and self-hostable — complete data ownership, no vendor access to meeting content",
-      competitor: "Proprietary SaaS; meeting transcripts stored on Otter's servers",
+      competitor:
+        "Proprietary SaaS; meeting transcripts stored on Otter's servers",
     },
     {
       feature: "Pricing",

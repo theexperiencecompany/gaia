@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Manual time tracking and reporting for teams",
   description:
     "Toggl Track is a popular manual time tracker used by freelancers and teams to log billable hours and generate reports. GAIA replaces the need to track time manually by proactively managing your workflow from start to finish.",
-  metaTitle: "Toggl Track Alternative with AI Workflow Automation | GAIA vs Toggl",
+  metaTitle:
+    "Toggl Track Alternative with AI Workflow Automation | GAIA vs Toggl",
   metaDescription:
     "Toggl requires manual time entry and won't manage your tasks. GAIA is an open-source alternative that automates your workflow, manages email and tasks, and syncs across 50+ tools — free tier included.",
   keywords: [
@@ -31,7 +32,8 @@ GAIA approaches productivity from the other direction. Rather than asking you to
     {
       feature: "Core approach",
       gaia: "Proactive AI assistant that manages tasks, calendar, email, and workflows",
-      competitor: "Manual time tracker with one-click timers and billable hour reports",
+      competitor:
+        "Manual time tracker with one-click timers and billable hour reports",
     },
     {
       feature: "Time entry",
@@ -61,12 +63,14 @@ GAIA approaches productivity from the other direction. Rather than asking you to
     {
       feature: "Reporting",
       gaia: "AI-generated summaries of project activity, workload, and priorities",
-      competitor: "Detailed billable hour reports with client and project breakdown",
+      competitor:
+        "Detailed billable hour reports with client and project breakdown",
     },
     {
       feature: "Integrations",
       gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Todoist, and more",
-      competitor: "100+ integrations focused on syncing time entries with PM tools",
+      competitor:
+        "100+ integrations focused on syncing time entries with PM tools",
     },
     {
       feature: "Open source",

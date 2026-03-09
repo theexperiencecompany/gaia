@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "AI notepad for meetings that runs locally on Mac",
   description:
     "Granola is a local-first Mac app that enhances your own meeting notes with AI, running on-device for privacy. GAIA is a proactive AI assistant that manages your full workflow — tasks, email, calendar, and cross-tool automation beyond meetings.",
-  metaTitle: "Granola Alternative with Full Workflow Automation | GAIA vs Granola",
+  metaTitle:
+    "Granola Alternative with Full Workflow Automation | GAIA vs Granola",
   metaDescription:
     "Granola is a private local Mac meeting notepad. GAIA is an open-source alternative that goes beyond notes to automate tasks, emails, and workflows across 50+ integrations — with self-hosting for the same privacy.",
   keywords: [

@@ -8,7 +8,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolB: "ClickUp",
     toolBSlug: "clickup",
     tagline: "Bridge Asana and ClickUp when teams use both platforms",
-    metaTitle: "Asana + ClickUp Automation - Sync Tasks Across Both Platforms | GAIA",
+    metaTitle:
+      "Asana + ClickUp Automation - Sync Tasks Across Both Platforms | GAIA",
     metaDescription:
       "Stop duplicating work across Asana and ClickUp. GAIA keeps tasks, statuses, and deadlines in sync so every team member sees accurate project data regardless of which tool they prefer.",
     keywords: [
@@ -72,12 +73,14 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "Yes. GAIA can bulk-read all tasks from an Asana project and create corresponding tasks in a ClickUp list, preserving titles, descriptions, assignees, and due dates. After migration you can turn off the sync or keep it active for a transition period.",
       },
       {
-        question: "What happens if a task is edited in both platforms simultaneously?",
+        question:
+          "What happens if a task is edited in both platforms simultaneously?",
         answer:
           "GAIA applies a last-write-wins rule by default and flags the conflict in a designated Slack channel or email digest so a human can review. You can also configure one platform to always be the system of record.",
       },
       {
-        question: "Do custom fields in ClickUp sync with custom fields in Asana?",
+        question:
+          "Do custom fields in ClickUp sync with custom fields in Asana?",
         answer:
           "GAIA supports mapping custom fields by name or type. If field names differ between platforms, you can define explicit mappings during setup. Fields without a counterpart are logged but not discarded.",
       },
@@ -91,7 +94,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolB: "Trello",
     toolBSlug: "trello",
     tagline: "Migrate or sync tasks between Asana projects and Trello boards",
-    metaTitle: "Asana + Trello Automation - Sync Tasks and Boards Effortlessly | GAIA",
+    metaTitle:
+      "Asana + Trello Automation - Sync Tasks and Boards Effortlessly | GAIA",
     metaDescription:
       "Connect Asana projects and Trello boards with GAIA. Automatically sync tasks, move cards when statuses change, and keep both platforms up to date without manual data entry.",
     keywords: [
@@ -160,7 +164,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "Asana custom fields that have a Trello equivalent are mapped automatically. Fields without a direct counterpart are appended to the Trello card description so no information is lost.",
       },
       {
-        question: "Is this suitable for a permanent sync or just a one-time migration?",
+        question:
+          "Is this suitable for a permanent sync or just a one-time migration?",
         answer:
           "Both. GAIA supports ongoing bidirectional sync for teams running both platforms in parallel, as well as one-time migration jobs for teams moving from Asana to Trello or vice versa.",
       },
@@ -173,8 +178,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "asana",
     toolB: "Linear",
     toolBSlug: "linear",
-    tagline: "Sync product management in Asana with engineering execution in Linear",
-    metaTitle: "Asana + Linear Automation - Bridge Product and Engineering | GAIA",
+    tagline:
+      "Sync product management in Asana with engineering execution in Linear",
+    metaTitle:
+      "Asana + Linear Automation - Bridge Product and Engineering | GAIA",
     metaDescription:
       "Keep product and engineering aligned with GAIA. Sync Asana project milestones to Linear issues, reflect engineering progress back to Asana, and eliminate status meetings spent reconciling two tools.",
     keywords: [
@@ -238,7 +245,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "Yes. GAIA can map Asana project sections to Linear cycles or projects, and update issue assignments as tasks move through your Asana workflow stages.",
       },
       {
-        question: "What if the same feature is tracked differently in each tool?",
+        question:
+          "What if the same feature is tracked differently in each tool?",
         answer:
           "You can define explicit mappings between Asana tasks and Linear issues by linking them manually the first time. After that, GAIA maintains the link and syncs updates automatically.",
       },
@@ -257,7 +265,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolB: "Figma",
     toolBSlug: "figma",
     tagline: "Link Figma design deliverables directly to Asana project tasks",
-    metaTitle: "Asana + Figma Automation - Connect Design Deliverables to Project Tasks | GAIA",
+    metaTitle:
+      "Asana + Figma Automation - Connect Design Deliverables to Project Tasks | GAIA",
     metaDescription:
       "Bridge design and project management with GAIA. Automatically attach Figma files to Asana tasks, notify teams when designs are ready for review, and track design approval status without leaving Asana.",
     keywords: [
@@ -316,7 +325,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA attach specific Figma frames rather than entire files?",
+        question:
+          "Can GAIA attach specific Figma frames rather than entire files?",
         answer:
           "Yes. You can configure GAIA to attach specific Figma frame or component links to Asana tasks, making it easier for reviewers to navigate directly to the relevant part of a complex design file.",
       },
@@ -326,7 +336,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "GAIA can summarize Figma comment threads and post them as Asana task comments, giving project managers visibility into design feedback without requiring a Figma account.",
       },
       {
-        question: "What happens when a Figma file is updated after the design is approved?",
+        question:
+          "What happens when a Figma file is updated after the design is approved?",
         answer:
           "GAIA can detect Figma file edits after approval and reopen the Asana review task or notify the team, ensuring that post-approval changes are not silently deployed without another review cycle.",
       },
@@ -340,7 +351,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolB: "Discord",
     toolBSlug: "discord",
     tagline: "Post Asana task updates to Discord team channels automatically",
-    metaTitle: "Asana + Discord Automation - Project Updates in Your Discord Server | GAIA",
+    metaTitle:
+      "Asana + Discord Automation - Project Updates in Your Discord Server | GAIA",
     metaDescription:
       "Keep your Discord community and team informed with GAIA. Automatically post Asana task completions, new assignments, and milestone updates to Discord channels so everyone stays aligned.",
     keywords: [
@@ -404,7 +416,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "Yes. You can mention GAIA in a Discord message and ask it to create an Asana task with a specific title, assignee, and due date. GAIA will confirm the task creation and post the Asana link back to the channel.",
       },
       {
-        question: "Can GAIA post to multiple Discord channels for different Asana projects?",
+        question:
+          "Can GAIA post to multiple Discord channels for different Asana projects?",
         answer:
           "Yes. You can configure per-project channel mappings so that updates from different Asana projects route to different Discord channels, keeping notifications organized and relevant.",
       },
@@ -422,8 +435,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "asana",
     toolB: "Google Drive",
     toolBSlug: "google-drive",
-    tagline: "Attach Drive documents to Asana tasks and organize deliverables automatically",
-    metaTitle: "Asana + Google Drive Automation - Link Documents to Project Tasks | GAIA",
+    tagline:
+      "Attach Drive documents to Asana tasks and organize deliverables automatically",
+    metaTitle:
+      "Asana + Google Drive Automation - Link Documents to Project Tasks | GAIA",
     metaDescription:
       "Connect Asana and Google Drive with GAIA. Automatically attach Drive files to Asana tasks, create project folders when projects launch, and keep all deliverables organized and accessible.",
     keywords: [
@@ -482,12 +497,14 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA attach a specific Drive file to an Asana task on demand?",
+        question:
+          "Can GAIA attach a specific Drive file to an Asana task on demand?",
         answer:
           "Yes. Ask GAIA to find a specific Drive file by name and attach it to an Asana task. GAIA searches Drive, retrieves the file, and adds the attachment to the task.",
       },
       {
-        question: "Does GAIA create one Drive folder per Asana project or per task?",
+        question:
+          "Does GAIA create one Drive folder per Asana project or per task?",
         answer:
           "By default, GAIA creates one Drive folder per Asana project with subfolders for major task groups. You can also configure per-task document creation for high-volume or template-driven workflows.",
       },
@@ -505,8 +522,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "asana",
     toolB: "Zoom",
     toolBSlug: "zoom",
-    tagline: "Schedule project kickoffs from Asana milestones and post Zoom summaries to tasks",
-    metaTitle: "Asana + Zoom Automation - Connect Project Milestones to Video Meetings | GAIA",
+    tagline:
+      "Schedule project kickoffs from Asana milestones and post Zoom summaries to tasks",
+    metaTitle:
+      "Asana + Zoom Automation - Connect Project Milestones to Video Meetings | GAIA",
     metaDescription:
       "Automate Asana and Zoom with GAIA. Schedule Zoom calls when Asana milestones are reached, post meeting summaries to tasks, and create follow-up action items without leaving your project management tool.",
     keywords: [
@@ -570,12 +589,14 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "Yes. Mention GAIA in an Asana task comment and ask it to schedule a Zoom meeting for the task assignees. GAIA checks availability and sends calendar invites with the Zoom link.",
       },
       {
-        question: "Does GAIA require Zoom transcription to be enabled for meeting summaries?",
+        question:
+          "Does GAIA require Zoom transcription to be enabled for meeting summaries?",
         answer:
           "Yes. Zoom meeting summaries rely on Zoom's transcription feature. GAIA accesses the transcript after the meeting ends and generates a structured summary posted to the relevant Asana task.",
       },
       {
-        question: "Can GAIA create recurring Zoom meetings for ongoing Asana projects?",
+        question:
+          "Can GAIA create recurring Zoom meetings for ongoing Asana projects?",
         answer:
           "Yes. For long-running projects, GAIA can schedule recurring Zoom standups or review meetings based on Asana sprint cycles or project phase timelines, with participants updated as the team changes.",
       },
@@ -588,8 +609,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "asana",
     toolB: "Salesforce",
     toolBSlug: "salesforce",
-    tagline: "Link client project tasks in Asana to Salesforce opportunities and accounts",
-    metaTitle: "Asana + Salesforce Automation - Connect Project Delivery to CRM | GAIA",
+    tagline:
+      "Link client project tasks in Asana to Salesforce opportunities and accounts",
+    metaTitle:
+      "Asana + Salesforce Automation - Connect Project Delivery to CRM | GAIA",
     metaDescription:
       "Bridge project management and sales with GAIA. Automatically create Asana projects from Salesforce opportunities, sync delivery milestones to CRM records, and give account teams full visibility into project health.",
     keywords: [
@@ -648,17 +671,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create different Asana project templates based on Salesforce opportunity type?",
+        question:
+          "Can GAIA create different Asana project templates based on Salesforce opportunity type?",
         answer:
           "Yes. You can configure GAIA to select Asana project templates based on Salesforce fields such as product line, contract value, or opportunity type, ensuring each project starts with the right task structure.",
       },
       {
-        question: "How does GAIA handle Salesforce accounts with multiple active projects?",
+        question:
+          "How does GAIA handle Salesforce accounts with multiple active projects?",
         answer:
           "GAIA links each Asana project to the specific Salesforce opportunity that generated it. Account-level summaries aggregate all linked projects so account managers see a complete delivery picture.",
       },
       {
-        question: "Can GAIA sync Asana project budgets to Salesforce opportunity values?",
+        question:
+          "Can GAIA sync Asana project budgets to Salesforce opportunity values?",
         answer:
           "GAIA can read contract value from Salesforce and populate a custom Asana project field for budget tracking. Actual-versus-planned budget analysis requires connecting your financial data source as well.",
       },
@@ -671,8 +697,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "trello",
     toolB: "Notion",
     toolBSlug: "notion",
-    tagline: "Embed Trello boards in Notion and sync cards to Notion databases automatically",
-    metaTitle: "Trello + Notion Automation - Connect Boards to Your Knowledge Base | GAIA",
+    tagline:
+      "Embed Trello boards in Notion and sync cards to Notion databases automatically",
+    metaTitle:
+      "Trello + Notion Automation - Connect Boards to Your Knowledge Base | GAIA",
     metaDescription:
       "Bridge Trello and Notion with GAIA. Sync Trello cards to Notion databases, embed board status in Notion project pages, and keep your knowledge base and task management in perfect alignment.",
     keywords: [
@@ -736,12 +764,14 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "Yes. GAIA maps Trello card labels to Notion multi-select or tag fields. When a label is added or removed from a Trello card, GAIA updates the corresponding Notion entry field to match.",
       },
       {
-        question: "What happens to Notion entries when Trello cards are deleted?",
+        question:
+          "What happens to Notion entries when Trello cards are deleted?",
         answer:
           "By default, GAIA marks the Notion entry as archived rather than deleting it, preserving project history. You can configure GAIA to delete entries instead if your workflow requires a clean database.",
       },
       {
-        question: "Can GAIA create a Trello board from a Notion project template?",
+        question:
+          "Can GAIA create a Trello board from a Notion project template?",
         answer:
           "Yes. When a new project page is created in Notion from a template, GAIA can read the task list from the template and create a fully structured Trello board with lists and initial cards automatically.",
       },
@@ -754,8 +784,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "trello",
     toolB: "Slack",
     toolBSlug: "slack",
-    tagline: "Post Trello card updates to Slack and create cards directly from Slack messages",
-    metaTitle: "Trello + Slack Automation - Real-Time Board Updates in Slack | GAIA",
+    tagline:
+      "Post Trello card updates to Slack and create cards directly from Slack messages",
+    metaTitle:
+      "Trello + Slack Automation - Real-Time Board Updates in Slack | GAIA",
     metaDescription:
       "Connect Trello and Slack with GAIA. Get notified in Slack when Trello cards move, create new cards from Slack messages, and keep your team aligned without switching between tools.",
     keywords: [
@@ -814,7 +846,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA post different Trello boards to different Slack channels?",
+        question:
+          "Can GAIA post different Trello boards to different Slack channels?",
         answer:
           "Yes. You can configure per-board Slack channel mappings so that updates from your marketing board go to the marketing channel, engineering board updates go to the engineering channel, and so on.",
       },
@@ -824,7 +857,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "GAIA posts structured Slack messages with the card title, current list, assignee, due date, and a direct link to the Trello card. Digest messages include a formatted table of cards grouped by status.",
       },
       {
-        question: "Can I create a Trello card from a Slack message without a bot command?",
+        question:
+          "Can I create a Trello card from a Slack message without a bot command?",
         answer:
           "Yes. GAIA supports emoji-based card creation — react to any Slack message with a designated emoji and GAIA will create a Trello card from that message automatically.",
       },
@@ -837,8 +871,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "trello",
     toolB: "GitHub",
     toolBSlug: "github",
-    tagline: "Move Trello cards when PRs merge and link GitHub issues to Trello cards",
-    metaTitle: "Trello + GitHub Automation - Connect Code Delivery to Project Boards | GAIA",
+    tagline:
+      "Move Trello cards when PRs merge and link GitHub issues to Trello cards",
+    metaTitle:
+      "Trello + GitHub Automation - Connect Code Delivery to Project Boards | GAIA",
     metaDescription:
       "Link your GitHub development workflow to Trello with GAIA. Automatically move Trello cards when pull requests merge, create cards from GitHub issues, and keep engineering and project management perfectly aligned.",
     keywords: [
@@ -897,17 +933,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Do developers need to reference Trello card IDs in every PR?",
+        question:
+          "Do developers need to reference Trello card IDs in every PR?",
         answer:
           "Not necessarily. GAIA supports fuzzy matching between GitHub issues and Trello cards by title and label. Explicit card ID references give the most reliable links, but GAIA can infer matches for common workflows.",
       },
       {
-        question: "Can GAIA handle multiple GitHub repositories mapped to a single Trello board?",
+        question:
+          "Can GAIA handle multiple GitHub repositories mapped to a single Trello board?",
         answer:
           "Yes. You can map multiple repositories to a single Trello board, with per-repository label filters to control which issues and PRs create or update Trello cards.",
       },
       {
-        question: "What happens when a GitHub issue is closed without merging a PR?",
+        question:
+          "What happens when a GitHub issue is closed without merging a PR?",
         answer:
           "GAIA moves the linked Trello card to a Closed or Won't Do list based on your configuration, and adds a comment noting the issue was closed without a merge so the project team has the full context.",
       },
@@ -920,8 +959,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "trello",
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
-    tagline: "Add Trello due dates to your calendar and create cards from calendar events",
-    metaTitle: "Trello + Google Calendar Automation - Sync Task Deadlines with Your Calendar | GAIA",
+    tagline:
+      "Add Trello due dates to your calendar and create cards from calendar events",
+    metaTitle:
+      "Trello + Google Calendar Automation - Sync Task Deadlines with Your Calendar | GAIA",
     metaDescription:
       "Connect Trello and Google Calendar with GAIA. Automatically add Trello card due dates to your calendar, create Trello cards from calendar events, and never miss a project deadline again.",
     keywords: [
@@ -980,12 +1021,14 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "What happens to the calendar event when a Trello due date is changed?",
+        question:
+          "What happens to the calendar event when a Trello due date is changed?",
         answer:
           "GAIA automatically updates the linked Google Calendar event to match the new due date, so your calendar always reflects the current Trello deadline without manual edits.",
       },
       {
-        question: "Can GAIA create calendar events for an entire Trello board at once?",
+        question:
+          "Can GAIA create calendar events for an entire Trello board at once?",
         answer:
           "Yes. You can ask GAIA to bulk-create calendar events for all cards with due dates on a specific Trello board, populating your calendar with the full project schedule in one operation.",
       },
@@ -1003,8 +1046,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "trello",
     toolB: "Google Drive",
     toolBSlug: "google-drive",
-    tagline: "Attach Drive files to Trello cards and organize project assets automatically",
-    metaTitle: "Trello + Google Drive Automation - Link Documents to Your Trello Cards | GAIA",
+    tagline:
+      "Attach Drive files to Trello cards and organize project assets automatically",
+    metaTitle:
+      "Trello + Google Drive Automation - Link Documents to Your Trello Cards | GAIA",
     metaDescription:
       "Connect Trello and Google Drive with GAIA. Automatically create Drive folders for Trello boards, attach relevant files to cards, and keep all project documents organized and accessible from your Kanban board.",
     keywords: [
@@ -1063,7 +1108,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA attach a Drive file to a specific Trello card on request?",
+        question:
+          "Can GAIA attach a Drive file to a specific Trello card on request?",
         answer:
           "Yes. Ask GAIA to find a specific Drive file by name and attach it to a Trello card by title or card ID. GAIA searches Drive, retrieves the file link, and adds it to the card.",
       },
@@ -1073,7 +1119,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "GAIA does not delete Drive files when a Trello card is removed. It can optionally move the files to an archive folder and log the card deletion so documents are preserved for reference.",
       },
       {
-        question: "Can GAIA create a Drive document from a Trello card template?",
+        question:
+          "Can GAIA create a Drive document from a Trello card template?",
         answer:
           "Yes. You can configure GAIA to create a Drive document from a specified template when a Trello card is created in a specific list, pre-filling the document with card metadata such as title, assignee, and due date.",
       },
@@ -1086,8 +1133,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "trello",
     toolB: "Figma",
     toolBSlug: "figma",
-    tagline: "Link Figma designs to Trello product cards and automate the design review workflow",
-    metaTitle: "Trello + Figma Automation - Connect Design Files to Product Cards | GAIA",
+    tagline:
+      "Link Figma designs to Trello product cards and automate the design review workflow",
+    metaTitle:
+      "Trello + Figma Automation - Connect Design Files to Product Cards | GAIA",
     metaDescription:
       "Bridge design and product management with GAIA. Automatically attach Figma files to Trello cards, move cards when designs are approved, and keep your design review workflow on track without manual status updates.",
     keywords: [
@@ -1146,12 +1195,14 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA attach specific Figma frames to Trello cards rather than the whole file?",
+        question:
+          "Can GAIA attach specific Figma frames to Trello cards rather than the whole file?",
         answer:
           "Yes. You can configure GAIA to attach specific Figma frame links so reviewers navigate directly to the relevant design component rather than searching through a large file.",
       },
       {
-        question: "What happens when a Figma design is revised after being approved?",
+        question:
+          "What happens when a Figma design is revised after being approved?",
         answer:
           "GAIA detects the post-approval edit and can reopen the Trello review card or notify the product manager, ensuring revised designs get proper sign-off before development proceeds.",
       },
@@ -1169,8 +1220,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "trello",
     toolB: "Discord",
     toolBSlug: "discord",
-    tagline: "Post Trello board updates to Discord community channels automatically",
-    metaTitle: "Trello + Discord Automation - Board Updates in Your Discord Server | GAIA",
+    tagline:
+      "Post Trello board updates to Discord community channels automatically",
+    metaTitle:
+      "Trello + Discord Automation - Board Updates in Your Discord Server | GAIA",
     metaDescription:
       "Keep your Discord community informed with GAIA. Automatically post Trello card completions, new assignments, and board activity to Discord channels so your team always knows what's happening.",
     keywords: [
@@ -1229,17 +1282,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA post updates from multiple Trello boards to different Discord channels?",
+        question:
+          "Can GAIA post updates from multiple Trello boards to different Discord channels?",
         answer:
           "Yes. You can configure per-board channel mappings so that different project boards post to their respective Discord channels, keeping notifications organized and relevant to each audience.",
       },
       {
-        question: "Can community members create Trello cards from Discord without board access?",
+        question:
+          "Can community members create Trello cards from Discord without board access?",
         answer:
           "Yes. GAIA can accept Trello card creation requests from Discord users who do not have direct Trello access, acting as the bridge between the community and the project board.",
       },
       {
-        question: "Will every Trello card movement create a Discord notification?",
+        question:
+          "Will every Trello card movement create a Discord notification?",
         answer:
           "Only the event types you configure will generate Discord messages. Most teams post only completions and major milestones to keep channels readable rather than notifying on every card move.",
       },
@@ -1252,8 +1308,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "trello",
     toolB: "Zoom",
     toolBSlug: "zoom",
-    tagline: "Schedule Trello sprint calls and post Zoom meeting summaries back to cards",
-    metaTitle: "Trello + Zoom Automation - Connect Sprint Meetings to Your Trello Board | GAIA",
+    tagline:
+      "Schedule Trello sprint calls and post Zoom meeting summaries back to cards",
+    metaTitle:
+      "Trello + Zoom Automation - Connect Sprint Meetings to Your Trello Board | GAIA",
     metaDescription:
       "Link Trello and Zoom with GAIA. Schedule sprint calls when boards move to new stages, post Zoom meeting summaries to Trello cards, and turn call action items into cards automatically.",
     keywords: [
@@ -1312,17 +1370,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA schedule a Zoom call directly from a Trello card comment?",
+        question:
+          "Can GAIA schedule a Zoom call directly from a Trello card comment?",
         answer:
           "Yes. Mention GAIA in a Trello card comment asking for a meeting, and GAIA will schedule a Zoom call with the card members, check calendar availability, and post the meeting link back to the card.",
       },
       {
-        question: "Does GAIA require Zoom cloud recording for meeting summaries?",
+        question:
+          "Does GAIA require Zoom cloud recording for meeting summaries?",
         answer:
           "Zoom transcription or cloud recording must be enabled on the meeting for GAIA to generate summaries. GAIA accesses the transcript after the meeting ends and generates a structured summary.",
       },
       {
-        question: "Can GAIA create recurring sprint meetings based on Trello sprint cycles?",
+        question:
+          "Can GAIA create recurring sprint meetings based on Trello sprint cycles?",
         answer:
           "Yes. GAIA can schedule recurring Zoom sprint calls based on your Trello board's sprint cadence, automatically adding the meeting link to the board and updating the invite as team membership changes.",
       },
@@ -1335,8 +1396,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "hubspot",
     toolB: "Notion",
     toolBSlug: "notion",
-    tagline: "Sync HubSpot CRM data to Notion docs and document deals and customer research",
-    metaTitle: "HubSpot + Notion Automation - Bring CRM Data into Your Knowledge Base | GAIA",
+    tagline:
+      "Sync HubSpot CRM data to Notion docs and document deals and customer research",
+    metaTitle:
+      "HubSpot + Notion Automation - Bring CRM Data into Your Knowledge Base | GAIA",
     metaDescription:
       "Connect HubSpot and Notion with GAIA. Automatically sync deal data to Notion databases, create account research pages from HubSpot contacts, and keep your CRM and knowledge base aligned.",
     keywords: [
@@ -1405,7 +1468,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "You can configure either. GAIA supports per-deal pages for detailed opportunity tracking and per-account pages that aggregate all deals and contacts for a given company.",
       },
       {
-        question: "Can GAIA sync HubSpot custom properties to Notion custom fields?",
+        question:
+          "Can GAIA sync HubSpot custom properties to Notion custom fields?",
         answer:
           "Yes. During setup, you map HubSpot custom properties to Notion database properties. GAIA maintains those mappings and syncs values as they change in HubSpot.",
       },
@@ -1418,8 +1482,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "hubspot",
     toolB: "Asana",
     toolBSlug: "asana",
-    tagline: "Create onboarding and delivery tasks in Asana from new HubSpot deals",
-    metaTitle: "HubSpot + Asana Automation - Turn Closed Deals into Project Tasks | GAIA",
+    tagline:
+      "Create onboarding and delivery tasks in Asana from new HubSpot deals",
+    metaTitle:
+      "HubSpot + Asana Automation - Turn Closed Deals into Project Tasks | GAIA",
     metaDescription:
       "Bridge sales and delivery with GAIA. Automatically create Asana onboarding projects when HubSpot deals close, sync deal data to project tasks, and keep account managers and delivery teams aligned.",
     keywords: [
@@ -1478,17 +1544,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create different Asana templates for different HubSpot deal types?",
+        question:
+          "Can GAIA create different Asana templates for different HubSpot deal types?",
         answer:
           "Yes. You can configure GAIA to select Asana project templates based on HubSpot deal properties such as product line, contract tier, or customer segment, ensuring the right task structure for each engagement.",
       },
       {
-        question: "What happens in Asana if a HubSpot deal is reopened after being closed?",
+        question:
+          "What happens in Asana if a HubSpot deal is reopened after being closed?",
         answer:
           "GAIA can detect deal stage reversals and notify the Asana project team, or optionally pause or archive the Asana project, depending on how your workflow handles deal reversals.",
       },
       {
-        question: "Can sales reps see Asana onboarding progress without an Asana account?",
+        question:
+          "Can sales reps see Asana onboarding progress without an Asana account?",
         answer:
           "Yes. GAIA logs Asana milestone completions as HubSpot activities so account managers see onboarding progress inside HubSpot without needing Asana access.",
       },
@@ -1501,8 +1570,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "hubspot",
     toolB: "Linear",
     toolBSlug: "linear",
-    tagline: "Link customer feature requests in HubSpot to engineering issues in Linear",
-    metaTitle: "HubSpot + Linear Automation - Connect Customer Feedback to Engineering | GAIA",
+    tagline:
+      "Link customer feature requests in HubSpot to engineering issues in Linear",
+    metaTitle:
+      "HubSpot + Linear Automation - Connect Customer Feedback to Engineering | GAIA",
     metaDescription:
       "Bridge sales and engineering with GAIA. Automatically create Linear issues from HubSpot deal feature requests, track request status in CRM, and close the loop between customer feedback and product delivery.",
     keywords: [
@@ -1561,7 +1632,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA deduplicate feature requests from multiple HubSpot deals?",
+        question:
+          "Can GAIA deduplicate feature requests from multiple HubSpot deals?",
         answer:
           "Yes. GAIA matches requests by feature name or description and links multiple HubSpot records to a single Linear issue, updating the issue with a count of requesting customers rather than creating duplicates.",
       },
@@ -1571,7 +1643,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "Yes. GAIA adds the Linear issue link and current status to the HubSpot deal or contact record, so account managers can see whether a feature is backlogged, in progress, or shipped without accessing Linear.",
       },
       {
-        question: "Does GAIA support HubSpot custom properties for feature request tracking?",
+        question:
+          "Does GAIA support HubSpot custom properties for feature request tracking?",
         answer:
           "Yes. You can configure GAIA to read feature request data from any HubSpot custom property on deal or contact records, not just standard fields, so it fits your existing CRM data model.",
       },
@@ -1584,8 +1657,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "hubspot",
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
-    tagline: "Sync meeting invites with HubSpot contacts and log calls automatically",
-    metaTitle: "HubSpot + Google Calendar Automation - Sync Sales Meetings with CRM | GAIA",
+    tagline:
+      "Sync meeting invites with HubSpot contacts and log calls automatically",
+    metaTitle:
+      "HubSpot + Google Calendar Automation - Sync Sales Meetings with CRM | GAIA",
     metaDescription:
       "Connect HubSpot and Google Calendar with GAIA. Automatically log calendar meetings as HubSpot activities, create follow-up tasks from call outcomes, and keep your CRM timeline accurate without manual entry.",
     keywords: [
@@ -1644,7 +1719,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA log internal meetings or only external client meetings?",
+        question:
+          "Does GAIA log internal meetings or only external client meetings?",
         answer:
           "You can configure GAIA to log only meetings with external email domains matched to HubSpot contacts, excluding internal team meetings from CRM logging to keep activity timelines relevant.",
       },
@@ -1654,7 +1730,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "GAIA updates the linked HubSpot activity record when a Google Calendar event is rescheduled, and marks it as cancelled if the event is deleted, keeping the CRM timeline accurate.",
       },
       {
-        question: "Can GAIA log meetings for multiple reps across a sales team?",
+        question:
+          "Can GAIA log meetings for multiple reps across a sales team?",
         answer:
           "Yes. GAIA supports team-level configurations so that calendar meetings for all reps in the sales team are automatically logged to their respective HubSpot contact and deal records.",
       },
@@ -1667,8 +1744,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "hubspot",
     toolB: "Google Drive",
     toolBSlug: "google-drive",
-    tagline: "Attach Drive proposals and contracts to HubSpot deals automatically",
-    metaTitle: "HubSpot + Google Drive Automation - Link Sales Documents to CRM Deals | GAIA",
+    tagline:
+      "Attach Drive proposals and contracts to HubSpot deals automatically",
+    metaTitle:
+      "HubSpot + Google Drive Automation - Link Sales Documents to CRM Deals | GAIA",
     metaDescription:
       "Connect HubSpot and Google Drive with GAIA. Automatically attach Drive proposals, contracts, and case studies to HubSpot deals, organize sales assets by account, and keep documents accessible from your CRM.",
     keywords: [
@@ -1727,7 +1806,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA generate proposals from HubSpot deal data and save them to Drive?",
+        question:
+          "Can GAIA generate proposals from HubSpot deal data and save them to Drive?",
         answer:
           "Yes. GAIA can use a Drive document template and populate it with HubSpot deal fields — company name, contact, product, pricing — to generate a proposal draft, saving it to the deal's Drive folder automatically.",
       },
@@ -1737,7 +1817,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "Yes. GAIA can manage multiple document types — proposals, NDAs, contracts, SOWs — each attached to the appropriate HubSpot deal section and organized in the correct Drive subfolder.",
       },
       {
-        question: "Can GAIA detect when a shared Drive document has been viewed by the prospect?",
+        question:
+          "Can GAIA detect when a shared Drive document has been viewed by the prospect?",
         answer:
           "GAIA can log when a shared Drive link is accessed if Google Drive sharing analytics are available. For detailed document engagement tracking, integrating a dedicated proposal tool provides richer data.",
       },
@@ -1750,8 +1831,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "hubspot",
     toolB: "Zoom",
     toolBSlug: "zoom",
-    tagline: "Log Zoom calls to HubSpot and create follow-up tasks from call notes",
-    metaTitle: "HubSpot + Zoom Automation - Log Sales Calls and Create Follow-Ups | GAIA",
+    tagline:
+      "Log Zoom calls to HubSpot and create follow-up tasks from call notes",
+    metaTitle:
+      "HubSpot + Zoom Automation - Log Sales Calls and Create Follow-Ups | GAIA",
     metaDescription:
       "Connect HubSpot and Zoom with GAIA. Automatically log Zoom calls as CRM activities, post call summaries to deal records, and create follow-up tasks from meeting transcripts so nothing falls through after a sales call.",
     keywords: [
@@ -1815,12 +1898,14 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "Basic call logging — duration, attendees, date — works without recording. Generating call summaries and extracting action items requires Zoom transcription or cloud recording to be enabled on the meeting.",
       },
       {
-        question: "Can GAIA match Zoom calls to the correct HubSpot deal when a contact has multiple open deals?",
+        question:
+          "Can GAIA match Zoom calls to the correct HubSpot deal when a contact has multiple open deals?",
         answer:
           "Yes. GAIA uses the deal currently in an active stage for the contact by default, and you can configure it to prompt the rep to confirm the deal association when ambiguity exists.",
       },
       {
-        question: "Can managers access Zoom call summaries for their reps from HubSpot?",
+        question:
+          "Can managers access Zoom call summaries for their reps from HubSpot?",
         answer:
           "Yes. Call summaries are logged as HubSpot note activities on the deal or contact record, so anyone with CRM access — including managers and account team members — can read the summary without accessing Zoom.",
       },
@@ -1833,8 +1918,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "salesforce",
     toolB: "Slack",
     toolBSlug: "slack",
-    tagline: "Post deal alerts to Slack and update Salesforce records from Slack messages",
-    metaTitle: "Salesforce + Slack Automation - Real-Time Deal Alerts in Slack | GAIA",
+    tagline:
+      "Post deal alerts to Slack and update Salesforce records from Slack messages",
+    metaTitle:
+      "Salesforce + Slack Automation - Real-Time Deal Alerts in Slack | GAIA",
     metaDescription:
       "Connect Salesforce and Slack with GAIA. Get instant deal stage alerts in Slack, update CRM records from Slack messages, and keep your revenue team aligned without leaving their primary communication tool.",
     keywords: [
@@ -1893,7 +1980,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA post Salesforce alerts to different Slack channels for different deal sizes?",
+        question:
+          "Can GAIA post Salesforce alerts to different Slack channels for different deal sizes?",
         answer:
           "Yes. You can configure GAIA to route alerts based on deal value — enterprise deals to a dedicated channel, SMB deals to another — so the right audience sees each notification.",
       },
@@ -1903,7 +1991,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "GAIA supports updating standard Salesforce fields — stage, close date, amount, next step, description — and custom fields via natural language commands in Slack. The update is reflected in Salesforce immediately.",
       },
       {
-        question: "Can GAIA notify the full account team, not just the deal owner?",
+        question:
+          "Can GAIA notify the full account team, not just the deal owner?",
         answer:
           "Yes. GAIA can notify all Slack users mapped to the Salesforce account team for a given deal, ensuring everyone with a stake in the account is informed of significant events.",
       },
@@ -1916,8 +2005,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "salesforce",
     toolB: "Gmail",
     toolBSlug: "gmail",
-    tagline: "Log emails to Salesforce automatically and create leads from Gmail replies",
-    metaTitle: "Salesforce + Gmail Automation - Log Every Email to CRM Automatically | GAIA",
+    tagline:
+      "Log emails to Salesforce automatically and create leads from Gmail replies",
+    metaTitle:
+      "Salesforce + Gmail Automation - Log Every Email to CRM Automatically | GAIA",
     metaDescription:
       "Connect Salesforce and Gmail with GAIA. Automatically log client emails to Salesforce deal and contact records, create leads from inbound email replies, and keep your CRM activity timeline complete without manual entry.",
     keywords: [
@@ -1976,17 +2067,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA log every email or only emails to Salesforce contacts?",
+        question:
+          "Does GAIA log every email or only emails to Salesforce contacts?",
         answer:
           "By default, GAIA logs only emails where the sender or recipient matches a Salesforce contact or lead email address. You can also configure it to log emails from specific domains or Gmail labels.",
       },
       {
-        question: "Can GAIA attach the full email body to Salesforce or just a summary?",
+        question:
+          "Can GAIA attach the full email body to Salesforce or just a summary?",
         answer:
           "GAIA logs the email subject, timestamp, direction, and a configurable amount of the body text to the Salesforce activity record. Full email bodies can be included if your Salesforce storage limits allow.",
       },
       {
-        question: "What happens when an email involves multiple Salesforce contacts?",
+        question:
+          "What happens when an email involves multiple Salesforce contacts?",
         answer:
           "GAIA logs the email to all matching Salesforce contact records in the thread and associates it with the relevant open opportunity for each contact, ensuring no touchpoint is missed on multi-stakeholder deals.",
       },
@@ -1999,8 +2093,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "salesforce",
     toolB: "Notion",
     toolBSlug: "notion",
-    tagline: "Sync Salesforce deal data to Notion and document account strategies collaboratively",
-    metaTitle: "Salesforce + Notion Automation - Bring CRM Data into Your Notion Workspace | GAIA",
+    tagline:
+      "Sync Salesforce deal data to Notion and document account strategies collaboratively",
+    metaTitle:
+      "Salesforce + Notion Automation - Bring CRM Data into Your Notion Workspace | GAIA",
     metaDescription:
       "Connect Salesforce and Notion with GAIA. Automatically create Notion deal pages from Salesforce opportunities, sync pipeline data to Notion databases, and keep account strategies aligned with live CRM data.",
     keywords: [
@@ -2025,7 +2121,8 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
           "GAIA maintains a Notion database of Salesforce opportunities, keeping stage, value, close date, and rep fields synchronized so pipeline dashboards in Notion always reflect live CRM data.",
       },
       {
-        title: "Document stakeholder maps in Notion with Salesforce contact data",
+        title:
+          "Document stakeholder maps in Notion with Salesforce contact data",
         description:
           "GAIA pulls Salesforce contact records associated with an opportunity and populates the stakeholder map section of the Notion deal page, giving the account team a collaborative space to build relationship strategies.",
       },
@@ -2059,17 +2156,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create different Notion templates for different Salesforce deal types?",
+        question:
+          "Can GAIA create different Notion templates for different Salesforce deal types?",
         answer:
           "Yes. You can configure GAIA to select Notion page templates based on Salesforce opportunity type, record type, or product line, ensuring the right strategic framework is applied to each deal.",
       },
       {
-        question: "How often does GAIA sync Salesforce data to the Notion pipeline database?",
+        question:
+          "How often does GAIA sync Salesforce data to the Notion pipeline database?",
         answer:
           "GAIA syncs on configurable intervals — real-time on stage changes, or on a scheduled basis for field updates. You can also trigger a manual sync on demand for a specific opportunity.",
       },
       {
-        question: "Can multiple team members collaborate on a Notion deal page while GAIA syncs CRM data?",
+        question:
+          "Can multiple team members collaborate on a Notion deal page while GAIA syncs CRM data?",
         answer:
           "Yes. GAIA writes to specific structured sections of the Notion deal page — CRM-synced fields, activity logs — while leaving collaborative sections free for the account team to edit without conflict.",
       },
@@ -2082,8 +2182,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "salesforce",
     toolB: "Asana",
     toolBSlug: "asana",
-    tagline: "Create Asana projects from Salesforce opportunities and sync delivery back to CRM",
-    metaTitle: "Salesforce + Asana Automation - From Closed Deal to Delivery Project | GAIA",
+    tagline:
+      "Create Asana projects from Salesforce opportunities and sync delivery back to CRM",
+    metaTitle:
+      "Salesforce + Asana Automation - From Closed Deal to Delivery Project | GAIA",
     metaDescription:
       "Bridge sales and delivery with GAIA. Automatically create Asana projects when Salesforce deals close, sync project milestones back to CRM records, and keep account managers and delivery teams working from shared data.",
     keywords: [
@@ -2142,17 +2244,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA select different Asana templates based on Salesforce deal attributes?",
+        question:
+          "Can GAIA select different Asana templates based on Salesforce deal attributes?",
         answer:
           "Yes. Configure GAIA to select Asana templates based on Salesforce fields such as product line, contract size, or customer segment, so the right delivery structure is applied to each type of engagement.",
       },
       {
-        question: "What happens if a Salesforce deal is reopened after the Asana project has started?",
+        question:
+          "What happens if a Salesforce deal is reopened after the Asana project has started?",
         answer:
           "GAIA can detect deal stage reversals and notify the Asana project manager. The Asana project is not automatically deleted — a human decision is needed to pause, cancel, or continue delivery work.",
       },
       {
-        question: "Can account managers in Salesforce see Asana project task-level details?",
+        question:
+          "Can account managers in Salesforce see Asana project task-level details?",
         answer:
           "GAIA logs milestone-level updates to Salesforce rather than individual task details, keeping the CRM record high-level. Account managers can request a project summary from GAIA at any time for more detail.",
       },
@@ -2165,8 +2270,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "salesforce",
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
-    tagline: "Sync sales calls and meetings with Salesforce CRM activities automatically",
-    metaTitle: "Salesforce + Google Calendar Automation - Log Sales Meetings to CRM | GAIA",
+    tagline:
+      "Sync sales calls and meetings with Salesforce CRM activities automatically",
+    metaTitle:
+      "Salesforce + Google Calendar Automation - Log Sales Meetings to CRM | GAIA",
     metaDescription:
       "Connect Salesforce and Google Calendar with GAIA. Automatically log client meetings as CRM activities, create follow-up tasks from calendar events, and keep your Salesforce activity timeline complete without manual entry.",
     keywords: [
@@ -2225,17 +2332,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA log internal team meetings to Salesforce or only external client meetings?",
+        question:
+          "Does GAIA log internal team meetings to Salesforce or only external client meetings?",
         answer:
           "GAIA logs only meetings where attendees match Salesforce contact or lead email addresses by default, excluding internal team meetings from CRM activity logging to keep the timeline relevant.",
       },
       {
-        question: "Can GAIA handle calendar meetings where multiple Salesforce contacts attend?",
+        question:
+          "Can GAIA handle calendar meetings where multiple Salesforce contacts attend?",
         answer:
           "Yes. GAIA logs the meeting to all matching Salesforce contact records in the event and associates the activity with the relevant open opportunity for each contact.",
       },
       {
-        question: "What happens when a calendar meeting is cancelled after being logged to Salesforce?",
+        question:
+          "What happens when a calendar meeting is cancelled after being logged to Salesforce?",
         answer:
           "GAIA updates the Salesforce activity record to reflect the cancellation and can optionally create a reschedule task on the opportunity so the rep follows up to book a new time.",
       },
@@ -2248,8 +2358,10 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     toolASlug: "salesforce",
     toolB: "Google Drive",
     toolBSlug: "google-drive",
-    tagline: "Attach Drive contracts and proposals to Salesforce deals automatically",
-    metaTitle: "Salesforce + Google Drive Automation - Link Sales Documents to CRM | GAIA",
+    tagline:
+      "Attach Drive contracts and proposals to Salesforce deals automatically",
+    metaTitle:
+      "Salesforce + Google Drive Automation - Link Sales Documents to CRM | GAIA",
     metaDescription:
       "Connect Salesforce and Google Drive with GAIA. Automatically create Drive folders for Salesforce opportunities, attach proposals and contracts to deal records, and keep all sales documents organized and accessible from your CRM.",
     keywords: [
@@ -2308,17 +2420,20 @@ export const combosBatchF: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA generate a proposal draft from a Salesforce opportunity on demand?",
+        question:
+          "Can GAIA generate a proposal draft from a Salesforce opportunity on demand?",
         answer:
           "Yes. Ask GAIA to generate a proposal for a specific Salesforce opportunity and it will create a Drive document from your template, populate it with opportunity and contact data from Salesforce, and attach it to the deal record.",
       },
       {
-        question: "Does GAIA support multiple document versions on the same Salesforce record?",
+        question:
+          "Does GAIA support multiple document versions on the same Salesforce record?",
         answer:
           "Yes. GAIA attaches each document version to the Salesforce record with a version label and timestamp. Previous versions remain accessible and the latest version is flagged as current.",
       },
       {
-        question: "Can GAIA enforce document naming conventions when creating Drive files?",
+        question:
+          "Can GAIA enforce document naming conventions when creating Drive files?",
         answer:
           "Yes. You can define file naming templates that GAIA applies when creating Drive documents from Salesforce data — for example, using opportunity name, account, and date in the file name for consistent organization.",
       },

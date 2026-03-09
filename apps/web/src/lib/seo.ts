@@ -411,8 +411,7 @@ export function generateProductSchema(): WithContext<SoftwareApplication> {
       priceCurrency: "USD",
       availability: "https://schema.org/InStock",
       name: "Free Plan",
-      description:
-        "GAIA is free to use with open-source self-hosting option",
+      description: "GAIA is free to use with open-source self-hosting option",
     } as Offer,
     author: {
       "@type": "Organization",

@@ -70,12 +70,14 @@ GAIA also provides the privacy-conscious with a meaningful alternative. As a ful
     {
       feature: "Workflow automation",
       gaia: "Multi-step automations triggered by calendar events, emails, or task updates across 50+ integrations",
-      competitor: "Zapier/Make integrations available but no native automation engine",
+      competitor:
+        "Zapier/Make integrations available but no native automation engine",
     },
     {
       feature: "Task management",
       gaia: "Native AI-powered todo management with priorities, deadlines, labels, and semantic search across all your tasks",
-      competitor: "No native task management; action items live inside Zoom only",
+      competitor:
+        "No native task management; action items live inside Zoom only",
     },
     {
       feature: "Integrations",
@@ -86,7 +88,8 @@ GAIA also provides the privacy-conscious with a meaningful alternative. As a ful
     {
       feature: "Open source / self-hosting",
       gaia: "Fully open source and self-hostable — full data ownership and no vendor access to your content",
-      competitor: "Proprietary closed-source SaaS; data processed on Zoom's servers",
+      competitor:
+        "Proprietary closed-source SaaS; data processed on Zoom's servers",
     },
     {
       feature: "Pricing",

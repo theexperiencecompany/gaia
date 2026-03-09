@@ -50,12 +50,14 @@ export const entry: ComparisonData = {
     {
       feature: "Email integration",
       gaia: "Full Gmail management: triages inbox, drafts replies, and creates tasks automatically from incoming emails",
-      competitor: "Email-to-card via dedicated board email address; no triage or drafting",
+      competitor:
+        "Email-to-card via dedicated board email address; no triage or drafting",
     },
     {
       feature: "Calendar",
       gaia: "Native Google Calendar integration for scheduling, meeting prep briefings, and deadline-aware task planning",
-      competitor: "Calendar power-up shows card due dates; no scheduling or meeting intelligence",
+      competitor:
+        "Calendar power-up shows card due dates; no scheduling or meeting intelligence",
     },
     {
       feature: "Automation",
@@ -66,7 +68,8 @@ export const entry: ComparisonData = {
     {
       feature: "Proactive behavior",
       gaia: "Monitors email, calendar, and connected tools to surface insights and take action before you ask",
-      competitor: "Passive board; requires manual input to move or update cards",
+      competitor:
+        "Passive board; requires manual input to move or update cards",
     },
     {
       feature: "Integrations",

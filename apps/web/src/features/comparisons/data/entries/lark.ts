@@ -121,7 +121,8 @@ GAIA addresses that gap. Rather than providing another suite of tools to manage,
     "Choose Lark if your team is willing to consolidate onto a single collaboration platform and wants chat, documents, calendar, and project management deeply integrated without per-feature subscription fragmentation. Choose GAIA if you want proactive AI automation that works across your existing tool stack — with open-source data sovereignty and no dependency on ByteDance's platform.",
   faqs: [
     {
-      question: "Is GAIA a good alternative to Lark for teams concerned about data privacy?",
+      question:
+        "Is GAIA a good alternative to Lark for teams concerned about data privacy?",
       answer:
         "Yes. GAIA is open source and self-hostable, meaning your data stays entirely within your own infrastructure. Lark is owned by ByteDance, which has faced regulatory scrutiny in multiple markets over data practices. For organizations with compliance requirements or data residency concerns, GAIA's self-hosting option provides a meaningful alternative.",
     },
@@ -131,7 +132,8 @@ GAIA addresses that gap. Rather than providing another suite of tools to manage,
         "No. GAIA does not provide a real-time chat system, built-in video meetings, or co-editing document surfaces in the way Lark does. GAIA integrates with existing tools like Slack for messaging and Google Meet for video rather than replacing them. Teams looking for an all-in-one communication suite would still need dedicated tools for chat and video alongside GAIA.",
     },
     {
-      question: "How does GAIA's automation compare to Lark's workflow builder?",
+      question:
+        "How does GAIA's automation compare to Lark's workflow builder?",
       answer:
         "Lark's workflow builder uses explicit rule configuration — you define triggers, conditions, and actions within the Lark platform. GAIA uses natural language: you describe what you want to happen and the AI orchestrates it across connected tools. GAIA is also proactive — it monitors email and calendar context and acts without waiting for a trigger you defined.",
     },
@@ -146,5 +148,9 @@ GAIA addresses that gap. Rather than providing another suite of tools to manage,
         "GAIA's hosted Pro plan is $20/month regardless of team size, and self-hosting is entirely free. Lark's Pro plan is $12/user/month, so for teams of two or more, Lark's cost scales linearly while GAIA's does not. For teams of five or more, GAIA is substantially more cost-effective when comparing comparable usage tiers.",
     },
   ],
-  relatedPersonas: ["startup-founders", "software-developers", "product-managers"],
+  relatedPersonas: [
+    "startup-founders",
+    "software-developers",
+    "product-managers",
+  ],
 };

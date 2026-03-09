@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Make",
   domain: "make.com",
   category: "automation",
-  tagline: "Visual workflow automation platform with advanced scenario building",
+  tagline:
+    "Visual workflow automation platform with advanced scenario building",
   painPoints: [
     "Steep learning curve for the visual scenario builder",
     "Operation-based pricing gets expensive for high-frequency automations",

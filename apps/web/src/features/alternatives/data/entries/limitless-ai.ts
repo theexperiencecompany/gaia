@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Limitless AI",
   domain: "limitless.ai",
   category: "ai-assistant",
-  tagline: "Passive meeting capture is powerful — but memory without action is still a to-do list",
+  tagline:
+    "Passive meeting capture is powerful — but memory without action is still a to-do list",
   painPoints: [
     "Limitless captures meetings and conversations passively but doesn't take action on them — follow-ups, tasks, and calendar updates still require manual work",
     "The Pendant wearable captures everything in your physical environment, but digital productivity — email, tasks, calendar — remains outside its scope",
@@ -13,7 +14,8 @@ export const entry: AlternativeData = {
     "Primarily a capture and recall tool; it surfaces what was said but doesn't organize, prioritize, or automate next steps",
     "Cloud-dependent with no self-hosted option — sensitive meeting recordings are stored on Limitless's infrastructure",
   ],
-  metaTitle: "Limitless AI Alternative | GAIA — AI Assistant That Remembers and Acts",
+  metaTitle:
+    "Limitless AI Alternative | GAIA — AI Assistant That Remembers and Acts",
   metaDescription:
     "Want an AI that doesn't just capture your meetings but also manages your inbox, creates tasks, and updates your calendar? GAIA is an open-source Limitless AI alternative with proactive action across all your tools.",
   keywords: [

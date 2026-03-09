@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Atlassian's team wiki and documentation platform",
   description:
     "Confluence is Atlassian's enterprise team wiki and knowledge management platform, widely used alongside Jira for software teams. GAIA is a proactive AI assistant that connects documentation to email, tasks, calendar, and 50+ integrations with autonomous action.",
-  metaTitle: "Confluence Alternative with AI Automation & Proactive Workflows | GAIA vs Confluence",
+  metaTitle:
+    "Confluence Alternative with AI Automation & Proactive Workflows | GAIA vs Confluence",
   metaDescription:
     "Confluence stores team knowledge but stays passive. GAIA is a free, open-source Confluence alternative with AI email management, Jira integration, proactive task creation, and workflow automation across 50+ tools.",
   keywords: [
@@ -51,7 +52,8 @@ For large enterprises deeply invested in the Atlassian ecosystem — with existi
     {
       feature: "Email integration",
       gaia: "Full Gmail management — reads, triages, drafts replies, and creates tasks or documentation from emails automatically",
-      competitor: "No email integration; content must be manually entered into Confluence pages",
+      competitor:
+        "No email integration; content must be manually entered into Confluence pages",
     },
     {
       feature: "Proactive behavior",
@@ -68,7 +70,8 @@ For large enterprises deeply invested in the Atlassian ecosystem — with existi
     {
       feature: "Calendar integration",
       gaia: "Full Google Calendar integration — reads, creates, and updates events; generates pre-meeting briefings automatically",
-      competitor: "Team calendars for tracking team events; no external calendar automation",
+      competitor:
+        "Team calendars for tracking team events; no external calendar automation",
     },
     {
       feature: "Integrations",
@@ -143,5 +146,9 @@ For large enterprises deeply invested in the Atlassian ecosystem — with existi
         "Yes, significantly. Confluence's Standard plan is $4.89/user/month and Premium is $8.97/user/month, costs that compound with headcount. GAIA's hosted Pro plan starts at $20/month regardless of seat count, and self-hosting is entirely free, making it substantially more economical for larger teams.",
     },
   ],
-  relatedPersonas: ["software-developers", "product-managers", "engineering-managers"],
+  relatedPersonas: [
+    "software-developers",
+    "product-managers",
+    "engineering-managers",
+  ],
 };

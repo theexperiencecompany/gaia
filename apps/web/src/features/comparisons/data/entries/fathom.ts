@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Free AI meeting notetaker with CRM sync",
   description:
     "Fathom is a free AI meeting notetaker that records, transcribes, and summarizes calls with CRM sync for Salesforce and HubSpot. GAIA is a proactive AI assistant that manages your complete workflow across tasks, email, calendar, and meetings.",
-  metaTitle: "Fathom Alternative for Full Productivity Automation | GAIA vs Fathom",
+  metaTitle:
+    "Fathom Alternative for Full Productivity Automation | GAIA vs Fathom",
   metaDescription:
     "Fathom's free notetaker is excellent but limited to meetings. GAIA is an open-source alternative that connects meeting outcomes to tasks, email follow-ups, and 50+ integrations automatically.",
   keywords: [
@@ -85,7 +86,8 @@ For users who love Fathom's free meeting notes and want nothing more, it remains
     {
       feature: "Open source / self-hosting",
       gaia: "Fully open source and self-hostable — complete data ownership",
-      competitor: "Proprietary SaaS; recordings stored on Fathom's infrastructure",
+      competitor:
+        "Proprietary SaaS; recordings stored on Fathom's infrastructure",
     },
     {
       feature: "Pricing",
@@ -126,7 +128,8 @@ For users who love Fathom's free meeting notes and want nothing more, it remains
         "Yes, GAIA has a free tier. However, Fathom's free tier specifically for meeting notes is exceptionally generous — unlimited recordings with no time limit. GAIA's free tier covers its broader proactive AI capabilities: email management, task automation, calendar integration, and workflow orchestration.",
     },
     {
-      question: "How does GAIA handle meeting action items differently from Fathom?",
+      question:
+        "How does GAIA handle meeting action items differently from Fathom?",
       answer:
         "Fathom identifies action items and surfaces them within the Fathom interface or as CRM notes. GAIA creates real tasks in your task management tools — Todoist, Linear, Asana, Jira, ClickUp — with proper context, deadlines, and priorities, so action items enter your existing workflow immediately.",
     },

@@ -175,7 +175,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA update existing Notion pages or only create new ones?",
+        question:
+          "Can GAIA update existing Notion pages or only create new ones?",
         answer:
           "GAIA can do both. It can create new database entries for each email or append information to an existing page. For example, follow-up emails from the same client can be appended to their existing Notion contact page rather than creating duplicates.",
       },
@@ -198,7 +199,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Todoist",
     toolBSlug: "todoist",
-    tagline: "Turn emails into tasks automatically, zero inbox means zero missed tasks",
+    tagline:
+      "Turn emails into tasks automatically, zero inbox means zero missed tasks",
     metaTitle: "Gmail + Todoist Automation - Email to Task Automation | GAIA",
     metaDescription:
       "Automate Gmail and Todoist with GAIA. Convert emails into Todoist tasks automatically, set due dates from email context, and keep your task list in sync with your inbox.",
@@ -339,17 +341,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA link Linear issues back to the original Gmail thread?",
+        question:
+          "Can GAIA link Linear issues back to the original Gmail thread?",
         answer:
           "Yes. GAIA adds the Gmail thread URL to the Linear issue description so engineers always have a link back to the original customer communication for full context.",
       },
       {
-        question: "Does GAIA deduplicate issues when multiple customers report the same bug?",
+        question:
+          "Does GAIA deduplicate issues when multiple customers report the same bug?",
         answer:
           "GAIA uses semantic similarity to detect when new emails describe already-existing Linear issues and can add a comment to the existing issue instead of creating a duplicate.",
       },
       {
-        question: "Can non-engineering teams use this for their own Linear workspaces?",
+        question:
+          "Can non-engineering teams use this for their own Linear workspaces?",
         answer:
           "Absolutely. Any team using Linear for project tracking can use this automation. Marketing teams can log campaign requests from email, operations teams can log vendor requests, and design teams can log feedback.",
       },
@@ -421,7 +426,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA assign Asana tasks to specific team members based on email content?",
+        question:
+          "Can GAIA assign Asana tasks to specific team members based on email content?",
         answer:
           "Yes. You can configure rules like 'emails about design go to the design team' or 'emails from client X go to account manager Y'. GAIA uses email content and sender rules to determine assignment.",
       },
@@ -445,7 +451,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "Notion",
     toolBSlug: "notion",
     tagline: "Save Slack conversations and decisions to Notion automatically",
-    metaTitle: "Slack + Notion Automation - Save Conversations to Knowledge Base | GAIA",
+    metaTitle:
+      "Slack + Notion Automation - Save Conversations to Knowledge Base | GAIA",
     metaDescription:
       "Automate Slack and Notion with GAIA. Save important Slack threads to Notion, create meeting notes from Slack conversations, and build a team knowledge base from your chat history.",
     keywords: [
@@ -503,12 +510,14 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can team members trigger Notion saves from Slack without GAIA's intervention?",
+        question:
+          "Can team members trigger Notion saves from Slack without GAIA's intervention?",
         answer:
           "Yes. You can configure a specific emoji reaction (like a bookmark emoji) that any team member can add to a Slack message to trigger GAIA to save it to Notion. This gives the team control while automating the capture.",
       },
       {
-        question: "Does GAIA capture entire threads or just individual messages?",
+        question:
+          "Does GAIA capture entire threads or just individual messages?",
         answer:
           "By default GAIA captures entire threads when a capture is triggered, preserving the full conversation context. You can configure it to capture only the parent message or a summarized version of the thread.",
       },
@@ -526,7 +535,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Linear",
     toolBSlug: "linear",
-    tagline: "Create and update Linear issues directly from Slack conversations",
+    tagline:
+      "Create and update Linear issues directly from Slack conversations",
     metaTitle: "Slack + Linear Automation - Manage Issues from Slack | GAIA",
     metaDescription:
       "Automate Slack and Linear with GAIA. Create Linear issues from Slack messages, get issue updates in Slack, and keep your engineering team aligned without switching tools.",
@@ -585,7 +595,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can I update Linear issue status from Slack without opening Linear?",
+        question:
+          "Can I update Linear issue status from Slack without opening Linear?",
         answer:
           "Yes. You can ask GAIA in Slack to update an issue status, change assignee, add a comment, or close an issue. GAIA handles the Linear API call and confirms the update in Slack.",
       },
@@ -609,7 +620,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "GitHub",
     toolBSlug: "github",
     tagline: "Get GitHub notifications in Slack and manage PRs from chat",
-    metaTitle: "Slack + GitHub Automation - GitHub Notifications in Slack | GAIA",
+    metaTitle:
+      "Slack + GitHub Automation - GitHub Notifications in Slack | GAIA",
     metaDescription:
       "Automate Slack and GitHub with GAIA. Get smart GitHub PR and issue notifications in Slack, manage code reviews from chat, and keep your engineering team aligned on repository activity.",
     keywords: [
@@ -667,7 +679,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA filter GitHub notifications so I only see what matters?",
+        question:
+          "Can GAIA filter GitHub notifications so I only see what matters?",
         answer:
           "Yes. GAIA applies intelligent filtering based on your role, which repositories you're assigned to, and the priority you've set for different event types. You control the signal-to-noise ratio.",
       },
@@ -677,7 +690,8 @@ export const combos: Record<string, IntegrationCombo> = {
           "GAIA provides more intelligent and configurable notifications than the official GitHub app. You can use both, or replace the official app with GAIA for a cleaner notification experience.",
       },
       {
-        question: "Can GAIA handle GitHub notifications for multiple repositories?",
+        question:
+          "Can GAIA handle GitHub notifications for multiple repositories?",
         answer:
           "Yes. GAIA supports monitoring multiple repositories and can route notifications from different repos to different Slack channels based on your team's structure.",
       },
@@ -773,7 +787,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "Todoist",
     toolBSlug: "todoist",
     tagline: "Capture tasks from Slack into Todoist without breaking your flow",
-    metaTitle: "Slack + Todoist Automation - Create Todoist Tasks from Slack | GAIA",
+    metaTitle:
+      "Slack + Todoist Automation - Create Todoist Tasks from Slack | GAIA",
     metaDescription:
       "Automate Slack and Todoist with GAIA. Create personal Todoist tasks from Slack messages, get reminders in Slack, and never lose track of action items from team conversations.",
     keywords: [
@@ -836,12 +851,14 @@ export const combos: Record<string, IntegrationCombo> = {
           "You can configure any emoji as your task trigger in GAIA settings. Common choices are the white check mark, clipboard, or bookmark emoji. GAIA will confirm the task was created with a reaction back on the message.",
       },
       {
-        question: "Can GAIA detect when tasks are completed in Todoist and react in Slack?",
+        question:
+          "Can GAIA detect when tasks are completed in Todoist and react in Slack?",
         answer:
           "Yes. When you complete a Todoist task that was created from a Slack message, GAIA can post a completion confirmation to the original Slack thread so collaborators know the work is done.",
       },
       {
-        question: "Does this integration work for personal Todoist accounts or only teams?",
+        question:
+          "Does this integration work for personal Todoist accounts or only teams?",
         answer:
           "It works for both personal and team Todoist accounts. Individual users can use it to capture personal tasks from Slack, while teams can use it to manage shared project tasks.",
       },
@@ -936,8 +953,10 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "github",
     toolB: "Notion",
     toolBSlug: "notion",
-    tagline: "Document your GitHub projects and decisions in Notion automatically",
-    metaTitle: "GitHub + Notion Automation - Code Documentation in Notion | GAIA",
+    tagline:
+      "Document your GitHub projects and decisions in Notion automatically",
+    metaTitle:
+      "GitHub + Notion Automation - Code Documentation in Notion | GAIA",
     metaDescription:
       "Automate GitHub and Notion with GAIA. Generate Notion documentation from GitHub repositories, save architectural decisions, and keep your engineering wiki up to date automatically.",
     keywords: [
@@ -995,7 +1014,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA read existing Notion pages to avoid creating duplicates?",
+        question:
+          "Can GAIA read existing Notion pages to avoid creating duplicates?",
         answer:
           "Yes. Before creating new Notion content, GAIA checks whether a page for the same repository, release, or topic already exists and appends to it rather than duplicating.",
       },
@@ -1005,7 +1025,8 @@ export const combos: Record<string, IntegrationCombo> = {
           "Yes. GAIA uses your authorized GitHub credentials and can access private repositories you have access to, subject to your organization's permissions.",
       },
       {
-        question: "Can non-engineers use this to stay informed about GitHub activity?",
+        question:
+          "Can non-engineers use this to stay informed about GitHub activity?",
         answer:
           "This is one of the primary use cases. Product managers and stakeholders can get GitHub project summaries in Notion without needing GitHub access or understanding the code review workflow.",
       },
@@ -1019,7 +1040,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "Asana",
     toolBSlug: "asana",
     tagline: "Link GitHub development work to Asana project milestones",
-    metaTitle: "GitHub + Asana Automation - Dev Work to Project Milestones | GAIA",
+    metaTitle:
+      "GitHub + Asana Automation - Dev Work to Project Milestones | GAIA",
     metaDescription:
       "Automate GitHub and Asana with GAIA. Link PRs to Asana tasks, update project status when code ships, and keep product and engineering aligned without manual status updates.",
     keywords: [
@@ -1082,7 +1104,8 @@ export const combos: Record<string, IntegrationCombo> = {
           "GAIA looks for Asana task URLs or IDs mentioned in PR descriptions and commit messages. You can also configure GAIA to match PRs to tasks by branch name patterns or labels.",
       },
       {
-        question: "Can product managers see GitHub activity in Asana without GitHub access?",
+        question:
+          "Can product managers see GitHub activity in Asana without GitHub access?",
         answer:
           "Yes. GAIA posts GitHub activity summaries as Asana task comments or subtasks so product managers get full development visibility without needing GitHub accounts.",
       },
@@ -1159,12 +1182,14 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync Notion database items (not just page content) to Todoist?",
+        question:
+          "Can GAIA sync Notion database items (not just page content) to Todoist?",
         answer:
           "Yes. GAIA can read Notion databases and create Todoist tasks from database entries, mapping Notion database properties (like due date, assignee, priority) to Todoist task attributes.",
       },
       {
-        question: "What happens if I edit a task in Todoist after GAIA synced it from Notion?",
+        question:
+          "What happens if I edit a task in Todoist after GAIA synced it from Notion?",
         answer:
           "By default, Todoist edits don't overwrite the Notion source. GAIA treats Todoist as the execution layer and Notion as the planning layer. You can configure bidirectional sync if you want changes in either tool to update the other.",
       },
@@ -1183,7 +1208,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "Linear",
     toolBSlug: "linear",
     tagline: "Bridge product specs in Notion with engineering issues in Linear",
-    metaTitle: "Notion + Linear Automation - Specs to Engineering Issues | GAIA",
+    metaTitle:
+      "Notion + Linear Automation - Specs to Engineering Issues | GAIA",
     metaDescription:
       "Automate Notion and Linear with GAIA. Convert product specs into Linear issues, link engineering work to Notion documentation, and keep product and engineering aligned.",
     keywords: [
@@ -1241,12 +1267,14 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA handle Notion databases with multiple spec formats?",
+        question:
+          "Can GAIA handle Notion databases with multiple spec formats?",
         answer:
           "Yes. GAIA adapts to your Notion database structure. You describe how your specs are organized and GAIA learns to extract the right information from each page type.",
       },
       {
-        question: "Can engineers update Linear issues without affecting Notion specs?",
+        question:
+          "Can engineers update Linear issues without affecting Notion specs?",
         answer:
           "Linear updates only flow back to Notion where you configure them to (like updating a status field). Engineers can work freely in Linear without risking spec content changes.",
       },
@@ -1265,7 +1293,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "Slack",
     toolBSlug: "slack",
     tagline: "Get calendar updates in Slack and manage meetings from chat",
-    metaTitle: "Google Calendar + Slack Automation - Meeting Updates in Slack | GAIA",
+    metaTitle:
+      "Google Calendar + Slack Automation - Meeting Updates in Slack | GAIA",
     metaDescription:
       "Automate Google Calendar and Slack with GAIA. Get meeting reminders in Slack, share availability, set your Slack status from calendar events, and coordinate scheduling from chat.",
     keywords: [
@@ -1323,12 +1352,14 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA differentiate between important and routine meetings for Slack status?",
+        question:
+          "Can GAIA differentiate between important and routine meetings for Slack status?",
         answer:
           "Yes. You can configure which calendar event types trigger status changes. You might set 'Focus time' blocks to show as 'Do Not Disturb' while optional meetings don't change your status at all.",
       },
       {
-        question: "Does GAIA share meeting details publicly in Slack or only in DMs?",
+        question:
+          "Does GAIA share meeting details publicly in Slack or only in DMs?",
         answer:
           "By default, meeting details are sent only to your personal Slack DM. You can configure team availability sharing for specific channels, but individual meeting content stays private.",
       },
@@ -1347,7 +1378,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "Notion",
     toolBSlug: "notion",
     tagline: "Sync calendar events to Notion and prep meetings automatically",
-    metaTitle: "Google Calendar + Notion Automation - Meeting Prep in Notion | GAIA",
+    metaTitle:
+      "Google Calendar + Notion Automation - Meeting Prep in Notion | GAIA",
     metaDescription:
       "Automate Google Calendar and Notion with GAIA. Create Notion meeting notes from calendar events, sync your schedule to a Notion calendar, and prepare for meetings automatically.",
     keywords: [
@@ -1405,17 +1437,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create meeting notes for all calendar events or only selected ones?",
+        question:
+          "Can GAIA create meeting notes for all calendar events or only selected ones?",
         answer:
           "You can configure GAIA to create notes for all events, only events with attendees (excluding solo focus blocks), only events above a certain duration, or based on calendar tags. Full flexibility.",
       },
       {
-        question: "Does GAIA update Notion when a calendar event is rescheduled?",
+        question:
+          "Does GAIA update Notion when a calendar event is rescheduled?",
         answer:
           "Yes. When a calendar event time changes, GAIA updates the corresponding Notion page's date and time properties to stay accurate.",
       },
       {
-        question: "Can multiple team members share the same Notion meeting notes?",
+        question:
+          "Can multiple team members share the same Notion meeting notes?",
         answer:
           "Yes. GAIA can create shared meeting notes accessible to all attendees in a shared Notion workspace, ensuring everyone has the same notes page rather than fragmented individual copies.",
       },
@@ -1429,7 +1464,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "Todoist",
     toolBSlug: "todoist",
     tagline: "Turn calendar events into tasks and prep todos automatically",
-    metaTitle: "Google Calendar + Todoist Automation - Schedule to Task List | GAIA",
+    metaTitle:
+      "Google Calendar + Todoist Automation - Schedule to Task List | GAIA",
     metaDescription:
       "Automate Google Calendar and Todoist with GAIA. Create Todoist prep tasks from calendar events, block calendar time for Todoist tasks, and keep your schedule and task list aligned.",
     keywords: [
@@ -1487,12 +1523,14 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Will GAIA create prep tasks for every calendar event including internal syncs?",
+        question:
+          "Will GAIA create prep tasks for every calendar event including internal syncs?",
         answer:
           "You control which event types generate prep tasks. You can exclude recurring internal syncs, personal events, and events without agendas. Only meaningful meetings that benefit from preparation get tasks.",
       },
       {
-        question: "Can GAIA reschedule Todoist tasks if a meeting conflict appears in Calendar?",
+        question:
+          "Can GAIA reschedule Todoist tasks if a meeting conflict appears in Calendar?",
         answer:
           "Yes. GAIA can detect when a new calendar event creates a conflict with time you had blocked for a Todoist task and suggest rescheduling the task or time block.",
       },
@@ -1569,12 +1607,14 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA handle Todoist projects and labels when syncing to Notion?",
+        question:
+          "Can GAIA handle Todoist projects and labels when syncing to Notion?",
         answer:
           "Yes. Todoist project names, labels, and priorities map to Notion database properties. A Todoist task in the 'Work' project with label 'Urgent' creates a Notion entry with those properties preserved.",
       },
       {
-        question: "Does this create duplicates if I edit a task in both Todoist and Notion?",
+        question:
+          "Does this create duplicates if I edit a task in both Todoist and Notion?",
         answer:
           "GAIA manages the sync so edits in Todoist are the source of truth for task status. Notion entries reflect the last Todoist state. If you configure bidirectional sync, GAIA resolves conflicts using the most recently modified version.",
       },
@@ -1651,7 +1691,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync Asana custom fields to Notion database properties?",
+        question:
+          "Can GAIA sync Asana custom fields to Notion database properties?",
         answer:
           "Yes. Asana custom fields (like budget, client name, or phase) map to Notion database properties, preserving all project metadata in your knowledge base.",
       },
@@ -1733,7 +1774,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How should engineers reference Asana tasks in their GitHub PRs?",
+        question:
+          "How should engineers reference Asana tasks in their GitHub PRs?",
         answer:
           "GAIA supports several conventions: including the Asana task URL in the PR description, adding the task ID to the branch name, or using a specific PR description format you define. GAIA adapts to your existing workflow.",
       },
@@ -1820,12 +1862,14 @@ export const combos: Record<string, IntegrationCombo> = {
           "GAIA complements Linear's native integration by adding intelligence it lacks — like smart review assignment, cycle time tracking, deployment notifications, and cross-team analytics.",
       },
       {
-        question: "Can GAIA handle monorepos with many packages mapping to different Linear teams?",
+        question:
+          "Can GAIA handle monorepos with many packages mapping to different Linear teams?",
         answer:
           "Yes. GAIA supports path-based routing in monorepos, mapping changes to different directories to different Linear teams so the right team sees activity relevant to their work.",
       },
       {
-        question: "How does GAIA handle hotfix branches that skip normal workflow?",
+        question:
+          "How does GAIA handle hotfix branches that skip normal workflow?",
         answer:
           "GAIA detects hotfix branches by naming convention and applies expedited status transitions in Linear, moving issues directly from the backlog to deployed status when a hotfix is merged.",
       },
@@ -1902,12 +1946,14 @@ export const combos: Record<string, IntegrationCombo> = {
           "GAIA can work with calendar context and Zoom meeting metadata without recording. However, for richer notes including action item extraction, Zoom cloud recording with auto-transcription significantly improves accuracy.",
       },
       {
-        question: "How does GAIA handle sensitive meetings that shouldn't be documented?",
+        question:
+          "How does GAIA handle sensitive meetings that shouldn't be documented?",
         answer:
           "You can configure GAIA to exclude specific meeting types, meeting names containing certain keywords, or calendar events tagged as confidential from automatic documentation.",
       },
       {
-        question: "Can notes be shared with Zoom meeting attendees automatically?",
+        question:
+          "Can notes be shared with Zoom meeting attendees automatically?",
         answer:
           "Yes. GAIA can be configured to share the Notion meeting notes page link with all attendees via email or Slack after the notes are created, keeping everyone aligned.",
       },
@@ -1920,8 +1966,10 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "zoom",
     toolB: "Todoist",
     toolBSlug: "todoist",
-    tagline: "Capture meeting action items in Todoist automatically after every Zoom call",
-    metaTitle: "Zoom + Todoist Automation - Meeting Action Items as Tasks | GAIA",
+    tagline:
+      "Capture meeting action items in Todoist automatically after every Zoom call",
+    metaTitle:
+      "Zoom + Todoist Automation - Meeting Action Items as Tasks | GAIA",
     metaDescription:
       "Automate Zoom and Todoist with GAIA. Create Todoist tasks from Zoom meeting action items automatically, so follow-through from meetings happens without manual task entry.",
     keywords: [
@@ -1979,17 +2027,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA need to be in the Zoom call to capture action items?",
+        question:
+          "Does GAIA need to be in the Zoom call to capture action items?",
         answer:
           "GAIA can generate prep and follow-up tasks based on calendar context and meeting metadata without joining the call. For action item extraction, Zoom transcript access (via cloud recording) provides the most accurate results.",
       },
       {
-        question: "Can GAIA assign Todoist tasks to different team members from the Zoom meeting?",
+        question:
+          "Can GAIA assign Todoist tasks to different team members from the Zoom meeting?",
         answer:
           "Yes. If you use Todoist's team features, GAIA can assign tasks to team members based on who was in the Zoom call and who the action was assigned to.",
       },
       {
-        question: "What if multiple people from my team are on the same Zoom call?",
+        question:
+          "What if multiple people from my team are on the same Zoom call?",
         answer:
           "GAIA creates personalized task lists for each connected team member, so each person gets only the action items assigned to them from the shared call rather than a duplicate of all tasks.",
       },
@@ -2061,12 +2112,14 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Will GAIA log every Gmail email to HubSpot or only emails to known contacts?",
+        question:
+          "Will GAIA log every Gmail email to HubSpot or only emails to known contacts?",
         answer:
           "By default GAIA only logs emails to and from existing HubSpot contacts. You can configure it to also log emails from unrecognized contacts to a review queue for manual qualification.",
       },
       {
-        question: "Can GAIA handle HubSpot sequences alongside manual Gmail outreach?",
+        question:
+          "Can GAIA handle HubSpot sequences alongside manual Gmail outreach?",
         answer:
           "Yes. GAIA is aware of active HubSpot sequences and won't duplicate outreach. It can also suspend sequences when a contact replies, ensuring you don't send automated follow-ups after a personal conversation.",
       },
@@ -2143,17 +2196,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can individual sales reps configure their own HubSpot alerts in Slack?",
+        question:
+          "Can individual sales reps configure their own HubSpot alerts in Slack?",
         answer:
           "Yes. Each rep can configure personal alert preferences for their own deals and contacts in addition to the team-wide notifications configured by the sales manager.",
       },
       {
-        question: "How detailed are the HubSpot updates GAIA can make from Slack?",
+        question:
+          "How detailed are the HubSpot updates GAIA can make from Slack?",
         answer:
           "GAIA can update deal stage, deal value, close date, add notes, log calls and meetings, update contact properties, and add tasks from Slack. Most common CRM updates are supported without opening HubSpot.",
       },
       {
-        question: "Can GAIA post to different Slack channels for different deal sizes or territories?",
+        question:
+          "Can GAIA post to different Slack channels for different deal sizes or territories?",
         answer:
           "Yes. You can configure routing rules so enterprise deals notify the enterprise sales channel, SMB deals notify the SMB channel, and deal alerts route by geography or product line.",
       },
@@ -2166,7 +2222,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
-    tagline: "Turn meeting emails into calendar events and prep tasks automatically",
+    tagline:
+      "Turn meeting emails into calendar events and prep tasks automatically",
     metaTitle: "Gmail + Google Calendar Automation - Email to Events | GAIA",
     metaDescription:
       "Automate Gmail and Google Calendar with GAIA. Create calendar events from emails, get meeting prep delivered to your inbox, and keep your schedule and email in sync effortlessly.",
@@ -2226,7 +2283,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA distinguish scheduling emails from other emails automatically?",
+        question:
+          "Can GAIA distinguish scheduling emails from other emails automatically?",
         answer:
           "Yes. GAIA uses AI to detect scheduling intent in emails — phrases like 'let's meet', 'are you free', 'I'd like to schedule', and attached .ics files all trigger the calendar workflow. You can also manually invoke it for any email.",
       },
@@ -2309,17 +2367,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA include the full email body in the ClickUp task description?",
+        question:
+          "Can GAIA include the full email body in the ClickUp task description?",
         answer:
           "Yes. GAIA can include the full email body, a GAIA-generated summary, or key extracted details in the ClickUp task description. For long email threads, a summary is usually more actionable than the raw thread.",
       },
       {
-        question: "Does GAIA support ClickUp custom fields when creating tasks from email?",
+        question:
+          "Does GAIA support ClickUp custom fields when creating tasks from email?",
         answer:
           "Yes. You can map email metadata (sender name, domain, label) to ClickUp custom fields. This is useful for tracking client name, request type, or email source on each task.",
       },
       {
-        question: "Can GAIA handle replies in an email thread and update the existing ClickUp task?",
+        question:
+          "Can GAIA handle replies in an email thread and update the existing ClickUp task?",
         answer:
           "Yes. When a reply arrives on an email thread that already has a ClickUp task, GAIA can add the new information as a comment on the existing task rather than creating a duplicate.",
       },
@@ -2332,7 +2393,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Jira",
     toolBSlug: "jira",
-    tagline: "Create Jira issues from emails and close the customer-engineering loop",
+    tagline:
+      "Create Jira issues from emails and close the customer-engineering loop",
     metaTitle: "Gmail + Jira Automation - Email to Jira Issues | GAIA",
     metaDescription:
       "Automate Gmail and Jira with GAIA. Convert customer emails into Jira issues, notify customers when issues resolve, and keep your support and engineering teams aligned automatically.",
@@ -2392,17 +2454,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA link Jira issues back to the original Gmail thread?",
+        question:
+          "Can GAIA link Jira issues back to the original Gmail thread?",
         answer:
           "Yes. GAIA includes the Gmail thread URL in the Jira issue description so engineers always have one-click access to the original customer communication for full context.",
       },
       {
-        question: "Does GAIA work with Jira Service Management as well as Jira Software?",
+        question:
+          "Does GAIA work with Jira Service Management as well as Jira Software?",
         answer:
           "GAIA works with both. For Jira Service Management, it can create service requests rather than issues, respecting your support queue configuration and SLA rules.",
       },
       {
-        question: "Can I use Gmail labels to route emails to different Jira projects?",
+        question:
+          "Can I use Gmail labels to route emails to different Jira projects?",
         answer:
           "Yes. You can map Gmail labels to Jira projects so emails labeled 'Mobile Bug' go to the mobile Jira project and emails labeled 'Web Bug' go to the web project automatically.",
       },
@@ -2475,7 +2540,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA update Jira issue fields from Slack without opening Jira?",
+        question:
+          "Can GAIA update Jira issue fields from Slack without opening Jira?",
         answer:
           "Yes. You can ask GAIA in Slack to change assignee, update priority, add a comment, change status, or set a due date on any Jira issue. GAIA confirms each update in the Slack thread.",
       },
@@ -2485,7 +2551,8 @@ export const combos: Record<string, IntegrationCombo> = {
           "Yes. GAIA can create issues in specific sprints, move issues between sprints, and report on sprint progress from Slack. You can also ask GAIA to show what's in the current sprint for any project.",
       },
       {
-        question: "Can GAIA handle Jira notifications without creating too much Slack noise?",
+        question:
+          "Can GAIA handle Jira notifications without creating too much Slack noise?",
         answer:
           "GAIA applies intelligent filtering. You configure exactly which Jira events notify which channels. Most teams start with just high-priority status changes and add more events as needed.",
       },
@@ -2563,12 +2630,14 @@ export const combos: Record<string, IntegrationCombo> = {
           "Yes. If you describe a task with multiple components in Slack, GAIA can create a parent task with subtasks. You can also ask GAIA to add subtasks to an existing ClickUp task from Slack.",
       },
       {
-        question: "Does GAIA support ClickUp's custom statuses when posting Slack updates?",
+        question:
+          "Does GAIA support ClickUp's custom statuses when posting Slack updates?",
         answer:
           "Yes. GAIA reads your ClickUp custom statuses and uses them in Slack notifications so updates reflect your actual workflow stages rather than generic status names.",
       },
       {
-        question: "Can I control which ClickUp lists generate Slack notifications?",
+        question:
+          "Can I control which ClickUp lists generate Slack notifications?",
         answer:
           "Yes. You can enable notifications for specific lists, folders, or spaces and mute others. This prevents notifications from low-priority lists cluttering your team Slack channels.",
       },
@@ -2581,8 +2650,10 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
-    tagline: "Sync Notion project dates and deadlines with Google Calendar automatically",
-    metaTitle: "Notion + Google Calendar Automation - Deadlines to Calendar | GAIA",
+    tagline:
+      "Sync Notion project dates and deadlines with Google Calendar automatically",
+    metaTitle:
+      "Notion + Google Calendar Automation - Deadlines to Calendar | GAIA",
     metaDescription:
       "Automate Notion and Google Calendar with GAIA. Sync Notion database dates to Google Calendar events, create calendar blocks for Notion tasks, and keep your schedule and projects aligned.",
     keywords: [
@@ -2641,17 +2712,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync bidirectionally — calendar events back into Notion?",
+        question:
+          "Can GAIA sync bidirectionally — calendar events back into Notion?",
         answer:
           "Yes. GAIA can create Notion database entries from Google Calendar events you add, so new meetings appear in your Notion project database automatically with calendar event details as properties.",
       },
       {
-        question: "Does GAIA handle Notion date ranges (start and end dates) in calendar events?",
+        question:
+          "Does GAIA handle Notion date ranges (start and end dates) in calendar events?",
         answer:
           "Yes. Notion date properties with start and end dates create multi-day Google Calendar events with the correct duration. Single date properties create all-day events or events with a default duration you configure.",
       },
       {
-        question: "Can multiple Notion databases sync to the same Google Calendar?",
+        question:
+          "Can multiple Notion databases sync to the same Google Calendar?",
         answer:
           "Yes. You can sync multiple Notion databases to a single calendar, or map each database to a separate calendar. Having separate calendars per project type is useful for toggling visibility.",
       },
@@ -2665,7 +2739,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "Asana",
     toolBSlug: "asana",
     tagline: "Turn Notion project plans into Asana tasks and keep both in sync",
-    metaTitle: "Notion + Asana Automation - Planning to Project Execution | GAIA",
+    metaTitle:
+      "Notion + Asana Automation - Planning to Project Execution | GAIA",
     metaDescription:
       "Automate Notion and Asana with GAIA. Convert Notion project plans into Asana tasks, sync status updates back to Notion, and bridge your documentation and project management tools.",
     keywords: [
@@ -2724,17 +2799,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create an entire Asana project from a single Notion page?",
+        question:
+          "Can GAIA create an entire Asana project from a single Notion page?",
         answer:
           "Yes. GAIA can read a Notion project brief and generate an Asana project complete with sections, tasks, subtasks, and dependencies based on the structure of the Notion document.",
       },
       {
-        question: "What happens when Notion content changes after Asana tasks are created?",
+        question:
+          "What happens when Notion content changes after Asana tasks are created?",
         answer:
           "GAIA can detect Notion page updates and either update existing Asana tasks to reflect changes or create a comment on affected tasks flagging that the source document changed.",
       },
       {
-        question: "Does this work with Notion's database view as well as page documents?",
+        question:
+          "Does this work with Notion's database view as well as page documents?",
         answer:
           "Yes. GAIA can sync both Notion database rows (where each row becomes an Asana task) and page-based documents (where GAIA extracts tasks from the page content).",
       },
@@ -2748,7 +2826,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "GitHub",
     toolBSlug: "github",
     tagline: "Keep your Notion engineering wiki in sync with GitHub activity",
-    metaTitle: "Notion + GitHub Automation - Engineering Wiki from GitHub | GAIA",
+    metaTitle:
+      "Notion + GitHub Automation - Engineering Wiki from GitHub | GAIA",
     metaDescription:
       "Automate Notion and GitHub with GAIA. Generate Notion documentation from GitHub, sync repository updates to your wiki, and keep your engineering knowledge base current automatically.",
     keywords: [
@@ -2807,7 +2886,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA read existing Notion pages before creating new ones to avoid duplication?",
+        question:
+          "Can GAIA read existing Notion pages before creating new ones to avoid duplication?",
         answer:
           "Yes. GAIA checks whether a page for a given repository, release, or topic already exists in Notion and appends to it rather than creating a duplicate entry.",
       },
@@ -2817,7 +2897,8 @@ export const combos: Record<string, IntegrationCombo> = {
           "Yes. GAIA uses your authorized GitHub credentials and can access private repositories you have permission to access within your organization.",
       },
       {
-        question: "Can non-engineers use the Notion documentation GAIA creates from GitHub?",
+        question:
+          "Can non-engineers use the Notion documentation GAIA creates from GitHub?",
         answer:
           "Absolutely. Product managers, designers, and leadership get GitHub intelligence in Notion without needing GitHub access. This is one of the primary use cases — making engineering activity visible to the whole team.",
       },
@@ -2830,8 +2911,10 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "google-calendar",
     toolB: "Asana",
     toolBSlug: "asana",
-    tagline: "Create Asana tasks from calendar events and block time for project work",
-    metaTitle: "Google Calendar + Asana Automation - Schedule and Tasks Aligned | GAIA",
+    tagline:
+      "Create Asana tasks from calendar events and block time for project work",
+    metaTitle:
+      "Google Calendar + Asana Automation - Schedule and Tasks Aligned | GAIA",
     metaDescription:
       "Automate Google Calendar and Asana with GAIA. Create Asana tasks from calendar events, block calendar time for project work, and keep your schedule and project management synchronized.",
     keywords: [
@@ -2890,17 +2973,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create Asana tasks for all calendar events or only specific types?",
+        question:
+          "Can GAIA create Asana tasks for all calendar events or only specific types?",
         answer:
           "You control which event types generate Asana tasks. Common configurations include only events with external attendees, events tagged with specific calendars, or events lasting over 30 minutes.",
       },
       {
-        question: "Does GAIA update Asana tasks if a calendar event is rescheduled?",
+        question:
+          "Does GAIA update Asana tasks if a calendar event is rescheduled?",
         answer:
           "Yes. When a calendar event changes date or time, GAIA updates the due date on the corresponding Asana prep task to match the new schedule.",
       },
       {
-        question: "Can GAIA help identify when Asana deadlines conflict with a busy calendar?",
+        question:
+          "Can GAIA help identify when Asana deadlines conflict with a busy calendar?",
         answer:
           "Yes. GAIA can audit your upcoming Asana deadlines against your Google Calendar and flag days where task deadlines and heavy meeting schedules conflict so you can plan accordingly.",
       },
@@ -2913,8 +2999,10 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "google-calendar",
     toolB: "Linear",
     toolBSlug: "linear",
-    tagline: "Connect your engineering sprint schedule with Google Calendar automatically",
-    metaTitle: "Google Calendar + Linear Automation - Sprint Schedule Sync | GAIA",
+    tagline:
+      "Connect your engineering sprint schedule with Google Calendar automatically",
+    metaTitle:
+      "Google Calendar + Linear Automation - Sprint Schedule Sync | GAIA",
     metaDescription:
       "Automate Google Calendar and Linear with GAIA. Sync Linear sprint dates to Google Calendar, get meeting context from Linear issues, and keep your engineering schedule and project board aligned.",
     keywords: [
@@ -2973,17 +3061,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create Linear cycles from calendar date ranges I define?",
+        question:
+          "Can GAIA create Linear cycles from calendar date ranges I define?",
         answer:
           "Yes. You can ask GAIA to create a new Linear cycle based on dates you've set in Google Calendar for a sprint, and it will configure the cycle with the correct start and end dates in Linear.",
       },
       {
-        question: "Does GAIA sync Linear cycles for all teams or specific ones?",
+        question:
+          "Does GAIA sync Linear cycles for all teams or specific ones?",
         answer:
           "You configure which Linear teams sync to which calendars. This is useful for separating engineering team calendars from product or design team cycles.",
       },
       {
-        question: "Can GAIA send calendar invites to the team for sprint events?",
+        question:
+          "Can GAIA send calendar invites to the team for sprint events?",
         answer:
           "Yes. When GAIA creates Google Calendar events from Linear cycles, you can configure it to add your team members as guests so the sprint events appear on everyone's calendar.",
       },
@@ -2997,7 +3088,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolB: "Zoom",
     toolBSlug: "zoom",
     tagline: "Seamlessly link your Google Calendar meetings with Zoom calls",
-    metaTitle: "Google Calendar + Zoom Automation - Meeting Links and Prep | GAIA",
+    metaTitle:
+      "Google Calendar + Zoom Automation - Meeting Links and Prep | GAIA",
     metaDescription:
       "Automate Google Calendar and Zoom with GAIA. Add Zoom links to calendar events, get meeting prep before calls, and manage your video meeting schedule without manual coordination.",
     keywords: [
@@ -3056,7 +3148,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA use my existing Zoom settings (waiting room, passcode) when creating meetings?",
+        question:
+          "Can GAIA use my existing Zoom settings (waiting room, passcode) when creating meetings?",
         answer:
           "Yes. GAIA creates Zoom meetings with your account's default settings. You can also configure specific settings per event type — like enabling waiting rooms for external client calls but not internal team meetings.",
       },
@@ -3066,7 +3159,8 @@ export const combos: Record<string, IntegrationCombo> = {
           "GAIA can work with both. You can configure GAIA to use Zoom for external meetings and Google Meet for internal ones based on attendee domains or calendar tags.",
       },
       {
-        question: "Will GAIA notify all attendees when a Zoom meeting is created or updated?",
+        question:
+          "Will GAIA notify all attendees when a Zoom meeting is created or updated?",
         answer:
           "Google Calendar handles attendee notifications for event updates. GAIA updates the calendar event with Zoom details, and Google Calendar's standard invitation flow notifies attendees automatically.",
       },
@@ -3079,8 +3173,10 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "todoist",
     toolB: "Asana",
     toolBSlug: "asana",
-    tagline: "Bridge personal Todoist tasks with team Asana projects seamlessly",
-    metaTitle: "Todoist + Asana Automation - Personal and Team Task Sync | GAIA",
+    tagline:
+      "Bridge personal Todoist tasks with team Asana projects seamlessly",
+    metaTitle:
+      "Todoist + Asana Automation - Personal and Team Task Sync | GAIA",
     metaDescription:
       "Automate Todoist and Asana with GAIA. Sync personal Todoist tasks with team Asana projects, capture Asana assignments in Todoist, and manage individual and team work in one view.",
     keywords: [
@@ -3139,17 +3235,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Will GAIA create duplicates if a task is in both Todoist and Asana?",
+        question:
+          "Will GAIA create duplicates if a task is in both Todoist and Asana?",
         answer:
           "GAIA tracks which Todoist tasks originated from Asana and avoids creating duplicates. Updates flow between the linked tasks rather than creating new entries each time.",
       },
       {
-        question: "Can I use Todoist labels to organize Asana tasks alongside personal tasks?",
+        question:
+          "Can I use Todoist labels to organize Asana tasks alongside personal tasks?",
         answer:
           "Yes. GAIA can apply Todoist labels based on the Asana project the task came from, making it easy to filter your Todoist view to show only Asana work or only personal tasks.",
       },
       {
-        question: "Does this work with shared Todoist projects as well as personal ones?",
+        question:
+          "Does this work with shared Todoist projects as well as personal ones?",
         answer:
           "Yes. GAIA can sync Asana team tasks to shared Todoist projects so your whole team can manage Asana work from Todoist if preferred.",
       },
@@ -3162,7 +3261,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "asana",
     toolB: "Jira",
     toolBSlug: "jira",
-    tagline: "Sync Asana project tasks with Jira engineering tickets automatically",
+    tagline:
+      "Sync Asana project tasks with Jira engineering tickets automatically",
     metaTitle: "Asana + Jira Automation - Product and Engineering Sync | GAIA",
     metaDescription:
       "Automate Asana and Jira with GAIA. Sync Asana tasks with Jira tickets, keep product and engineering aligned, and eliminate manual status updates between project management tools.",
@@ -3227,12 +3327,14 @@ export const combos: Record<string, IntegrationCombo> = {
           "Yes. Custom fields in Asana can map to custom fields in Jira so specialized metadata like client name, budget code, or component area is preserved when tasks sync between tools.",
       },
       {
-        question: "What happens if someone updates the Asana task and the Jira ticket at the same time?",
+        question:
+          "What happens if someone updates the Asana task and the Jira ticket at the same time?",
         answer:
           "GAIA uses timestamp-based conflict resolution, applying the most recent update as the source of truth. For critical fields, you can configure which system takes priority in conflict scenarios.",
       },
       {
-        question: "Does GAIA support syncing between Asana portfolios and Jira epics?",
+        question:
+          "Does GAIA support syncing between Asana portfolios and Jira epics?",
         answer:
           "Yes. Asana portfolios can map to Jira epics, giving product leadership a cross-tool view where Asana's portfolio progress reflects the actual Jira issue completion underneath.",
       },
@@ -3305,7 +3407,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA handle the different priority scales between Jira and Linear?",
+        question:
+          "Can GAIA handle the different priority scales between Jira and Linear?",
         answer:
           "Yes. GAIA maps Jira's priority levels (Highest, High, Medium, Low, Lowest) to Linear's priority scale (Urgent, High, Medium, Low, No priority) intelligently, and you can customize the mapping.",
       },
@@ -3328,7 +3431,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "jira",
     toolB: "GitHub",
     toolBSlug: "github",
-    tagline: "Link Jira issues to GitHub PRs and keep them synchronized automatically",
+    tagline:
+      "Link Jira issues to GitHub PRs and keep them synchronized automatically",
     metaTitle: "Jira + GitHub Automation - Issue and Code Sync | GAIA",
     metaDescription:
       "Automate Jira and GitHub with GAIA. Sync Jira issues with GitHub pull requests, auto-update issue status when PRs merge, and give your team real-time development visibility in Jira.",
@@ -3388,7 +3492,8 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA identify which Jira issue a GitHub PR relates to?",
+        question:
+          "How does GAIA identify which Jira issue a GitHub PR relates to?",
         answer:
           "GAIA looks for Jira issue keys (like PROJECT-123) in PR titles, branch names, and PR descriptions. This convention is standard practice at most engineering teams and requires no extra tooling.",
       },
@@ -3398,7 +3503,8 @@ export const combos: Record<string, IntegrationCombo> = {
           "Yes. If a PR references multiple Jira issue keys, GAIA updates all linked issues when the PR status changes. Each issue is updated individually with the appropriate transition.",
       },
       {
-        question: "Does GAIA's integration complement or replace Jira's native GitHub app?",
+        question:
+          "Does GAIA's integration complement or replace Jira's native GitHub app?",
         answer:
           "GAIA provides more intelligent automation than Jira's native GitHub integration. It handles smart status transitions, CI notifications, and branch creation that the native integration doesn't support.",
       },
@@ -3411,8 +3517,10 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "zoom",
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
-    tagline: "Automatically add Zoom links to Google Calendar events and manage meetings effortlessly",
-    metaTitle: "Zoom + Google Calendar Automation - Video Meeting Management | GAIA",
+    tagline:
+      "Automatically add Zoom links to Google Calendar events and manage meetings effortlessly",
+    metaTitle:
+      "Zoom + Google Calendar Automation - Video Meeting Management | GAIA",
     metaDescription:
       "Automate Zoom and Google Calendar with GAIA. Generate Zoom links for calendar events automatically, receive pre-meeting reminders, and manage your video meeting schedule without manual effort.",
     keywords: [
@@ -3471,17 +3579,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA create a new Zoom meeting for every calendar event or reuse links?",
+        question:
+          "Does GAIA create a new Zoom meeting for every calendar event or reuse links?",
         answer:
           "By default GAIA creates a unique Zoom meeting per calendar event for security and tracking. For recurring events, you can configure GAIA to use a persistent Zoom room instead.",
       },
       {
-        question: "Can GAIA manage Zoom webinars in addition to regular meetings?",
+        question:
+          "Can GAIA manage Zoom webinars in addition to regular meetings?",
         answer:
           "Yes. GAIA can create Zoom webinars from calendar events for large external events and manage registration, reminders, and post-webinar recording distribution.",
       },
       {
-        question: "What happens to the Zoom meeting if a calendar event is cancelled?",
+        question:
+          "What happens to the Zoom meeting if a calendar event is cancelled?",
         answer:
           "GAIA automatically cancels the corresponding Zoom meeting when a Google Calendar event is deleted, preventing orphaned Zoom meetings and keeping your Zoom account tidy.",
       },
@@ -3494,7 +3605,8 @@ export const combos: Record<string, IntegrationCombo> = {
     toolASlug: "zoom",
     toolB: "Slack",
     toolBSlug: "slack",
-    tagline: "Start Zoom calls from Slack and share meeting summaries automatically",
+    tagline:
+      "Start Zoom calls from Slack and share meeting summaries automatically",
     metaTitle: "Zoom + Slack Automation - Video Meetings from Chat | GAIA",
     metaDescription:
       "Automate Zoom and Slack with GAIA. Start Zoom meetings from Slack, share meeting summaries to channels, get pre-meeting reminders in chat, and keep your team coordinated across both tools.",
@@ -3554,17 +3666,20 @@ export const combos: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA identify which Slack channel to post a meeting summary to?",
+        question:
+          "Can GAIA identify which Slack channel to post a meeting summary to?",
         answer:
           "Yes. GAIA uses the channel where the meeting was initiated, the calendar event description, or rules you configure (like 'engineering Zoom calls post to #engineering-updates') to route summaries intelligently.",
       },
       {
-        question: "Does GAIA require Zoom cloud recording to generate meeting summaries?",
+        question:
+          "Does GAIA require Zoom cloud recording to generate meeting summaries?",
         answer:
           "Zoom cloud recording with transcription provides the richest summaries. Without it, GAIA generates summaries from calendar event context and any pre/post meeting Slack messages. Results improve significantly with transcription access.",
       },
       {
-        question: "Can GAIA handle recurring Zoom meetings with the same Slack channel?",
+        question:
+          "Can GAIA handle recurring Zoom meetings with the same Slack channel?",
         answer:
           "Yes. Recurring meetings can be configured to always post summaries and recordings to the same Slack channel, building a running archive of meeting outcomes in one place.",
       },

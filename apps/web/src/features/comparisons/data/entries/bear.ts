@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Beautiful markdown notes for Mac and iOS",
   description:
     "Bear is a focused markdown note-taking app for Apple devices with a beautiful UI and tagging system. GAIA is a proactive AI assistant that manages your tasks, email, calendar, and notes across 50+ integrations — available on every platform.",
-  metaTitle: "Bear App Alternative with AI & Cross-Platform Support | GAIA vs Bear",
+  metaTitle:
+    "Bear App Alternative with AI & Cross-Platform Support | GAIA vs Bear",
   metaDescription:
     "Bear is a gorgeous notes app but lives only on Apple devices. GAIA is a free, open-source alternative with AI email management, task automation, and cross-platform support across 50+ integrations.",
   keywords: [
@@ -85,7 +86,8 @@ For Apple-centric writers who want nothing but a clean writing environment, Bear
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — data stays in your own infrastructure",
-      competitor: "Proprietary closed-source app; notes stored in iCloud or locally",
+      competitor:
+        "Proprietary closed-source app; notes stored in iCloud or locally",
     },
     {
       feature: "Pricing",
@@ -96,7 +98,8 @@ For Apple-centric writers who want nothing but a clean writing environment, Bear
     {
       feature: "Collaboration",
       gaia: "Multi-user workflows across shared tools like Slack, Notion, and GitHub with AI coordination",
-      competitor: "No real-time collaboration; notes are personal and not shareable for editing",
+      competitor:
+        "No real-time collaboration; notes are personal and not shareable for editing",
     },
   ],
   gaiaAdvantages: [
@@ -131,7 +134,8 @@ For Apple-centric writers who want nothing but a clean writing environment, Bear
         "Yes. GAIA supports markdown for notes and task descriptions. While it doesn't aim to match Bear's editor-first experience, it provides solid markdown support alongside its AI and integration capabilities.",
     },
     {
-      question: "How does GAIA handle note organization compared to Bear's tagging?",
+      question:
+        "How does GAIA handle note organization compared to Bear's tagging?",
       answer:
         "Bear's nested hashtag system is one of its standout features for manual organization. GAIA takes a different approach: its graph-based memory automatically links related information — notes, tasks, emails, and meetings — based on context and content, reducing the need to manually organize everything.",
     },

@@ -3,7 +3,10 @@ import Image from "next/image";
 import Link from "next/link";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { CATEGORY_ORDER, COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
+import {
+  CATEGORY_ORDER,
+  COMPARISON_CATEGORIES,
+} from "@/features/comparisons/data/categories";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {

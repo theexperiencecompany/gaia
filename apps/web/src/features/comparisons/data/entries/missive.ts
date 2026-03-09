@@ -109,7 +109,8 @@ export const entry: ComparisonData = {
     "Missive is the right choice for teams that need to collaborate inside their inbox — shared queues, assignments, and in-thread chat make it the best tool for support, sales, and ops teams managing email together. GAIA is the right choice if you want an AI that reduces how much email your team has to manually process — triaging, replying, routing, and executing downstream workflows autonomously. The two tools solve adjacent but different problems: Missive makes shared email work better; GAIA makes email require less human work.",
   faqs: [
     {
-      question: "Can GAIA replace Missive for a small team managing a shared inbox?",
+      question:
+        "Can GAIA replace Missive for a small team managing a shared inbox?",
       answer:
         "GAIA is primarily designed as a personal AI assistant rather than a shared inbox tool. It does not include Missive's collaborative features like thread assignments, collision detection, or in-thread team chat. For teams that need multiple agents working the same email queue together, Missive's collaborative model is purpose-built for that workflow. GAIA is a better fit for individuals or small teams who want an AI to handle triage, drafting, and downstream automation rather than a human-collaborative inbox.",
     },

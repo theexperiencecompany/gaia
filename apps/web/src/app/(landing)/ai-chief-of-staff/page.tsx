@@ -5,10 +5,10 @@ import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
+  generateBreadcrumbSchema,
   generateFAQSchema,
   generatePageMetadata,
   generateProductSchema,
-  generateBreadcrumbSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -72,7 +72,7 @@ const dayInTheLife = [
     time: "12:00 PM",
     label: "Inbox Triage",
     description:
-      'GAIA has drafted replies to 6 emails. You review and send. The other 14 are labeled and archived — none of them needed you. You spend 8 minutes on email, not 90.',
+      "GAIA has drafted replies to 6 emails. You review and send. The other 14 are labeled and archived — none of them needed you. You spend 8 minutes on email, not 90.",
   },
   {
     time: "3:00 PM",
@@ -141,7 +141,14 @@ export default function AiChiefOfStaffPage() {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, generateProductSchema()]} />
+      <JsonLd
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          faqSchema,
+          generateProductSchema(),
+        ]}
+      />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -159,8 +166,7 @@ export default function AiChiefOfStaffPage() {
             For founders, executives &amp; senior ICs
           </div>
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            Your AI Chief of Staff — Proactively Manages Your Day Before You
-            Ask
+            Your AI Chief of Staff — Proactively Manages Your Day Before You Ask
           </h1>
           <p className="text-xl leading-relaxed text-zinc-400">
             A great chief of staff handles your operational overhead so you can
@@ -178,12 +184,13 @@ export default function AiChiefOfStaffPage() {
             A senior chief of staff costs $150K–$300K per year. They require
             onboarding, context-building, and trust before they add value. Most
             founders and executives at growing companies never hire one — not
-            because they don&apos;t need one, but because it&apos;s not justified yet.
+            because they don&apos;t need one, but because it&apos;s not
+            justified yet.
           </p>
           <p className="text-lg leading-relaxed text-zinc-300">
             The result: you spend 2–4 hours per day on email, meeting prep,
-            follow-ups, and operational coordination. That&apos;s time taken from
-            strategy, product, and the work that actually moves the needle.
+            follow-ups, and operational coordination. That&apos;s time taken
+            from strategy, product, and the work that actually moves the needle.
           </p>
         </section>
 
@@ -337,8 +344,8 @@ export default function AiChiefOfStaffPage() {
                 Open Source & Self-Host
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Run GAIA on your own infrastructure with full data control.
-                MIT licensed and free forever.
+                Run GAIA on your own infrastructure with full data control. MIT
+                licensed and free forever.
               </p>
             </Link>
           </div>

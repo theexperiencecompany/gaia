@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Open-weight LLM with strong coding and free API access",
   description:
     "DeepSeek is a powerful open-weight large language model from China with strong coding capabilities and a free API tier. GAIA is a proactive AI productivity assistant that connects AI intelligence to real workflow automation across email, calendar, tasks, and 50+ integrations.",
-  metaTitle: "DeepSeek Alternative for Productivity Automation | GAIA vs DeepSeek",
+  metaTitle:
+    "DeepSeek Alternative for Productivity Automation | GAIA vs DeepSeek",
   metaDescription:
     "DeepSeek is a powerful open LLM but it won't manage your inbox or automate workflows. GAIA is an open-source alternative that proactively manages tasks, email, and workflows across 50+ integrations.",
   keywords: [
@@ -39,17 +40,20 @@ The question is not which model is more capable in a benchmark — it is what th
     {
       feature: "Proactive behavior",
       gaia: "Continuously monitors inbox, calendar, and connected tools; executes tasks and surfaces insights autonomously",
-      competitor: "Fully reactive — requires a prompt to produce output; no autonomous monitoring",
+      competitor:
+        "Fully reactive — requires a prompt to produce output; no autonomous monitoring",
     },
     {
       feature: "Email management",
       gaia: "Full Gmail automation: triage by urgency, draft replies, auto-label, create tasks proactively",
-      competitor: "Can help draft emails or analyze email content when given a prompt; no inbox integration",
+      competitor:
+        "Can help draft emails or analyze email content when given a prompt; no inbox integration",
     },
     {
       feature: "Task management",
       gaia: "Native AI task management with automatic creation, priorities, deadlines, semantic search, and cross-tool sync",
-      competitor: "No task management; can help plan or structure work when asked",
+      competitor:
+        "No task management; can help plan or structure work when asked",
     },
     {
       feature: "Calendar integration",
@@ -59,7 +63,8 @@ The question is not which model is more capable in a benchmark — it is what th
     {
       feature: "Workflow automation",
       gaia: "Multi-step automations with natural-language triggers across 50+ integrations",
-      competitor: "No workflow automation engine; requires developer integration via API to build automations",
+      competitor:
+        "No workflow automation engine; requires developer integration via API to build automations",
     },
     {
       feature: "Integrations",
@@ -124,7 +129,8 @@ The question is not which model is more capable in a benchmark — it is what th
         "GAIA is model-agnostic and uses leading AI models to power its reasoning and automation. The key value of GAIA is not the specific model but the operational layer: the 50+ integrations, workflow automation engine, and proactive monitoring system that connect AI to your actual work tools.",
     },
     {
-      question: "How does GAIA's productivity automation compare to what I can build with DeepSeek's API?",
+      question:
+        "How does GAIA's productivity automation compare to what I can build with DeepSeek's API?",
       answer:
         "Building a productivity automation system with DeepSeek's API requires significant engineering work: building integrations, handling authentication, designing workflow triggers, and managing data persistence. GAIA provides all of this pre-built, open source, and deployable today — with 50+ integrations already connected.",
     },

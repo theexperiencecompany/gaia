@@ -97,7 +97,8 @@ export const entry: ComparisonData = {
         "Yes. GAIA provides AI-powered task management with projects, priorities, deadlines, tags, and natural language creation — covering the core GTD use cases OmniFocus addresses. GAIA also goes further by proactively creating tasks from your emails and calendar events, something OmniFocus requires you to do manually. If you also use Windows, Android, or the web, GAIA is the only practical option since OmniFocus is Apple-exclusive.",
     },
     {
-      question: "Does GAIA work on Windows and Android like OmniFocus does not?",
+      question:
+        "Does GAIA work on Windows and Android like OmniFocus does not?",
       answer:
         "Yes. GAIA runs on macOS, Windows, and Linux via the desktop app, on iOS and Android via the mobile app, and on any device through the web app. OmniFocus is limited to Mac, iPhone, iPad, and Apple Watch, making GAIA the natural choice for anyone working across mixed platforms or on non-Apple hardware.",
     },

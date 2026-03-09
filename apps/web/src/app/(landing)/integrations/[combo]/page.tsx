@@ -5,8 +5,8 @@ import { notFound } from "next/navigation";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import {
-  getAllCombos,
   getAllComboSlugs,
+  getAllCombos,
   getCombo,
 } from "@/features/integrations/data/combosData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
@@ -44,7 +44,9 @@ export async function generateMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/integrations/${combo}`,
-    canonicalPath: data.canonicalSlug ? `/integrations/${data.canonicalSlug}` : undefined,
+    canonicalPath: data.canonicalSlug
+      ? `/integrations/${data.canonicalSlug}`
+      : undefined,
     keywords: data.keywords,
   });
 }
@@ -153,7 +155,8 @@ export default async function IntegrationComboPage({ params }: PageProps) {
         {/* Use Cases */}
         <section className="mb-16">
           <h2 className="mb-2 text-3xl font-semibold text-white">
-            {data.useCases.length} thing{data.useCases.length === 1 ? "" : "s"} you can automate
+            {data.useCases.length} thing{data.useCases.length === 1 ? "" : "s"}{" "}
+            you can automate
           </h2>
           <p className="mb-8 text-zinc-400">
             Everything GAIA can do when {data.toolA} and {data.toolB} are

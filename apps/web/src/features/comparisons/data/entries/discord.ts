@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Community chat with voice channels and Clyde AI",
   description:
     "Discord is a community and team communication platform with voice channels, bots, and the Clyde AI assistant. GAIA is a proactive AI productivity assistant that manages tasks, email, calendar, and workflows — connecting your team's communication to real execution.",
-  metaTitle: "Discord Alternative for Team Productivity Automation | GAIA vs Discord",
+  metaTitle:
+    "Discord Alternative for Team Productivity Automation | GAIA vs Discord",
   metaDescription:
     "Discord is great for community chat but not task management or workflow automation. GAIA is an open-source alternative that connects team communications to tasks, email, and workflows across 50+ integrations.",
   keywords: [

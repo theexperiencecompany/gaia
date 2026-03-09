@@ -61,7 +61,8 @@ export const entry: AlternativeData = {
         "Yes. GAIA's planning is based on real-time data from your Gmail and Google Calendar, not a prompted list review. It surfaces relevant information proactively based on what is actually happening in your workflow.",
     },
     {
-      question: "Does GAIA have a daily planning session like Any.do's Morning feature?",
+      question:
+        "Does GAIA have a daily planning session like Any.do's Morning feature?",
       answer:
         "GAIA provides a proactive daily briefing that summarizes your email, upcoming calendar events, and priority tasks — similar in concept to Any.do's Morning review but driven by live data rather than a manual prompt.",
     },

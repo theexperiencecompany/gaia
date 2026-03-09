@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "CRM, marketing automation, sales, and customer service platform",
   description:
     "HubSpot is a comprehensive CRM platform covering marketing automation, sales pipeline management, and customer service. GAIA focuses on the personal productivity layer — proactively managing your inbox, calendar, and task workflow with AI that acts across 50+ integrations including HubSpot itself.",
-  metaTitle: "HubSpot Alternative for Personal AI Productivity | GAIA vs HubSpot",
+  metaTitle:
+    "HubSpot Alternative for Personal AI Productivity | GAIA vs HubSpot",
   metaDescription:
     "HubSpot excels at CRM and marketing, but it won't manage your inbox or automate your personal workflow. GAIA is an open-source AI alternative that proactively handles email, tasks, and 50+ integrations — free tier available.",
   keywords: [
@@ -167,7 +168,8 @@ The pricing difference is also stark. HubSpot's free CRM is genuinely useful, bu
         "Yes, and many users find this combination powerful. HubSpot manages shared CRM data — contacts, deals, pipeline, and marketing campaigns — visible across the revenue team. GAIA manages the individual productivity layer — email triage, task creation, meeting prep, and cross-tool workflow automation — for each person using HubSpot. The two tools address fundamentally different problems and complement each other well.",
     },
     {
-      question: "How does GAIA handle calendar and meeting scheduling compared to HubSpot Meetings?",
+      question:
+        "How does GAIA handle calendar and meeting scheduling compared to HubSpot Meetings?",
       answer:
         "HubSpot Meetings is a scheduling tool that lets prospects book time on your calendar via a shared booking link — useful for inbound lead qualification. GAIA's calendar integration is broader: it reads your Google Calendar continuously, prepares briefing notes before every scheduled meeting by pulling context from your email and connected tools, creates follow-up tasks after calls, and protects focus time by managing your calendar proactively throughout the day.",
     },
@@ -177,7 +179,8 @@ The pricing difference is also stark. HubSpot's free CRM is genuinely useful, bu
         "GAIA is available as a web application, a native Electron desktop app for macOS, Windows, and Linux, and a React Native mobile app for iOS and Android. This cross-platform availability means GAIA works wherever you do — as a desktop app for deep work sessions, on mobile for on-the-go task management, and on the web as a fallback. HubSpot is available on web, iOS, and Android.",
     },
     {
-      question: "What is the best free HubSpot alternative for personal productivity?",
+      question:
+        "What is the best free HubSpot alternative for personal productivity?",
       answer:
         "GAIA is the strongest free alternative to HubSpot for individual productivity management. Its free tier includes Gmail integration, Google Calendar sync, AI task management, and core workflow automation — all the capabilities that make GAIA useful for managing the personal workflow around sales and client work. HubSpot's free CRM is excellent for contact management but does not offer proactive inbox management, meeting prep, or cross-tool automation.",
     },
@@ -192,7 +195,8 @@ The pricing difference is also stark. HubSpot's free CRM is genuinely useful, bu
         "For small businesses that primarily need proactive AI management of their communication workflow — email, tasks, calendar, and tool coordination — GAIA is an excellent and significantly cheaper alternative to HubSpot's paid tiers. For small businesses that need shared CRM, marketing automation, and sales pipeline management across a team, HubSpot's free CRM tier covers those needs without cost. The two tools are often complementary: HubSpot for shared CRM, GAIA for individual AI productivity management.",
     },
     {
-      question: "Does GAIA help with lead follow-up in the way HubSpot sequences do?",
+      question:
+        "Does GAIA help with lead follow-up in the way HubSpot sequences do?",
       answer:
         "HubSpot sequences automate multi-touch outbound email cadences for lead nurturing at scale. GAIA takes a different approach: it reads your inbox and proactively flags unanswered prospect emails before they go cold, creates follow-up task reminders from meeting notes, and prepares briefings before calls. GAIA handles individual follow-up intelligence; HubSpot handles scaled outbound automation. The two capabilities serve different stages and volumes of the sales process.",
     },

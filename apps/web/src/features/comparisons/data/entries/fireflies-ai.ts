@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "AI meeting recorder with search and CRM sync",
   description:
     "Fireflies.ai automatically records, transcribes, and indexes meetings with AI-powered search and CRM integrations. GAIA is a proactive AI assistant that manages your full productivity workflow — not just what happened in calls.",
-  metaTitle: "Fireflies.ai Alternative for Full Workflow Automation | GAIA vs Fireflies",
+  metaTitle:
+    "Fireflies.ai Alternative for Full Workflow Automation | GAIA vs Fireflies",
   metaDescription:
     "Fireflies records and searches meetings but stops at the transcript. GAIA is an open-source alternative that automates task creation, follow-up emails, and workflows across 50+ tools after every meeting.",
   keywords: [
@@ -53,7 +54,8 @@ For teams that specifically need a searchable archive of all meeting recordings 
     {
       feature: "Pre-meeting briefings",
       gaia: "Auto-generates briefing documents from email history, prior meeting notes, and connected tool context",
-      competitor: "No pre-meeting preparation; focused on post-call intelligence",
+      competitor:
+        "No pre-meeting preparation; focused on post-call intelligence",
     },
     {
       feature: "Task creation from meetings",
@@ -85,7 +87,8 @@ For teams that specifically need a searchable archive of all meeting recordings 
     {
       feature: "Open source / self-hosting",
       gaia: "Fully open source and self-hostable — meeting data stays on your infrastructure",
-      competitor: "Proprietary SaaS; recordings and transcripts stored on Fireflies servers",
+      competitor:
+        "Proprietary SaaS; recordings and transcripts stored on Fireflies servers",
     },
     {
       feature: "Pricing",
@@ -131,7 +134,8 @@ For teams that specifically need a searchable archive of all meeting recordings 
         "GAIA offers full self-hosting, meaning your meeting content, transcripts, and all associated data can stay on your own infrastructure. Fireflies processes and stores all recordings in its cloud, which may be a concern for teams in regulated industries or with strict data governance policies.",
     },
     {
-      question: "What makes GAIA different from meeting AI tools like Fireflies?",
+      question:
+        "What makes GAIA different from meeting AI tools like Fireflies?",
       answer:
         "GAIA is a full-stack productivity AI — it manages your email, calendar, tasks, and workflows in addition to meeting context. Fireflies is a specialized meeting intelligence tool. The key difference: GAIA treats meetings as one part of your work; Fireflies treats meetings as the entire product.",
     },

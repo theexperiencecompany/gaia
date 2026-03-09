@@ -183,17 +183,20 @@ GAIA is open source and self-hostable, which means your client data and project 
         "GAIA is available as a web application, a native Electron desktop app for macOS, Windows, and Linux, and a React Native mobile app for iOS and Android. Harvest is available on web, iOS, and Android with Mac and Windows desktop timer apps. Both cover major platforms, though GAIA's Electron desktop app provides a unified AI productivity workspace that goes well beyond a time tracker's desktop timer.",
     },
     {
-      question: "How does GAIA handle task prioritisation differently from Harvest?",
+      question:
+        "How does GAIA handle task prioritisation differently from Harvest?",
       answer:
         "Harvest's task system is designed for time entry association — tasks are records that help categorise billable hours, not tools for prioritisation or workflow management. GAIA's task management is AI-driven: it creates tasks automatically from emails and meetings, assigns priorities based on context and urgency, and surfaces your most important work at the right time. For freelancers managing multiple client projects simultaneously, GAIA's intelligent prioritisation reduces the mental overhead of deciding what to work on next.",
     },
     {
-      question: "Can GAIA help with client communication workflows around billing?",
+      question:
+        "Can GAIA help with client communication workflows around billing?",
       answer:
         "Yes. GAIA reads your Gmail inbox and identifies client emails — new requests, change orders, follow-ups, and approvals — creating tasks and notifications automatically. Before client calls, GAIA prepares briefings from your calendar and relevant email threads. After calls, it can create follow-up task lists from meeting context. This client communication management reduces the coordination overhead between client interaction and the actual work that generates billable hours.",
     },
     {
-      question: "Does GAIA work on mobile for freelancers and agency professionals?",
+      question:
+        "Does GAIA work on mobile for freelancers and agency professionals?",
       answer:
         "Yes. GAIA has a React Native mobile app for iOS and Android that provides access to your AI task manager, inbox triage, calendar, and workflow automations from your phone. Harvest also has mobile apps for iOS and Android focused on timer management and time entry on the go. For freelancers who want both tools, GAIA handles mobile workflow management while Harvest handles mobile time tracking — the two serve different mobile use cases simultaneously.",
     },

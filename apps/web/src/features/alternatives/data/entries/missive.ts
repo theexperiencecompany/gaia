@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Missive",
   domain: "missiveapp.com",
   category: "email",
-  tagline: "Collaborative shared inbox for teams with internal comments and assignments",
+  tagline:
+    "Collaborative shared inbox for teams with internal comments and assignments",
   painPoints: [
     "Starter plan at $14/user/month makes it expensive for small teams",
     "Built for team inbox management, not personal AI productivity",
@@ -65,7 +66,8 @@ export const entry: AlternativeData = {
         "Missive's Starter plan is $14/user/month billed annually. GAIA Pro is $20/month for one person with email management, calendar, tasks, and 50+ integrations. Self-hosted GAIA is completely free.",
     },
     {
-      question: "Does GAIA have Missive's internal comment and assignment features?",
+      question:
+        "Does GAIA have Missive's internal comment and assignment features?",
       answer:
         "GAIA does not include internal team email comments or assignment workflows. Its focus is on proactive personal AI assistance — automatically triaging, drafting, and creating tasks from your email.",
     },

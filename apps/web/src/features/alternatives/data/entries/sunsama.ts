@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Sunsama",
   domain: "sunsama.com",
   category: "task-manager",
-  tagline: "Mindful daily planner that combines tasks and calendar into a unified day view",
+  tagline:
+    "Mindful daily planner that combines tasks and calendar into a unified day view",
   painPoints: [
     "No permanent free tier — only a 14-day trial before $20/month kicks in",
     "Daily planning ritual is intentional but time-consuming each morning",

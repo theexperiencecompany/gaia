@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Linear",
   domain: "linear.app",
   category: "task-manager",
-  tagline: "Engineering issue tracking built for teams — not personal productivity",
+  tagline:
+    "Engineering issue tracking built for teams — not personal productivity",
   painPoints: [
     "Linear's cycles, projects, and triage workflows are designed for engineering sprints — solo users and non-eng teams get complexity they don't need",
     "No email integration: action items from Gmail threads require manual copy into Linear issues",
@@ -13,7 +14,8 @@ export const entry: AlternativeData = {
     "Pricing is per-seat, making it expensive for small teams or individuals who just want clean task management",
     "No AI that proactively surfaces what to work on — Linear shows your backlog, but you decide priorities manually",
   ],
-  metaTitle: "Linear Alternative | GAIA — AI Task Manager for Individuals & Small Teams",
+  metaTitle:
+    "Linear Alternative | GAIA — AI Task Manager for Individuals & Small Teams",
   metaDescription:
     "Want Linear's clean UX without the engineering-team overhead? GAIA is an open-source AI productivity assistant that manages tasks, email, and calendar in one place. Free tier available. Self-hostable.",
   keywords: [

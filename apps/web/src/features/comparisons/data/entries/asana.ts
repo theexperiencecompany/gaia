@@ -79,7 +79,8 @@ export const entry: ComparisonData = {
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — your data never leaves your infrastructure",
-      competitor: "Proprietary closed-source SaaS platform; no self-hosting option",
+      competitor:
+        "Proprietary closed-source SaaS platform; no self-hosting option",
     },
     {
       feature: "Pricing",
@@ -119,5 +120,9 @@ export const entry: ComparisonData = {
         "For large teams, GAIA's self-hosting option eliminates per-seat pricing entirely — you pay only for infrastructure. Asana's Advanced plan costs $24.99 per user per month billed annually, which adds up quickly at scale. GAIA's hosted Pro plan starts at $20/month regardless of seat count, and self-hosting is free.",
     },
   ],
-  relatedPersonas: ["product-managers", "agency-owners", "engineering-managers"],
+  relatedPersonas: [
+    "product-managers",
+    "agency-owners",
+    "engineering-managers",
+  ],
 };

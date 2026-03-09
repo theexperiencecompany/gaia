@@ -9,7 +9,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolBSlug: "jira",
     tagline:
       "Sync personal Todoist tasks with Jira tickets without leaving your flow",
-    metaTitle: "Todoist + Jira Integration - Personal Tasks Meet Team Tickets | GAIA",
+    metaTitle:
+      "Todoist + Jira Integration - Personal Tasks Meet Team Tickets | GAIA",
     metaDescription:
       "Connect Todoist and Jira with GAIA. Automatically create Jira issues from Todoist tasks, sync your assigned Jira tickets into Todoist, and keep your personal and team workflows aligned.",
     keywords: [
@@ -68,17 +69,20 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Will GAIA sync all Jira tickets or only tickets assigned to me?",
+        question:
+          "Will GAIA sync all Jira tickets or only tickets assigned to me?",
         answer:
           "By default GAIA only syncs Jira tickets assigned to your account, keeping your Todoist inbox focused on your personal workload. You can expand the scope to include tickets you're watching or tickets in a specific sprint if needed.",
       },
       {
-        question: "Can GAIA handle custom Jira fields when creating issues from Todoist?",
+        question:
+          "Can GAIA handle custom Jira fields when creating issues from Todoist?",
         answer:
           "Yes. You can map Todoist task labels and priority levels to custom Jira fields during setup. GAIA will populate those fields when escalating Todoist tasks to Jira issues, respecting your team's required fields and workflows.",
       },
       {
-        question: "What happens if a Todoist task is edited after a Jira issue is created?",
+        question:
+          "What happens if a Todoist task is edited after a Jira issue is created?",
         answer:
           "GAIA can propagate title and description edits from Todoist to the linked Jira issue and vice versa. You control which fields are kept in sync and which are treated as independent to avoid unintended overwrites.",
       },
@@ -163,7 +167,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "Absolutely. You choose exactly which Todoist projects participate in the sync. Personal projects like shopping lists or private goals stay in Todoist only, while work projects are bridged to the relevant ClickUp spaces.",
       },
       {
-        question: "Will GAIA create duplicate tasks if both tools update at the same time?",
+        question:
+          "Will GAIA create duplicate tasks if both tools update at the same time?",
         answer:
           "GAIA uses unique link identifiers to track the relationship between paired tasks. It applies last-write-wins logic with a short debounce window to resolve simultaneous edits, and alerts you when a conflict cannot be resolved automatically.",
       },
@@ -248,7 +253,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "GAIA includes links to Trello card attachments in the corresponding Todoist task description. Uploading files directly to Todoist tasks and pushing them to Trello as attachments is also supported for common file types.",
       },
       {
-        question: "Can I share a Trello board with a client without giving them access to my Todoist?",
+        question:
+          "Can I share a Trello board with a client without giving them access to my Todoist?",
         answer:
           "Yes. GAIA acts as the bridge between your private Todoist and the shared Trello board. Clients only see the Trello board you've shared with them; your Todoist remains entirely private.",
       },
@@ -323,7 +329,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA support Linear's cycle concept when syncing to Todoist?",
+        question:
+          "Does GAIA support Linear's cycle concept when syncing to Todoist?",
         answer:
           "Yes. GAIA maps the active cycle's end date to the Todoist task due date, and can include cycle labels so you can see at a glance which Todoist tasks belong to your current sprint.",
       },
@@ -333,7 +340,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "Yes. Linear sub-issues are mirrored as Todoist sub-tasks under the parent task. Completion of all sub-tasks in Todoist can optionally trigger a status update on the parent Linear issue.",
       },
       {
-        question: "What happens to Linear issues that are reassigned to someone else?",
+        question:
+          "What happens to Linear issues that are reassigned to someone else?",
         answer:
           "If a Linear issue is reassigned away from you, GAIA removes or archives the corresponding Todoist task depending on your preference, keeping your personal list focused on work that is genuinely yours.",
       },
@@ -418,7 +426,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "GAIA primarily syncs issues and pull requests. GitHub Projects integration is on the roadmap. In the meantime, issues linked to GitHub Projects are synced normally via their issue record.",
       },
       {
-        question: "How does GAIA handle issues that are unassigned or reassigned?",
+        question:
+          "How does GAIA handle issues that are unassigned or reassigned?",
         answer:
           "If a GitHub issue is unassigned from you, GAIA archives or removes the corresponding Todoist task based on your preference. Reassignment to another person follows the same rule, keeping your Todoist focused on active responsibilities.",
       },
@@ -494,17 +503,20 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can I create a Todoist task from a Slack message without leaving Slack?",
+        question:
+          "Can I create a Todoist task from a Slack message without leaving Slack?",
         answer:
           "Yes. You can use a Slack shortcut, emoji reaction, or slash command directly within Slack to trigger GAIA. GAIA will confirm the task was created with a brief ephemeral message visible only to you.",
       },
       {
-        question: "Which Todoist project do Slack-captured tasks go to by default?",
+        question:
+          "Which Todoist project do Slack-captured tasks go to by default?",
         answer:
           "You can set a default Todoist project for Slack captures during setup. You can also override the destination project per capture using a quick inline command, for example specifying a project name in your trigger message.",
       },
       {
-        question: "Can GAIA post to a specific Slack channel when a task is completed?",
+        question:
+          "Can GAIA post to a specific Slack channel when a task is completed?",
         answer:
           "Yes. You can configure completion notifications to post to the channel where the original message was captured, to a specific team channel, or only to your Slack DM if you prefer a quieter workflow.",
       },
@@ -579,7 +591,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA search all of my Google Drive or only specific folders?",
+        question:
+          "Can GAIA search all of my Google Drive or only specific folders?",
         answer:
           "You can grant GAIA access to your full Drive or restrict it to specific folders during setup. Restricting to work folders is recommended to keep personal Drive content out of the integration.",
       },
@@ -664,7 +677,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA monitor Discord channels automatically or only on command?",
+        question:
+          "Can GAIA monitor Discord channels automatically or only on command?",
         answer:
           "Both modes are available. GAIA can be configured to automatically create tasks from messages matching certain keywords or patterns in specific channels, or to only act when explicitly triggered by a command or emoji reaction.",
       },
@@ -674,7 +688,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "You can restrict GAIA task creation to specific Discord roles during setup. This prevents unintended task creation from general community members while allowing moderators or team members to use the integration freely.",
       },
       {
-        question: "Does GAIA support multiple Discord servers connected to one Todoist account?",
+        question:
+          "Does GAIA support multiple Discord servers connected to one Todoist account?",
         answer:
           "Yes. GAIA can connect multiple Discord servers to a single Todoist account, with separate Todoist project mappings per server so tasks from different communities or teams stay organized.",
       },
@@ -749,12 +764,14 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA work with custom HubSpot pipelines and deal stages?",
+        question:
+          "Can GAIA work with custom HubSpot pipelines and deal stages?",
         answer:
           "Yes. During setup GAIA reads your HubSpot portal's custom pipelines and deal stages so you can configure triggers and task templates for any stage in any pipeline, not just the default ones.",
       },
       {
-        question: "Does GAIA support HubSpot contacts and companies in addition to deals?",
+        question:
+          "Does GAIA support HubSpot contacts and companies in addition to deals?",
         answer:
           "Yes. GAIA can create Todoist tasks from contact activity events such as email opens, form submissions, and lifecycle stage changes, in addition to deal-based triggers.",
       },
@@ -834,17 +851,20 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync Jira's two-week sprint cycle to repeating Google Calendar events?",
+        question:
+          "Can GAIA sync Jira's two-week sprint cycle to repeating Google Calendar events?",
         answer:
           "Yes. GAIA can create recurring Google Calendar events that match your Jira sprint cadence. When a sprint's actual dates deviate from the recurrence, GAIA updates the specific instance without affecting the broader series.",
       },
       {
-        question: "Does GAIA support Jira Software and Jira Service Management?",
+        question:
+          "Does GAIA support Jira Software and Jira Service Management?",
         answer:
           "GAIA supports Jira Software's sprint and milestone syncing natively. Jira Service Management SLA-based calendar events are also supported, creating calendar reminders for key SLA milestones.",
       },
       {
-        question: "Can I sync Jira dates to a shared team calendar instead of personal calendars?",
+        question:
+          "Can I sync Jira dates to a shared team calendar instead of personal calendars?",
         answer:
           "Yes. You can configure GAIA to write Jira-sourced events to a shared Google Calendar that the whole team has access to, providing a single team calendar that always reflects the current Jira project timeline.",
       },
@@ -919,17 +939,20 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync ClickUp start dates as well as due dates to Google Calendar?",
+        question:
+          "Can GAIA sync ClickUp start dates as well as due dates to Google Calendar?",
         answer:
           "Yes. GAIA can create multi-day Google Calendar events that span from the ClickUp task's start date to its due date, giving you a visual duration view of each task in your calendar.",
       },
       {
-        question: "Does GAIA support ClickUp's recurring tasks when syncing to Google Calendar?",
+        question:
+          "Does GAIA support ClickUp's recurring tasks when syncing to Google Calendar?",
         answer:
           "Yes. GAIA maps ClickUp recurring task schedules to Google Calendar recurring events. When the recurrence pattern changes in ClickUp, GAIA updates the calendar recurrence rule accordingly.",
       },
       {
-        question: "Can GAIA sync tasks from multiple ClickUp workspaces to one Google Calendar?",
+        question:
+          "Can GAIA sync tasks from multiple ClickUp workspaces to one Google Calendar?",
         answer:
           "Yes. GAIA supports multiple ClickUp workspaces and can route events from different workspaces to separate Google Calendars or consolidate them into one, depending on your preference.",
       },
@@ -1004,17 +1027,20 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync Trello checklist item due dates as well as card due dates?",
+        question:
+          "Can GAIA sync Trello checklist item due dates as well as card due dates?",
         answer:
           "Card-level due dates are synced by default. Checklist item due date syncing is configurable for teams that use Trello checklists as sub-task milestones and need those granular dates on their calendar.",
       },
       {
-        question: "Does GAIA support multiple Trello boards synced to separate Google Calendars?",
+        question:
+          "Does GAIA support multiple Trello boards synced to separate Google Calendars?",
         answer:
           "Yes. You can map individual Trello boards to specific Google Calendars — for example, routing a client board's due dates to a shared client calendar while keeping internal board dates on a team-only calendar.",
       },
       {
-        question: "What happens in Google Calendar when a Trello card is archived or deleted?",
+        question:
+          "What happens in Google Calendar when a Trello card is archived or deleted?",
         answer:
           "When a Trello card is archived or deleted, GAIA removes or cancels the corresponding Google Calendar event and notifies any attendees if the event had been shared, keeping your calendar free of orphaned events.",
       },
@@ -1099,7 +1125,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "You can configure GAIA to log all meetings, only meetings with external attendees, or only meetings where attendees match known HubSpot contacts. This keeps your HubSpot activity log focused on customer interactions.",
       },
       {
-        question: "Does GAIA support HubSpot deal associations when logging meetings?",
+        question:
+          "Does GAIA support HubSpot deal associations when logging meetings?",
         answer:
           "Yes. When logging a meeting, GAIA associates the activity with the relevant HubSpot deal or deals linked to the attendee contacts, so the meeting appears in the deal timeline and not just the contact record.",
       },
@@ -1174,12 +1201,14 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA filter Stripe subscription events by plan or MRR threshold?",
+        question:
+          "Can GAIA filter Stripe subscription events by plan or MRR threshold?",
         answer:
           "Yes. You can configure GAIA to only create calendar events for renewals above a certain MRR value or for specific Stripe subscription plans, focusing calendar visibility on the customers that matter most.",
       },
       {
-        question: "Does GAIA expose sensitive customer payment data in calendar event descriptions?",
+        question:
+          "Does GAIA expose sensitive customer payment data in calendar event descriptions?",
         answer:
           "GAIA allows you to configure exactly which fields appear in calendar event descriptions. By default it includes customer name and renewal amount. Full payment details, card numbers, and sensitive data are never included.",
       },
@@ -1259,17 +1288,20 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Will GAIA duplicate events that are already in both calendars?",
+        question:
+          "Will GAIA duplicate events that are already in both calendars?",
         answer:
           "GAIA uses meeting ID and attendee matching to detect events that already exist in both calendars before creating a sync copy. Detected duplicates are flagged for review rather than blindly duplicated.",
       },
       {
-        question: "Can GAIA handle recurring Teams meetings synced to Google Calendar?",
+        question:
+          "Can GAIA handle recurring Teams meetings synced to Google Calendar?",
         answer:
           "Yes. Recurring Teams meeting series are imported as recurring Google Calendar events. When the Teams series is updated or cancelled, GAIA updates the entire Google Calendar series accordingly.",
       },
       {
-        question: "Does GAIA work if my organization uses both Google Workspace and Microsoft 365?",
+        question:
+          "Does GAIA work if my organization uses both Google Workspace and Microsoft 365?",
         answer:
           "Yes. This is the primary use case GAIA is designed for. GAIA acts as the neutral bridge between both platforms without requiring IT-level federation or directory sync between your Google and Microsoft tenants.",
       },
@@ -1344,17 +1376,20 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA post reminders to multiple Discord channels for different calendars?",
+        question:
+          "Can GAIA post reminders to multiple Discord channels for different calendars?",
         answer:
           "Yes. You can map different Google Calendars to different Discord channels. For example, your community events calendar might post to a public announcements channel while a team calendar posts to a private staff channel.",
       },
       {
-        question: "Can GAIA mention specific Discord roles when posting event reminders?",
+        question:
+          "Can GAIA mention specific Discord roles when posting event reminders?",
         answer:
           "Yes. You can configure GAIA to mention specific Discord roles in event reminder posts — for example, mentioning the @everyone or @team role for different event types — to ensure the right people are notified.",
       },
       {
-        question: "Does GAIA support Discord's native Events feature in addition to channel posts?",
+        question:
+          "Does GAIA support Discord's native Events feature in addition to channel posts?",
         answer:
           "Yes. GAIA can create Discord scheduled events from Google Calendar entries in addition to posting text reminders, giving your community a native Discord event to express interest in and receive Discord's own reminder notifications.",
       },
@@ -1429,17 +1464,20 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA decide which Drive documents are relevant to a calendar event?",
+        question:
+          "How does GAIA decide which Drive documents are relevant to a calendar event?",
         answer:
           "GAIA uses the event title, attendee list, and event description keywords to search Drive. It ranks results by recency, sharing overlap with attendees, and keyword match strength, then attaches the top matches.",
       },
       {
-        question: "Can GAIA create meeting notes in a specific Drive folder structure?",
+        question:
+          "Can GAIA create meeting notes in a specific Drive folder structure?",
         answer:
           "Yes. You can define a folder structure template — for example, by year, month, and project — and GAIA will create each meeting notes doc in the correct folder automatically, building a consistent archive over time.",
       },
       {
-        question: "Does GAIA modify existing calendar events to add Drive links?",
+        question:
+          "Does GAIA modify existing calendar events to add Drive links?",
         answer:
           "Yes. GAIA appends Drive document links to the event description or uses Google Calendar's attachment field where available. It never removes existing event content and only appends to existing descriptions.",
       },
@@ -1514,17 +1552,20 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA link to a specific Figma frame or page rather than the whole file?",
+        question:
+          "Can GAIA link to a specific Figma frame or page rather than the whole file?",
         answer:
           "Yes. GAIA can generate direct links to specific Figma frames, pages, or components when creating calendar events, allowing reviewers to open exactly the section under review rather than navigating the full file.",
       },
       {
-        question: "Does GAIA support Figma's branching feature when syncing to calendar?",
+        question:
+          "Does GAIA support Figma's branching feature when syncing to calendar?",
         answer:
           "Yes. GAIA can detect Figma branch merge events and create design review calendar events for the merged changes, supporting design teams that use branching for parallel workstreams.",
       },
       {
-        question: "Can GAIA notify Figma collaborators when a design review calendar event is created?",
+        question:
+          "Can GAIA notify Figma collaborators when a design review calendar event is created?",
         answer:
           "Yes. GAIA can post a comment in the relevant Figma file notifying collaborators that a review meeting has been scheduled and include the Google Calendar event link, keeping the design and calendar systems connected bidirectionally.",
       },
@@ -1604,7 +1645,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "No. GAIA tracks the link between each Todoist task and its Google Calendar event. When a due date changes, GAIA updates the existing event rather than creating a new one.",
       },
       {
-        question: "Can I choose which Todoist projects sync to Google Calendar?",
+        question:
+          "Can I choose which Todoist projects sync to Google Calendar?",
         answer:
           "Yes. During setup you specify exactly which projects or labels trigger calendar event creation. Personal errands and work projects can sync to different calendars.",
       },
@@ -1628,7 +1670,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolASlug: "todoist",
     toolB: "Salesforce",
     toolBSlug: "salesforce",
-    tagline: "Surface Salesforce action items in Todoist and log work back automatically",
+    tagline:
+      "Surface Salesforce action items in Todoist and log work back automatically",
     metaTitle:
       "Todoist + Salesforce Automation - Bridge CRM Tasks and Personal Planning | GAIA",
     metaDescription:
@@ -1699,7 +1742,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "GAIA works with Opportunities, Contacts, Accounts, Tasks, and Events. Activity logging creates Task records against the relevant Opportunity or Contact.",
       },
       {
-        question: "Can I use this with Salesforce Sales Cloud and Service Cloud?",
+        question:
+          "Can I use this with Salesforce Sales Cloud and Service Cloud?",
         answer:
           "Yes. GAIA supports both Sales Cloud and Service Cloud objects, so account managers and support reps can each configure workflows suited to their use case.",
       },
@@ -1778,12 +1822,14 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA require Zoom cloud recording to extract action items?",
+        question:
+          "Does GAIA require Zoom cloud recording to extract action items?",
         answer:
           "Cloud recording with auto-transcription is the most reliable method, but GAIA can also process meeting notes you paste manually if cloud transcripts are not available.",
       },
       {
-        question: "Can GAIA assign action items to other team members' Todoist accounts?",
+        question:
+          "Can GAIA assign action items to other team members' Todoist accounts?",
         answer:
           "If team members have also connected their Todoist accounts to GAIA, it can assign tasks to them directly. Otherwise, it assigns tasks to you with the responsible person noted in the task description.",
       },
@@ -1806,7 +1852,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolASlug: "todoist",
     toolB: "Microsoft Teams",
     toolBSlug: "teams",
-    tagline: "Surface Todoist tasks in Teams and capture action items from chats",
+    tagline:
+      "Surface Todoist tasks in Teams and capture action items from chats",
     metaTitle:
       "Todoist + Microsoft Teams Automation - Tasks and Chat in Sync | GAIA",
     metaDescription:
@@ -1956,12 +2003,14 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Will GAIA create a task for every Figma comment or only specific ones?",
+        question:
+          "Will GAIA create a task for every Figma comment or only specific ones?",
         answer:
           "You can configure GAIA to capture all comments or only those that meet criteria such as containing specific tags, being left by certain people, or being unresolved after a set time.",
       },
       {
-        question: "Can GAIA resolve the Figma comment when the Todoist task is completed?",
+        question:
+          "Can GAIA resolve the Figma comment when the Todoist task is completed?",
         answer:
           "Yes. When you mark the linked Todoist task complete, GAIA can automatically resolve the corresponding Figma comment so your comment thread stays clean.",
       },
@@ -2072,7 +2121,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolASlug: "todoist",
     toolB: "Airtable",
     toolBSlug: "airtable",
-    tagline: "Sync Airtable records with Todoist tasks for structured project tracking",
+    tagline:
+      "Sync Airtable records with Todoist tasks for structured project tracking",
     metaTitle:
       "Todoist + Airtable Automation - Connect Records and Tasks | GAIA",
     metaDescription:
@@ -2148,7 +2198,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "GAIA can read values from linked record fields and include them in the Todoist task description, but it does not currently create tasks from linked records automatically.",
       },
       {
-        question: "What happens to the Todoist task if an Airtable record is deleted?",
+        question:
+          "What happens to the Todoist task if an Airtable record is deleted?",
         answer:
           "GAIA detects the deletion and marks the linked Todoist task as cancelled so your active task list stays clean.",
       },
@@ -2161,7 +2212,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolASlug: "todoist",
     toolB: "Loom",
     toolBSlug: "loom",
-    tagline: "Turn Loom video feedback into Todoist tasks and attach videos to work items",
+    tagline:
+      "Turn Loom video feedback into Todoist tasks and attach videos to work items",
     metaTitle: "Todoist + Loom Automation - Video Feedback to Tasks | GAIA",
     metaDescription:
       "Connect Todoist and Loom with GAIA. Convert Loom video feedback and comments into Todoist tasks, attach Loom videos to tasks for context, and keep async video reviews tracked and actionable.",
@@ -2221,22 +2273,26 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA transcribe Loom videos itself or use Loom's built-in transcription?",
+        question:
+          "Does GAIA transcribe Loom videos itself or use Loom's built-in transcription?",
         answer:
           "GAIA uses Loom's built-in auto-transcription when available, falling back to its own transcription for older videos or workspaces without transcription enabled.",
       },
       {
-        question: "How accurate is the action item extraction from Loom transcripts?",
+        question:
+          "How accurate is the action item extraction from Loom transcripts?",
         answer:
           "GAIA uses language model analysis to identify action items and commitments in transcripts. You can enable a review step where extracted tasks are shown before being saved to Todoist.",
       },
       {
-        question: "Can GAIA handle Loom videos sent via email links rather than direct shares?",
+        question:
+          "Can GAIA handle Loom videos sent via email links rather than direct shares?",
         answer:
           "Yes. If you forward a Loom video link to GAIA or paste it in a GAIA command, it can process the video and create tasks regardless of how the link was shared.",
       },
       {
-        question: "Will GAIA create tasks from Loom comments as well as the video content?",
+        question:
+          "Will GAIA create tasks from Loom comments as well as the video content?",
         answer:
           "Yes. GAIA can also read Loom video comments and create Todoist tasks from comment threads, which is useful when reviewers add text feedback alongside the video.",
       },
@@ -2249,7 +2305,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolASlug: "google-calendar",
     toolB: "Salesforce",
     toolBSlug: "salesforce",
-    tagline: "Sync sales meetings with Salesforce and auto-log CRM activity from your calendar",
+    tagline:
+      "Sync sales meetings with Salesforce and auto-log CRM activity from your calendar",
     metaTitle:
       "Google Calendar + Salesforce Automation - Sync Meetings and CRM | GAIA",
     metaDescription:
@@ -2310,12 +2367,14 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA match calendar attendees to Salesforce contacts?",
+        question:
+          "How does GAIA match calendar attendees to Salesforce contacts?",
         answer:
           "GAIA matches by email address. If an attendee's email matches a Salesforce contact or lead record, GAIA links the activity to that record. Unmatched attendees are flagged for manual review.",
       },
       {
-        question: "Will GAIA log internal meetings as well as external sales calls?",
+        question:
+          "Will GAIA log internal meetings as well as external sales calls?",
         answer:
           "You can configure GAIA to log only meetings with external domains, only meetings where a Salesforce contact is an attendee, or all meetings. Internal-only meetings can be excluded.",
       },
@@ -2325,7 +2384,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "Individual reps need standard user access with API permissions enabled. For org-wide deployment, a Salesforce admin needs to set up the Connected App.",
       },
       {
-        question: "Can GAIA update the Salesforce opportunity stage based on the meeting?",
+        question:
+          "Can GAIA update the Salesforce opportunity stage based on the meeting?",
         answer:
           "GAIA can update the stage if you configure a rule — for example, a meeting tagged as 'Demo' advances the opportunity to Demonstration. Stage changes require your approval before they are applied.",
       },
@@ -2338,7 +2398,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolASlug: "google-calendar",
     toolB: "Airtable",
     toolBSlug: "airtable",
-    tagline: "Keep your Airtable project database in sync with Google Calendar events",
+    tagline:
+      "Keep your Airtable project database in sync with Google Calendar events",
     metaTitle:
       "Google Calendar + Airtable Automation - Sync Events and Records | GAIA",
     metaDescription:
@@ -2399,22 +2460,26 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync multiple Airtable tables to different Google Calendars?",
+        question:
+          "Can GAIA sync multiple Airtable tables to different Google Calendars?",
         answer:
           "Yes. You can map each Airtable table or view to a different Google Calendar — marketing milestones to the marketing calendar, product releases to the engineering calendar.",
       },
       {
-        question: "What happens if I delete a Google Calendar event that was created from Airtable?",
+        question:
+          "What happens if I delete a Google Calendar event that was created from Airtable?",
         answer:
           "GAIA detects the deletion and can either clear the date field in the Airtable record or create a note flagging that the calendar event was removed, depending on your preference.",
       },
       {
-        question: "Does GAIA sync recurring Airtable records to recurring calendar events?",
+        question:
+          "Does GAIA sync recurring Airtable records to recurring calendar events?",
         answer:
           "GAIA can create individual calendar events for each recurring record instance. True Google Calendar recurrence rules require a one-time setup rather than automatic conversion.",
       },
       {
-        question: "Can Airtable form submissions automatically create calendar events?",
+        question:
+          "Can Airtable form submissions automatically create calendar events?",
         answer:
           "Yes. If an Airtable form submission creates a record with a date field, GAIA can pick up that record and create the corresponding Google Calendar event immediately.",
       },
@@ -2427,7 +2492,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
     toolASlug: "google-calendar",
     toolB: "Loom",
     toolBSlug: "loom",
-    tagline: "Record Loom video briefs for upcoming meetings and share recaps automatically",
+    tagline:
+      "Record Loom video briefs for upcoming meetings and share recaps automatically",
     metaTitle:
       "Google Calendar + Loom Automation - Meeting Briefs and Video Recaps | GAIA",
     metaDescription:
@@ -2493,7 +2559,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "Yes. You can configure GAIA to trigger reminders only for external meetings, only for meetings above a certain duration, or only for events with specific keywords in the title.",
       },
       {
-        question: "Does GAIA share the Loom link via calendar event updates or email?",
+        question:
+          "Does GAIA share the Loom link via calendar event updates or email?",
         answer:
           "You can choose either method. GAIA can add the Loom link as a comment to the Google Calendar event, send it via email to attendees, or both.",
       },
@@ -2503,7 +2570,8 @@ export const combosBatchD: Record<string, IntegrationCombo> = {
           "GAIA sends one reminder prompt and then stops. It does not send repeated reminders for the same meeting if you choose not to record.",
       },
       {
-        question: "Can GAIA help schedule a meeting to replace a Loom that needs live discussion?",
+        question:
+          "Can GAIA help schedule a meeting to replace a Loom that needs live discussion?",
         answer:
           "Yes. If you record a Loom that prompts follow-up questions requiring a live call, you can ask GAIA to find a time on Google Calendar and schedule a meeting with the relevant attendees.",
       },

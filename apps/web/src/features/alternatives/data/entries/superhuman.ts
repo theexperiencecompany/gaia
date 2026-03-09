@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Superhuman",
   domain: "superhuman.com",
   category: "email",
-  tagline: "Speed-optimized email client with keyboard shortcuts and AI features",
+  tagline:
+    "Speed-optimized email client with keyboard shortcuts and AI features",
   painPoints: [
     "Expensive at $30/month for what remains a Gmail/Outlook client",
     "Requires an invite and onboarding call — high friction to start",
@@ -105,7 +106,8 @@ export const entry: AlternativeData = {
     {
       feature: "Pricing",
       gaia: "Free tier available; Pro at $20/month flat; self-hosting entirely free",
-      competitor: "$30/month with no free tier; invite and onboarding call required to start",
+      competitor:
+        "$30/month with no free tier; invite and onboarding call required to start",
     },
   ],
 };

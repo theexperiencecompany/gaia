@@ -108,7 +108,8 @@ export const entry: ComparisonData = {
     "Make is the right choice for teams building structured, high-volume, production-grade automations between business systems — CRM syncs, data pipelines, and multi-branch workflows that require explicit control and precise data mapping. GAIA is the right choice for individuals and teams who want an AI to manage their email, calendar, tasks, and cross-tool workflows through natural language, without investing time in scenario-building. Make and GAIA solve different layers of the automation stack and can often complement each other.",
   faqs: [
     {
-      question: "Can GAIA replace Make for my personal productivity automations?",
+      question:
+        "Can GAIA replace Make for my personal productivity automations?",
       answer:
         "For personal productivity use cases — email triage, task creation, calendar scheduling, and cross-tool notifications — GAIA is a more direct solution than Make because it requires no scenario-building and brings AI reasoning to every action. If you have been using Make primarily to manage your own inbox, tasks, and calendar coordination, GAIA replaces that workflow more intelligently. For complex, high-volume data pipelines between business systems, Make remains the more powerful choice.",
     },
@@ -118,7 +119,8 @@ export const entry: ComparisonData = {
         "Make supports 2,000+ app integrations, which is significantly broader than GAIA's current 50+ integrations via MCP. Make's advantage is breadth and control over data mapping. GAIA's advantage is depth — its integrations are bi-directional and AI-interpreted, meaning GAIA can decide which integration to use and how to use it based on context, rather than requiring you to define every step. For specialized niche-app connections, Make is likely to have a module; for intelligent multi-tool workflows, GAIA handles the reasoning layer.",
     },
     {
-      question: "How does GAIA's pricing compare to Make for an individual user?",
+      question:
+        "How does GAIA's pricing compare to Make for an individual user?",
       answer:
         "Make's Free plan offers 1,000 operations/month, which is enough for light automation but quickly runs out with active email or calendar workflows. The Core plan starts at $29/month. GAIA's Pro plan is $20/month with no operation-based billing — all features included. Additionally, GAIA can be self-hosted for free with no usage caps, an option Make does not offer. For individuals who want AI-powered productivity automation without metering every action, GAIA is typically more cost-effective.",
     },

@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Free time tracker for teams and project billing",
   description:
     "Clockify is a free time tracking tool for teams, offering timesheets, project tracking, and billing reports. GAIA goes beyond time logging to proactively manage your tasks, email, and workflows with AI.",
-  metaTitle: "Clockify Alternative with AI Task & Workflow Management | GAIA vs Clockify",
+  metaTitle:
+    "Clockify Alternative with AI Task & Workflow Management | GAIA vs Clockify",
   metaDescription:
     "Clockify tracks time but won't manage your tasks or automate your workflow. GAIA is a free, open-source alternative that proactively handles your inbox, calendar, and tasks across 50+ integrations.",
   keywords: [
@@ -31,12 +32,14 @@ GAIA approaches the problem differently. It is a proactive AI assistant that con
     {
       feature: "Core approach",
       gaia: "Proactive AI assistant that manages tasks, calendar, email, and workflows across 50+ tools",
-      competitor: "Free time tracker for logging hours against projects and clients",
+      competitor:
+        "Free time tracker for logging hours against projects and clients",
     },
     {
       feature: "Time entry",
       gaia: "Focused on task execution and workflow automation rather than manual time logging",
-      competitor: "One-click timer, manual entry, and automatic browser extension tracking",
+      competitor:
+        "One-click timer, manual entry, and automatic browser extension tracking",
     },
     {
       feature: "Task management",
@@ -61,12 +64,14 @@ GAIA approaches the problem differently. It is a proactive AI assistant that con
     {
       feature: "Team collaboration",
       gaia: "Cross-tool coordination via Slack, Linear, GitHub, and Jira integrations",
-      competitor: "Team timesheets, project assignments, and approval workflows",
+      competitor:
+        "Team timesheets, project assignments, and approval workflows",
     },
     {
       feature: "Reporting",
       gaia: "AI-generated project and workload summaries",
-      competitor: "Detailed billable hour and project reports with export options",
+      competitor:
+        "Detailed billable hour and project reports with export options",
     },
     {
       feature: "Open source",

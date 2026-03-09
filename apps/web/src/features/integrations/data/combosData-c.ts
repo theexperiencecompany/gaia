@@ -67,12 +67,14 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync tasks from multiple GitHub repositories into Todoist?",
+        question:
+          "Can GAIA sync tasks from multiple GitHub repositories into Todoist?",
         answer:
           "Yes. You can connect multiple GitHub repositories to a single GAIA workspace and route tasks from each repository into the same or different Todoist projects. You can also filter by repository, label, or assignee so only relevant issues become tasks.",
       },
       {
-        question: "What happens to a Todoist task if the GitHub issue is reopened?",
+        question:
+          "What happens to a Todoist task if the GitHub issue is reopened?",
         answer:
           "GAIA can detect issue reopens and either recreate the Todoist task or reopen it if Todoist supports that state, depending on your preferences. You can configure GAIA to notify you instead of taking automatic action if you prefer manual control.",
       },
@@ -91,7 +93,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolB: "ClickUp",
     toolBSlug: "clickup",
     tagline: "Link GitHub PRs to ClickUp tasks and auto-update status on merge",
-    metaTitle: "GitHub + ClickUp Automation - Sync Code with Project Tasks | GAIA",
+    metaTitle:
+      "GitHub + ClickUp Automation - Sync Code with Project Tasks | GAIA",
     metaDescription:
       "Automate GitHub and ClickUp with GAIA. Link pull requests to ClickUp tasks, move tasks through statuses as PRs progress, and keep engineering and project teams aligned without manual updates.",
     keywords: [
@@ -103,12 +106,12 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
       "engineering project management sync",
     ],
     intro:
-      "Engineering teams use GitHub for code and ClickUp for project management, but keeping the two in sync is a constant manual chore. A developer merges a PR but forgets to update the ClickUp task status. A project manager moves a task to \"In Review\" without knowing the PR was already approved. The gap between where the code lives and where the project plan lives creates confusion, duplicated status meetings, and a project board that never reflects reality.\n\nGAIA bridges GitHub and ClickUp so code activity automatically drives task status updates. When a developer opens a pull request linked to a ClickUp task, GAIA moves the task to \"In Review.\" When the PR merges, GAIA transitions the task to \"Done\" and notifies the assignee. When a PR is closed without merging, GAIA can revert the task status and leave a comment explaining why. The project board stays accurate without anyone having to remember to update it.\n\nThis integration is ideal for software teams that plan work in ClickUp and execute in GitHub. Product managers get a real-time view of engineering progress directly in ClickUp, while developers focus on writing code rather than updating tickets.",
+      'Engineering teams use GitHub for code and ClickUp for project management, but keeping the two in sync is a constant manual chore. A developer merges a PR but forgets to update the ClickUp task status. A project manager moves a task to "In Review" without knowing the PR was already approved. The gap between where the code lives and where the project plan lives creates confusion, duplicated status meetings, and a project board that never reflects reality.\n\nGAIA bridges GitHub and ClickUp so code activity automatically drives task status updates. When a developer opens a pull request linked to a ClickUp task, GAIA moves the task to "In Review." When the PR merges, GAIA transitions the task to "Done" and notifies the assignee. When a PR is closed without merging, GAIA can revert the task status and leave a comment explaining why. The project board stays accurate without anyone having to remember to update it.\n\nThis integration is ideal for software teams that plan work in ClickUp and execute in GitHub. Product managers get a real-time view of engineering progress directly in ClickUp, while developers focus on writing code rather than updating tickets.',
     useCases: [
       {
         title: "Auto-move ClickUp tasks when PRs are opened",
         description:
-          "When a developer opens a pull request and references a ClickUp task ID in the PR title or description, GAIA automatically moves that task to the \"In Review\" status so project managers see live development progress in ClickUp.",
+          'When a developer opens a pull request and references a ClickUp task ID in the PR title or description, GAIA automatically moves that task to the "In Review" status so project managers see live development progress in ClickUp.',
       },
       {
         title: "Complete ClickUp tasks on PR merge",
@@ -150,19 +153,21 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA identify which ClickUp task to update from a GitHub PR?",
+        question:
+          "How does GAIA identify which ClickUp task to update from a GitHub PR?",
         answer:
           "GAIA can match tasks using a ClickUp task ID included in the PR title, description, or branch name (e.g., CU-abc123). You can also configure GAIA to match by branch naming conventions or labels. If no match is found, GAIA can create a new ClickUp task from the PR instead.",
       },
       {
-        question: "Can GAIA handle multiple ClickUp lists across different GitHub repositories?",
+        question:
+          "Can GAIA handle multiple ClickUp lists across different GitHub repositories?",
         answer:
           "Yes. You can map each GitHub repository to a specific ClickUp list or space, so PRs from the frontend repo update the frontend ClickUp list while backend PRs update a separate list. GAIA manages all mappings from a single configuration.",
       },
       {
         question: "Does this integration work with ClickUp's custom statuses?",
         answer:
-          "Yes. GAIA reads your ClickUp workspace's custom status definitions and lets you map GitHub events to any status in your workflow — whether that's \"Code Review,\" \"QA Testing,\" \"Deployed,\" or any other custom status your team has defined.",
+          'Yes. GAIA reads your ClickUp workspace\'s custom status definitions and lets you map GitHub events to any status in your workflow — whether that\'s "Code Review," "QA Testing," "Deployed," or any other custom status your team has defined.',
       },
     ],
   },
@@ -173,8 +178,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "github",
     toolB: "Figma",
     toolBSlug: "figma",
-    tagline: "Link design specs to code PRs and notify designers when code ships",
-    metaTitle: "GitHub + Figma Automation - Bridge Design and Engineering | GAIA",
+    tagline:
+      "Link design specs to code PRs and notify designers when code ships",
+    metaTitle:
+      "GitHub + Figma Automation - Bridge Design and Engineering | GAIA",
     metaDescription:
       "Connect GitHub and Figma with GAIA. Link Figma design specs to GitHub pull requests, notify designers when related code merges, and keep design and engineering aligned throughout the build cycle.",
     keywords: [
@@ -243,7 +250,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "GAIA uses several matching strategies: a Figma link pasted in the PR description, branch names that follow a convention like 'feature/component-name', PR labels, or a direct mapping table you configure in GAIA. The most reliable method is including a Figma link in your PR template.",
       },
       {
-        question: "Can GAIA work with Figma component libraries across multiple files?",
+        question:
+          "Can GAIA work with Figma component libraries across multiple files?",
         answer:
           "Yes. GAIA can track components across multiple Figma files and link them to the appropriate GitHub repositories. This is particularly useful for design systems where a shared component library is consumed by multiple product repos.",
       },
@@ -256,8 +264,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "github",
     toolB: "Discord",
     toolBSlug: "discord",
-    tagline: "Post GitHub PR and issue notifications to Discord developer communities",
-    metaTitle: "GitHub + Discord Automation - Dev Notifications in Discord | GAIA",
+    tagline:
+      "Post GitHub PR and issue notifications to Discord developer communities",
+    metaTitle:
+      "GitHub + Discord Automation - Dev Notifications in Discord | GAIA",
     metaDescription:
       "Connect GitHub and Discord with GAIA. Send pull request and issue notifications to Discord channels, engage your developer community with code activity, and keep contributors informed automatically.",
     keywords: [
@@ -316,12 +326,14 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can I customize the format of GitHub notifications posted to Discord?",
+        question:
+          "Can I customize the format of GitHub notifications posted to Discord?",
         answer:
           "Yes. GAIA supports customizable message templates for each event type. You can control which fields are included, adjust the embed colors, add custom text, and configure whether messages appear as simple text or rich embeds with thumbnails and action buttons.",
       },
       {
-        question: "Can GAIA handle multiple GitHub repositories in one Discord server?",
+        question:
+          "Can GAIA handle multiple GitHub repositories in one Discord server?",
         answer:
           "Absolutely. You can connect multiple repositories to a single Discord server and route each repository's events to different channels. For example, a mono-repo organization might route frontend PRs to #frontend-dev and backend PRs to #backend-dev.",
       },
@@ -339,8 +351,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "github",
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
-    tagline: "Schedule sprint reviews from milestones and track PR deadlines in Calendar",
-    metaTitle: "GitHub + Google Calendar - Schedule Dev Work Automatically | GAIA",
+    tagline:
+      "Schedule sprint reviews from milestones and track PR deadlines in Calendar",
+    metaTitle:
+      "GitHub + Google Calendar - Schedule Dev Work Automatically | GAIA",
     metaDescription:
       "Connect GitHub and Google Calendar with GAIA. Auto-schedule sprint reviews from GitHub milestones, add PR review deadlines as calendar events, and keep your engineering schedule and codebase in sync.",
     keywords: [
@@ -399,17 +413,20 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA add events to a shared team calendar rather than individual calendars?",
+        question:
+          "Can GAIA add events to a shared team calendar rather than individual calendars?",
         answer:
           "Yes. GAIA can be configured to add milestone events and sprint reviews to a shared Google Calendar that the entire engineering team subscribes to, making it easy for everyone to see the development timeline without individual calendar management.",
       },
       {
-        question: "What happens to the calendar event if a GitHub milestone is deleted?",
+        question:
+          "What happens to the calendar event if a GitHub milestone is deleted?",
         answer:
           "GAIA can be configured to automatically delete or mark the corresponding calendar event as cancelled when a milestone is deleted, and to notify invited attendees of the cancellation. You can also choose to keep the event and have GAIA add a note about the deletion.",
       },
       {
-        question: "Does GAIA work with GitHub Projects v2 timeline views as well as milestones?",
+        question:
+          "Does GAIA work with GitHub Projects v2 timeline views as well as milestones?",
         answer:
           "GAIA primarily syncs GitHub milestones with Google Calendar. GitHub Projects v2 roadmap dates can also be used as a source for calendar events depending on your configuration, but milestone-based sync is the most reliable and fully supported path.",
       },
@@ -422,8 +439,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "github",
     toolB: "Trello",
     toolBSlug: "trello",
-    tagline: "Move Trello cards automatically when GitHub PRs merge or issues close",
-    metaTitle: "GitHub + Trello Automation - Sync Code with Trello Boards | GAIA",
+    tagline:
+      "Move Trello cards automatically when GitHub PRs merge or issues close",
+    metaTitle:
+      "GitHub + Trello Automation - Sync Code with Trello Boards | GAIA",
     metaDescription:
       "Connect GitHub and Trello with GAIA. Auto-move Trello cards when pull requests merge, create cards from GitHub issues, and keep your Trello board in sync with actual development progress.",
     keywords: [
@@ -487,7 +506,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "GAIA matches using a Trello card short link or ID in the PR title, description, or branch name. For example, a branch named 'feature/trello-abc123-login-flow' will be matched to the Trello card with ID abc123. You can also configure GAIA to match by PR labels or title keywords.",
       },
       {
-        question: "Can GAIA handle multiple GitHub repositories feeding into one Trello board?",
+        question:
+          "Can GAIA handle multiple GitHub repositories feeding into one Trello board?",
         answer:
           "Yes. You can connect several repositories to a single Trello board, useful for projects where frontend and backend code live in separate repos but the project is tracked in one Trello board. GAIA aggregates activity from all connected repos correctly.",
       },
@@ -505,8 +525,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "github",
     toolB: "Google Drive",
     toolBSlug: "google-drive",
-    tagline: "Backup repo docs to Drive and link design assets from Drive to repos",
-    metaTitle: "GitHub + Google Drive Automation - Sync Code Docs with Drive | GAIA",
+    tagline:
+      "Backup repo docs to Drive and link design assets from Drive to repos",
+    metaTitle:
+      "GitHub + Google Drive Automation - Sync Code Docs with Drive | GAIA",
     metaDescription:
       "Connect GitHub and Google Drive with GAIA. Auto-backup repository documentation to Drive, link design assets from Drive to pull requests, and keep your code and file storage in sync.",
     keywords: [
@@ -565,7 +587,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync GitHub Wiki pages to Google Drive as well as repository files?",
+        question:
+          "Can GAIA sync GitHub Wiki pages to Google Drive as well as repository files?",
         answer:
           "Yes. GAIA can export GitHub Wiki pages to Google Drive in addition to repository Markdown files. Wiki exports are converted to Google Docs format so they are fully editable and accessible to non-technical collaborators who need to contribute to documentation.",
       },
@@ -575,7 +598,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "GAIA uses folder structure conventions, file naming patterns, and labels or branch names in GitHub to identify matching Drive assets. You can also include a Drive folder link in a PR description or configure explicit mappings between repository paths and Drive folders.",
       },
       {
-        question: "Does GAIA support Google Shared Drives for team-wide storage?",
+        question:
+          "Does GAIA support Google Shared Drives for team-wide storage?",
         answer:
           "Yes. GAIA works with both personal Google Drive and Google Shared Drives (formerly Team Drives), making it suitable for organizations that manage all project files in a centralized Shared Drive accessible to the whole team.",
       },
@@ -588,8 +612,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "github",
     toolB: "Zoom",
     toolBSlug: "zoom",
-    tagline: "Schedule code review meetings from PRs and post summaries back to issues",
-    metaTitle: "GitHub + Zoom Automation - Code Review Meetings from PRs | GAIA",
+    tagline:
+      "Schedule code review meetings from PRs and post summaries back to issues",
+    metaTitle:
+      "GitHub + Zoom Automation - Code Review Meetings from PRs | GAIA",
     metaDescription:
       "Connect GitHub and Zoom with GAIA. Schedule code review meetings directly from pull request comments, post Zoom meeting summaries back to GitHub issues, and keep your dev discussions documented.",
     keywords: [
@@ -624,7 +650,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "When a Zoom meeting is scheduled for a specific PR, GAIA automatically notifies all PR participants — author, reviewers, and commenters — via GitHub comment and email so no one misses the synchronous discussion.",
       },
       {
-        title: "Schedule sprint planning and retrospective meetings from milestones",
+        title:
+          "Schedule sprint planning and retrospective meetings from milestones",
         description:
           "GAIA can schedule recurring Zoom meetings for sprint planning and retrospectives based on GitHub milestone cadence, automatically linking the meeting agenda to the milestone's open and closed issues for a structured engineering rhythm.",
       },
@@ -648,17 +675,20 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA automatically transcribe Zoom meetings about code reviews?",
+        question:
+          "Does GAIA automatically transcribe Zoom meetings about code reviews?",
         answer:
           "GAIA can use Zoom's built-in transcription feature (available on paid Zoom plans) to generate meeting summaries. If transcription is not available, GAIA creates a structured summary template for the meeting host to fill in, then posts it to GitHub on their behalf.",
       },
       {
-        question: "Can GAIA schedule meetings with participants across different time zones?",
+        question:
+          "Can GAIA schedule meetings with participants across different time zones?",
         answer:
           "Yes. GAIA checks the Google Calendar or Outlook availability of all PR participants and proposes meeting times that work across time zones, presenting options in each participant's local time to avoid scheduling confusion.",
       },
       {
-        question: "What if I want to schedule a Zoom meeting without connecting it to a GitHub issue?",
+        question:
+          "What if I want to schedule a Zoom meeting without connecting it to a GitHub issue?",
         answer:
           "GAIA can schedule Zoom meetings independently of GitHub at any time through its conversational interface. The GitHub-Zoom integration is an additional layer that connects meetings to specific PRs and issues when that context is relevant.",
       },
@@ -671,7 +701,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "ClickUp",
     toolBSlug: "clickup",
-    tagline: "Sync project documentation with task management across Notion and ClickUp",
+    tagline:
+      "Sync project documentation with task management across Notion and ClickUp",
     metaTitle: "Notion + ClickUp Automation - Connect Docs and Tasks | GAIA",
     metaDescription:
       "Connect Notion and ClickUp with GAIA. Sync project docs with ClickUp tasks, auto-update Notion pages from task progress, and eliminate the documentation lag that plagues project teams.",
@@ -731,17 +762,20 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync a Notion database with multiple ClickUp lists simultaneously?",
+        question:
+          "Can GAIA sync a Notion database with multiple ClickUp lists simultaneously?",
         answer:
           "Yes. A single Notion database can be mapped to multiple ClickUp lists, useful for projects that span several ClickUp spaces or teams. GAIA handles the routing based on properties in the Notion database, such as team, project type, or priority.",
       },
       {
-        question: "Does GAIA support Notion's relation and rollup properties for ClickUp sync?",
+        question:
+          "Does GAIA support Notion's relation and rollup properties for ClickUp sync?",
         answer:
           "GAIA can read and write standard Notion properties including selects, dates, text, and checkboxes. Relation and rollup properties are readable but writes to relation fields depend on the linked databases also being part of the configured integration.",
       },
       {
-        question: "What happens if a ClickUp task is deleted — does GAIA delete the Notion page?",
+        question:
+          "What happens if a ClickUp task is deleted — does GAIA delete the Notion page?",
         answer:
           "No. GAIA does not delete Notion content by default when a ClickUp task is removed. Instead, it updates the Notion page with a 'Task deleted in ClickUp' status note. Deletion must be explicitly configured or performed manually to prevent accidental data loss.",
       },
@@ -754,8 +788,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "Trello",
     toolBSlug: "trello",
-    tagline: "Sync Trello cards with Notion databases and embed boards in project docs",
-    metaTitle: "Notion + Trello Automation - Sync Cards with Notion Databases | GAIA",
+    tagline:
+      "Sync Trello cards with Notion databases and embed boards in project docs",
+    metaTitle:
+      "Notion + Trello Automation - Sync Cards with Notion Databases | GAIA",
     metaDescription:
       "Connect Notion and Trello with GAIA. Sync Trello cards with Notion database entries, embed board views in project docs, and keep your kanban boards and project wiki in perfect alignment.",
     keywords: [
@@ -814,17 +850,20 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync multiple Trello boards into a single Notion database?",
+        question:
+          "Can GAIA sync multiple Trello boards into a single Notion database?",
         answer:
           "Yes. You can map multiple Trello boards to a single Notion database, with a board or project property distinguishing which cards came from which source. This is useful for teams that run separate Trello boards per client or project but want unified reporting in Notion.",
       },
       {
-        question: "What Notion page properties does GAIA support for Trello sync?",
+        question:
+          "What Notion page properties does GAIA support for Trello sync?",
         answer:
           "GAIA supports all standard Notion property types for Trello sync: text, select, multi-select, date, checkbox, person, URL, and number. This covers the full range of Trello card attributes including title, description, due date, labels, members, and completion status.",
       },
       {
-        question: "Is there a limit to how many Trello cards GAIA can sync per Notion database?",
+        question:
+          "Is there a limit to how many Trello cards GAIA can sync per Notion database?",
         answer:
           "GAIA does not impose a hard limit on the number of cards synced. Practical limits are determined by Trello and Notion API rate limits, which are generous for typical team usage. For very large boards with thousands of cards, GAIA can be configured to sync incrementally or filter to active cards only.",
       },
@@ -837,8 +876,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "Figma",
     toolBSlug: "figma",
-    tagline: "Embed Figma designs in Notion and sync design status with project pages",
-    metaTitle: "Notion + Figma Automation - Link Design Specs to Project Docs | GAIA",
+    tagline:
+      "Embed Figma designs in Notion and sync design status with project pages",
+    metaTitle:
+      "Notion + Figma Automation - Link Design Specs to Project Docs | GAIA",
     metaDescription:
       "Connect Notion and Figma with GAIA. Embed Figma frames in Notion project pages, auto-update design status in Notion databases, and keep your design workflow and project documentation in perfect sync.",
     keywords: [
@@ -897,12 +938,14 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does the Figma embed in Notion update live when the design changes?",
+        question:
+          "Does the Figma embed in Notion update live when the design changes?",
         answer:
           "GAIA refreshes embedded Figma previews in Notion when it detects that the source Figma frame has been published with changes. The frequency of refresh can be configured, from real-time on every Figma publish to a daily scheduled update.",
       },
       {
-        question: "Can GAIA work with Figma component libraries as well as individual project files?",
+        question:
+          "Can GAIA work with Figma component libraries as well as individual project files?",
         answer:
           "Yes. GAIA can connect to Figma component libraries and track individual component status, version history, and usage across your Notion design system documentation. This is particularly useful for teams maintaining a living design system in Notion.",
       },
@@ -920,8 +963,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "Discord",
     toolBSlug: "discord",
-    tagline: "Share Notion pages to Discord communities and capture decisions in Notion",
-    metaTitle: "Notion + Discord Automation - Connect Your Wiki and Community | GAIA",
+    tagline:
+      "Share Notion pages to Discord communities and capture decisions in Notion",
+    metaTitle:
+      "Notion + Discord Automation - Connect Your Wiki and Community | GAIA",
     metaDescription:
       "Connect Notion and Discord with GAIA. Share Notion pages to Discord channels automatically, capture important Discord discussions in Notion, and keep your community and documentation in sync.",
     keywords: [
@@ -980,12 +1025,14 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA capture entire Discord threads, or just individual messages?",
+        question:
+          "Can GAIA capture entire Discord threads, or just individual messages?",
         answer:
           "GAIA can capture full Discord threads as a single Notion page, including all replies, timestamps, and participant names. For long threads, GAIA provides a summary at the top followed by the full transcript, making the captured content useful even without reading every message.",
       },
       {
-        question: "Can GAIA post Notion updates to multiple Discord channels simultaneously?",
+        question:
+          "Can GAIA post Notion updates to multiple Discord channels simultaneously?",
         answer:
           "Yes. A single Notion page update can trigger posts to multiple Discord channels if configured. You can also set up routing rules where a Notion page tagged 'announcement' goes to a public Discord channel while pages tagged 'internal' route only to a private staff channel.",
       },
@@ -1003,8 +1050,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "Microsoft Teams",
     toolBSlug: "teams",
-    tagline: "Share Notion content in Teams and capture meeting notes back to Notion",
-    metaTitle: "Notion + Microsoft Teams Automation - Connect Wiki and Chat | GAIA",
+    tagline:
+      "Share Notion content in Teams and capture meeting notes back to Notion",
+    metaTitle:
+      "Notion + Microsoft Teams Automation - Connect Wiki and Chat | GAIA",
     metaDescription:
       "Connect Notion and Microsoft Teams with GAIA. Share Notion pages in Teams channels, capture Teams meeting notes in Notion automatically, and keep your knowledge base and team chat aligned.",
     keywords: [
@@ -1068,12 +1117,14 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "Yes. GAIA can be configured to post to and read from both standard and private Teams channels, provided the GAIA bot is added to the private channel and granted appropriate permissions. Private channel content is handled securely and never routed to unintended destinations.",
       },
       {
-        question: "Can GAIA capture meeting notes from Teams without using the transcript feature?",
+        question:
+          "Can GAIA capture meeting notes from Teams without using the transcript feature?",
         answer:
           "If Teams transcription is not available or enabled, GAIA creates a structured meeting notes template in Notion pre-populated with attendee names, meeting title, date, and duration. A team member can then fill in key decisions and action items, and GAIA files it in the right Notion location.",
       },
       {
-        question: "Is this integration compatible with Microsoft 365 GCC or government cloud environments?",
+        question:
+          "Is this integration compatible with Microsoft 365 GCC or government cloud environments?",
         answer:
           "GAIA's Teams integration is designed for standard Microsoft 365 commercial environments. Government cloud (GCC) compatibility depends on the specific API endpoints available in that environment. Contact the GAIA team for guidance on GCC deployments.",
       },
@@ -1086,7 +1137,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "Stripe",
     toolBSlug: "stripe",
-    tagline: "Track Stripe revenue in Notion databases and route payment alerts to pages",
+    tagline:
+      "Track Stripe revenue in Notion databases and route payment alerts to pages",
     metaTitle: "Notion + Stripe Automation - Revenue Tracking in Notion | GAIA",
     metaDescription:
       "Connect Notion and Stripe with GAIA. Auto-track Stripe revenue metrics in Notion databases, get payment and subscription alerts in Notion, and keep your business metrics alongside your project docs.",
@@ -1151,7 +1203,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "No. GAIA uses a read-only Stripe API key with restricted permissions. It can read customer, subscription, payment, and metric data but cannot create charges, modify subscriptions, or access your Stripe settings. This ensures revenue data flows safely to Notion without any risk to your Stripe account.",
       },
       {
-        question: "Can GAIA sync Stripe data for multiple Stripe accounts into one Notion workspace?",
+        question:
+          "Can GAIA sync Stripe data for multiple Stripe accounts into one Notion workspace?",
         answer:
           "Yes. If you operate multiple businesses or brands with separate Stripe accounts, GAIA can sync data from each account into the same Notion workspace, using a source property in the database to distinguish which account each entry belongs to.",
       },
@@ -1169,7 +1222,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "Airtable",
     toolBSlug: "airtable",
-    tagline: "Sync databases between Notion and Airtable and migrate data bidirectionally",
+    tagline:
+      "Sync databases between Notion and Airtable and migrate data bidirectionally",
     metaTitle: "Notion + Airtable Automation - Sync and Migrate Data | GAIA",
     metaDescription:
       "Connect Notion and Airtable with GAIA. Sync databases between Notion and Airtable, migrate data without manual exports, and keep both platforms updated as your data workflow evolves.",
@@ -1229,7 +1283,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA handle Notion relation properties during sync with Airtable?",
+        question:
+          "How does GAIA handle Notion relation properties during sync with Airtable?",
         answer:
           "Notion relation properties are synced to Airtable linked record fields when the related Notion database is also synced to a corresponding Airtable table. If only one side of a relation is synced, GAIA converts the relation to a text field containing the related page title to preserve the reference.",
       },
@@ -1239,7 +1294,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "Airtable formula fields are read-only computed values. GAIA can read and push formula field results to Notion as static values, but it does not replicate Airtable formulas in Notion — the formula logic itself stays in Airtable and only the computed result is synced.",
       },
       {
-        question: "What happens if the same record is edited in both platforms simultaneously?",
+        question:
+          "What happens if the same record is edited in both platforms simultaneously?",
         answer:
           "GAIA uses a last-write-wins conflict resolution strategy by default, where the most recently modified version of a record takes precedence. You can alternatively configure GAIA to flag conflicts for manual review rather than automatically resolving them, which is recommended for critical data.",
       },
@@ -1252,7 +1308,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "Google Drive",
     toolBSlug: "google-drive",
-    tagline: "Attach Drive files to Notion pages and organize Drive by your Notion structure",
+    tagline:
+      "Attach Drive files to Notion pages and organize Drive by your Notion structure",
     metaTitle: "Notion + Google Drive Automation - Link Files and Docs | GAIA",
     metaDescription:
       "Connect Notion and Google Drive with GAIA. Automatically attach Drive files to Notion pages, mirror your Notion workspace structure in Drive folders, and keep file storage and documentation aligned.",
@@ -1312,7 +1369,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA work with Google Shared Drives for team file storage?",
+        question:
+          "Can GAIA work with Google Shared Drives for team file storage?",
         answer:
           "Yes. GAIA supports Google Shared Drives (formerly Team Drives) in addition to personal Google Drive. When using Shared Drives, GAIA creates project folders within the configured Shared Drive and links them to Notion, ensuring all team members with Shared Drive access can also reach the linked files.",
       },
@@ -1322,7 +1380,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "GAIA can attach any file type stored in Google Drive to Notion, including Google Docs, Google Sheets, Slides, PDFs, images, videos, and other file formats. Files are linked by their Drive URL, so they open in the appropriate application when accessed from Notion.",
       },
       {
-        question: "If a file is moved in Drive, does GAIA update the link in Notion?",
+        question:
+          "If a file is moved in Drive, does GAIA update the link in Notion?",
         answer:
           "Google Drive file links are stable and do not change when a file is moved between folders, so existing Notion attachments continue to work correctly after a Drive reorganization. Folder links may update if the folder is moved, and GAIA can detect these changes and update Notion folder references accordingly.",
       },
@@ -1419,8 +1478,10 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolASlug: "notion",
     toolB: "HubSpot",
     toolBSlug: "hubspot",
-    tagline: "Sync HubSpot CRM data to Notion and document customer context alongside deals",
-    metaTitle: "Notion + HubSpot Automation - CRM Data in Your Notion Wiki | GAIA",
+    tagline:
+      "Sync HubSpot CRM data to Notion and document customer context alongside deals",
+    metaTitle:
+      "Notion + HubSpot Automation - CRM Data in Your Notion Wiki | GAIA",
     metaDescription:
       "Connect Notion and HubSpot with GAIA. Sync CRM contacts, deals, and company data to Notion databases, document customer context alongside HubSpot records, and keep sales and operations aligned.",
     keywords: [
@@ -1484,12 +1545,14 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "Yes. GAIA reads all custom properties defined in your HubSpot portal and lets you map them to corresponding Notion database properties. This includes custom contact properties, deal properties, and company properties created for your specific business process.",
       },
       {
-        question: "Does GAIA support HubSpot's association between contacts, companies, and deals?",
+        question:
+          "Does GAIA support HubSpot's association between contacts, companies, and deals?",
         answer:
           "GAIA syncs the primary association data between HubSpot objects to Notion relation properties where the linked Notion databases are also synced. For example, a Notion contact page can have a relation to the linked company page and deal page if all three HubSpot object types are configured for sync.",
       },
       {
-        question: "Is bidirectional sync safe — could Notion changes overwrite important HubSpot data?",
+        question:
+          "Is bidirectional sync safe — could Notion changes overwrite important HubSpot data?",
         answer:
           "GAIA's bidirectional sync is carefully managed. By default, GAIA only writes to HubSpot fields that you explicitly designate as writable, and all Notion-to-HubSpot sync is logged. We recommend starting with one-way HubSpot-to-Notion sync and enabling bidirectional sync selectively after validating the field mappings.",
       },
@@ -1578,7 +1641,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "GAIA supports Jira Cloud natively. Jira Server and Jira Data Center integrations are available with additional configuration and require network access to your self-hosted instance.",
       },
       {
-        question: "Will GAIA create duplicate Jira tickets if the same issue appears in multiple PRs?",
+        question:
+          "Will GAIA create duplicate Jira tickets if the same issue appears in multiple PRs?",
         answer:
           "No. GAIA tracks the relationship between GitHub PRs and Jira tickets and updates the existing ticket rather than creating duplicates. Multiple PRs can be linked to the same Jira ticket with individual status updates per PR.",
       },
@@ -1593,7 +1657,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "hubspot",
     tagline:
       "Log deployment activity to HubSpot deals and notify sales when customer-facing features ship",
-    metaTitle: "GitHub + HubSpot Integration - Link Code Releases to CRM | GAIA",
+    metaTitle:
+      "GitHub + HubSpot Integration - Link Code Releases to CRM | GAIA",
     metaDescription:
       "Connect GitHub and HubSpot with GAIA. Auto-log releases to deals, alert sales when requested features ship, and tie engineering output to customer revenue.",
     keywords: [
@@ -1652,12 +1717,14 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA match a GitHub release to the right HubSpot deal?",
+        question:
+          "How does GAIA match a GitHub release to the right HubSpot deal?",
         answer:
           "GAIA matches via customer or company labels on GitHub issues, release notes mentioning account names, or a mapping table you configure in GAIA's settings that associates repositories with specific HubSpot companies.",
       },
       {
-        question: "Can GAIA pull HubSpot deal data into GitHub for engineer context?",
+        question:
+          "Can GAIA pull HubSpot deal data into GitHub for engineer context?",
         answer:
           "Yes. GAIA can add a comment to a GitHub issue with the relevant HubSpot deal stage and contact information, giving engineers context about which customers are waiting on a fix or feature.",
       },
@@ -1747,7 +1814,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "Yes. GAIA can read and write to standard Salesforce objects as well as custom objects and fields. During setup you can map GitHub event data to any Salesforce field in your org.",
       },
       {
-        question: "How does GAIA know which Salesforce account a GitHub release affects?",
+        question:
+          "How does GAIA know which Salesforce account a GitHub release affects?",
         answer:
           "GAIA matches based on labels in GitHub repositories or issues, release note content, or a mapping table you define in GAIA's settings that associates repositories with specific Salesforce accounts.",
       },
@@ -1757,7 +1825,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "GAIA updates Salesforce records via the standard API, which can trigger any Salesforce automation rules, flows, or process builder processes you have configured on those objects.",
       },
       {
-        question: "Is this secure for enterprise Salesforce orgs with strict data policies?",
+        question:
+          "Is this secure for enterprise Salesforce orgs with strict data policies?",
         answer:
           "Yes. GAIA uses OAuth 2.0 with Salesforce's standard connected app mechanism. No GitHub code or sensitive data is stored in Salesforce—only metadata like release names, dates, and links.",
       },
@@ -1832,17 +1901,20 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA send adaptive cards instead of plain text messages to Teams?",
+        question:
+          "Can GAIA send adaptive cards instead of plain text messages to Teams?",
         answer:
           "Yes. GAIA uses Microsoft's adaptive card format to post richly structured GitHub notifications to Teams, including action buttons to approve PRs, close issues, or navigate to GitHub directly from the card.",
       },
       {
-        question: "Does GAIA work with Teams private channels and guest access?",
+        question:
+          "Does GAIA work with Teams private channels and guest access?",
         answer:
           "GAIA can post to public and private Teams channels that the GAIA bot has been added to. Guest access permissions are respected—GAIA will only post to channels where it has been explicitly granted access.",
       },
       {
-        question: "Can team members interact with GitHub through Teams using GAIA?",
+        question:
+          "Can team members interact with GitHub through Teams using GAIA?",
         answer:
           "Yes. GAIA's Teams bot understands natural language commands, so a team member can type '@GAIA close issue #42 in repo frontend' directly in Teams and GAIA will execute the action in GitHub.",
       },
@@ -1922,7 +1994,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA prevent a GitHub release from deploying if Stripe config is wrong?",
+        question:
+          "Can GAIA prevent a GitHub release from deploying if Stripe config is wrong?",
         answer:
           "GAIA can block a GitHub Actions deployment step by failing a pre-deployment check and posting the configuration discrepancies as a PR comment. Actual deployment gating requires integrating GAIA's check into your CI/CD pipeline.",
       },
@@ -2102,22 +2175,26 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA actually embed the Loom video in GitHub or just link to it?",
+        question:
+          "Does GAIA actually embed the Loom video in GitHub or just link to it?",
         answer:
           "GitHub doesn't support embedded video playback in PR descriptions. GAIA formats the Loom link as a prominent thumbnail preview using Loom's embed URL, which shows the video title and a preview image with a clear link to watch it.",
       },
       {
-        question: "Can GAIA use Loom transcripts to summarize a PR for non-technical reviewers?",
+        question:
+          "Can GAIA use Loom transcripts to summarize a PR for non-technical reviewers?",
         answer:
           "Yes. GAIA can extract the auto-generated Loom transcript and create a plain-language summary of the walkthrough, which it can post to Slack or include in a Jira ticket for stakeholders who don't read code.",
       },
       {
-        question: "Is this useful for teams that don't currently do video reviews?",
+        question:
+          "Is this useful for teams that don't currently do video reviews?",
         answer:
           "Absolutely. GAIA's prompts are configurable—you can start with only suggesting Looms for very large PRs or specific repositories, gradually normalizing the practice without overwhelming the team with new process requirements.",
       },
       {
-        question: "Can GAIA notify a reviewer when a new Loom walkthrough is added to a PR?",
+        question:
+          "Can GAIA notify a reviewer when a new Loom walkthrough is added to a PR?",
         answer:
           "Yes. When a Loom link is added to a PR that already has pending reviewers, GAIA sends a notification to the assigned reviewers alerting them that a walkthrough has been posted, often prompting faster review.",
       },
@@ -2132,7 +2209,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     toolBSlug: "jira",
     tagline:
       "Sync Notion project docs with Jira issues so your specs and sprint tickets always match",
-    metaTitle: "Notion + Jira Integration - Sync Specs and Sprint Tickets | GAIA",
+    metaTitle:
+      "Notion + Jira Integration - Sync Specs and Sprint Tickets | GAIA",
     metaDescription:
       "Connect Notion and Jira with GAIA. Sync spec pages to Jira epics, create tickets from Notion requirements, and keep your docs aligned with your sprint board.",
     keywords: [
@@ -2191,17 +2269,20 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create Notion pages from Jira epics that already exist?",
+        question:
+          "Can GAIA create Notion pages from Jira epics that already exist?",
         answer:
           "Yes. GAIA can run an initial import that creates Notion pages for existing Jira epics, allowing you to establish the sync relationship even if Jira was already populated before you set up the integration.",
       },
       {
-        question: "Does GAIA handle rich text formatting when converting between Notion and Jira?",
+        question:
+          "Does GAIA handle rich text formatting when converting between Notion and Jira?",
         answer:
           "GAIA converts Notion's rich text blocks to Jira's wiki markup and vice versa, preserving headings, lists, code blocks, and basic formatting. Complex Notion page layouts are simplified to flat Jira descriptions.",
       },
       {
-        question: "What happens when a Jira ticket is deleted—does GAIA delete the Notion page?",
+        question:
+          "What happens when a Jira ticket is deleted—does GAIA delete the Notion page?",
         answer:
           "No. GAIA does not delete Notion pages when a Jira ticket is removed. Instead, it marks the linked Notion record as archived or removes the Jira link property, leaving the documentation intact.",
       },
@@ -2291,12 +2372,14 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "Salesforce-to-Notion sync is event-driven and near real-time. Notion-to-Salesforce sync (e.g., logging meeting notes) can be triggered manually by the user or automatically when a Notion page reaches a specified status.",
       },
       {
-        question: "Does GAIA expose sensitive CRM data to unauthorized Notion users?",
+        question:
+          "Does GAIA expose sensitive CRM data to unauthorized Notion users?",
         answer:
           "GAIA writes to the Notion pages and databases you designate and respects Notion's existing permission model. If a Notion page is restricted to specific members, only those members can view the Salesforce-derived content.",
       },
       {
-        question: "Can multiple Salesforce accounts map to a single Notion page?",
+        question:
+          "Can multiple Salesforce accounts map to a single Notion page?",
         answer:
           "Yes. For customers with multiple Salesforce account records (e.g., parent and child accounts), GAIA can consolidate the relevant data into a single Notion page or create linked child pages, depending on your configured structure.",
       },
@@ -2371,12 +2454,14 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA embed Loom videos directly in Notion or just link to them?",
+        question:
+          "Does GAIA embed Loom videos directly in Notion or just link to them?",
         answer:
           "GAIA uses Notion's embed block to insert Loom videos directly into pages so they can be watched without leaving Notion. The video appears as an inline playable embed rather than an external link.",
       },
       {
-        question: "How accurate are Loom's auto-generated transcripts for GAIA to work with?",
+        question:
+          "How accurate are Loom's auto-generated transcripts for GAIA to work with?",
         answer:
           "Loom's transcripts are generally accurate for clear speech but may need light editing for technical terms or heavy accents. GAIA's transcript-to-Notion feature works well for structured content and clearly stated action items.",
       },
@@ -2386,7 +2471,8 @@ export const combosBatchC: Record<string, IntegrationCombo> = {
           "Yes. GAIA can run an initial batch import of your existing Loom library, creating Notion pages or database entries for each video. You can filter which videos to import by date range, workspace folder, or creator.",
       },
       {
-        question: "What if I record a Loom that belongs to multiple Notion pages?",
+        question:
+          "What if I record a Loom that belongs to multiple Notion pages?",
         answer:
           "GAIA can embed the same Loom video in multiple Notion pages if the video's tags or content match multiple pages. You can also manually specify multiple destination pages when sharing the Loom via GAIA.",
       },

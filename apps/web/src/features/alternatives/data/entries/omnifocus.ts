@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "OmniFocus",
   domain: "omnifocus.com",
   category: "task-manager",
-  tagline: "The gold standard GTD app for Apple — but Mac/iOS only, $150, and no AI",
+  tagline:
+    "The gold standard GTD app for Apple — but Mac/iOS only, $150, and no AI",
   painPoints: [
     "OmniFocus is Apple-only — no Windows, no Android, no web app beyond a limited browser version; your GTD system is locked to the Apple ecosystem",
     "Pricing starts at $99.99 (Standard) or $149.99 (Pro) as one-time purchases, plus subscription options — expensive for individuals just needing personal task management",
@@ -13,7 +14,8 @@ export const entry: AlternativeData = {
     "No AI — OmniFocus does not suggest priorities, surface overdue tasks proactively, or learn from your patterns",
     "GTD setup requires significant manual configuration of Areas, Projects, Contexts, and Perspectives before the system becomes useful",
   ],
-  metaTitle: "OmniFocus Alternative | GAIA — AI Task Manager for Mac, Windows, Android & Web",
+  metaTitle:
+    "OmniFocus Alternative | GAIA — AI Task Manager for Mac, Windows, Android & Web",
   metaDescription:
     "Looking for a cross-platform OmniFocus alternative with AI? GAIA works on web, desktop, mobile, and CLI — with automatic task capture from email and proactive prioritization. Open source and self-hostable.",
   keywords: [

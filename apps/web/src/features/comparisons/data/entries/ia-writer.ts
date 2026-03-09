@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Minimalist markdown writing with focus mode",
   description:
     "iA Writer is a minimalist markdown writing app focused on pure distraction-free writing with a distinctive Focus Mode that highlights only the sentence or paragraph you're currently writing. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and 50+ integrations.",
-  metaTitle: "iA Writer Alternative with AI Automation & Workflow Integration | GAIA vs iA Writer",
+  metaTitle:
+    "iA Writer Alternative with AI Automation & Workflow Integration | GAIA vs iA Writer",
   metaDescription:
     "iA Writer is minimalist but isolated from your workflow. GAIA is a free, open-source iA Writer alternative with AI email management, calendar automation, and cross-platform workflow orchestration across 50+ integrations.",
   keywords: [
@@ -91,7 +92,8 @@ GAIA complements this kind of focused writing tool by managing the surrounding w
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — data in your own infrastructure",
-      competitor: "Proprietary closed-source app; texts stored locally or via iCloud",
+      competitor:
+        "Proprietary closed-source app; texts stored locally or via iCloud",
     },
     {
       feature: "Pricing",

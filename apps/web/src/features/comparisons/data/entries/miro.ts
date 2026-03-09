@@ -4,7 +4,8 @@ export const entry: ComparisonData = {
   slug: "miro",
   name: "Miro",
   domain: "miro.com",
-  tagline: "Online collaborative whiteboard for visual brainstorming and planning",
+  tagline:
+    "Online collaborative whiteboard for visual brainstorming and planning",
   description:
     "Miro is a leading online collaborative whiteboard platform used by teams for brainstorming, sprint planning, journey mapping, and workshop facilitation. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations — turning plans into automated action.",
   metaTitle:
@@ -46,7 +47,8 @@ GAIA operates in that execution gap. As a proactive AI assistant, GAIA reads you
     {
       feature: "Email integration",
       gaia: "Full Gmail management — reads, triages, drafts replies, and creates tasks or notes from emails automatically",
-      competitor: "No email integration; operates entirely within the visual canvas",
+      competitor:
+        "No email integration; operates entirely within the visual canvas",
     },
     {
       feature: "Task management",
@@ -87,7 +89,8 @@ GAIA operates in that execution gap. As a proactive AI assistant, GAIA reads you
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — data stays in your own infrastructure",
-      competitor: "Proprietary closed-source SaaS; no self-hosting option available",
+      competitor:
+        "Proprietary closed-source SaaS; no self-hosting option available",
     },
     {
       feature: "Pricing",

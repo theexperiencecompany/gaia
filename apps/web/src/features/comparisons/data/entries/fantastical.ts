@@ -108,7 +108,8 @@ export const entry: ComparisonData = {
         "GAIA supports macOS, Windows, and Linux desktops, iOS and Android mobile apps, a web app, and CLI and bot interfaces. Unlike Fantastical, GAIA is not limited to the Apple ecosystem, making it a practical choice for users who work across multiple platforms or operating systems.",
     },
     {
-      question: "Is Fantastical better than GAIA at calendar features specifically?",
+      question:
+        "Is Fantastical better than GAIA at calendar features specifically?",
       answer:
         "Fantastical is a dedicated calendar app with a decade of refinement, deep Apple system integrations, and a UI purpose-built for scheduling. GAIA's calendar capabilities are broad and AI-powered but not a direct replacement for Fantastical's native Apple experience. If calendar UI polish is your top priority and you are fully in the Apple ecosystem, Fantastical excels. If you want a single system that also manages your email, tasks, and automations, GAIA is the stronger choice.",
     },

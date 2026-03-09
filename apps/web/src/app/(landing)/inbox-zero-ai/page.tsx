@@ -5,11 +5,11 @@ import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
+  generateBreadcrumbSchema,
   generateFAQSchema,
   generateHowToSchema,
   generatePageMetadata,
   generateProductSchema,
-  generateBreadcrumbSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -130,7 +130,15 @@ export default function InboxZeroAiPage() {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, howToSchema, generateProductSchema()]} />
+      <JsonLd
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          faqSchema,
+          howToSchema,
+          generateProductSchema(),
+        ]}
+      />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -152,8 +160,8 @@ export default function InboxZeroAiPage() {
           </h1>
           <p className="text-xl leading-relaxed text-zinc-400">
             GAIA reads every email, classifies it by urgency, drafts replies in
-            your voice, converts action items to tasks, and archives the noise
-            — automatically, every day.
+            your voice, converts action items to tasks, and archives the noise —
+            automatically, every day.
           </p>
         </header>
 
@@ -172,14 +180,16 @@ export default function InboxZeroAiPage() {
             <p>
               GTD frameworks and zero-inbox methodologies work briefly — then
               life gets busy, the inbox refills, and the guilt accumulates. The
-              problem isn&apos;t your system. It&apos;s that managing email is genuinely
-              time-consuming work that you shouldn&apos;t be doing manually.
+              problem isn&apos;t your system. It&apos;s that managing email is
+              genuinely time-consuming work that you shouldn&apos;t be doing
+              manually.
             </p>
             <p>
               Gmail filters and rules help with known patterns, but they
-              can&apos;t read context. They can&apos;t tell the difference between an
-              urgent reply from a customer and a newsletter from that same
-              domain. They don&apos;t draft responses. They don&apos;t create tasks.
+              can&apos;t read context. They can&apos;t tell the difference
+              between an urgent reply from a customer and a newsletter from that
+              same domain. They don&apos;t draft responses. They don&apos;t
+              create tasks.
             </p>
             <p className="font-medium text-white">
               The only real solution to email overload is an AI that can read,
@@ -234,7 +244,10 @@ export default function InboxZeroAiPage() {
                   "Action items scattered across threads",
                   "Anxiety about what you might be missing",
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-zinc-300">
+                  <li
+                    key={item}
+                    className="flex items-start gap-2 text-sm text-zinc-300"
+                  >
                     <span className="mt-0.5 shrink-0 text-red-400">
                       &#x2212;
                     </span>
@@ -256,7 +269,10 @@ export default function InboxZeroAiPage() {
                   "Action items in your task manager",
                   "Inbox zero by 10am, every day",
                 ].map((item) => (
-                  <li key={item} className="flex items-start gap-2 text-sm text-zinc-300">
+                  <li
+                    key={item}
+                    className="flex items-start gap-2 text-sm text-zinc-300"
+                  >
                     <span className="mt-0.5 shrink-0 text-emerald-400">
                       &#x2714;
                     </span>
@@ -307,18 +323,16 @@ export default function InboxZeroAiPage() {
             is on the roadmap.
           </p>
           <div className="flex flex-wrap gap-2">
-            {[
-              "Gmail (personal)",
-              "Google Workspace",
-              "G Suite",
-            ].map((label) => (
-              <span
-                key={label}
-                className="rounded-full bg-zinc-700 px-3 py-1 text-sm text-zinc-300"
-              >
-                {label}
-              </span>
-            ))}
+            {["Gmail (personal)", "Google Workspace", "G Suite"].map(
+              (label) => (
+                <span
+                  key={label}
+                  className="rounded-full bg-zinc-700 px-3 py-1 text-sm text-zinc-300"
+                >
+                  {label}
+                </span>
+              ),
+            )}
             <span className="rounded-full border border-dashed border-zinc-600 px-3 py-1 text-sm text-zinc-500">
               Outlook — coming soon
             </span>
@@ -362,8 +376,8 @@ export default function InboxZeroAiPage() {
                 Open Source & Self-Host
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Run GAIA on your own servers with full privacy. MIT licensed
-                and free to self-host.
+                Run GAIA on your own servers with full privacy. MIT licensed and
+                free to self-host.
               </p>
             </Link>
             <Link

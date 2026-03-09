@@ -34,8 +34,7 @@ export const entry: ComparisonData = {
     {
       feature: "Integrations",
       gaia: "50+ ready-to-use integrations including Gmail, Slack, Notion, GitHub, Linear",
-      competitor:
-        "Integration capabilities that need developer configuration",
+      competitor: "Integration capabilities that need developer configuration",
     },
     {
       feature: "Memory",

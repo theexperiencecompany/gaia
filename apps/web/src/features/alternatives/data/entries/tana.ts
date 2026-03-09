@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Tana",
   domain: "tana.inc",
   category: "notes",
-  tagline: "Outliner-database hybrid with Supertags, AI automation, and connected notes",
+  tagline:
+    "Outliner-database hybrid with Supertags, AI automation, and connected notes",
   painPoints: [
     "Steep learning curve for Supertags, schemas, and node-based thinking",
     "Plus plan at $10/month for AI features and Google Calendar sync",

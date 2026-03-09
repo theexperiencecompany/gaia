@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "AI-powered email client built on Gmail",
   description:
     "Shortwave is an AI email client that layers intelligent writing assistance, thread summarization, and inbox automation on top of Gmail. GAIA is a proactive productivity OS that manages your email alongside your calendar, tasks, workflows, and 50+ integrations — all from a single assistant.",
-  metaTitle: "Shortwave Alternative with AI Task Management | GAIA vs Shortwave",
+  metaTitle:
+    "Shortwave Alternative with AI Task Management | GAIA vs Shortwave",
   metaDescription:
     "Shortwave enhances Gmail but is still email-only. GAIA is an open-source Shortwave alternative that manages email alongside calendar, tasks, and 50+ tool workflows — proactively acting before you ask, with a free tier.",
   keywords: [
@@ -122,7 +123,8 @@ export const entry: ComparisonData = {
         "GAIA manages your email through Gmail's API rather than replacing the Gmail interface itself. You can continue using Gmail or Shortwave as your reading interface while GAIA handles triage, labeling, replies, and task creation in the background. Think of GAIA as the intelligent layer that acts on your email, not a new inbox UI.",
     },
     {
-      question: "How does GAIA's memory differ from Shortwave's writing style learning?",
+      question:
+        "How does GAIA's memory differ from Shortwave's writing style learning?",
       answer:
         "Shortwave learns your writing style and personal facts from sent emails to make AI reply drafts sound more like you. GAIA uses a graph-based memory system that models structural relationships across your entire work context — connecting an email thread to the task it created, the meeting where it was discussed, and the person responsible. GAIA's memory informs actions across email, calendar, and tasks, not just the tone of a drafted reply.",
     },

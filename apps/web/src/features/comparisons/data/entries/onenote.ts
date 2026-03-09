@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Free digital notebook, part of Microsoft 365",
   description:
     "Microsoft OneNote is a free hierarchical notebook app bundled with Microsoft 365, offering flexible freeform notes across Windows, Mac, iOS, and Android. GAIA is a proactive AI assistant that connects your notes to email, calendar, tasks, and 50+ tools.",
-  metaTitle: "OneNote Alternative with AI Automation & 50+ Integrations | GAIA vs OneNote",
+  metaTitle:
+    "OneNote Alternative with AI Automation & 50+ Integrations | GAIA vs OneNote",
   metaDescription:
     "OneNote captures notes but doesn't connect them to your workflow. GAIA is a free, open-source OneNote alternative with AI email management, calendar automation, and proactive task creation across 50+ integrations.",
   keywords: [
@@ -135,7 +136,8 @@ For teams entrenched in Microsoft 365 who need a no-cost, familiar note-capture 
         "GAIA has a free hosted tier and is fully open source. Self-hosting GAIA is entirely free — you only pay for your own server infrastructure. OneNote is also free with a Microsoft account, though the full Microsoft 365 suite that most enterprise users rely on carries a per-seat subscription cost.",
     },
     {
-      question: "How does GAIA's organization system compare to OneNote's notebooks?",
+      question:
+        "How does GAIA's organization system compare to OneNote's notebooks?",
       answer:
         "OneNote uses a hierarchical system of notebooks, sections, and pages that you manually maintain. GAIA uses graph-based memory that automatically links related tasks, meetings, emails, and documents based on context. Rather than organizing information yourself, GAIA surfaces relevant connections when you need them.",
     },

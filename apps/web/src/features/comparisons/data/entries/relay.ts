@@ -4,7 +4,8 @@ export const entry: ComparisonData = {
   slug: "relay",
   name: "Relay.app",
   domain: "relay.app",
-  tagline: "Human-in-the-loop workflow automation combining AI and human judgment",
+  tagline:
+    "Human-in-the-loop workflow automation combining AI and human judgment",
   description:
     "Relay.app is a workflow automation platform distinguished by its human-in-the-loop architecture — workflows can pause and wait for human approval, review, or input at any step, blending AI actions with human judgment. GAIA is a proactive AI productivity OS that manages email, calendar, tasks, and 50+ integrations autonomously through natural language, built for individuals who want AI to handle the operational layer of their work rather than build and maintain approval-gated workflow chains.",
   metaTitle: "Relay App Alternative with Proactive AI | GAIA vs Relay",
@@ -104,7 +105,8 @@ export const entry: ComparisonData = {
     "Relay.app is the right choice for teams that need structured workflows where human oversight is a deliberate design requirement — approval chains, review steps, and escalation paths where AI alone should not make the final call. GAIA is the right choice for individuals who want a proactive AI to continuously manage their email, calendar, tasks, and cross-tool workflows without building and maintaining workflow templates. Relay gives humans control over automated processes; GAIA reduces how many processes require human attention in the first place.",
   faqs: [
     {
-      question: "Can GAIA handle the human-in-the-loop use cases that Relay.app is designed for?",
+      question:
+        "Can GAIA handle the human-in-the-loop use cases that Relay.app is designed for?",
       answer:
         "GAIA does not have Relay's structured approval-gate architecture where workflows explicitly pause for human review. However, GAIA surfaces items for your attention naturally through its interface — flagging high-priority emails, presenting draft replies for your review before sending, and notifying you when a decision requires input. For most personal productivity workflows, this conversational oversight model is sufficient. For business processes where a formal, auditable approval chain is required — legal review, financial approvals, customer escalations — Relay's explicit checkpoint model is more appropriate.",
     },

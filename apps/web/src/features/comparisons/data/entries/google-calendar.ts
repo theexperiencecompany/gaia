@@ -114,7 +114,8 @@ export const entry: ComparisonData = {
         "GAIA integrates directly with Google Calendar — it does not replace it. Your events stay in Google Calendar and sync across all your devices as normal. GAIA reads your calendar to prepare meeting briefings, detects scheduling requests in your Gmail inbox, creates events on your behalf through natural language, and connects your calendar activity to the broader context of your work across 50+ integrated tools. Think of GAIA as the intelligent layer on top of Google Calendar, not a substitute for it.",
     },
     {
-      question: "Can GAIA automatically create Google Calendar events from emails?",
+      question:
+        "Can GAIA automatically create Google Calendar events from emails?",
       answer:
         "Yes. GAIA monitors your Gmail inbox and can detect scheduling requests in email threads — even informal ones that do not contain formal calendar invitations. When it detects a meeting request, it can check your Google Calendar availability, create the event, and draft a confirmation reply automatically. Google Calendar itself only adds events from formal calendar invitations; GAIA extends this to any email that contains a scheduling intent.",
     },

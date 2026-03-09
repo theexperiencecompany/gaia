@@ -4,7 +4,8 @@ export const entry: ComparisonData = {
   slug: "chatgpt-enterprise",
   name: "ChatGPT Enterprise",
   domain: "openai.com",
-  tagline: "OpenAI's enterprise AI platform with SSO, admin controls, and GPT-4",
+  tagline:
+    "OpenAI's enterprise AI platform with SSO, admin controls, and GPT-4",
   description:
     "ChatGPT Enterprise gives organisations a secure, managed version of ChatGPT with admin controls, SSO, higher usage limits, and data privacy guarantees. GAIA goes beyond conversational AI to proactively manage workflows, email, calendar, and 50+ tool integrations with autonomous action — and is fully open source with self-hosting available.",
   metaTitle:
@@ -158,12 +159,14 @@ The data privacy story is also different in an important way. ChatGPT Enterprise
         "Yes. GAIA's self-hosting option gives enterprises complete data control on their own infrastructure — which is actually a stronger privacy posture than ChatGPT Enterprise's hosted model. GAIA's open source codebase allows enterprise security teams to audit every line of code. For enterprises with strict data sovereignty, compliance, or on-premises deployment requirements, GAIA's self-hosted deployment can meet requirements that ChatGPT Enterprise cannot.",
     },
     {
-      question: "How does GAIA handle team management compared to ChatGPT Enterprise?",
+      question:
+        "How does GAIA handle team management compared to ChatGPT Enterprise?",
       answer:
         "ChatGPT Enterprise provides admin dashboards, usage analytics, SSO, and team management controls for deploying ChatGPT across an organisation. GAIA's team features focus on shared workflow automation and tool orchestration across multiple users. For enterprise deployments, GAIA's self-hosted option gives IT full control over data, access policies, and integrations without dependence on OpenAI's infrastructure.",
     },
     {
-      question: "What makes GAIA better than ChatGPT for day-to-day workflow management?",
+      question:
+        "What makes GAIA better than ChatGPT for day-to-day workflow management?",
       answer:
         "ChatGPT requires you to initiate every interaction — open a chat window, write a prompt, receive a response, and manually act on it. GAIA works continuously in the background: reading your email before you check it, preparing your meeting briefs before your calls start, creating tasks from incoming messages, and running automations across your tool stack without any prompting. For day-to-day workflow management, the proactive model is far more efficient than the reactive model.",
     },
@@ -173,12 +176,14 @@ The data privacy story is also different in an important way. ChatGPT Enterprise
         "GAIA uses frontier language models for its AI capabilities, so it can help with drafting emails, writing summaries, and generating content. For teams that rely heavily on ChatGPT for complex long-form writing, creative content, or deep analytical reasoning, ChatGPT's dedicated chat interface may still be preferred for those specific tasks. GAIA's strength is applying AI to workflow orchestration and proactive action — the combination of both tools covers the full range of AI-assisted work.",
     },
     {
-      question: "What platforms does GAIA support compared to ChatGPT Enterprise?",
+      question:
+        "What platforms does GAIA support compared to ChatGPT Enterprise?",
       answer:
         "GAIA is available as a web application, a native Electron desktop app for macOS, Windows, and Linux, and a React Native mobile app for iOS and Android. ChatGPT Enterprise is available on web, iOS, and Android. GAIA's Electron desktop app provides a dedicated AI productivity workspace that integrates deeply with your tool stack, versus ChatGPT's chat-first interface designed for conversational interaction.",
     },
     {
-      question: "Which is better for engineering teams: GAIA or ChatGPT Enterprise?",
+      question:
+        "Which is better for engineering teams: GAIA or ChatGPT Enterprise?",
       answer:
         "Engineering teams use ChatGPT Enterprise primarily for code generation, code review, documentation, and technical Q&A — tasks where its language model quality and broad knowledge base shine. GAIA complements those use cases with proactive workflow management: reading GitHub notifications, triaging engineering-related emails, creating tasks from Slack discussions, preparing standup briefings from calendar and tool activity, and automating cross-tool workflows between GitHub, Linear, Jira, and Slack. Engineering managers in particular benefit from GAIA's ability to surface project blockers and coordinate across multiple tools proactively.",
     },
@@ -188,7 +193,8 @@ The data privacy story is also different in an important way. ChatGPT Enterprise
         "GAIA's self-hosted deployment gives enterprises complete data sovereignty — all email, task, and workflow data stays within your own infrastructure and never touches GAIA's or any third-party servers. This is a stronger privacy posture than ChatGPT Enterprise, which processes data on OpenAI's hosted servers with SOC 2 controls. For healthcare organisations, financial services firms, government agencies, and others with strict data handling requirements, GAIA's self-hosted deployment can meet compliance requirements that no hosted AI platform can.",
     },
     {
-      question: "Can GAIA be customised for an enterprise unlike ChatGPT Enterprise?",
+      question:
+        "Can GAIA be customised for an enterprise unlike ChatGPT Enterprise?",
       answer:
         "Yes — GAIA's open source codebase makes it fully customisable. Engineering teams can add new MCP integrations for proprietary internal tools, modify the agent's prompting and behaviour, extend the memory system, and build custom workflows tailored to their organisation's specific processes. ChatGPT Enterprise is a managed service — you can configure custom GPTs and system prompts, but you cannot modify the underlying model or platform. GAIA's open source model gives enterprises a level of customisation flexibility that ChatGPT Enterprise intentionally does not offer.",
     },
@@ -198,5 +204,9 @@ The data privacy story is also different in an important way. ChatGPT Enterprise
         "GAIA is available as a web application, a native Electron desktop app for macOS, Windows, and Linux, and a React Native mobile app for iOS and Android. For enterprise self-hosted deployments, GAIA runs on your own infrastructure via Docker, compatible with any cloud provider or on-premises environment. ChatGPT Enterprise is available on web and mobile with no self-hosted option. GAIA's infrastructure flexibility is a key advantage for organisations with specific deployment requirements.",
     },
   ],
-  relatedPersonas: ["startup-founders", "software-developers", "engineering-managers"],
+  relatedPersonas: [
+    "startup-founders",
+    "software-developers",
+    "engineering-managers",
+  ],
 };

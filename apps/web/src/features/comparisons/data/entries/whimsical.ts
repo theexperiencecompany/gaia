@@ -142,5 +142,9 @@ GAIA is designed to close that gap. As a proactive AI assistant, GAIA reads your
         "GAIA's self-hosting option is entirely free, and the hosted Pro plan is $20/month regardless of team size. Whimsical's Pro plan is $20/user/month, making GAIA significantly more cost-effective for teams of more than one person. GAIA also offers a free hosted tier for basic usage.",
     },
   ],
-  relatedPersonas: ["product-managers", "startup-founders", "software-developers"],
+  relatedPersonas: [
+    "product-managers",
+    "startup-founders",
+    "software-developers",
+  ],
 };

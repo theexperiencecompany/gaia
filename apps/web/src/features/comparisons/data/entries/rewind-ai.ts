@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Record, transcribe, and search everything on your Mac",
   description:
     "Rewind records and transcribes everything you see and hear on your Mac, creating a searchable archive of your digital activity. GAIA takes a fundamentally different approach — building structured, graph-based memory from real integrations across email, calendar, and tasks, then acting on that context proactively.",
-  metaTitle: "Rewind AI Alternative with Active Task Management | GAIA vs Rewind",
+  metaTitle:
+    "Rewind AI Alternative with Active Task Management | GAIA vs Rewind",
   metaDescription:
     "Rewind records and searches your screen passively but doesn't take action. GAIA is an open-source Rewind alternative with active task management — it reads live integrations, acts on email, manages your calendar, and automates workflows.",
   keywords: [
@@ -74,8 +75,7 @@ export const entry: ComparisonData = {
     {
       feature: "Platform support",
       gaia: "Web, macOS, Windows, Linux desktop apps, iOS and Android mobile apps, CLI, and Discord/Slack/Telegram bots",
-      competitor:
-        "macOS only; no Windows, Linux, mobile, or web app support",
+      competitor: "macOS only; no Windows, Linux, mobile, or web app support",
     },
     {
       feature: "Pricing",
@@ -110,7 +110,8 @@ export const entry: ComparisonData = {
         "Yes. GAIA runs on Web, macOS, Windows, and Linux via its desktop app, plus iOS and Android mobile apps, a CLI, and integrations with Discord, Slack, and Telegram. Rewind is macOS-only and has no Windows, Linux, or mobile client.",
     },
     {
-      question: "How does GAIA's memory compare to Rewind's searchable timeline?",
+      question:
+        "How does GAIA's memory compare to Rewind's searchable timeline?",
       answer:
         "Rewind's memory is a compressed archive of your screen and audio — a verbatim record of what you saw and heard. GAIA's memory is a graph-based model that understands relationships: a task is connected to the email that created it, the meeting where it was discussed, and the person responsible. Rewind helps you recall the past; GAIA uses context to reason about your work and take the next action for you.",
     },

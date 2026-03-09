@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Your calendar, connected to your Notion workspace",
   description:
     "Notion Calendar (formerly Cron) is a polished, keyboard-driven calendar app that connects Google Calendar events to Notion pages and databases. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across 50+ connected tools.",
-  metaTitle: "Notion Calendar Alternative with AI Email | GAIA vs Notion Calendar",
+  metaTitle:
+    "Notion Calendar Alternative with AI Email | GAIA vs Notion Calendar",
   metaDescription:
     "Notion Calendar is a beautiful calendar app but doesn't read your email or automate workflows. GAIA is an open-source Notion Calendar alternative with AI email management, task creation, and workflow automation across 50+ tools — free to self-host.",
   keywords: [
@@ -112,7 +113,8 @@ export const entry: ComparisonData = {
         "Notion Calendar does not manage email — that is handled by the separate Notion Mail app, which currently supports only Gmail and has limited integration with Notion databases. Notion Calendar also has no autonomous task creation; tasks must be manually set up in Notion databases and linked to calendar events by the user. GAIA handles both automatically: it reads and triages your Gmail inbox, drafts replies, converts email threads into actionable tasks, and manages todos with priorities, deadlines, and projects.",
     },
     {
-      question: "Is GAIA a good alternative to Notion Calendar for Linux users?",
+      question:
+        "Is GAIA a good alternative to Notion Calendar for Linux users?",
       answer:
         "Yes. Notion Calendar is not available on Linux, which effectively locks out a significant portion of developers and technical users. GAIA provides full desktop support on macOS, Windows, and Linux, in addition to web, mobile (iOS and Android), CLI, and bot interfaces. Linux users who want a capable AI-powered calendar and productivity assistant with no platform restrictions will find GAIA a practical and feature-rich alternative.",
     },

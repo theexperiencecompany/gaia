@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "AI writing assistant for grammar, style, and tone",
   description:
     "Grammarly is an AI-powered writing assistant that checks grammar, spelling, style, and tone across browsers, apps, and documents. GAIA is a proactive AI productivity assistant that manages email, tasks, calendar, and 50+ integrations — with AI-assisted writing built in.",
-  metaTitle: "Grammarly Alternative with Proactive AI Email & Workflow Management | GAIA vs Grammarly",
+  metaTitle:
+    "Grammarly Alternative with Proactive AI Email & Workflow Management | GAIA vs Grammarly",
   metaDescription:
     "Grammarly improves your writing but doesn't manage your workflow. GAIA is a free, open-source Grammarly alternative with AI email drafting, proactive task creation, and workflow automation across 50+ integrations.",
   keywords: [
@@ -90,7 +91,8 @@ GAIA is built for that broader scope. It reads your Gmail inbox and drafts repli
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — data in your own infrastructure",
-      competitor: "Proprietary closed-source SaaS; text processed on Grammarly's servers",
+      competitor:
+        "Proprietary closed-source SaaS; text processed on Grammarly's servers",
     },
     {
       feature: "Pricing",
@@ -131,7 +133,8 @@ GAIA is built for that broader scope. It reads your Gmail inbox and drafts repli
         "For email workflow management, yes. GAIA reads your Gmail inbox, drafts context-aware replies, triages threads, and creates tasks from messages — a far more comprehensive email capability than Grammarly's browser extension, which only improves the quality of text you write inside Gmail. They approach email from different angles.",
     },
     {
-      question: "Does GAIA process my text through external servers like Grammarly?",
+      question:
+        "Does GAIA process my text through external servers like Grammarly?",
       answer:
         "GAIA is open source and can be self-hosted, meaning your text can be processed entirely within your own infrastructure. This makes it a strong choice for organizations with privacy or compliance requirements. Grammarly processes text through its own cloud servers, which has raised data privacy concerns in some enterprise environments.",
     },

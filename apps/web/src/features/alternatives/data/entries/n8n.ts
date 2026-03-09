@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "n8n",
   domain: "n8n.io",
   category: "automation",
-  tagline: "Open-source workflow automation with self-hosting and 400+ integrations",
+  tagline:
+    "Open-source workflow automation with self-hosting and 400+ integrations",
   painPoints: [
     "Requires technical knowledge to self-host and maintain",
     "Visual node editor has a steep learning curve for non-developers",

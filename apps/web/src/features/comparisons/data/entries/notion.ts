@@ -133,5 +133,9 @@ export const entry: ComparisonData = {
         "For larger teams, GAIA's self-hosting option removes per-seat pricing entirely — you only pay for your own infrastructure. Notion's Business plan is $20 per user per month billed annually, which scales quickly with headcount. GAIA's hosted Pro plan starts at $20/month regardless of seat count, and self-hosting is free.",
     },
   ],
-  relatedPersonas: ["product-managers", "software-developers", "startup-founders"],
+  relatedPersonas: [
+    "product-managers",
+    "software-developers",
+    "startup-founders",
+  ],
 };

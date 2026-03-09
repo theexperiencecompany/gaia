@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Akiflow",
   domain: "akiflow.com",
   category: "task-manager",
-  tagline: "Unified task inbox and time-blocking planner with 30+ app integrations",
+  tagline:
+    "Unified task inbox and time-blocking planner with 30+ app integrations",
   painPoints: [
     "No free plan — only a 7-day trial before $15/month (annual) kicks in",
     "Time-blocking requires manual drag-and-drop scheduling each day",
@@ -70,7 +71,8 @@ export const entry: AlternativeData = {
         "Akiflow costs $15/month billed annually with no free plan. GAIA Pro is $20/month with a free tier and self-hosting option. Self-hosted GAIA is completely free, making it significantly more accessible.",
     },
     {
-      question: "Does GAIA aggregate tasks from tools like Asana and Jira like Akiflow?",
+      question:
+        "Does GAIA aggregate tasks from tools like Asana and Jira like Akiflow?",
       answer:
         "GAIA can connect to multiple task sources via MCP integrations, including reading tasks from connected tools and creating a unified view. Its primary advantage over Akiflow is the AI layer that creates and prioritizes tasks automatically.",
     },

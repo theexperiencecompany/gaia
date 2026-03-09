@@ -85,7 +85,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Notion",
     toolBSlug: "notion",
     tagline: "Save Teams meeting notes and decisions to Notion automatically",
-    metaTitle: "Microsoft Teams + Notion Automation - Meeting Notes to Docs | GAIA",
+    metaTitle:
+      "Microsoft Teams + Notion Automation - Meeting Notes to Docs | GAIA",
     metaDescription:
       "Connect Microsoft Teams and Notion with GAIA. Auto-save meeting summaries, decisions, and action items from Teams to structured Notion pages.",
     keywords: [
@@ -162,7 +163,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "GitHub",
     toolBSlug: "github",
     tagline: "Get GitHub PR and issue notifications directly in Teams channels",
-    metaTitle: "Microsoft Teams + GitHub Automation - Dev Alerts in Teams | GAIA",
+    metaTitle:
+      "Microsoft Teams + GitHub Automation - Dev Alerts in Teams | GAIA",
     metaDescription:
       "Connect Microsoft Teams and GitHub with GAIA. Post pull request updates, issue alerts, and CI status to Teams channels and keep your engineering team informed.",
     keywords: [
@@ -239,7 +241,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
     tagline: "Keep Teams meetings and Google Calendar in perfect sync",
-    metaTitle: "Microsoft Teams + Google Calendar Sync - Unified Scheduling | GAIA",
+    metaTitle:
+      "Microsoft Teams + Google Calendar Sync - Unified Scheduling | GAIA",
     metaDescription:
       "Connect Microsoft Teams and Google Calendar with GAIA. Sync meetings bidirectionally, avoid double-bookings, and keep your schedule unified across both platforms.",
     keywords: [
@@ -315,8 +318,10 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolASlug: "microsoft-teams",
     toolB: "Asana",
     toolBSlug: "asana",
-    tagline: "Bring Asana project updates into Teams and create tasks from chat",
-    metaTitle: "Microsoft Teams + Asana Automation - Tasks Meet Team Chat | GAIA",
+    tagline:
+      "Bring Asana project updates into Teams and create tasks from chat",
+    metaTitle:
+      "Microsoft Teams + Asana Automation - Tasks Meet Team Chat | GAIA",
     metaDescription:
       "Connect Microsoft Teams and Asana with GAIA. Post Asana project updates to Teams channels and turn Teams messages into Asana tasks without leaving chat.",
     keywords: [
@@ -393,7 +398,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Slack",
     toolBSlug: "slack",
     tagline: "Share Drive files in Slack and auto-save Slack files to Drive",
-    metaTitle: "Google Drive + Slack Automation - File Sharing Made Easy | GAIA",
+    metaTitle:
+      "Google Drive + Slack Automation - File Sharing Made Easy | GAIA",
     metaDescription:
       "Connect Google Drive and Slack with GAIA. Share Drive files with proper permissions in Slack channels and automatically save important Slack files to Drive folders.",
     keywords: [
@@ -470,7 +476,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Notion",
     toolBSlug: "notion",
     tagline: "Attach Drive files to Notion pages and organize Drive by project",
-    metaTitle: "Google Drive + Notion Automation - Connect Docs and Pages | GAIA",
+    metaTitle:
+      "Google Drive + Notion Automation - Connect Docs and Pages | GAIA",
     metaDescription:
       "Connect Google Drive and Notion with GAIA. Embed Drive files in Notion pages, organize Drive folders by project, and keep documentation and files in sync.",
     keywords: [
@@ -546,8 +553,10 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolASlug: "google-drive",
     toolB: "Asana",
     toolBSlug: "asana",
-    tagline: "Attach Drive documents to Asana tasks and keep project files organized",
-    metaTitle: "Google Drive + Asana Automation - Files Meet Task Management | GAIA",
+    tagline:
+      "Attach Drive documents to Asana tasks and keep project files organized",
+    metaTitle:
+      "Google Drive + Asana Automation - Files Meet Task Management | GAIA",
     metaDescription:
       "Connect Google Drive and Asana with GAIA. Attach relevant Drive files to Asana tasks automatically, create Drive folders for new projects, and keep work organized.",
     keywords: [
@@ -605,7 +614,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
           "You configure which file types and folders trigger task attachment. GAIA only attaches files that match your defined rules, keeping tasks clean.",
       },
       {
-        question: "Can GAIA set Drive file permissions when attaching to Asana?",
+        question:
+          "Can GAIA set Drive file permissions when attaching to Asana?",
         answer:
           "Yes. When attaching a Drive file to an Asana task, GAIA can automatically grant view access to all task assignees and followers.",
       },
@@ -623,7 +633,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolASlug: "google-drive",
     toolB: "Trello",
     toolBSlug: "trello",
-    tagline: "Attach Drive files to Trello cards and keep project docs accessible",
+    tagline:
+      "Attach Drive files to Trello cards and keep project docs accessible",
     metaTitle: "Google Drive + Trello Automation - Files on Every Card | GAIA",
     metaDescription:
       "Connect Google Drive and Trello with GAIA. Automatically attach Drive documents to Trello cards, create Drive folders for boards, and keep project files organized.",
@@ -687,7 +698,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
           "Yes. When attaching a Drive file to a Trello card, GAIA can automatically grant view or edit permissions to all current card members.",
       },
       {
-        question: "Does GAIA support Trello Power-Ups in addition to direct integration?",
+        question:
+          "Does GAIA support Trello Power-Ups in addition to direct integration?",
         answer:
           "GAIA works at the API level and is independent of Trello Power-Ups. It provides automation capabilities beyond what the built-in Google Drive Power-Up offers.",
       },
@@ -759,7 +771,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
           "Yes. GAIA lets you select individual Figma files or entire projects to monitor. Unrelated files produce no Slack noise.",
       },
       {
-        question: "Does GAIA notify the specific person mentioned in a Figma comment?",
+        question:
+          "Does GAIA notify the specific person mentioned in a Figma comment?",
         answer:
           "Yes. If a Figma comment mentions a team member with @, GAIA can DM them in Slack so they are personally notified of the mention.",
       },
@@ -855,7 +868,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolB: "Asana",
     toolBSlug: "asana",
     tagline: "Link Figma design deliverables to Asana tasks automatically",
-    metaTitle: "Figma + Asana Automation - Design Handoffs in Task Management | GAIA",
+    metaTitle:
+      "Figma + Asana Automation - Design Handoffs in Task Management | GAIA",
     metaDescription:
       "Connect Figma and Asana with GAIA. Link Figma design files to Asana tasks, update task status when designs are ready, and streamline design-to-development handoffs.",
     keywords: [
@@ -908,12 +922,14 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA know which Figma file corresponds to which Asana task?",
+        question:
+          "How does GAIA know which Figma file corresponds to which Asana task?",
         answer:
           "You configure the mapping during setup by linking Figma projects to Asana projects. GAIA then matches files and frames to tasks based on naming conventions or custom tags you define.",
       },
       {
-        question: "Can GAIA handle multiple design revisions on the same Asana task?",
+        question:
+          "Can GAIA handle multiple design revisions on the same Asana task?",
         answer:
           "Yes. Each time a new Figma version is published, GAIA appends a comment to the Asana task with the version number and link. The full revision history is visible on the task.",
       },
@@ -931,7 +947,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolASlug: "stripe",
     toolB: "Slack",
     toolBSlug: "slack",
-    tagline: "Get payment alerts, MRR updates, and churn notifications in Slack",
+    tagline:
+      "Get payment alerts, MRR updates, and churn notifications in Slack",
     metaTitle: "Stripe + Slack Automation - Revenue Alerts in Team Chat | GAIA",
     metaDescription:
       "Connect Stripe and Slack with GAIA. Post payment notifications, MRR milestones, failed charge alerts, and churn warnings to Slack channels automatically.",
@@ -995,7 +1012,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
           "GAIA lets you control which data fields appear in Slack notifications. You can include customer name and amount while omitting payment method details to protect sensitive information.",
       },
       {
-        question: "Can GAIA send Stripe alerts to different Slack channels by plan type?",
+        question:
+          "Can GAIA send Stripe alerts to different Slack channels by plan type?",
         answer:
           "Yes. You can route enterprise plan events to one channel and startup plan events to another. GAIA supports conditional routing based on Stripe metadata fields.",
       },
@@ -1008,7 +1026,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolASlug: "stripe",
     toolB: "Notion",
     toolBSlug: "notion",
-    tagline: "Build revenue dashboards and track payments inside Notion databases",
+    tagline:
+      "Build revenue dashboards and track payments inside Notion databases",
     metaTitle: "Stripe + Notion Automation - Revenue Data in Your Docs | GAIA",
     metaDescription:
       "Connect Stripe and Notion with GAIA. Sync Stripe payment data to Notion databases, build revenue dashboards, and track subscriptions alongside your business documentation.",
@@ -1067,7 +1086,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
           "Yes. During setup, GAIA can import existing Stripe customers and past payment records into Notion so your database starts populated with historical data.",
       },
       {
-        question: "How frequently does GAIA update the Notion revenue dashboard?",
+        question:
+          "How frequently does GAIA update the Notion revenue dashboard?",
         answer:
           "GAIA updates the dashboard on a schedule you configure — hourly, daily, or on every Stripe event. Real-time updates are available for critical metrics like new subscriptions.",
       },
@@ -1085,7 +1105,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolASlug: "airtable",
     toolB: "Slack",
     toolBSlug: "slack",
-    tagline: "Post Airtable record updates to Slack and create records from chat",
+    tagline:
+      "Post Airtable record updates to Slack and create records from chat",
     metaTitle: "Airtable + Slack Automation - Database Meets Team Chat | GAIA",
     metaDescription:
       "Connect Airtable and Slack with GAIA. Get Airtable record update notifications in Slack channels and create new Airtable records directly from Slack messages.",
@@ -1149,7 +1170,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
           "GAIA supports triggers on single select, status, checkbox, date, and linked record field changes. You configure the specific fields and values that are meaningful.",
       },
       {
-        question: "Can Slack notifications include linked record data from related tables?",
+        question:
+          "Can Slack notifications include linked record data from related tables?",
         answer:
           "Yes. GAIA can pull in linked record fields and roll-up values to include in Slack notifications, giving recipients complete context from related tables.",
       },
@@ -1216,7 +1238,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA handle field type differences between Airtable and Notion?",
+        question:
+          "How does GAIA handle field type differences between Airtable and Notion?",
         answer:
           "GAIA translates common field types automatically — Airtable select fields map to Notion select properties, Airtable dates map to Notion date properties. Custom mappings are available for edge cases.",
       },
@@ -1239,7 +1262,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     toolASlug: "airtable",
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
-    tagline: "Sync Airtable date fields to Google Calendar events automatically",
+    tagline:
+      "Sync Airtable date fields to Google Calendar events automatically",
     metaTitle: "Airtable + Google Calendar Sync - Dates Become Events | GAIA",
     metaDescription:
       "Connect Airtable and Google Calendar with GAIA. Turn Airtable date fields into Google Calendar events, keep deadlines visible, and sync changes in real time.",
@@ -1293,7 +1317,8 @@ export const combosBatchH: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync to specific Google Calendars, not just the primary?",
+        question:
+          "Can GAIA sync to specific Google Calendars, not just the primary?",
         answer:
           "Yes. During setup you choose which Google Calendar receives events from each Airtable table. Different tables can populate different calendars — a content calendar and a project calendar, for example.",
       },

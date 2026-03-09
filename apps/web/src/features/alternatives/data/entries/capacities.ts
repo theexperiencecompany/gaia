@@ -65,7 +65,8 @@ export const entry: AlternativeData = {
         "Capacities Pro is $11.99/month. GAIA Pro is $20/month but includes email management, calendar integration, task management, and 50+ tool connections alongside knowledge management. Self-hosted GAIA is free.",
     },
     {
-      question: "Does GAIA have an AI chat for knowledge queries like Capacities?",
+      question:
+        "Does GAIA have an AI chat for knowledge queries like Capacities?",
       answer:
         "Yes. GAIA's conversational interface can query your knowledge base, summarize past discussions, and surface relevant context from memory — similar to Capacities' AI chat but drawing from a richer data source including email and calendar.",
     },

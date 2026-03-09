@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Google Assistant",
   domain: "assistant.google.com",
   category: "ai-assistant",
-  tagline: "Voice-first AI assistant for Android, smart home, and Google services",
+  tagline:
+    "Voice-first AI assistant for Android, smart home, and Google services",
   painPoints: [
     "Being deprecated in favor of Gemini; future uncertain for power users",
     "Primarily voice-focused; limited for complex text-based workflows",

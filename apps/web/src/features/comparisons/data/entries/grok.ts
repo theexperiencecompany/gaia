@@ -51,12 +51,14 @@ The integration footprint tells the story clearly. Grok connects to X and provid
     {
       feature: "Email management",
       gaia: "Full Gmail automation: triage by urgency, draft replies, auto-label, create tasks from emails proactively",
-      competitor: "Can help draft email copy on request; no email inbox integration or automation",
+      competitor:
+        "Can help draft email copy on request; no email inbox integration or automation",
     },
     {
       feature: "Task management",
       gaia: "Native AI todo management with automatic task creation, priorities, deadlines, and semantic search",
-      competitor: "No task management; can help plan work when asked but does not track or execute tasks",
+      competitor:
+        "No task management; can help plan work when asked but does not track or execute tasks",
     },
     {
       feature: "Calendar integration",

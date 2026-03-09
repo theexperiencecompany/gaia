@@ -4,7 +4,8 @@ export const entry: ComparisonData = {
   slug: "focusmate",
   name: "Focusmate",
   domain: "focusmate.com",
-  tagline: "Virtual co-working and body-doubling for accountability-driven focus",
+  tagline:
+    "Virtual co-working and body-doubling for accountability-driven focus",
   description:
     "Focusmate pairs you with an accountability partner for 25, 50, or 75-minute virtual co-working sessions using body-doubling psychology to help you follow through on work. GAIA takes a different approach by proactively managing your workflow to create the conditions for deep focus without requiring a scheduled partner.",
   metaTitle:
@@ -60,8 +61,7 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
     {
       feature: "Email management",
       gaia: "Reads inbox proactively, triages messages by priority, creates tasks from emails, and drafts replies to reduce interruptions",
-      competitor:
-        "No email integration or inbox management",
+      competitor: "No email integration or inbox management",
     },
     {
       feature: "Calendar integration",
@@ -72,8 +72,7 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
     {
       feature: "Workflow automation",
       gaia: "Natural language multi-step workflows across 50+ tools that handle routine coordination automatically",
-      competitor:
-        "No workflow automation capability",
+      competitor: "No workflow automation capability",
     },
     {
       feature: "Asynchronous operation",
@@ -90,8 +89,7 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — your data stays in your own infrastructure",
-      competitor:
-        "Proprietary closed-source SaaS platform",
+      competitor: "Proprietary closed-source SaaS platform",
     },
     {
       feature: "Memory and context",
@@ -168,7 +166,8 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
         "GAIA reads your Google Calendar continuously and can proactively create protected work blocks before meetings have a chance to fill your day. It monitors your calendar for fragmentation — days where meetings are scheduled back-to-back without any deep work time — and surfaces or creates focus blocks accordingly. This calendar-level protection addresses one of the most common focus challenges for knowledge workers: not phone distraction, but a schedule that never allows for sustained work.",
     },
     {
-      question: "What integrations does GAIA support for focus and productivity?",
+      question:
+        "What integrations does GAIA support for focus and productivity?",
       answer:
         "GAIA integrates with Gmail, Google Calendar, Slack, Notion, Todoist, Linear, Jira, GitHub, Asana, and 40+ more tools via MCP. These integrations power its proactive workflow management: reading email to surface task priorities, monitoring calendar for meeting context, pulling GitHub activity into task status, and more. Focusmate has minimal external integrations — it is a self-contained platform focused on the session experience rather than workflow management.",
     },
@@ -178,7 +177,8 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
         "GAIA is available as a web application, a native Electron desktop app for macOS, Windows, and Linux, and a React Native mobile app for iOS and Android. This cross-platform availability means your AI productivity layer works wherever you are — on your desktop during deep work, on your phone between meetings, and on the web as a fallback. Focusmate is web-based and requires a video-capable device for its co-working sessions.",
     },
     {
-      question: "How does GAIA reduce cognitive overload compared to Focusmate?",
+      question:
+        "How does GAIA reduce cognitive overload compared to Focusmate?",
       answer:
         "Focusmate reduces the psychological barrier to starting work by providing human accountability in a session. GAIA reduces the cognitive overhead that accumulates before and between sessions — triaging your email so you do not have to, surfacing the highest-priority task from your backlog, and managing calendar scheduling so your day has protected focus time built in. The two approaches address different layers of the focus problem and work well together.",
     },
@@ -188,7 +188,8 @@ The tools also operate at different scopes. Focusmate is a single-purpose accoun
         "Yes. GAIA is fully open source on GitHub and can be deployed on your own infrastructure using Docker with no vendor dependency. Focusmate is a proprietary SaaS platform. For users who want complete control over their productivity data and the systems that manage it, GAIA's self-hosted option provides a level of ownership and transparency that no Focusmate plan can match.",
     },
     {
-      question: "What is the best productivity tool for remote workers: GAIA or Focusmate?",
+      question:
+        "What is the best productivity tool for remote workers: GAIA or Focusmate?",
       answer:
         "Both serve real needs for remote workers but in different ways. Focusmate addresses the social isolation of remote work by providing virtual co-working presence — the body-doubling effect is particularly valuable when working alone at home. GAIA addresses the workflow fragmentation of remote work by managing communication and task coordination across the multiple tools remote teams use. For remote workers, the combination of GAIA for workflow management and Focusmate for accountability sessions is often the most effective pairing.",
     },

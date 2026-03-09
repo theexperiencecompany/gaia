@@ -98,7 +98,8 @@ export const entry: ComparisonData = {
     "Roam Research is the right tool if building a dense, interconnected knowledge graph from your research, reading, and daily thinking is your primary goal. Its block-reference model is genuinely distinctive and has no exact equivalent. GAIA is the right tool if you want an AI assistant that proactively manages your email, calendar, tasks, and workflows — doing the operational work of running your day rather than storing your thoughts. They solve fundamentally different problems: Roam is where you build knowledge; GAIA is where your work gets done.",
   faqs: [
     {
-      question: "Can GAIA replace Roam Research for personal knowledge management?",
+      question:
+        "Can GAIA replace Roam Research for personal knowledge management?",
       answer:
         "GAIA and Roam Research serve meaningfully different purposes. Roam is purpose-built for building a networked knowledge graph through block references and daily notes — it excels at long-form research, literature review, and navigating complex idea structures built up over months. GAIA is built for productivity execution: managing email, calendar, tasks, and workflows proactively. GAIA captures contextual notes through conversation, email, and meetings and stores them in a graph-based memory system, but it is not a dedicated outliner or knowledge base editor. Many users find the two complementary: Roam as the thinking and research layer, GAIA as the action and execution layer.",
     },

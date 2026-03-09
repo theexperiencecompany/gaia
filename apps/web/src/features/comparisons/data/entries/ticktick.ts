@@ -102,7 +102,8 @@ export const entry: ComparisonData = {
         "Yes. GAIA provides AI-powered task management with labels, priorities, projects, deadlines, and semantic search. Unlike TickTick, GAIA also creates tasks automatically from your emails and calendar events, so your to-do list stays current without manual entry.",
     },
     {
-      question: "Does GAIA have a Pomodoro timer or habit tracker like TickTick?",
+      question:
+        "Does GAIA have a Pomodoro timer or habit tracker like TickTick?",
       answer:
         "GAIA is focused on proactive workflow automation rather than built-in focus timers or habit streaks. If Pomodoro sessions and habit tracking are central to your routine, TickTick excels in those areas. GAIA's strength is orchestrating work across your email, calendar, and connected tools.",
     },

@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "The best way to code with AI",
   description:
     "Cursor is an AI-first code editor built on VS Code that brings inline completions, multi-file edits, and background agents directly into the coding environment. GAIA complements the editor by managing everything outside it — email, calendar, GitHub notifications, Linear tickets, standup summaries, and 50+ integrations — so developers can stay in flow without context-switching.",
-  metaTitle: "Cursor AI Alternative for Full Productivity OS | GAIA vs Cursor AI",
+  metaTitle:
+    "Cursor AI Alternative for Full Productivity OS | GAIA vs Cursor AI",
   metaDescription:
     "Cursor is excellent inside the editor but won't manage your inbox, calendar, or cross-tool workflows. GAIA is an open-source Cursor AI companion for full productivity — handling email, GitHub notifications, Linear tickets, and 50+ integrations outside the editor.",
   keywords: [

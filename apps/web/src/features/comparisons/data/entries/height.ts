@@ -102,7 +102,8 @@ export const entry: ComparisonData = {
         "Height's AI was focused on team project management — triaging bugs, auto-tagging backlog items, and updating specs from conversation context. GAIA's AI is broader: it reads your inbox, drafts replies, creates tasks from emails, reschedules calendar conflicts, and executes multi-step automations across every tool you use. Both share the principle that AI should act, not just suggest.",
     },
     {
-      question: "Does GAIA work with the project management tools I already use?",
+      question:
+        "Does GAIA work with the project management tools I already use?",
       answer:
         "Yes. GAIA integrates with Linear, Jira, Notion, GitHub, and other project management tools via MCP. It can create and update issues, surface blocked tickets, and connect project work to the emails, calendar meetings, and Slack threads around it — giving you cross-tool context that standalone project managers cannot provide.",
     },

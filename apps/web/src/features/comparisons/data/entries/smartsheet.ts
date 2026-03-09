@@ -7,8 +7,7 @@ export const entry: ComparisonData = {
   tagline: "Spreadsheet-based project management for enterprise teams",
   description:
     "Smartsheet is an enterprise-grade work management platform that blends the familiarity of spreadsheets with project management features like Gantt charts, resource management, and automated workflows. GAIA is a proactive AI assistant that manages your email, calendar, tasks, and workflows autonomously across 50+ integrations — acting on your behalf rather than waiting for you to update a grid.",
-  metaTitle:
-    "Smartsheet Alternative with AI Automation | GAIA vs Smartsheet",
+  metaTitle: "Smartsheet Alternative with AI Automation | GAIA vs Smartsheet",
   metaDescription:
     "Smartsheet requires manual grid updates and per-seat pricing. GAIA is an open-source Smartsheet alternative with AI email triage, autonomous task creation, and free self-hosting.",
   keywords: [
@@ -164,7 +163,8 @@ The pricing model also diverges significantly. Smartsheet's pricing is per-seat 
         "Smartsheet's feature set and pricing structure is primarily optimised for enterprise teams. Small teams often find its complexity excessive and its per-seat pricing disproportionate for the value delivered at small scale. GAIA's flat pricing model and proactive AI approach make it better suited for small teams and individuals who need smart workflow management without the overhead of maintaining a structured enterprise grid.",
     },
     {
-      question: "Can GAIA create tasks from email like Smartsheet's email-to-row feature?",
+      question:
+        "Can GAIA create tasks from email like Smartsheet's email-to-row feature?",
       answer:
         "Yes — and more comprehensively. GAIA reads your Gmail inbox continuously, identifies action items from email content using AI, and creates prioritised tasks automatically across your connected task management tools. Smartsheet's email-to-row feature is available only on paid plans and requires a specific email address to be CC'd; it does not proactively monitor your inbox or use AI to interpret email intent.",
     },
@@ -174,7 +174,8 @@ The pricing model also diverges significantly. Smartsheet's pricing is per-seat 
         "Both work for remote teams, but they serve different purposes. Smartsheet provides a shared grid for project visibility and status reporting across a distributed team. GAIA provides each team member with a proactive AI assistant that manages their personal email, tasks, and calendar — and connects to shared tools like Slack and Notion. For remote teams, combining GAIA's individual productivity management with a shared project tracking tool often delivers the best results.",
     },
     {
-      question: "Does GAIA support the integrations my team already uses with Smartsheet?",
+      question:
+        "Does GAIA support the integrations my team already uses with Smartsheet?",
       answer:
         "GAIA connects to 50+ tools via MCP including Gmail, Slack, Google Calendar, Notion, GitHub, Linear, Jira, Asana, and Todoist. If your team connects Smartsheet to Microsoft Teams or Salesforce, those ecosystems are partially covered by GAIA's integration layer. GAIA's open source architecture also allows custom integrations to be built for tools not yet in the default catalogue.",
     },
@@ -191,8 +192,7 @@ The pricing model also diverges significantly. Smartsheet's pricing is per-seat 
         "Smartsheet's dashboards are strong for executive-level portfolio reporting — aggregating project status, budget burn, and resource allocation into visual reports. GAIA takes a different approach: rather than static dashboards you pull up on demand, GAIA proactively surfaces the information that needs attention across your connected tools, sending relevant summaries and alerts when conditions change. Both approaches provide visibility, but through fundamentally different mechanisms that serve different audiences and use cases.",
     },
     {
-      question:
-        "What platforms does GAIA run on compared to Smartsheet?",
+      question: "What platforms does GAIA run on compared to Smartsheet?",
       answer:
         "GAIA is available as a web app, a native Electron desktop app for macOS, Windows, and Linux, and a React Native mobile app for iOS and Android. Smartsheet is available on web, iOS, and Android. GAIA's Electron desktop app provides a dedicated workspace that runs independently of your browser, which many power users prefer for a productivity tool they interact with throughout the day.",
     },

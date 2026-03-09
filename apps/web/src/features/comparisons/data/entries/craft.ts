@@ -110,7 +110,8 @@ export const entry: ComparisonData = {
         "GAIA can capture information from email threads, calendar events, and conversations and route it to your preferred note-taking tools. For teams using Craft as their primary document workspace, GAIA's integrations can be configured to create Craft documents or pages from captured content — so an email with a project brief could automatically become a Craft document without manual copy-pasting.",
     },
     {
-      question: "Is GAIA available on all platforms including Windows and Android?",
+      question:
+        "Is GAIA available on all platforms including Windows and Android?",
       answer:
         "Yes. GAIA is a web-based application accessible from any browser on Windows, macOS, Linux, iOS, and Android — there is no platform restriction. Craft, by contrast, has native apps for iOS, iPadOS, and macOS with a web app available, but no native Windows desktop or Android app. For teams or individuals using mixed device environments, GAIA's cross-platform nature is a meaningful practical advantage.",
     },

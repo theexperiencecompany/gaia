@@ -6,11 +6,11 @@ import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
+  generateBreadcrumbSchema,
   generateFAQSchema,
   generateHowToSchema,
   generatePageMetadata,
   generateProductSchema,
-  generateBreadcrumbSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -163,7 +163,15 @@ export default function OpenSourceAIAssistantPage() {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, howToSchema, faqSchema, generateProductSchema()]} />
+      <JsonLd
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          howToSchema,
+          faqSchema,
+          generateProductSchema(),
+        ]}
+      />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -203,8 +211,8 @@ export default function OpenSourceAIAssistantPage() {
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
                 The entire codebase — backend, frontend, and agents — is
-                published under the MIT license. Use it, fork it, modify it.
-                No restrictions.
+                published under the MIT license. Use it, fork it, modify it. No
+                restrictions.
               </p>
             </div>
             <div className="rounded-2xl bg-zinc-800 p-6">
@@ -213,9 +221,9 @@ export default function OpenSourceAIAssistantPage() {
                 Self-Hostable via Docker
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                One `docker compose up` command brings up the entire stack.
-                No complex cloud setup, no vendor lock-in. Run it on any VPS,
-                home server, or cloud VM.
+                One `docker compose up` command brings up the entire stack. No
+                complex cloud setup, no vendor lock-in. Run it on any VPS, home
+                server, or cloud VM.
               </p>
             </div>
             <div className="rounded-2xl bg-zinc-800 p-6">
@@ -257,10 +265,7 @@ export default function OpenSourceAIAssistantPage() {
               "Connects 50+ tools via MCP — Slack, Notion, HubSpot, GitHub, Google Workspace",
               "Runs automated workflows — recurring tasks, follow-ups, reports, on a schedule",
             ].map((item) => (
-              <li
-                key={item}
-                className="flex items-start gap-3 text-zinc-300"
-              >
+              <li key={item} className="flex items-start gap-3 text-zinc-300">
                 <span className="mt-1 shrink-0 text-emerald-400">&#x2714;</span>
                 <span>{item}</span>
               </li>
@@ -277,8 +282,8 @@ export default function OpenSourceAIAssistantPage() {
             <div>
               <h3 className="mb-1 font-semibold text-white">Privacy</h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Closed AI assistants send your emails, calendar events, and
-                work context to corporate servers for processing. With GAIA
+                Closed AI assistants send your emails, calendar events, and work
+                context to corporate servers for processing. With GAIA
                 self-hosted, your data never leaves your infrastructure.
               </p>
             </div>
@@ -303,9 +308,8 @@ export default function OpenSourceAIAssistantPage() {
             <div>
               <h3 className="mb-1 font-semibold text-white">Auditability</h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                You can read every line of code that processes your data.
-                No black boxes, no hidden telemetry, no undisclosed data
-                sharing.
+                You can read every line of code that processes your data. No
+                black boxes, no hidden telemetry, no undisclosed data sharing.
               </p>
             </div>
           </div>
@@ -425,8 +429,8 @@ export default function OpenSourceAIAssistantPage() {
                 AI Chief of Staff
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                See how GAIA acts as your proactive AI chief of staff —
-                managing your entire workday autonomously.
+                See how GAIA acts as your proactive AI chief of staff — managing
+                your entire workday autonomously.
               </p>
             </Link>
             <Link
@@ -437,8 +441,8 @@ export default function OpenSourceAIAssistantPage() {
                 Inbox Zero with AI
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                How GAIA automatically triages your Gmail and reaches inbox
-                zero every day.
+                How GAIA automatically triages your Gmail and reaches inbox zero
+                every day.
               </p>
             </Link>
             <Link

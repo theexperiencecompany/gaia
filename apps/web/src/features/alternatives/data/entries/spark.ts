@@ -60,7 +60,8 @@ export const entry: AlternativeData = {
         "GAIA is primarily a personal AI assistant and does not include shared team inbox features. For team email collaboration, Spark or Missive remain better choices. GAIA is the stronger option for individual proactive email management.",
     },
     {
-      question: "Does GAIA have a cleaner email interface than Gmail like Spark?",
+      question:
+        "Does GAIA have a cleaner email interface than Gmail like Spark?",
       answer:
         "GAIA manages Gmail via its AI layer rather than replacing the Gmail interface. You can continue using Gmail's native interface while GAIA handles triage, task creation, and automation in the background.",
     },

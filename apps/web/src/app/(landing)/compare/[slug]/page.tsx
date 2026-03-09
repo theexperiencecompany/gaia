@@ -7,13 +7,13 @@ import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import { getAlternative } from "@/features/alternatives/data/alternativesData";
 import { COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
-import { getPersona } from "@/features/personas/data/personasData";
 import {
-  getAllComparisons,
   getAllComparisonSlugs,
+  getAllComparisons,
   getComparison,
 } from "@/features/comparisons/data/comparisonsData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { getPersona } from "@/features/personas/data/personasData";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -48,7 +48,6 @@ export async function generateMetadata({
     keywords: data.keywords,
   });
 }
-
 
 export default async function ComparisonPage({ params }: PageProps) {
   const { slug } = await params;
@@ -100,7 +99,9 @@ export default async function ComparisonPage({ params }: PageProps) {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, productSchema]} />
+      <JsonLd
+        data={[webPageSchema, breadcrumbSchema, faqSchema, productSchema]}
+      />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -158,7 +159,7 @@ export default async function ComparisonPage({ params }: PageProps) {
                 cellClassName: "text-zinc-400",
               },
             ]}
-            rows={data.rows}
+            rows={data.rows as unknown as Record<string, string>[]}
           />
         </section>
 

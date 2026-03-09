@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Premium distraction-free writing app for Mac and iOS",
   description:
     "Ulysses is a premium writing app for macOS and iOS built for long-form writers, offering a distraction-free editor, manuscript management, and direct publishing to WordPress and Medium. GAIA is a proactive AI assistant that connects writing tasks to email, calendar, and 50+ integrations.",
-  metaTitle: "Ulysses Alternative with AI Workflow Automation & Cross-Platform Support | GAIA vs Ulysses",
+  metaTitle:
+    "Ulysses Alternative with AI Workflow Automation & Cross-Platform Support | GAIA vs Ulysses",
   metaDescription:
     "Ulysses is a premium writing app but Apple-only and focused on writing alone. GAIA is a free, open-source Ulysses alternative with AI automation, email management, and cross-platform support across 50+ integrations.",
   keywords: [
@@ -51,7 +52,8 @@ The two tools serve fundamentally different needs. Where Ulysses is the best pos
     {
       feature: "Email integration",
       gaia: "Full Gmail management — reads, triages, drafts replies, and creates tasks or notes from emails automatically",
-      competitor: "No email integration; writing workflow is entirely self-contained",
+      competitor:
+        "No email integration; writing workflow is entirely self-contained",
     },
     {
       feature: "Task management",
@@ -91,7 +93,8 @@ The two tools serve fundamentally different needs. Where Ulysses is the best pos
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — data in your own infrastructure",
-      competitor: "Proprietary closed-source app; texts stored in iCloud or locally",
+      competitor:
+        "Proprietary closed-source app; texts stored in iCloud or locally",
     },
     {
       feature: "Pricing",

@@ -3,11 +3,11 @@ import Image from "next/image";
 import Link from "next/link";
 
 import JsonLd from "@/components/seo/JsonLd";
+import type { AlternativeData } from "@/features/alternatives/data/alternativesData";
 import {
   getAllAlternatives,
   getAlternativesByCategory,
 } from "@/features/alternatives/data/alternativesData";
-import type { AlternativeData } from "@/features/alternatives/data/alternativesData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,
@@ -142,9 +142,8 @@ export default function AlternativesHubPage() {
             GAIA as Your Alternative
           </h1>
           <p className="mx-auto max-w-2xl text-xl text-zinc-400">
-            Honest breakdowns of how GAIA replaces 30 popular productivity,
-            AI, and automation tools — with fit scores and migration steps
-            for each.
+            Honest breakdowns of how GAIA replaces 30 popular productivity, AI,
+            and automation tools — with fit scores and migration steps for each.
           </p>
         </header>
 

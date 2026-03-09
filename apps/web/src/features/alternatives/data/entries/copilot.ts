@@ -57,7 +57,8 @@ export const entry: AlternativeData = {
   ],
   faqs: [
     {
-      question: "Does GAIA work with Google Workspace instead of Microsoft 365?",
+      question:
+        "Does GAIA work with Google Workspace instead of Microsoft 365?",
       answer:
         "Yes. GAIA is designed primarily for Gmail and Google Calendar users. It does not require any Microsoft subscription.",
     },

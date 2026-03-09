@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "HEY Email",
   domain: "hey.com",
   category: "email",
-  tagline: "Opinionated email reinvented — but manual triage rituals aren't AI automation",
+  tagline:
+    "Opinionated email reinvented — but manual triage rituals aren't AI automation",
   painPoints: [
     "HEY's Screener, Imbox, The Feed, and Paper Trail are manual sorting rituals — every new sender requires a human decision, every time",
     "No task creation from emails: action items in HEY stay as emails, not tasks connected to your calendar or to-do list",
@@ -13,7 +14,8 @@ export const entry: AlternativeData = {
     "At $99/year for personal use, HEY is expensive compared to AI-first alternatives that automate what HEY requires you to do manually",
     "HEY's opinionated structure makes it hard to use alongside existing Gmail or Outlook workflows; it's all-or-nothing",
   ],
-  metaTitle: "HEY Email Alternative | GAIA — AI Email Assistant That Automates What HEY Asks You to Do Manually",
+  metaTitle:
+    "HEY Email Alternative | GAIA — AI Email Assistant That Automates What HEY Asks You to Do Manually",
   metaDescription:
     "Tired of HEY Email's manual triage rituals? GAIA is an open-source AI assistant that automatically sorts email, creates tasks, and connects your inbox to your calendar — no Screener required. Free tier available.",
   keywords: [

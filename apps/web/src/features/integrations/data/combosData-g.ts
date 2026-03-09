@@ -7,8 +7,10 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolASlug: "discord",
     toolB: "Slack",
     toolBSlug: "slack",
-    tagline: "Bridge your Discord community and Slack work channels automatically",
-    metaTitle: "Discord + Slack Automation - Community to Work Channel Bridge | GAIA",
+    tagline:
+      "Bridge your Discord community and Slack work channels automatically",
+    metaTitle:
+      "Discord + Slack Automation - Community to Work Channel Bridge | GAIA",
     metaDescription:
       "Connect Discord and Slack with GAIA. Route community signals to Slack teams, mirror announcements, and keep community managers and internal teams aligned.",
     keywords: [
@@ -61,12 +63,14 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync messages in both directions between Discord and Slack?",
+        question:
+          "Can GAIA sync messages in both directions between Discord and Slack?",
         answer:
           "Yes. GAIA supports bidirectional routing — Discord to Slack and Slack to Discord. You configure which channels and event types trigger each direction independently.",
       },
       {
-        question: "Will GAIA expose internal Slack messages to the Discord community?",
+        question:
+          "Will GAIA expose internal Slack messages to the Discord community?",
         answer:
           "No. GAIA only posts to Discord when you explicitly configure a rule for that direction. Internal-only Slack channels are never exposed unless you set up a rule to share them.",
       },
@@ -138,7 +142,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can community members add events to Google Calendar directly from Discord?",
+        question:
+          "Can community members add events to Google Calendar directly from Discord?",
         answer:
           "Yes. GAIA can generate a Google Calendar invite link and post it in Discord so members can add the event with a single click, without needing a GAIA account themselves.",
       },
@@ -161,7 +166,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolASlug: "discord",
     toolB: "Todoist",
     toolBSlug: "todoist",
-    tagline: "Create Todoist tasks from Discord messages without leaving the conversation",
+    tagline:
+      "Create Todoist tasks from Discord messages without leaving the conversation",
     metaTitle: "Discord + Todoist Automation - Capture Tasks from Chat | GAIA",
     metaDescription:
       "Connect Discord and Todoist with GAIA. Turn Discord messages into Todoist tasks instantly, assign owners, set due dates, and never lose an action item in chat.",
@@ -220,12 +226,14 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
           "No. Discord members trigger task creation through GAIA's Discord bot. Only the GAIA account connected to Todoist needs a valid Todoist login.",
       },
       {
-        question: "Can I assign tasks to specific Todoist projects based on the Discord channel?",
+        question:
+          "Can I assign tasks to specific Todoist projects based on the Discord channel?",
         answer:
           "Yes. GAIA's channel-to-project mapping lets you route tasks from different Discord channels into separate Todoist projects automatically. You configure the mapping once in GAIA's settings.",
       },
       {
-        question: "Will GAIA create duplicate tasks if the same message is reacted to twice?",
+        question:
+          "Will GAIA create duplicate tasks if the same message is reacted to twice?",
         answer:
           "GAIA deduplicates by tracking which messages have already generated tasks. If a task already exists for a message, subsequent reactions are ignored rather than creating a duplicate.",
       },
@@ -238,8 +246,10 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolASlug: "discord",
     toolB: "Trello",
     toolBSlug: "trello",
-    tagline: "Track community projects on Trello straight from Discord channels",
-    metaTitle: "Discord + Trello Automation - Community Project Tracking | GAIA",
+    tagline:
+      "Track community projects on Trello straight from Discord channels",
+    metaTitle:
+      "Discord + Trello Automation - Community Project Tracking | GAIA",
     metaDescription:
       "Connect Discord and Trello with GAIA. Create Trello cards from Discord messages, post card updates to Discord, and keep community projects moving without leaving chat.",
     keywords: [
@@ -292,7 +302,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can Discord community members who don't have Trello accounts create cards?",
+        question:
+          "Can Discord community members who don't have Trello accounts create cards?",
         answer:
           "Yes. GAIA's Discord bot acts as the Trello account for card creation. Community members only interact with GAIA through Discord reactions or commands.",
       },
@@ -315,8 +326,10 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolASlug: "discord",
     toolB: "Jira",
     toolBSlug: "jira",
-    tagline: "Surface Jira issue updates in Discord engineering channels automatically",
-    metaTitle: "Discord + Jira Automation - Engineering Channel Issue Updates | GAIA",
+    tagline:
+      "Surface Jira issue updates in Discord engineering channels automatically",
+    metaTitle:
+      "Discord + Jira Automation - Engineering Channel Issue Updates | GAIA",
     metaDescription:
       "Connect Discord and Jira with GAIA. Post Jira issue updates to Discord channels, create Jira tickets from Discord, and keep open-source engineers informed.",
     keywords: [
@@ -369,12 +382,14 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Do contributors need a Jira account to create issues from Discord?",
+        question:
+          "Do contributors need a Jira account to create issues from Discord?",
         answer:
           "Creating issues via GAIA requires the GAIA account to have Jira write access. Contributors trigger creation through Discord, but the issue is filed under GAIA's connected Jira identity.",
       },
       {
-        question: "Can GAIA notify different Discord channels for different Jira projects?",
+        question:
+          "Can GAIA notify different Discord channels for different Jira projects?",
         answer:
           "Yes. You can map each Jira project to a separate Discord channel in GAIA's settings. Issues from the mobile project post to the mobile channel, backend issues to the backend channel, and so on.",
       },
@@ -446,7 +461,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA require Zoom AI Companion or a specific Zoom plan?",
+        question:
+          "Does GAIA require Zoom AI Companion or a specific Zoom plan?",
         answer:
           "GAIA works with Zoom's meeting summary and transcript features, which are available on Zoom Business and above. If your plan doesn't include summaries, GAIA can use the raw transcript instead.",
       },
@@ -469,8 +485,10 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolASlug: "zoom",
     toolB: "Linear",
     toolBSlug: "linear",
-    tagline: "Post Zoom sprint summaries to Linear issues and keep engineering on track",
-    metaTitle: "Zoom + Linear Automation - Sprint Meeting Summaries to Issues | GAIA",
+    tagline:
+      "Post Zoom sprint summaries to Linear issues and keep engineering on track",
+    metaTitle:
+      "Zoom + Linear Automation - Sprint Meeting Summaries to Issues | GAIA",
     metaDescription:
       "Connect Zoom and Linear with GAIA. Auto-post sprint meeting summaries to Linear, create issues from action items, and keep your engineering cycle updated after every call.",
     keywords: [
@@ -523,17 +541,20 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA distinguish between different sprint ceremony types?",
+        question:
+          "Can GAIA distinguish between different sprint ceremony types?",
         answer:
           "Yes. GAIA identifies meeting type by name or by the Zoom meeting ID you configure. Standups, planning sessions, and retros each trigger different Linear actions.",
       },
       {
-        question: "Will GAIA create duplicate Linear issues if the same blocker is mentioned twice?",
+        question:
+          "Will GAIA create duplicate Linear issues if the same blocker is mentioned twice?",
         answer:
           "GAIA deduplicates by checking for existing open issues with similar titles before creating new ones. If a match is found, it adds a comment rather than a new issue.",
       },
       {
-        question: "Does this work with Linear's cycle (sprint) feature specifically?",
+        question:
+          "Does this work with Linear's cycle (sprint) feature specifically?",
         answer:
           "Yes. GAIA posts summaries and creates issues within the active Linear cycle. If no cycle is active at meeting time, GAIA queues the items for the next cycle or adds them to the backlog.",
       },
@@ -546,7 +567,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolASlug: "zoom",
     toolB: "Jira",
     toolBSlug: "jira",
-    tagline: "Log Zoom sprint meeting summaries directly to Jira sprints and epics",
+    tagline:
+      "Log Zoom sprint meeting summaries directly to Jira sprints and epics",
     metaTitle: "Zoom + Jira Automation - Sprint Summaries to Jira | GAIA",
     metaDescription:
       "Connect Zoom and Jira with GAIA. Auto-log Zoom sprint meeting outcomes to Jira, create issues from action items, and keep your Jira board current after every ceremony.",
@@ -600,12 +622,14 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA work with Jira Software's sprint feature specifically?",
+        question:
+          "Does GAIA work with Jira Software's sprint feature specifically?",
         answer:
           "Yes. GAIA integrates with Jira Software and can add issues to the active sprint, update story status, and post sprint-level comments. It works with both company-managed and team-managed projects.",
       },
       {
-        question: "Can GAIA map different Zoom meetings to different Jira boards?",
+        question:
+          "Can GAIA map different Zoom meetings to different Jira boards?",
         answer:
           "Yes. Each recurring Zoom meeting can be mapped to a separate Jira board in GAIA's settings. Frontend standups post to the frontend board; backend planning posts to the backend board.",
       },
@@ -624,7 +648,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolB: "Microsoft Teams",
     toolBSlug: "microsoft-teams",
     tagline: "Bridge Zoom and Microsoft Teams for dual-platform organizations",
-    metaTitle: "Zoom + Microsoft Teams Automation - Dual Platform Bridge | GAIA",
+    metaTitle:
+      "Zoom + Microsoft Teams Automation - Dual Platform Bridge | GAIA",
     metaDescription:
       "Connect Zoom and Microsoft Teams with GAIA. Share meeting summaries across platforms, notify Teams channels of Zoom events, and keep both platforms in sync.",
     keywords: [
@@ -677,7 +702,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA also notify Zoom participants about Teams messages?",
+        question:
+          "Can GAIA also notify Zoom participants about Teams messages?",
         answer:
           "Yes. GAIA can bridge in both directions — important Teams channel messages can trigger a Zoom chat notification or email digest for participants who primarily use Zoom for communication.",
       },
@@ -687,7 +713,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
           "GAIA integrates with Zoom Meetings and Zoom Webinars via the Zoom API. Zoom Rooms support depends on whether your Zoom plan exposes room meeting data through the same API.",
       },
       {
-        question: "Is there a risk of double-notifications if users have both Zoom and Teams open?",
+        question:
+          "Is there a risk of double-notifications if users have both Zoom and Teams open?",
         answer:
           "GAIA posts to Teams channels rather than individual DMs by default, so notifications appear as channel posts rather than personal pings. You can adjust per-channel notification settings in Teams to control alert frequency.",
       },
@@ -700,7 +727,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolASlug: "zoom",
     toolB: "Google Drive",
     toolBSlug: "google-drive",
-    tagline: "Auto-save Zoom recordings and notes to organized Google Drive folders",
+    tagline:
+      "Auto-save Zoom recordings and notes to organized Google Drive folders",
     metaTitle: "Zoom + Google Drive Automation - Auto-Save Recordings | GAIA",
     metaDescription:
       "Connect Zoom and Google Drive with GAIA. Automatically save Zoom recordings to Drive, organize by meeting type, and keep your team's video archive structured.",
@@ -754,7 +782,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA delete the recording from Zoom after saving it to Drive?",
+        question:
+          "Does GAIA delete the recording from Zoom after saving it to Drive?",
         answer:
           "By default, GAIA saves to Drive and leaves the Zoom cloud recording intact. You can optionally configure GAIA to delete from Zoom after a successful Drive upload to manage Zoom storage limits.",
       },
@@ -764,7 +793,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
           "GAIA uploads the recording as soon as Zoom finishes processing it, which typically takes 5–30 minutes after the meeting ends depending on length. You'll receive a notification when it's available in Drive.",
       },
       {
-        question: "Can GAIA handle recordings from multiple Zoom hosts in one organization?",
+        question:
+          "Can GAIA handle recordings from multiple Zoom hosts in one organization?",
         answer:
           "Yes. GAIA supports multiple Zoom hosts within the same organization and can route each host's recordings to a separate Drive folder based on the host's identity.",
       },
@@ -777,7 +807,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolASlug: "zoom",
     toolB: "Figma",
     toolBSlug: "figma",
-    tagline: "Schedule Zoom design reviews from Figma milestones and share feedback automatically",
+    tagline:
+      "Schedule Zoom design reviews from Figma milestones and share feedback automatically",
     metaTitle: "Zoom + Figma Automation - Design Review Scheduling | GAIA",
     metaDescription:
       "Connect Zoom and Figma with GAIA. Auto-schedule Zoom design reviews when Figma milestones are hit, post meeting feedback to Figma files, and streamline design workflows.",
@@ -831,7 +862,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA post feedback to specific Figma frames rather than the whole file?",
+        question:
+          "Can GAIA post feedback to specific Figma frames rather than the whole file?",
         answer:
           "Yes. If the meeting notes reference specific frame names or component names, GAIA attempts to match them to Figma frames and post comments at the frame level rather than the file level.",
       },
@@ -854,7 +886,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolASlug: "zoom",
     toolB: "HubSpot",
     toolBSlug: "hubspot",
-    tagline: "Log Zoom customer calls to HubSpot CRM and keep every deal updated",
+    tagline:
+      "Log Zoom customer calls to HubSpot CRM and keep every deal updated",
     metaTitle: "Zoom + HubSpot Automation - Log Customer Calls to CRM | GAIA",
     metaDescription:
       "Connect Zoom and HubSpot with GAIA. Auto-log Zoom customer calls to HubSpot contacts and deals, capture action items, and keep your CRM current after every call.",
@@ -908,12 +941,14 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA match a Zoom meeting to the right HubSpot contact?",
+        question:
+          "How does GAIA match a Zoom meeting to the right HubSpot contact?",
         answer:
           "GAIA matches participants by email address. If a Zoom participant's email exists as a HubSpot contact, the call is logged to that contact. Unmatched participants are flagged for manual review.",
       },
       {
-        question: "Can GAIA log calls to both a contact and an associated deal in HubSpot?",
+        question:
+          "Can GAIA log calls to both a contact and an associated deal in HubSpot?",
         answer:
           "Yes. GAIA logs the activity to the contact record and associates it with all open deals linked to that contact. You can configure it to target a specific pipeline if a contact has multiple deals.",
       },
@@ -932,7 +967,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     toolB: "ClickUp",
     toolBSlug: "clickup",
     tagline: "Post Zoom meeting action items to ClickUp tasks automatically",
-    metaTitle: "Zoom + ClickUp Automation - Meeting Action Items to Tasks | GAIA",
+    metaTitle:
+      "Zoom + ClickUp Automation - Meeting Action Items to Tasks | GAIA",
     metaDescription:
       "Connect Zoom and ClickUp with GAIA. Auto-create ClickUp tasks from Zoom meeting action items, assign owners, set due dates, and keep your workspace current after every call.",
     keywords: [
@@ -985,7 +1021,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create tasks in different ClickUp spaces for different meeting types?",
+        question:
+          "Can GAIA create tasks in different ClickUp spaces for different meeting types?",
         answer:
           "Yes. You can configure separate ClickUp space and list mappings for each recurring Zoom meeting or meeting type. Each meeting series routes to its own ClickUp destination.",
       },
@@ -995,7 +1032,8 @@ export const combosBatchG: Record<string, IntegrationCombo> = {
           "Yes. If an action item in the meeting summary has sub-steps, GAIA can create a parent task with subtasks. You can enable or disable subtask creation in GAIA's ClickUp settings.",
       },
       {
-        question: "How does GAIA handle meetings where no clear action items are identified?",
+        question:
+          "How does GAIA handle meetings where no clear action items are identified?",
         answer:
           "If no action items are found, GAIA creates a summary-only ClickUp Doc rather than tasks. You receive a notification so you can manually add tasks if the meeting contained implicit commitments.",
       },

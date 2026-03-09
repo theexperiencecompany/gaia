@@ -102,8 +102,7 @@ export const entry: ComparisonData = {
         "No. SaneBox classifies email using sender reputation, engagement signals, and metadata — not message body content. This means it can sort your inbox but cannot understand what an email is asking you to do. GAIA reads email content (optionally on your own infrastructure when self-hosted) specifically to extract action items, draft replies, and trigger workflows.",
     },
     {
-      question:
-        "Is GAIA more expensive than SaneBox?",
+      question: "Is GAIA more expensive than SaneBox?",
       answer:
         "SaneBox's entry plan starts at $7/month for one account with two features, while GAIA's Pro plan starts at $20/month with full feature access. However, GAIA can be self-hosted for free with no usage caps — an option SaneBox does not offer. Comparing value, GAIA replaces not just an email filter but also a task manager, calendar assistant, and workflow automation layer.",
     },

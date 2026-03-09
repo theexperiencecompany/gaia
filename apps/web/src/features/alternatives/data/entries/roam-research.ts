@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Roam Research",
   domain: "roamresearch.com",
   category: "notes",
-  tagline: "Networked thought for PKM enthusiasts — but your knowledge graph shouldn't require daily feeding",
+  tagline:
+    "Networked thought for PKM enthusiasts — but your knowledge graph shouldn't require daily feeding",
   painPoints: [
     "Roam requires you to manually capture everything — it has no email integration, calendar sync, or automatic knowledge enrichment from your digital activity",
     "The learning curve is steep: block references, bidirectional links, Clojure-based plugins, and daily note discipline take weeks to master",
@@ -13,7 +14,8 @@ export const entry: AlternativeData = {
     "Roam is web-only with limited offline support — a significant drawback for users who need mobile or desktop-native experiences",
     "The knowledge graph is only as good as your capture discipline; missed meetings and unlogged emails leave gaps that passive tools would have filled automatically",
   ],
-  metaTitle: "Roam Research Alternative | GAIA — AI Knowledge Assistant That Builds Its Own Graph",
+  metaTitle:
+    "Roam Research Alternative | GAIA — AI Knowledge Assistant That Builds Its Own Graph",
   metaDescription:
     "Tired of manually feeding Roam Research? GAIA is an open-source AI assistant with graph-based memory that builds itself from your email, calendar, and meetings — no daily notes ritual required.",
   keywords: [

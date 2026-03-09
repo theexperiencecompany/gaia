@@ -4,7 +4,8 @@ export const entry: ComparisonData = {
   slug: "evernote",
   name: "Evernote",
   domain: "evernote.com",
-  tagline: "Classic note-taking and personal organization tool with web clipping",
+  tagline:
+    "Classic note-taking and personal organization tool with web clipping",
   description:
     "Evernote is one of the original digital note-taking platforms — a place to capture notes, clip web pages, scan documents, and organize information across notebooks with powerful search. GAIA is a proactive AI productivity OS that manages your email, calendar, tasks, and 50+ integrations autonomously, building a connected knowledge graph from your live digital activity rather than manually captured notes.",
   metaTitle: "Evernote Alternative with Proactive AI | GAIA vs Evernote",
@@ -113,7 +114,8 @@ export const entry: ComparisonData = {
         "GAIA is not a dedicated note editor and does not replicate Evernote's notebook organization, web clipper, or document scanning features. If storing and searching a large archive of manually captured notes is a primary need, Evernote (or a modern alternative like Notion or Obsidian) remains the stronger dedicated tool. GAIA is a better fit if you want an AI that automatically captures context from your email and calendar activity, creating a graph-based memory that grows through use rather than requiring deliberate note maintenance.",
     },
     {
-      question: "Is GAIA a better Evernote alternative than Notion or Obsidian?",
+      question:
+        "Is GAIA a better Evernote alternative than Notion or Obsidian?",
       answer:
         "GAIA, Notion, and Obsidian solve different problems. Notion and Obsidian are document and knowledge management tools — a better fit for the note-taking and knowledge organization use cases that Evernote addresses. GAIA is an AI assistant that manages your email, calendar, tasks, and cross-tool workflows proactively. If you are primarily looking to replace Evernote's note-taking function, Notion or Obsidian are more direct alternatives. If you want an AI to handle the operational layer of your daily work — inbox, scheduling, task management — GAIA is the right tool.",
     },

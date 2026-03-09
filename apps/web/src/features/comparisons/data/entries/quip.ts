@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Salesforce's collaborative docs and spreadsheets platform",
   description:
     "Quip is Salesforce's collaborative documents and spreadsheets platform, designed to bring live CRM data into team documents. GAIA is a proactive AI assistant that connects email, calendar, tasks, and 50+ integrations with autonomous action — beyond the Salesforce ecosystem.",
-  metaTitle: "Quip Alternative with AI Automation Beyond Salesforce | GAIA vs Quip",
+  metaTitle:
+    "Quip Alternative with AI Automation Beyond Salesforce | GAIA vs Quip",
   metaDescription:
     "Quip is powerful within Salesforce but limited outside it. GAIA is a free, open-source Quip alternative with proactive AI email management, calendar automation, and workflow orchestration across 50+ integrations.",
   keywords: [
@@ -129,7 +130,8 @@ For sales organizations running on Salesforce who need CRM data embedded in thei
         "GAIA does not have a native Salesforce CRM integration currently. Its integrations focus on Gmail, Google Calendar, Slack, GitHub, Linear, Jira, Notion, and Todoist, among 50+ others. Organizations whose core workflow centers on Salesforce records would need to evaluate whether these integrations cover their requirements.",
     },
     {
-      question: "How does GAIA handle collaborative document editing compared to Quip?",
+      question:
+        "How does GAIA handle collaborative document editing compared to Quip?",
       answer:
         "Quip is purpose-built for real-time collaborative document and spreadsheet editing with embedded comments and chat. GAIA's strength is AI-driven orchestration and workflow automation rather than a rich collaborative editor. Teams that rely heavily on co-editing long documents will find Quip's editor more suited to that specific task.",
     },

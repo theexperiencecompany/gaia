@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Scheduling automation for external booking links",
   description:
     "Calendly lets people book time with you by sharing a link to your availability. GAIA manages your entire calendar from the inside — scheduling meetings, finding free slots, preparing briefings, and automating follow-ups — without generating public booking pages.",
-  metaTitle: "Calendly Alternative with Full AI Productivity OS | GAIA vs Calendly",
+  metaTitle:
+    "Calendly Alternative with Full AI Productivity OS | GAIA vs Calendly",
   metaDescription:
     "Calendly handles scheduling links but stops there. GAIA is an open-source Calendly alternative that is a full AI productivity OS — managing your calendar, email, tasks, and workflows across 50+ tools proactively, with a free tier.",
   keywords: [
@@ -79,8 +80,7 @@ export const entry: ComparisonData = {
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — own your data entirely and deploy on your own infrastructure",
-      competitor:
-        "Proprietary closed-source SaaS; no self-hosting option",
+      competitor: "Proprietary closed-source SaaS; no self-hosting option",
     },
     {
       feature: "Pricing",
@@ -110,7 +110,8 @@ export const entry: ComparisonData = {
         "No. GAIA does not generate public booking pages that external people can use to self-schedule. Calendly is the right tool for that use case. GAIA manages your calendar from the inside — scheduling meetings you initiate, finding free slots, preparing briefings, and automating follow-ups. If you need both inbound scheduling links and proactive AI calendar management, many users run both tools alongside each other.",
     },
     {
-      question: "Can GAIA find a free meeting slot and schedule a meeting automatically?",
+      question:
+        "Can GAIA find a free meeting slot and schedule a meeting automatically?",
       answer:
         "Yes. GAIA integrates with Google Calendar and can find free slots across participants, create events, add Google Meet links, manage attendees, and send invites — all triggered by a natural-language request or an automated workflow. This covers the internal scheduling side of the problem; Calendly covers the external booking-link side.",
     },

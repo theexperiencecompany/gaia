@@ -64,12 +64,14 @@ export const entry: AlternativeData = {
         "Notion's Business plan, which includes unlimited AI, costs $20/user/month. GAIA Pro is also $20/month for an individual but includes email management, calendar integration, 50+ tool connections, and workflow automation — not just AI writing inside one app. Self-hosted GAIA is free.",
     },
     {
-      question: "Does GAIA write content and summarize documents like Notion AI?",
+      question:
+        "Does GAIA write content and summarize documents like Notion AI?",
       answer:
         "GAIA can draft emails, summarize email threads, and generate content from your calendar and task context. For long-form document editing inside a rich text editor, Notion AI's in-document writing experience is more specialized.",
     },
     {
-      question: "Does GAIA work outside of a single workspace like Notion AI does?",
+      question:
+        "Does GAIA work outside of a single workspace like Notion AI does?",
       answer:
         "Yes. GAIA's intelligence spans Gmail, Google Calendar, Todoist, and dozens of other tools simultaneously. It is not limited to one workspace or one application.",
     },

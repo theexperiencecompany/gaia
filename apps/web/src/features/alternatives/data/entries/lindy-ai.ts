@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Lindy AI",
   domain: "lindy.ai",
   category: "ai-assistant",
-  tagline: "Capable AI agent builder — but closed-source and cloud-only with usage-based pricing",
+  tagline:
+    "Capable AI agent builder — but closed-source and cloud-only with usage-based pricing",
   painPoints: [
     "Lindy is closed-source and cloud-only — no self-hosted option for teams with data privacy requirements or infrastructure preferences",
     "Pricing scales with usage and agent runs, making costs unpredictable as you automate more workflows",
@@ -13,7 +14,8 @@ export const entry: AlternativeData = {
     "Email and calendar integrations exist but the primary use case is general-purpose agent building, not deep inbox or scheduling intelligence",
     "No open-source community, no public roadmap transparency, and no ability to audit or extend the core platform",
   ],
-  metaTitle: "Lindy AI Alternative | GAIA — Open-Source AI Assistant with Email & Calendar Depth",
+  metaTitle:
+    "Lindy AI Alternative | GAIA — Open-Source AI Assistant with Email & Calendar Depth",
   metaDescription:
     "Looking for an open-source Lindy AI alternative you can self-host? GAIA is a proactive AI productivity assistant with deep email, calendar, and task integration — flat $20/month or free to self-host.",
   keywords: [

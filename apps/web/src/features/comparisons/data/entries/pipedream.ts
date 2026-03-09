@@ -4,10 +4,12 @@ export const entry: ComparisonData = {
   slug: "pipedream",
   name: "Pipedream",
   domain: "pipedream.com",
-  tagline: "Developer-focused workflow automation with serverless code execution",
+  tagline:
+    "Developer-focused workflow automation with serverless code execution",
   description:
     "Pipedream is a developer-centric automation platform that combines a 2,800+ app integration library with full Node.js code execution in serverless workflow steps — ideal for engineers building production-grade integrations. GAIA is a proactive AI assistant that manages email, calendar, tasks, and 50+ integrations through natural language and autonomous action, built for knowledge workers who want AI to handle their digital life rather than an iPaaS platform to program.",
-  metaTitle: "Pipedream Alternative with AI-Native Automation | GAIA vs Pipedream",
+  metaTitle:
+    "Pipedream Alternative with AI-Native Automation | GAIA vs Pipedream",
   metaDescription:
     "Compare GAIA and Pipedream. Pipedream gives developers code-level automation power, but GAIA manages email, calendar, tasks, and workflows through natural language — no code required.",
   keywords: [
@@ -104,7 +106,8 @@ export const entry: ComparisonData = {
     "Pipedream is the right choice for developers and engineering teams building production-grade integrations between services — where code flexibility, API-level control, and serverless execution matter. GAIA is the right choice for knowledge workers who want an AI to manage their email, calendar, tasks, and cross-tool workflows through natural language, without writing code or designing workflow architecture. The two products operate at different levels of the stack and serve different user profiles.",
   faqs: [
     {
-      question: "Can GAIA replace Pipedream for personal productivity automation?",
+      question:
+        "Can GAIA replace Pipedream for personal productivity automation?",
       answer:
         "For personal productivity use cases — email triage, task creation from email, calendar scheduling, and cross-tool notifications — GAIA is a more direct and intelligent solution than Pipedream because it requires no code and applies AI reasoning to every action. If you have been using Pipedream primarily to automate your own inbox and task workflows, GAIA delivers better outcomes with less setup. For engineering use cases like product integrations, event-driven APIs, and data pipelines, Pipedream's code execution capabilities are not matched by GAIA.",
     },

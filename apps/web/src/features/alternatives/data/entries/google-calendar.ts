@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Google Calendar",
   domain: "calendar.google.com",
   category: "calendar",
-  tagline: "The world's most-used calendar — but it only stores events, not intelligence",
+  tagline:
+    "The world's most-used calendar — but it only stores events, not intelligence",
   painPoints: [
     "Events sit in Calendar with no briefing, context, or preparation reminders — you have to remember to check yourself",
     "Scheduling conflicts require manual detection; Calendar won't warn you that a meeting overlaps a deep-work block you set last month",

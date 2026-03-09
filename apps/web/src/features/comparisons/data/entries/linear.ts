@@ -114,5 +114,9 @@ export const entry: ComparisonData = {
         "GAIA can surface cross-tool context — for example, linking a Linear issue to the Slack thread where it was discussed, the calendar meeting where it was decided, or the email thread from the customer who reported it. It can also proactively alert you when a Linear issue you own is blocked or has been sitting in the same status for too long, without you having to check the board.",
     },
   ],
-  relatedPersonas: ["engineering-managers", "product-managers", "software-developers"],
+  relatedPersonas: [
+    "engineering-managers",
+    "product-managers",
+    "software-developers",
+  ],
 };

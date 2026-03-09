@@ -46,7 +46,8 @@ GAIA brings proactive AI to the knowledge management problem. Its graph-based me
     {
       feature: "Email integration",
       gaia: "Full Gmail management — reads, triages, drafts replies, and creates tasks or knowledge entries from emails automatically",
-      competitor: "No email integration; knowledge must be captured manually from external communications",
+      competitor:
+        "No email integration; knowledge must be captured manually from external communications",
     },
     {
       feature: "Task management",
@@ -57,7 +58,8 @@ GAIA brings proactive AI to the knowledge management problem. Its graph-based me
     {
       feature: "Calendar integration",
       gaia: "Full Google Calendar integration — reads, creates, and updates events; generates pre-meeting briefings automatically",
-      competitor: "No calendar integration; meeting notes must be manually entered after sessions",
+      competitor:
+        "No calendar integration; meeting notes must be manually entered after sessions",
     },
     {
       feature: "Knowledge capture",
@@ -128,7 +130,8 @@ GAIA brings proactive AI to the knowledge management problem. Its graph-based me
         "GAIA does not have a native Nuclino integration currently. Its 50+ integrations cover Gmail, Slack, GitHub, Notion, Jira, Linear, and Todoist, among others. Teams using Nuclino as their primary documentation tool would need to evaluate whether GAIA's integrations cover their other workflow tools.",
     },
     {
-      question: "How does GAIA's knowledge graph differ from Nuclino's graph view?",
+      question:
+        "How does GAIA's knowledge graph differ from Nuclino's graph view?",
       answer:
         "Nuclino's graph view visualizes wiki links that team members manually create between pages — it shows the relationships you explicitly define. GAIA's knowledge graph is AI-driven: it automatically links related emails, tasks, meetings, and documents based on content and context, without requiring manual linking or documentation. The result is a living graph that updates as your work evolves rather than one that only reflects what someone took the time to document.",
     },
@@ -143,5 +146,9 @@ GAIA brings proactive AI to the knowledge management problem. Its graph-based me
         "Nuclino captures only what team members manually write into it. GAIA captures context from email threads, calendar events, meeting briefings, GitHub activity, Slack conversations, and task updates — all automatically. Decisions made in emails, context shared in Slack, and deadlines updated in calendar events all flow into GAIA's knowledge graph without requiring anyone to open a wiki and write a page.",
     },
   ],
-  relatedPersonas: ["software-developers", "startup-founders", "product-managers"],
+  relatedPersonas: [
+    "software-developers",
+    "startup-founders",
+    "product-managers",
+  ],
 };

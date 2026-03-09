@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Automatic time tracking and productivity analytics",
   description:
     "RescueTime runs in the background to track how you spend your time on apps and websites, then surfaces productivity reports. GAIA goes further by acting on those insights to proactively manage your schedule and reduce distractions.",
-  metaTitle: "RescueTime Alternative with Proactive AI Assistance | GAIA vs RescueTime",
+  metaTitle:
+    "RescueTime Alternative with Proactive AI Assistance | GAIA vs RescueTime",
   metaDescription:
     "RescueTime tracks time passively but can't act on what it finds. GAIA is an open-source alternative that monitors your workflow and proactively manages tasks, calendar, and focus — free tier available.",
   keywords: [
@@ -31,12 +32,14 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
     {
       feature: "Core approach",
       gaia: "Proactive AI assistant that manages tasks, calendar, email, and workflows across 50+ tools",
-      competitor: "Passive time tracking that records app and website usage in the background",
+      competitor:
+        "Passive time tracking that records app and website usage in the background",
     },
     {
       feature: "Distraction blocking",
       gaia: "Creates focused work blocks on calendar and surfaces high-priority tasks proactively",
-      competitor: "FocusTime sessions that block distracting websites on a schedule",
+      competitor:
+        "FocusTime sessions that block distracting websites on a schedule",
     },
     {
       feature: "Email management",
@@ -46,7 +49,8 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
     {
       feature: "Calendar integration",
       gaia: "Full Google Calendar integration — schedules tasks, creates events, preps briefings",
-      competitor: "Tracks time spent in calendar apps; no scheduling capability",
+      competitor:
+        "Tracks time spent in calendar apps; no scheduling capability",
     },
     {
       feature: "Workflow automation",
@@ -56,7 +60,8 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
     {
       feature: "Integrations",
       gaia: "50+ integrations including Gmail, Slack, GitHub, Notion, Linear, and more via MCP",
-      competitor: "Integrates with Slack and calendar apps for activity logging",
+      competitor:
+        "Integrates with Slack and calendar apps for activity logging",
     },
     {
       feature: "Proactive behavior",
@@ -101,7 +106,8 @@ GAIA takes the next step. Rather than reporting on what already happened, GAIA p
         "GAIA focuses on proactive task and workflow management rather than passive time tracking. If automatic background time logging is your primary need, RescueTime excels at that. GAIA is the better fit if you want AI that acts on your time — scheduling focused blocks, routing tasks, and automating follow-through.",
     },
     {
-      question: "Does GAIA help with distraction blocking like RescueTime FocusTime?",
+      question:
+        "Does GAIA help with distraction blocking like RescueTime FocusTime?",
       answer:
         "GAIA takes a complementary approach: instead of blocking websites after the fact, it proactively schedules focused work blocks on your calendar, surfaces high-priority tasks, and automates routine work so you spend less time distracted in the first place.",
     },

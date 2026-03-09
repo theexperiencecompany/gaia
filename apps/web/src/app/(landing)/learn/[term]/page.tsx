@@ -3,11 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import {
   getAllGlossaryTermSlugs,
   getGlossaryTerm,
 } from "@/features/glossary/data/glossaryData";
-import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,
@@ -43,7 +43,9 @@ export async function generateMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/learn/${term}`,
-    canonicalPath: data.canonicalSlug ? `/learn/${data.canonicalSlug}` : undefined,
+    canonicalPath: data.canonicalSlug
+      ? `/learn/${data.canonicalSlug}`
+      : undefined,
     keywords: data.keywords,
   });
 }

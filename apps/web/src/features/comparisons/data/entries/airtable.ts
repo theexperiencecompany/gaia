@@ -96,8 +96,7 @@ GAIA is fully open source and self-hostable, which means your data stays in your
     {
       feature: "Platform availability",
       gaia: "Web app, Electron desktop app, and React Native mobile app — available across all devices",
-      competitor:
-        "Web application with iOS and Android mobile apps",
+      competitor: "Web application with iOS and Android mobile apps",
     },
     {
       feature: "Pricing",
@@ -143,7 +142,8 @@ GAIA is fully open source and self-hostable, which means your data stays in your
         "Yes. GAIA is fully open source on GitHub and can be self-hosted on your own infrastructure for free. Airtable is a proprietary SaaS platform with no self-hosting option. For teams with data residency requirements or those who want to inspect and customise the system they depend on, GAIA's open source model is a meaningful advantage.",
     },
     {
-      question: "What types of teams benefit from using GAIA alongside Airtable?",
+      question:
+        "What types of teams benefit from using GAIA alongside Airtable?",
       answer:
         "Teams that use Airtable to organise projects but spend significant time manually updating records from email, Slack, and meeting notes benefit most. GAIA handles the unstructured communication layer — surfacing action items, creating tasks, and automating workflow handoffs — while Airtable handles the structured database where that information ultimately lives. Marketing teams managing content pipelines, ops teams tracking vendor requests, and product teams managing feature intake are all strong examples.",
     },
@@ -188,7 +188,8 @@ GAIA is fully open source and self-hostable, which means your data stays in your
         "Yes. GAIA is fully open source on GitHub and can be self-hosted on your own infrastructure via Docker at no cost. Airtable is proprietary with no self-hosting option. For teams that handle sensitive customer data, operate in regulated industries, or want full control over the tools and data their workflows depend on, GAIA's self-hosted deployment is a meaningful advantage.",
     },
     {
-      question: "How does GAIA's workflow automation differ from Airtable's automations?",
+      question:
+        "How does GAIA's workflow automation differ from Airtable's automations?",
       answer:
         "Airtable's automations are rule-based and operate on data within Airtable — they can trigger notifications, create records, and call external APIs when conditions in an Airtable base change. GAIA's workflow automation spans your entire tool stack using natural language: describe what you want to happen across Gmail, Slack, Notion, GitHub, and Airtable, and GAIA orchestrates it. GAIA's automations are also event-driven across external tools — an email arriving, a Slack message, a calendar event — not just changes within a single database.",
     },

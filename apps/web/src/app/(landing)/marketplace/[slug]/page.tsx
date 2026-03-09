@@ -148,7 +148,9 @@ function generateIntegrationTitle(name: string, category: string): string {
     notes: `${name} AI Notes Integration - Auto-Save to ${name} with GAIA`,
   };
   const key = category?.toLowerCase();
-  return categoryTitles[key] ?? `${name} AI Integration - Automate ${name} with GAIA`;
+  return (
+    categoryTitles[key] ?? `${name} AI Integration - Automate ${name} with GAIA`
+  );
 }
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {

@@ -67,17 +67,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create issues in specific repositories based on email content?",
+        question:
+          "Can GAIA create issues in specific repositories based on email content?",
         answer:
           "Yes. You can set up rules that route emails to different repositories based on sender, subject keywords, Gmail labels, or AI classification of the email content. For example, emails about your mobile app can go to the mobile-app repo while API-related emails go to the backend repo.",
       },
       {
-        question: "Will GAIA avoid creating duplicate issues if the same bug is emailed twice?",
+        question:
+          "Will GAIA avoid creating duplicate issues if the same bug is emailed twice?",
         answer:
           "GAIA checks for existing open issues with similar titles and content before creating a new one. If a likely duplicate is found, GAIA can add the new email as a comment on the existing issue instead, keeping discussions consolidated.",
       },
       {
-        question: "Can GAIA handle GitHub notifications I already receive in Gmail?",
+        question:
+          "Can GAIA handle GitHub notifications I already receive in Gmail?",
         answer:
           "Yes. GAIA can parse GitHub's native notification emails and enrich them — summarizing long PR review threads, extracting action items, or routing specific notifications to teammates — rather than just letting them accumulate in your inbox.",
       },
@@ -90,8 +93,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Trello",
     toolBSlug: "trello",
-    tagline: "Convert emails into Trello cards and keep your boards updated from your inbox",
-    metaTitle: "Gmail + Trello Automation - Email to Cards, Inbox to Board | GAIA",
+    tagline:
+      "Convert emails into Trello cards and keep your boards updated from your inbox",
+    metaTitle:
+      "Gmail + Trello Automation - Email to Cards, Inbox to Board | GAIA",
     metaDescription:
       "Automate Gmail and Trello with GAIA. Create Trello cards from emails, update board lists based on email replies, and manage tasks without switching between your inbox and boards.",
     keywords: [
@@ -150,17 +155,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create cards on different Trello boards based on the email content?",
+        question:
+          "Can GAIA create cards on different Trello boards based on the email content?",
         answer:
           "Yes. You can set rules that route emails to different boards based on sender domain, Gmail labels, or AI-detected content type. For example, design request emails go to your Design board while support emails go to your Support board.",
       },
       {
-        question: "What happens to the original email after GAIA creates a Trello card?",
+        question:
+          "What happens to the original email after GAIA creates a Trello card?",
         answer:
           "GAIA can apply a Gmail label such as 'Sent to Trello' to the original email and optionally archive it so your inbox stays clean. The link back to the email thread is stored in the Trello card description so you can always find the source.",
       },
       {
-        question: "Can I create a Trello card manually by forwarding an email to GAIA?",
+        question:
+          "Can I create a Trello card manually by forwarding an email to GAIA?",
         answer:
           "Yes. In addition to automatic rules, you can forward any email to GAIA with a quick instruction like 'add this to the Marketing board under To Do' and GAIA will create the card immediately.",
       },
@@ -173,8 +181,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Discord",
     toolBSlug: "discord",
-    tagline: "Route important emails to Discord channels and keep your community in the loop",
-    metaTitle: "Gmail + Discord Automation - Email Notifications to Discord | GAIA",
+    tagline:
+      "Route important emails to Discord channels and keep your community in the loop",
+    metaTitle:
+      "Gmail + Discord Automation - Email Notifications to Discord | GAIA",
     metaDescription:
       "Connect Gmail and Discord with GAIA. Forward important email alerts to Discord channels, notify your community about key updates, and bridge email communications with Discord automatically.",
     keywords: [
@@ -233,12 +243,14 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA format the Discord message differently from the original email?",
+        question:
+          "Can GAIA format the Discord message differently from the original email?",
         answer:
           "Yes. GAIA can post the full email, an AI-generated summary, or a custom template that extracts specific fields like sender, subject, and key points. For noisy alert emails, a concise one-line summary is often more useful than the full email body.",
       },
       {
-        question: "Can GAIA post to multiple Discord channels for the same email?",
+        question:
+          "Can GAIA post to multiple Discord channels for the same email?",
         answer:
           "Yes. You can configure rules where a single email triggers posts to multiple channels. For example, a major client email might post to both #clients and #management so both teams are notified simultaneously.",
       },
@@ -257,7 +269,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolB: "Google Drive",
     toolBSlug: "google-drive",
     tagline: "Automatically save email attachments and content to Google Drive",
-    metaTitle: "Gmail + Google Drive Automation - Save Attachments Automatically | GAIA",
+    metaTitle:
+      "Gmail + Google Drive Automation - Save Attachments Automatically | GAIA",
     metaDescription:
       "Connect Gmail and Google Drive with GAIA. Auto-save email attachments to Drive folders, convert email threads to Drive documents, and keep files organized without manual downloading.",
     keywords: [
@@ -316,7 +329,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA organize files into subfolders based on the email sender or date?",
+        question:
+          "Can GAIA organize files into subfolders based on the email sender or date?",
         answer:
           "Yes. You can instruct GAIA to create a folder structure based on sender name, sender domain, year and month, project name, or any combination. For example, invoices can be organized into Drive folders by vendor and then by month automatically.",
       },
@@ -326,7 +340,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
           "GAIA can save any file type that Gmail supports as an attachment, including PDFs, Word documents, Excel spreadsheets, images, ZIP archives, and more. Google Workspace files like Docs and Sheets are handled natively.",
       },
       {
-        question: "Will GAIA create duplicate files if the same attachment is sent twice?",
+        question:
+          "Will GAIA create duplicate files if the same attachment is sent twice?",
         answer:
           "GAIA checks for existing files with the same name and content hash before saving. If a duplicate is detected, it will skip the save or append a version suffix depending on your preference, keeping your Drive folders clean.",
       },
@@ -339,8 +354,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "HubSpot",
     toolBSlug: "hubspot",
-    tagline: "Sync Gmail conversations with HubSpot CRM contacts and deals automatically",
-    metaTitle: "Gmail + HubSpot Automation - Email to CRM, Contacts Synced | GAIA",
+    tagline:
+      "Sync Gmail conversations with HubSpot CRM contacts and deals automatically",
+    metaTitle:
+      "Gmail + HubSpot Automation - Email to CRM, Contacts Synced | GAIA",
     metaDescription:
       "Connect Gmail and HubSpot with GAIA. Log email conversations to CRM contacts, create deals from emails, update contact records automatically, and never lose a sales interaction.",
     keywords: [
@@ -399,7 +416,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA match emails to existing HubSpot contacts automatically?",
+        question:
+          "Can GAIA match emails to existing HubSpot contacts automatically?",
         answer:
           "Yes. GAIA matches emails to HubSpot contacts by email address first, and if no match is found, it can search by company domain. You can configure whether unmatched emails create new contacts automatically or are flagged for manual review.",
       },
@@ -422,8 +440,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Salesforce",
     toolBSlug: "salesforce",
-    tagline: "Log emails to Salesforce CRM and create leads from your inbox automatically",
-    metaTitle: "Gmail + Salesforce Automation - Email Logging, Lead Creation | GAIA",
+    tagline:
+      "Log emails to Salesforce CRM and create leads from your inbox automatically",
+    metaTitle:
+      "Gmail + Salesforce Automation - Email Logging, Lead Creation | GAIA",
     metaDescription:
       "Connect Gmail and Salesforce with GAIA. Automatically log emails to Salesforce records, create leads from inbound emails, update opportunities, and keep your CRM data accurate.",
     keywords: [
@@ -482,12 +502,14 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA support Salesforce custom objects, not just standard ones?",
+        question:
+          "Does GAIA support Salesforce custom objects, not just standard ones?",
         answer:
           "Yes. GAIA can read and write to custom Salesforce objects in addition to standard Leads, Contacts, Accounts, and Opportunities. You can map email content to custom fields by describing the mapping in GAIA's configuration.",
       },
       {
-        question: "How does GAIA handle emails that match multiple Salesforce records?",
+        question:
+          "How does GAIA handle emails that match multiple Salesforce records?",
         answer:
           "When an email matches multiple Salesforce records — for example, a contact associated with multiple opportunities — GAIA will log the activity to all relevant records or prompt for disambiguation based on your configuration preferences.",
       },
@@ -505,8 +527,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Airtable",
     toolBSlug: "airtable",
-    tagline: "Save email data to Airtable databases and trigger workflows from your inbox",
-    metaTitle: "Gmail + Airtable Automation - Email Data to Airtable Records | GAIA",
+    tagline:
+      "Save email data to Airtable databases and trigger workflows from your inbox",
+    metaTitle:
+      "Gmail + Airtable Automation - Email Data to Airtable Records | GAIA",
     metaDescription:
       "Connect Gmail and Airtable with GAIA. Automatically create Airtable records from emails, extract structured data from your inbox, and keep databases updated without manual data entry.",
     keywords: [
@@ -565,17 +589,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA update existing Airtable records as well as create new ones?",
+        question:
+          "Can GAIA update existing Airtable records as well as create new ones?",
         answer:
           "Yes. GAIA can match incoming emails to existing Airtable records based on a key field like email address or order number, and update the record rather than creating a duplicate. For example, a follow-up email from a job applicant can update their existing applicant record.",
       },
       {
-        question: "What if the email doesn't contain all the fields my Airtable table requires?",
+        question:
+          "What if the email doesn't contain all the fields my Airtable table requires?",
         answer:
           "GAIA will populate the fields it can extract from the email and leave required fields blank or set them to a default value you specify. You can configure GAIA to notify you when a record is created with missing required fields so you can complete it manually.",
       },
       {
-        question: "Can GAIA trigger Airtable automations after creating a record?",
+        question:
+          "Can GAIA trigger Airtable automations after creating a record?",
         answer:
           "Yes. Once GAIA creates a record in Airtable, any Airtable automations triggered by record creation will fire as normal. You can also configure GAIA to send a confirmation email or Slack notification after creating the Airtable record.",
       },
@@ -588,8 +615,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Stripe",
     toolBSlug: "stripe",
-    tagline: "Enrich payment emails with Stripe data and automate revenue notifications",
-    metaTitle: "Gmail + Stripe Automation - Payment Emails, Revenue Alerts | GAIA",
+    tagline:
+      "Enrich payment emails with Stripe data and automate revenue notifications",
+    metaTitle:
+      "Gmail + Stripe Automation - Payment Emails, Revenue Alerts | GAIA",
     metaDescription:
       "Connect Gmail and Stripe with GAIA. Enrich payment notification emails with Stripe customer data, automate revenue summaries, and act on billing events without manual lookups.",
     keywords: [
@@ -658,7 +687,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
           "Yes. GAIA can compose and send personalized dunning emails when payment failures occur, including the customer's name, the failed amount, and a link to update their payment method. You can set a sequence of escalating follow-ups on a schedule you define.",
       },
       {
-        question: "Does this work with Stripe Connect or only standard Stripe accounts?",
+        question:
+          "Does this work with Stripe Connect or only standard Stripe accounts?",
         answer:
           "GAIA works with standard Stripe accounts. Stripe Connect support for marketplace and platform integrations is on the roadmap. Contact the GAIA team if you have a specific Connect use case.",
       },
@@ -671,7 +701,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Zoom",
     toolBSlug: "zoom",
-    tagline: "Create Zoom meetings from email invites and send join links automatically",
+    tagline:
+      "Create Zoom meetings from email invites and send join links automatically",
     metaTitle: "Gmail + Zoom Automation - Schedule Meetings from Email | GAIA",
     metaDescription:
       "Connect Gmail and Zoom with GAIA. Automatically create Zoom meetings when scheduling emails arrive, send join links to participants, and keep your calendar and inbox in sync.",
@@ -731,17 +762,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA handle time zone differences when creating Zoom meetings from email?",
+        question:
+          "Can GAIA handle time zone differences when creating Zoom meetings from email?",
         answer:
           "Yes. GAIA detects time zone references in email text and converts them to the correct UTC time when creating the Zoom meeting and calendar event. If the time zone is ambiguous, GAIA will ask for clarification before creating the meeting.",
       },
       {
-        question: "Will GAIA create Zoom meetings for every email that mentions a time, or only confirmed meetings?",
+        question:
+          "Will GAIA create Zoom meetings for every email that mentions a time, or only confirmed meetings?",
         answer:
           "GAIA uses context to distinguish between 'are you free Thursday at 2?' (a proposal) and 'confirmed: Thursday at 2 PM' (a commitment). You can also configure GAIA to always ask before creating a meeting if you prefer full control.",
       },
       {
-        question: "Does this work with Google Calendar for adding meeting events?",
+        question:
+          "Does this work with Google Calendar for adding meeting events?",
         answer:
           "Yes. When GAIA creates a Zoom meeting from Gmail, it simultaneously creates the Google Calendar event with the Zoom link embedded so the meeting appears on your calendar with all the details in one place.",
       },
@@ -754,8 +788,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Microsoft Teams",
     toolBSlug: "microsoft-teams",
-    tagline: "Route important Gmail messages to Microsoft Teams channels automatically",
-    metaTitle: "Gmail + Microsoft Teams Automation - Email to Teams Notifications | GAIA",
+    tagline:
+      "Route important Gmail messages to Microsoft Teams channels automatically",
+    metaTitle:
+      "Gmail + Microsoft Teams Automation - Email to Teams Notifications | GAIA",
     metaDescription:
       "Connect Gmail and Microsoft Teams with GAIA. Forward important emails to Teams channels, get inbox alerts in Teams, and keep your Microsoft 365 team updated from Gmail automatically.",
     keywords: [
@@ -814,17 +850,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA post to Teams private channels as well as public ones?",
+        question:
+          "Can GAIA post to Teams private channels as well as public ones?",
         answer:
           "Yes. GAIA can post to any Teams channel — public, private, or shared — where it has been granted permission. During setup, you specify which channels GAIA should have access to, and it will only post where authorized.",
       },
       {
-        question: "Can GAIA include email attachments in the Teams notification?",
+        question:
+          "Can GAIA include email attachments in the Teams notification?",
         answer:
           "GAIA can reference attachments in the Teams message and provide a link back to the original Gmail thread. Uploading binary attachments directly to Teams is supported for common file types. For large files, GAIA recommends linking to a shared Google Drive location instead.",
       },
       {
-        question: "Does GAIA support conditional routing — for example, only posting emails above a certain urgency level?",
+        question:
+          "Does GAIA support conditional routing — for example, only posting emails above a certain urgency level?",
         answer:
           "Yes. GAIA can assess email urgency using AI classification and only route emails that meet your defined threshold to Teams. This prevents your Teams channels from being flooded with low-priority notifications.",
       },
@@ -837,8 +876,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Trello",
     toolBSlug: "trello",
-    tagline: "Create Trello cards from Slack messages and get board updates in Slack",
-    metaTitle: "Slack + Trello Automation - Cards from Messages, Board Alerts | GAIA",
+    tagline:
+      "Create Trello cards from Slack messages and get board updates in Slack",
+    metaTitle:
+      "Slack + Trello Automation - Cards from Messages, Board Alerts | GAIA",
     metaDescription:
       "Connect Slack and Trello with GAIA. Create Trello cards from Slack messages, receive card updates in Slack channels, and manage your task board without leaving your team chat.",
     keywords: [
@@ -897,12 +938,14 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can multiple team members create Trello cards from Slack, or only admins?",
+        question:
+          "Can multiple team members create Trello cards from Slack, or only admins?",
         answer:
           "Any team member in the configured Slack workspace can create Trello cards using the defined triggers. GAIA respects Trello board permissions, so cards will only be created on boards the triggering user has access to.",
       },
       {
-        question: "Can I choose which Slack channel gets notified for specific Trello boards?",
+        question:
+          "Can I choose which Slack channel gets notified for specific Trello boards?",
         answer:
           "Yes. You can map each Trello board to a specific Slack channel for notifications. For example, your Marketing board updates can go to #marketing while your Engineering board goes to #engineering.",
       },
@@ -920,8 +963,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Google Drive",
     toolBSlug: "google-drive",
-    tagline: "Save Slack files to Google Drive and access Drive documents from Slack",
-    metaTitle: "Slack + Google Drive Automation - File Sync, Drive Access in Slack | GAIA",
+    tagline:
+      "Save Slack files to Google Drive and access Drive documents from Slack",
+    metaTitle:
+      "Slack + Google Drive Automation - File Sync, Drive Access in Slack | GAIA",
     metaDescription:
       "Connect Slack and Google Drive with GAIA. Automatically save Slack file uploads to Drive folders, share Drive documents in Slack, and keep your team's files organized and accessible.",
     keywords: [
@@ -980,17 +1025,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA save all files from a Slack channel or only specific types?",
+        question:
+          "Does GAIA save all files from a Slack channel or only specific types?",
         answer:
           "You can configure GAIA to save all files from a channel or only specific file types such as PDFs, images, or documents. You can also exclude files below a certain size or from specific senders if needed.",
       },
       {
-        question: "Will GAIA overwrite a Drive file if the same file is uploaded again in Slack?",
+        question:
+          "Will GAIA overwrite a Drive file if the same file is uploaded again in Slack?",
         answer:
           "GAIA checks for an existing file with the same name in the target Drive folder. If found, it can either create a new version of the Drive file or save the new upload with a version suffix, depending on your configuration.",
       },
       {
-        question: "Can GAIA handle Google Drive shared drives, not just personal My Drive?",
+        question:
+          "Can GAIA handle Google Drive shared drives, not just personal My Drive?",
         answer:
           "Yes. GAIA supports both personal My Drive and Google Shared Drives. You can map Slack channels to folders within a Shared Drive so the entire team has ownership of the automatically saved files.",
       },
@@ -1003,8 +1051,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Discord",
     toolBSlug: "discord",
-    tagline: "Bridge Slack and Discord to cross-post announcements across both communities",
-    metaTitle: "Slack + Discord Bridge - Cross-Post Messages, Sync Communities | GAIA",
+    tagline:
+      "Bridge Slack and Discord to cross-post announcements across both communities",
+    metaTitle:
+      "Slack + Discord Bridge - Cross-Post Messages, Sync Communities | GAIA",
     metaDescription:
       "Connect Slack and Discord with GAIA. Cross-post announcements between Slack workspaces and Discord servers, bridge team and community communications, and keep both platforms in sync.",
     keywords: [
@@ -1063,17 +1113,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA avoid posting bot messages from Discord back to Slack, creating echo loops?",
+        question:
+          "Can GAIA avoid posting bot messages from Discord back to Slack, creating echo loops?",
         answer:
           "Yes. GAIA tracks which messages it has originated and will not re-post messages that came from its own cross-posting actions. You can also configure it to ignore messages from other bot users to prevent cross-platform echo loops.",
       },
       {
-        question: "Can GAIA reformat messages for the different tone of each platform?",
+        question:
+          "Can GAIA reformat messages for the different tone of each platform?",
         answer:
           "Yes. GAIA can apply different formatting rules for Slack and Discord. For example, a technical internal Slack message can be rewritten in a more community-friendly tone before being posted to Discord, or markdown formatting can be adjusted for each platform's rendering engine.",
       },
       {
-        question: "Does GAIA support bridging specific Slack DMs to Discord threads?",
+        question:
+          "Does GAIA support bridging specific Slack DMs to Discord threads?",
         answer:
           "GAIA focuses on channel-to-channel bridging. Direct message bridging is not supported by default for privacy reasons, but escalation workflows — where a Discord user's question is routed to a Slack channel — are fully supported.",
       },
@@ -1086,8 +1139,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Figma",
     toolBSlug: "figma",
-    tagline: "Get Figma design updates and comment alerts delivered directly in Slack",
-    metaTitle: "Slack + Figma Automation - Design Reviews and Comment Alerts | GAIA",
+    tagline:
+      "Get Figma design updates and comment alerts delivered directly in Slack",
+    metaTitle:
+      "Slack + Figma Automation - Design Reviews and Comment Alerts | GAIA",
     metaDescription:
       "Connect Slack and Figma with GAIA. Get notified in Slack when Figma designs are updated or commented on, manage design reviews from Slack, and keep designers and stakeholders aligned.",
     keywords: [
@@ -1146,7 +1201,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA notify only specific people in Slack when they are mentioned in a Figma comment?",
+        question:
+          "Can GAIA notify only specific people in Slack when they are mentioned in a Figma comment?",
         answer:
           "Yes. When a Figma comment tags a specific person using @mention, GAIA sends a direct Slack message to that person in addition to the channel notification, so they are personally alerted even if they missed the channel post.",
       },
@@ -1156,7 +1212,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
           "GAIA requires Figma's webhook or API access, which is available on Figma Professional plans and above. Figma Starter plans have limited API access that may restrict some notification features.",
       },
       {
-        question: "Can GAIA include a preview image of the Figma frame in the Slack notification?",
+        question:
+          "Can GAIA include a preview image of the Figma frame in the Slack notification?",
         answer:
           "Yes. For version publish and design review notifications, GAIA can include a rendered thumbnail of the relevant Figma frame directly in the Slack message so reviewers can preview the design at a glance before clicking through to Figma.",
       },
@@ -1169,8 +1226,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Stripe",
     toolBSlug: "stripe",
-    tagline: "Get real-time Stripe payment alerts and revenue summaries in Slack",
-    metaTitle: "Slack + Stripe Automation - Payment Alerts and Revenue in Slack | GAIA",
+    tagline:
+      "Get real-time Stripe payment alerts and revenue summaries in Slack",
+    metaTitle:
+      "Slack + Stripe Automation - Payment Alerts and Revenue in Slack | GAIA",
     metaDescription:
       "Connect Slack and Stripe with GAIA. Receive real-time payment notifications in Slack, get revenue milestone alerts, monitor failed charges, and keep your team informed of financial events.",
     keywords: [
@@ -1229,17 +1288,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can I control which Slack channels receive which types of Stripe events?",
+        question:
+          "Can I control which Slack channels receive which types of Stripe events?",
         answer:
           "Yes. You can route different Stripe events to different channels. New subscriptions can go to #sales, failed payments to #support, disputes to #finance, and revenue summaries to #leadership — ensuring each team gets the relevant financial information without noise.",
       },
       {
-        question: "Can GAIA suppress notifications for small test transactions in Stripe?",
+        question:
+          "Can GAIA suppress notifications for small test transactions in Stripe?",
         answer:
           "Yes. GAIA can filter out Stripe test mode events and can apply minimum threshold filters so that low-value transactions below a defined amount do not generate Slack notifications, keeping your channels focused on meaningful payment events.",
       },
       {
-        question: "Does GAIA support Stripe Connect for platforms with multiple sub-accounts?",
+        question:
+          "Does GAIA support Stripe Connect for platforms with multiple sub-accounts?",
         answer:
           "GAIA supports standard Stripe accounts fully. For Stripe Connect platforms, basic payment notifications are supported but deep sub-account analytics are on the roadmap. Contact the GAIA team for specific Connect use cases.",
       },
@@ -1252,8 +1314,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Salesforce",
     toolBSlug: "salesforce",
-    tagline: "Surface Salesforce CRM updates in Slack and create records from conversations",
-    metaTitle: "Slack + Salesforce Automation - CRM Updates in Slack, Record Creation | GAIA",
+    tagline:
+      "Surface Salesforce CRM updates in Slack and create records from conversations",
+    metaTitle:
+      "Slack + Salesforce Automation - CRM Updates in Slack, Record Creation | GAIA",
     metaDescription:
       "Connect Slack and Salesforce with GAIA. Get CRM opportunity updates in Slack, create Salesforce tasks and leads from Slack messages, and keep your sales team aligned without switching platforms.",
     keywords: [
@@ -1312,17 +1376,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA pull Salesforce data for a specific account directly into a Slack channel?",
+        question:
+          "Can GAIA pull Salesforce data for a specific account directly into a Slack channel?",
         answer:
           "Yes. You can ask GAIA to post a Salesforce account summary — including open opportunities, recent activity, key contacts, and contract status — to any Slack channel. This is especially useful for preparing for customer calls when the team is coordinating in Slack.",
       },
       {
-        question: "Does GAIA support Salesforce sandboxes for testing the integration?",
+        question:
+          "Does GAIA support Salesforce sandboxes for testing the integration?",
         answer:
           "Yes. GAIA supports both Salesforce production and sandbox environments. You can test your Slack-Salesforce workflows in a sandbox before enabling them in production to ensure the integration behaves as expected.",
       },
       {
-        question: "Can GAIA update existing Salesforce records from Slack, not just create new ones?",
+        question:
+          "Can GAIA update existing Salesforce records from Slack, not just create new ones?",
         answer:
           "Yes. GAIA can update existing Salesforce records based on Slack commands. For example, a rep can type 'update Acme deal stage to Proposal Sent' in Slack and GAIA will find the correct Salesforce Opportunity and update the stage, logging the change as an activity.",
       },
@@ -1335,8 +1402,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Airtable",
     toolBSlug: "airtable",
-    tagline: "Update Airtable records from Slack and get database alerts in your channels",
-    metaTitle: "Slack + Airtable Automation - Database Updates from Slack | GAIA",
+    tagline:
+      "Update Airtable records from Slack and get database alerts in your channels",
+    metaTitle:
+      "Slack + Airtable Automation - Database Updates from Slack | GAIA",
     metaDescription:
       "Connect Slack and Airtable with GAIA. Create and update Airtable records from Slack messages, receive database change notifications in Slack, and manage structured data from your team chat.",
     keywords: [
@@ -1395,17 +1464,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can multiple team members update the same Airtable record from different Slack channels?",
+        question:
+          "Can multiple team members update the same Airtable record from different Slack channels?",
         answer:
           "Yes. Multiple team members can update records via Slack commands. GAIA handles concurrent updates gracefully and will alert if a conflict is detected — for example, if two people try to set a record to different statuses at the same time.",
       },
       {
-        question: "Can GAIA filter Airtable notifications to avoid flooding Slack with every small change?",
+        question:
+          "Can GAIA filter Airtable notifications to avoid flooding Slack with every small change?",
         answer:
           "Yes. You can configure notification rules to only trigger for specific field changes, record types, or conditions — such as only notifying when a record's status changes to 'Urgent' or when a numeric field exceeds a defined threshold.",
       },
       {
-        question: "Does GAIA support Airtable linked record fields and lookup fields?",
+        question:
+          "Does GAIA support Airtable linked record fields and lookup fields?",
         answer:
           "GAIA can read linked record fields and display their values in Slack queries. Creating linked records from Slack is supported for simple cases. Complex multi-table relationships may require additional configuration through GAIA's settings.",
       },
@@ -1418,8 +1490,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Microsoft Teams",
     toolBSlug: "microsoft-teams",
-    tagline: "Bridge Slack and Microsoft Teams for organizations using both platforms",
-    metaTitle: "Slack + Microsoft Teams Bridge - Cross-Platform Messaging | GAIA",
+    tagline:
+      "Bridge Slack and Microsoft Teams for organizations using both platforms",
+    metaTitle:
+      "Slack + Microsoft Teams Bridge - Cross-Platform Messaging | GAIA",
     metaDescription:
       "Connect Slack and Microsoft Teams with GAIA. Cross-post messages between platforms, bridge teams using different collaboration tools, and keep Slack and Teams users aligned automatically.",
     keywords: [
@@ -1478,17 +1552,20 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA prevent echo loops where a bridged message gets re-posted infinitely?",
+        question:
+          "Can GAIA prevent echo loops where a bridged message gets re-posted infinitely?",
         answer:
           "Yes. GAIA marks all messages it originates to prevent re-bridging. Messages posted by GAIA to Teams will not be forwarded back to Slack, and vice versa, ensuring a clean one-directional or bidirectional sync without infinite loops.",
       },
       {
-        question: "Does GAIA support file and attachment sharing between Slack and Teams?",
+        question:
+          "Does GAIA support file and attachment sharing between Slack and Teams?",
         answer:
           "Text messages are bridged fully. File attachments are handled by posting a link to the original file rather than uploading a copy to the destination platform, since Teams and Slack use different file storage backends. Both sides can access the linked file.",
       },
       {
-        question: "Is this bridge suitable as a permanent solution or only during migrations?",
+        question:
+          "Is this bridge suitable as a permanent solution or only during migrations?",
         answer:
           "Both. GAIA supports permanent Slack-Teams bridges for organizations with a stable dual-platform setup, as well as temporary migration-period bridges that can be decommissioned once all users have transitioned to the target platform.",
       },
@@ -1501,8 +1578,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Figma",
     toolBSlug: "figma",
-    tagline: "Connect design feedback loops between Gmail and Figma so nothing gets lost in translation",
-    metaTitle: "Gmail + Figma Automation - Email Design Feedback to Figma | GAIA",
+    tagline:
+      "Connect design feedback loops between Gmail and Figma so nothing gets lost in translation",
+    metaTitle:
+      "Gmail + Figma Automation - Email Design Feedback to Figma | GAIA",
     metaDescription:
       "Automate Gmail and Figma with GAIA. Convert email feedback into Figma comments, notify stakeholders of design updates by email, and keep design reviews moving without manual handoffs.",
     keywords: [
@@ -1566,7 +1645,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
           "GAIA uses context from the email—project name, client name, subject line—and your configured mappings to identify the correct Figma file. You can also include a Figma file URL in the email to make the match unambiguous.",
       },
       {
-        question: "Can GAIA add comments to specific frames rather than the whole file?",
+        question:
+          "Can GAIA add comments to specific frames rather than the whole file?",
         answer:
           "Yes, when the email feedback references a specific screen by name or description, GAIA will place the comment on the most relevant frame. For general feedback without a specific frame reference, the comment is added at the file level.",
       },
@@ -1589,8 +1669,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "gmail",
     toolB: "Loom",
     toolBSlug: "loom",
-    tagline: "Attach Loom video context to email workflows and never lose recorded insights in your inbox",
-    metaTitle: "Gmail + Loom Automation - Email and Video Messaging Workflow | GAIA",
+    tagline:
+      "Attach Loom video context to email workflows and never lose recorded insights in your inbox",
+    metaTitle:
+      "Gmail + Loom Automation - Email and Video Messaging Workflow | GAIA",
     metaDescription:
       "Automate Gmail and Loom with GAIA. Send Loom recordings triggered by emails, transcribe video content into email summaries, and keep async video communication organized.",
     keywords: [
@@ -1649,7 +1731,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA automatically transcribe Loom videos or use Loom's built-in transcript?",
+        question:
+          "Does GAIA automatically transcribe Loom videos or use Loom's built-in transcript?",
         answer:
           "GAIA uses Loom's native transcript where available (Loom Business and above includes auto-transcription). For recordings without transcripts, GAIA can summarize based on the video title, description, and any captions.",
       },
@@ -1664,7 +1747,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
           "Yes. GAIA can be configured to monitor shared Loom workspaces and route video summaries or notifications to the appropriate team member's Gmail based on the video's assigned owner or topic.",
       },
       {
-        question: "Can GAIA track whether email recipients have watched the Loom?",
+        question:
+          "Can GAIA track whether email recipients have watched the Loom?",
         answer:
           "If Loom provides view analytics via its API, GAIA can monitor view status and trigger follow-up email drafts when a recipient has watched the recording. This depends on your Loom plan's analytics capabilities.",
       },
@@ -1677,8 +1761,10 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Google Calendar",
     toolBSlug: "google-calendar",
-    tagline: "Keep your Slack team informed of calendar events and reduce meeting no-shows automatically",
-    metaTitle: "Slack + Google Calendar Automation - Calendar to Slack Sync | GAIA",
+    tagline:
+      "Keep your Slack team informed of calendar events and reduce meeting no-shows automatically",
+    metaTitle:
+      "Slack + Google Calendar Automation - Calendar to Slack Sync | GAIA",
     metaDescription:
       "Automate Slack and Google Calendar with GAIA. Post meeting reminders to Slack channels, update your status from calendar events, and schedule meetings directly from Slack conversations.",
     keywords: [
@@ -1737,7 +1823,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA update Slack statuses for all team members or just the connected user?",
+        question:
+          "Can GAIA update Slack statuses for all team members or just the connected user?",
         answer:
           "GAIA updates Slack status for each user who connects their own Google Calendar. For team-wide status updates, each team member authenticates their own Calendar and Slack accounts, and GAIA manages their statuses individually.",
       },
@@ -1765,7 +1852,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "HubSpot",
     toolBSlug: "hubspot",
-    tagline: "Surface HubSpot deal and contact updates in Slack so your sales team never misses a signal",
+    tagline:
+      "Surface HubSpot deal and contact updates in Slack so your sales team never misses a signal",
     metaTitle: "Slack + HubSpot Automation - CRM Alerts in Slack | GAIA",
     metaDescription:
       "Automate Slack and HubSpot with GAIA. Get deal stage alerts in Slack, log Slack conversations to HubSpot contacts, and keep your sales team informed without switching between tools.",
@@ -1825,7 +1913,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA notify different Slack channels for different HubSpot pipelines?",
+        question:
+          "Can GAIA notify different Slack channels for different HubSpot pipelines?",
         answer:
           "Yes. You can configure GAIA to route alerts from different HubSpot pipelines or deal stages to specific Slack channels. Enterprise deals go to #enterprise-sales, SMB deals to #smb-sales, and so on.",
       },
@@ -1840,7 +1929,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
           "Yes. You can instruct GAIA to create a HubSpot task associated with a contact or deal directly from a Slack message, setting the due date, owner, and description based on the conversation context.",
       },
       {
-        question: "Does GAIA work with HubSpot custom properties and pipelines?",
+        question:
+          "Does GAIA work with HubSpot custom properties and pipelines?",
         answer:
           "GAIA works with standard HubSpot objects and properties natively. For custom properties and pipelines, you can describe the field names and GAIA will include them in notifications and write to them when logging from Slack.",
       },
@@ -1853,7 +1943,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Zoom",
     toolBSlug: "zoom",
-    tagline: "Start, schedule, and follow up on Zoom meetings without ever leaving Slack",
+    tagline:
+      "Start, schedule, and follow up on Zoom meetings without ever leaving Slack",
     metaTitle: "Slack + Zoom Automation - Zoom Meetings from Slack | GAIA",
     metaDescription:
       "Automate Slack and Zoom with GAIA. Schedule Zoom meetings from Slack threads, post meeting summaries back to channels, and keep your team coordinated around video calls without app switching.",
@@ -1913,7 +2004,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA start an instant Zoom meeting from a Slack command?",
+        question:
+          "Can GAIA start an instant Zoom meeting from a Slack command?",
         answer:
           "Yes. You can ask GAIA in any Slack channel or DM to start a Zoom meeting immediately. GAIA creates the meeting and posts the join link within seconds, no calendar scheduling required.",
       },
@@ -1923,7 +2015,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
           "When Zoom cloud transcription is enabled on your account (available on Zoom Business and above), GAIA uses the actual transcript to generate accurate meeting summaries. For accounts without transcription, GAIA generates summaries from meeting metadata and any notes shared.",
       },
       {
-        question: "Can GAIA post the Zoom summary to a specific Slack channel rather than where it was scheduled?",
+        question:
+          "Can GAIA post the Zoom summary to a specific Slack channel rather than where it was scheduled?",
         answer:
           "Yes. You can configure GAIA to post summaries to a dedicated #meeting-notes channel, the channel where the meeting was scheduled, or both. You can also request a specific channel at scheduling time.",
       },
@@ -1941,7 +2034,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     toolASlug: "slack",
     toolB: "Loom",
     toolBSlug: "loom",
-    tagline: "Make Loom videos a first-class part of your Slack workflow with automatic summaries and routing",
+    tagline:
+      "Make Loom videos a first-class part of your Slack workflow with automatic summaries and routing",
     metaTitle: "Slack + Loom Automation - Loom Videos in Slack Workflow | GAIA",
     metaDescription:
       "Automate Slack and Loom with GAIA. Get instant Loom video summaries in Slack, route recordings to the right channels, and keep async video communication organized within your team's workflow.",
@@ -2001,7 +2095,8 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA summarize all Loom links or only from specific workspaces?",
+        question:
+          "Does GAIA summarize all Loom links or only from specific workspaces?",
         answer:
           "You configure the scope. GAIA can summarize all Loom links shared in monitored channels, only recordings from your organization's Loom workspace, or only Looms matching specific criteria like title keywords or creator.",
       },
@@ -2011,12 +2106,14 @@ export const combosBatchB: Record<string, IntegrationCombo> = {
           "Loom's auto-transcription is available on Business plans and above. For Starter plan recordings without transcripts, GAIA summarizes based on the video title, description, and any captions included by the creator.",
       },
       {
-        question: "Can GAIA prompt team members to record a Loom from within Slack?",
+        question:
+          "Can GAIA prompt team members to record a Loom from within Slack?",
         answer:
           "Yes. You can ask GAIA in Slack to suggest a Loom recording for a specific topic or to a specific person. GAIA will generate a suggested recording prompt and can send a Slack DM to the relevant person encouraging them to record.",
       },
       {
-        question: "Does this work with Loom recordings shared from outside my organization?",
+        question:
+          "Does this work with Loom recordings shared from outside my organization?",
         answer:
           "GAIA can summarize public Loom links shared in Slack regardless of whether they're from your organization, as long as the recordings are publicly accessible. For private Loom recordings, access depends on the sharing settings of the video.",
       },

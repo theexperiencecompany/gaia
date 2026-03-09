@@ -9,7 +9,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolBSlug: "asana",
     tagline:
       "Bridge engineering issues with cross-team project management automatically",
-    metaTitle: "Linear + Asana Automation - Sync Engineering and Projects | GAIA",
+    metaTitle:
+      "Linear + Asana Automation - Sync Engineering and Projects | GAIA",
     metaDescription:
       "Connect Linear and Asana with GAIA. Automatically mirror Linear issues to Asana tasks, sync status updates across both tools, and give every team a unified view of engineering work without manual duplication.",
     keywords: [
@@ -69,12 +70,14 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA sync all Linear issues to Asana or only specific ones?",
+        question:
+          "Does GAIA sync all Linear issues to Asana or only specific ones?",
         answer:
           "You control the scope. You can configure GAIA to sync an entire Linear team, a specific project, issues with a certain label, or only issues above a given priority threshold. Only the issues matching your rules are mirrored to Asana.",
       },
       {
-        question: "What happens if someone edits the same issue in both tools simultaneously?",
+        question:
+          "What happens if someone edits the same issue in both tools simultaneously?",
         answer:
           "GAIA uses a last-write-wins policy by default and flags conflicts in a dedicated GAIA log channel so you can review and resolve them. You can also designate one tool as the source of truth for specific fields to prevent conflicts entirely.",
       },
@@ -92,8 +95,10 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "linear",
     toolB: "Notion",
     toolBSlug: "notion",
-    tagline: "Sync sprint notes to Notion and link Linear issues to living docs",
-    metaTitle: "Linear + Notion Integration - Issues Meets Documentation | GAIA",
+    tagline:
+      "Sync sprint notes to Notion and link Linear issues to living docs",
+    metaTitle:
+      "Linear + Notion Integration - Issues Meets Documentation | GAIA",
     metaDescription:
       "Connect Linear and Notion with GAIA. Automatically sync Linear issues to Notion databases, embed issue status in sprint docs, and keep engineering documentation aligned with actual work.",
     keywords: [
@@ -154,7 +159,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Will GAIA overwrite content I've manually added to Notion pages?",
+        question:
+          "Will GAIA overwrite content I've manually added to Notion pages?",
         answer:
           "No. GAIA writes only to dedicated sections or properties it manages. Freeform content you add to a Notion page is never modified. GAIA uses structured blocks and database properties to keep its updates isolated.",
       },
@@ -164,7 +170,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
           "Yes. You can configure bidirectional sync so that updates to a Linear issue description are reflected in the linked Notion page and vice versa. You can also set one direction as read-only to prevent accidental overwrites.",
       },
       {
-        question: "Does this integration work with Notion databases or only pages?",
+        question:
+          "Does this integration work with Notion databases or only pages?",
         answer:
           "Both. GAIA can sync Linear issues as rows in a Notion database for structured tracking, and it can also update or create standalone Notion pages for richer documentation like sprint retros and project specs.",
       },
@@ -240,12 +247,14 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA handle the different status models between Linear and ClickUp?",
+        question:
+          "Can GAIA handle the different status models between Linear and ClickUp?",
         answer:
           "Yes. During setup you provide a status mapping table — for example, Linear's In Progress maps to ClickUp's In Development, and Linear's Done maps to ClickUp's Completed. GAIA applies this mapping consistently so statuses are always semantically equivalent.",
       },
       {
-        question: "What happens to ClickUp tasks that have no Linear counterpart?",
+        question:
+          "What happens to ClickUp tasks that have no Linear counterpart?",
         answer:
           "GAIA only acts on tasks and issues that are explicitly linked or match your configured sync rules. Unlinked ClickUp tasks are untouched. You can trigger issue creation in Linear from ClickUp manually by assigning a specific label or status.",
       },
@@ -326,12 +335,14 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Will GAIA create a Todoist task for every Linear issue in the workspace or only my assignments?",
+        question:
+          "Will GAIA create a Todoist task for every Linear issue in the workspace or only my assignments?",
         answer:
           "By default GAIA only creates Todoist tasks for issues assigned to your Linear user. You can optionally configure it to also watch issues you've subscribed to or issues in a specific team regardless of assignment.",
       },
       {
-        question: "What happens when a Linear issue is reassigned away from me?",
+        question:
+          "What happens when a Linear issue is reassigned away from me?",
         answer:
           "GAIA detects the reassignment and marks the corresponding Todoist task as cancelled or deletes it, depending on your preference. This prevents stale tasks from cluttering your personal list.",
       },
@@ -498,7 +509,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA match Figma frames to Linear issues automatically?",
+        question:
+          "How does GAIA match Figma frames to Linear issues automatically?",
         answer:
           "GAIA uses configurable matching rules — by default it looks for Figma frames whose names match the Linear issue title or ID. You can also link them explicitly by pasting a Figma URL into a Linear issue, which GAIA registers as the canonical design reference.",
       },
@@ -521,8 +533,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "linear",
     toolB: "Discord",
     toolBSlug: "discord",
-    tagline:
-      "Post Linear issue updates to dev Discord channels automatically",
+    tagline: "Post Linear issue updates to dev Discord channels automatically",
     metaTitle:
       "Linear + Discord Integration - Engineering Updates in Your Dev Server | GAIA",
     metaDescription:
@@ -584,12 +595,14 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA send Linear notifications to different Discord channels based on the team or project?",
+        question:
+          "Can GAIA send Linear notifications to different Discord channels based on the team or project?",
         answer:
           "Yes. You can configure channel routing rules so that Linear Team A notifications go to #team-alpha and Team B notifications go to #team-beta. You can also route by event type, priority, or label.",
       },
       {
-        question: "Can engineers interact with Linear issues directly from Discord?",
+        question:
+          "Can engineers interact with Linear issues directly from Discord?",
         answer:
           "Yes. GAIA supports Discord slash commands for common Linear actions including creating issues, updating status, adding comments, and querying the current sprint state. Responses are posted in-thread so the channel stays clean.",
       },
@@ -670,17 +683,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA require a specific naming convention for Drive documents?",
+        question:
+          "Does GAIA require a specific naming convention for Drive documents?",
         answer:
           "GAIA works best with consistent naming conventions but can also be configured with flexible matching patterns using regular expressions. You can also link Drive documents to Linear issues manually and GAIA will register and maintain those explicit links.",
       },
       {
-        question: "Can GAIA attach shared Drive files or only files owned by me?",
+        question:
+          "Can GAIA attach shared Drive files or only files owned by me?",
         answer:
           "GAIA can attach any Drive file that the authorized Google account has access to, including shared drives and files shared with your domain. It respects existing Drive sharing permissions and does not change access settings.",
       },
       {
-        question: "What file types does GAIA support when attaching Drive files to Linear?",
+        question:
+          "What file types does GAIA support when attaching Drive files to Linear?",
         answer:
           "GAIA can attach links to any Drive file type including Google Docs, Sheets, Slides, and uploaded PDFs, images, or other files. Linear renders the attached URLs with metadata previews for Google Workspace file types.",
       },
@@ -756,17 +772,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA filter which HubSpot tickets create Linear issues based on deal value?",
+        question:
+          "Can GAIA filter which HubSpot tickets create Linear issues based on deal value?",
         answer:
           "Yes. You can set a minimum associated deal value threshold so only feature requests from accounts above a certain ARR generate Linear issues automatically. Requests below the threshold are logged in GAIA's queue for manual review.",
       },
       {
-        question: "How does GAIA avoid creating duplicate Linear issues when multiple customers report the same request?",
+        question:
+          "How does GAIA avoid creating duplicate Linear issues when multiple customers report the same request?",
         answer:
           "GAIA uses semantic similarity matching to identify Linear issues that likely correspond to an incoming HubSpot request. If a match above your configured confidence threshold exists, GAIA links the HubSpot ticket to the existing issue and increments the demand count rather than creating a duplicate.",
       },
       {
-        question: "Does GAIA sync back to HubSpot when a Linear issue is partially complete, or only when Done?",
+        question:
+          "Does GAIA sync back to HubSpot when a Linear issue is partially complete, or only when Done?",
         answer:
           "You can configure sync triggers for any Linear state transition. Common configurations notify HubSpot at In Review (feature in beta) and Done (feature shipped), giving account owners two touchpoints to manage customer expectations.",
       },
@@ -842,17 +861,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA join Zoom meetings automatically or only if invited?",
+        question:
+          "Does GAIA join Zoom meetings automatically or only if invited?",
         answer:
           "GAIA joins meetings it schedules automatically. For meetings you schedule independently, you can invite GAIA's Zoom participant link and it will join, transcribe, and post a summary to your configured Linear destination.",
       },
       {
-        question: "How accurate is GAIA's action item extraction from Zoom transcripts?",
+        question:
+          "How accurate is GAIA's action item extraction from Zoom transcripts?",
         answer:
           "GAIA uses structured prompt analysis on Zoom transcripts to identify action items with high confidence. It flags extracted items for human review before creating Linear issues, so you can approve, edit, or discard each one before it enters the backlog.",
       },
       {
-        question: "Can GAIA schedule Zoom meetings based on team members' calendar availability?",
+        question:
+          "Can GAIA schedule Zoom meetings based on team members' calendar availability?",
         answer:
           "Yes. When connected to Google Calendar or Outlook, GAIA checks team member availability before scheduling ceremony times and picks the slot with the best attendance overlap within your configured working hours.",
       },
@@ -927,12 +949,14 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA sync historical Linear issues or only new activity?",
+        question:
+          "Does GAIA sync historical Linear issues or only new activity?",
         answer:
           "On initial setup, GAIA performs a historical backfill of all existing Linear issues within your configured scope. Going forward, new issues and updates sync in near real time.",
       },
       {
-        question: "Can Airtable team members update rows and have those changes reflected back in Linear?",
+        question:
+          "Can Airtable team members update rows and have those changes reflected back in Linear?",
         answer:
           "Bidirectional sync is supported for a limited set of fields — primarily status and assignee. For most teams, Linear is treated as the authoritative source and Airtable is read-optimized, but you can enable write-back for specific columns during setup.",
       },
@@ -1013,17 +1037,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA include customer PII from Stripe in Linear issues?",
+        question:
+          "Does GAIA include customer PII from Stripe in Linear issues?",
         answer:
           "No. GAIA is configured to exclude personally identifiable information by default. Linear issues receive aggregate statistics — affected customer count, total revenue at risk, error code distribution — without individual customer names, emails, or payment details.",
       },
       {
-        question: "Can GAIA distinguish between transient Stripe errors and persistent bugs?",
+        question:
+          "Can GAIA distinguish between transient Stripe errors and persistent bugs?",
         answer:
           "Yes. GAIA applies a configurable time-window filter so single transient errors do not create Linear issues. A Linear issue is created only when error rates persist above your threshold across a defined window — for example, a 5% failure rate sustained for 10 minutes.",
       },
       {
-        question: "What Stripe events does GAIA monitor beyond payment failures?",
+        question:
+          "What Stripe events does GAIA monitor beyond payment failures?",
         answer:
           "GAIA can monitor any Stripe webhook event including subscription lifecycle events, dispute creation, payout failures, and refund spikes. You configure which event types are relevant for your engineering team during setup.",
       },
@@ -1099,17 +1126,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA sync Jira subtasks to Notion or only epics and stories?",
+        question:
+          "Can GAIA sync Jira subtasks to Notion or only epics and stories?",
         answer:
           "GAIA supports configurable depth. You can sync only epics, epics and stories, or the full epic-story-subtask hierarchy to Notion. Most teams sync epics and stories to keep Notion at a strategic level while leaving tactical subtask details in Jira.",
       },
       {
-        question: "Will GAIA overwrite content I write manually in a Notion page?",
+        question:
+          "Will GAIA overwrite content I write manually in a Notion page?",
         answer:
           "GAIA writes only to dedicated sections and database properties it manages. Free-form content you add to a Notion page is never modified. GAIA uses clearly marked blocks and properties to separate its automated content from your manual additions.",
       },
       {
-        question: "Does GAIA support Jira Service Management projects as well as Software projects?",
+        question:
+          "Does GAIA support Jira Service Management projects as well as Software projects?",
         answer:
           "Yes. GAIA supports both Jira Software and Jira Service Management. For service management projects, GAIA can sync incident and request data to Notion knowledge base pages and post-mortem templates.",
       },
@@ -1185,17 +1215,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA create Todoist tasks for all Jira issues in my project or only assignments?",
+        question:
+          "Does GAIA create Todoist tasks for all Jira issues in my project or only assignments?",
         answer:
           "By default GAIA creates Todoist tasks only for Jira issues assigned to your user. You can optionally extend this to issues you are watching, issues in a specific sprint, or issues with a label you specify.",
       },
       {
-        question: "What Jira transition does GAIA use when I complete a Todoist task?",
+        question:
+          "What Jira transition does GAIA use when I complete a Todoist task?",
         answer:
           "During setup you choose which Jira workflow transition maps to Todoist task completion. For most teams this is the Done or Resolved transition, but you can map it to any transition in your project's workflow.",
       },
       {
-        question: "Can I snooze or reschedule a Todoist task without affecting Jira?",
+        question:
+          "Can I snooze or reschedule a Todoist task without affecting Jira?",
         answer:
           "Yes. Rescheduling, snoozing, adding subtasks, or editing the Todoist task title are local-only actions that do not affect Jira. Only task completion triggers a Jira status update.",
       },
@@ -1271,7 +1304,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA handle the Jira epic-story-subtask hierarchy versus ClickUp's task-subtask model?",
+        question:
+          "How does GAIA handle the Jira epic-story-subtask hierarchy versus ClickUp's task-subtask model?",
         answer:
           "GAIA maps Jira epics to ClickUp tasks and Jira stories to ClickUp subtasks by default, or you can map each level to a separate ClickUp hierarchy tier. The mapping is configurable to match your team's organizational conventions.",
       },
@@ -1281,7 +1315,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
           "Yes. During setup you map Jira custom fields to corresponding ClickUp custom fields. GAIA handles type conversion — for example, mapping a Jira number field to a ClickUp numeric field — and logs any fields that cannot be mapped cleanly.",
       },
       {
-        question: "What happens to ClickUp tasks that have no corresponding Jira story?",
+        question:
+          "What happens to ClickUp tasks that have no corresponding Jira story?",
         answer:
           "GAIA only syncs tasks that match your configured rules — typically tasks that have been explicitly linked or that match a trigger like being moved to a Ready for Development list. Unlinked ClickUp tasks are left untouched.",
       },
@@ -1443,17 +1478,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA create individual calendar events for every Jira issue due date or only sprints?",
+        question:
+          "Does GAIA create individual calendar events for every Jira issue due date or only sprints?",
         answer:
           "Both are configurable. You can sync sprint dates only, issue due dates only, or both. For issue due dates, you can filter by assignee so only issues assigned to each team member create events on their personal calendar.",
       },
       {
-        question: "What happens to Google Calendar events when a Jira sprint is deleted?",
+        question:
+          "What happens to Google Calendar events when a Jira sprint is deleted?",
         answer:
           "GAIA deletes or cancels the corresponding Google Calendar event when a Jira sprint is deleted. If the sprint is renamed or its dates are changed, GAIA updates the calendar event to match.",
       },
       {
-        question: "Can GAIA add Jira issue due date reminders to a shared team calendar?",
+        question:
+          "Can GAIA add Jira issue due date reminders to a shared team calendar?",
         answer:
           "Yes. You can configure GAIA to write to a shared Google Calendar that all team members subscribe to. This gives the team a unified view of all upcoming Jira deadlines without each member needing personal calendar sync enabled.",
       },
@@ -1529,7 +1567,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA identify which Figma frame belongs to which Jira ticket?",
+        question:
+          "How does GAIA identify which Figma frame belongs to which Jira ticket?",
         answer:
           "GAIA matches by name similarity between Jira ticket summaries and Figma frame names. You can also paste a Figma URL directly into a Jira ticket field to create an explicit link that GAIA then manages going forward.",
       },
@@ -1552,8 +1591,7 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "jira",
     toolB: "Discord",
     toolBSlug: "discord",
-    tagline:
-      "Post Jira issue updates to Discord dev channels automatically",
+    tagline: "Post Jira issue updates to Discord dev channels automatically",
     metaTitle:
       "Jira + Discord Integration - Engineering Updates in Your Dev Server | GAIA",
     metaDescription:
@@ -1615,17 +1653,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA route Jira notifications from different projects to different Discord channels?",
+        question:
+          "Can GAIA route Jira notifications from different projects to different Discord channels?",
         answer:
           "Yes. You can configure separate channel routing rules for each Jira project. For example, mobile Jira tickets go to #mobile-dev and backend tickets go to #backend-dev. You can also route by issue type or priority regardless of project.",
       },
       {
-        question: "How does GAIA match Discord users to Jira users for DM notifications?",
+        question:
+          "How does GAIA match Discord users to Jira users for DM notifications?",
         answer:
           "During setup you provide a mapping of Jira usernames to Discord user IDs. GAIA uses this mapping to send direct messages to the correct Discord user when their Jira account receives an assignment.",
       },
       {
-        question: "Can GAIA avoid posting every minor Jira event and keep Discord signal quality high?",
+        question:
+          "Can GAIA avoid posting every minor Jira event and keep Discord signal quality high?",
         answer:
           "Yes. GAIA's event filter configuration is very granular. Most teams set it to notify only on issue creation, status transitions to specific states, priority escalations, and sprint boundaries. Routine field edits and comment additions are excluded by default.",
       },
@@ -1701,17 +1742,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA require documents to follow a specific naming format?",
+        question:
+          "Does GAIA require documents to follow a specific naming format?",
         answer:
           "GAIA works best with consistent naming but supports flexible matching patterns including partial name matches and regular expressions. You can also link Drive documents to Jira epics manually and GAIA will maintain those explicit links going forward.",
       },
       {
-        question: "Can GAIA attach files from shared drives, not just personal Drive?",
+        question:
+          "Can GAIA attach files from shared drives, not just personal Drive?",
         answer:
           "Yes. GAIA can access any Google Drive location that the authorized Google account has access to, including shared drives and files shared with the domain. It respects existing Drive sharing permissions and does not modify them.",
       },
       {
-        question: "What happens to Drive links in Jira when a document is moved to a different Drive folder?",
+        question:
+          "What happens to Drive links in Jira when a document is moved to a different Drive folder?",
         answer:
           "Google Drive URLs are stable and do not change when a file is moved between folders. Jira links remain valid after file moves. GAIA does log the move event so you have a record of where the document currently lives.",
       },
@@ -1787,17 +1831,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "How does GAIA prevent duplicate Jira tickets when multiple customers report the same bug?",
+        question:
+          "How does GAIA prevent duplicate Jira tickets when multiple customers report the same bug?",
         answer:
           "GAIA uses semantic similarity matching to identify existing Jira tickets that likely correspond to a new HubSpot report. If a match above your configured confidence threshold exists, GAIA links the HubSpot ticket to the existing Jira issue and increments the customer impact counter rather than creating a duplicate.",
       },
       {
-        question: "Does GAIA include customer PII from HubSpot in Jira tickets?",
+        question:
+          "Does GAIA include customer PII from HubSpot in Jira tickets?",
         answer:
           "By default GAIA includes only the company name, account tier, and deal ARR in Jira tickets — not individual contact names or email addresses. You can configure how much customer context to include based on your data handling policies.",
       },
       {
-        question: "Can GAIA handle the reverse flow — engineering bugs that should proactively notify affected HubSpot accounts?",
+        question:
+          "Can GAIA handle the reverse flow — engineering bugs that should proactively notify affected HubSpot accounts?",
         answer:
           "Yes. You can configure GAIA to search HubSpot for accounts likely affected by a newly filed Jira bug based on product usage data or account properties. GAIA then creates HubSpot tasks for the relevant account owners to proactively notify their customers.",
       },
@@ -1811,7 +1858,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolB: "Jira",
     toolBSlug: "jira",
     canonicalSlug: "jira-linear",
-    tagline: "Sync Linear and Jira so modern and enterprise dev teams stay aligned",
+    tagline:
+      "Sync Linear and Jira so modern and enterprise dev teams stay aligned",
     metaTitle: "Linear + Jira Integration - Cross-Team Issue Sync | GAIA",
     metaDescription:
       "Automate Linear and Jira with GAIA. Sync issues between Linear and Jira, keep cross-team projects aligned, and eliminate friction managing work across two engineering tools.",
@@ -1876,12 +1924,14 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
           "Yes. You can scope the sync to specific Linear teams and Jira projects. For example, you might sync only your platform team's Linear issues to a client's Jira board while keeping other teams' work private.",
       },
       {
-        question: "What happens if an issue is updated in both tools simultaneously?",
+        question:
+          "What happens if an issue is updated in both tools simultaneously?",
         answer:
           "GAIA uses a last-write-wins strategy by default and flags conflicts for your review. You can configure which tool is treated as the master source of truth for specific fields.",
       },
       {
-        question: "Does GAIA sync comments and attachments between Linear and Jira?",
+        question:
+          "Does GAIA sync comments and attachments between Linear and Jira?",
         answer:
           "GAIA can sync comments and file attachments between the two tools. This is configurable — some teams prefer to sync only status and assignee changes to avoid comment noise.",
       },
@@ -1899,8 +1949,10 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "linear",
     toolB: "Salesforce",
     toolBSlug: "salesforce",
-    tagline: "Connect Linear engineering sprints to Salesforce opportunities and cases",
-    metaTitle: "Linear + Salesforce Integration - Engineering and CRM Sync | GAIA",
+    tagline:
+      "Connect Linear engineering sprints to Salesforce opportunities and cases",
+    metaTitle:
+      "Linear + Salesforce Integration - Engineering and CRM Sync | GAIA",
     metaDescription:
       "Automate Linear and Salesforce with GAIA. Link engineering issues to Salesforce opportunities, update cases with bug fix status, and align product delivery with revenue goals.",
     keywords: [
@@ -1959,12 +2011,14 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA link a single Linear issue to multiple Salesforce opportunities?",
+        question:
+          "Can GAIA link a single Linear issue to multiple Salesforce opportunities?",
         answer:
           "Yes. A platform issue or widely-requested feature can be linked to multiple opportunities. When it ships, all linked Salesforce records are updated and tasks are created for each account executive.",
       },
       {
-        question: "Does GAIA write to standard Salesforce fields or custom fields?",
+        question:
+          "Does GAIA write to standard Salesforce fields or custom fields?",
         answer:
           "Both. GAIA can update standard fields like Case Status and create or update custom fields you define. The mapping is fully configurable without code.",
       },
@@ -1974,7 +2028,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
           "Indirectly. If a contract or quote is linked to an opportunity with engineering dependencies tracked in Linear, GAIA can surface the Linear status on the opportunity record visible to your CPQ workflow.",
       },
       {
-        question: "Is this suitable for teams with Salesforce Enterprise or higher?",
+        question:
+          "Is this suitable for teams with Salesforce Enterprise or higher?",
         answer:
           "Yes. GAIA's Salesforce integration works with Professional, Enterprise, and Unlimited editions. API access is required, which is available on Enterprise and Unlimited, and as an add-on for Professional.",
       },
@@ -1987,8 +2042,10 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "linear",
     toolB: "Microsoft Teams",
     toolBSlug: "teams",
-    tagline: "Surface Linear issue updates and sprint progress inside Microsoft Teams",
-    metaTitle: "Linear + Microsoft Teams Integration - Dev Updates in Teams | GAIA",
+    tagline:
+      "Surface Linear issue updates and sprint progress inside Microsoft Teams",
+    metaTitle:
+      "Linear + Microsoft Teams Integration - Dev Updates in Teams | GAIA",
     metaDescription:
       "Automate Linear and Microsoft Teams with GAIA. Post sprint summaries, issue notifications, and PR updates to Teams channels so your engineering team stays aligned without leaving chat.",
     keywords: [
@@ -2047,17 +2104,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA support Teams channels within specific Teams (team spaces)?",
+        question:
+          "Does GAIA support Teams channels within specific Teams (team spaces)?",
         answer:
           "Yes. GAIA can post to any channel in any team space within your Microsoft Teams organization. You can map different Linear teams to different Teams channels with full granularity.",
       },
       {
-        question: "Can Teams users create Linear issues without opening Linear?",
+        question:
+          "Can Teams users create Linear issues without opening Linear?",
         answer:
           "Yes. Users can describe a bug or feature request to GAIA in a Teams chat or channel, and GAIA creates the Linear issue and confirms the link in the conversation.",
       },
       {
-        question: "Does GAIA support Teams Adaptive Cards for richer notifications?",
+        question:
+          "Does GAIA support Teams Adaptive Cards for richer notifications?",
         answer:
           "Yes. GAIA uses Adaptive Cards to format Linear notifications in Teams, including issue titles, descriptions, priority badges, assignees, and action buttons for common Linear operations.",
       },
@@ -2075,8 +2135,10 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "linear",
     toolB: "Loom",
     toolBSlug: "loom",
-    tagline: "Attach Loom video walkthroughs to Linear issues for richer async context",
-    metaTitle: "Linear + Loom Integration - Video Context for Engineering Issues | GAIA",
+    tagline:
+      "Attach Loom video walkthroughs to Linear issues for richer async context",
+    metaTitle:
+      "Linear + Loom Integration - Video Context for Engineering Issues | GAIA",
     metaDescription:
       "Automate Linear and Loom with GAIA. Attach Loom bug recordings to Linear issues, send video updates on blocked issues, and replace status meetings with async Loom summaries.",
     keywords: [
@@ -2135,22 +2197,26 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create a Linear issue from a Loom recording without a pre-existing issue?",
+        question:
+          "Can GAIA create a Linear issue from a Loom recording without a pre-existing issue?",
         answer:
           "Yes. If a Loom recording title includes a trigger phrase (e.g., 'Bug:' or 'Issue:'), GAIA creates a new Linear issue using the video title as the issue name and embeds the Loom link as the description.",
       },
       {
-        question: "Does GAIA use Loom transcripts to populate Linear issue fields?",
+        question:
+          "Does GAIA use Loom transcripts to populate Linear issue fields?",
         answer:
           "Yes. GAIA reads the Loom transcript to extract a summary, steps to reproduce (for bugs), and any mentioned issue numbers, using this content to populate the Linear issue description and comments.",
       },
       {
-        question: "Does attaching a Loom to Linear require the viewer to have a Loom account?",
+        question:
+          "Does attaching a Loom to Linear require the viewer to have a Loom account?",
         answer:
           "Not necessarily. Loom videos can be set to public or shared-link access. GAIA attaches videos using their shared link so anyone with the Linear issue can view the recording without a Loom login.",
       },
       {
-        question: "Can GAIA attach Loom videos to sub-issues or just top-level issues?",
+        question:
+          "Can GAIA attach Loom videos to sub-issues or just top-level issues?",
         answer:
           "GAIA can attach Loom links to both top-level Linear issues and sub-issues. This is particularly useful for QA feedback on specific acceptance criteria tracked as sub-issues.",
       },
@@ -2164,7 +2230,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolB: "Asana",
     toolBSlug: "asana",
     canonicalSlug: "asana-jira",
-    tagline: "Sync Jira engineering tickets with Asana project tasks automatically",
+    tagline:
+      "Sync Jira engineering tickets with Asana project tasks automatically",
     metaTitle: "Jira + Asana Integration - Product and Engineering Sync | GAIA",
     metaDescription:
       "Automate Jira and Asana with GAIA. Sync Jira tickets with Asana tasks, keep product and engineering aligned, and eliminate manual status updates between project management tools.",
@@ -2252,8 +2319,10 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "jira",
     toolB: "Salesforce",
     toolBSlug: "salesforce",
-    tagline: "Connect Jira engineering tickets to Salesforce cases and opportunities",
-    metaTitle: "Jira + Salesforce Integration - Enterprise CRM and Dev Alignment | GAIA",
+    tagline:
+      "Connect Jira engineering tickets to Salesforce cases and opportunities",
+    metaTitle:
+      "Jira + Salesforce Integration - Enterprise CRM and Dev Alignment | GAIA",
     metaDescription:
       "Automate Jira and Salesforce with GAIA. Link Jira tickets to Salesforce cases and opportunities, update CRM records as bugs are fixed, and give sales teams live engineering status.",
     keywords: [
@@ -2312,22 +2381,26 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA work with Salesforce Service Cloud as well as Sales Cloud?",
+        question:
+          "Does GAIA work with Salesforce Service Cloud as well as Sales Cloud?",
         answer:
           "Yes. GAIA integrates with both Sales Cloud (opportunities and accounts) and Service Cloud (cases and entitlements). You can configure workflows for each object type independently.",
       },
       {
-        question: "Can GAIA prioritize Jira tickets by Salesforce account tier?",
+        question:
+          "Can GAIA prioritize Jira tickets by Salesforce account tier?",
         answer:
           "Yes. GAIA reads Salesforce account tier or custom priority fields and maps them to Jira priority levels. Enterprise or Platinum tier accounts can automatically generate Blocker-priority Jira tickets.",
       },
       {
-        question: "How does GAIA handle Salesforce cases that don't require engineering action?",
+        question:
+          "How does GAIA handle Salesforce cases that don't require engineering action?",
         answer:
           "GAIA only creates Jira tickets for cases that match your configured criteria — specific case categories, escalation flags, or custom field values. Non-engineering cases are ignored.",
       },
       {
-        question: "Can I see Jira ticket status inside Salesforce without switching tools?",
+        question:
+          "Can I see Jira ticket status inside Salesforce without switching tools?",
         answer:
           "Yes. GAIA writes Jira ticket status back to a custom Salesforce field on the linked case or opportunity, so account managers see live engineering status directly in Salesforce without a Jira login.",
       },
@@ -2405,17 +2478,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
           "Zoom cloud recording with transcription provides the best results. For teams without cloud recording, GAIA can also process a pasted meeting summary or notes document to extract Jira action items.",
       },
       {
-        question: "Can GAIA create Jira epics, stories, and sub-tasks from a single planning meeting?",
+        question:
+          "Can GAIA create Jira epics, stories, and sub-tasks from a single planning meeting?",
         answer:
           "Yes. GAIA infers the appropriate Jira issue type from the meeting context. High-level items become epics or stories while granular tasks become sub-tasks under the relevant story.",
       },
       {
-        question: "Will GAIA create duplicate Jira issues from recurring standup mentions?",
+        question:
+          "Will GAIA create duplicate Jira issues from recurring standup mentions?",
         answer:
           "GAIA checks for existing open Jira issues before creating new ones. If a matching open issue exists, GAIA adds a standup update comment rather than creating a duplicate ticket.",
       },
       {
-        question: "Can GAIA link Zoom meeting recordings to Jira issues for reference?",
+        question:
+          "Can GAIA link Zoom meeting recordings to Jira issues for reference?",
         answer:
           "Yes. GAIA can attach the Zoom cloud recording link to all Jira issues created from that meeting, providing a permanent video reference alongside the extracted action items.",
       },
@@ -2428,8 +2504,10 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "jira",
     toolB: "Microsoft Teams",
     toolBSlug: "teams",
-    tagline: "Deliver Jira sprint updates and issue alerts directly in Microsoft Teams",
-    metaTitle: "Jira + Microsoft Teams Integration - Dev Updates in Teams | GAIA",
+    tagline:
+      "Deliver Jira sprint updates and issue alerts directly in Microsoft Teams",
+    metaTitle:
+      "Jira + Microsoft Teams Integration - Dev Updates in Teams | GAIA",
     metaDescription:
       "Automate Jira and Microsoft Teams with GAIA. Post sprint summaries, issue notifications, and blocker alerts to Teams channels so stakeholders stay informed without accessing Jira.",
     keywords: [
@@ -2488,7 +2566,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA post to different Teams channels based on Jira project?",
+        question:
+          "Can GAIA post to different Teams channels based on Jira project?",
         answer:
           "Yes. You can configure a separate Teams channel for each Jira project or board. GAIA routes notifications to the appropriate channel automatically based on the issue's project assignment.",
       },
@@ -2498,12 +2577,14 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
           "Yes. Users can ask GAIA in a Teams message to create a Jira issue, providing a description and priority. GAIA creates the issue under the appropriate project and returns the Jira link.",
       },
       {
-        question: "Does GAIA support Microsoft Teams Adaptive Cards for Jira notifications?",
+        question:
+          "Does GAIA support Microsoft Teams Adaptive Cards for Jira notifications?",
         answer:
           "Yes. GAIA formats Jira notifications as Adaptive Cards in Teams, including issue summary, priority indicator, assignee, sprint name, and action buttons to transition issue status from within Teams.",
       },
       {
-        question: "How is this different from the standard Jira connector for Teams?",
+        question:
+          "How is this different from the standard Jira connector for Teams?",
         answer:
           "The standard Jira connector sends basic webhook notifications. GAIA adds AI-powered filtering, intelligent routing, natural language queries, and two-way actions (like creating or updating Jira issues) directly from Teams.",
       },
@@ -2516,8 +2597,10 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "jira",
     toolB: "Airtable",
     toolBSlug: "airtable",
-    tagline: "Sync Jira sprint data with Airtable for cross-functional reporting",
-    metaTitle: "Jira + Airtable Integration - Engineering Data in Your Database | GAIA",
+    tagline:
+      "Sync Jira sprint data with Airtable for cross-functional reporting",
+    metaTitle:
+      "Jira + Airtable Integration - Engineering Data in Your Database | GAIA",
     metaDescription:
       "Automate Jira and Airtable with GAIA. Sync Jira issues to Airtable, build cross-functional dashboards, and give ops and product teams a live database view of engineering work.",
     keywords: [
@@ -2576,12 +2659,14 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Does GAIA sync Jira epics and sprints as well as individual issues?",
+        question:
+          "Does GAIA sync Jira epics and sprints as well as individual issues?",
         answer:
           "Yes. GAIA can sync Jira epics, sprints, and versions to separate Airtable tables or as linked records, giving you a relational database view of your entire Jira project structure.",
       },
       {
-        question: "Can Airtable users update Jira tickets by editing Airtable records?",
+        question:
+          "Can Airtable users update Jira tickets by editing Airtable records?",
         answer:
           "Selective writeback is supported. You can configure specific columns (like assignee or priority) to push updates back to Jira when changed in Airtable, while keeping other fields read-only.",
       },
@@ -2591,7 +2676,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
           "By default, GAIA syncs in near real time for high-signal events (status changes, assignments, new issues) and on a periodic schedule for bulk data like sprint velocity metrics.",
       },
       {
-        question: "Can I use this to build a public-facing roadmap in Airtable?",
+        question:
+          "Can I use this to build a public-facing roadmap in Airtable?",
         answer:
           "Yes. GAIA can sync a filtered subset of Jira issues (e.g., issues tagged as public roadmap items) to an Airtable base configured for public sharing, giving you a live roadmap without manual updates.",
       },
@@ -2604,8 +2690,10 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "jira",
     toolB: "Loom",
     toolBSlug: "loom",
-    tagline: "Attach Loom video context to Jira tickets for faster issue resolution",
-    metaTitle: "Jira + Loom Integration - Video Bug Reports and Sprint Updates | GAIA",
+    tagline:
+      "Attach Loom video context to Jira tickets for faster issue resolution",
+    metaTitle:
+      "Jira + Loom Integration - Video Bug Reports and Sprint Updates | GAIA",
     metaDescription:
       "Automate Jira and Loom with GAIA. Attach Loom bug recordings to Jira tickets, create issues from video reports, and link sprint demo recordings to completed tickets automatically.",
     keywords: [
@@ -2664,7 +2752,8 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     ],
     faqs: [
       {
-        question: "Can GAIA create a Jira ticket from a Loom recording without a pre-existing issue?",
+        question:
+          "Can GAIA create a Jira ticket from a Loom recording without a pre-existing issue?",
         answer:
           "Yes. If a Loom title includes a trigger phrase like 'Bug:' or 'Issue:', GAIA creates a new Jira ticket using the video title as the issue summary and embeds the Loom link in the description.",
       },
@@ -2692,8 +2781,10 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
     toolASlug: "jira",
     toolB: "Stripe",
     toolBSlug: "stripe",
-    tagline: "Escalate Stripe billing failures into Jira tickets with revenue context",
-    metaTitle: "Jira + Stripe Integration - Revenue-Critical Bug Tracking | GAIA",
+    tagline:
+      "Escalate Stripe billing failures into Jira tickets with revenue context",
+    metaTitle:
+      "Jira + Stripe Integration - Revenue-Critical Bug Tracking | GAIA",
     metaDescription:
       "Automate Jira and Stripe with GAIA. Convert Stripe payment failures into Jira tickets, annotate issues with revenue impact, and ensure billing-critical bugs reach engineering fast.",
     keywords: [
@@ -2757,17 +2848,20 @@ export const combosBatchE: Record<string, IntegrationCombo> = {
           "No. GAIA uses read-only Stripe API access for monitoring events and subscription data. GAIA never initiates charges, refunds, or any financial transactions.",
       },
       {
-        question: "Can GAIA distinguish between transient Stripe errors and systemic issues?",
+        question:
+          "Can GAIA distinguish between transient Stripe errors and systemic issues?",
         answer:
           "Yes. GAIA applies configurable thresholds and time windows to distinguish a temporary gateway blip from a systemic billing failure. Only events exceeding your thresholds generate Jira tickets.",
       },
       {
-        question: "Can GAIA correlate Stripe errors with recent Jira deployments?",
+        question:
+          "Can GAIA correlate Stripe errors with recent Jira deployments?",
         answer:
           "GAIA can correlate the timing of a Stripe error spike with recently completed Jira tickets or sprint deployments, surfacing likely root cause candidates in the incident ticket.",
       },
       {
-        question: "What if a Stripe issue resolves before engineering investigates?",
+        question:
+          "What if a Stripe issue resolves before engineering investigates?",
         answer:
           "GAIA monitors the Stripe event stream continuously. If an error condition clears, GAIA comments on the Jira ticket noting the resolution and suggests closing or downgrading its priority.",
       },

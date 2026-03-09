@@ -7,7 +7,8 @@ export const entry: ComparisonData = {
   tagline: "Scheduling software with recipient calendar overlay",
   description:
     "SavvyCal lets people book time with you through shareable scheduling links, with a unique twist: recipients can overlay their own calendar on yours to find a mutual free slot. GAIA manages your calendar from the inside — scheduling meetings, finding free slots, preparing briefings, and automating follow-ups — without requiring a public booking page.",
-  metaTitle: "SavvyCal Alternative with Proactive AI Management | GAIA vs SavvyCal",
+  metaTitle:
+    "SavvyCal Alternative with Proactive AI Management | GAIA vs SavvyCal",
   metaDescription:
     "SavvyCal is a smart scheduling tool but is only for booking links. GAIA is an open-source SavvyCal alternative with proactive AI management — handling your full calendar, inbox, tasks, and workflows automatically, with a free tier.",
   keywords: [
@@ -68,8 +69,7 @@ export const entry: ComparisonData = {
     {
       feature: "Open source",
       gaia: "Fully open source and self-hostable via Docker — own your data entirely and deploy on your own infrastructure",
-      competitor:
-        "Proprietary closed-source SaaS; no self-hosting option",
+      competitor: "Proprietary closed-source SaaS; no self-hosting option",
     },
     {
       feature: "Pricing",

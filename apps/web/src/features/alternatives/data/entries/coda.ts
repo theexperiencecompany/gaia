@@ -5,7 +5,8 @@ export const entry: AlternativeData = {
   name: "Coda",
   domain: "coda.io",
   category: "productivity-suite",
-  tagline: "Doc-database hybrid that combines documents, tables, and automations",
+  tagline:
+    "Doc-database hybrid that combines documents, tables, and automations",
   painPoints: [
     "Steep learning curve to build functional Coda docs with tables and formulas",
     "Pro plan at $10/month per doc maker for full features",
@@ -64,7 +65,8 @@ export const entry: AlternativeData = {
         "Significantly so. GAIA connects to your existing tools in minutes via OAuth. There are no tables to design, formulas to write, or packs to configure. Most users are productive within five minutes.",
     },
     {
-      question: "Does GAIA support automations like Coda's buttons and triggers?",
+      question:
+        "Does GAIA support automations like Coda's buttons and triggers?",
       answer:
         "GAIA supports AI-driven workflow automation described in natural language. It does not have Coda's button-triggered actions within a document, but it can automate email, task, and calendar workflows across tools more intelligently.",
     },

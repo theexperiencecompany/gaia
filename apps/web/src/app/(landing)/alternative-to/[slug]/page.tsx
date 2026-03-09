@@ -6,8 +6,8 @@ import ComparisonTable from "@/components/seo/ComparisonTable";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import {
-  getAllAlternatives,
   getAllAlternativeSlugs,
+  getAllAlternatives,
   getAlternative,
 } from "@/features/alternatives/data/alternativesData";
 import { COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
@@ -127,7 +127,15 @@ export default async function AlternativePage({ params }: PageProps) {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, howToSchema, generateProductSchema()]} />
+      <JsonLd
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          faqSchema,
+          howToSchema,
+          generateProductSchema(),
+        ]}
+      />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -196,10 +204,7 @@ export default async function AlternativePage({ params }: PageProps) {
           </h2>
           <ul className="space-y-3">
             {data.gaiaReplaces.map((item) => (
-              <li
-                key={item}
-                className="flex items-start gap-3 text-zinc-300"
-              >
+              <li key={item} className="flex items-start gap-3 text-zinc-300">
                 <span className="mt-1 text-emerald-400 shrink-0">&#x2714;</span>
                 <span>{item}</span>
               </li>

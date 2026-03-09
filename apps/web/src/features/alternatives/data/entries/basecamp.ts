@@ -70,7 +70,8 @@ export const entry: AlternativeData = {
         "Yes. Many users keep Basecamp for team project coordination and use GAIA as their personal AI assistant to manage their individual email, tasks, and calendar.",
     },
     {
-      question: "Does GAIA have a file sharing or document feature like Basecamp?",
+      question:
+        "Does GAIA have a file sharing or document feature like Basecamp?",
       answer:
         "GAIA does not include file storage. It focuses on proactive task and communication management. You can connect GAIA to Google Drive via MCP for document-related workflows.",
     },

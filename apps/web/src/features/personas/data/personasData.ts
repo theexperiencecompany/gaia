@@ -2074,8 +2074,7 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA connect directly to my SQL databases or BI tools?",
+        question: "Can GAIA connect directly to my SQL databases or BI tools?",
         answer:
           "GAIA focuses on the operational and communication layer around analytical work: report distribution, stakeholder triage, scheduling, and alerting via Google Sheets and email. Custom MCP integrations can extend GAIA to connect with BigQuery, Tableau, or other BI platforms in your stack.",
       },
@@ -2161,8 +2160,7 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Can GAIA integrate with BambooHR, Greenhouse, or Workday?",
+        question: "Can GAIA integrate with BambooHR, Greenhouse, or Workday?",
         answer:
           "GAIA focuses on communication and coordination workflows through Gmail, Google Calendar, Slack, and Notion. Custom MCP integrations can connect GAIA to specialized HR platforms like BambooHR, Greenhouse, or Workday to extend its automation capabilities.",
       },
@@ -2428,14 +2426,12 @@ export const personas: Record<string, PersonaData> = {
           "GAIA drafts client communications based on templates and guidelines you provide, and keeps you in the review and approval loop before anything is sent. It is fully open source and self-hostable, so RIAs and broker-dealers can deploy it within their own infrastructure with complete data control.",
       },
       {
-        question:
-          "Can GAIA integrate with Salesforce or financial CRM tools?",
+        question: "Can GAIA integrate with Salesforce or financial CRM tools?",
         answer:
           "GAIA works with Gmail, Google Calendar, Notion, and HubSpot out of the box. Custom MCP integrations can connect GAIA to Salesforce or specialized financial advisory CRM platforms to extend its workflow automation.",
       },
       {
-        question:
-          "How does GAIA help advisors manage large client books?",
+        question: "How does GAIA help advisors manage large client books?",
         answer:
           "GAIA maintains per-client context through email history and Notion notes, tracks review cadence schedules on Google Calendar, and surfaces clients who are due for outreach or follow-up. It helps you maintain a high-touch relationship standard across a large book of business.",
       },
@@ -2514,8 +2510,7 @@ export const personas: Record<string, PersonaData> = {
     ],
     faqs: [
       {
-        question:
-          "Does GAIA access electronic health records or patient data?",
+        question: "Does GAIA access electronic health records or patient data?",
         answer:
           "No. GAIA operates strictly in the administrative and productivity layer. It does not connect to EHR systems, access protected health information, or process any clinical data. It manages administrative email, scheduling, research organization, and non-clinical correspondence only.",
       },
@@ -2597,8 +2592,7 @@ export const personas: Record<string, PersonaData> = {
     relevantIntegrations: ["gmail", "todoist", "google-calendar", "slack"],
     faqs: [
       {
-        question:
-          "How is GAIA different from a regular task manager for ADHD?",
+        question: "How is GAIA different from a regular task manager for ADHD?",
         answer:
           "Most task managers require you to remember to open them and manually enter tasks — which is exactly the step that breaks down with ADHD. GAIA is proactive: it captures tasks from your existing tools automatically, surfaces what's urgent without you having to check, and sends follow-up reminders it sets itself. It reduces the number of deliberate actions required to stay on top of your day.",
       },

@@ -402,7 +402,14 @@ export default async function PersonaPage({ params }: PageProps) {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, generateProductSchema()]} />
+      <JsonLd
+        data={[
+          webPageSchema,
+          breadcrumbSchema,
+          faqSchema,
+          generateProductSchema(),
+        ]}
+      />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -513,8 +520,7 @@ export default async function PersonaPage({ params }: PageProps) {
                     {slug
                       .split("-")
                       .map(
-                        (w: string) =>
-                          w.charAt(0).toUpperCase() + w.slice(1),
+                        (w: string) => w.charAt(0).toUpperCase() + w.slice(1),
                       )
                       .join(" ")}
                   </h3>
