@@ -4,19 +4,22 @@ ARQ worker startup functionality.
 
 import asyncio
 
-from app.core.provider_registration import (
+from shared.py.logging import configure_file_logging
+
+# Must be called before any app imports — provider_registration transitively
+# imports app.api.v1.middleware.__init__ → loggers.py, which calls
+# configure_file_logging("./logs") and sets _FILE_LOGGING_CONFIGURED=True,
+# making any subsequent call with a different path a no-op.
+configure_file_logging("./logs/worker")
+
+from app.core.provider_registration import (  # noqa: E402
     setup_warnings,
     unified_startup,
 )
-from shared.py.logging import configure_file_logging
-from shared.py.wide_events import log
+from shared.py.wide_events import log  # noqa: E402
 
 # Set up common warning filters
 setup_warnings()
-
-# Write structured JSON log files for Promtail to scrape in local dev.
-# Uses a separate directory from the API so Promtail can label them distinctly.
-configure_file_logging("./logs/worker")
 
 
 async def startup(ctx: dict):

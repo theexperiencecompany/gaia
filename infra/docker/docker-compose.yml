@@ -145,8 +145,10 @@ services:
     ports:
       - "${RABBITMQ_HOST_PORT:-5672}:5672" # AMQP protocol
       - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+      - "${RABBITMQ_PROM_PORT:-15692}:15692" # Prometheus metrics
     volumes:
       - rabbitmq_data:/var/lib/rabbitmq
+      - ./observability/rabbitmq-enabled-plugins:/etc/rabbitmq/enabled_plugins:ro
     restart: always
     healthcheck:
       test: ["CMD", "rabbitmqctl", "status"]
@@ -285,13 +287,66 @@ services:
   # Metrics exporters
   # ---------------------------------------------------------------------------
 
+  # cAdvisor — Docker container CPU / memory / network / disk metrics
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    container_name: cadvisor
+    privileged: true
+    devices:
+      - /dev/kmsg
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    command:
+      - "--docker_only=true"
+      - "--store_container_labels=false"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # Blackbox Exporter — HTTP probe for services without Prometheus metrics (e.g. ChromaDB)
+  blackbox_exporter:
+    image: prom/blackbox-exporter:v0.25.0
+    container_name: blackbox_exporter
+    volumes:
+      - ./observability/blackbox.yml:/etc/blackbox_exporter/config.yml:ro
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # Node Exporter — host CPU / memory / disk / network metrics
+  node_exporter:
+    image: prom/node-exporter:v1.8.2
+    container_name: node_exporter
+    pid: host
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - /:/host:ro,rslave
+    restart: unless-stopped
+    networks:
+      - gaia_network
+
+  # MongoDB Exporter
+  mongodb_exporter:
+    image: percona/mongodb_exporter:0.43
+    container_name: mongodb_exporter
+    command:
+      - "--mongodb.uri=mongodb://mongo:27017"
+      - "--collect-all"
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
   postgres_exporter:
     image: prometheuscommunity/postgres-exporter:v0.17.0
     container_name: postgres_exporter
-    command:
-      - "--collector.stat_database"
-      - "--collector.stat_activity"
-      - "--collector.stat_bgwriter"
     environment:
       DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
     restart: unless-stopped
@@ -318,6 +373,7 @@ services:
     container_name: prometheus
     volumes:
       - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./observability/metrics_token:/etc/prometheus/metrics_token:ro
       - prometheus_data:/prometheus
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"

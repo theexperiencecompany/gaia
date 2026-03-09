@@ -3,6 +3,7 @@
 from app.services.onboarding.post_onboarding_service import (
     process_post_onboarding_personalization,
 )
+from shared.py.wide_events import log, wide_task
 
 
 async def process_personalization_task(ctx, user_id: str) -> str:
@@ -16,8 +17,8 @@ async def process_personalization_task(ctx, user_id: str) -> str:
     Returns:
         Processing result message
     """
-    try:
+    async with wide_task("process_personalization_task", user_id=user_id):
         await process_post_onboarding_personalization(user_id)
-        return f"Post-onboarding personalization completed for user {user_id}"
-    except Exception as e:
-        return f"Fatal error in post-onboarding personalization for user {user_id}: {e}"
+        message = f"Post-onboarding personalization completed for user {user_id}"
+        log.info(message)
+        return message

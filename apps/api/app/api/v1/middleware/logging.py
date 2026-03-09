@@ -13,6 +13,7 @@ Environment characteristics (env, service, commit) are injected into every
 event at the middleware level — no per-file boilerplate required.
 """
 
+import asyncio
 import os
 import time
 from functools import wraps
@@ -44,26 +45,53 @@ def log_function_call(func):
 
     Slow functions (>1s) emit a warning that is captured in the wide event's
     warnings[] array. Exceptions emit an error into errors[].
+
+    Supports both sync and async functions.
     """
 
-    @wraps(func)
-    def wrapper(*args, **kwargs):
-        func_name = func.__qualname__
-        start_time = time.time()
+    func_name = func.__qualname__
 
+    if asyncio.iscoroutinefunction(func):
+
+        @wraps(func)
+        async def async_wrapper(*args, **kwargs):
+            start_time = time.time()
+            try:
+                result = await func(*args, **kwargs)
+                execution_time = time.time() - start_time
+                if execution_time > 1.0:
+                    wide_log.warning(
+                        "slow function",
+                        function=func_name,
+                        duration_ms=round(execution_time * 1000, 2),
+                    )
+                return result
+            except Exception as e:
+                execution_time = time.time() - start_time
+                wide_log.error(
+                    "function failed",
+                    function=func_name,
+                    duration_ms=round(execution_time * 1000, 2),
+                    error=str(e),
+                    error_type=type(e).__name__,
+                )
+                raise
+
+        return async_wrapper
+
+    @wraps(func)
+    def sync_wrapper(*args, **kwargs):
+        start_time = time.time()
         try:
             result = func(*args, **kwargs)
             execution_time = time.time() - start_time
-
             if execution_time > 1.0:
                 wide_log.warning(
                     "slow function",
                     function=func_name,
                     duration_ms=round(execution_time * 1000, 2),
                 )
-
             return result
-
         except Exception as e:
             execution_time = time.time() - start_time
             wide_log.error(
@@ -75,7 +103,7 @@ def log_function_call(func):
             )
             raise
 
-    return wrapper
+    return sync_wrapper
 
 
 class LoggingMiddleware(BaseHTTPMiddleware):
@@ -149,7 +177,10 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         context = {
             # --- Environment characteristics (on every event) ---
             **_ENV_CONTEXT,
-            # --- HTTP request characteristics ---
+            # --- Business context accumulated by handlers/services ---
+            # Spread before HTTP fields so authoritative HTTP values always win.
+            **wide_event_context,
+            # --- HTTP request characteristics (always authoritative) ---
             "method": request.method,
             "path": request.url.path,
             "status_code": response.status_code,
@@ -158,8 +189,6 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             "client_ip": client_ip,
             "request_id": request.headers.get("x-request-id"),
             "user_agent": request.headers.get("user-agent"),
-            # --- Business context accumulated by handlers/services ---
-            **wide_event_context,
         }
 
         request_logger.bind(**context).log(level, "http_request")

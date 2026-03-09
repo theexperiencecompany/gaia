@@ -116,3 +116,4 @@ postman/
 /config.json
 
 docs/plans/
+infra/docker/observability/metrics_token

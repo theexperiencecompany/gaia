@@ -162,6 +162,7 @@ backend = [
   "posthog>=7.4.2",
   "sentry-sdk[langgraph]>=2.44.0",
   "opik>=1.9.47",
+  "prometheus-fastapi-instrumentator>=7.0.0",
 ]
 
 [tool.uv.sources]

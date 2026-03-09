@@ -192,10 +192,11 @@ def configure_loguru():
             catch=True,
         )
 
-    # Custom levels
-    logger.level("PERFORMANCE", no=5, color="<magenta>", icon="⚡")
-    logger.level("AUDIT", no=25, color="<blue>", icon="📊")
-    logger.level("SECURITY", no=35, color="<red>", icon="🔒")
+    # Custom levels — use numbers that don't collide with Loguru built-ins:
+    # TRACE=5, DEBUG=10, INFO=20, SUCCESS=25, WARNING=30, ERROR=40, CRITICAL=50
+    logger.level("PERFORMANCE", no=3, color="<magenta>", icon="⚡")
+    logger.level("AUDIT", no=28, color="<blue>", icon="📊")
+    logger.level("SECURITY", no=38, color="<red>", icon="🔒")
 
     # Intercept standard library logging to route through Loguru
     class InterceptHandler(logging.Handler):
@@ -336,6 +337,8 @@ def configure_file_logging(log_dir: str | Path | None = None) -> None:
         catch=True,
     )
 
+    # Captures any log where .bind(performance=...) was used, regardless of level.
+    # Use logger.bind(performance=True).info("...") to route to this file.
     logger.add(
         logs_dir / "performance-{time:YYYY-MM-DD}.log",
         format=LOG_CONFIG["format"]["file"],
