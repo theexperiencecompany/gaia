@@ -13,7 +13,10 @@ from contextlib import asynccontextmanager
 from typing import Optional, Any
 
 import aiohttp
-from shared.py.logging import get_contextual_logger
+from shared.py.logging import configure_file_logging, get_contextual_logger
+
+# Write structured JSON log files for Promtail to scrape in local dev
+configure_file_logging("./logs")
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents import (
     NOT_GIVEN,

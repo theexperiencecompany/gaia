@@ -10,10 +10,10 @@ clients:
   - url: http://loki:3100/loki/api/v1/push
 
 scrape_configs:
-  # File-based scrape for the locally-running API (nx dev api).
-  # configure_file_logging() writes flat NDJSON (same format as LOG_FORMAT=json
-  # Docker stdout) to apps/api/logs/structured-*.json. We mount that directory
-  # into promtail so logs are shipped to Loki even when the API is not in Docker.
+  # File-based scrape for locally-running Python services (nx dev api, nx worker api,
+  # nx dev voice-agent). configure_file_logging() writes flat NDJSON (same format as
+  # LOG_FORMAT=json Docker stdout) to each app's logs/ directory. We mount those
+  # directories into promtail so logs are shipped to Loki even outside Docker.
   - job_name: gaia_api_local
     static_configs:
       - targets:
@@ -23,6 +23,20 @@ scrape_configs:
           service_name: gaia-backend
           container: gaia-backend
           __path__: /var/log/gaia-api/structured-*.json
+      - targets:
+          - localhost
+        labels:
+          service: arq-worker
+          service_name: arq-worker
+          container: arq-worker
+          __path__: /var/log/gaia-worker/structured-*.json
+      - targets:
+          - localhost
+        labels:
+          service: voice-agent
+          service_name: voice-agent
+          container: voice-agent
+          __path__: /var/log/gaia-voice-agent/structured-*.json
     pipeline_stages:
       - json:
           expressions:

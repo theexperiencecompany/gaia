@@ -244,7 +244,8 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
-          "expr": "sum by (status_code) (rate({service=~\"$service\"} | json | message = \"http_request\" [$__rate_interval]))",
+          "expr": "sum by (status_code) (rate({service=~\"$service\"} | json | message = \"http_request\" [$__auto]))",
+          "interval": "5m",
           "legendFormat": "{{status_code}}",
           "refId": "A"
         }
@@ -319,6 +320,7 @@
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
           "expr": "sum by (level) (count_over_time({service=~\"$service\"} [$__interval]))",
+          "interval": "5m",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -376,18 +378,21 @@
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
           "expr": "quantile_over_time(0.50, {service=~\"$service\"} | json | message = \"http_request\" | unwrap duration_ms [5m])",
+          "interval": "5m",
           "legendFormat": "p50",
           "refId": "A"
         },
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
           "expr": "quantile_over_time(0.95, {service=~\"$service\"} | json | message = \"http_request\" | unwrap duration_ms [5m])",
+          "interval": "5m",
           "legendFormat": "p95",
           "refId": "B"
         },
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
           "expr": "quantile_over_time(0.99, {service=~\"$service\"} | json | message = \"http_request\" | unwrap duration_ms [5m])",
+          "interval": "5m",
           "legendFormat": "p99",
           "refId": "C"
         }

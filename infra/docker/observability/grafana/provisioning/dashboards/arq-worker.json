@@ -242,6 +242,7 @@
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
           "expr": "sum by (level) (count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} [$__interval]))",
+          "interval": "5m",
           "legendFormat": "{{level}}",
           "refId": "A"
         }
@@ -299,6 +300,7 @@
         {
           "datasource": { "type": "loki", "uid": "${datasource}" },
           "expr": "sum by (task) (count_over_time({service=~\"arq_worker|gaia-backend\", logger_name=\"WORKER\"} | json | message = \"worker_task\" [$__interval]))",
+          "interval": "5m",
           "legendFormat": "{{task}}",
           "refId": "A"
         }

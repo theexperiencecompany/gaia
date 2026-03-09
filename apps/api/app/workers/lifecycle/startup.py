@@ -8,10 +8,15 @@ from app.core.provider_registration import (
     setup_warnings,
     unified_startup,
 )
+from shared.py.logging import configure_file_logging
 from shared.py.wide_events import log
 
 # Set up common warning filters
 setup_warnings()
+
+# Write structured JSON log files for Promtail to scrape in local dev.
+# Uses a separate directory from the API so Promtail can label them distinctly.
+configure_file_logging("./logs/worker")
 
 
 async def startup(ctx: dict):

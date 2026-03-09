@@ -19,7 +19,7 @@ from shared.py.logging import (
 configure_file_logging("./logs")
 
 # Used exclusively by LoggingMiddleware to emit the final wide event
-request_logger = get_contextual_logger("requests")
+request_logger = get_contextual_logger("REQUEST")
 
 __all__ = [
     "logger",

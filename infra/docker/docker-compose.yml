@@ -264,13 +264,15 @@ services:
     working_dir: /app/apps/voice-agent
     environment:
       PYTHONUNBUFFERED: 1
-      FORCE_COLOR: 1
+      FORCE_COLOR: 0
       WORKER_TYPE: voice_agent_worker
       DEBUG: 1
       WATCHFILES_FORCE_POLLING: 1
       HF_HUB_OFFLINE: "0"
       LOCAL_FILES_ONLY: "0"
       HF_HUB_ENABLE_HF_TRANSFER: "1"
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
     env_file:
       - ../../apps/api/.env
     volumes:
@@ -286,6 +288,10 @@ services:
   postgres_exporter:
     image: prometheuscommunity/postgres-exporter:v0.17.0
     container_name: postgres_exporter
+    command:
+      - "--collector.stat_database"
+      - "--collector.stat_activity"
+      - "--collector.stat_bgwriter"
     environment:
       DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
     restart: unless-stopped
@@ -350,9 +356,11 @@ services:
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
-      # Mount local API log files so promtail can ship them even when the API
-      # runs outside Docker (nx dev api). configure_file_logging() writes here.
+      # Mount local log files so promtail can ship them even when services
+      # run outside Docker (nx dev api, nx worker api, nx dev voice-agent).
       - ../../apps/api/logs:/var/log/gaia-api:ro
+      - ../../apps/api/logs/worker:/var/log/gaia-worker:ro
+      - ../../apps/voice-agent/logs:/var/log/gaia-voice-agent:ro
     command: -config.file=/etc/promtail/config.yaml
     restart: unless-stopped
     depends_on:

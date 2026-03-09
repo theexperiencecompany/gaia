@@ -381,7 +381,7 @@
       "targets": [
         {
           "datasource": { "type": "prometheus", "uid": "${datasource}" },
-          "expr": "redis_memory_used_bytes / redis_memory_max_bytes",
+          "expr": "redis_memory_used_bytes / redis_memory_max_bytes and redis_memory_max_bytes > 0",
           "legendFormat": "Memory %",
           "refId": "A"
         }
