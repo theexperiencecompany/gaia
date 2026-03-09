@@ -105,4 +105,5 @@ export const entry: ComparisonData = {
           "n8n offers more granular technical control with its node-based editor. GAIA provides a faster path to automation through natural language and integrates directly with developer tools like GitHub, Linear, and Slack with AI-powered context understanding.",
       },
     ],
+  relatedPersonas: ["software-developers", "agency-owners"],
 };

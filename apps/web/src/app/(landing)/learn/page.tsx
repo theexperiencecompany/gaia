@@ -33,19 +33,25 @@ export const metadata: Metadata = generatePageMetadata({
 });
 
 const CATEGORY_LABELS: Record<string, string> = {
-  "ai-concepts": "AI Concepts",
-  productivity: "Productivity",
-  automation: "Automation",
-  infrastructure: "Infrastructure",
-  integrations: "Integrations",
+  "ai-concepts": "AI & Machine Learning",
+  productivity: "Productivity Methods",
+  automation: "Automation & Workflows",
+  email: "Email Management",
+  calendar: "Calendar & Time Management",
+  "task-management": "Task Management",
+  "knowledge-management": "Knowledge & Notes",
+  development: "Development & Integrations",
 };
 
 const CATEGORY_ORDER = [
   "ai-concepts",
   "productivity",
   "automation",
-  "infrastructure",
-  "integrations",
+  "email",
+  "calendar",
+  "task-management",
+  "knowledge-management",
+  "development",
 ];
 
 export default function LearnHubPage() {

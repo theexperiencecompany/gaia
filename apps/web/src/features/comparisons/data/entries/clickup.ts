@@ -106,4 +106,5 @@ export const entry: ComparisonData = {
           "ClickUp AI helps with writing and summarization within the ClickUp platform. GAIA AI is a proactive assistant that works across your entire digital life: managing email, creating tasks from messages, automating multi-tool workflows, and acting autonomously.",
       },
     ],
+  relatedPersonas: ["agency-owners", "product-managers", "engineering-managers"],
 };

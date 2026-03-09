@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import ComparisonTable from "@/components/seo/ComparisonTable";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import {
+  getAllAlternatives,
   getAllAlternativeSlugs,
   getAlternative,
 } from "@/features/alternatives/data/alternativesData";
+import { COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
 import {
   getAllComparisons,
   getComparison,
@@ -49,79 +52,6 @@ export async function generateMetadata({
   });
 }
 
-const COMPARISON_CATEGORIES: Record<string, string> = {
-  // AI Assistants
-  chatgpt: "AI Assistants",
-  "chatgpt-teams": "AI Assistants",
-  claude: "AI Assistants",
-  gemini: "AI Assistants",
-  copilot: "AI Assistants",
-  "cursor-ai": "AI Assistants",
-  "google-assistant": "AI Assistants",
-  perplexity: "AI Assistants",
-  "lindy-ai": "AI Assistants",
-  "limitless-ai": "AI Assistants",
-  "rewind-ai": "AI Assistants",
-  "martin-ai": "AI Assistants",
-  poke: "AI Assistants",
-  "mem-ai": "AI Assistants",
-  // Automation
-  zapier: "Automation",
-  n8n: "Automation",
-  make: "Automation",
-  bardeen: "Automation",
-  activepieces: "Automation",
-  pipedream: "Automation",
-  relay: "Automation",
-  // Task Management
-  todoist: "Task Management",
-  ticktick: "Task Management",
-  things3: "Task Management",
-  anydo: "Task Management",
-  omnifocus: "Task Management",
-  // Project Management
-  asana: "Project Management",
-  clickup: "Project Management",
-  jira: "Project Management",
-  linear: "Project Management",
-  trello: "Project Management",
-  height: "Project Management",
-  monday: "Project Management",
-  basecamp: "Project Management",
-  // Calendar & Scheduling
-  "google-calendar": "Calendar & Scheduling",
-  fantastical: "Calendar & Scheduling",
-  "notion-calendar": "Calendar & Scheduling",
-  clockwise: "Calendar & Scheduling",
-  reclaim: "Calendar & Scheduling",
-  motion: "Calendar & Scheduling",
-  cal: "Calendar & Scheduling",
-  savvycal: "Calendar & Scheduling",
-  calendly: "Calendar & Scheduling",
-  akiflow: "Calendar & Scheduling",
-  // Email
-  superhuman: "Email",
-  sanebox: "Email",
-  shortwave: "Email",
-  "hey-email": "Email",
-  missive: "Email",
-  spark: "Email",
-  // Notes & Knowledge
-  notion: "Notes & Knowledge",
-  obsidian: "Notes & Knowledge",
-  logseq: "Notes & Knowledge",
-  "roam-research": "Notes & Knowledge",
-  evernote: "Notes & Knowledge",
-  craft: "Notes & Knowledge",
-  "reflect-app": "Notes & Knowledge",
-  capacities: "Notes & Knowledge",
-  tana: "Notes & Knowledge",
-  "notion-ai": "Notes & Knowledge",
-  "apple-reminders": "Task Management",
-  sunsama: "Calendar & Scheduling",
-  openclaw: "Automation",
-};
-
 function FitScorePip({ filled }: { filled: boolean }) {
   return (
     <span
@@ -158,6 +88,10 @@ export default async function AlternativePage({ params }: PageProps) {
       (c) =>
         c.slug !== slug && COMPARISON_CATEGORIES[c.slug] === currentCategory,
     )
+    .slice(0, 3);
+
+  const relatedAlternatives = getAllAlternatives()
+    .filter((a) => a.slug !== slug && a.category === data.category)
     .slice(0, 3);
 
   const webPageSchema = generateWebPageSchema(
@@ -273,6 +207,39 @@ export default async function AlternativePage({ params }: PageProps) {
           </ul>
         </section>
 
+        {/* Comparison table */}
+        {data.comparisonRows && data.comparisonRows.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-3xl font-semibold text-white">
+              GAIA vs {data.name}: Feature Comparison
+            </h2>
+            <ComparisonTable
+              ariaLabel={`GAIA vs ${data.name} feature comparison`}
+              columns={[
+                {
+                  key: "feature",
+                  label: "Feature",
+                  headerClassName: "text-zinc-500",
+                  cellClassName: "font-medium text-zinc-300",
+                },
+                {
+                  key: "gaia",
+                  label: "GAIA",
+                  headerClassName: "text-primary",
+                  cellClassName: "text-emerald-400",
+                },
+                {
+                  key: "competitor",
+                  label: data.name,
+                  headerClassName: "text-zinc-400",
+                  cellClassName: "text-zinc-400",
+                },
+              ]}
+              rows={data.comparisonRows}
+            />
+          </section>
+        )}
+
         {/* GAIA advantages */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
@@ -319,11 +286,34 @@ export default async function AlternativePage({ params }: PageProps) {
           <FAQAccordion faqs={data.faqs} />
         </section>
 
-        {/* People Also Compare */}
+        {/* More Alternatives to Consider */}
+        {relatedAlternatives.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-3xl font-semibold text-white">
+              More Alternatives to Consider
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {relatedAlternatives.map((alt) => (
+                <Link
+                  key={alt.slug}
+                  href={`/alternative-to/${alt.slug}`}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                    Best {alt.name} Alternative
+                  </h3>
+                  <p className="text-xs text-zinc-400">{alt.tagline}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* People Also Consider */}
         {relatedComparisons.length >= 1 && (
           <section className="mb-16">
             <h2 className="mb-6 text-3xl font-semibold text-white">
-              People Also Compare
+              People Also Consider
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {relatedComparisons.map((comp) => (

@@ -99,4 +99,5 @@ export const entry: ComparisonData = {
           "GAIA offers a free tier and Pro plans starting at $20/month. You can also self-host GAIA for free with complete data ownership. Motion starts at $19/month with no free option.",
       },
     ],
+  relatedPersonas: ["startup-founders", "agency-owners"],
 };

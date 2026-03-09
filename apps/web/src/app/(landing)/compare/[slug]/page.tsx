@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import ComparisonTable from "@/components/seo/ComparisonTable";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import { getAlternative } from "@/features/alternatives/data/alternativesData";
+import { COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
+import { getPersona } from "@/features/personas/data/personasData";
 import {
   getAllComparisons,
   getAllComparisonSlugs,
@@ -46,97 +49,6 @@ export async function generateMetadata({
   });
 }
 
-const COMPARISON_CATEGORIES: Record<string, string> = {
-  // AI Assistants
-  chatgpt: "AI Assistants",
-  "chatgpt-teams": "AI Assistants",
-  claude: "AI Assistants",
-  gemini: "AI Assistants",
-  copilot: "AI Assistants",
-  "cursor-ai": "AI Assistants",
-  "google-assistant": "AI Assistants",
-  perplexity: "AI Assistants",
-  "lindy-ai": "AI Assistants",
-  "limitless-ai": "AI Assistants",
-  "rewind-ai": "AI Assistants",
-  "martin-ai": "AI Assistants",
-  poke: "AI Assistants",
-  "mem-ai": "AI Assistants",
-  // Automation
-  zapier: "Automation",
-  n8n: "Automation",
-  make: "Automation",
-  bardeen: "Automation",
-  activepieces: "Automation",
-  pipedream: "Automation",
-  relay: "Automation",
-  // Task Management
-  todoist: "Task Management",
-  ticktick: "Task Management",
-  things3: "Task Management",
-  anydo: "Task Management",
-  omnifocus: "Task Management",
-  // Project Management
-  asana: "Project Management",
-  clickup: "Project Management",
-  jira: "Project Management",
-  linear: "Project Management",
-  trello: "Project Management",
-  height: "Project Management",
-  monday: "Project Management",
-  basecamp: "Project Management",
-  // Calendar & Scheduling
-  "google-calendar": "Calendar & Scheduling",
-  fantastical: "Calendar & Scheduling",
-  "notion-calendar": "Calendar & Scheduling",
-  clockwise: "Calendar & Scheduling",
-  reclaim: "Calendar & Scheduling",
-  motion: "Calendar & Scheduling",
-  cal: "Calendar & Scheduling",
-  savvycal: "Calendar & Scheduling",
-  calendly: "Calendar & Scheduling",
-  akiflow: "Calendar & Scheduling",
-  // Email
-  superhuman: "Email",
-  sanebox: "Email",
-  shortwave: "Email",
-  "hey-email": "Email",
-  missive: "Email",
-  spark: "Email",
-  // Notes & Knowledge
-  notion: "Notes & Knowledge",
-  obsidian: "Notes & Knowledge",
-  logseq: "Notes & Knowledge",
-  "roam-research": "Notes & Knowledge",
-  evernote: "Notes & Knowledge",
-  craft: "Notes & Knowledge",
-  "reflect-app": "Notes & Knowledge",
-  capacities: "Notes & Knowledge",
-  tana: "Notes & Knowledge",
-  "notion-ai": "Notes & Knowledge",
-  // Task Management (additional)
-  "apple-reminders": "Task Management",
-  sunsama: "Calendar & Scheduling",
-  openclaw: "Automation",
-};
-
-function ComparisonTableRow({
-  feature,
-  gaia,
-  competitor,
-}: {
-  feature: string;
-  gaia: string;
-  competitor: string;
-}) {
-  return (
-    <tr className="border-b border-zinc-700/50 transition-colors hover:bg-white/[0.02]">
-      <td className="px-4 py-4 text-sm font-medium text-zinc-300">{feature}</td>
-      <td className="px-4 py-4 text-sm text-emerald-400">{gaia}</td>
-      <td className="px-4 py-4 text-sm text-zinc-400">{competitor}</td>
-    </tr>
-  );
-}
 
 export default async function ComparisonPage({ params }: PageProps) {
   const { slug } = await params;
@@ -155,6 +67,10 @@ export default async function ComparisonPage({ params }: PageProps) {
         c.slug !== slug && COMPARISON_CATEGORIES[c.slug] === currentCategory,
     )
     .slice(0, 3);
+
+  const relatedPersonaData = (data.relatedPersonas ?? [])
+    .map((slug) => getPersona(slug))
+    .filter((p): p is NonNullable<typeof p> => p !== undefined);
 
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
@@ -220,33 +136,30 @@ export default async function ComparisonPage({ params }: PageProps) {
           <h2 className="mb-6 text-3xl font-semibold text-white">
             Feature Comparison
           </h2>
-          <div className="overflow-x-auto rounded-3xl bg-zinc-800">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-zinc-700">
-                  <th className="px-4 py-4 text-left text-sm font-medium text-zinc-500">
-                    Feature
-                  </th>
-                  <th className="px-4 py-4 text-left text-sm font-medium text-primary">
-                    GAIA
-                  </th>
-                  <th className="px-4 py-4 text-left text-sm font-medium text-zinc-400">
-                    {data.name}
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.rows.map((row) => (
-                  <ComparisonTableRow
-                    key={row.feature}
-                    feature={row.feature}
-                    gaia={row.gaia}
-                    competitor={row.competitor}
-                  />
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ComparisonTable
+            ariaLabel={`GAIA vs ${data.name} feature comparison`}
+            columns={[
+              {
+                key: "feature",
+                label: "Feature",
+                headerClassName: "text-zinc-500",
+                cellClassName: "font-medium text-zinc-300",
+              },
+              {
+                key: "gaia",
+                label: "GAIA",
+                headerClassName: "text-primary",
+                cellClassName: "text-emerald-400",
+              },
+              {
+                key: "competitor",
+                label: data.name,
+                headerClassName: "text-zinc-400",
+                cellClassName: "text-zinc-400",
+              },
+            ]}
+            rows={data.rows}
+          />
         </section>
 
         {/* Advantages */}
@@ -336,6 +249,31 @@ export default async function ComparisonPage({ params }: PageProps) {
                     GAIA vs {comp.name}
                   </h3>
                   <p className="text-xs text-zinc-400">{comp.tagline}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* GAIA for Your Role */}
+        {relatedPersonaData.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-3xl font-semibold text-white">
+              GAIA for Your Role
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {relatedPersonaData.map((persona) => (
+                <Link
+                  key={persona.slug}
+                  href={`/for/${persona.slug}`}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-2 text-base font-medium text-white group-hover:text-primary">
+                    GAIA for {persona.role}
+                  </h3>
+                  <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">
+                    {persona.metaDescription}
+                  </p>
                 </Link>
               ))}
             </div>

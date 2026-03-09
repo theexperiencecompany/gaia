@@ -6,9 +6,10 @@ import JsonLd from "@/components/seo/JsonLd";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateFAQSchema,
-  generateWebPageSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateBreadcrumbSchema,
+  generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
 
@@ -140,7 +141,7 @@ export default function AiChiefOfStaffPage() {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema]} />
+      <JsonLd data={[webPageSchema, breadcrumbSchema, faqSchema, generateProductSchema()]} />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -303,7 +304,7 @@ export default function AiChiefOfStaffPage() {
           <h2 className="mb-6 text-3xl font-semibold text-white">
             Explore More
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
             <Link
               href="/for/startup-founders"
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
@@ -326,6 +327,18 @@ export default function AiChiefOfStaffPage() {
               <p className="text-sm leading-relaxed text-zinc-400">
                 Deep dive into GAIA&apos;s email triage capabilities — how it
                 reaches inbox zero automatically.
+              </p>
+            </Link>
+            <Link
+              href="/open-source-ai-assistant"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+            >
+              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                Open Source & Self-Host
+              </h3>
+              <p className="text-sm leading-relaxed text-zinc-400">
+                Run GAIA on your own infrastructure with full data control.
+                MIT licensed and free forever.
               </p>
             </Link>
           </div>

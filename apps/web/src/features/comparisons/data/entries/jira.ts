@@ -116,4 +116,5 @@ export const entry: ComparisonData = {
         "Jira is free for up to 10 users, which makes it cost-effective for small teams. GAIA is free for individual use and starts at $20/month for Pro features, or free indefinitely if you self-host. The cost comparison depends heavily on team size and whether you need team project management versus personal AI assistance.",
     },
   ],
+  relatedPersonas: ["engineering-managers", "product-managers", "software-developers"],
 };

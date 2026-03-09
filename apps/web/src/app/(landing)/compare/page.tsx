@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 
 import JsonLd from "@/components/seo/JsonLd";
+import { CATEGORY_ORDER, COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
 import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
@@ -29,89 +30,6 @@ export const metadata: Metadata = generatePageMetadata({
     "best AI assistant",
   ],
 });
-
-const COMPARISON_CATEGORIES: Record<string, string> = {
-  // AI Assistants
-  chatgpt: "AI Assistants",
-  "chatgpt-teams": "AI Assistants",
-  claude: "AI Assistants",
-  gemini: "AI Assistants",
-  copilot: "AI Assistants",
-  "cursor-ai": "AI Assistants",
-  "google-assistant": "AI Assistants",
-  perplexity: "AI Assistants",
-  "lindy-ai": "AI Assistants",
-  "limitless-ai": "AI Assistants",
-  "rewind-ai": "AI Assistants",
-  "martin-ai": "AI Assistants",
-  poke: "AI Assistants",
-  "mem-ai": "AI Assistants",
-  // Automation
-  zapier: "Automation",
-  n8n: "Automation",
-  make: "Automation",
-  bardeen: "Automation",
-  activepieces: "Automation",
-  pipedream: "Automation",
-  relay: "Automation",
-  // Task Management
-  todoist: "Task Management",
-  ticktick: "Task Management",
-  things3: "Task Management",
-  anydo: "Task Management",
-  omnifocus: "Task Management",
-  // Project Management
-  asana: "Project Management",
-  clickup: "Project Management",
-  jira: "Project Management",
-  linear: "Project Management",
-  trello: "Project Management",
-  height: "Project Management",
-  monday: "Project Management",
-  basecamp: "Project Management",
-  // Calendar & Scheduling
-  "google-calendar": "Calendar & Scheduling",
-  fantastical: "Calendar & Scheduling",
-  "notion-calendar": "Calendar & Scheduling",
-  clockwise: "Calendar & Scheduling",
-  reclaim: "Calendar & Scheduling",
-  motion: "Calendar & Scheduling",
-  cal: "Calendar & Scheduling",
-  savvycal: "Calendar & Scheduling",
-  calendly: "Calendar & Scheduling",
-  akiflow: "Calendar & Scheduling",
-  // Email
-  superhuman: "Email",
-  sanebox: "Email",
-  shortwave: "Email",
-  "hey-email": "Email",
-  missive: "Email",
-  spark: "Email",
-  // Notes & Knowledge
-  notion: "Notes & Knowledge",
-  obsidian: "Notes & Knowledge",
-  logseq: "Notes & Knowledge",
-  "roam-research": "Notes & Knowledge",
-  evernote: "Notes & Knowledge",
-  craft: "Notes & Knowledge",
-  "reflect-app": "Notes & Knowledge",
-  capacities: "Notes & Knowledge",
-  tana: "Notes & Knowledge",
-  "notion-ai": "Notes & Knowledge",
-  "apple-reminders": "Task Management",
-  sunsama: "Calendar & Scheduling",
-  openclaw: "Automation",
-};
-
-const CATEGORY_ORDER = [
-  "AI Assistants",
-  "Automation",
-  "Task Management",
-  "Project Management",
-  "Calendar & Scheduling",
-  "Email",
-  "Notes & Knowledge",
-];
 
 export default function ComparisonsHubPage() {
   const comparisons = getAllComparisons();

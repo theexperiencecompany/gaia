@@ -124,4 +124,5 @@ export const entry: ComparisonData = {
         "GAIA's Pro plan starts at $20/month, comparable to ChatGPT Plus. However, GAIA can be self-hosted for free with full data ownership and no usage caps — an option ChatGPT does not offer. ChatGPT's Pro tier is $200/month for unlimited access to its most capable models.",
     },
   ],
+  relatedPersonas: ["startup-founders", "software-developers"],
 };

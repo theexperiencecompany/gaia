@@ -95,4 +95,5 @@ export const entry: ComparisonData = {
           "GAIA focuses on individual productivity with team collaboration features through integrations like Slack, Linear, and GitHub. Reclaim has more specialized team calendar coordination features.",
       },
     ],
+  relatedPersonas: ["engineering-managers", "startup-founders"],
 };

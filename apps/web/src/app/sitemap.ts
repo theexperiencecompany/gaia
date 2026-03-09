@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
-import { getAllComboSlugs } from "@/features/integrations/data/combosData";
+import { getAllCombos } from "@/features/integrations/data/combosData";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
@@ -46,6 +46,8 @@ export async function generateSitemaps() {
     { id: SITEMAP_IDS.INTEGRATION_COMBOS },
   ];
 }
+
+const BUILD_DATE = new Date().toISOString();
 
 type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
 const STATIC_PAGES: Array<{
@@ -252,6 +254,7 @@ function getComparisonPages(baseUrl: string): MetadataRoute.Sitemap {
   const slugs = getAllComparisonSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/compare/${slug}`,
+    lastModified: BUILD_DATE,
     changeFrequency: "monthly" as const,
     priority: 0.8,
   }));
@@ -284,6 +287,7 @@ async function getPersonaPages(
     const slugs = getAllPersonaSlugs();
     return slugs.map((slug) => ({
       url: `${baseUrl}/for/${slug}`,
+      lastModified: BUILD_DATE,
       changeFrequency: "monthly" as const,
       priority: FEATURED_PERSONA_SLUGS.has(slug) ? 0.9 : 0.7,
     }));
@@ -300,6 +304,7 @@ function getGlossaryPages(baseUrl: string): MetadataRoute.Sitemap {
   const slugs = getAllGlossaryTermSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/learn/${slug}`,
+    lastModified: BUILD_DATE,
     changeFrequency: "monthly" as const,
     priority: 0.7,
   }));
@@ -312,6 +317,7 @@ function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
   const slugs = getAllAlternativeSlugs();
   return slugs.map((slug) => ({
     url: `${baseUrl}/alternative-to/${slug}`,
+    lastModified: BUILD_DATE,
     changeFrequency: "monthly" as const,
     priority: 0.8,
   }));
@@ -321,12 +327,15 @@ function getAlternativePages(baseUrl: string): MetadataRoute.Sitemap {
  * Integration combo pages ([toolA] + [toolB] automation)
  */
 function getIntegrationComboPages(baseUrl: string): MetadataRoute.Sitemap {
-  const slugs = getAllComboSlugs();
-  return slugs.map((slug) => ({
-    url: `${baseUrl}/integrations/${slug}`,
-    changeFrequency: "monthly" as const,
-    priority: 0.7,
-  }));
+  const allCombos = getAllCombos();
+  return allCombos
+    .filter((c) => !c.canonicalSlug)
+    .map((combo) => ({
+      url: `${baseUrl}/integrations/${combo.slug}`,
+      lastModified: BUILD_DATE,
+      changeFrequency: "monthly" as const,
+      priority: 0.7,
+    }));
 }
 
 /**

@@ -114,4 +114,5 @@ export const entry: ComparisonData = {
         "GAIA is fully open source and can be self-hosted on your own infrastructure, giving you the same data ownership and control that Obsidian's local-first model provides. On the hosted version, your data is never used for model training. If data sovereignty is a priority, GAIA's self-hosting option puts you in full control of where your data lives and who can access it.",
     },
   ],
+  relatedPersonas: ["software-developers", "product-managers"],
 };

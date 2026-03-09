@@ -1,15 +1,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 
+import ComparisonTable from "@/components/seo/ComparisonTable";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateFAQSchema,
   generateHowToSchema,
-  generateWebPageSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateBreadcrumbSchema,
+  generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
 
@@ -161,7 +163,7 @@ export default function OpenSourceAIAssistantPage() {
 
   return (
     <>
-      <JsonLd data={[webPageSchema, breadcrumbSchema, howToSchema, faqSchema]} />
+      <JsonLd data={[webPageSchema, breadcrumbSchema, howToSchema, faqSchema, generateProductSchema()]} />
 
       <article className="mx-auto max-w-4xl px-6 pt-36 pb-24">
         {/* Breadcrumb */}
@@ -314,47 +316,42 @@ export default function OpenSourceAIAssistantPage() {
           <h2 className="mb-6 text-3xl font-semibold text-white">
             GAIA (open source) vs closed AI assistants
           </h2>
-          <div className="overflow-x-auto rounded-2xl border border-zinc-700">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-zinc-700 bg-zinc-800">
-                  <th className="px-4 py-3 text-left font-semibold text-zinc-300">
-                    Feature
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-emerald-400">
-                    GAIA
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-zinc-400">
-                    ChatGPT
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-zinc-400">
-                    Copilot
-                  </th>
-                  <th className="px-4 py-3 text-left font-semibold text-zinc-400">
-                    Notion AI
-                  </th>
-                </tr>
-              </thead>
-              <tbody>
-                {comparisonRows.map((row, i) => (
-                  <tr
-                    key={row.feature}
-                    className={`border-b border-zinc-800 ${i % 2 === 0 ? "bg-zinc-900" : "bg-zinc-900/50"}`}
-                  >
-                    <td className="px-4 py-3 font-medium text-zinc-300">
-                      {row.feature}
-                    </td>
-                    <td className="px-4 py-3 text-emerald-400">{row.gaia}</td>
-                    <td className="px-4 py-3 text-zinc-400">{row.chatgpt}</td>
-                    <td className="px-4 py-3 text-zinc-400">{row.copilot}</td>
-                    <td className="px-4 py-3 text-zinc-400">
-                      {row.notionAI}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ComparisonTable
+            ariaLabel="GAIA open source vs closed AI assistants"
+            columns={[
+              {
+                key: "feature",
+                label: "Feature",
+                headerClassName: "text-zinc-500",
+                cellClassName: "font-medium text-zinc-300",
+              },
+              {
+                key: "gaia",
+                label: "GAIA",
+                headerClassName: "text-primary",
+                cellClassName: "text-emerald-400",
+              },
+              {
+                key: "chatgpt",
+                label: "ChatGPT",
+                headerClassName: "text-zinc-400",
+                cellClassName: "text-zinc-400",
+              },
+              {
+                key: "copilot",
+                label: "Copilot",
+                headerClassName: "text-zinc-400",
+                cellClassName: "text-zinc-400",
+              },
+              {
+                key: "notionAI",
+                label: "Notion AI",
+                headerClassName: "text-zinc-400",
+                cellClassName: "text-zinc-400",
+              },
+            ]}
+            rows={comparisonRows}
+          />
         </section>
 
         {/* How to self-host */}
@@ -419,7 +416,31 @@ export default function OpenSourceAIAssistantPage() {
           <h2 className="mb-6 text-3xl font-semibold text-white">
             Explore More
           </h2>
-          <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-3">
+            <Link
+              href="/ai-chief-of-staff"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+            >
+              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                AI Chief of Staff
+              </h3>
+              <p className="text-sm leading-relaxed text-zinc-400">
+                See how GAIA acts as your proactive AI chief of staff —
+                managing your entire workday autonomously.
+              </p>
+            </Link>
+            <Link
+              href="/inbox-zero-ai"
+              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+            >
+              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
+                Inbox Zero with AI
+              </h3>
+              <p className="text-sm leading-relaxed text-zinc-400">
+                How GAIA automatically triages your Gmail and reaches inbox
+                zero every day.
+              </p>
+            </Link>
             <Link
               href="/compare"
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
@@ -430,18 +451,6 @@ export default function OpenSourceAIAssistantPage() {
               <p className="text-sm leading-relaxed text-zinc-400">
                 See detailed head-to-head comparisons of GAIA against other AI
                 and productivity tools.
-              </p>
-            </Link>
-            <Link
-              href="/pricing"
-              className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
-            >
-              <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                Cloud vs Self-Hosted
-              </h3>
-              <p className="text-sm leading-relaxed text-zinc-400">
-                Compare the managed cloud tier with self-hosting to find the
-                right option for your needs.
               </p>
             </Link>
           </div>

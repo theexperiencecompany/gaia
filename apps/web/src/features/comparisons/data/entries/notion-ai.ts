@@ -125,4 +125,5 @@ export const entry: ComparisonData = {
         "The two tools address different problems. Notion AI enhances the writing and database experience inside Notion. GAIA operates outside Notion — reading email, watching your calendar, and triggering cross-tool automations — and writes back into Notion as one of many connected outputs. Most teams with a Notion-centric workflow find the most value using both: GAIA handles proactive capture and cross-tool orchestration, while Notion AI handles in-editor refinement.",
     },
   ],
+  relatedPersonas: ["product-managers", "startup-founders"],
 };

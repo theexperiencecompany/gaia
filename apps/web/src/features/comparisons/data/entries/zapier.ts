@@ -105,4 +105,5 @@ export const entry: ComparisonData = {
           "Yes. GAIA handles the intelligent, context-aware parts of your workflow while Zapier handles high-volume, deterministic automations. This gives you AI decision-making where it matters and broad connectivity where you need it.",
       },
     ],
+  relatedPersonas: ["agency-owners", "startup-founders"],
 };

@@ -123,4 +123,5 @@ export const entry: ComparisonData = {
         "Make's Free plan offers 1,000 operations/month, which is enough for light automation but quickly runs out with active email or calendar workflows. The Core plan starts at $29/month. GAIA's Pro plan is $20/month with no operation-based billing — all features included. Additionally, GAIA can be self-hosted for free with no usage caps, an option Make does not offer. For individuals who want AI-powered productivity automation without metering every action, GAIA is typically more cost-effective.",
     },
   ],
+  relatedPersonas: ["agency-owners", "startup-founders"],
 };

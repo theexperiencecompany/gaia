@@ -131,4 +131,5 @@ export const entry: ComparisonData = {
         "Yes. Superhuman has no workflow automation engine — email actions remain user-initiated even with AI writing assistance. GAIA supports natural-language multi-step automations triggered by email events: for example, 'when I receive an email from a client marked urgent, create a high-priority task, add a calendar block tomorrow morning, and send a Slack message to my team.' These cross-tool workflows run automatically without any manual steps.",
     },
   ],
+  relatedPersonas: ["startup-founders", "sales-professionals", "agency-owners"],
 };

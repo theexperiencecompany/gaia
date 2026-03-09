@@ -7,12 +7,14 @@ import {
   getAllGlossaryTermSlugs,
   getGlossaryTerm,
 } from "@/features/glossary/data/glossaryData";
+import { getComparison } from "@/features/comparisons/data/comparisonsData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
 import {
   generateBreadcrumbSchema,
   generateDefinedTermSchema,
   generateFAQSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -91,6 +93,10 @@ export default async function GlossaryTermPage({ params }: PageProps) {
   const relatedTerms = data.relatedTerms
     .map((slug) => getGlossaryTerm(slug))
     .filter((t): t is NonNullable<typeof t> => t !== undefined);
+
+  const relatedComparisonData = (data.relatedComparisons ?? [])
+    .map((slug) => getComparison(slug))
+    .filter((c): c is NonNullable<typeof c> => c !== undefined);
 
   return (
     <>
@@ -176,6 +182,29 @@ export default async function GlossaryTermPage({ params }: PageProps) {
           </h2>
           <FAQAccordion faqs={data.faqs} />
         </section>
+
+        {/* Tools That Use This Term */}
+        {relatedComparisonData.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-3xl font-semibold text-white">
+              Tools That Use {data.term}
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {relatedComparisonData.map((comparison) => (
+                <Link
+                  key={comparison.slug}
+                  href={`/compare/${comparison.slug}`}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                    GAIA vs {comparison.name}
+                  </h3>
+                  <p className="text-xs text-zinc-400">{comparison.tagline}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
 
         {/* Explore More */}
         <section className="mb-16">

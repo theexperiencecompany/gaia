@@ -32,6 +32,8 @@ export interface GlossaryTerm {
   faqs: Array<{ question: string; answer: string }>;
   /** When set, this page's canonical points to /learn/{canonicalSlug} — concentrates PageRank on the primary entry. */
   canonicalSlug?: string;
+  /** Slugs of comparison pages that are genuinely related to this term (e.g. tools that implement the concept). */
+  relatedComparisons?: string[];
 }
 
 export const glossaryTerms: Record<string, GlossaryTerm> = {
@@ -74,6 +76,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "AI agents reduce the manual work of managing digital tools by autonomously handling repetitive tasks like email triage, meeting scheduling, and task creation. GAIA's agents work 24/7, monitoring your connected tools and acting before you need to ask.",
       },
     ],
+    relatedComparisons: ["chatgpt", "claude", "gemini", "lindy-ai", "google-assistant"],
   },
 
   "agentic-ai": {
@@ -114,6 +117,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes, when designed with proper guardrails. GAIA implements human-in-the-loop controls for sensitive actions, allowing you to review and approve decisions before execution while still benefiting from autonomous handling of routine tasks.",
       },
     ],
+    relatedComparisons: ["chatgpt", "claude", "gemini", "lindy-ai", "limitless-ai"],
   },
 
   "proactive-ai": {
@@ -154,6 +158,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA allows you to configure which actions it can take autonomously and which require your approval. You maintain full control while benefiting from proactive monitoring and suggestions.",
       },
     ],
+    relatedComparisons: ["lindy-ai", "limitless-ai", "rewind-ai", "martin-ai", "poke"],
   },
 
   "workflow-automation": {
@@ -195,6 +200,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "No. GAIA lets you create workflows using natural language. Describe what you want to automate, and GAIA configures the workflow across your connected tools. No coding or visual workflow building is required.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "activepieces", "bardeen"],
   },
 
   "model-context-protocol": {
@@ -215,7 +221,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "AI integration standard",
       "MCP explained",
     ],
-    category: "infrastructure",
+    category: "development",
     howGaiaUsesIt:
       "MCP is the backbone of GAIA's integration architecture. GAIA connects to 50+ tools including Gmail, Slack, Notion, GitHub, Linear, Todoist, and more through MCP servers. Each integration exposes its capabilities through the MCP standard, allowing GAIA's AI agents to discover and use tools dynamically. This means adding a new integration to GAIA does not require custom AI training. The agent simply discovers the new tool's capabilities through MCP and begins using it.",
     relatedTerms: ["api-integration", "ai-orchestration", "webhook", "oauth"],
@@ -231,6 +237,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA supports custom MCP servers, allowing you to connect any tool or service that implements the MCP standard. You can also browse community-built integrations in the GAIA marketplace.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "pipedream", "activepieces"],
   },
 
   langgraph: {
@@ -251,7 +258,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "LangChain graph",
       "stateful AI agents",
     ],
-    category: "infrastructure",
+    category: "development",
     howGaiaUsesIt:
       "GAIA's entire agent system is built on LangGraph. The core agent operates as a graph with nodes for reasoning, tool selection, action execution, and response generation. Subagents for email, calendar, task management, and workflow execution are orchestrated through LangGraph's graph-based architecture. This allows GAIA to handle complex multi-step tasks like reading an email, creating a task, scheduling a follow-up meeting, and notifying a team member, all as a single coordinated workflow with state persistence.",
     relatedTerms: ["ai-agent", "ai-orchestration", "graph-based-memory", "llm"],
@@ -349,6 +356,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "A vector database stores and indexes vector embeddings for fast similarity search. GAIA uses ChromaDB as its vector database, enabling semantic search across all your connected data sources.",
       },
     ],
+    relatedComparisons: ["mem-ai", "notion-ai", "obsidian"],
   },
 
   "task-automation": {
@@ -368,7 +376,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "intelligent task manager",
       "AI productivity",
     ],
-    category: "automation",
+    category: "task-management",
     howGaiaUsesIt:
       "GAIA automates the entire task lifecycle. It creates tasks from emails, Slack messages, and calendar events automatically. It prioritizes tasks based on deadlines, sender importance, and project context. It can execute tasks autonomously, such as drafting a response, scheduling a meeting, or updating a project status. GAIA integrates with task management tools like Todoist, Asana, Linear, and ClickUp, keeping everything synchronized across platforms.",
     relatedTerms: [
@@ -389,6 +397,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "A to-do app requires you to manually create, organize, and complete tasks. AI task automation with GAIA identifies tasks from your communications, prioritizes them intelligently, and can even execute simple tasks autonomously.",
       },
     ],
+    relatedComparisons: ["todoist", "ticktick", "things3", "omnifocus"],
   },
 
   "email-automation": {
@@ -409,7 +418,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "smart inbox",
       "AI email assistant",
     ],
-    category: "automation",
+    category: "email",
     howGaiaUsesIt:
       "GAIA connects to your Gmail inbox and proactively manages your email. It reads incoming messages, understands their content and urgency, and takes appropriate actions. GAIA can triage your inbox by priority, draft contextual replies that match your writing style, create tasks from action items mentioned in emails, schedule follow-ups on your calendar, and label or archive messages. You start your day with an organized inbox and drafted replies ready for review.",
     relatedTerms: [
@@ -430,6 +439,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA currently integrates deeply with Gmail through its MCP integration. It reads, triages, drafts, and manages your entire inbox proactively.",
       },
     ],
+    relatedComparisons: ["superhuman", "sanebox", "shortwave", "hey-email", "missive"],
   },
 
   "calendar-automation": {
@@ -449,7 +459,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "AI scheduling assistant",
       "calendar AI",
     ],
-    category: "automation",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA integrates with Google Calendar to provide intelligent schedule management. It finds optimal meeting times, prepares briefing documents before your calls by gathering relevant emails and documents, blocks focus time based on your productivity patterns, creates calendar events from email conversations, and ensures your schedule aligns with your task priorities. GAIA treats your calendar as part of your complete workflow, not an isolated tool.",
     relatedTerms: [
@@ -470,6 +480,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA can block focus time on your calendar based on your productivity patterns and task priorities, ensuring you have uninterrupted time for deep work alongside scheduled meetings.",
       },
     ],
+    relatedComparisons: ["reclaim", "motion", "clockwise", "google-calendar"],
   },
 
   "knowledge-graph": {
@@ -489,7 +500,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "structured knowledge",
       "graph database AI",
     ],
-    category: "ai-concepts",
+    category: "knowledge-management",
     howGaiaUsesIt:
       "GAIA builds a personal knowledge graph from your connected tools. It links people to projects, projects to tasks, tasks to emails, emails to calendar events, and so on. This interconnected structure allows GAIA to answer questions like 'What is the status of Project X?' by traversing relationships to find related tasks, recent emails, upcoming meetings, and team members involved, providing a comprehensive answer rather than isolated data points.",
     relatedTerms: [
@@ -510,6 +521,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA is open source and self-hostable, meaning you can run it on your own infrastructure with complete data control. Your knowledge graph is private to you and never used for training AI models.",
       },
     ],
+    relatedComparisons: ["obsidian", "logseq", "roam-research", "notion"],
   },
 
   "semantic-search": {
@@ -550,6 +562,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA performs semantic search across all your connected tools: emails, tasks, calendar events, documents, Slack messages, and more. It provides a unified search across your entire digital workspace.",
       },
     ],
+    relatedComparisons: ["notion", "mem-ai", "obsidian", "evernote"],
   },
 
   llm: {
@@ -591,6 +604,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "No. An LLM is a language model that understands and generates text. An AI agent uses an LLM as its reasoning engine combined with tools, memory, and planning capabilities to take actions in the real world. GAIA is an AI agent that uses LLMs for reasoning.",
       },
     ],
+    relatedComparisons: ["chatgpt", "claude", "gemini", "copilot", "perplexity"],
   },
 
   "ai-assistant": {
@@ -631,6 +645,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "An AI assistant goes beyond conversation to take actions on your behalf. GAIA does not just answer questions about your schedule. It actively manages your calendar, creates tasks from emails, drafts replies, and automates workflows across your connected tools.",
       },
     ],
+    relatedComparisons: ["chatgpt", "claude", "gemini", "google-assistant", "copilot"],
   },
 
   "self-hosting": {
@@ -651,7 +666,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "private AI deployment",
       "self-hosted assistant",
     ],
-    category: "infrastructure",
+    category: "development",
     howGaiaUsesIt:
       "GAIA is fully open source and designed for self-hosting. You can run the entire GAIA stack on your own infrastructure using Docker Compose. This includes the FastAPI backend, Next.js frontend, PostgreSQL, MongoDB, Redis, ChromaDB, and RabbitMQ. Self-hosting GAIA means your emails, tasks, calendar data, and AI conversations never leave your servers. It is completely free to self-host, with no feature limitations compared to the hosted version.",
     relatedTerms: [
@@ -691,7 +706,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "community AI",
       "AI source code",
     ],
-    category: "infrastructure",
+    category: "development",
     howGaiaUsesIt:
       "GAIA is fully open source, with the entire codebase available on GitHub. This includes the AI agents, backend API, web frontend, desktop app, mobile app, and all integrations. Anyone can inspect how GAIA processes data, contribute new features, build custom integrations, and self-host the platform. GAIA's open source nature means you never have to trust a black box with your personal data. The community actively contributes integrations, bug fixes, and feature improvements.",
     relatedTerms: [
@@ -813,7 +828,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "connected tools",
       "integration platform",
     ],
-    category: "integrations",
+    category: "development",
     howGaiaUsesIt:
       "GAIA connects to 50+ tools through API integrations managed via the Model Context Protocol. Each integration provides GAIA's AI agents with the ability to read data from and take actions in your tools. This includes Gmail, Google Calendar, Slack, Notion, GitHub, Linear, Todoist, Asana, ClickUp, Trello, and many more. The MCP standard means new integrations can be added without modifying GAIA's core agent logic. Community-built integrations are available in the GAIA marketplace.",
     relatedTerms: [
@@ -834,6 +849,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA supports custom MCP server integrations, allowing you to connect any tool or service. You can also publish your integrations to the GAIA marketplace for others to use.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "pipedream"],
   },
 
   "ai-orchestration": {
@@ -952,6 +968,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA complements traditional assistants by focusing on productivity workflow management. While Siri handles voice commands and smart home control, GAIA manages your email, calendar, tasks, and cross-tool workflows with AI-powered autonomy.",
       },
     ],
+    relatedComparisons: ["google-assistant", "chatgpt", "lindy-ai", "martin-ai"],
   },
 
   "ai-email-assistant": {
@@ -972,7 +989,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "email productivity AI",
       "automated email replies",
     ],
-    category: "automation",
+    category: "email",
     howGaiaUsesIt:
       "GAIA functions as a full AI email assistant for your Gmail inbox. It reads every incoming message, determines urgency based on sender history and content, categorizes emails by project and topic, drafts contextual replies in your writing style, and extracts action items into your task manager. GAIA works proactively: before you open your inbox in the morning, it has already triaged messages, prepared draft responses for your review, and created tasks from any deadlines or requests.",
     relatedTerms: [
@@ -998,6 +1015,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA is designed to catch what humans miss. It reads every message and evaluates urgency based on sender relationships, content analysis, and project context. It surfaces high-priority emails and flags anything that needs your direct attention.",
       },
     ],
+    relatedComparisons: ["superhuman", "shortwave", "sanebox", "spark"],
   },
 
   "ai-calendar-management": {
@@ -1018,7 +1036,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "intelligent scheduling",
       "automated calendar",
     ],
-    category: "automation",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA connects to Google Calendar and manages your schedule as part of your complete workflow. It finds optimal meeting times by analyzing your availability and energy patterns, prepares briefing documents by pulling relevant emails and tasks before each meeting, blocks focus time for deep work based on your deadlines, and creates calendar events directly from email conversations. GAIA also alerts you to scheduling conflicts and suggests resolutions before they become problems.",
     relatedTerms: [
@@ -1040,6 +1058,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA considers time zones when scheduling and finds times that work for all participants. It factors in your preferred meeting hours and avoids scheduling calls at inconvenient times for any attendee.",
       },
     ],
+    relatedComparisons: ["reclaim", "motion", "clockwise", "fantastical"],
   },
 
   "ai-task-prioritization": {
@@ -1060,7 +1079,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "AI to-do list",
       "intelligent task management",
     ],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt:
       "GAIA prioritizes your tasks using signals from across your connected tools. It considers deadlines from calendar events, urgency cues from email content, project dependencies from tools like Linear or Asana, sender importance based on your communication history, and your own productivity patterns. When a new email creates a task or a deadline shifts, GAIA automatically re-ranks your task list. You always know what to work on next without spending time triaging your to-do list.",
     relatedTerms: [
@@ -1081,6 +1100,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Absolutely. GAIA's prioritization is a recommendation. You can pin tasks to the top, manually reorder items, or adjust the weight GAIA gives to different signals. Over time, GAIA learns from your overrides and adjusts its ranking model.",
       },
     ],
+    relatedComparisons: ["todoist", "ticktick", "akiflow", "sunsama", "motion"],
   },
 
   "workflow-orchestration": {
@@ -1123,6 +1143,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA's orchestration engine coordinates actions across 50+ tools. A single workflow can read from Gmail, create tasks in Linear, update a Notion database, post in Slack, and schedule a meeting in Google Calendar, all as a coordinated sequence.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "activepieces", "pipedream"],
   },
 
   "ai-meeting-assistant": {
@@ -1143,7 +1164,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "AI meeting scheduler",
       "meeting productivity",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA manages the full meeting lifecycle. Before each meeting, it compiles a briefing with relevant emails, open tasks, and recent activity involving the attendees. It suggests talking points based on pending items and recent communications. After the meeting, you can tell GAIA the outcomes, and it creates tasks, schedules follow-ups, sends summary emails, and updates project status across your connected tools. GAIA turns meetings from time sinks into action-generating events.",
     relatedTerms: [
@@ -1169,6 +1190,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA focuses on meeting preparation and follow-up rather than in-meeting recording. It excels at gathering context before meetings and turning outcomes into actions afterward, integrating with your calendar, email, and task management tools.",
       },
     ],
+    relatedComparisons: ["reclaim", "motion", "clockwise", "cal"],
   },
 
   "smart-notifications": {
@@ -1251,6 +1273,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA integrates with your existing productivity tools rather than replacing them. It connects to Todoist, Notion, Asana, Linear, and others, adding an AI layer that automates task creation, prioritization, and cross-tool coordination.",
       },
     ],
+    relatedComparisons: ["lindy-ai", "martin-ai", "poke", "limitless-ai"],
   },
 
   "inbox-zero": {
@@ -1297,6 +1320,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "No. Inbox Zero means every email is processed, not necessarily replied to. Some emails need replies, some become tasks, some get archived. GAIA handles this triage automatically, deciding the right action for each message based on its content and context.",
       },
     ],
+    relatedComparisons: ["superhuman", "sanebox", "shortwave", "hey-email"],
   },
 
   "deep-work": {
@@ -1358,7 +1382,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "time management technique",
       "schedule blocking",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA automates time blocking by analyzing your tasks, deadlines, and calendar availability to build a realistic daily schedule. It assigns your highest-priority tasks to time blocks that match your energy patterns, groups similar work together to reduce context switching, and dynamically adjusts blocks when meetings shift or new priorities arrive. Instead of spending 15 minutes each morning planning your day, GAIA presents a ready-made schedule that you can accept or adjust.",
     relatedTerms: [
@@ -1379,6 +1403,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. When a meeting moves, a task takes longer than expected, or a new priority arrives, GAIA reshuffles your remaining time blocks to accommodate the change. Your schedule stays realistic throughout the day.",
       },
     ],
+    relatedComparisons: ["reclaim", "motion", "akiflow", "sunsama", "clockwise"],
   },
 
   "no-code-automation": {
@@ -1427,6 +1452,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA's AI understands conditional logic expressed in natural language. You can say 'If the email is from a VIP client, respond within the hour and notify me on Slack. Otherwise, batch it in my daily digest.' GAIA creates the branching workflow automatically.",
       },
     ],
+    relatedComparisons: ["zapier", "make", "activepieces", "bardeen"],
   },
 
   "large-language-model": {
@@ -1472,6 +1498,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA supports multiple LLM providers so you can choose based on your priorities. The LLM powers the reasoning layer of GAIA's agent, while LangGraph handles workflow orchestration and MCP handles tool integrations.",
       },
     ],
+    relatedComparisons: ["chatgpt", "claude", "gemini", "copilot"],
   },
 
   transformer: {
@@ -1597,6 +1624,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Embeddings map content into a numerical space where similar meanings cluster together. Semantic search works by embedding the query and finding stored embeddings that are numerically closest, returning conceptually related results even when exact words do not match.",
       },
     ],
+    relatedComparisons: ["mem-ai", "notion-ai"],
   },
 
   "vector-database": {
@@ -1640,6 +1668,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "No. Vector databases specialize in similarity search over embeddings. GAIA uses both: PostgreSQL and MongoDB for structured data, and ChromaDB for semantic search over embedded content. Each database type serves a different purpose.",
       },
     ],
+    relatedComparisons: ["mem-ai", "notion-ai", "obsidian"],
   },
 
   "retrieval-augmented-generation": {
@@ -1683,6 +1712,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "RAG significantly reduces hallucinations for factual queries by grounding responses in retrieved documents. When GAIA answers a question about your emails or tasks, it retrieves the actual data first, making responses far more accurate than relying on the LLM's general knowledge alone.",
       },
     ],
+    relatedComparisons: ["mem-ai", "notion-ai", "obsidian", "logseq"],
   },
 
   "prompt-engineering": {
@@ -1726,6 +1756,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Be specific about what you want, provide context, use examples when possible, and specify the desired output format. For GAIA, you can describe workflows in plain language and the system handles the prompt engineering internally to execute them reliably across tools.",
       },
     ],
+    relatedComparisons: ["chatgpt", "claude", "gemini", "perplexity"],
   },
 
   "zero-shot-learning": {
@@ -1974,6 +2005,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "A larger context window expands what the model can access, but quality also depends on how well the model attends to long-range content. GAIA uses retrieval strategies to select the most relevant content, which often outperforms naive approaches of filling the entire context window.",
       },
     ],
+    relatedComparisons: ["chatgpt", "claude", "gemini"],
   },
 
   "neural-network": {
@@ -2100,6 +2132,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA's multimodal capabilities depend on the LLM provider you configure. With models like GPT-4o or Claude 3, GAIA can process text and images together. Future updates will expand multimodal support across more input and output types as model capabilities grow.",
       },
     ],
+    relatedComparisons: ["chatgpt", "claude", "gemini", "copilot"],
   },
 
   "foundation-model": {
@@ -2269,6 +2302,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "No. Anyone who manages a busy inbox, attends multiple meetings, and coordinates across tools benefits from a digital EA. GAIA is designed for knowledge workers at every level who want to offload administrative overhead and focus on their most impactful work.",
       },
     ],
+    relatedComparisons: ["lindy-ai", "martin-ai", "poke", "limitless-ai"],
   },
 
   "tool-use": {
@@ -2478,6 +2512,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA can trigger workflows from email arrivals, calendar event creation and updates, Slack messages, task status changes, GitHub events, and any other tool that sends webhooks. You can also configure custom triggers based on specific conditions within events.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "pipedream"],
   },
 
   trigger: {
@@ -2520,6 +2555,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA allows you to define custom trigger conditions using natural language. You can describe the exact combination of events and conditions that should start a workflow, and GAIA configures the appropriate monitoring and filtering across your connected tools.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "activepieces"],
   },
 
   "conditional-logic": {
@@ -2603,6 +2639,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Use RPA for legacy systems with no API access where UI automation is the only option. Use AI automation like GAIA for modern SaaS tools with APIs where you need intelligent handling of varied content, contextual decision-making, and natural language workflow creation.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "activepieces"],
   },
 
   "agent-memory": {
@@ -2666,7 +2703,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "MCP server",
       "GAIA MCP",
     ],
-    category: "infrastructure",
+    category: "development",
     howGaiaUsesIt:
       "MCP is the backbone of GAIA's integration architecture. All of GAIA's 50+ tool integrations, including Gmail, Google Calendar, Slack, Notion, GitHub, Linear, and Todoist, are implemented as MCP servers. GAIA's LangGraph agents discover and use these tools through the MCP standard, enabling a consistent interaction pattern across all integrations. Adding a new integration means building an MCP server; the agent automatically gains access to it without code changes.",
     relatedTerms: [
@@ -2688,6 +2725,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "A regular API has a specific interface that requires custom code for each integration. MCP provides a standardized protocol where the tool describes its own capabilities. AI agents can query any MCP server to discover what it can do, enabling dynamic tool discovery without custom integration code for each new tool.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "pipedream"],
   },
 
   "ai-copilot": {
@@ -2729,6 +2767,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA is both, depending on how you configure it. For drafting emails and suggesting calendar changes, GAIA acts as a copilot that presents options for your approval. For inbox triage, task creation, and routine workflows, GAIA acts as an autonomous agent. You control the level of autonomy.",
       },
     ],
+    relatedComparisons: ["copilot", "cursor-ai", "notion-ai", "chatgpt"],
   },
 
   "low-code": {
@@ -2770,6 +2809,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "n8n uses a visual node-based builder to create workflows. GAIA uses natural language: you describe the workflow in words and GAIA implements it. GAIA also adds AI reasoning that low-code tools lack, enabling workflows that understand content rather than matching fixed patterns.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "pipedream"],
   },
 
   "eisenhower-matrix": {
@@ -2790,7 +2830,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "productivity matrix",
       "GAIA Eisenhower Matrix",
     ],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt:
       "GAIA applies Eisenhower Matrix logic automatically across your inbox and task list. It evaluates each email and task for urgency (deadline, sender expectations) and importance (project impact, sender relationship, strategic value) to categorize and prioritize your work. Quadrant 1 items get surfaced immediately; Quadrant 2 items get time-blocked on your calendar; Quadrant 3 items get flagged for delegation; Quadrant 4 items get archived or deferred automatically.",
     relatedTerms: [
@@ -2812,6 +2852,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA applies Eisenhower categorization to your inbox: urgent + important emails get immediate attention, important but non-urgent emails get scheduled for thoughtful replies, urgent but not important emails get templated responses or delegation, and the rest get archived or batched.",
       },
     ],
+    relatedComparisons: ["todoist", "ticktick", "things3", "omnifocus"],
   },
 
   "second-brain": {
@@ -2822,13 +2863,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A second brain is an external digital system that captures, organizes, connects, and surfaces information so your biological brain is freed from the burden of remembering and can focus on thinking and creating.",
     extendedDescription: "The term was popularized by productivity author Tiago Forte in his book 'Building a Second Brain.' The core idea is that our brains are designed for having ideas, not storing them. By externalizing information into a trusted system, you reduce cognitive load and improve the quality of your thinking.\n\nA second brain typically captures notes, ideas, references, tasks, and projects into a searchable, connected system. Popular tools for building a second brain include Notion, Obsidian, Roam Research, and Logseq. The system uses concepts like progressive summarization (distilling information in layers), the CODE method (Capture, Organize, Distill, Express), and PARA (Projects, Areas, Resources, Archives) for organization.\n\nThe most effective second brains connect information across contexts — linking a meeting note to the project it relates to, the contact who was present, and the tasks it generated. This graph of connections is what turns a note-taking system into genuine knowledge infrastructure.\n\nAI is transforming what a second brain can do. Rather than passively storing information that you must retrieve manually, an AI-powered second brain actively surfaces relevant context, generates summaries, answers questions from your notes, and connects information you didn't think to link.",
     keywords: ["second brain", "what is a second brain", "building a second brain", "PKM", "personal knowledge management system", "GAIA second brain"],
-    category: "productivity",
+    category: "knowledge-management",
     howGaiaUsesIt: "GAIA functions as an active second brain by ingesting your emails, tasks, calendar events, and documents into a graph-based memory system that surfaces relevant context automatically. Unlike passive note-taking apps, GAIA proactively connects information — linking an email to the task it prompted and the meeting where it was discussed — so relevant knowledge appears when you need it without manual retrieval.",
     relatedTerms: ["personal-knowledge-management", "knowledge-graph", "graph-based-memory", "semantic-search", "context-awareness"],
     faqs: [
       { question: "Is GAIA a second brain tool?", answer: "GAIA functions as an active second brain that goes beyond passive storage. It captures information from your connected tools automatically, organizes it in a graph-based memory, and surfaces relevant context proactively — so it acts on your behalf rather than waiting for you to search." },
       { question: "What's the difference between a second brain and a note-taking app?", answer: "A second brain is a methodology for using tools, not a tool itself. The key distinction is that a second brain is actively used to capture, distill, and express ideas — not just archive them. GAIA adds an AI layer that automates the capture and surfacing phases of the second brain system." },
     ],
+    relatedComparisons: ["notion", "obsidian", "logseq", "roam-research", "evernote"],
   },
 
   "personal-knowledge-management": {
@@ -2839,13 +2881,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Personal knowledge management (PKM) is the set of practices a person uses to gather, classify, store, search, retrieve, and share knowledge in their daily life.",
     extendedDescription: "PKM emerged from information science and library science as digital information became overwhelming. The challenge is no longer finding information — it's filtering, retaining, and applying it. PKM systems help individuals become deliberate about how they interact with information rather than reacting passively to an endless stream.\n\nCommon PKM components include capture tools (for saving articles, ideas, and notes), organization systems (folders, tags, databases), review routines (weekly, monthly), and output processes (writing, sharing, applying knowledge to projects).\n\nThe most prominent PKM methodologies include Getting Things Done (GTD) for tasks, Zettelkasten for notes, Building a Second Brain for creative projects, and PARA for organizing everything. Each offers a different philosophy for how information should flow from input to output.\n\nModern PKM is increasingly AI-assisted. Instead of manually tagging and organizing every note, AI systems can classify, link, and surface information automatically. The bottleneck shifts from organization to judgment — deciding what's worth capturing in the first place.",
     keywords: ["personal knowledge management", "PKM", "what is PKM", "knowledge management system", "information management", "GAIA PKM"],
-    category: "productivity",
+    category: "knowledge-management",
     howGaiaUsesIt: "GAIA automates the most labor-intensive parts of PKM: capturing information from emails, meetings, and tasks; connecting related items through graph-based memory; and surfacing relevant context when you need it. Instead of spending time organizing your notes, GAIA handles the connective tissue so you can focus on using knowledge rather than managing it.",
     relatedTerms: ["second-brain", "knowledge-graph", "graph-based-memory", "deep-work", "cognitive-load"],
     faqs: [
       { question: "How is GAIA different from a PKM tool like Notion or Obsidian?", answer: "Notion and Obsidian are tools you use to build a PKM system manually. GAIA is an AI assistant that actively maintains your knowledge graph by ingesting information from all connected tools and proactively surfacing what you need. You don't need to organize anything — GAIA does the structural work." },
       { question: "Can I use GAIA alongside my existing PKM setup?", answer: "Yes. GAIA integrates with Notion, and can ingest context from your existing notes into its memory. Your Notion setup continues to serve as your human-readable knowledge base, while GAIA's memory layer handles automatic connections and surfacing." },
     ],
+    relatedComparisons: ["notion", "obsidian", "logseq", "roam-research", "evernote"],
   },
 
   "getting-things-done": {
@@ -2856,13 +2899,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Getting Things Done (GTD) is a personal productivity system created by David Allen that aims to clear your mind by capturing all commitments in a trusted external system and processing them through defined workflows.",
     extendedDescription: "GTD is built on five core practices: Capture (collect everything that has your attention), Clarify (process what each item means and what action it requires), Organize (put items in the right place — next actions, projects, waiting for, someday/maybe), Reflect (review your system regularly), and Engage (do your work with clarity and intention).\n\nThe central insight of GTD is that your mind is for having ideas, not holding them. Open loops — commitments and tasks that live only in your head — create cognitive load and anxiety. Externalizing them into a trusted system frees your mental RAM for the work itself.\n\nThe GTD workflow transforms ambiguous items into concrete next actions with clear contexts (phone, computer, errands), which makes it easier to pick the right task for the right moment. The weekly review is GTD's most important habit: a regular audit that keeps your system current and your mind clear.\n\nAI assistants are a natural GTD companion. They can automate capture (extracting action items from emails and meetings), process items (determining what action each requires), and surface the right next action based on context.",
     keywords: ["getting things done", "GTD", "what is GTD", "GTD productivity system", "David Allen GTD", "GAIA GTD"],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt: "GAIA automates GTD's capture and clarify phases by extracting action items from emails, meeting transcripts, and messages and converting them into structured tasks with priorities and contexts. GAIA's proactive triage also functions as a continuous inbox processing loop, reducing the cognitive load of deciding what each incoming item requires.",
     relatedTerms: ["task-automation", "inbox-zero", "deep-work", "eisenhower-matrix", "weekly-review"],
     faqs: [
       { question: "Can GAIA implement the GTD system for me?", answer: "GAIA handles GTD's most labor-intensive phases — capturing inputs from all channels and clarifying them into next actions. You still make the final decisions about priority and engagement, but GAIA eliminates the manual overhead of processing every email and meeting into your task system." },
       { question: "Does GAIA support GTD contexts like @phone or @computer?", answer: "GAIA supports task labels and categories that function similarly to GTD contexts. You can configure GAIA to assign contexts when creating tasks from emails or meetings, making it straightforward to filter tasks by the environment in which they should be done." },
     ],
+    relatedComparisons: ["todoist", "things3", "omnifocus", "ticktick"],
   },
 
   "pomodoro-technique": {
@@ -2941,13 +2985,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Task batching is the productivity practice of grouping similar tasks together and completing them in a single focused session, rather than spreading them throughout the day in reactive mode.",
     extendedDescription: "Task batching reduces context switching costs by keeping you in the same mental context for an extended period. Instead of checking email once every 15 minutes throughout the day, you batch email into two 30-minute blocks. Instead of handling each Slack message as it arrives, you process Slack messages in scheduled windows.\n\nThe same principle applies to any category of similar work: phone calls, code reviews, administrative tasks, writing, and meetings can all be batched. The cognitive setup cost for a type of work is paid once per batch rather than once per task.\n\nEffective batching requires good task capture — you need to know what's in the queue before you can group it meaningfully. It also requires the discipline to resist reactive processing outside of scheduled batch windows, which is culturally difficult in organizations that normalize constant availability.\n\nAI assistants make batching more effective by handling the ongoing capture and triage work that normally requires reactive attention. When GAIA manages your inbox continuously, you can defer reading it to a scheduled batch window with confidence that nothing urgent was missed.",
     keywords: ["task batching", "what is task batching", "batch similar tasks", "task grouping productivity", "email batching", "GAIA batching"],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt: "GAIA enables effective task batching by handling real-time email and communication triage autonomously. Because GAIA continuously monitors your inbox and flags urgent items, you can batch your email review to scheduled windows without anxiety about missing something critical. GAIA also groups related tasks by project and priority, making it easy to identify batching opportunities.",
     relatedTerms: ["time-blocking", "context-switching", "deep-work", "attention-management", "inbox-zero"],
     faqs: [
       { question: "How often should I check email if I'm batching it?", answer: "Most knowledge workers find 2-3 email sessions per day sufficient — morning, midday, and end of day. GAIA's continuous triage means you can extend these windows confidently, since urgent items will still reach you immediately." },
       { question: "Can GAIA help me identify what tasks to batch?", answer: "Yes. GAIA can surface your task list grouped by type, project, or context, making it easy to see where batching opportunities exist. You can ask GAIA to show all tasks by category or filter by the environment needed." },
     ],
+    relatedComparisons: ["todoist", "ticktick", "things3", "akiflow"],
   },
 
   "weekly-review": {
@@ -2958,13 +3003,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "The weekly review is a regular practice of reviewing all open commitments, updating your task system, and planning the upcoming week to ensure nothing falls through the cracks.",
     extendedDescription: "Popularized by David Allen in Getting Things Done, the weekly review is described as the most important habit in GTD. It typically takes 30-60 minutes and covers: collecting and processing any loose papers or notes, reviewing your calendar for the past and coming weeks, reviewing all action lists, and updating project status.\n\nThe purpose of the weekly review is to maintain a trusted system. Without it, tasks pile up uncompleted, projects drift, and the list becomes so stale that you stop consulting it. The weekly review is what makes your system trustworthy — you know it reflects reality because you just checked.\n\nMany knowledge workers struggle to maintain a consistent weekly review because it requires uninterrupted time and discipline to execute properly. The administrative overhead of the review itself — going through dozens of projects, reviewing every list, updating statuses — can make it feel burdensome.\n\nAI assistants can dramatically reduce weekly review overhead by maintaining system currency automatically. When GAIA continuously captures tasks from emails and meetings and updates project status from integrated tools, your review becomes an inspection of an already-current system rather than a catch-up session.",
     keywords: ["weekly review", "GTD weekly review", "what is weekly review", "weekly planning", "productivity review", "GAIA weekly review"],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt: "GAIA reduces the overhead of weekly reviews by maintaining task and project currency automatically throughout the week. Because GAIA captures tasks from emails and meetings and syncs status from integrated tools, your weekly review starts with an already-accurate system rather than a backlog of uncaptured items. GAIA can also generate a weekly summary on demand.",
     relatedTerms: ["getting-things-done", "task-automation", "deep-work", "personal-knowledge-management", "eisenhower-matrix"],
     faqs: [
       { question: "Can GAIA generate a weekly review for me?", answer: "GAIA can produce a weekly summary covering completed tasks, upcoming commitments, open projects, and items waiting on others — providing the raw material for your review. You still make decisions, but the information gathering is automated." },
       { question: "How does weekly review relate to GTD?", answer: "The weekly review is GTD's central maintenance ritual. David Allen calls it the most important habit in the system because it's what keeps your lists current and your mind clear. Without it, even a well-designed GTD setup gradually loses accuracy." },
     ],
+    relatedComparisons: ["todoist", "things3", "omnifocus", "akiflow", "sunsama"],
   },
 
   "async-communication": {
@@ -2992,13 +3038,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Kanban is a project management methodology that visualizes work as cards moving through defined stages on a board, with limits on work-in-progress to maintain flow and identify bottlenecks.",
     extendedDescription: "Kanban originated at Toyota in the 1940s as a just-in-time manufacturing system. It was adapted for knowledge work by David J. Anderson in the 2000s and has become a widely used approach for software teams, operations, and individual task management.\n\nA kanban board has columns representing stages (typically: Backlog, To Do, In Progress, Review, Done) and cards representing tasks. The key principles are: visualize your workflow, limit work in progress (WIP), manage flow, make process policies explicit, and improve collaboratively.\n\nWork-in-progress limits are kanban's most distinctive feature. By capping how many items can be in each column simultaneously, kanban forces teams to finish work before starting new work. This reduces multitasking overhead and makes bottlenecks visible — if the Review column is hitting its limit, it signals that the review process needs attention.\n\nPopular kanban tools include Trello, Linear, Jira, and GitHub Projects. AI enhancements to kanban include automatic card creation from emails, intelligent prioritization of the backlog, and progress reporting without manual status updates.",
     keywords: ["kanban", "what is kanban", "kanban board", "kanban method", "kanban vs scrum", "GAIA kanban"],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt: "GAIA enhances kanban workflows by automatically creating task cards from emails and messages, updating card status from integrated tools, and surfacing blocked or overdue items proactively. With GAIA, your kanban board reflects the current state of work without requiring manual card management.",
     relatedTerms: ["task-automation", "workflow-automation", "sprint", "scrum", "getting-things-done"],
     faqs: [
       { question: "Can GAIA update my Trello or Linear kanban board automatically?", answer: "Yes. GAIA integrates with Trello, Linear, Jira, and other project tools. It can create cards from emails, move cards based on status changes, and update fields from connected data sources." },
       { question: "What's the difference between kanban and Scrum?", answer: "Kanban is flow-based with no fixed time boxes and continuous delivery. Scrum uses fixed sprints (typically 1-2 weeks) with defined ceremonies and roles. Kanban works well for support and maintenance work; Scrum works well for product development with clear planning horizons." },
     ],
+    relatedComparisons: ["trello", "linear", "asana", "clickup", "height"],
   },
 
   "okrs": {
@@ -3009,13 +3056,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "OKRs (Objectives and Key Results) is a goal-setting framework in which organizations and individuals define ambitious qualitative objectives and measurable quantitative key results to track progress toward them.",
     extendedDescription: "OKRs were developed at Intel by Andy Grove and popularized at Google, where they've been used since 1999. The framework is now widely used at technology companies, startups, and large enterprises. The core idea is that ambitious goals inspire better work than safe ones, and measurable key results prevent the ambiguity that lets vague aspirations go nowhere.\n\nObjectives are qualitative descriptions of where you want to go — inspiring, time-bound, and directionally clear. Key results are 2-5 quantitative metrics that define what success looks like — specific, measurable, and achievable within the OKR period (typically one quarter).\n\nOKRs work at multiple levels: company OKRs cascade to team OKRs, which cascade to individual OKRs. This creates alignment — everyone can see how their work connects to company priorities. The framework also separates aspirational OKRs (where 70% achievement is a success) from committed OKRs (where 100% is expected).\n\nAI assistants can help track OKR progress by aggregating data from connected tools and surfacing metric updates, flagging when key results are at risk, and helping prioritize tasks that contribute to OKR progress.",
     keywords: ["OKRs", "objectives and key results", "what are OKRs", "OKR framework", "OKR goal setting", "GAIA OKRs"],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt: "GAIA can track OKR progress by aggregating data from connected tools — pulling task completion rates from Linear, deal data from HubSpot, and project milestones from Notion — and surfacing a current OKR health dashboard on request. GAIA can also flag when daily work is misaligned with quarterly OKRs.",
     relatedTerms: ["workflow-automation", "getting-things-done", "task-automation", "kanban", "sprint"],
     faqs: [
       { question: "How often should OKRs be reviewed?", answer: "OKRs are typically set quarterly with a weekly or bi-weekly check-in on key result progress. GAIA can automate the data aggregation for check-ins, pulling current numbers from connected tools so you focus on interpretation and action rather than data gathering." },
       { question: "What's the difference between OKRs and KPIs?", answer: "KPIs (Key Performance Indicators) measure ongoing operational health — metrics you want to maintain. OKRs drive change and improvement — time-bound goals to move from where you are to where you want to be. OKRs are often used alongside KPIs, with OKRs targeting improvement in specific KPIs." },
     ],
+    relatedComparisons: ["linear", "asana", "clickup", "jira", "notion"],
   },
 
   "sprint": {
@@ -3026,13 +3074,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A sprint is a fixed-length iteration (typically 1-2 weeks) in agile development during which a team selects, plans, and completes a defined set of work toward a product or project goal.",
     extendedDescription: "Sprints are the core unit of work in Scrum. Each sprint begins with sprint planning, where the team selects items from the backlog and commits to completing them. Daily standups track progress. A sprint review at the end demonstrates completed work to stakeholders. A retrospective identifies process improvements.\n\nThe fixed time box is intentional. By constraining scope to what can be completed in the sprint window, teams build accountability and learn to estimate work accurately over time. The rhythm of regular delivery also creates predictable progress for stakeholders.\n\nSprints generate significant coordination overhead: planning meetings, backlog refinement sessions, daily standups, reviews, and retrospectives. For software teams, sprint ceremonies can consume 10-20% of available time. AI tools can reduce this overhead by automating status tracking, generating standup summaries, and flagging blocked items before they derail the sprint.\n\nMany teams outside of software engineering have adapted sprint-style work planning, applying the fixed time box and explicit commitment concepts to marketing, operations, and individual productivity.",
     keywords: ["sprint", "what is a sprint", "agile sprint", "scrum sprint", "sprint planning", "GAIA sprint"],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt: "GAIA integrates with Linear, Jira, and GitHub to track sprint progress automatically. It can surface blocked items, highlight tickets at risk of missing the sprint, and generate daily standup summaries from current ticket status — reducing sprint ceremony overhead without losing visibility.",
     relatedTerms: ["kanban", "scrum", "workflow-automation", "task-automation", "okrs"],
     faqs: [
       { question: "Can GAIA generate daily standups from sprint status?", answer: "Yes. GAIA can query your connected project tool (Linear, Jira, GitHub) for each team member's current ticket status and generate a structured standup report covering what was done yesterday, what's planned today, and any blockers." },
       { question: "How long should a sprint be?", answer: "Most software teams use 2-week sprints as the standard. Shorter sprints (1 week) work for teams with highly predictable work or fast-moving products. Longer sprints (3-4 weeks) suit teams with complex planning requirements. The right length is whichever creates a useful feedback loop for your team." },
     ],
+    relatedComparisons: ["linear", "jira", "asana", "clickup"],
   },
 
   "scrum": {
@@ -3043,13 +3092,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Scrum is an agile framework for managing complex, adaptive work through iterative cycles called sprints, with defined roles (Product Owner, Scrum Master, Development Team) and recurring ceremonies that promote transparency, inspection, and adaptation.",
     extendedDescription: "Scrum was formalized by Jeff Sutherland and Ken Schwaber in the early 1990s based on earlier work on iterative development. The Scrum Guide defines the framework: three roles, five events (Sprint, Sprint Planning, Daily Scrum, Sprint Review, Retrospective), and three artifacts (Product Backlog, Sprint Backlog, Increment).\n\nScrum's power comes from its empirical process control theory. Rather than planning everything upfront (which fails for complex work), Scrum inspects and adapts regularly. The Product Owner prioritizes what's most valuable. The team delivers working increments each sprint. Stakeholders review and provide feedback. The process adapts based on learning.\n\nCommon Scrum pitfalls include treating it as a rigid process without adapting it to context, skipping retrospectives when under pressure, and having a Product Owner who doesn't actively prioritize. 'Scrum-but' describes teams that use parts of Scrum while avoiding the accountability mechanisms that make it work.\n\nScrum generates coordination information that AI tools can automate: velocity tracking, burndown charts, backlog grooming suggestions, and stakeholder status reports.",
     keywords: ["scrum", "what is scrum", "scrum framework", "agile scrum", "scrum vs kanban", "GAIA scrum"],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt: "GAIA supports Scrum workflows by integrating with Jira, Linear, and GitHub to track sprint velocity, surface blocked items, and generate automated status reports for stakeholders. GAIA can also run daily standup prompts and compile retrospective input from connected tools.",
     relatedTerms: ["sprint", "kanban", "workflow-automation", "task-automation", "okrs"],
     faqs: [
       { question: "Can GAIA help run Scrum ceremonies?", answer: "GAIA can automate the information-gathering for ceremonies — pulling sprint metrics for reviews, generating velocity data for planning, and compiling team feedback for retrospectives — reducing ceremony overhead while maintaining their value." },
       { question: "Is Scrum right for every team?", answer: "Scrum works best for product development with complex, evolving requirements. It's less suited to support work, maintenance, or highly predictable operational work. Many teams use a hybrid — Scrum for product development, kanban for ongoing support." },
     ],
+    relatedComparisons: ["linear", "jira", "asana", "clickup"],
   },
 
   "digital-minimalism": {
@@ -3077,13 +3127,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A daily standup (or daily scrum) is a brief, time-boxed team meeting — typically 15 minutes — where each member shares what they completed yesterday, what they plan to do today, and any blockers preventing progress.",
     extendedDescription: "The daily standup comes from Scrum but is used broadly across agile teams. Its purpose is synchronization and blocker identification, not status reporting to a manager. The standing format (originally intended to keep meetings short) signals that it's a quick sync, not a discussion — detailed problem-solving happens offline after the standup.\n\nEffective standups are disciplined: they start on time, follow the three-question format, and defer tangents. Common failure modes include standups that turn into status reports for managers, standups that run long because people solve problems in the meeting, and standups that cover so many people that most participants tune out while others speak.\n\nRemote and async standups have become common for distributed teams. Written async standups (posted in Slack or a tool like Geekbot) allow team members to share updates on their own schedule while maintaining the synchronization benefit.\n\nAI tools can automate the data-gathering for standups by pulling current ticket status, PR status, and calendar events from connected tools and generating a draft standup update for each person to review.",
     keywords: ["daily standup", "what is a standup", "daily scrum", "agile standup", "async standup", "GAIA standup"],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt: "GAIA generates standup reports by querying your connected project tools for current ticket status, completed items, and blockers. Instead of team members manually composing their standup updates, GAIA drafts each person's update from real-time data and sends it to the team Slack channel at the configured time.",
     relatedTerms: ["scrum", "sprint", "workflow-automation", "kanban", "async-communication"],
     faqs: [
       { question: "Can GAIA post automated standups to Slack?", answer: "Yes. GAIA can generate standup summaries from connected project tools (Linear, Jira, GitHub) and post them to your designated Slack channel on a scheduled basis, with each team member's progress and any flagged blockers." },
       { question: "How long should a standup be?", answer: "15 minutes is the standard Scrum recommendation. The time box creates discipline. If standups consistently run over, it's usually a signal that discussion is happening in the meeting rather than after it." },
     ],
+    relatedComparisons: ["linear", "asana", "jira", "height"],
   },
 
   "retrospective": {
@@ -3094,13 +3145,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A retrospective is a structured team meeting at the end of a sprint or project where participants reflect on what went well, what could be improved, and what specific changes to make in the next cycle.",
     extendedDescription: "Retrospectives are one of Scrum's five events, held at the end of each sprint. They embody the agile principle of empirical improvement — regularly stepping back to examine the process itself, not just the work output. A well-run retrospective creates psychological safety for honest feedback and produces specific, actionable commitments to change.\n\nThe classic retrospective format is 'Start, Stop, Continue': what should we start doing? What should we stop doing? What should we continue doing? Many other formats exist — the '4 Ls' (Liked, Learned, Lacked, Longed For), Mad/Sad/Glad, and the Sailboat — each designed to elicit different types of reflection.\n\nRetrospective effectiveness degrades when teams skip them under pressure, when feedback doesn't feel safe, or when action items from previous retrospectives aren't followed up on. Facilitating a good retrospective is a skill that significantly affects team culture and continuous improvement capacity.\n\nAI tools can support retrospectives by aggregating quantitative data (velocity trends, defect rates, PR cycle times) that provides an objective picture alongside the qualitative team discussion, and by tracking action items from past retrospectives to ensure follow-through.",
     keywords: ["retrospective", "what is a retrospective", "agile retrospective", "sprint retrospective", "team retro", "GAIA retrospective"],
-    category: "productivity",
+    category: "task-management",
     howGaiaUsesIt: "GAIA can prepare retrospective inputs by pulling sprint metrics (velocity, completed vs. planned tickets, PR review times, blockers encountered) from connected tools before the retro meeting. GAIA also tracks action items from past retrospectives and surfaces their completion status at the start of each new retro.",
     relatedTerms: ["scrum", "sprint", "kanban", "workflow-automation", "okrs"],
     faqs: [
       { question: "How often should teams run retrospectives?", answer: "Scrum prescribes one retrospective per sprint — every 1-2 weeks. Non-Scrum teams often run monthly or quarterly retrospectives. The right cadence is often the one your team will actually do consistently." },
       { question: "What makes a retrospective effective?", answer: "Psychological safety (people feel safe sharing honestly), a skilled facilitator, action items that are specific and assigned, and follow-up on previous retrospective commitments. Retros without follow-through lose credibility quickly." },
     ],
+    relatedComparisons: ["linear", "jira", "asana"],
   },
 
   "temperature": {
@@ -3298,13 +3350,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A webhook is an HTTP callback mechanism where a system sends an automated HTTP request to a specified URL whenever a defined event occurs, enabling real-time notification and integration between services without polling.",
     extendedDescription: "Webhooks are often called 'reverse APIs.' Instead of your application periodically asking a service 'has anything changed?' (polling), the service proactively calls your application when something changes. This event-driven model is more efficient and more real-time.\n\nA webhook is set up by providing a URL to the service you want to receive events from. When the event occurs (a new email arrives, a payment succeeds, a task is completed, a form is submitted), the service sends an HTTP POST request to your URL with a payload describing the event. Your server processes the payload and takes action.\n\nWebhooks power most modern integrations. When a GitHub PR is merged, GitHub sends a webhook to your CI system. When a Stripe payment succeeds, Stripe webhooks trigger order fulfillment. When a Calendly event is booked, Calendly webhooks can trigger CRM updates.\n\nWebhook reliability requires handling failure cases: retries when the receiving server is down, signature verification to confirm the webhook is authentic, idempotency to handle duplicate deliveries, and queue-based processing to handle high event volumes.",
     keywords: ["webhook", "what is a webhook", "webhook vs API", "event webhook", "webhook integration", "GAIA webhook"],
-    category: "integrations",
+    category: "development",
     howGaiaUsesIt: "GAIA uses webhooks to receive real-time events from connected tools. When a new email arrives in Gmail, a task is updated in Linear, or a Calendly event is booked, webhooks notify GAIA immediately so it can act — creating a task, sending a notification, or triggering a workflow — without the latency or overhead of periodic polling.",
     relatedTerms: ["api-integration", "event-driven-automation", "workflow-automation", "trigger-action", "rest-api"],
     faqs: [
       { question: "How is a webhook different from a regular API call?", answer: "An API call is your application requesting data from a service (pull). A webhook is the service pushing data to your application when an event occurs (push). Webhooks are more efficient for event-driven workflows because they eliminate polling." },
       { question: "Does GAIA use webhooks or polling for integrations?", answer: "GAIA uses webhooks where services support them for real-time event handling, and polling at appropriate intervals for services that don't offer webhooks. Webhook-based integrations are faster and more efficient." },
     ],
+    relatedComparisons: ["zapier", "n8n", "pipedream", "make"],
   },
 
   "oauth": {
@@ -3315,7 +3368,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "OAuth (Open Authorization) is an open standard for delegated authorization that allows a third-party application to access a user's data in another service without requiring the user to share their password.",
     extendedDescription: "OAuth solves a fundamental problem in integrations: how does App A access your data in App B without you giving App A your App B password? Sharing passwords is dangerous — if App A is compromised, your App B credentials are too. OAuth creates a safer alternative through authorization tokens.\n\nThe OAuth flow works as follows: you click 'Connect to Gmail' in GAIA, you're redirected to Google's authorization page, you approve the specific permissions GAIA is requesting (read email, send email, manage calendar), Google issues an access token to GAIA, GAIA uses that token to make API calls on your behalf. You never share your Google password with GAIA.\n\nOAuth 2.0 (the current standard) supports multiple flows for different contexts: Authorization Code (for web applications, the most secure), Client Credentials (for server-to-server integrations), and Device Code (for devices without browsers). Most user-facing integrations use Authorization Code flow.\n\nScopes are a critical security feature of OAuth. Rather than all-or-nothing access, OAuth scopes define granular permissions — GAIA might request 'read email' scope but not 'delete email' scope. Users can see exactly what permissions they're granting and revoke them at any time.",
     keywords: ["OAuth", "what is OAuth", "OAuth 2.0", "OAuth authorization", "app permissions", "GAIA OAuth"],
-    category: "integrations",
+    category: "development",
     howGaiaUsesIt: "GAIA uses OAuth 2.0 for all third-party integrations including Gmail, Google Calendar, Slack, Notion, Linear, and 50+ other services. You authorize GAIA with specific scopes for each service; GAIA never stores your passwords. All OAuth tokens are encrypted at rest and can be revoked at any time from your connected accounts settings.",
     relatedTerms: ["api-integration", "self-hosting", "data-sovereignty", "rest-api", "webhook"],
     faqs: [
@@ -3332,7 +3385,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A REST (Representational State Transfer) API is a web service interface that uses standard HTTP methods (GET, POST, PUT, DELETE, PATCH) to access and manipulate resources identified by URLs, following a set of architectural conventions that make APIs predictable and interoperable.",
     extendedDescription: "REST is the dominant architectural style for web APIs. Its conventions — resources identified by URLs, state changes via HTTP methods, stateless requests, and standard response formats — create predictability that makes integration straightforward. Most web services (GitHub, Slack, Notion, Google Workspace, Stripe) expose REST APIs.\n\nRESTful design centers on resources: a task is a resource at /tasks/123, a user is a resource at /users/456. GET /tasks/123 retrieves the task. POST /tasks creates a new task. PUT /tasks/123 replaces the task. PATCH /tasks/123 partially updates it. DELETE /tasks/123 removes it. These conventions mean developers can work with unfamiliar APIs quickly.\n\nREST responses typically use JSON format, which is lightweight, human-readable, and universally supported. Responses include status codes that communicate success (200, 201) or failure (400, 401, 403, 404, 500), enabling robust error handling.\n\nREST has limitations for complex use cases: over-fetching (getting more data than needed), under-fetching (needing multiple calls to get all required data), and lack of real-time capabilities (use webhooks or WebSocket for events). GraphQL addresses some of these limitations for complex data requirements.",
     keywords: ["REST API", "what is REST API", "RESTful API", "REST web service", "HTTP API", "GAIA REST API"],
-    category: "integrations",
+    category: "development",
     howGaiaUsesIt: "GAIA communicates with its 50+ integrations primarily through REST APIs. Gmail, Google Calendar, Notion, Slack, Linear, GitHub, and most other connected services expose REST APIs that GAIA queries to read data, create records, and trigger actions. MCP (Model Context Protocol) provides a standardized layer above these REST APIs for GAIA's agent tools.",
     relatedTerms: ["api-integration", "webhook", "oauth", "model-context-protocol"],
     faqs: [
@@ -3349,7 +3402,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Data sync is the process of ensuring that data in two or more systems remains consistent, with changes made in one system reflected in others automatically or on a defined schedule.",
     extendedDescription: "Data sync is a foundational challenge in modern software. When a task is marked complete in your project manager, does that status reflect everywhere it's relevant? When a meeting is rescheduled in Google Calendar, does your Notion project page update? When a contact changes their email in your CRM, does your email tool reflect the change? Data sync is what makes these updates happen automatically.\n\nSync architectures range from simple to complex. One-way sync (source → destination) is straightforward: changes in the source propagate to the destination. Bidirectional sync is harder: changes can originate in either system, creating the possibility of conflicts when both change simultaneously. Conflict resolution strategies include last-write-wins, source-wins, and human-reviewed merges.\n\nSync frequency is another design decision: real-time sync (via webhooks) minimizes lag but creates more events to process; periodic sync (every 15 minutes, hourly, daily) batches changes but creates temporary inconsistency. The right cadence depends on how much staleness is acceptable.\n\nFor AI assistants, data sync quality directly affects response accuracy. An AI that reports on a task list that's 2 hours out of date might surface completed items as pending or miss newly created ones.",
     keywords: ["data sync", "what is data sync", "bidirectional sync", "app sync", "tool synchronization", "GAIA sync"],
-    category: "integrations",
+    category: "development",
     howGaiaUsesIt: "GAIA maintains near-real-time sync with connected tools via webhooks and scheduled polling. When a task is updated in Linear or a calendar event is modified in Google Calendar, GAIA's state reflects the change quickly. This ensures that GAIA's responses about your tasks, emails, and calendar are based on current information rather than stale snapshots.",
     relatedTerms: ["webhook", "api-integration", "event-driven-automation", "rest-api"],
     faqs: [
@@ -3366,13 +3419,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Email triage is the process of reviewing incoming emails and categorizing them by urgency, type, and required action — determining what needs an immediate response, what can wait, what can be delegated, and what can be archived without a reply.",
     extendedDescription: "The term comes from medical triage — the battlefield practice of sorting patients by urgency to direct care where it's most needed. Applied to email, triage asks: which emails need an immediate response? Which need a response but can wait? Which need to be forwarded or delegated? Which require no reply?\n\nManual triage is cognitively expensive. Each email requires a quick read, a decision about priority, and usually some action (labeling, starring, creating a task, or archiving). For high-volume inboxes receiving 100+ emails per day, manual triage can consume 1-2 hours daily.\n\nAI-powered email triage automates this decision-making. A trained model can classify incoming emails by urgency (urgent, important, low-priority, noise), type (action required, FYI, newsletter, thread update, sales), and appropriate action (reply, delegate, create task, archive). Labels and filters are applied automatically.\n\nEffective email triage requires understanding context: an email from your CEO asking a question is urgent regardless of its subject line. AI triage that only looks at keywords misses this context; triage that understands sender relationships, email history, and current projects makes much better decisions.",
     keywords: ["email triage", "what is email triage", "AI email triage", "inbox triage", "email prioritization", "GAIA email triage"],
-    category: "productivity",
+    category: "email",
     howGaiaUsesIt: "Email triage is one of GAIA's core capabilities. GAIA reads your Gmail continuously, classifies each incoming email by urgency and type, applies labels, extracts action items, drafts replies for routine messages, and surfaces only genuinely important emails for your direct attention. Most users find their effective inbox load drops by 70-80% after activating GAIA's triage.",
     relatedTerms: ["inbox-zero", "email-automation", "ai-email-assistant", "smart-reply", "email-summarization"],
     faqs: [
       { question: "How does GAIA decide which emails are urgent?", answer: "GAIA uses multiple signals: sender importance (your contacts' relationship to you), thread history, keywords and phrases indicating urgency, whether the email requires a time-sensitive response, and your configured priority rules. It learns from your behavior over time." },
       { question: "Can I train GAIA's triage to match my priorities?", answer: "Yes. You can configure which senders and subjects are always high-priority, which can be auto-archived, and which should never generate notifications. GAIA also learns from how you interact with triaged emails — if you consistently upgrade emails from a specific sender, it adjusts." },
     ],
+    relatedComparisons: ["superhuman", "sanebox", "shortwave", "spark"],
   },
 
   "smart-reply": {
@@ -3383,13 +3437,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Smart reply is an AI feature that generates suggested or fully-drafted reply options for incoming emails or messages, reducing the time required to respond to routine communications.",
     extendedDescription: "Smart reply ranges from short suggestions (Google's 3-word reply chips: 'Sounds good!', 'Thanks!', 'Will do!') to fully drafted contextual replies. The latter requires the AI to understand the email content, the appropriate response, and the right tone and style — a significantly more capable operation.\n\nEffective smart reply depends on context. A good reply to 'Can you send the Q3 report?' is not just 'Sure!' but ideally a reply that includes the report, references the specific version, and notes any relevant caveats. Generating this response requires access to the user's files, knowledge of which report is meant, and the ability to craft a professional reply.\n\nSmart reply is most valuable for high-volume, repetitive email types: scheduling requests, status check-ins, acknowledgments, and form responses. These follow predictable patterns that AI can handle reliably, leaving your attention for emails that genuinely require your personal judgment.\n\nPrivacy is an important consideration for smart reply. The AI must read email content to generate replies, which means email content is processed by the AI provider. Self-hosted AI assistants address this by keeping email content on your own infrastructure.",
     keywords: ["smart reply", "what is smart reply", "AI email reply", "AI draft reply", "email AI response", "GAIA smart reply"],
-    category: "productivity",
+    category: "email",
     howGaiaUsesIt: "GAIA generates full reply drafts for incoming emails, not just short suggestions. Using context from your email history, calendar, tasks, and the specific email thread, GAIA drafts replies that include relevant information rather than generic acknowledgments. Drafts appear in your Gmail as drafts for review before sending.",
     relatedTerms: ["email-triage", "ai-email-assistant", "email-summarization", "email-automation", "inbox-zero"],
     faqs: [
       { question: "Does GAIA send email replies automatically?", answer: "By default, GAIA drafts replies for your review rather than sending automatically. You can configure fully autonomous sending for specific email types (like scheduling confirmations or standard acknowledgments) after reviewing GAIA's behavior and establishing trust in its judgment." },
       { question: "How does GAIA know what context to include in a reply?", answer: "GAIA draws on your connected tools: if someone asks about a project status, GAIA checks your Linear or Jira for current status. If someone asks to schedule a meeting, GAIA checks your calendar for availability. Replies are informed by current data, not just the email content alone." },
     ],
+    relatedComparisons: ["superhuman", "shortwave", "spark", "missive"],
   },
 
   "meeting-intelligence": {
@@ -3400,13 +3455,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Meeting intelligence refers to AI-powered capabilities that enhance the value of meetings by automatically capturing meeting content, generating summaries and action items, and integrating meeting insights into downstream workflows.",
     extendedDescription: "The average knowledge worker spends 21.5 hours per week in meetings, according to Microsoft research. A significant portion of the value created in those meetings — decisions made, action items committed, insights shared — is lost because notes aren't taken, aren't shared, or aren't acted upon.\n\nMeeting intelligence tools address this by automating the capture and distribution of meeting value. Basic capabilities include transcription (converting speech to text), summarization (extracting the key points), and action item identification (finding commitments made). Advanced capabilities include linking meeting decisions to relevant projects, creating tasks in project management tools, and following up on unresolved items from previous meetings.\n\nMeeting intelligence depends on data access. Without a recording or transcript, AI can only work with calendar metadata and participant information. With transcript data, it can extract rich content. The tradeoff is recording privacy — many organizations require consent to record, and some participants prefer unrecorded meetings.\n\nThe most impactful meeting intelligence connects meetings to the rest of your workflow: a decision made in a meeting automatically updates the relevant project in Linear, an action item from a call creates a task in your todo manager, a question raised in a meeting generates a follow-up email.",
     keywords: ["meeting intelligence", "what is meeting intelligence", "AI meeting notes", "meeting AI", "meeting summarization", "GAIA meeting intelligence"],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt: "GAIA generates meeting briefs before each calendar event, pulling relevant emails, tasks, and context from connected tools so you walk in prepared. After meetings, GAIA can process transcripts or meeting notes to extract action items, create tasks, and update relevant projects — turning every meeting into structured knowledge and concrete next steps.",
     relatedTerms: ["ai-meeting-assistant", "calendar-automation", "smart-notifications", "task-automation", "email-summarization"],
     faqs: [
       { question: "Does GAIA join my video calls?", answer: "GAIA doesn't join calls directly but can process meeting recordings and transcripts you provide. Pre-meeting briefs are generated from calendar data; post-meeting intelligence requires access to notes, transcripts, or a summary you share." },
       { question: "How does GAIA use meeting context for better recommendations?", answer: "When GAIA knows you just finished a meeting about a project, it can prioritize emails from meeting attendees, surface action items mentioned in the invite, and pre-draft follow-up messages — using meeting context to make the rest of your day more efficient." },
     ],
+    relatedComparisons: ["reclaim", "motion", "limitless-ai"],
   },
 
   "scheduling-automation": {
@@ -3417,13 +3473,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Scheduling automation is the use of software to automatically manage meeting requests, find mutually available times, and update calendar events — eliminating the manual email back-and-forth of scheduling coordination.",
     extendedDescription: "Scheduling is one of the most time-consuming and cognitively wasteful activities in professional life. Finding a time that works for multiple people involves checking multiple calendars, proposing times, waiting for responses, and often going through multiple rounds of revision. This process consumes time and attention that could be spent on substantive work.\n\nFirst-generation scheduling automation tools (Calendly, Cal.com, SavvyCal) solved the external scheduling problem by letting others book time on your calendar through a shared link. They show your available slots and let the other person choose, eliminating back-and-forth for inbound meeting requests.\n\nSecond-generation scheduling uses AI to handle more complex scenarios: finding optimal times for internal meetings with multiple attendees, rescheduling when conflicts arise, understanding preferences (no meetings before 9am, protect Friday afternoons), and proactively blocking time for focused work.\n\nAI scheduling assistants go further still: they can respond to scheduling requests in email automatically, understand context ('let's meet sometime next week to discuss the Q4 plan'), check everyone's availability, propose times, send invitations, and handle confirmations — all without human intervention.",
     keywords: ["scheduling automation", "what is scheduling automation", "AI scheduling", "calendar automation", "meeting scheduling AI", "GAIA scheduling"],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt: "GAIA handles scheduling requests end-to-end. When someone emails asking to meet, GAIA identifies the request, checks your calendar for availability according to your preferences, proposes times in a reply, and creates the calendar event when confirmed. GAIA can also proactively protect focused work time and suggest optimal meeting slots for internal coordination.",
     relatedTerms: ["calendar-automation", "ai-calendar-management", "ai-meeting-assistant", "email-automation", "smart-reply"],
     faqs: [
       { question: "Can GAIA respond to meeting requests in email automatically?", answer: "Yes. GAIA identifies meeting requests in your inbox, checks your calendar availability, and drafts or sends a reply with available times. You can configure whether GAIA proposes times for review or sends confirmations autonomously for trusted contacts." },
       { question: "How does GAIA handle scheduling for meetings with multiple attendees?", answer: "GAIA checks all attendees' calendars (for team members with connected accounts) or uses availability links for external participants. It identifies slots where everyone is free and aligns with your meeting preferences." },
     ],
+    relatedComparisons: ["reclaim", "motion", "clockwise", "calendly", "savvycal"],
   },
 
   "email-summarization": {
@@ -3434,13 +3491,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Email summarization is the use of AI to automatically condense email threads or individual messages into concise summaries highlighting key information, decisions, and action items.",
     extendedDescription: "Long email threads can contain dozens of messages spanning days or weeks. Reading the full thread to understand current status, identify decisions, and find action items requires significant time. AI summarization extracts the signal from the noise.\n\nEffective email summarization goes beyond just shortening text. It identifies: the core question or situation, key information shared in the thread, decisions that have been made, action items and who owns them, and current open questions. A good summary of a 30-message thread condenses it into 5-7 bullet points that tell you everything you need to act on it.\n\nSummarization quality depends heavily on the AI model's ability to understand context and relationships between messages. Early rule-based approaches (picking the most recent or longest messages) were inadequate. LLM-powered summarization understands the semantic content and narrative arc of a thread.\n\nEmail summarization is particularly valuable for threads you've been cc'd on but aren't primary participants in — catching up on context without reading every message — and for long-running customer or partner email chains that require historical context before responding.",
     keywords: ["email summarization", "what is email summarization", "AI email summary", "email thread summary", "inbox summarization", "GAIA email summarization"],
-    category: "productivity",
+    category: "email",
     howGaiaUsesIt: "GAIA summarizes email threads on demand and proactively for your most important conversations. When you open a long thread or ask GAIA about a topic, it provides a structured summary covering current status, key decisions, open questions, and action items. This turns a 30-minute thread review into a 30-second briefing.",
     relatedTerms: ["email-triage", "ai-email-assistant", "smart-reply", "inbox-zero", "email-automation"],
     faqs: [
       { question: "How accurate are GAIA's email summaries?", answer: "GAIA's summaries are high-quality for factual content (decisions made, information shared, action items) and context-aware (understanding who said what matters). Nuanced emotional tone or implicit context can occasionally be missed — review the full thread for sensitive communications." },
       { question: "Can GAIA summarize email threads in other languages?", answer: "Yes. GAIA's underlying LLMs support multiple languages. Summarization works for threads in English, Spanish, French, German, Portuguese, and other major languages, with English typically providing the highest quality." },
     ],
+    relatedComparisons: ["superhuman", "shortwave", "sanebox"],
   },
 
   "follow-up-automation": {
@@ -3451,13 +3509,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Follow-up automation is the use of software or AI to automatically track conversations, commitments, and tasks that require future follow-up and to send or queue follow-up messages at the appropriate time.",
     extendedDescription: "Follow-ups fall through the cracks because they require remembering to act at a future point in time — a fundamentally unreliable human behavior, especially when managing dozens of simultaneous threads. The result is dropped commitments, delayed projects, and missed opportunities.\n\nThe traditional workaround is manual reminders: flagging emails for follow-up, setting calendar reminders, or creating tasks with future due dates. This requires deliberate setup for every follow-up, which itself is forgettable and error-prone.\n\nAutomated follow-up systems detect when follow-up is needed (you sent an email and didn't receive a reply within X days), create a reminder or draft a follow-up message, and queue it for review or auto-send. More sophisticated systems understand context — the appropriate follow-up for a cold outreach differs from following up on a contract in progress.\n\nFor AI assistants, follow-up automation extends to tracking all commitments across channels: 'I'll send you that report by Friday' in an email, 'I'll review this by end of week' in Slack, 'I'll call back tomorrow' mentioned in a meeting. Detecting and tracking these commitments requires understanding conversational context across tools.",
     keywords: ["follow-up automation", "what is follow-up automation", "automated follow-up", "email follow-up automation", "follow-up reminder", "GAIA follow-up"],
-    category: "productivity",
+    category: "email",
     howGaiaUsesIt: "GAIA tracks commitments across your email and connected tools, automatically queuing follow-ups when they're due. If you sent an email 3 days ago with no reply, GAIA surfaces it with a suggested follow-up draft. If you committed to sending a report by Friday, GAIA creates a task with that deadline and reminds you as it approaches.",
     relatedTerms: ["email-automation", "ai-email-assistant", "smart-reply", "task-automation", "email-triage"],
     faqs: [
       { question: "How does GAIA know when I need to follow up?", answer: "GAIA tracks sent emails that don't receive replies, meeting commitments without corresponding tasks, and explicit follow-up notes in your communications. It uses configurable time thresholds (e.g., follow up after 3 business days) and priority rules for different types of communications." },
       { question: "Can GAIA send follow-up emails automatically?", answer: "Yes, for configured scenarios. You can set GAIA to auto-send follow-ups for specific contact types (like cold outreach) while requiring review for others (like client communications). The default is queuing drafts for your review before sending." },
     ],
+    relatedComparisons: ["superhuman", "shortwave", "missive", "spark"],
   },
 
   "data-sovereignty": {
@@ -3468,7 +3527,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Data sovereignty is the principle that data is subject to the laws and governance of the jurisdiction where it is stored, and that individuals and organizations have the right to control where their data resides and who has access to it.",
     extendedDescription: "Data sovereignty has become increasingly important as cloud computing moved personal and organizational data to servers owned and operated by large technology companies, often across national borders. A company in Germany storing data in US-based cloud servers may have its data subject to US legal jurisdiction, including government access under laws like the CLOUD Act.\n\nFor organizations, data sovereignty often requires keeping data within specific geographic boundaries (EU data staying in EU data centers) to comply with GDPR and similar regulations. For individuals, data sovereignty means not having personal productivity data processed by third-party services that might use it for advertising, training AI models, or sharing with data brokers.\n\nThe practical implications of poor data sovereignty include: your email content being used to train AI models, your work data being stored in jurisdictions with weaker privacy laws, and your personal productivity data being a breach liability for a third-party vendor you don't control.\n\nSelf-hosting is the most direct path to data sovereignty. When you run software on your own infrastructure, your data never leaves your control. No third party can access it without your explicit authorization.",
     keywords: ["data sovereignty", "what is data sovereignty", "data control", "data ownership", "self-hosted data sovereignty", "GAIA data sovereignty"],
-    category: "privacy",
+    category: "development",
     howGaiaUsesIt: "GAIA's open-source, self-hostable architecture directly addresses data sovereignty. When you self-host GAIA, all your emails, tasks, calendar events, and AI interactions stay on your infrastructure. GAIA never sends your data to Anthropic or GAIA's servers — it only communicates with the LLM provider you configure, using your own API key.",
     relatedTerms: ["self-hosting", "open-source-ai", "gdpr", "audit-log"],
     faqs: [
@@ -3485,7 +3544,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "GDPR (General Data Protection Regulation) is a comprehensive European Union data protection law that establishes rights for individuals over their personal data and obligations for organizations that collect and process it.",
     extendedDescription: "GDPR came into force in May 2018 and is the world's most comprehensive privacy regulation, influencing data protection laws globally. It applies to any organization that processes personal data of EU residents, regardless of where the organization is located — making it a global standard in practice.\n\nGDPR establishes several key rights for individuals: the right to access their personal data, the right to correct inaccurate data, the right to delete their data ('right to be forgotten'), the right to data portability, and the right to object to certain types of processing. Organizations must respond to these requests within 30 days.\n\nFor organizations, GDPR requires: a lawful basis for processing personal data (consent, legitimate interest, contract, or legal obligation), data minimization (collecting only what's necessary), purpose limitation (using data only for the stated purpose), storage limitation (not keeping data longer than necessary), and appropriate security measures.\n\nData breaches must be reported to supervisory authorities within 72 hours if they're likely to harm individuals. Violations can result in fines of up to €20 million or 4% of global annual revenue, whichever is higher — creating strong enforcement incentives.\n\nFor AI systems processing email, calendar, and personal productivity data, GDPR compliance requires careful attention to consent, data minimization, and the right to deletion.",
     keywords: ["GDPR", "what is GDPR", "EU data protection", "GDPR compliance", "data privacy regulation", "GAIA GDPR"],
-    category: "privacy",
+    category: "development",
     howGaiaUsesIt: "GAIA's architecture supports GDPR compliance through data minimization (processing only what's needed), user-controlled data deletion, data portability (export your data at any time), and self-hosting options that keep personal data within your jurisdiction. GAIA's open-source codebase allows full inspection of data handling practices.",
     relatedTerms: ["data-sovereignty", "self-hosting", "audit-log"],
     faqs: [
@@ -3502,7 +3561,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "An audit log is a chronological, immutable record of events and actions taken by a system, providing a verifiable trail of what happened, when it happened, and who or what triggered it.",
     extendedDescription: "Audit logs are essential in any system that takes significant actions — particularly systems with elevated privileges, like AI assistants that can send emails, create tasks, and modify calendar events on your behalf. Without an audit log, it's impossible to reconstruct what happened when something goes wrong.\n\nAudit logs serve multiple purposes: debugging (what sequence of events led to this incorrect outcome?), security (did anything access data it shouldn't have?), compliance (can we demonstrate that we followed required procedures?), and accountability (which user or system action triggered this change?).\n\nFor AI systems specifically, audit logs are especially important because AI behavior is probabilistic and not always predictable. When an AI assistant takes an unexpected action — sending an email you didn't intend, marking a task complete prematurely, or deleting a calendar event — the audit log is what lets you understand exactly what happened and how to prevent recurrence.\n\nGood audit logs are append-only (entries can't be modified or deleted), timestamped precisely, include sufficient context to reconstruct the event, and are queryable for the specific actions or time ranges you need to investigate.",
     keywords: ["audit log", "what is an audit log", "AI audit trail", "system audit log", "action history", "GAIA audit log"],
-    category: "privacy",
+    category: "development",
     howGaiaUsesIt: "GAIA maintains an audit log of all agent actions — emails sent or drafted, tasks created, calendar events modified, and automation workflows triggered. This log provides full transparency into what GAIA has done on your behalf, lets you review and undo recent actions, and supports accountability when AI behavior produces unexpected results.",
     relatedTerms: ["guardrails", "human-in-the-loop", "ai-alignment", "data-sovereignty", "self-hosting"],
     faqs: [
@@ -3537,7 +3596,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A cron job is a scheduled task configured to run automatically at specified time intervals or on specific dates using the cron scheduling syntax, enabling recurring automated processes without manual triggers.",
     extendedDescription: "The name comes from Chronos, the Greek personification of time. Cron is a Unix utility that runs scheduled commands based on a configuration file (crontab) with expressions defining when each job should run. The syntax allows specification of minutes, hours, days, months, and days of the week.\n\nA cron expression like '0 9 * * 1-5' means: at minute 0, hour 9, any day of month, any month, on weekdays (Monday-Friday) — i.e., 9:00 AM on every weekday. This enables precise scheduling of recurring automated tasks.\n\nCron jobs power background automation: nightly database backups, hourly data syncs, daily report generation, weekly digest emails, and monthly billing cycles are all commonly implemented as cron jobs. For AI assistants, cron jobs trigger scheduled workflows like morning briefings, end-of-day summaries, and weekly review emails.\n\nModern cloud environments have moved beyond Unix cron to managed scheduling services (AWS EventBridge, Google Cloud Scheduler) and application-level schedulers (Celery Beat, APScheduler, ARQ). These offer better reliability, logging, and monitoring than raw cron.",
     keywords: ["cron job", "what is a cron job", "scheduled task", "cron scheduling", "automated task", "GAIA cron"],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt: "GAIA uses cron-style scheduling for proactive workflows: morning briefings delivered at your configured time, daily task reviews, weekly digest emails, and scheduled automation runs. The scheduling system uses ARQ (GAIA's Redis-based task queue) for reliable background job execution with retry logic and monitoring.",
     relatedTerms: ["workflow-automation", "event-driven-automation", "task-automation", "webhook"],
     faqs: [
@@ -3561,6 +3620,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       { question: "How is GAIA's trigger-action different from Zapier?", answer: "Zapier connects tools through pre-built connectors with fixed trigger/action structures. GAIA understands natural language, applies AI judgment to variable situations, and has context from your connected tools — enabling more nuanced workflows than keyword/field matching allows." },
       { question: "Can GAIA triggers include conditions?", answer: "Yes. Workflows can include conditions like 'only if the email is from a domain in my client list,' 'only during business hours,' or 'only if the task has high priority.' Conditions can use AI judgment or exact matching." },
     ],
+    relatedComparisons: ["zapier", "make", "activepieces", "bardeen"],
   },
 
   "no-code": {
@@ -3578,6 +3638,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       { question: "Do I need to be technical to use GAIA?", answer: "No. GAIA is designed for non-technical knowledge workers. You interact through natural language — describing what you want GAIA to do rather than configuring it through technical interfaces. Advanced features like self-hosting and custom integrations require technical knowledge." },
       { question: "How does no-code differ from low-code?", answer: "No-code targets non-technical users with entirely visual or conversational interfaces. Low-code targets developers who want to accelerate development with visual tools while retaining the ability to write code when needed. GAIA's conversational interface is no-code; its Python API is low-code." },
     ],
+    relatedComparisons: ["zapier", "make", "activepieces", "bardeen"],
   },
 
   "idempotency": {
@@ -3588,7 +3649,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "Idempotency is a property of an operation where executing it multiple times produces the same result as executing it once — making it safe to retry without causing unintended side effects.",
     extendedDescription: "Idempotency is critical for reliable distributed systems and automation. Networks fail, servers restart, and messages get delivered multiple times. Without idempotency, a payment might be charged twice, an email sent three times, or a task created multiple times — all from a single user action that triggered retry logic.\n\nIdempotent operations can be safely retried. GET requests in REST are idempotent (reading data multiple times returns the same result). PUT requests are designed to be idempotent (setting a value to X multiple times leaves X). POST requests are typically not idempotent (creating a resource multiple times creates multiple resources).\n\nImplementing idempotency requires design choices: using idempotency keys (unique identifiers for each operation that prevent re-processing), storing operation results and returning cached results for duplicate requests, and designing side effects that check whether the action has already occurred.\n\nFor AI automation systems like GAIA that handle webhooks, retries, and background job execution, idempotency is essential. If GAIA receives the same 'new email' webhook twice (a common occurrence), it should create the task exactly once, not twice.",
     keywords: ["idempotency", "what is idempotency", "idempotent operations", "safe retries", "idempotency key", "GAIA idempotency"],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt: "GAIA's automation system is designed for idempotency. Webhook events include unique identifiers that GAIA uses to prevent duplicate processing. Task creation, email actions, and calendar operations check whether the action has already been performed before executing, ensuring that network retries and webhook redeliveries don't create duplicate data.",
     relatedTerms: ["webhook", "event-driven-automation", "workflow-automation", "rest-api", "data-sync"],
     faqs: [
@@ -3605,7 +3666,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A message queue is a system that stores messages (tasks or events) sent from producers and delivers them to consumers for processing, decoupling the two and enabling asynchronous, reliable communication between system components.",
     extendedDescription: "Message queues solve a fundamental distributed systems problem: how do you reliably pass work between system components when both sides may be unavailable at the same time? Without a queue, if the worker is busy or down when a job arrives, the job is lost. With a queue, the job is stored until a worker is available to process it.\n\nThe producer-consumer model is simple: a producer (web server, webhook handler, user action) puts a message in the queue. A consumer (background worker) takes messages from the queue and processes them. Multiple producers and consumers can work simultaneously, scaling independently.\n\nPopular message queue systems include RabbitMQ (full-featured, supports complex routing), Redis (lightweight, fast, used for simple queues), AWS SQS (managed, serverless), and Apache Kafka (high-throughput streaming). GAIA uses RabbitMQ for complex routing and Redis/ARQ for simpler background jobs.\n\nMessage queues enable graceful handling of load spikes. If 1000 webhook events arrive simultaneously, they queue immediately and get processed at the rate the consumers can handle — no events are lost, and the system doesn't collapse under load.",
     keywords: ["message queue", "what is a message queue", "async queue", "job queue", "RabbitMQ", "GAIA message queue"],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt: "GAIA uses RabbitMQ for routing events between system components and ARQ (Async Redis Queue) for background job execution. When an email arrives or an automation trigger fires, the event is queued immediately and processed by background workers. This architecture ensures no events are lost during high-load periods and enables reliable retry logic.",
     relatedTerms: ["webhook", "event-driven-automation", "workflow-automation", "cron-job", "api-integration"],
     faqs: [
@@ -3622,7 +3683,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A local LLM is a large language model that runs entirely on your own hardware — a laptop, workstation, or self-hosted server — without sending data to external API providers.",
     extendedDescription: "Cloud-based LLMs (GPT-4, Claude, Gemini) process your prompts on external infrastructure. Every query you send includes your data — email content, task descriptions, document text — which travels to and is processed by the provider's servers. For sensitive data, this creates privacy and compliance concerns.\n\nLocal LLMs eliminate this data exposure. Models like Llama 3, Mistral, Gemma, and Phi run entirely on your own hardware using tools like Ollama, LM Studio, or llama.cpp. Your data never leaves your machine. The tradeoff is capability and speed: local models are generally less capable than frontier cloud models, and running large models requires significant GPU hardware.\n\nThe gap between local and cloud LLMs is narrowing rapidly. Llama 3 70B approaches GPT-4 quality on many tasks. Quantization techniques reduce model sizes dramatically — a 70B model can run on consumer hardware when quantized to 4-bit precision. For specific domains and tasks (especially those requiring privacy), local LLMs are increasingly viable.\n\nHybrid approaches are emerging: use a local LLM for sensitive, personal data processing, and a cloud LLM for tasks requiring maximum capability where the data is less sensitive.",
     keywords: ["local LLM", "what is a local LLM", "run LLM locally", "offline AI", "self-hosted LLM", "GAIA local LLM"],
-    category: "privacy",
+    category: "ai-concepts",
     howGaiaUsesIt: "GAIA supports local LLM configurations via Ollama and compatible local model servers. When configured with a local LLM, GAIA processes all personal data (emails, tasks, calendar events) entirely on your infrastructure — no data leaves your environment. This is the maximum-privacy configuration for users handling sensitive information.",
     relatedTerms: ["self-hosting", "data-sovereignty", "large-language-model", "open-source-ai", "foundation-model"],
     faqs: [
@@ -3673,13 +3734,14 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
     definition: "A personal CRM (Customer Relationship Manager) is a system an individual uses to track, organize, and nurture their professional and personal relationships — storing contact information, interaction history, and follow-up reminders.",
     extendedDescription: "Traditional CRMs (Salesforce, HubSpot) are designed for teams managing customer pipelines. A personal CRM applies the same relationship management philosophy to an individual's network: keeping track of conversations, remembering personal details, maintaining regular contact with important relationships, and following through on commitments.\n\nThe need for a personal CRM grows with career stage. As your network expands, it becomes impossible to remember relationship details, follow-up commitments, and conversation history without a system. 'I was going to reach out to Sarah after her promotion' is the kind of intention that gets lost without infrastructure to support it.\n\nPersonal CRM tools include Clay, Folk, Monica, and Notion-based templates. Each offers contact management, interaction logging, and reminder systems. The challenge is that manual data entry creates friction — people abandon their personal CRM when maintaining it takes more effort than the relationship value it provides.\n\nAI assistants can dramatically reduce personal CRM maintenance overhead by automatically logging interactions from email and calendar, extracting relationship context from communications, and proactively surfacing relationships that haven't had recent interaction.",
     keywords: ["personal CRM", "what is a personal CRM", "relationship management", "contact management", "networking CRM", "GAIA personal CRM"],
-    category: "productivity",
+    category: "knowledge-management",
     howGaiaUsesIt: "GAIA functions as an ambient personal CRM by automatically logging email interactions, calendar meetings, and communication context for your key relationships. It can surface relationship insights ('You haven't emailed Alex in 3 months'), draft relationship-maintaining outreach, and provide context before meetings with people from your network.",
     relatedTerms: ["ai-email-assistant", "graph-based-memory", "knowledge-graph", "email-automation", "context-awareness"],
     faqs: [
       { question: "Does GAIA store information about my contacts?", answer: "GAIA builds a relationship graph from your email and calendar interactions, storing communication frequency, topics discussed, and relevant context. This is stored in your GAIA instance (or your own infrastructure if self-hosted) and used to provide context-aware assistance." },
       { question: "How is GAIA's contact tracking different from a CRM?", answer: "GAIA builds relationship context automatically from your existing tools — no manual data entry required. It's less structured than a dedicated CRM but more integrated with your actual workflow. For sales teams needing pipeline tracking, GAIA integrates with dedicated CRMs like HubSpot." },
     ],
+    relatedComparisons: ["notion", "mem-ai", "capacities", "tana"],
   },
 
   "notification-fatigue": {
@@ -4536,6 +4598,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA remembers your communication preferences, key relationships, ongoing projects, past decisions and their context, productivity patterns, and interaction history with your connected tools. All memory is stored in your GAIA instance and is under your control.",
       },
     ],
+    relatedComparisons: ["mem-ai", "rewind-ai", "limitless-ai"],
   },
 
   "reasoning-model": {
@@ -4577,6 +4640,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. The extended internal thinking process takes additional time before generating the response. For GAIA's background planning tasks this is acceptable; for real-time conversational responses GAIA uses faster standard models.",
       },
     ],
+    relatedComparisons: ["chatgpt", "claude", "gemini", "perplexity"],
   },
 
   // ─── Workflows & Automation ────────────────────────────────────────────────
@@ -4619,6 +4683,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA is designed primarily for individual knowledge workers but connects to team tools like Slack, Linear, and Notion. For team-level workflow automation, GAIA's integrations enable coordinating individual actions into team processes.",
       },
     ],
+    relatedComparisons: ["zapier", "n8n", "make", "activepieces"],
   },
 
   "event-driven-architecture": {
@@ -4638,7 +4703,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "reactive systems",
       "event streaming",
     ],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt:
       "GAIA's entire backend is built on event-driven architecture using RabbitMQ as the message broker. Email arrivals, calendar updates, Slack messages, and user actions all produce events that are published to queues. ARQ workers subscribe to these events and execute the appropriate agent workflows. This architecture makes GAIA genuinely real-time and scalable — new event types and workflows can be added without disrupting existing processing.",
     relatedTerms: [
@@ -4679,7 +4744,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "message pub-sub",
       "event pub-sub pattern",
     ],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt:
       "GAIA uses pub-sub messaging through RabbitMQ to coordinate its agent workflows. When an email arrives, the email intake service publishes an event to the broker. Multiple subscribers can react: the email triage agent processes urgency, the task extraction agent creates tasks, the calendar agent checks for scheduling references. This pub-sub design allows GAIA to process the same event through multiple parallel workflows efficiently.",
     relatedTerms: [
@@ -4719,7 +4784,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "microservices gateway",
       "reverse proxy",
     ],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt:
       "GAIA's FastAPI backend handles API gateway responsibilities for its web, desktop, and mobile clients. Authentication and authorization are enforced at the API layer before requests reach agent logic or database services. This centralized API layer also handles request validation, error handling, and response formatting consistently across all client types.",
     relatedTerms: [
@@ -4759,7 +4824,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "modular software",
       "microservices vs monolith",
     ],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt:
       "GAIA follows microservices principles in its Nx monorepo architecture. The API, web app, desktop app, mobile app, voice agent, and bots are separate deployable applications that communicate through defined interfaces. Background processing uses ARQ workers as independent services. This modularity allows individual components to be updated, scaled, or replaced independently.",
     relatedTerms: [
@@ -4799,7 +4864,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "FaaS",
       "serverless computing",
     ],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt:
       "GAIA's background task processing with ARQ workers follows serverless-like principles: workers spin up to process events from the queue and scale with workload. The self-hosted deployment runs containerized services, while cloud deployments can leverage serverless functions for event handlers and webhook processing. Serverless principles inform how GAIA handles bursty event loads from 50+ tool integrations.",
     relatedTerms: [
@@ -4839,7 +4904,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "live sync",
       "event-based sync",
     ],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt:
       "GAIA maintains real-time sync across all connected tools through webhook subscriptions. When any connected tool updates data — a calendar event changes, a task is completed, a Slack message arrives — GAIA receives the event immediately and updates its internal context. This ensures GAIA's scheduling decisions, task prioritization, and context retrieval reflect the current state of your work, not stale cached data.",
     relatedTerms: [
@@ -4879,7 +4944,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "local first software",
       "offline productivity",
     ],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt:
       "GAIA's desktop and mobile applications support offline-first access to your data. Your tasks, calendar, and recent conversations are cached locally and accessible without connectivity. Changes made offline are queued and synced when connection is restored. Agent features that require LLM inference need connectivity, but viewing and editing your data works offline.",
     relatedTerms: [
@@ -4919,7 +4984,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "concurrent editing",
       "synchronization conflicts",
     ],
-    category: "automation",
+    category: "development",
     howGaiaUsesIt:
       "GAIA implements conflict resolution for data that can be modified in multiple connected tools simultaneously. For high-stakes data like calendar events, GAIA surfaces conflicts to you rather than silently resolving them. For lower-stakes data, it applies last-write-wins or timestamp-based resolution. GAIA's event-driven architecture minimizes conflicts by processing changes in near-real-time.",
     relatedTerms: [
@@ -4961,7 +5026,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "threaded email",
       "email reply chain",
     ],
-    category: "productivity",
+    category: "email",
     howGaiaUsesIt:
       "GAIA reads entire email threads, not just individual messages, to understand context before taking action. When drafting a reply, GAIA considers the full conversation history. When prioritizing an email, it uses the thread's sender relationships, the conversation's age, and any deadlines or commitments made earlier in the thread.",
     relatedTerms: [
@@ -4982,6 +5047,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA uses summarization for very long threads, condensing earlier history to fit within the LLM context window while preserving the most relevant context. This allows it to handle threads of any length effectively.",
       },
     ],
+    relatedComparisons: ["superhuman", "shortwave", "spark", "missive"],
   },
 
   "cold-email": {
@@ -5001,7 +5067,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "outreach email",
       "cold email strategy",
     ],
-    category: "productivity",
+    category: "email",
     howGaiaUsesIt:
       "GAIA can help draft personalized cold emails by combining a template structure with recipient-specific context gathered from connected data sources. For follow-up sequences, GAIA can manage the timing and tracking of cold email campaigns, flagging replies and creating tasks for engaged prospects.",
     relatedTerms: [
@@ -5041,7 +5107,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "email sender reputation",
       "DKIM SPF DMARC",
     ],
-    category: "productivity",
+    category: "email",
     howGaiaUsesIt:
       "GAIA's email drafting capabilities help you write messages that maintain good deliverability by avoiding common spam trigger patterns. For users managing email campaigns through connected tools, GAIA can help analyze and improve deliverability factors. GAIA's own transactional emails follow email deliverability best practices including proper authentication records.",
     relatedTerms: [
@@ -5081,7 +5147,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "automated email",
       "system email",
     ],
-    category: "productivity",
+    category: "email",
     howGaiaUsesIt:
       "GAIA sends transactional emails for workflow notifications, daily briefings, meeting preparation summaries, and task digest updates. These automated messages are triggered by specific conditions (time of day, calendar events, task deadlines) rather than manual sending, keeping you informed without requiring you to check the GAIA interface continuously.",
     relatedTerms: [
@@ -5121,7 +5187,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "junk email filter",
       "email filtering",
     ],
-    category: "productivity",
+    category: "email",
     howGaiaUsesIt:
       "GAIA monitors your spam folder as part of its email management capabilities, surfacing messages that may have been incorrectly filtered. When important emails land in spam, GAIA can identify and flag them based on sender relationships and content relevance, ensuring legitimate messages are not permanently missed.",
     relatedTerms: [
@@ -5142,6 +5208,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Legitimate emails are spam-filtered due to poor sender reputation, missing authentication, trigger words common in spam, bulk sending patterns, or because someone previously marked a similar email as spam. GAIA's email drafting avoids common patterns that increase spam classification risk.",
       },
     ],
+    relatedComparisons: ["sanebox", "superhuman", "shortwave"],
   },
 
   "two-factor-authentication": {
@@ -5162,7 +5229,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "account security",
       "authentication security",
     ],
-    category: "productivity",
+    category: "development",
     howGaiaUsesIt:
       "GAIA supports two-factor authentication for user accounts and encourages its use for all connected service accounts. When connecting sensitive tools like Gmail and Slack through OAuth, GAIA's integrations work correctly alongside 2FA-protected accounts without requiring 2FA to be disabled. Enabling 2FA on your connected accounts protects against unauthorized access to the data GAIA can access.",
     relatedTerms: [
@@ -5202,7 +5269,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "unified login",
       "enterprise authentication",
     ],
-    category: "productivity",
+    category: "development",
     howGaiaUsesIt:
       "GAIA supports SSO through Google authentication, allowing users to sign in with their Google account without creating a separate GAIA password. Enterprise deployments can configure SAML-based SSO through identity providers like Okta or Microsoft Entra, integrating GAIA into centralized access management. SSO also streamlines OAuth integrations — since users are already authenticated with Google, connecting Gmail and Calendar requires no additional credentials.",
     relatedTerms: [
@@ -5242,7 +5309,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "password vault",
       "secure passwords",
     ],
-    category: "productivity",
+    category: "development",
     howGaiaUsesIt:
       "GAIA itself never stores your passwords — all integrations use OAuth tokens rather than credentials. Using a password manager for the various accounts you connect to GAIA ensures those underlying accounts are secured with unique, complex passwords, protecting the data GAIA can access.",
     relatedTerms: [
@@ -5282,7 +5349,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "phishing attack",
       "email security",
     ],
-    category: "productivity",
+    category: "development",
     howGaiaUsesIt:
       "GAIA can help identify suspicious emails by flagging messages with phishing indicators: unusual sender addresses, requests for credentials or wire transfers, unexpected urgency from known contacts, and links to suspicious domains. GAIA treats emails requesting sensitive actions with extra caution and surfaces them for your explicit review rather than acting autonomously.",
     relatedTerms: [
@@ -5322,7 +5389,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "manipulation cybersecurity",
       "human hacking",
     ],
-    category: "productivity",
+    category: "development",
     howGaiaUsesIt:
       "GAIA applies extra scrutiny to emails that use social engineering patterns: unexpected urgency from authority figures, requests for sensitive data or financial actions, scenarios designed to bypass normal verification, and appeals to fear or time pressure. These emails are flagged for your direct review rather than being processed automatically.",
     relatedTerms: [
@@ -5364,7 +5431,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "calendar availability",
       "when am I free",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA manages your availability windows intelligently, offering meeting times that respect your configured preferences while accounting for existing commitments, buffer time needs, and focus block protection. When someone asks to meet, GAIA identifies optimal available slots without exposing your full calendar or requiring manual availability checking.",
     relatedTerms: [
@@ -5385,6 +5452,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "Yes. GAIA allows you to configure different availability windows for different meeting categories — for example, only scheduling external calls in the morning, protecting afternoons for focused work, and limiting recurring meetings to specific days.",
       },
     ],
+    relatedComparisons: ["calendly", "savvycal", "cal", "reclaim"],
   },
 
   "time-zone-management": {
@@ -5404,7 +5472,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "meeting time zones",
       "global team scheduling",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA handles time zone conversion automatically for all scheduling operations. When scheduling a meeting with participants in different time zones, GAIA identifies times that fall within each participant's working hours and preferred meeting windows. It displays meeting times in each participant's local time zone and handles daylight saving time transitions correctly.",
     relatedTerms: [
@@ -5444,7 +5512,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "calendar recurrence",
       "weekly meeting",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA manages recurring events as part of its calendar intelligence, distinguishing between single-occurrence modifications and series changes. When scheduling new meetings, GAIA accounts for recurring events as fixed commitments. It can also identify recurring meeting patterns in your calendar and suggest optimization — for example, consolidating recurring check-ins that could be replaced with async updates.",
     relatedTerms: [
@@ -5465,6 +5533,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA asks whether a change applies to a single occurrence or the entire series before modifying a recurring event. This prevents accidental series-wide changes when you only intend to modify one instance.",
       },
     ],
+    relatedComparisons: ["google-calendar", "fantastical", "notion-calendar"],
   },
 
   "buffer-time": {
@@ -5484,7 +5553,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "schedule buffer",
       "back-to-back meetings",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA automatically enforces buffer time when scheduling meetings. You configure your preferred buffer duration — typically 10-15 minutes — and GAIA ensures no meetings are scheduled in that window before or after each event. For longer or more demanding meetings, GAIA can apply extended buffers to allow adequate processing time.",
     relatedTerms: [
@@ -5505,6 +5574,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA can identify back-to-back meeting patterns in your calendar and suggest adjustments to create buffer space. For ongoing scheduling, GAIA enforces your buffer preferences automatically when creating new events.",
       },
     ],
+    relatedComparisons: ["reclaim", "motion", "clockwise", "akiflow"],
   },
 
   "travel-time": {
@@ -5524,7 +5594,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "commute time calendar",
       "in-person meeting buffer",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA can account for travel time in scheduling by analyzing meeting locations from calendar event details and applying appropriate buffers for in-person commitments. When scheduling a new meeting near an existing in-person commitment, GAIA checks whether sufficient travel time exists and flags potential conflicts.",
     relatedTerms: [
@@ -5564,7 +5634,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "too many meetings",
       "meeting overload",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA identifies meeting fatigue patterns in your calendar by analyzing meeting density, back-to-back frequency, total meeting hours per day, and the proportion of your schedule consumed by meetings. It suggests meeting-free blocks, flags days with unsustainable meeting loads, and helps protect time for focused work by preventing additional meetings from being added to already-dense days.",
     relatedTerms: [
@@ -5585,6 +5655,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
           "GAIA reduces meeting fatigue by enforcing buffer time between meetings, protecting focus blocks from meeting scheduling, identifying recurring meetings that could be replaced with async updates, and giving you visibility into your meeting load trends over time.",
       },
     ],
+    relatedComparisons: ["reclaim", "motion", "clockwise"],
   },
 
   "asynchronous-meeting": {
@@ -5604,7 +5675,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "no meeting culture",
       "Loom update",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA supports async meeting workflows by drafting structured update messages that replace certain recurring meetings, helping you identify which standing meetings could transition to async, and managing the thread of responses in async decision-making. For teams using Slack or Notion, GAIA can route meeting outcomes and summaries to the appropriate async channels.",
     relatedTerms: [
@@ -5644,7 +5715,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "online meetings",
       "remote meetings",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA integrates with Google Meet for calendar management and meeting coordination. When creating calendar events, GAIA can automatically add Google Meet video conferencing links. It prepares meeting briefings for upcoming video calls and helps manage post-meeting follow-ups. GAIA also tracks your video meeting load as part of its meeting fatigue monitoring.",
     relatedTerms: [
@@ -5684,7 +5755,7 @@ export const glossaryTerms: Record<string, GlossaryTerm> = {
       "video call screen share",
       "collaborative screen",
     ],
-    category: "productivity",
+    category: "calendar",
     howGaiaUsesIt:
       "GAIA does not perform screen sharing itself but helps optimize the meetings in which screen sharing occurs by preparing relevant context and materials before calls. When screen sharing sessions are identified in meeting notes or calendar descriptions, GAIA can flag the technical requirements and ensure relevant documentation is accessible before the meeting starts.",
     relatedTerms: [

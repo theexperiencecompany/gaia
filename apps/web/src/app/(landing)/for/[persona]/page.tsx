@@ -320,25 +320,27 @@ function IntegrationBadge({ name }: { name: string }) {
   const domain = domainMap[name];
 
   return (
-    <Chip
-      variant="flat"
-      size="md"
-      className="bg-zinc-800 text-zinc-300"
-      startContent={
-        domain ? (
-          <Image
-            src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
-            alt={displayName}
-            width={16}
-            height={16}
-            className="ml-1 rounded-sm"
-            unoptimized
-          />
-        ) : undefined
-      }
-    >
-      {displayName}
-    </Chip>
+    <Link href={`/marketplace/${name}`}>
+      <Chip
+        variant="flat"
+        size="md"
+        className="bg-zinc-800 text-zinc-300"
+        startContent={
+          domain ? (
+            <Image
+              src={`https://www.google.com/s2/favicons?domain=${domain}&sz=128`}
+              alt={displayName}
+              width={16}
+              height={16}
+              className="ml-1 rounded-sm"
+              unoptimized
+            />
+          ) : undefined
+        }
+      >
+        {displayName}
+      </Chip>
+    </Link>
   );
 }
 
@@ -442,7 +444,7 @@ export default async function PersonaPage({ params }: PageProps) {
                 key={point}
                 className="flex items-start gap-3 rounded-2xl bg-zinc-800 p-5"
               >
-                <span className="mt-0.5 shrink-0 text-red-400">*</span>
+                <span className="mt-0.5 shrink-0 text-red-400">&#x2212;</span>
                 <p className="leading-relaxed text-zinc-300">{point}</p>
               </div>
             ))}

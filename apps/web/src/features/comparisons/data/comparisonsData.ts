@@ -41,6 +41,7 @@ export interface ComparisonData {
   domain: string;
   verdict: string;
   faqs: Array<{ question: string; answer: string }>;
+  relatedPersonas?: string[]; // persona slugs e.g. ["engineering-managers", "product-managers"]
 }
 
 import { entry as activepieces } from "./entries/activepieces";

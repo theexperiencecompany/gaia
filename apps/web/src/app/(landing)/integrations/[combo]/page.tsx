@@ -5,6 +5,7 @@ import { notFound } from "next/navigation";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import {
+  getAllCombos,
   getAllComboSlugs,
   getCombo,
 } from "@/features/integrations/data/combosData";
@@ -14,6 +15,7 @@ import {
   generateFAQSchema,
   generateHowToSchema,
   generatePageMetadata,
+  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
@@ -54,6 +56,19 @@ export default async function IntegrationComboPage({ params }: PageProps) {
   if (!data) {
     notFound();
   }
+
+  const allCombos = getAllCombos();
+  const relatedCombos = allCombos
+    .filter(
+      (c) =>
+        !c.canonicalSlug &&
+        c.slug !== combo &&
+        (c.toolASlug === data.toolASlug ||
+          c.toolBSlug === data.toolBSlug ||
+          c.toolASlug === data.toolBSlug ||
+          c.toolBSlug === data.toolASlug),
+    )
+    .slice(0, 3);
 
   const pageUrl = `${siteConfig.url}/integrations/${combo}`;
 
@@ -96,8 +111,8 @@ export default async function IntegrationComboPage({ params }: PageProps) {
             Home
           </Link>
           <span className="mx-2">/</span>
-          <Link href="/integrations" className="hover:text-zinc-300">
-            Integrations
+          <Link href="/marketplace" className="hover:text-zinc-300">
+            Marketplace
           </Link>
           <span className="mx-2">/</span>
           <span className="text-zinc-300">
@@ -138,7 +153,7 @@ export default async function IntegrationComboPage({ params }: PageProps) {
         {/* Use Cases */}
         <section className="mb-16">
           <h2 className="mb-2 text-3xl font-semibold text-white">
-            5 things you can automate
+            {data.useCases.length} thing{data.useCases.length === 1 ? "" : "s"} you can automate
           </h2>
           <p className="mb-8 text-zinc-400">
             Everything GAIA can do when {data.toolA} and {data.toolB} are
@@ -234,6 +249,29 @@ export default async function IntegrationComboPage({ params }: PageProps) {
           </div>
         </section>
 
+        {/* Related Automations */}
+        {relatedCombos.length > 0 && (
+          <section className="mb-16">
+            <h2 className="mb-6 text-2xl font-semibold text-white">
+              Related Automations
+            </h2>
+            <div className="grid gap-4 sm:grid-cols-3">
+              {relatedCombos.map((related) => (
+                <Link
+                  key={related.slug}
+                  href={`/integrations/${related.slug}`}
+                  className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                >
+                  <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
+                    {related.toolA} + {related.toolB}
+                  </h3>
+                  <p className="text-xs text-zinc-400">{related.tagline}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
         {/* More Combos Link */}
         <section className="mb-16">
           <div className="rounded-3xl bg-zinc-800 p-8">
@@ -245,10 +283,10 @@ export default async function IntegrationComboPage({ params }: PageProps) {
               that match your exact workflow.
             </p>
             <Link
-              href="/integrations"
+              href="/marketplace"
               className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
             >
-              Browse all integrations
+              Browse marketplace
             </Link>
           </div>
         </section>

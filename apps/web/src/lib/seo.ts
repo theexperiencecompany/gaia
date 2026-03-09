@@ -321,7 +321,9 @@ export function generateWebPageSchema(
           "@type": "ListItem",
           position: index + 1,
           name: crumb.name,
-          item: crumb.url,
+          item: crumb.url.startsWith("http")
+            ? crumb.url
+            : `${siteConfig.url}${getCanonicalUrl(crumb.url)}`,
         }),
       ),
     };

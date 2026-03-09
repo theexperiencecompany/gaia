@@ -125,4 +125,5 @@ export const entry: ComparisonData = {
         "GAIA and Monday.com solve different primary problems. Monday.com is a visual project management platform designed for structured team coordination — boards, timelines, workload management, and stakeholder reporting. GAIA is a proactive AI assistant that operates across email, calendar, and 50+ tools to reduce manual overhead and automate cross-tool workflows. Teams that need both structured project management and proactive AI automation often find them complementary rather than mutually exclusive.",
     },
   ],
+  relatedPersonas: ["agency-owners", "product-managers"],
 };

@@ -103,4 +103,5 @@ export const entry: ComparisonData = {
           "GAIA handles simple to-do lists well, but its real strength is turning your entire workflow into managed tasks. If all you need is a clean checklist, Todoist is simpler. If you want AI that handles task creation, prioritization, and follow-through, GAIA is the better fit.",
       },
     ],
+  relatedPersonas: ["startup-founders", "software-developers"],
 };
