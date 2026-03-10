@@ -1,19 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-
+import { getTranslations } from "next-intl/server";
 import ComparisonTable from "@/components/seo/ComparisonTable";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
-import { getAlternative } from "@/features/alternatives/data/alternativesData";
+import { getTranslatedAlternative } from "@/features/alternatives/data/getTranslatedAlternative";
 import { COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
+import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsData";
 import {
-  getAllComparisonSlugs,
-  getAllComparisons,
-  getComparison,
-} from "@/features/comparisons/data/comparisonsData";
+  getTranslatedComparison,
+  getTranslatedComparisons,
+} from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
-import { getPersona } from "@/features/personas/data/personasData";
+import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
+import { getAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -24,7 +25,7 @@ import {
 } from "@/lib/seo";
 
 interface PageProps {
-  params: Promise<{ slug: string }>;
+  readonly params: Promise<{ readonly slug: string }>;
 }
 
 export async function generateStaticParams() {
@@ -35,41 +36,55 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const data = getComparison(slug);
+  const data = await getTranslatedComparison(slug);
 
   if (!data) {
     return { title: "Comparison Not Found" };
   }
 
-  return generatePageMetadata({
+  const metadata = generatePageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/compare/${slug}`,
     keywords: data.keywords,
   });
+
+  return {
+    ...metadata,
+    alternates: {
+      ...metadata.alternates,
+      languages: getAlternates(`/compare/${slug}`),
+    },
+  };
 }
 
 export default async function ComparisonPage({ params }: PageProps) {
   const { slug } = await params;
-  const data = getComparison(slug);
+  const t = await getTranslations();
+  const data = await getTranslatedComparison(slug);
 
   if (!data) {
     notFound();
   }
 
-  const hasAlternativePage = getAlternative(slug) !== undefined;
+  const hasAlternativePage =
+    (await getTranslatedAlternative(slug)) !== undefined;
 
   const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
-  const relatedComparisons = getAllComparisons()
+  const relatedComparisons = (await getTranslatedComparisons())
     .filter(
       (c) =>
         c.slug !== slug && COMPARISON_CATEGORIES[c.slug] === currentCategory,
     )
     .slice(0, 3);
 
-  const relatedPersonaData = (data.relatedPersonas ?? [])
-    .map((slug) => getPersona(slug))
-    .filter((p): p is NonNullable<typeof p> => p !== undefined);
+  const relatedPersonaData = (
+    await Promise.all(
+      (data.relatedPersonas ?? []).map((personaSlug) =>
+        getTranslatedPersona(personaSlug),
+      ),
+    )
+  ).filter((p): p is NonNullable<typeof p> => p !== undefined);
 
   const webPageSchema = generateWebPageSchema(
     data.metaTitle,
@@ -107,20 +122,22 @@ export default async function ComparisonPage({ params }: PageProps) {
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-zinc-500">
           <Link href="/" className="hover:text-zinc-300">
-            Home
+            {t("common.home")}
           </Link>
           <span className="mx-2">/</span>
           <Link href="/compare" className="hover:text-zinc-300">
-            Comparisons
+            {t("comparisons.breadcrumb")}
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-zinc-300">GAIA vs {data.name}</span>
+          <span className="text-zinc-300">
+            {t("comparisons.gaia_vs", { name: data.name })}
+          </span>
         </nav>
 
         {/* Hero */}
         <header className="mb-16">
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            GAIA vs {data.name}
+            {t("comparisons.gaia_vs", { name: data.name })}
           </h1>
           <p className="text-xl leading-relaxed text-zinc-400">
             {data.description}
@@ -135,20 +152,20 @@ export default async function ComparisonPage({ params }: PageProps) {
         {/* Comparison Table */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Feature Comparison
+            {t("comparisons.feature_comparison")}
           </h2>
           <ComparisonTable
             ariaLabel={`GAIA vs ${data.name} feature comparison`}
             columns={[
               {
                 key: "feature",
-                label: "Feature",
+                label: t("comparisons.feature_column"),
                 headerClassName: "text-zinc-500",
                 cellClassName: "font-medium text-zinc-300",
               },
               {
                 key: "gaia",
-                label: "GAIA",
+                label: t("comparisons.gaia_column"),
                 headerClassName: "text-primary",
                 cellClassName: "text-emerald-400",
               },
@@ -159,7 +176,7 @@ export default async function ComparisonPage({ params }: PageProps) {
                 cellClassName: "text-zinc-400",
               },
             ]}
-            rows={data.rows as unknown as Record<string, string>[]}
+            rows={data.rows}
           />
         </section>
 
@@ -167,7 +184,7 @@ export default async function ComparisonPage({ params }: PageProps) {
         <div className="mb-16 grid gap-8 md:grid-cols-2">
           <section>
             <h2 className="mb-4 text-2xl font-semibold text-emerald-400">
-              Why Choose GAIA
+              {t("comparisons.why_choose_gaia")}
             </h2>
             <ul className="space-y-3">
               {data.gaiaAdvantages.map((advantage) => (
@@ -183,7 +200,7 @@ export default async function ComparisonPage({ params }: PageProps) {
           </section>
           <section>
             <h2 className="mb-4 text-2xl font-semibold text-zinc-400">
-              Where {data.name} Excels
+              {t("comparisons.where_excels", { name: data.name })}
             </h2>
             <ul className="space-y-3">
               {data.competitorAdvantages.map((advantage) => (
@@ -202,7 +219,7 @@ export default async function ComparisonPage({ params }: PageProps) {
         {/* Verdict */}
         <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
           <h2 className="mb-4 text-2xl font-semibold text-white">
-            The Verdict
+            {t("comparisons.the_verdict")}
           </h2>
           <p className="text-lg leading-relaxed text-zinc-300">
             {data.verdict}
@@ -212,7 +229,7 @@ export default async function ComparisonPage({ params }: PageProps) {
         {/* FAQ */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Frequently Asked Questions
+            {t("common.faq")}
           </h2>
           <FAQAccordion faqs={data.faqs} />
         </section>
@@ -221,13 +238,13 @@ export default async function ComparisonPage({ params }: PageProps) {
         {hasAlternativePage && (
           <section className="mb-16 border-t border-zinc-800 pt-8">
             <p className="text-sm text-zinc-500">
-              Looking for the best {data.name} alternative?{" "}
+              {t("comparisons.looking_for_alternative", { name: data.name })}{" "}
               <Link
                 href={`/alternative-to/${slug}`}
                 className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
               >
-                See our complete guide &rarr; Best {data.name} Alternative in
-                2026
+                {t("comparisons.see_complete_guide")} &rarr;{" "}
+                {t("comparisons.best_alternative_year", { name: data.name })}
               </Link>
             </p>
           </section>
@@ -237,7 +254,9 @@ export default async function ComparisonPage({ params }: PageProps) {
         {relatedComparisons.length > 0 && (
           <section className="mb-16">
             <h2 className="mb-6 text-3xl font-semibold text-white">
-              Compare More {currentCategory} Tools
+              {t("comparisons.compare_more_tools", {
+                category: currentCategory,
+              })}
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {relatedComparisons.map((comp) => (
@@ -247,7 +266,7 @@ export default async function ComparisonPage({ params }: PageProps) {
                   className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
-                    GAIA vs {comp.name}
+                    {t("comparisons.gaia_vs", { name: comp.name })}
                   </h3>
                   <p className="text-xs text-zinc-400">{comp.tagline}</p>
                 </Link>
@@ -260,7 +279,7 @@ export default async function ComparisonPage({ params }: PageProps) {
         {relatedPersonaData.length > 0 && (
           <section className="mb-16">
             <h2 className="mb-6 text-3xl font-semibold text-white">
-              GAIA for Your Role
+              {t("comparisons.gaia_for_role")}
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {relatedPersonaData.map((persona) => (
@@ -270,7 +289,7 @@ export default async function ComparisonPage({ params }: PageProps) {
                   className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-2 text-base font-medium text-white group-hover:text-primary">
-                    GAIA for {persona.role}
+                    {t("comparisons.gaia_for_persona", { role: persona.role })}
                   </h3>
                   <p className="line-clamp-2 text-xs leading-relaxed text-zinc-400">
                     {persona.metaDescription}
@@ -284,7 +303,7 @@ export default async function ComparisonPage({ params }: PageProps) {
         {/* Explore More */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Explore More
+            {t("common.explore_more")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
@@ -292,11 +311,10 @@ export default async function ComparisonPage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                AI Glossary
+                {t("comparisons.ai_glossary")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Learn about the AI concepts and technology behind GAIA and{" "}
-                {data.name}.
+                {t("comparisons.ai_glossary_desc", { name: data.name })}
               </p>
             </Link>
             <Link
@@ -304,11 +322,10 @@ export default async function ComparisonPage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                GAIA for Your Role
+                {t("comparisons.gaia_for_role")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                See how GAIA helps professionals in different roles boost their
-                productivity.
+                {t("comparisons.gaia_for_role_desc")}
               </p>
             </Link>
           </div>

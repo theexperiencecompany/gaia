@@ -1,8 +1,11 @@
 import bundleAnalyzer from "@next/bundle-analyzer";
 import createMDX from "@next/mdx";
 import { withSentryConfig } from "@sentry/nextjs";
+import createNextIntlPlugin from "next-intl/plugin";
 import path from "path";
 import { fileURLToPath } from "url";
+
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -133,7 +136,9 @@ const withMDX = createMDX({
   // Add markdown plugins here, as desired
 });
 
-export default withSentryConfig(withBundleAnalyzer(withMDX(nextConfig)), {
+export default withSentryConfig(
+  withNextIntl(withBundleAnalyzer(withMDX(nextConfig))),
+  {
   // For all available options, see:
   // https://www.npmjs.com/package/@sentry/webpack-plugin#options
 

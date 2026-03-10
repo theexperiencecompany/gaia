@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
-import { getComparison } from "@/features/comparisons/data/comparisonsData";
-import {
-  getAllGlossaryTermSlugs,
-  getGlossaryTerm,
-} from "@/features/glossary/data/glossaryData";
+import { getTranslatedComparison } from "@/features/comparisons/data/getTranslatedComparison";
+import { getTranslatedGlossaryTerm } from "@/features/glossary/data/getTranslatedGlossary";
+import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { getAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateDefinedTermSchema,
@@ -19,7 +19,9 @@ import {
 } from "@/lib/seo";
 
 interface PageProps {
-  params: Promise<{ term: string }>;
+  readonly params: Promise<{
+    readonly term: string;
+  }>;
 }
 
 export async function generateStaticParams() {
@@ -32,13 +34,13 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { term } = await params;
-  const data = getGlossaryTerm(term);
+  const data = await getTranslatedGlossaryTerm(term);
 
   if (!data) {
     return { title: "Term Not Found" };
   }
 
-  return generatePageMetadata({
+  const metadata = generatePageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/learn/${term}`,
@@ -47,11 +49,20 @@ export async function generateMetadata({
       : undefined,
     keywords: data.keywords,
   });
+
+  return {
+    ...metadata,
+    alternates: {
+      ...metadata.alternates,
+      languages: getAlternates(`/learn/${term}`),
+    },
+  };
 }
 
 export default async function GlossaryTermPage({ params }: PageProps) {
   const { term } = await params;
-  const data = getGlossaryTerm(term);
+  const t = await getTranslations();
+  const data = await getTranslatedGlossaryTerm(term);
 
   if (!data) {
     notFound();
@@ -91,13 +102,22 @@ export default async function GlossaryTermPage({ params }: PageProps) {
     `${siteConfig.url}/learn/${term}`,
   );
 
-  const relatedTerms = data.relatedTerms
-    .map((slug) => getGlossaryTerm(slug))
-    .filter((t): t is NonNullable<typeof t> => t !== undefined);
+  const relatedTerms = (
+    await Promise.all(
+      data.relatedTerms.map((slug) => getTranslatedGlossaryTerm(slug)),
+    )
+  ).filter(
+    (glossaryTerm): glossaryTerm is NonNullable<typeof glossaryTerm> =>
+      glossaryTerm !== undefined,
+  );
 
-  const relatedComparisonData = (data.relatedComparisons ?? [])
-    .map((slug) => getComparison(slug))
-    .filter((c): c is NonNullable<typeof c> => c !== undefined);
+  const relatedComparisonData = (
+    await Promise.all(
+      (data.relatedComparisons ?? []).map((slug) =>
+        getTranslatedComparison(slug),
+      ),
+    )
+  ).filter((c): c is NonNullable<typeof c> => c !== undefined);
 
   return (
     <>
@@ -109,11 +129,11 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-zinc-500">
           <Link href="/" className="hover:text-zinc-300">
-            Home
+            {t("common.home")}
           </Link>
           <span className="mx-2">/</span>
           <Link href="/learn" className="hover:text-zinc-300">
-            Glossary
+            {t("glossary.breadcrumb")}
           </Link>
           <span className="mx-2">/</span>
           <span className="text-zinc-300">{data.term}</span>
@@ -134,7 +154,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         {/* Extended Description */}
         <section className="mb-16">
           <h2 className="mb-4 text-3xl font-semibold text-white">
-            Understanding {data.term}
+            {t("glossary.understanding")} {data.term}
           </h2>
           <p className="text-lg leading-relaxed text-zinc-300">
             {data.extendedDescription}
@@ -144,7 +164,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         {/* How GAIA Uses It */}
         <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
           <h2 className="mb-4 text-2xl font-semibold text-emerald-400">
-            How GAIA Uses {data.term}
+            {t("glossary.how_gaia_uses")} {data.term}
           </h2>
           <p className="text-lg leading-relaxed text-zinc-300">
             {data.howGaiaUsesIt}
@@ -155,7 +175,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         {relatedTerms.length > 0 && (
           <section className="mb-16">
             <h2 className="mb-6 text-3xl font-semibold text-white">
-              Related Concepts
+              {t("glossary.related_concepts")}
             </h2>
             <div className="grid gap-4 sm:grid-cols-2">
               {relatedTerms.map((related) => (
@@ -179,7 +199,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         {/* FAQ */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Frequently Asked Questions
+            {t("common.faq")}
           </h2>
           <FAQAccordion faqs={data.faqs} />
         </section>
@@ -188,7 +208,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         {relatedComparisonData.length > 0 && (
           <section className="mb-16">
             <h2 className="mb-6 text-3xl font-semibold text-white">
-              Tools That Use {data.term}
+              {t("glossary.tools_that_use", { term: data.term })}
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {relatedComparisonData.map((comparison) => (
@@ -198,7 +218,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
                   className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
-                    GAIA vs {comparison.name}
+                    {t("glossary.gaia_vs", { name: comparison.name })}
                   </h3>
                   <p className="text-xs text-zinc-400">{comparison.tagline}</p>
                 </Link>
@@ -210,7 +230,7 @@ export default async function GlossaryTermPage({ params }: PageProps) {
         {/* Explore More */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Explore More
+            {t("common.explore_more")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
@@ -218,11 +238,10 @@ export default async function GlossaryTermPage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                Compare GAIA with Alternatives
+                {t("glossary.compare_alternatives")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                See how GAIA stacks up against other AI productivity tools in
-                detailed comparisons.
+                {t("glossary.compare_alternatives_desc")}
               </p>
             </Link>
             <Link
@@ -230,11 +249,10 @@ export default async function GlossaryTermPage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                GAIA for Your Role
+                {t("glossary.gaia_for_role")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Discover how GAIA helps professionals in different roles work
-                smarter with AI.
+                {t("glossary.gaia_for_role_desc")}
               </p>
             </Link>
           </div>

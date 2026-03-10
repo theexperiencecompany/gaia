@@ -20,7 +20,7 @@ export interface ComparisonColumn {
 
 interface Props {
   readonly columns: ComparisonColumn[];
-  readonly rows: Record<string, string>[];
+  readonly rows: readonly { readonly [key: string]: string }[];
   readonly ariaLabel?: string;
 }
 

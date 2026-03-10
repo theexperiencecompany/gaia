@@ -4,3 +4,6 @@
 
 .open-next/
 .wrangler/
+
+# Accidentally created plugin directories
+C\:*

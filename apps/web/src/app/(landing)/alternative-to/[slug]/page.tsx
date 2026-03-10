@@ -2,20 +2,22 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
+import { getTranslations } from "next-intl/server";
 import ComparisonTable from "@/components/seo/ComparisonTable";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { getAllAlternativeSlugs } from "@/features/alternatives/data/alternativesData";
 import {
-  getAllAlternativeSlugs,
-  getAllAlternatives,
-  getAlternative,
-} from "@/features/alternatives/data/alternativesData";
+  getTranslatedAlternative,
+  getTranslatedAlternatives,
+} from "@/features/alternatives/data/getTranslatedAlternative";
 import { COMPARISON_CATEGORIES } from "@/features/comparisons/data/categories";
 import {
-  getAllComparisons,
-  getComparison,
-} from "@/features/comparisons/data/comparisonsData";
+  getTranslatedComparison,
+  getTranslatedComparisons,
+} from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { getAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -38,18 +40,25 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { slug } = await params;
-  const data = getAlternative(slug);
+  const data = await getTranslatedAlternative(slug);
 
   if (!data) {
     return { title: "Alternative Not Found" };
   }
 
-  return generatePageMetadata({
+  const metadata = generatePageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/alternative-to/${slug}`,
     keywords: data.keywords,
   });
+  return {
+    ...metadata,
+    alternates: {
+      ...metadata.alternates,
+      languages: getAlternates(`/alternative-to/${slug}`),
+    },
+  };
 }
 
 function FitScorePip({ filled }: { readonly filled: boolean }) {
@@ -73,23 +82,24 @@ function FitScoreRow({ score }: { readonly score: number }) {
 
 export default async function AlternativePage({ params }: PageProps) {
   const { slug } = await params;
-  const data = getAlternative(slug);
+  const t = await getTranslations();
+  const data = await getTranslatedAlternative(slug);
 
   if (!data) {
     notFound();
   }
 
-  const hasComparisonPage = getComparison(slug) !== undefined;
+  const hasComparisonPage = (await getTranslatedComparison(slug)) !== undefined;
 
   const currentCategory = COMPARISON_CATEGORIES[slug] ?? "Other";
-  const relatedComparisons = getAllComparisons()
+  const relatedComparisons = (await getTranslatedComparisons())
     .filter(
       (c) =>
         c.slug !== slug && COMPARISON_CATEGORIES[c.slug] === currentCategory,
     )
     .slice(0, 3);
 
-  const relatedAlternatives = getAllAlternatives()
+  const relatedAlternatives = (await getTranslatedAlternatives())
     .filter((a) => a.slug !== slug && a.category === data.category)
     .slice(0, 3);
 
@@ -140,20 +150,22 @@ export default async function AlternativePage({ params }: PageProps) {
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-zinc-500">
           <Link href="/" className="hover:text-zinc-300">
-            Home
+            {t("common.home")}
           </Link>
           <span className="mx-2">/</span>
           <Link href="/alternative-to" className="hover:text-zinc-300">
-            Alternatives
+            {t("alternatives.breadcrumb")}
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-zinc-300">Best {data.name} Alternative</span>
+          <span className="text-zinc-300">
+            {t("alternatives.best_alternative", { name: data.name })}
+          </span>
         </nav>
 
         {/* Hero */}
         <header className="mb-16">
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            Best {data.name} Alternative in 2026
+            {t("alternatives.best_alternative_year", { name: data.name })}
           </h1>
           <p className="text-xl leading-relaxed text-zinc-400">
             {data.tagline}
@@ -170,7 +182,7 @@ export default async function AlternativePage({ params }: PageProps) {
         {/* Pain points */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Why people look for {data.name} alternatives
+            {t("alternatives.why_people_look", { name: data.name })}
           </h2>
           <ul className="space-y-4">
             {data.painPoints.map((point) => (
@@ -188,10 +200,10 @@ export default async function AlternativePage({ params }: PageProps) {
         {/* GAIA fit score */}
         <section className="mb-16 rounded-3xl bg-zinc-800 p-8">
           <h2 className="mb-2 text-2xl font-semibold text-white">
-            How well does GAIA replace {data.name}?
+            {t("alternatives.how_well_replace", { name: data.name })}
           </h2>
           <p className="mb-4 text-sm text-zinc-500">
-            Honest fit score based on feature overlap
+            {t("alternatives.honest_fit_score")}
           </p>
           <FitScoreRow score={data.gaiaFitScore} />
         </section>
@@ -199,7 +211,7 @@ export default async function AlternativePage({ params }: PageProps) {
         {/* What GAIA replaces */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            What GAIA replaces from {data.name}
+            {t("alternatives.what_gaia_replaces", { name: data.name })}
           </h2>
           <ul className="space-y-3">
             {data.gaiaReplaces.map((item) => (
@@ -215,20 +227,20 @@ export default async function AlternativePage({ params }: PageProps) {
         {data.comparisonRows && data.comparisonRows.length > 0 && (
           <section className="mb-16">
             <h2 className="mb-6 text-3xl font-semibold text-white">
-              GAIA vs {data.name}: Feature Comparison
+              {t("alternatives.feature_comparison", { name: data.name })}
             </h2>
             <ComparisonTable
               ariaLabel={`GAIA vs ${data.name} feature comparison`}
               columns={[
                 {
                   key: "feature",
-                  label: "Feature",
+                  label: t("alternatives.feature_column"),
                   headerClassName: "text-zinc-500",
                   cellClassName: "font-medium text-zinc-300",
                 },
                 {
                   key: "gaia",
-                  label: "GAIA",
+                  label: t("alternatives.gaia_column"),
                   headerClassName: "text-primary",
                   cellClassName: "text-emerald-400",
                 },
@@ -247,7 +259,7 @@ export default async function AlternativePage({ params }: PageProps) {
         {/* GAIA advantages */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Where GAIA goes further
+            {t("alternatives.where_gaia_further")}
           </h2>
           <ul className="space-y-3">
             {data.gaiaAdvantages.map((advantage) => (
@@ -265,7 +277,7 @@ export default async function AlternativePage({ params }: PageProps) {
         {/* Migration steps */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            How to migrate from {data.name} to GAIA
+            {t("alternatives.how_to_migrate", { name: data.name })}
           </h2>
           <ol className="space-y-4">
             {data.migrationSteps.map((step, index) => (
@@ -285,7 +297,7 @@ export default async function AlternativePage({ params }: PageProps) {
         {/* FAQ */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Frequently Asked Questions
+            {t("common.faq")}
           </h2>
           <FAQAccordion faqs={data.faqs} />
         </section>
@@ -294,7 +306,7 @@ export default async function AlternativePage({ params }: PageProps) {
         {relatedAlternatives.length > 0 && (
           <section className="mb-16">
             <h2 className="mb-6 text-3xl font-semibold text-white">
-              More Alternatives to Consider
+              {t("alternatives.more_alternatives")}
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {relatedAlternatives.map((alt) => (
@@ -304,7 +316,7 @@ export default async function AlternativePage({ params }: PageProps) {
                   className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
-                    Best {alt.name} Alternative
+                    {t("alternatives.best_alternative", { name: alt.name })}
                   </h3>
                   <p className="text-xs text-zinc-400">{alt.tagline}</p>
                 </Link>
@@ -317,7 +329,7 @@ export default async function AlternativePage({ params }: PageProps) {
         {relatedComparisons.length >= 1 && (
           <section className="mb-16">
             <h2 className="mb-6 text-3xl font-semibold text-white">
-              People Also Consider
+              {t("alternatives.people_also_consider")}
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {relatedComparisons.map((comp) => (
@@ -327,7 +339,7 @@ export default async function AlternativePage({ params }: PageProps) {
                   className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
                 >
                   <h3 className="mb-1 text-base font-medium text-white group-hover:text-primary">
-                    GAIA vs {comp.name}
+                    {t("alternatives.gaia_vs_name", { name: comp.name })}
                   </h3>
                   <p className="text-xs text-zinc-400">{comp.tagline}</p>
                 </Link>
@@ -340,12 +352,12 @@ export default async function AlternativePage({ params }: PageProps) {
         {hasComparisonPage && (
           <section className="mb-16 border-t border-zinc-800 pt-8">
             <p className="text-sm text-zinc-500">
-              Want a side-by-side feature comparison?{" "}
+              {t("alternatives.want_comparison")}{" "}
               <Link
                 href={`/compare/${slug}`}
                 className="text-zinc-400 underline underline-offset-2 hover:text-zinc-200"
               >
-                See GAIA vs {data.name} &rarr;
+                {t("alternatives.see_comparison", { name: data.name })} &rarr;
               </Link>
             </p>
           </section>
@@ -354,7 +366,7 @@ export default async function AlternativePage({ params }: PageProps) {
         {/* Explore more */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Explore More
+            {t("common.explore_more")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
@@ -362,11 +374,10 @@ export default async function AlternativePage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                GAIA vs Competitors
+                {t("alternatives.gaia_vs_competitors")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                See detailed head-to-head comparisons of GAIA against other AI
-                and productivity tools.
+                {t("alternatives.gaia_vs_competitors_desc")}
               </p>
             </Link>
             <Link
@@ -374,11 +385,10 @@ export default async function AlternativePage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                GAIA for Your Role
+                {t("alternatives.gaia_for_role")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                See how GAIA helps professionals in different roles boost their
-                productivity.
+                {t("alternatives.gaia_for_role_desc")}
               </p>
             </Link>
           </div>

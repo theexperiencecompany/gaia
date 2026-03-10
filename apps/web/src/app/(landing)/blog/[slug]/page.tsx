@@ -12,7 +12,7 @@ import {
 import { generateBlogMetadata } from "@/utils/seoUtils";
 
 interface PageProps {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ readonly slug: string }>;
 }
 
 export const revalidate = 3600;
@@ -43,7 +43,8 @@ export async function generateMetadata({
       };
     }
 
-    return generateBlogMetadata(blog);
+    const metadata = generateBlogMetadata(blog);
+    return metadata;
   } catch {
     return {
       title: "Blog Post Not Found",

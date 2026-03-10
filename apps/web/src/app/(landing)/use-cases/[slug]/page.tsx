@@ -14,7 +14,7 @@ import {
 } from "@/utils/seoUtils";
 
 interface PageProps {
-  params: Promise<{ slug: string }>;
+  params: Promise<{ readonly slug: string }>;
 }
 
 export const revalidate = 3600; // Revalidate every hour
@@ -85,7 +85,8 @@ export async function generateMetadata({
         creator: found.creator,
       };
 
-      return generateUseCaseMetadata(workflowAsUseCase);
+      const meta = generateUseCaseMetadata(workflowAsUseCase);
+      return meta;
     }
   } catch (err) {
     console.error("Error fetching explore workflows for metadata:", err);
@@ -109,7 +110,8 @@ export async function generateMetadata({
       creator: workflow.creator,
     };
 
-    return generateUseCaseMetadata(workflowAsUseCase);
+    const meta = generateUseCaseMetadata(workflowAsUseCase);
+    return meta;
   } catch {
     return {
       title: "Use Case Not Found",

@@ -21,6 +21,7 @@
  * - See `.agents/plans/programmatic-seo-plan.md` for the full keyword strategy
  */
 export interface ComparisonFeatureRow {
+  [key: string]: string;
   feature: string;
   gaia: string;
   competitor: string;

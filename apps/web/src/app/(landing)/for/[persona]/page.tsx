@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { getTranslations } from "next-intl/server";
 import type { ComponentType } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
@@ -15,10 +16,9 @@ import {
   SALES_FAQS,
   SOFTWARE_DEV_FAQS,
 } from "@/features/landing/data/personaFaqs";
-import {
-  getAllPersonaSlugs,
-  getPersona,
-} from "@/features/personas/data/personasData";
+import { getTranslatedPersona } from "@/features/personas/data/getTranslatedPersona";
+import { getAllPersonaSlugs } from "@/features/personas/data/personasData";
+import { getAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -29,7 +29,7 @@ import {
 } from "@/lib/seo";
 
 interface PageProps {
-  params: Promise<{ persona: string }>;
+  params: Promise<{ readonly persona: string }>;
 }
 
 interface PersonaConfig {
@@ -238,26 +238,34 @@ export async function generateMetadata({
 
   const config = SPECIAL_PERSONA_CONFIGS[persona];
   if (config) {
-    return generatePageMetadata({
+    const metadata = generatePageMetadata({
       title: config.metaTitle,
       description: config.metaDescription,
       path: `/for/${persona}`,
       keywords: config.keywords,
     });
+    return metadata;
   }
 
-  const data = getPersona(persona);
+  const data = await getTranslatedPersona(persona);
 
   if (!data) {
     return { title: "Role Not Found" };
   }
 
-  return generatePageMetadata({
+  const metadata = generatePageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/for/${persona}`,
     keywords: data.keywords,
   });
+  return {
+    ...metadata,
+    alternates: {
+      ...metadata.alternates,
+      languages: getAlternates(`/for/${persona}`),
+    },
+  };
 }
 
 function IntegrationBadge({ name }: { name: string }) {
@@ -345,6 +353,7 @@ function IntegrationBadge({ name }: { name: string }) {
 }
 
 export default async function PersonaPage({ params }: PageProps) {
+  const t = await getTranslations();
   const { persona } = await params;
 
   const config = SPECIAL_PERSONA_CONFIGS[persona];
@@ -375,7 +384,7 @@ export default async function PersonaPage({ params }: PageProps) {
     );
   }
 
-  const data = getPersona(persona);
+  const data = await getTranslatedPersona(persona);
 
   if (!data) {
     notFound();
@@ -415,20 +424,22 @@ export default async function PersonaPage({ params }: PageProps) {
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-zinc-500">
           <Link href="/" className="hover:text-zinc-300">
-            Home
+            {t("common.home")}
           </Link>
           <span className="mx-2">/</span>
           <Link href="/for" className="hover:text-zinc-300">
-            Roles
+            {t("personas.breadcrumb")}
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-zinc-300">AI Assistant for {data.role}</span>
+          <span className="text-zinc-300">
+            {t("personas.ai_assistant_for", { role: data.role })}
+          </span>
         </nav>
 
         {/* Hero */}
         <header className="mb-16">
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            AI Assistant for {data.role}
+            {t("personas.ai_assistant_for", { role: data.role })}
           </h1>
           <p className="text-xl leading-relaxed text-zinc-400">
             {data.metaDescription}
@@ -443,7 +454,7 @@ export default async function PersonaPage({ params }: PageProps) {
         {/* Pain Points */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Challenges {data.role} Face Every Day
+            {t("personas.challenges_face", { role: data.role })}
           </h2>
           <div className="space-y-4">
             {data.painPoints.map((point) => (
@@ -461,7 +472,7 @@ export default async function PersonaPage({ params }: PageProps) {
         {/* How GAIA Helps */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            How GAIA Helps {data.role}
+            {t("personas.how_gaia_helps", { role: data.role })}
           </h2>
           <div className="grid gap-6 md:grid-cols-2">
             {data.howGaiaHelps.map((feature) => (
@@ -480,12 +491,10 @@ export default async function PersonaPage({ params }: PageProps) {
         {/* Relevant Integrations */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Integrations for {data.role}
+            {t("personas.integrations_for", { role: data.role })}
           </h2>
           <p className="mb-6 text-zinc-400">
-            GAIA connects with the tools {data.role.toLowerCase()} already use,
-            creating an intelligent automation layer across your entire
-            workflow.
+            {t("personas.integrations_desc", { role: data.role })}
           </p>
           <div className="flex flex-wrap gap-3">
             {data.relevantIntegrations.map((integration) => (
@@ -497,7 +506,7 @@ export default async function PersonaPage({ params }: PageProps) {
         {/* FAQ */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Frequently Asked Questions
+            {t("common.faq")}
           </h2>
           <FAQAccordion faqs={data.faqs} />
         </section>
@@ -506,7 +515,7 @@ export default async function PersonaPage({ params }: PageProps) {
         {data.relatedComparisons && data.relatedComparisons.length > 0 && (
           <section className="mb-16">
             <h2 className="mb-6 text-3xl font-semibold text-white">
-              Tools {data.role} Often Compare
+              {t("personas.tools_compare", { role: data.role })}
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {data.relatedComparisons.map((slug) => (
@@ -525,7 +534,7 @@ export default async function PersonaPage({ params }: PageProps) {
                       .join(" ")}
                   </h3>
                   <p className="text-xs text-zinc-400">
-                    See the full comparison
+                    {t("personas.see_full_comparison")}
                   </p>
                 </Link>
               ))}
@@ -536,7 +545,7 @@ export default async function PersonaPage({ params }: PageProps) {
         {/* Explore More */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Explore More
+            {t("common.explore_more")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
@@ -544,11 +553,10 @@ export default async function PersonaPage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                See How GAIA Compares
+                {t("personas.see_how_compares")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Compare GAIA with other AI productivity tools and see why it
-                stands out for {data.role.toLowerCase()}.
+                {t("personas.see_how_compares_desc")}
               </p>
             </Link>
             <Link
@@ -556,11 +564,10 @@ export default async function PersonaPage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                Learn About AI Concepts
+                {t("personas.learn_ai_concepts")}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Explore the AI technology and concepts that power GAIA's
-                intelligent automation.
+                {t("personas.learn_ai_concepts_desc")}
               </p>
             </Link>
           </div>

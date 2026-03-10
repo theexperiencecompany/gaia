@@ -5,6 +5,7 @@ import { getAllComparisonSlugs } from "@/features/comparisons/data/comparisonsDa
 import { getAllGlossaryTermSlugs } from "@/features/glossary/data/glossaryData";
 import { getAllCombos } from "@/features/integrations/data/combosData";
 import { workflowApi } from "@/features/workflows/api/workflowApi";
+import { defaultLocale, locales } from "@/i18n/config";
 import { getAllBlogPosts } from "@/lib/blog";
 import { fetchAllPaginated, isDevelopment } from "@/lib/fetchAll";
 import { getSiteUrl } from "@/lib/seo";
@@ -47,25 +48,52 @@ export async function generateSitemaps() {
   ];
 }
 
+function withLocaleUrls(
+  entries: MetadataRoute.Sitemap,
+  baseUrl: string,
+): MetadataRoute.Sitemap {
+  return entries.flatMap((entry) => {
+    const path = entry.url.startsWith(baseUrl)
+      ? entry.url.slice(baseUrl.length)
+      : entry.url;
+
+    const languages: Record<string, string> = {};
+    for (const locale of locales) {
+      languages[locale] =
+        locale === defaultLocale
+          ? `${baseUrl}${path}`
+          : `${baseUrl}/${locale}${path}`;
+    }
+    languages["x-default"] = `${baseUrl}${path}`;
+
+    return locales.map((locale) => ({
+      ...entry,
+      url: locale === defaultLocale ? entry.url : `${baseUrl}/${locale}${path}`,
+      alternates: { languages },
+    }));
+  });
+}
+
 const BUILD_DATE = new Date().toISOString();
 
 type ChangeFreq = "daily" | "weekly" | "monthly" | "yearly";
-const STATIC_PAGES: Array<{
-  path: string;
-  freq: ChangeFreq;
-  priority: number;
-}> = [
+type StaticPage = { path: string; freq: ChangeFreq; priority: number };
+
+const TRANSLATED_STATIC_PAGES: Array<StaticPage> = [
+  { path: "/compare", freq: "weekly", priority: 0.9 },
+  { path: "/alternative-to", freq: "weekly", priority: 0.9 },
+  { path: "/automate", freq: "weekly", priority: 0.8 },
+  { path: "/for", freq: "weekly", priority: 0.9 },
+  { path: "/learn", freq: "weekly", priority: 0.8 },
+];
+
+const UNTRANSLATED_STATIC_PAGES: Array<StaticPage> = [
   { path: "", freq: "daily", priority: 1.0 },
   { path: "/pricing", freq: "weekly", priority: 0.9 },
   { path: "/marketplace", freq: "weekly", priority: 0.9 },
   { path: "/blog", freq: "daily", priority: 0.9 },
   { path: "/use-cases", freq: "weekly", priority: 0.9 },
   { path: "/download", freq: "weekly", priority: 0.9 },
-  { path: "/compare", freq: "weekly", priority: 0.9 },
-  { path: "/alternative-to", freq: "weekly", priority: 0.9 },
-  { path: "/automate", freq: "weekly", priority: 0.8 },
-  { path: "/for", freq: "weekly", priority: 0.9 },
-  { path: "/learn", freq: "weekly", priority: 0.8 },
   { path: "/faq", freq: "monthly", priority: 0.8 },
   { path: "/manifesto", freq: "monthly", priority: 0.8 },
   { path: "/about", freq: "monthly", priority: 0.8 },
@@ -80,14 +108,6 @@ const STATIC_PAGES: Array<{
   { path: "/ai-chief-of-staff", freq: "monthly", priority: 0.9 },
   { path: "/inbox-zero-ai", freq: "monthly", priority: 0.9 },
 ];
-
-function getStaticPages(baseUrl: string): MetadataRoute.Sitemap {
-  return STATIC_PAGES.map((p) => ({
-    url: `${baseUrl}${p.path}`,
-    changeFrequency: p.freq,
-    priority: p.priority,
-  }));
-}
 
 /**
  * Blog post pages from markdown files
@@ -353,7 +373,21 @@ export default async function sitemap(props: {
 
   switch (id) {
     case SITEMAP_IDS.STATIC:
-      return getStaticPages(baseUrl);
+      return [
+        ...withLocaleUrls(
+          TRANSLATED_STATIC_PAGES.map((p) => ({
+            url: `${baseUrl}${p.path}`,
+            changeFrequency: p.freq,
+            priority: p.priority,
+          })),
+          baseUrl,
+        ),
+        ...UNTRANSLATED_STATIC_PAGES.map((p) => ({
+          url: `${baseUrl}${p.path}`,
+          changeFrequency: p.freq,
+          priority: p.priority,
+        })),
+      ];
     case SITEMAP_IDS.BLOG:
       return getBlogPages(baseUrl);
     case SITEMAP_IDS.EXPLORE:
@@ -363,15 +397,15 @@ export default async function sitemap(props: {
     case SITEMAP_IDS.INTEGRATIONS:
       return getIntegrationPages(baseUrl);
     case SITEMAP_IDS.COMPARISONS:
-      return getComparisonPages(baseUrl);
+      return withLocaleUrls(getComparisonPages(baseUrl), baseUrl);
     case SITEMAP_IDS.PERSONAS:
-      return getPersonaPages(baseUrl);
+      return withLocaleUrls(await getPersonaPages(baseUrl), baseUrl);
     case SITEMAP_IDS.GLOSSARY:
-      return getGlossaryPages(baseUrl);
+      return withLocaleUrls(getGlossaryPages(baseUrl), baseUrl);
     case SITEMAP_IDS.ALTERNATIVES:
-      return getAlternativePages(baseUrl);
+      return withLocaleUrls(getAlternativePages(baseUrl), baseUrl);
     case SITEMAP_IDS.INTEGRATION_COMBOS:
-      return getIntegrationComboPages(baseUrl);
+      return withLocaleUrls(getIntegrationComboPages(baseUrl), baseUrl);
     default:
       return [];
   }

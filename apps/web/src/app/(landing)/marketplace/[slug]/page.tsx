@@ -99,7 +99,7 @@ export async function generateStaticParams() {
 export const dynamicParams = true;
 
 interface Props {
-  params: Promise<{ slug: string }>;
+  readonly params: Promise<{ readonly slug: string }>;
 }
 
 function generateIntegrationDescription(integration: {

@@ -1,15 +1,16 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-
+import { getTranslations } from "next-intl/server";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
+import { getAllComboSlugs } from "@/features/integrations/data/combosData";
 import {
-  getAllComboSlugs,
-  getAllCombos,
-  getCombo,
-} from "@/features/integrations/data/combosData";
+  getTranslatedCombo,
+  getTranslatedCombos,
+} from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { getAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateFAQSchema,
@@ -33,13 +34,13 @@ export async function generateMetadata({
   params,
 }: PageProps): Promise<Metadata> {
   const { combo } = await params;
-  const data = getCombo(combo);
+  const data = await getTranslatedCombo(combo);
 
   if (!data) {
     return { title: "Integration Not Found" };
   }
 
-  return generatePageMetadata({
+  const metadata = generatePageMetadata({
     title: data.metaTitle,
     description: data.metaDescription,
     path: `/automate/${combo}`,
@@ -48,17 +49,25 @@ export async function generateMetadata({
       : undefined,
     keywords: data.keywords,
   });
+  return {
+    ...metadata,
+    alternates: {
+      ...metadata.alternates,
+      languages: getAlternates(`/automate/${combo}`),
+    },
+  };
 }
 
 export default async function AutomateComboPage({ params }: PageProps) {
   const { combo } = await params;
-  const data = getCombo(combo);
+  const t = await getTranslations();
+  const data = await getTranslatedCombo(combo);
 
   if (!data) {
     notFound();
   }
 
-  const allCombos = getAllCombos();
+  const allCombos = await getTranslatedCombos();
   const relatedCombos = allCombos
     .filter(
       (c) =>
@@ -109,11 +118,11 @@ export default async function AutomateComboPage({ params }: PageProps) {
         {/* Breadcrumb */}
         <nav className="mb-8 text-sm text-zinc-500">
           <Link href="/" className="hover:text-zinc-300">
-            Home
+            {t("common.home")}
           </Link>
           <span className="mx-2">/</span>
           <Link href="/marketplace" className="hover:text-zinc-300">
-            Marketplace
+            {t("marketplace.breadcrumb")}
           </Link>
           <span className="mx-2">/</span>
           <span className="text-zinc-300">
@@ -125,14 +134,17 @@ export default async function AutomateComboPage({ params }: PageProps) {
         <header className="mb-16">
           <div className="mb-4 flex flex-wrap items-center gap-3">
             <span className="inline-flex items-center rounded-full bg-zinc-800 px-3 py-1 text-xs font-medium text-zinc-400">
-              Integration
+              {t("common.integration")}
             </span>
             <span className="inline-flex items-center rounded-full bg-primary/10 px-3 py-1 text-xs font-medium text-primary">
-              Powered by GAIA
+              {t("common.powered_by_gaia")}
             </span>
           </div>
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            Automate {data.toolA} + {data.toolB} with GAIA
+            {t("automate.automate_with_gaia", {
+              toolA: data.toolA,
+              toolB: data.toolB,
+            })}
           </h1>
           <p className="text-xl leading-relaxed text-zinc-400">
             {data.tagline}
@@ -154,12 +166,13 @@ export default async function AutomateComboPage({ params }: PageProps) {
         {/* Use Cases */}
         <section className="mb-16">
           <h2 className="mb-2 text-3xl font-semibold text-white">
-            {data.useCases.length} thing{data.useCases.length === 1 ? "" : "s"}{" "}
-            you can automate
+            {data.useCases.length} {t("automate.things_you_can_automate")}
           </h2>
           <p className="mb-8 text-zinc-400">
-            Everything GAIA can do when {data.toolA} and {data.toolB} are
-            connected.
+            {t("automate.everything_gaia_can_do", {
+              toolA: data.toolA,
+              toolB: data.toolB,
+            })}
           </p>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {data.useCases.map((useCase, index) => (
@@ -186,10 +199,13 @@ export default async function AutomateComboPage({ params }: PageProps) {
         {/* How It Works */}
         <section className="mb-16">
           <h2 className="mb-2 text-3xl font-semibold text-white">
-            How to set it up
+            {t("automate.how_to_set_it_up")}
           </h2>
           <p className="mb-8 text-zinc-400">
-            Connect {data.toolA} and {data.toolB} to GAIA in three steps.
+            {t("automate.connect_in_steps", {
+              toolA: data.toolA,
+              toolB: data.toolB,
+            })}
           </p>
           <ol className="space-y-6">
             {data.howItWorks.map((step, index) => (
@@ -213,7 +229,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
         {/* FAQ */}
         <section className="mb-16">
           <h2 className="mb-6 text-3xl font-semibold text-white">
-            Frequently Asked Questions
+            {t("common.faq")}
           </h2>
           <FAQAccordion faqs={data.faqs} />
         </section>
@@ -221,7 +237,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
         {/* Integration Links */}
         <section className="mb-16">
           <h2 className="mb-6 text-2xl font-semibold text-white">
-            Explore individual integrations
+            {t("automate.explore_integrations")}
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
@@ -229,11 +245,10 @@ export default async function AutomateComboPage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                {data.toolA} Integration
+                {t("automate.tool_integration", { tool: data.toolA })}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                See everything GAIA can do with {data.toolA} on its own,
-                including all available tools and actions.
+                {t("automate.see_everything_gaia", { tool: data.toolA })}
               </p>
             </Link>
             <Link
@@ -241,11 +256,10 @@ export default async function AutomateComboPage({ params }: PageProps) {
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
-                {data.toolB} Integration
+                {t("automate.tool_integration", { tool: data.toolB })}
               </h3>
               <p className="text-sm leading-relaxed text-zinc-400">
-                Discover the full set of {data.toolB} automations GAIA supports
-                when connected to your account.
+                {t("automate.discover_automations", { tool: data.toolB })}
               </p>
             </Link>
           </div>
@@ -255,7 +269,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
         {relatedCombos.length > 0 && (
           <section className="mb-16">
             <h2 className="mb-6 text-2xl font-semibold text-white">
-              Related Automations
+              {t("common.related_automations")}
             </h2>
             <div className="grid gap-4 sm:grid-cols-3">
               {relatedCombos.map((related) => (
@@ -278,17 +292,16 @@ export default async function AutomateComboPage({ params }: PageProps) {
         <section className="mb-16">
           <div className="rounded-3xl bg-zinc-800 p-8">
             <h2 className="mb-3 text-2xl font-semibold text-white">
-              Explore more automation combos
+              {t("automate.explore_more_combos")}
             </h2>
             <p className="mb-6 leading-relaxed text-zinc-400">
-              GAIA supports dozens of tool combinations. Find the automations
-              that match your exact workflow.
+              {t("automate.gaia_supports_combos")}
             </p>
             <Link
               href="/marketplace"
               className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
             >
-              Browse marketplace
+              {t("common.browse_marketplace")}
             </Link>
           </div>
         </section>

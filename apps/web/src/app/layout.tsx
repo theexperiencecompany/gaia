@@ -4,6 +4,8 @@ import { Analytics as VercelAnalytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import type { Metadata, Viewport } from "next";
 import Script from "next/script";
+import { NextIntlClientProvider } from "next-intl";
+import { getLocale } from "next-intl/server";
 import { Suspense } from "react";
 
 import AnalyticsLayout from "@/layouts/AnalyticsLayout";
@@ -15,116 +17,127 @@ import {
 
 import { defaultFont, getAllFontVariables } from "./fonts";
 
-// Use a stable canonical base URL resolved in seo.ts
-const getMetadataBase = () => {
-  return new URL(siteConfig.url);
+const OG_LOCALE_MAP: Record<string, string> = {
+  en: "en_US",
+  de: "de_DE",
+  es: "es_ES",
+  fr: "fr_FR",
+  ja: "ja_JP",
+  ko: "ko_KR",
+  "pt-BR": "pt_BR",
 };
 
-export const metadata: Metadata = {
-  metadataBase: getMetadataBase(),
-  title: {
-    default: siteConfig.name,
-    template: `%s | ${siteConfig.short_name}`,
-  },
-  description: siteConfig.description,
-  icons: {
-    icon: [
-      { url: "/favicon.ico", type: "image/x-icon" },
-      { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
-      { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
-    ],
-    apple: "/apple-touch-icon.png",
-  },
-  manifest: "/site.webmanifest",
-  keywords: [
-    siteConfig.short_name,
-    "GAIA AI",
-    "Personal AI Assistant",
-    "AI",
-    "ai assistant",
-    "digital assistant",
-    "productivity",
-    "Hey GAIA",
-    "general purpose ai assistant",
-    "artificial intelligence",
-    "virtual assistant",
-    "smart assistant",
-    "AI personal assistant",
-    "task management",
-    "email automation",
-    "calendar management",
-    "goal tracking",
-    "workflow automation",
-    "proactive AI",
-    "productivity assistant",
-  ],
-  openGraph: {
-    title: siteConfig.name,
-    siteName: siteConfig.name,
-    url: siteConfig.url,
-    type: "website",
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+
+  return {
+    metadataBase: new URL(siteConfig.url),
+    title: {
+      default: siteConfig.name,
+      template: `%s | ${siteConfig.short_name}`,
+    },
     description: siteConfig.description,
-    images: [
-      {
-        url: `${siteConfig.url}${siteConfig.ogImage}`,
-        width: 1200,
-        height: 630,
-        alt: "GAIA - Personal AI Assistant",
-        type: "image/webp",
-      },
+    icons: {
+      icon: [
+        { url: "/favicon.ico", type: "image/x-icon" },
+        { url: "/favicon-32x32.png", type: "image/png", sizes: "32x32" },
+        { url: "/favicon-16x16.png", type: "image/png", sizes: "16x16" },
+      ],
+      apple: "/apple-touch-icon.png",
+    },
+    manifest: "/site.webmanifest",
+    keywords: [
+      siteConfig.short_name,
+      "GAIA AI",
+      "Personal AI Assistant",
+      "AI",
+      "ai assistant",
+      "digital assistant",
+      "productivity",
+      "Hey GAIA",
+      "general purpose ai assistant",
+      "artificial intelligence",
+      "virtual assistant",
+      "smart assistant",
+      "AI personal assistant",
+      "task management",
+      "email automation",
+      "calendar management",
+      "goal tracking",
+      "workflow automation",
+      "proactive AI",
+      "productivity assistant",
     ],
-    locale: "en_US",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: siteConfig.name,
-    description: siteConfig.description,
-    images: [
-      {
-        url: `${siteConfig.url}${siteConfig.ogImage}`,
-        width: 1200,
-        height: 630,
-        alt: "GAIA - Personal AI Assistant",
-      },
+    openGraph: {
+      title: siteConfig.name,
+      siteName: siteConfig.name,
+      url: siteConfig.url,
+      type: "website",
+      description: siteConfig.description,
+      images: [
+        {
+          url: `${siteConfig.url}${siteConfig.ogImage}`,
+          width: 1200,
+          height: 630,
+          alt: "GAIA - Personal AI Assistant",
+          type: "image/webp",
+        },
+      ],
+      locale: OG_LOCALE_MAP[locale] || "en_US",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: siteConfig.name,
+      description: siteConfig.description,
+      images: [
+        {
+          url: `${siteConfig.url}${siteConfig.ogImage}`,
+          width: 1200,
+          height: 630,
+          alt: "GAIA - Personal AI Assistant",
+        },
+      ],
+      creator: "@trygaia",
+      site: "@trygaia",
+    },
+    other: {
+      "msapplication-TileColor": "#00bbff",
+      "apple-mobile-web-app-capable": "yes",
+    },
+    authors: [
+      { name: "GAIA Team", url: siteConfig.url },
+      ...siteConfig.founders.map((founder) => ({
+        name: founder.name,
+        url: founder.linkedin,
+      })),
     ],
-    creator: "@trygaia",
-    site: "@trygaia",
-  },
-  other: {
-    "msapplication-TileColor": "#00bbff",
-    "apple-mobile-web-app-capable": "yes",
-  },
-  authors: [
-    { name: "GAIA Team", url: siteConfig.url },
-    ...siteConfig.founders.map((founder) => ({
-      name: founder.name,
-      url: founder.linkedin,
-    })),
-  ],
-  creator: siteConfig.short_name,
-  publisher: siteConfig.short_name,
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
+    creator: siteConfig.short_name,
+    publisher: siteConfig.short_name,
+    robots: {
       index: true,
       follow: true,
-      "max-video-preview": -1,
-      "max-image-preview": "large",
-      "max-snippet": -1,
+      googleBot: {
+        index: true,
+        follow: true,
+        "max-video-preview": -1,
+        "max-image-preview": "large",
+        "max-snippet": -1,
+      },
     },
-  },
-};
+  };
+}
 
 export const viewport: Viewport = {
   themeColor: "#00bbff",
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  const locale = await getLocale();
+
   return (
-    <html lang="en" className={`${getAllFontVariables()} dark`}>
+    <html lang={locale} className={`${getAllFontVariables()} dark`}>
       <SpeedInsights />
       <head>
         <link
@@ -175,9 +188,11 @@ export default function RootLayout({
         {/* <link rel="preconnect" href="https://i.ytimg.com" /> */}
       </head>
       <body className={`dark ${defaultFont.className}`}>
-        <div id="app-root">
-          <Suspense fallback={null}>{children}</Suspense>
-        </div>
+        <NextIntlClientProvider locale={locale} messages={{}}>
+          <div id="app-root">
+            <Suspense fallback={null}>{children}</Suspense>
+          </div>
+        </NextIntlClientProvider>
 
         {/* JSON-LD Schema - Organization */}
         <Script id="json-ld-organization" type="application/ld+json">
