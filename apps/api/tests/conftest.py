@@ -21,7 +21,7 @@ from httpx import ASGITransport, AsyncClient
 # Environment setup — runs at import time, before any app module is loaded.
 # ---------------------------------------------------------------------------
 
-os.environ.setdefault("ENV", "development")
+os.environ["ENV"] = "development"
 os.environ.setdefault(
     "MONGO_DB",
     "mongodb://localhost:27017/gaia_test?serverSelectionTimeoutMS=100&connectTimeoutMS=100",
