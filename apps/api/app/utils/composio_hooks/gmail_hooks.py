@@ -9,6 +9,7 @@ for customizing tool descriptions and defaults.
 from typing import Any
 
 from composio.types import Tool, ToolExecuteParams, ToolExecutionResponse
+from langchain_core.tools import ToolException
 from langgraph.config import get_stream_writer
 
 from app.agents.templates.mail_templates import (
@@ -19,17 +20,14 @@ from app.agents.templates.mail_templates import (
     process_list_messages_response,
 )
 from app.config.loggers import app_logger as logger
-from app.utils.markdown_utils import (
-    convert_markdown_to_html,
-    convert_markdown_to_plain_text,
-    is_markdown_content,
-)
 
 from .registry import (
     register_after_hook,
     register_before_hook,
     register_schema_modifier,
 )
+
+GMAIL_FULL_FETCH_HARD_LIMIT = 30
 
 # ====================== SCHEMA MODIFIERS ======================
 # These modifiers customize tool schemas before they are seen by agents
@@ -44,7 +42,7 @@ def gmail_send_email_schema_modifier(tool: str, toolkit: str, schema: Tool) -> T
     sending emails directly, unless explicitly instructed otherwise.
     """
     draft_guidance = (
-        "\n\n⚠️ IMPORTANT WORKFLOW: Unless the user explicitly requests "
+        "\n\nIMPORTANT WORKFLOW: Unless the user explicitly requests "
         "immediate sending, prefer creating a draft first using "
         "GMAIL_CREATE_EMAIL_DRAFT for user review. "
         "If a draft was already created in the current conversation, "
@@ -96,7 +94,12 @@ def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
             "• label:labelname - emails with specific label\n"
             "• in:inbox, in:sent, in:drafts - filter by folder"
         )
-        schema.description += search_tips
+        full_mode_limit = (
+            "\n\nHARD LIMIT: In full email mode (verbose=true OR include_payload!=false), "
+            f"max_results must be <= {GMAIL_FULL_FETCH_HARD_LIMIT}. "
+            "If you need more, fetch in chunks."
+        )
+        schema.description += search_tips + full_mode_limit
 
     # Set format default to "full" for detailed content
     if "format" in props and isinstance(props["format"], dict):
@@ -107,6 +110,36 @@ def gmail_fetch_emails_schema_modifier(tool: str, toolkit: str, schema: Tool) ->
 
 # ====================== BEFORE EXECUTE HOOKS ======================
 # These hooks send progress/streaming data to frontend before tool execution
+
+
+@register_before_hook(tools=["GMAIL_FETCH_EMAILS"])
+def gmail_fetch_emails_before_hook(
+    tool: str, toolkit: str, params: ToolExecuteParams
+) -> ToolExecuteParams:
+    """Validate high-volume Gmail fetch requests before execution."""
+    arguments = params.get("arguments", {})
+
+    raw_max_results = arguments.get("max_results", 10)
+    if raw_max_results is None:
+        raw_max_results = 10
+    try:
+        max_results = int(raw_max_results)
+    except (TypeError, ValueError):
+        # Let schema/tool validation handle malformed values.
+        return params
+
+    verbose = arguments.get("verbose", True)
+    include_payload = arguments.get("include_payload", True)
+
+    full_email_mode = verbose is True or include_payload is not False
+
+    if full_email_mode and max_results > GMAIL_FULL_FETCH_HARD_LIMIT:
+        raise ToolException(
+            f"Result set too large for full email mode. "
+            f"Call in chunks with max_results <= {GMAIL_FULL_FETCH_HARD_LIMIT}."
+        )
+
+    return params
 
 
 @register_before_hook(
@@ -154,29 +187,6 @@ def gmail_compose_before_hook(
                 return params
 
         writer = get_stream_writer()
-
-        email_body = arguments.get("body", "")
-        is_html = arguments.get("is_html", False)
-
-        # Detect and convert markdown content
-        if email_body and is_markdown_content(email_body):
-            logger.info(
-                f"Markdown detected in email body for {tool}, converting to {'HTML' if is_html else 'plain text'}"
-            )
-
-            if is_html:
-                # Convert markdown to HTML
-                converted_body = convert_markdown_to_html(email_body)
-                arguments["body"] = converted_body
-                logger.debug(f"Converted markdown to HTML for {tool}")
-            else:
-                # Convert markdown to plain text
-                converted_body = convert_markdown_to_plain_text(email_body)
-                arguments["body"] = converted_body
-                logger.debug(f"Converted markdown to plain text for {tool}")
-
-            # Update params with converted body
-            params["arguments"] = arguments
 
         # Handle different recipient formats based on tool
         if tool == "GMAIL_FORWARD_MESSAGE":

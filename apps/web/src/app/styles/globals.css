@@ -6,6 +6,30 @@
 
 @custom-variant dark (&:is(.dark *));
 @plugin "./hero.ts";
+@plugin "tailwindcss-animate";
+
+@keyframes sheet-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes sheet-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+[data-slot="sheet-content"][data-state="open"] {
+  animation: sheet-fade-in 0.25s ease forwards;
+}
+[data-slot="sheet-content"][data-state="closed"] {
+  animation: sheet-fade-out 0.2s ease forwards;
+}
 
 [data-sonner-toaster][data-sonner-theme="dark"] {
   /* biome-ignore lint/complexity/noImportantStyles: need to override */
@@ -677,6 +701,23 @@
     min-height: 50px;
     overflow: hidden;
     width: 100%;
+  }
+
+  .mcp-app-surface {
+    height: 100%;
+    width: 100%;
+  }
+
+  .mcp-app-surface > div {
+    display: block !important;
+    height: 100% !important;
+    width: 100% !important;
+  }
+
+  .mcp-app-surface iframe {
+    display: block;
+    height: 100% !important;
+    width: 100% !important;
   }
 
   .animate-scale-in {

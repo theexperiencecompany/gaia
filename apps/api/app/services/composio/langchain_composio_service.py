@@ -15,6 +15,55 @@ from composio.utils.shared import (
 from langchain_core.runnables.config import RunnableConfig
 from langchain_core.tools import StructuredTool as BaseStructuredTool
 
+_python_reserved = {"for", "async", "from", "import", "as", "pass", "continue"}
+_obj_marker = "-_object_-"
+
+
+def _clean_reserved_keyword(keyword: str):
+    return f"{keyword}_rs"
+
+
+def _substitute_reserved_python_keywords(schema: t.Dict) -> t.Tuple[dict, dict]:
+    if "properties" not in schema:
+        return schema, {}
+
+    keywords: t.Dict[str, t.Any] = {}
+    for p_name in list(schema["properties"]):
+        if p_name not in _python_reserved:
+            continue
+
+        _keywords: t.Dict[str, t.Any] = {}
+        p_val = schema["properties"].pop(p_name)
+        if p_val.get("type") == "object":
+            p_val, _keywords = _substitute_reserved_python_keywords(schema=p_val)
+
+        p_name_clean = _clean_reserved_keyword(keyword=p_name)
+        schema["properties"][p_name_clean] = p_val
+        keywords[p_name_clean] = p_name
+        keywords[f"{p_name_clean}{_obj_marker}"] = _keywords
+
+    return schema, keywords
+
+
+def _reinstate_reserved_python_keywords(request: dict, keywords: dict) -> dict:
+    for clean_key in sorted(list(keywords), reverse=True):
+        subkeys = None
+        if clean_key.endswith(_obj_marker):
+            subkeys = keywords[clean_key]
+            clean_key, _ = clean_key.split(_obj_marker, maxsplit=1)
+
+        if clean_key not in request:
+            continue
+
+        orginal_value = request.pop(clean_key)
+        if subkeys is not None:
+            orginal_value = _reinstate_reserved_python_keywords(
+                request=orginal_value,
+                keywords=subkeys,
+            )
+        request[keywords[clean_key]] = orginal_value
+    return request
+
 
 class StructuredTool(BaseStructuredTool):
     def run(self, *args, **kwargs):
@@ -40,6 +89,7 @@ class LangchainProvider(
         description: str,
         schema_params: t.Dict,
         execute_tool: AgenticProviderExecuteFn,
+        keywords: dict,
     ):
         def function(**kwargs: t.Any) -> t.Dict:
             """Wrapper function for composio action."""
@@ -47,6 +97,12 @@ class LangchainProvider(
             # Discarding other data except metadata from __runnable_config__
             # Use 'or {}' to handle None case when called directly without LangChain
             runnable_config = kwargs.get("__runnable_config__") or {}
+
+            kwargs = _reinstate_reserved_python_keywords(
+                request=kwargs,
+                keywords=keywords,
+            )
+
             kwargs["__runnable_config__"] = {
                 "metadata": runnable_config.get("metadata", {})
             }
@@ -83,22 +139,27 @@ class LangchainProvider(
     def wrap_tool(
         self, tool: Tool, execute_tool: AgenticProviderExecuteFn
     ) -> StructuredTool:
-        """Wraps composio tool as Langchain StructuredTool object."""
+        # Replace reserved python keywords
+        schema_params, keywords = _substitute_reserved_python_keywords(
+            schema=tool.input_parameters
+        )
+
         return t.cast(
             StructuredTool,
             StructuredTool.from_function(
                 name=tool.slug,
                 description=tool.description,
                 args_schema=json_schema_to_model(
-                    json_schema=tool.input_parameters,
+                    json_schema=schema_params,
                     skip_default=self.skip_default,
                 ),
                 return_schema=True,
                 func=self._wrap_action(
                     tool=tool.slug,
                     description=tool.description,
-                    schema_params=tool.input_parameters,
+                    schema_params=schema_params,
                     execute_tool=execute_tool,
+                    keywords=keywords,
                 ),
                 handle_tool_error=True,
                 handle_validation_error=True,

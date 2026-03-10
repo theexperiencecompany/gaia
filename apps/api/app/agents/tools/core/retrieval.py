@@ -87,6 +87,15 @@ Load tools by their exact names.
 4. Call retrieve_tools(exact_tool_names=[...]) to bind tools
 5. Execute bound tools
 
+—TOOL BINDING (MANDATORY)
+You CANNOT call a tool unless it has been bound first via retrieve_tools.
+Calling an unbound tool will fail with an error.
+
+ALWAYS follow this sequence:
+1. retrieve_tools(query="your intent") — discover available tool names
+2. retrieve_tools(exact_tool_names=[...]) — bind the tools you need
+3. Call the bound tools
+
 —TOOL NAME FORMATS
 - Regular tools: "GMAIL_SEND_DRAFT", "CREATE_TODO"
 
@@ -458,7 +467,6 @@ def get_retrieve_tools_function(
 
         tool_registry = await get_tool_registry()
         available_tool_names = tool_registry.get_tool_names()
-        logger.info(f"Registry has {len(available_tool_names)} available tools")
 
         # Get user_id from config (try configurable first, then metadata as fallback)
         user_id = config.get("configurable", {}).get("user_id")

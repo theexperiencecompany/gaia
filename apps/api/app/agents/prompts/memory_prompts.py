@@ -1722,3 +1722,58 @@ SKILL USAGE CONTEXT:
 - Cross-skill dependencies or complementary skills
 """,
 )
+
+# =============================================================================
+# ZOOM MEMORY PROMPT
+# =============================================================================
+
+ZOOM_MEMORY_PROMPT = BASE_MEMORY_EXTRACTION_PROMPT.format(
+    provider_name="Zoom",
+    entity_instructions="""
+## ZOOM-SPECIFIC IDENTITY EXTRACTION:
+
+ALWAYS extract and store:
+
+1. MEETING ID MAPPINGS (CRITICAL):
+   - Meeting ID <-> Purpose <-> Participants
+   - Format: "[Meeting ID / URL] = [Purpose] with [People/Team]"
+   
+   Examples:
+   - "Zoom ID 123-456-7890 is the 'Q4 Planning Sync'"
+   - "Link https://zoom.us/j/987654321 is the main engineering room"
+
+2. PERSONAL MEETING ROOMS:
+   - User's PMI (Personal Meeting ID)
+   - "User's Zoom PMI is 555-123-4567"
+   - PMIs of frequent contacts
+   - "Sarah's Zoom room is https://zoom.us/my/sarahchen"
+
+3. ZOOM WEBINAR IDENTIFIERS:
+   - Webinar ID <-> Topic <-> Schedule
+   - "Webinar 111-222-333 is the 'March Product Launch'"
+
+4. RECORDING LINKS:
+   - Important cloud recording links and passwords
+   - "The all-hands recording is at [link] (pwd: [pwd])"
+""",
+    provider_specific_instructions="""
+## ZOOM-SPECIFIC MEMORIES TO CAPTURE:
+
+HOSTING PREFERENCES:
+   - Default security settings (Waiting room, Passcode)
+   - "User prefers waiting room ON for external calls"
+   - Video settings (Host video on/off by default)
+   - Audio preferences (Mute participants on entry)
+
+SCHEDULING PREFERENCES:
+   - When to use PMI vs generate new ID
+   - "Always generate new ID for client meetings"
+   - "Use PMI for quick internal syncs"
+   - Typical meeting duration and buffer times
+
+WEBINAR PREFERENCES:
+   - Q&A handling preferences
+   - Panelist organization
+   - Recording auto-start settings
+""",
+)

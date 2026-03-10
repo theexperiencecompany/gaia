@@ -233,7 +233,8 @@ def create_subagent_middleware(
 
     Provider subagents handle focused integration work and should have:
     - SubagentMiddleware: For spawning focused sub-subagents
-    - NO summarization or compaction (short-lived, max 5 turns)
+    - VFSCompactionMiddleware: Persist oversized tool outputs to VFS
+    - NO summarization
 
     Spawned sub-subagents will NOT have SubagentMiddleware (enforced by
     SubagentMiddleware itself which excludes spawn_subagent from child tools).
@@ -252,11 +253,12 @@ def create_subagent_middleware(
     return create_middleware_stack(
         enable_subagent=True,
         enable_summarization=False,
-        enable_compaction=False,
+        enable_compaction=True,
         subagent_llm=subagent_llm,
         subagent_tools=subagent_tools,
         subagent_registry=subagent_registry,
         subagent_excluded_tools=subagent_excluded_tools,
         subagent_tool_space=subagent_tool_space,
         subagent_tool_runtime_config=subagent_tool_runtime_config,
+        compaction_excluded_tools=VFS_TOOL_NAMES | SPAWN_SUBAGENT_TOOL,
     )

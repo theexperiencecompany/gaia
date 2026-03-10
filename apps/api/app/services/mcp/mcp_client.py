@@ -362,6 +362,12 @@ class MCPClient:
 
                 return _evict
 
+            # Attach server_url to any tools that have mcp_ui metadata
+            server_url = mcp_config.server_url
+            for raw_tool in raw_tools:
+                if raw_tool.metadata and raw_tool.metadata.get("mcp_ui"):
+                    raw_tool.metadata["mcp_server_url"] = server_url
+
             tools = wrap_tools_with_null_filter(
                 raw_tools, on_connection_error=_make_evict_callback(integration_id)
             )
@@ -1340,12 +1346,312 @@ class MCPClient:
             except Exception as e:
                 logger.warning(f"Error closing MCP session for {integration_id}: {e}")
 
+    @staticmethod
+    def _normalize_server_url(server_url: str) -> str:
+        """Normalize server URLs for stable matching."""
+        trimmed = (server_url or "").strip()
+        if not trimmed:
+            return ""
+
+        try:
+            parsed = urllib.parse.urlparse(trimmed)
+            scheme = parsed.scheme.lower()
+            netloc = parsed.netloc.lower()
+            path = parsed.path.rstrip("/")
+            return urllib.parse.urlunparse((scheme, netloc, path, "", "", ""))
+        except Exception:  # nosec B112
+            return trimmed.rstrip("/")
+
+    async def _find_integration_id_by_server_url(
+        self, server_url: str
+    ) -> Optional[str]:
+        """Find integration ID for a server URL from active sessions or DB state."""
+        target = self._normalize_server_url(server_url)
+        if not target:
+            return None
+
+        # Fast path: check currently active in-memory clients.
+        for integration_id in list(self._clients.keys()):
+            resolved = await IntegrationResolver.resolve(integration_id)
+            if not resolved or not resolved.mcp_config:
+                continue
+            if self._normalize_server_url(resolved.mcp_config.server_url) == target:
+                return integration_id
+
+        # Slow path: check user's persisted connected integrations.
+        try:
+            user_integrations = await get_user_connected_integrations(self.user_id)
+        except Exception as e:
+            logger.warning(
+                "Failed to load user integrations while matching server_url %s: %s",
+                server_url,
+                e,
+            )
+            return None
+
+        candidate_ids: list[str] = []
+        for integration_doc in user_integrations:
+            integration_id = integration_doc.get("integration_id")
+            status = integration_doc.get("status")
+            if integration_id is None:
+                continue
+            if status and status != "connected":
+                continue
+            candidate_ids.append(str(integration_id))
+
+        if not candidate_ids:
+            return None
+
+        resolved_results = await asyncio.gather(
+            *[
+                IntegrationResolver.resolve(integration_id)
+                for integration_id in candidate_ids
+            ],
+            return_exceptions=True,
+        )
+
+        for integration_id, result in zip(candidate_ids, resolved_results):
+            if isinstance(result, BaseException):
+                continue
+            if not result or not result.mcp_config:
+                continue
+            if self._normalize_server_url(result.mcp_config.server_url) == target:
+                return integration_id
+
+        return None
+
+    async def call_tool_on_server(
+        self,
+        server_url: str,
+        tool_name: str,
+        arguments: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Call a specific tool on a specific MCP server identified by server_url.
+
+        Finds the connected integration whose server_url matches, then calls
+        the tool via the active session.
+
+        Args:
+            server_url: The MCP server URL to route the call to.
+            tool_name: The name of the tool to call.
+            arguments: The arguments to pass to the tool.
+
+        Returns:
+            A dict with keys ``content`` (list) and optionally ``isError`` (bool).
+
+        Raises:
+            ValueError: If no connected integration matches the given server_url.
+        """
+        matching_integration_id = await self._find_integration_id_by_server_url(
+            server_url
+        )
+
+        if matching_integration_id is None:
+            raise ValueError(
+                f"No connected MCP integration found for server_url: {server_url}"
+            )
+
+        # Rehydrate a previously-connected integration if its in-memory session was evicted.
+        await self.ensure_connected(matching_integration_id)
+
+        client = self._clients.get(matching_integration_id)
+        if client is None:
+            raise ValueError(
+                f"MCP integration {matching_integration_id} is not connected in memory"
+            )
+        session = client.get_session(matching_integration_id)
+        result = await session.call_tool(name=tool_name, arguments=arguments)
+
+        # Normalise the mcp CallToolResult to a plain dict
+        if hasattr(result, "model_dump"):
+            raw: dict[str, Any] = result.model_dump()
+        elif hasattr(result, "__dict__"):
+            raw = dict(result.__dict__)
+        else:
+            raw = dict(result)
+
+        return raw
+
+    async def _get_session_for_server(self, server_url: str) -> Any:
+        """Resolve and return an active session for the given server URL.
+
+        Raises:
+            ValueError: If no connected integration matches or session unavailable.
+        """
+        matching_integration_id = await self._find_integration_id_by_server_url(
+            server_url
+        )
+        if matching_integration_id is None:
+            raise ValueError(
+                f"No connected MCP integration found for server_url: {server_url}"
+            )
+        await self.ensure_connected(matching_integration_id)
+        client = self._clients.get(matching_integration_id)
+        if client is None:
+            raise ValueError(
+                f"MCP integration {matching_integration_id} is not connected in memory"
+            )
+        return client.get_session(matching_integration_id)
+
+    async def list_resources_on_server(
+        self,
+        server_url: str,
+        cursor: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """List resources on an MCP server identified by server_url."""
+        session = await self._get_session_for_server(server_url)
+        kwargs: dict[str, Any] = {}
+        if cursor is not None:
+            kwargs["cursor"] = cursor
+        result = await session.list_resources(**kwargs)
+        if hasattr(result, "model_dump"):
+            return result.model_dump()
+        return dict(result)
+
+    async def list_resource_templates_on_server(
+        self,
+        server_url: str,
+        cursor: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """List resource templates on an MCP server identified by server_url."""
+        session = await self._get_session_for_server(server_url)
+        kwargs: dict[str, Any] = {}
+        if cursor is not None:
+            kwargs["cursor"] = cursor
+        result = await session.list_resource_templates(**kwargs)
+        if hasattr(result, "model_dump"):
+            return result.model_dump()
+        return dict(result)
+
+    async def read_resource_on_server(
+        self,
+        server_url: str,
+        uri: str,
+    ) -> dict[str, Any]:
+        """Read a resource on an MCP server identified by server_url."""
+        session = await self._get_session_for_server(server_url)
+        result = await session.read_resource(uri)
+        if hasattr(result, "model_dump"):
+            return result.model_dump()
+        return dict(result)
+
+    async def list_prompts_on_server(
+        self,
+        server_url: str,
+        cursor: Optional[str] = None,
+    ) -> dict[str, Any]:
+        """List prompts on an MCP server identified by server_url."""
+        session = await self._get_session_for_server(server_url)
+        kwargs: dict[str, Any] = {}
+        if cursor is not None:
+            kwargs["cursor"] = cursor
+        result = await session.list_prompts(**kwargs)
+        if hasattr(result, "model_dump"):
+            return result.model_dump()
+        return dict(result)
+
     def get_active_integration_ids(self) -> list[str]:
         """Get list of active integration IDs.
 
         Public method for introspection - used by MCPClientPool.
         """
         return list(self._clients.keys())
+
+    async def read_ui_resource_details(
+        self, server_url: str, resource_uri: str
+    ) -> Optional[dict[str, Any]]:
+        """Read a UI resource and return HTML plus content-level UI metadata.
+
+        Finds the active session matching ``server_url``, then reads the resource
+        and extracts:
+        - html: text content for the app HTML
+        - csp: content-level ``_meta.ui.csp`` when present
+        - permissions: content-level ``_meta.ui.permissions`` when present
+
+        Args:
+            server_url: MCP server URL to resolve the active integration/session.
+            resource_uri: Resource URI (for example ``ui://tool-name/app.html``).
+
+        Returns:
+            A dict with ``html`` and optional metadata, or ``None`` on failure.
+        """
+        try:
+            matching_integration_id = await self._find_integration_id_by_server_url(
+                server_url
+            )
+            if matching_integration_id is None:
+                logger.warning(
+                    "No active MCP session found for server_url: %s", server_url
+                )
+                return None
+
+            await self.ensure_connected(matching_integration_id)
+
+            matching_client = self._clients.get(matching_integration_id)
+            if matching_client is None:
+                logger.warning(
+                    "No active MCP client found for server_url: %s", server_url
+                )
+                return None
+
+            session = matching_client.get_session(matching_integration_id)
+            result = await asyncio.wait_for(
+                session.read_resource(resource_uri),
+                timeout=10.0,
+            )
+
+            # Extract text content from ReadResourceResult
+            for content in result.contents:
+                text = getattr(content, "text", None)
+                if text is not None:
+                    content_meta = getattr(content, "_meta", None) or getattr(
+                        content, "meta", None
+                    )
+                    raw_ui_meta = (
+                        content_meta.get("ui")
+                        if isinstance(content_meta, dict)
+                        else None
+                    )
+                    ui_meta: dict[str, Any] = (
+                        raw_ui_meta if isinstance(raw_ui_meta, dict) else {}
+                    )
+
+                    return {
+                        "html": str(text),
+                        "csp": ui_meta.get("csp"),
+                        "permissions": ui_meta.get("permissions"),
+                    }
+
+            return None
+
+        except asyncio.TimeoutError:
+            logger.warning(
+                "Timeout reading UI resource %s from %s (10s)",
+                resource_uri,
+                server_url,
+            )
+            return None
+        except Exception as e:
+            logger.warning(
+                "Failed to read UI resource %s from %s: %s",
+                resource_uri,
+                server_url,
+                e,
+            )
+            return None
+
+    async def read_ui_resource(
+        self, server_url: str, resource_uri: str
+    ) -> Optional[str]:
+        """Read a UI resource and return only the HTML content.
+
+        This helper is kept for existing callers that only need HTML.
+        """
+        details = await self.read_ui_resource_details(server_url, resource_uri)
+        if not details:
+            return None
+        html = details.get("html")
+        return str(html) if isinstance(html, str) else None
 
 
 async def get_mcp_client(user_id: str) -> MCPClient:

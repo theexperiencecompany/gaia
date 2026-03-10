@@ -1,10 +1,9 @@
 """
 Agent task management tools using InjectedState.
 
-Three tools for agent self-organization during complex multi-step work:
+Two tools for agent self-organization during complex multi-step work:
 - plan_tasks: Create initial task list
-- mark_task: Update one or more task statuses in a single call
-- add_task: Add newly discovered tasks
+- update_tasks: Update task statuses and/or add new tasks in a single call
 
 Tools read/write the `todos` channel in graph state directly via
 InjectedState and Command(update=...). No middleware, no markers,
@@ -19,14 +18,13 @@ context into the latest non-memory SystemMessage before each LLM call.
 
 from collections.abc import Callable
 from datetime import datetime, timezone
-from typing import Annotated, Any, Literal, cast
+from typing import Annotated, Any, Literal, Optional, cast
 from uuid import uuid4
 
 from app.agents.prompts.todo_prompts import (
-    ADD_TASK_DESCRIPTION,
-    MARK_TASK_DESCRIPTION,
     PLAN_TASKS_DESCRIPTION,
     TODO_SYSTEM_PROMPT,
+    UPDATE_TASKS_DESCRIPTION,
 )
 from app.config.loggers import app_logger as logger
 from app.override.langgraph_bigtool.utils import State
@@ -40,7 +38,7 @@ from langgraph.store.base import BaseStore
 from langgraph.types import Command
 from typing_extensions import TypedDict
 
-TODO_TOOL_NAMES: set[str] = {"plan_tasks", "mark_task", "add_task"}
+TODO_TOOL_NAMES: set[str] = {"plan_tasks", "update_tasks"}
 
 
 class Todo(TypedDict):
@@ -59,10 +57,17 @@ class TaskInput(TypedDict):
 
 
 class TaskUpdate(TypedDict):
-    """Input schema for a single task status update."""
+    """Input schema for a single task update or new task addition.
 
-    task_id: str
-    status: Literal["in_progress", "completed", "cancelled"]
+    To update an existing task: provide task_id and status.
+    To add a new task: provide only content (omit task_id and status).
+    """
+
+    task_id: Optional[str]  # omit to add a new task
+    content: Optional[str]  # required when adding a new task
+    status: Optional[
+        Literal["in_progress", "completed", "cancelled"]
+    ]  # required when updating
 
 
 def _emit_todo_progress(todos: list[Todo], source: str) -> None:
@@ -102,7 +107,7 @@ def _format_todos(todos: list[Todo]) -> str:
 
 
 def create_todo_tools(source: str = "executor") -> list[BaseTool]:
-    """Create plan_tasks, mark_task, add_task tools with `source` baked in.
+    """Create plan_tasks and update_tasks tools with `source` baked in.
 
     Each tool reads current todos via InjectedState("todos"), mutates,
     streams progress, and returns Command(update={"todos": ...}).
@@ -111,7 +116,7 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
         source: Identifier for todo_progress events (e.g. "executor", "gmail")
 
     Returns:
-        List of three BaseTool instances
+        List of two BaseTool instances
     """
 
     # TODO: Remove these tool calls from the conversation history, we are tracking
@@ -155,54 +160,46 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
             }
         )
 
-    @tool(description=MARK_TASK_DESCRIPTION)
-    async def mark_task(
+    @tool(description=UPDATE_TASKS_DESCRIPTION)
+    async def update_tasks(
         updates: list[TaskUpdate],
         tool_call_id: Annotated[str, InjectedToolCallId],
         todos: Annotated[list, InjectedState("todos")],
     ) -> Command[Any]:
-        """Update one or more task statuses."""
+        """Update task statuses and/or add new tasks in a single call."""
+        now = datetime.now(timezone.utc).isoformat()
         updated_todos: list[Todo] = [dict(t) for t in todos]  # type: ignore[misc]
         todo_map = {t["id"]: t for t in updated_todos}
 
+        summary_parts: list[str] = []
+        added: list[str] = []
+
         for entry in updates:
-            tid = entry["task_id"]
-            if tid in todo_map:
-                todo_map[tid]["status"] = entry["status"]
+            task_id = entry.get("task_id")
+            content = entry.get("content")
+            status = entry.get("status")
 
-        _emit_todo_progress(updated_todos, source)
+            if task_id:
+                # Update existing task
+                if task_id in todo_map and status:
+                    todo_map[task_id]["status"] = status
+                    summary_parts.append(f"{task_id}→{status}")
+            elif content:
+                # Add new task
+                new_todo = Todo(
+                    id=str(uuid4())[:8],
+                    content=content,
+                    status="pending",
+                    created_at=now,
+                )
+                updated_todos.append(new_todo)
+                todo_map[new_todo["id"]] = new_todo
+                added.append(content)
 
-        summary = ", ".join(f"{u['task_id']}\u2192{u['status']}" for u in updates)
-        return Command(
-            update={
-                "todos": updated_todos,
-                "messages": [
-                    ToolMessage(
-                        content=f"Updated: {summary}",
-                        tool_call_id=tool_call_id,
-                        name="mark_task",
-                        additional_kwargs={"todo_tool": True, "todo_source": source},
-                    )
-                ],
-            }
-        )
+        if added:
+            summary_parts.append(f"added: {', '.join(added)}")
 
-    @tool(description=ADD_TASK_DESCRIPTION)
-    async def add_task(
-        content: str,
-        tool_call_id: Annotated[str, InjectedToolCallId],
-        todos: Annotated[list, InjectedState("todos")],
-    ) -> Command[Any]:
-        """Add a new task to the plan."""
-        now = datetime.now(timezone.utc).isoformat()
-        new_todo = Todo(
-            id=str(uuid4())[:8],
-            content=content,
-            status="pending",
-            created_at=now,
-        )
-        updated_todos = list(todos) + [new_todo]
-
+        summary = "; ".join(summary_parts) if summary_parts else "no changes"
         _emit_todo_progress(updated_todos, source)
 
         return Command(
@@ -210,16 +207,16 @@ def create_todo_tools(source: str = "executor") -> list[BaseTool]:
                 "todos": updated_todos,
                 "messages": [
                     ToolMessage(
-                        content=f"Added task: {content}",
+                        content=f"Updated tasks: {summary}",
                         tool_call_id=tool_call_id,
-                        name="add_task",
+                        name="update_tasks",
                         additional_kwargs={"todo_tool": True, "todo_source": source},
                     )
                 ],
             }
         )
 
-    return [plan_tasks, mark_task, add_task]
+    return [plan_tasks, update_tasks]
 
 
 def create_todo_pre_model_hook(

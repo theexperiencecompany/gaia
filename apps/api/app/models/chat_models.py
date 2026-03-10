@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional, Union
+from typing import Any, List, Optional, Union
 
 from pydantic import BaseModel
 from typing_extensions import TypedDict
@@ -11,6 +11,18 @@ class ImageData(BaseModel):
     url: str
     prompt: str
     improved_prompt: Optional[str] = None
+
+
+class MCPAppData(BaseModel):
+    tool_call_id: str
+    tool_name: str
+    server_url: str
+    resource_uri: str
+    html_content: str
+    csp: Optional[dict[str, Any]] = None
+    permissions: list[str] = []
+    tool_result: Optional[Any] = None
+    tool_arguments: dict[str, Any] = {}
 
 
 class ToolDataEntry(TypedDict):
@@ -51,6 +63,8 @@ tool_fields = [
     "twitter_search_data",
     "workflow_draft",
     "workflow_created",
+    "artifact_data",
+    "mcp_app",
 ]
 
 

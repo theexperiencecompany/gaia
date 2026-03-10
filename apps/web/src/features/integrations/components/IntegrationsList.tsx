@@ -200,9 +200,12 @@ export const IntegrationsList: React.FC<{
     return [...cats].sort((a, b) => {
       const aIndex = filteredIntegrations.findIndex((i) => i.category === a);
       const bIndex = filteredIntegrations.findIndex((i) => i.category === b);
-      if (aIndex === -1) return 1;
-      if (bIndex === -1) return -1;
-      return aIndex - bIndex;
+      if (aIndex !== -1 && bIndex !== -1) {
+        return aIndex - bIndex;
+      }
+      if (aIndex !== -1) return -1;
+      if (bIndex !== -1) return 1;
+      return 0;
     });
   }, [availableCategories, filteredIntegrations, searchQuery]);
 

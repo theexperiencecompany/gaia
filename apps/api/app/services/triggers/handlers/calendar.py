@@ -192,7 +192,7 @@ class CalendarTriggerHandler(TriggerHandler):
 
             calendars = calendar_service.list_calendars(user_id)
 
-            if calendars and "items" in calendars:
+            if isinstance(calendars, dict) and "items" in calendars:
                 return [
                     cal.get("id", "primary")
                     for cal in calendars["items"]

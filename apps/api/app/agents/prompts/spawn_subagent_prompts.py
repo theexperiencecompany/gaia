@@ -17,7 +17,8 @@ Use retrieve_tools to discover and bind tools before calling them:
 - Then call the tools directly
 
 —TASK MANAGEMENT
-For tasks with 2+ steps, use plan_tasks/mark_task/add_task to stay organized.
+For tasks with 2+ steps, use plan_tasks and update_tasks to stay organized.
+update_tasks handles status changes and new task additions in one call.
 
 —INSTALLED SKILLS
 If context includes a skill path, read it with vfs_read before executing — it contains curated workflows.

@@ -33,10 +33,26 @@ import type { NotificationRecord } from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type {
   TwitterSearchData,
   TwitterUserData,
 } from "@/types/features/twitterTypes";
+
+export interface MCPAppData {
+  tool_call_id: string;
+  tool_name: string;
+  server_url: string;
+  resource_uri: string;
+  html_content: string;
+  csp?: {
+    connectDomains?: string[];
+    resourceDomains?: string[];
+  };
+  permissions?: string[];
+  tool_result?: unknown;
+  tool_arguments?: Record<string, unknown>;
+}
 
 // Tool Registry
 // Single source of truth for tool names and their data payload types.
@@ -116,8 +132,10 @@ export const TOOL_REGISTRY = {
   twitter_user_data: null as unknown as TwitterUserData[],
   workflow_draft: null as unknown as WorkflowDraftData,
   workflow_created: null as unknown as WorkflowCreatedData,
+  mcp_app: null as unknown as MCPAppData,
   todo_progress: null as unknown as TodoProgressData,
   rate_limit_data: null as unknown as RateLimitData,
+  artifact_data: null as unknown as ArtifactData[],
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
@@ -159,6 +177,5 @@ export const GROUPED_TOOLS = new Set<ToolName>([
   "email_fetch_data",
   "email_compose_data",
   "email_sent_data",
-  // "test_data",
-  // Add any tool you want to group here
+  "artifact_data",
 ]);

@@ -21,9 +21,12 @@ target: googlecalendar_agent
 - **GOOGLECALENDAR_CUSTOM_FETCH_EVENTS** — List events in time range
 - **GOOGLECALENDAR_CUSTOM_FIND_EVENT** — Search events by keyword
 
-### Creation & Modification
+### Creation & Modification (Custom Tools vs Standard Tools)
+> **Prefer using Custom Tools** over standard Composio tools where possible, as they are simplified and sufficient for most use cases. However, standard tools (like `GOOGLECALENDAR_CREATE_EVENT`) are fully featured and can be used when advanced functionality is missing.
+
 - **GOOGLECALENDAR_CUSTOM_CREATE_EVENT** — Create new event
-  - confirm_immediately: False (default, sends to frontend for review)
+  - `confirm_immediately`: False (default, sends to frontend for review)
+- **GOOGLECALENDAR_CREATE_EVENT** — Standard composer tool. Use if the custom tool doesn't support an advanced parameter you explicitly need.
 - **GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE** — Add recurrence to existing event
   - frequency: DAILY, WEEKLY, MONTHLY, YEARLY
   - by_day: ["MO", "WE", "FR"] etc.
@@ -43,10 +46,20 @@ GOOGLECALENDAR_CUSTOM_LIST_CALENDARS()
 - If ambiguous, ask: "Which calendar? You have Work and Personal."
 - Default to primary calendar if only one exists
 
-### Step 2: Check Availability (CRITICAL for meetings)
+### Step 2: Gain Context & Check Availability (CRITICAL for meetings)
 
-When scheduling with attendees or specific times:
+When scheduling with attendees or specific times, **always understand the user's day first**.
 
+1. **Get the Day's Context:**
+```
+GOOGLECALENDAR_CUSTOM_GET_DAY_SUMMARY(
+    date="2026-03-01"
+)
+```
+- Or use `GOOGLECALENDAR_CUSTOM_FETCH_EVENTS` for a wider range.
+- Use this to understand what else the user has going on that day so you don't schedule a heavy meeting right after another heavy meeting or during their focus time.
+
+2. **Find Free Slots (if needed):**
 ```
 GOOGLECALENDAR_FIND_FREE_SLOTS(
     calendar_id="primary",
@@ -78,7 +91,7 @@ GOOGLECALENDAR_CUSTOM_CREATE_EVENT(
     end_time="2026-03-01T09:30:00",
     description="Daily sync",
     attendees=["alice@company.com", "bob@company.com"],
-    location="Zoom",
+    create_meeting_room=True,
     confirm_immediately=False
 )
 ```
@@ -86,6 +99,12 @@ GOOGLECALENDAR_CUSTOM_CREATE_EVENT(
 **Confirmation workflow:**
 - Default: `confirm_immediately=False` → Event sent to frontend for user review
 - Only use `confirm_immediately=True` when user explicitly says "just create it" or when confirming a previously drafted event
+
+> Always set `create_meeting_room=True` when:
+> - The event has attendees (i.e., it's a meeting)
+> - The event is described as "online", "virtual", or a "call"
+> - The user explicitly asks for a meeting link
+> This automatically generates a Google Meet link. It never hurts to add one for a meeting! Only omit if the user explicitly says they don't want a video call.
 
 ### Step 5: Add Recurrence (2-step process)
 

@@ -133,7 +133,7 @@ export default function FinalSection({
     <div className="relative z-1 m-0! flex min-h-[90vh] w-full flex-col items-center justify-center gap-4 overflow-hidden px-4 sm:px-6">
       <div className="pointer-events-none absolute inset-x-0 bottom-0 z-10 h-[20vh] bg-linear-to-t from-background to-transparent" />
       <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[30vh] bg-linear-to-b from-background to-transparent" />
-      <div className="absolute bottom-0 left-0 right-0">
+      <div className="absolute bottom-0 left-0 right-0 z-0">
         <ProgressiveImage
           webpSrc={wallpaper.webp}
           pngSrc={wallpaper.png}
@@ -171,10 +171,9 @@ export default function FinalSection({
         </div>
 
         <div
-          className={`z-1 mb-6 max-w-(--breakpoint-sm) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter sm:px-0 sm:text-xl sm:leading-7 md:text-2xl ${isDark ? "text-white" : "text-white"}`}
+          className={`z-1 mb-6 max-w-(--breakpoint-md) px-4 py-0 text-center text-base leading-6 font-light tracking-tighter sm:px-0 sm:text-xl sm:leading-7 md:text-2xl ${isDark ? "text-white" : "text-white"}`}
         >
-          Join thousands who stopped doing manually what GAIA can handle for
-          them.
+          Join thousands of professionals who gave their grunt work to GAIA.
         </div>
         <GetStartedButton
           btnColor={isDark ? "#00bbff" : "#000000"}

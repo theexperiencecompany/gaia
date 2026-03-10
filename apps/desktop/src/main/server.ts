@@ -14,20 +14,26 @@
 import { type ChildProcess, spawn } from "node:child_process";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { app } from "electron";
-import getPort from "get-port";
+import { app, BrowserWindow } from "electron";
 
 /** Handle to the running Next.js child process. */
 let serverProcess: ChildProcess | null = null;
 
-/** TCP port the server is listening on. */
-let serverPort = 5174;
+/**
+ * Actual port the server is listening on, confirmed from stdout.
+ * 0 means the server has not yet bound a port.
+ */
+let serverPort = 0;
+
+/** Set to true when a clean shutdown is in progress, suppressing restart. */
+let shutdownRequested = false;
+
+/** Number of consecutive unplanned restart attempts since last clean start. */
+let restartAttempts = 0;
+const MAX_RESTART_ATTEMPTS = 3;
 
 /**
  * Check whether a given TCP port is available on localhost.
- *
- * Opens a temporary `net.Server` to test binding — if the
- * port is already in use the `error` event fires immediately.
  *
  * @param port - The port number to test.
  * @returns `true` if the port is free.
@@ -35,39 +41,36 @@ let serverPort = 5174;
 async function isPortAvailable(port: number): Promise<boolean> {
   return new Promise((resolve) => {
     const server = createServer();
-
     server.once("error", () => {
       server.close();
       resolve(false);
     });
-
     server.once("listening", () => {
       server.close();
       resolve(true);
     });
-
     server.listen(port, "localhost");
   });
 }
 
 /**
- * Find an available port for the server.
- *
- * Tries the preferred port (5174) first for deterministic
- * behaviour, then falls back to `get-port` with a short
- * candidate list.
- *
- * @returns An available port number.
+ * Find an available port, trying the preferred port first then
+ * falling back through a short candidate list.
  */
 async function findAvailablePort(): Promise<number> {
-  const preferredPort = 5174;
-
-  if (await isPortAvailable(preferredPort)) {
-    return preferredPort;
+  const candidates = [5174, 5175, 5176, 5177, 5178, 5179, 5180];
+  for (const port of candidates) {
+    if (await isPortAvailable(port)) return port;
   }
-
-  console.log(`Port ${preferredPort} in use, finding alternative...`);
-  return await getPort({ port: [5175, 5176, 5177, 5178, 5179, 5180] });
+  // Fall back to an OS-assigned port if all candidates are taken.
+  return new Promise((resolve, reject) => {
+    const server = createServer();
+    server.once("error", reject);
+    server.listen(0, "localhost", () => {
+      const { port } = server.address() as { port: number };
+      server.close(() => resolve(port));
+    });
+  });
 }
 
 /**
@@ -78,7 +81,7 @@ async function findAvailablePort(): Promise<number> {
  * @returns URL string like `http://localhost:5174` (prod) or `http://localhost:3000` (dev).
  */
 export function getServerUrl(): string {
-  if (process.env.NODE_ENV !== "production") {
+  if (!app.isPackaged && process.env.NODE_ENV !== "production") {
     return "http://localhost:3000";
   }
   return `http://localhost:${serverPort}`;
@@ -87,15 +90,23 @@ export function getServerUrl(): string {
 /**
  * Start the Next.js standalone server as a child process.
  *
- * Resolves once the server prints a "Ready" or "started server"
- * message to stdout, or after an 8-second timeout (whichever
- * comes first). The timeout is intentionally generous — the
- * main window's polling logic provides additional wait time.
+ * Selects a port via `findAvailablePort()` and passes it explicitly.
+ * The actual bound port is then confirmed by parsing Next.js's stdout
+ * before the promise resolves, so `getServerUrl()` always reflects the
+ * real port even if a TOCTOU race caused Next.js to land on a different one.
  *
- * @throws If the child process fails to spawn.
+ * Rejects if:
+ * - The child process fails to spawn (ENOENT, EACCES, etc.)
+ * - The process exits before printing "Ready"
+ * - The startup timeout (15 s) elapses and no port was parsed from stdout
+ *
+ * @throws If the server cannot be started.
  */
 export async function startNextServer(): Promise<void> {
-  serverPort = await findAvailablePort();
+  shutdownRequested = false;
+  serverPort = 0;
+
+  const chosenPort = await findAvailablePort();
 
   const resourcesPath = app.isPackaged
     ? join(process.resourcesPath, "next-server")
@@ -104,13 +115,13 @@ export async function startNextServer(): Promise<void> {
   const serverPath = join(resourcesPath, "apps/web/server.js");
 
   return new Promise((resolve, reject) => {
-    console.log(`Starting Next.js server on port ${serverPort}...`);
+    console.log(`Starting Next.js server on port ${chosenPort}...`);
     console.log(`Server path: ${serverPath}`);
 
     serverProcess = spawn("node", [serverPath], {
       env: {
         ...process.env,
-        PORT: String(serverPort),
+        PORT: String(chosenPort),
         HOSTNAME: "localhost",
         NODE_ENV: "production",
       },
@@ -124,10 +135,30 @@ export async function startNextServer(): Promise<void> {
       const message = data.toString();
       console.log("[Next.js]", message);
 
-      if (
-        !resolved &&
-        (message.includes("Ready") || message.includes("started server"))
-      ) {
+      if (resolved) return;
+
+      // Parse the actual bound port from Next.js startup output,
+      // e.g. "- Local:  http://localhost:49821"
+      // This arrives before the "Ready" line, so serverPort is set
+      // before we resolve.
+      if (serverPort === 0) {
+        const match = message.match(/localhost:(\d+)/);
+        if (match) {
+          serverPort = parseInt(match[1], 10);
+          console.log(`[Main] Next.js bound to port ${serverPort}`);
+        }
+      }
+
+      if (message.includes("Ready") || message.includes("started server")) {
+        if (serverPort === 0) {
+          resolved = true;
+          reject(
+            new Error(
+              "Next.js reported ready but bound port could not be parsed from stdout",
+            ),
+          );
+          return;
+        }
         resolved = true;
         resolve();
       }
@@ -146,49 +177,102 @@ export async function startNextServer(): Promise<void> {
     });
 
     serverProcess.on("close", (code) => {
-      console.log(`Next.js server exited with code ${code}`);
+      if (!resolved) {
+        // Exited before printing "Ready" — genuine startup failure.
+        console.error(`Next.js server exited during startup with code ${code}`);
+        resolved = true;
+        serverProcess = null;
+        reject(
+          new Error(
+            `Next.js server exited with code ${code} before becoming ready`,
+          ),
+        );
+        return;
+      }
+
       serverProcess = null;
+
+      if (shutdownRequested) return; // expected clean shutdown
+
+      // Unexpected post-startup crash — attempt to recover.
+      console.error(`Next.js server crashed unexpectedly (code ${code})`);
+
+      if (restartAttempts >= MAX_RESTART_ATTEMPTS) {
+        console.error(
+          `Max restart attempts (${MAX_RESTART_ATTEMPTS}) reached, giving up`,
+        );
+        return;
+      }
+
+      restartAttempts++;
+      console.log(
+        `Restarting Next.js server (attempt ${restartAttempts}/${MAX_RESTART_ATTEMPTS})...`,
+      );
+
+      startNextServer()
+        .then(() => {
+          restartAttempts = 0;
+          const newUrl = getServerUrl();
+          for (const win of BrowserWindow.getAllWindows()) {
+            if (!win.isDestroyed()) {
+              win.loadURL(`${newUrl}/desktop-login`).catch(console.error);
+            }
+          }
+        })
+        .catch((err) => {
+          console.error("Failed to restart Next.js server:", err);
+        });
     });
 
+    // Hard timeout: if the port was parsed but "Ready" never arrived,
+    // proceed cautiously. If the port was never parsed, the server
+    // cannot be reached at all — reject cleanly.
     setTimeout(() => {
-      if (!resolved && serverProcess) {
-        console.warn("Server startup timeout - assuming ready");
+      if (!resolved) {
         resolved = true;
-        resolve();
+        if (serverPort > 0) {
+          console.warn("Server startup timeout — port known, assuming ready");
+          resolve();
+        } else {
+          console.error(
+            "Server startup timeout — port never parsed from stdout",
+          );
+          reject(new Error("Server startup timed out without binding a port"));
+        }
       }
-    }, 8000);
+    }, 15000);
   });
 }
 
 /**
  * Stop the Next.js server and wait for the process to exit.
  *
- * Sends `SIGTERM` first. On Windows (where `SIGTERM` may be
- * ignored) a `SIGKILL` follow-up is scheduled after 3 seconds.
+ * Sends SIGTERM first. If the process has not exited within
+ * 3 seconds it is force-killed with SIGKILL on all platforms.
  */
 export async function stopNextServer(): Promise<void> {
   if (!serverProcess) return;
 
+  shutdownRequested = true;
   console.log("Stopping Next.js server...");
 
   return new Promise((resolve) => {
     const proc = serverProcess as ChildProcess;
     serverProcess = null;
 
+    const killTimeout = setTimeout(() => {
+      try {
+        proc.kill("SIGKILL");
+      } catch {
+        // Process already exited
+      }
+    }, 3000);
+
     proc.once("exit", () => {
+      clearTimeout(killTimeout);
       resolve();
     });
 
     proc.kill("SIGTERM");
-
-    if (process.platform === "win32") {
-      setTimeout(() => {
-        try {
-          proc.kill("SIGKILL");
-        } catch {
-          // Process already exited
-        }
-      }, 3000);
-    }
   });
 }

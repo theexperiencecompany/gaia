@@ -7,9 +7,9 @@ This file contains all text content for the todo management tools:
 """
 
 # System prompt appended to model context
-TODO_SYSTEM_PROMPT = """You have task management tools (plan_tasks, mark_task, add_task).
+TODO_SYSTEM_PROMPT = """You have task management tools (plan_tasks, update_tasks).
 Use them for complex multi-step work requiring 3+ steps.
-mark_task accepts a list — batch status changes in one call (e.g., mark current completed + next in_progress).
+update_tasks handles both status changes and adding new tasks in one call.
 Do not use these tools for simple tasks that can be done in 1-2 steps."""
 
 # Tool description for plan_tasks
@@ -23,22 +23,25 @@ Use when:
 The first task will be automatically marked as in_progress.
 Do NOT use this for simple tasks that can be done quickly."""
 
-# Tool description for mark_task
-MARK_TASK_DESCRIPTION = """Update one or more task statuses in a single call.
+# Tool description for update_tasks
+UPDATE_TASKS_DESCRIPTION = """Update task statuses and/or add new tasks in a single call.
 
-Accepts a list of updates — batch transitions together.
-Common pattern: mark current task completed + next task in_progress in one call.
+Each entry in `updates` can either:
+- Update an existing task: provide task_id + status
+- Add a new task: provide only content (no task_id)
 
-Example:
-  mark_task(updates=[
+Mix both in one call as needed.
+
+Examples:
+  # Mark current done, start next, and add a discovered task
+  update_tasks(updates=[
     {"task_id": "abc123", "status": "completed"},
-    {"task_id": "def456", "status": "in_progress"}
+    {"task_id": "def456", "status": "in_progress"},
+    {"content": "Also fix the related bug"},
   ])
 
-Use the task IDs shown in brackets, e.g., (abc123)."""
+  # Just add a new task
+  update_tasks(updates=[{"content": "Review output before sending"}])
 
-# Tool description for add_task
-ADD_TASK_DESCRIPTION = """Add a new task discovered during execution.
-
-Use when you discover additional work is needed that wasn't in the original plan.
-The task is added to the end of the list as pending."""
+Use the task IDs shown in brackets in your task list, e.g., (abc123).
+Valid statuses: in_progress, completed, cancelled."""

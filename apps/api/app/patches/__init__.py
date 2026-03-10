@@ -5,5 +5,6 @@ This module contains patches for various components to ensure compatibility and 
 from . import (
     composio_custom_tool_patch,  # noqa: F401
     composio_custom_tool_schema_patch,  # noqa: F401
+    composio_langchain_patch,  # noqa: F401
     jsonplus,  # noqa: F401
 )

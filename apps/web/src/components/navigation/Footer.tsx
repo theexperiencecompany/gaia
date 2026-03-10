@@ -80,9 +80,9 @@ export default function Footer() {
           fill={true}
           className="mt-10 z-[-1]"
         />
-        <div className="flex h-fit w-screen items-center justify-center px-2 sm:px-4">
-          <div className="grid w-full max-w-5xl grid-cols-5 gap-6 sm:gap-8">
-            <div className="relative -top-1 col-span-1 flex h-full w-fit flex-col gap-1 text-foreground-600 sm:-top-2">
+        <div className="flex h-fit w-full items-center justify-center px-6 sm:px-4">
+          <div className="grid w-full max-w-7xl grid-cols-2 lg:grid-cols-6 gap-6 sm:gap-3">
+            <div className="relative -top-1 col-span-2 lg:col-span-1 flex h-full flex-col gap-1 text-foreground-600 sm:-top-2">
               <div className="flex w-fit items-center justify-center rounded-xl p-1">
                 <iframe
                   src="https://status.heygaia.io/badge?theme=dark"
@@ -137,9 +137,11 @@ export default function Footer() {
                       !link.hideFooter,
                   )
                   .sort((a, b) =>
-                    a.label.localeCompare(b.label, undefined, {
-                      sensitivity: "base",
-                    }),
+                    section.title === "Built For"
+                      ? 0
+                      : a.label.localeCompare(b.label, undefined, {
+                          sensitivity: "base",
+                        }),
                   )
                   .map((link) => (
                     <Link
@@ -156,7 +158,7 @@ export default function Footer() {
             ))}
           </div>
         </div>
-        <div className="mx-auto mt-6 flex w-full max-w-5xl flex-col items-center justify-between gap-4 px-2 py-6 pb-3 text-xs font-light text-zinc-300 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10 mb-5">
+        <div className="mx-auto mt-6 flex w-full max-w-7xl flex-col items-center justify-between gap-4 px-2 py-6 pb-3 text-xs font-light text-zinc-300 sm:mt-8 sm:flex-row sm:gap-0 sm:px-4 sm:py-8 lg:mt-10 mb-5">
           <div className="order-2 flex items-center gap-3 sm:order-1">
             {connect.map((link) => (
               <Link

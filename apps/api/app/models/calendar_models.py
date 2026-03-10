@@ -338,6 +338,13 @@ class BaseCalendarEvent(BaseModel):
     recurrence: Optional[RecurrenceData] = Field(
         None, title="Recurrence rules for creating a recurring event"
     )
+    attendees: Optional[List[str]] = Field(
+        None, title="List of attendee email addresses to invite"
+    )
+    create_meeting_room: bool = Field(
+        False,
+        title="If True, create a Google Meet video conference link for this event",
+    )
 
     model_config = {"extra": "ignore"}
 
@@ -459,6 +466,8 @@ class CalendarEventToolRequest(BaseCalendarEvent):
                 calendar_id=self.calendar_id,
                 recurrence=self.recurrence,
                 timezone=None,
+                attendees=self.attendees,
+                create_meeting_room=self.create_meeting_room,
             )
 
         # Check if time_str is provided
@@ -488,6 +497,8 @@ class CalendarEventToolRequest(BaseCalendarEvent):
                     calendar_id=self.calendar_id,
                     recurrence=self.recurrence,
                     timezone=None,
+                    attendees=self.attendees,
+                    create_meeting_room=self.create_meeting_room,
                 )
 
             else:
@@ -520,6 +531,8 @@ class CalendarEventToolRequest(BaseCalendarEvent):
                     calendar_id=self.calendar_id,
                     recurrence=self.recurrence,
                     timezone=None,
+                    attendees=self.attendees,
+                    create_meeting_room=self.create_meeting_room,
                 )
 
         except ValueError as e:
@@ -581,7 +594,7 @@ class SingleEventInput(BaseModel):
     summary: str = Field(..., description="Title of the event")
     start_datetime: str = Field(
         ...,
-        description="Start time in ISO format (e.g., '2024-01-15T10:00:00'). Use user's timezone.",
+        description="Start time in ISO format (e.g., '2024-01-15T10:00:00'). Use user's local time.",
     )
     duration_hours: float = Field(
         default=0, description="Duration hours (0-23)", ge=0, le=23
@@ -596,6 +609,10 @@ class SingleEventInput(BaseModel):
         default=None, description="List of attendee email addresses"
     )
     is_all_day: bool = Field(default=False, description="All-day event")
+    create_meeting_room: bool = Field(
+        default=False,
+        description="Whether to create a Google Meet video conference link for this event",
+    )
 
 
 class CreateEventInput(BaseModel):

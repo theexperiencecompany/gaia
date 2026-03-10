@@ -344,6 +344,8 @@ async def prepare_executor_execution(
     thread_id = configurable.get("thread_id", "")
     executor_thread_id = f"executor_{thread_id}"
 
+    vfs_session_id = configurable.get("vfs_session_id") or thread_id
+
     # Load executor graph
     executor_graph = await GraphManager.get_graph("executor_agent")
     if not executor_graph:
@@ -365,6 +367,7 @@ async def prepare_executor_execution(
         base_configurable=configurable,
         agent_name="executor_agent",
         subagent_id="executor_agent",  # Use agent_name as agent_id in mem0
+        vfs_session_id=vfs_session_id,
     )
     new_configurable = config.get("configurable", {})
 

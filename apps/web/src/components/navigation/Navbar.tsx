@@ -96,8 +96,8 @@ export default function Navbar() {
       className={`fixed top-0 left-0 z-50 w-full px-4 pt-4 transition-all duration-300`}
     >
       <div
-        className={`relative mx-auto transition-all duration-300 ${
-          isScrolled ? "w-6xl" : "w-full"
+        className={`relative mx-auto transition-all duration-300 w-full ${
+          isScrolled ? "sm:w-6xl" : "sm:w-full"
         }`}
         onMouseLeave={handleNavbarMouseLeave}
       >
