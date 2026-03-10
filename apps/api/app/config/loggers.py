@@ -1,30 +1,21 @@
 """
-Loguru configuration and the request_logger used by LoggingMiddleware.
+Provides request_logger used by LoggingMiddleware to emit the final wide event.
 
-All application code should use `from shared.py.wide_events import log`
-instead of importing domain-specific loggers from here.
-
-The request_logger is kept here because LoggingMiddleware uses it to emit
-the final wide event as a structured JSON log line with the logger_name "REQUEST".
+All application code should use `from shared.py.wide_events import log` instead.
 """
 
-from shared.py.logging import (
-    configure_file_logging,
-    configure_loguru,
-    get_contextual_logger,
-    logger,
-)
+import os
 
-# Enable file logging for the API
-configure_file_logging("./logs")
+from shared.py.logging import configure_file_logging, get_contextual_logger
 
-# Used exclusively by LoggingMiddleware to emit the final wide event
+# Write rotating log files only when not running in Docker (LOG_FORMAT=json).
+# In Docker, stdout JSON is captured by the daemon and shipped to Loki via
+# Promtail — writing to the container filesystem wastes disk space.
+if os.getenv("LOG_FORMAT", "console") != "json":
+    configure_file_logging("./logs")
+
+# Used exclusively by LoggingMiddleware to emit the final wide event as a
+# structured JSON log line with logger_name="REQUEST".
 request_logger = get_contextual_logger("REQUEST")
 
-__all__ = [
-    "logger",
-    "configure_loguru",
-    "configure_file_logging",
-    "get_contextual_logger",
-    "request_logger",
-]
+__all__ = ["request_logger"]
