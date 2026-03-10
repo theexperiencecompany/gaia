@@ -104,9 +104,9 @@ function AnimatedCard({
   delay = 0,
   className = "",
 }: {
-  children: React.ReactNode;
-  delay?: number;
-  className?: string;
+  readonly children: React.ReactNode;
+  readonly delay?: number;
+  readonly className?: string;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const inView = useInView(ref, { once: true, amount: 0.1 });

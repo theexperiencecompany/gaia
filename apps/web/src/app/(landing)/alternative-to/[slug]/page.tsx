@@ -27,7 +27,7 @@ import {
 } from "@/lib/seo";
 
 interface PageProps {
-  params: Promise<{ slug: string }>;
+  readonly params: Promise<{ readonly slug: string }>;
 }
 
 export async function generateStaticParams() {
@@ -52,7 +52,7 @@ export async function generateMetadata({
   });
 }
 
-function FitScorePip({ filled }: { filled: boolean }) {
+function FitScorePip({ filled }: { readonly filled: boolean }) {
   return (
     <span
       className={`inline-block h-3 w-3 rounded-full ${filled ? "bg-emerald-400" : "bg-zinc-700"}`}
@@ -60,12 +60,11 @@ function FitScorePip({ filled }: { filled: boolean }) {
   );
 }
 
-function FitScoreRow({ score }: { score: number }) {
+function FitScoreRow({ score }: { readonly score: number }) {
   return (
     <div className="flex items-center gap-1.5">
-      {Array.from({ length: 5 }).map((_, i) => (
-        // biome-ignore lint/suspicious/noArrayIndexKey: static array for score pips
-        <FitScorePip key={i} filled={i < score} />
+      {[0, 1, 2, 3, 4].map((i) => (
+        <FitScorePip key={`pip-${i}`} filled={i < score} />
       ))}
       <span className="ml-1 text-sm text-zinc-400">{score}/5</span>
     </div>

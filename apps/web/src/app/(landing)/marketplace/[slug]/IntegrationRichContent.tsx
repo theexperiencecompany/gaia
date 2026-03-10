@@ -9,8 +9,8 @@ import FAQAccordion from "@/components/seo/FAQAccordion";
 import type { PublicIntegrationResponse } from "@/features/integrations/types";
 
 interface IntegrationRichContentProps {
-  integration: PublicIntegrationResponse;
-  comparisonSlug?: string;
+  readonly integration: PublicIntegrationResponse;
+  readonly comparisonSlug?: string;
 }
 
 // Category-to-generic-use-cases map for fallback when no tools are available
@@ -107,14 +107,14 @@ function generateUseCases(integration: PublicIntegrationResponse): string[] {
     // Derive up to 5 capabilities directly from tool names
     return tools.slice(0, 5).map((tool) => {
       const humanName = tool.name
-        .replace(/_/g, " ")
-        .replace(/-/g, " ")
+        .replaceAll("_", " ")
+        .replaceAll("-", " ")
         .toLowerCase();
       return `Use GAIA to ${humanName} in ${name} with a plain-English instruction`;
     });
   }
 
-  const categoryKey = category.toLowerCase().replace(/\s+/g, "-");
+  const categoryKey = category.toLowerCase().replaceAll(" ", "-");
   return (
     CATEGORY_USE_CASES[categoryKey] ??
     CATEGORY_USE_CASES[category.toLowerCase()] ??
@@ -128,6 +128,12 @@ function generateFAQs(
   const { name, toolCount, category } = integration;
   const categoryLabel = category.charAt(0).toUpperCase() + category.slice(1);
 
+  const toolSuffix = toolCount === 1 ? "" : "s";
+  const toolsDescription =
+    toolCount > 0
+      ? `all ${toolCount} ${name} tool${toolSuffix}`
+      : `the available ${name} tools`;
+
   return [
     {
       question: `How do I connect ${name} to GAIA?`,
@@ -139,7 +145,7 @@ function generateFAQs(
     },
     {
       question: `What can GAIA do with ${name}?`,
-      answer: `GAIA exposes ${toolCount > 0 ? `all ${toolCount} ${name} tool${toolCount !== 1 ? "s" : ""}` : `the available ${name} tools`} to its AI agent, meaning you can perform any ${categoryLabel.toLowerCase()} action supported by ${name} just by describing it in plain English. GAIA can also combine ${name} with other connected integrations — for example, triggering a ${name} action whenever a specific email arrives, or summarising ${name} data in a scheduled daily briefing.`,
+      answer: `GAIA exposes ${toolsDescription} to its AI agent, meaning you can perform any ${categoryLabel.toLowerCase()} action supported by ${name} just by describing it in plain English. GAIA can also combine ${name} with other connected integrations — for example, triggering a ${name} action whenever a specific email arrives, or summarising ${name} data in a scheduled daily briefing.`,
     },
     {
       question: `Does GAIA's ${name} integration work on mobile?`,

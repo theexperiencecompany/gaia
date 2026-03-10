@@ -14,7 +14,6 @@ import {
   generateDefinedTermSchema,
   generateFAQSchema,
   generatePageMetadata,
-  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";

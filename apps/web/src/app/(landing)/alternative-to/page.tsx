@@ -54,7 +54,7 @@ const CATEGORY_ORDER: AlternativeData["category"][] = [
   "notes",
 ];
 
-function AlternativeCard({ alt }: { alt: AlternativeData }) {
+function AlternativeCard({ alt }: { readonly alt: AlternativeData }) {
   return (
     <Link
       href={`/alternative-to/${alt.slug}`}
@@ -90,10 +90,9 @@ function AlternativeCard({ alt }: { alt: AlternativeData }) {
       </h3>
       <p className="text-sm text-zinc-500">{alt.tagline}</p>
       <div className="mt-auto flex items-center gap-1.5 pt-2">
-        {Array.from({ length: 5 }).map((_, i) => (
+        {[0, 1, 2, 3, 4].map((i) => (
           <span
-            // biome-ignore lint/suspicious/noArrayIndexKey: static array for score pips
-            key={i}
+            key={`pip-${i}`}
             className={`inline-block h-2 w-2 rounded-full ${i < alt.gaiaFitScore ? "bg-emerald-400" : "bg-zinc-700"}`}
           />
         ))}
