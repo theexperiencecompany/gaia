@@ -83,6 +83,24 @@ export const IntegrationsFilters: React.FC<IntegrationsFiltersProps> = ({
   const [search, setSearch] = useState(initialFilters.search || "");
   const [category, setCategory] = useState(initialFilters.category || "all");
   const [sort, setSort] = useState(initialFilters.sort || "popular");
+  const hasSyncedParams = useRef(false);
+
+  useEffect(() => {
+    if (hasSyncedParams.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const urlSearch = params.get("search");
+    const urlCategory = params.get("category");
+    if (urlSearch || urlCategory) {
+      hasSyncedParams.current = true;
+      if (urlSearch) setSearch(urlSearch);
+      if (urlCategory) setCategory(urlCategory);
+      onFilterChange({
+        search: urlSearch || search,
+        category: urlCategory || category,
+        sort,
+      });
+    }
+  }, []);
 
   const debouncedSearch = useDebouncedCallback((value: string) => {
     onFilterChange({ search: value, category, sort });

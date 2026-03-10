@@ -29,4 +29,3 @@ export async function getTranslatedGlossaryTerm(
   if (!t) return base;
   return { ...base, ...t };
 }
-

@@ -1,3 +1,4 @@
+import { Button } from "@heroui/button";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -241,7 +242,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
           </h2>
           <div className="grid gap-4 sm:grid-cols-2">
             <Link
-              href={`/marketplace/${data.toolASlug}`}
+              href={`/marketplace?search=${encodeURIComponent(data.toolA)}`}
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
@@ -252,7 +253,7 @@ export default async function AutomateComboPage({ params }: PageProps) {
               </p>
             </Link>
             <Link
-              href={`/marketplace/${data.toolBSlug}`}
+              href={`/marketplace?search=${encodeURIComponent(data.toolB)}`}
               className="group rounded-2xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
             >
               <h3 className="mb-2 text-lg font-medium text-white transition-colors group-hover:text-primary">
@@ -297,12 +298,9 @@ export default async function AutomateComboPage({ params }: PageProps) {
             <p className="mb-6 leading-relaxed text-zinc-400">
               {t("automate.gaia_supports_combos")}
             </p>
-            <Link
-              href="/marketplace"
-              className="inline-flex items-center gap-2 rounded-full bg-primary px-6 py-2.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
-            >
+            <Button as="a" href="/marketplace" color="primary" radius="full">
               {t("common.browse_marketplace")}
-            </Link>
+            </Button>
           </div>
         </section>
       </article>

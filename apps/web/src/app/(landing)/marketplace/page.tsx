@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 
 import JsonLd from "@/components/seo/JsonLd";
 import { marketplaceFAQs } from "@/lib/page-faqs";
@@ -95,7 +96,9 @@ export default function MarketplacePage() {
       <JsonLd
         data={[webPageSchema, breadcrumbSchema, itemListSchema, faqSchema]}
       />
-      <IntegrationsPageClient />
+      <Suspense>
+        <IntegrationsPageClient />
+      </Suspense>
     </>
   );
 }

@@ -3,14 +3,7 @@
   "version": "1.10",
   "locale": {
     "source": "en",
-    "targets": [
-      "es",
-      "fr",
-      "de",
-      "ja",
-      "ko",
-      "pt-BR"
-    ]
+    "targets": ["es", "fr", "de", "ja", "ko", "pt-BR"]
   },
   "provider": {
     "id": "google",

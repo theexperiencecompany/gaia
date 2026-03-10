@@ -199,13 +199,7 @@ export default function AutomateHubPage() {
           <p className="mb-6 text-zinc-400">
             Browse the full integration marketplace or connect any tool via MCP.
           </p>
-          <Button
-            href="/marketplace"
-            as="a"
-            color="primary"
-            radius="full"
-            size="md"
-          >
+          <Button href="/marketplace" as="a" color="primary">
             Browse marketplace
           </Button>
         </div>

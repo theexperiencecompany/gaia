@@ -2,6 +2,7 @@
 
 import { Pagination } from "@heroui/pagination";
 import Image from "next/image";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { integrationsApi } from "@/features/integrations/api/integrationsApi";
 import { IntegrationsFilters } from "@/features/integrations/components/IntegrationsFilters";
@@ -15,6 +16,7 @@ import FinalSection from "@/features/landing/components/sections/FinalSection";
 const ITEMS_PER_PAGE = 18;
 
 export function IntegrationsPageClient() {
+  const searchParams = useSearchParams();
   const [integrations, setIntegrations] = useState<CommunityIntegration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isFiltering, setIsFiltering] = useState(false);
@@ -25,8 +27,8 @@ export function IntegrationsPageClient() {
     category: string;
     sort: "popular" | "recent" | "name";
   }>({
-    search: "",
-    category: "all",
+    search: searchParams.get("search") || "",
+    category: searchParams.get("category") || "all",
     sort: "popular",
   });
   const isInitialMount = useRef(true);
@@ -61,17 +63,14 @@ export function IntegrationsPageClient() {
     [filters],
   );
 
-  // Check for refresh query parameter and force reload if present
+  // Handle ?refresh=true query parameter
   useEffect(() => {
-    if (typeof window !== "undefined" && !hasRefreshed.current) {
-      const params = new URLSearchParams(window.location.search);
-      if (params.get("refresh") === "true") {
-        hasRefreshed.current = true;
-        // Force a fresh load to show newly published integration
-        loadIntegrations(1, false);
-        // Clean up the URL
-        window.history.replaceState({}, "", "/marketplace");
-      }
+    if (typeof window === "undefined" || hasRefreshed.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("refresh") === "true") {
+      hasRefreshed.current = true;
+      loadIntegrations(1, false);
+      window.history.replaceState({}, "", "/marketplace");
     }
   }, [loadIntegrations]);
 
