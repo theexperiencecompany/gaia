@@ -46,6 +46,8 @@ export default function CalendarEventSection({
             is_all_day: option.is_all_day || false,
             recurrence: option.recurrence,
             calendar_id: option.calendar_id,
+            attendees: option.attendees,
+            create_meeting_room: option.create_meeting_room,
           };
           return timedEvent;
         }
@@ -58,6 +60,8 @@ export default function CalendarEventSection({
             is_all_day: option.is_all_day || true,
             recurrence: option.recurrence,
             calendar_id: option.calendar_id,
+            attendees: option.attendees,
+            create_meeting_room: option.create_meeting_room,
           };
           return singleTimeEvent;
         }
@@ -69,6 +73,8 @@ export default function CalendarEventSection({
           is_all_day: true,
           recurrence: option.recurrence,
           calendar_id: option.calendar_id,
+          attendees: option.attendees,
+          create_meeting_room: option.create_meeting_room,
         };
         return fallbackEvent;
       }),

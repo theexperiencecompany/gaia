@@ -90,9 +90,9 @@ async def build_executor_graph(
         initial_tool_ids=[
             "handoff",
             "plan_tasks",
-            "mark_task",
-            "add_task",
+            "update_tasks",
             "vfs_read",
+            "vfs_cmd",
             "deep_research",
         ],
         middleware=middleware,

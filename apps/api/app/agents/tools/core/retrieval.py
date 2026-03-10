@@ -87,6 +87,15 @@ Load tools by their exact names.
 4. Call retrieve_tools(exact_tool_names=[...]) to bind tools
 5. Execute bound tools
 
+—TOOL BINDING (MANDATORY)
+You CANNOT call a tool unless it has been bound first via retrieve_tools.
+Calling an unbound tool will fail with an error.
+
+ALWAYS follow this sequence:
+1. retrieve_tools(query="your intent") — discover available tool names
+2. retrieve_tools(exact_tool_names=[...]) — bind the tools you need
+3. Call the bound tools
+
 —TOOL NAME FORMATS
 - Regular tools: "GMAIL_SEND_DRAFT", "CREATE_TODO"
 

@@ -63,6 +63,7 @@ tool_fields = [
     "twitter_search_data",
     "workflow_draft",
     "workflow_created",
+    "artifact_data",
     "mcp_app",
 ]
 

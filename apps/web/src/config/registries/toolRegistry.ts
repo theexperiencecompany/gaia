@@ -33,6 +33,7 @@ import type { NotificationRecord } from "@/types/features/notificationTypes";
 import type { RedditData } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type {
   TwitterSearchData,
   TwitterUserData,
@@ -134,6 +135,7 @@ export const TOOL_REGISTRY = {
   mcp_app: null as unknown as MCPAppData,
   todo_progress: null as unknown as TodoProgressData,
   rate_limit_data: null as unknown as RateLimitData,
+  artifact_data: null as unknown as ArtifactData[],
 } as const;
 
 export type ToolName = keyof typeof TOOL_REGISTRY;
@@ -175,6 +177,5 @@ export const GROUPED_TOOLS = new Set<ToolName>([
   "email_fetch_data",
   "email_compose_data",
   "email_sent_data",
-  // "test_data",
-  // Add any tool you want to group here
+  "artifact_data",
 ]);

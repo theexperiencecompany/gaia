@@ -75,7 +75,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             tool_runtime_config
             if tool_runtime_config
             else ToolRuntimeConfig(
-                initial_tool_names=["vfs_read"],
+                initial_tool_names=["vfs_read", "vfs_cmd"],
                 enable_retrieve_tools=True,
                 include_subagents_in_retrieve=False,
             )
@@ -226,7 +226,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         if self._llm is None:
             raise ValueError("LLM not configured for subagent execution")
 
-        llm: Any = self._llm
+        model_configurations = config.get("configurable", {})
+        llm: Any = self._llm.with_config(configurable=model_configurations)
 
         tools_by_name, dynamic, retrieve_tool = self._build_child_toolset(
             config=config,

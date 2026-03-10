@@ -4,8 +4,9 @@ import { create } from "zustand";
  * Right sidebar variants:
  * - "sheet": Modal overlay that appears on top of content (doesn't shift layout)
  * - "sidebar": Persistent sidebar that pushes/shifts the main content layout
+ * - "artifact": Wide split-view panel optimized for file previewing
  */
-export type RightSidebarVariant = "sheet" | "sidebar";
+export type RightSidebarVariant = "sheet" | "sidebar" | "artifact";
 
 interface RightSidebarState {
   content: React.ReactNode | null;

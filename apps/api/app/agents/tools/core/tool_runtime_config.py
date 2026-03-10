@@ -49,9 +49,9 @@ def build_provider_parent_tool_runtime_config(
 ) -> ToolRuntimeConfig:
     """Build parent provider-agent tool runtime config."""
     if use_direct_tools:
-        initial = [*provider_tool_names, *todo_tool_names, "vfs_read"]
+        initial = [*provider_tool_names, *todo_tool_names, "vfs_read", "vfs_cmd"]
     else:
-        initial = ["search_memory", "vfs_read", *todo_tool_names]
+        initial = ["search_memory", "vfs_read", "vfs_cmd", *todo_tool_names]
         if auto_bind_tool_names and not disable_retrieve_tools:
             initial.extend(auto_bind_tool_names)
 
@@ -76,7 +76,7 @@ def build_child_tool_runtime_config(
             include_subagents_in_retrieve=False,
         )
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read"],
+        initial_tool_names=["vfs_read", "vfs_cmd"],
         enable_retrieve_tools=not disable_retrieve_tools,
         include_subagents_in_retrieve=False,
     )
@@ -85,7 +85,7 @@ def build_child_tool_runtime_config(
 def build_executor_child_tool_runtime_config() -> ToolRuntimeConfig:
     """Build child tool runtime config for executor-spawned subagents."""
     return ToolRuntimeConfig(
-        initial_tool_names=["vfs_read"],
+        initial_tool_names=["vfs_read", "vfs_cmd"],
         enable_retrieve_tools=True,
         include_subagents_in_retrieve=False,
     )

@@ -179,9 +179,7 @@ export async function startNextServer(): Promise<void> {
     serverProcess.on("close", (code) => {
       if (!resolved) {
         // Exited before printing "Ready" — genuine startup failure.
-        console.error(
-          `Next.js server exited during startup with code ${code}`,
-        );
+        console.error(`Next.js server exited during startup with code ${code}`);
         resolved = true;
         serverProcess = null;
         reject(
@@ -233,9 +231,7 @@ export async function startNextServer(): Promise<void> {
       if (!resolved) {
         resolved = true;
         if (serverPort > 0) {
-          console.warn(
-            "Server startup timeout — port known, assuming ready",
-          );
+          console.warn("Server startup timeout — port known, assuming ready");
           resolve();
         } else {
           console.error(

@@ -241,6 +241,7 @@ def build_agent_config(
     selected_tool: Optional[str] = None,
     tool_category: Optional[str] = None,
     subagent_id: Optional[str] = None,
+    vfs_session_id: Optional[str] = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -257,6 +258,10 @@ def build_agent_config(
         selected_tool: Optional tool name selected via slash command
         tool_category: Optional category of the selected tool
         subagent_id: Optional subagent ID for skill learning (e.g., "twitter", "github")
+        vfs_session_id: Shared VFS session ID that stays constant across the executor
+            and all handoff subagents it spawns. All agents in the chain resolve VFS
+            paths relative to the executor workspace using this ID. When provided via
+            base_configurable it is inherited automatically.
 
     Returns:
         Configuration dictionary formatted for LangGraph execution with configurable
@@ -327,6 +332,7 @@ def build_agent_config(
         selected_tool = selected_tool or base_configurable.get("selected_tool")
         tool_category = tool_category or base_configurable.get("tool_category")
         subagent_id = subagent_id or base_configurable.get("subagent_id")
+        vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -342,6 +348,7 @@ def build_agent_config(
         "selected_tool": selected_tool,
         "tool_category": tool_category,
         "subagent_id": subagent_id,
+        "vfs_session_id": vfs_session_id,
     }
 
     config = {
@@ -457,7 +464,7 @@ async def execute_graph_silent(
 
                             # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_data noise.
                             # Safe: doesn't affect agent state; only avoids redundant UI events.
-                            if tool_name in {"plan_tasks", "mark_task", "add_task"}:
+                            if tool_name in {"plan_tasks", "update_tasks"}:
                                 continue
 
                             if tool_name == "handoff":
@@ -686,8 +693,7 @@ async def execute_graph_streaming(
                 # Safe: doesn't affect agent state; only avoids redundant UI events.
                 if getattr(chunk, "name", None) in {
                     "plan_tasks",
-                    "mark_task",
-                    "add_task",
+                    "update_tasks",
                 } or chunk.additional_kwargs.get("todo_tool", False):
                     continue
                 tool_result_payload = chunk.content

@@ -185,11 +185,7 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           onOpenChange={handleOpenChange}
           defaultOpen={defaultOpen}
         >
-          <div
-            className="relative flex min-h-screen w-full dark"
-            style={{ touchAction: "pan-y" }}
-            ref={dragRef}
-          >
+          <div className="relative flex h-screen w-full dark" ref={dragRef}>
             <SidebarLayout>
               <Sidebar />
             </SidebarLayout>

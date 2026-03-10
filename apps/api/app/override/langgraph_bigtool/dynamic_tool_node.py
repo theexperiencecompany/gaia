@@ -151,12 +151,8 @@ class DynamicToolNode(ToolNode):
         )
         if all_parent_routed:
             return await super()._afunc(input, config, runtime)
-        delegate_state: list[AnyMessage] | dict[str, Any] | BaseModel = (
-            input["state"]
-            if isinstance(input, dict)
-            and input.get("__type") == "tool_call_with_context"
-            else input
-        )
+        delegate_state = self._extract_state(input)
+        middleware_state = self._coerce_middleware_state(delegate_state)
 
         # Get store from runtime if available
         store: BaseStore | None = getattr(runtime, "store", None)
@@ -187,6 +183,7 @@ class DynamicToolNode(ToolNode):
                     middleware_executor=middleware_executor,
                     store=store,
                     config=config,
+                    state=middleware_state,
                 )
             )
 
@@ -225,16 +222,8 @@ class DynamicToolNode(ToolNode):
         middleware_executor: MiddlewareExecutor,
         store: BaseStore | None,
         config: RunnableConfig,
+        state: State,
     ) -> ToolMessage:
-        state = cast(
-            State,
-            {
-                "messages": [],
-                "selected_tool_ids": [],
-                "todos": [],
-            },
-        )
-
         async def invoke_tool(tc: dict[str, Any]) -> ToolMessage:
             resolved_tool = self._get_tool(tc.get("name", ""))
             if resolved_tool is None:
@@ -264,3 +253,30 @@ class DynamicToolNode(ToolNode):
             store=store,
             invoke_fn=invoke_tool,
         )
+
+    def _coerce_middleware_state(
+        self,
+        delegate_state: list[AnyMessage] | dict[str, Any] | BaseModel,
+    ) -> State:
+        """Normalize tool-call input state for middleware consumption.
+
+        Preserve all state channels when available (dict/BaseModel), while ensuring
+        a stable messages channel for middleware that relies on context size.
+        """
+        if isinstance(delegate_state, list):
+            return cast(State, {"messages": list(delegate_state)})
+
+        if isinstance(delegate_state, BaseModel):
+            raw_state = cast(dict[str, Any], delegate_state.model_dump())
+        elif isinstance(delegate_state, dict):
+            raw_state = dict(delegate_state)
+        else:
+            raw_state = {}
+
+        messages = raw_state.get("messages")
+        if isinstance(messages, list):
+            raw_state["messages"] = list(messages)
+        else:
+            raw_state["messages"] = []
+
+        return cast(State, raw_state)
