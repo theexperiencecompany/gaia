@@ -37,6 +37,21 @@ from app.db.chroma.chroma_tools_store import (
 # ---------------------------------------------------------------------------
 
 
+class _NoOpEmbeddingFunction:
+    """No-op embedding function — defense-in-depth for the test wrapper.
+
+    ChromaStore already registers its own no-op EF on every collection
+    (see chroma_store._NOOP_EF), but the wrapper also defaults to this
+    for any collection created outside of ChromaStore's _get_collection.
+    """
+
+    def __call__(self, input: list[str]) -> list[list[float]]:
+        return [[0.0] * 384 for _ in input]
+
+
+_NOOP_EF = _NoOpEmbeddingFunction()
+
+
 class _AsyncCollectionWrapper:
     """Thin async wrapper around a synchronous chromadb Collection."""
 
@@ -74,14 +89,17 @@ class _AsyncEphemeralWrapper:
         return self._sync.list_collections()
 
     async def create_collection(self, name, metadata=None, **kwargs):
+        kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
     async def get_collection(self, name, **kwargs):
+        kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_collection(name, **kwargs)
         return _AsyncCollectionWrapper(col)
 
     async def get_or_create_collection(self, name, metadata=None, **kwargs):
+        kwargs.setdefault("embedding_function", _NOOP_EF)
         col = self._sync.get_or_create_collection(name, metadata=metadata, **kwargs)
         return _AsyncCollectionWrapper(col)
 
