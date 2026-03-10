@@ -17,11 +17,11 @@ class DictLikeModel(BaseModel, MutableMapping):
     def __delitem__(self, key):
         delattr(self, key)
 
-    def __iter__(self) -> Iterator[str]:
-        return iter(self.__dict__)
+    def __iter__(self) -> Iterator[str]:  # type: ignore[override]
+        return iter(type(self).model_fields)
 
     def __len__(self):
-        return len(self.__dict__)
+        return len(type(self).model_fields)
 
 
 class State(DictLikeModel):
