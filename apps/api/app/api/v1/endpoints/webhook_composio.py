@@ -52,7 +52,8 @@ async def webhook_composio(request: Request):
         type=body.get("type"),
     )
     log.set(
-        webhook={"event_type": event_data.type, "trigger_id": event_data.trigger_id}
+        user={"id": event_data.user_id},
+        webhook={"event_type": event_data.type, "trigger_id": event_data.trigger_id},
     )
 
     # Find handler for this event type

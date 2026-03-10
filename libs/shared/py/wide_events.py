@@ -167,6 +167,26 @@ class OnboardingContext(TypedDict, total=False):
     is_complete: bool
 
 
+class IntegrationContext(TypedDict, total=False):
+    id: str
+    name: str
+    operation: str  # "create"|"update"|"delete"|"publish"|"unpublish"|"list"|"get"
+    category: str
+    result_count: int
+
+
+class ImageContext(TypedDict, total=False):
+    operation: str  # "generate"|"analyze"|"generate_stream"
+    prompt_length: int
+    file_name: str
+    mime_type: str
+
+
+class BotContext(TypedDict, total=False):
+    platform: str  # "discord"|"slack"|"telegram"
+    operation: str
+
+
 class WideEventFields(TypedDict, total=False):
     """Canonical schema for wide event fields set via log.set().
 
@@ -190,8 +210,23 @@ class WideEventFields(TypedDict, total=False):
     search: SearchContext
     payment: PaymentContext
     onboarding: OnboardingContext
-    task: str
+    integration: IntegrationContext
+    image: ImageContext
+    bot: BotContext
+    # Top-level convenience fields used across endpoints
+    operation: str
     outcome: str
+    platform: str
+    result_count: int
+    profile_fields_extracted: list[str]
+    file_id: str
+    file_name: str
+    mime_type: str
+    integration_id: str
+    integration_name: str
+    webhook: dict[str, Any]
+    # Internal wide-event metadata
+    task: str
     final_level: str
     trace_id: str
     duration_ms: float
@@ -353,5 +388,8 @@ __all__ = [
     "SearchContext",
     "PaymentContext",
     "OnboardingContext",
+    "IntegrationContext",
+    "ImageContext",
+    "BotContext",
     "get_trace_id",
 ]
