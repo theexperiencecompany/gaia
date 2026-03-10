@@ -19,9 +19,9 @@ export interface ComparisonColumn {
 }
 
 interface Props {
-  columns: ComparisonColumn[];
-  rows: Record<string, string>[];
-  ariaLabel?: string;
+  readonly columns: ComparisonColumn[];
+  readonly rows: Record<string, string>[];
+  readonly ariaLabel?: string;
 }
 
 export default function ComparisonTable({ columns, rows, ariaLabel }: Props) {
@@ -49,9 +49,8 @@ export default function ComparisonTable({ columns, rows, ariaLabel }: Props) {
         ))}
       </TableHeader>
       <TableBody>
-        {rows.map((row, i) => (
-          // biome-ignore lint/suspicious/noArrayIndexKey: stable comparison rows
-          <TableRow key={i}>
+        {rows.map((row) => (
+          <TableRow key={row[columns[0]?.key ?? ""] ?? ""}>
             {columns.map((col) => (
               <TableCell key={col.key} className={col.cellClassName}>
                 {row[col.key] ?? ""}

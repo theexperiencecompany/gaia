@@ -291,6 +291,11 @@ export default async function IntegrationPage({ params }: Props) {
     ],
   );
 
+  const toolsText =
+    integration.toolCount > 0
+      ? `all ${integration.toolCount} ${integration.name} tools`
+      : `the available ${integration.name} tools`;
+
   const faqSchema = generateFAQSchema([
     {
       question: `How do I connect ${integration.name} to GAIA?`,
@@ -302,7 +307,7 @@ export default async function IntegrationPage({ params }: Props) {
     },
     {
       question: `What can GAIA do with ${integration.name}?`,
-      answer: `GAIA exposes ${integration.toolCount > 0 ? `all ${integration.toolCount} ${integration.name} tools` : `the available ${integration.name} tools`} to its AI agent, meaning you can perform any ${categoryLabel.toLowerCase()} action supported by ${integration.name} by describing it in plain English. GAIA can also combine ${integration.name} with other connected integrations to build cross-tool automations.`,
+      answer: `GAIA exposes ${toolsText} to its AI agent, meaning you can perform any ${categoryLabel.toLowerCase()} action supported by ${integration.name} by describing it in plain English. GAIA can also combine ${integration.name} with other connected integrations to build cross-tool automations.`,
     },
     {
       question: `Does GAIA's ${integration.name} integration work on mobile?`,

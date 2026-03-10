@@ -62,10 +62,10 @@ function ToolFavicon({
   rotate,
   zIndex,
 }: {
-  slug: string;
-  name: string;
-  rotate: string;
-  zIndex: number;
+  readonly slug: string;
+  readonly name: string;
+  readonly rotate: string;
+  readonly zIndex: number;
 }) {
   const domain = TOOL_DOMAINS[slug];
   if (!domain) return null;
@@ -119,7 +119,7 @@ export default function AutomateHubPage() {
     if (!grouped[letter]) grouped[letter] = [];
     grouped[letter].push(combo);
   }
-  const letters = Object.keys(grouped).sort();
+  const letters = Object.keys(grouped).sort((a, b) => a.localeCompare(b));
 
   return (
     <>

@@ -15,13 +15,12 @@ import {
   generateFAQSchema,
   generateHowToSchema,
   generatePageMetadata,
-  generateProductSchema,
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
 
 interface PageProps {
-  params: Promise<{ combo: string }>;
+  readonly params: Promise<{ readonly combo: string }>;
 }
 
 export async function generateStaticParams() {
