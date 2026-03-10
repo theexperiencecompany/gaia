@@ -21,6 +21,5 @@ async def process_personalization_task(ctx, user_id: str) -> str:
         log.set(user={"id": user_id})
         await process_post_onboarding_personalization(user_id)
         message = f"Post-onboarding personalization completed for user {user_id}"
-        log.set(outcome="success")
         log.info(message)
         return message

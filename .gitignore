@@ -116,4 +116,5 @@ postman/
 /config.json
 
 docs/plans/
-infra/docker/observability/metrics_token
+# metrics_token is tracked as an empty default file (safe for dev).
+# Populate it with your actual bearer token for production scraping.

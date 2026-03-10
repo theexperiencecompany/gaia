@@ -381,6 +381,8 @@ services:
     restart: unless-stopped
     networks:
       - gaia_network
+    mem_limit: 512m
+    cpus: "0.5"
 
   # ---------------------------------------------------------------------------
   # Observability stack — Loki + Promtail + Grafana
@@ -405,6 +407,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    mem_limit: 512m
+    cpus: "0.5"
 
   promtail:
     image: grafana/promtail:3.3.2
@@ -424,6 +428,8 @@ services:
         condition: service_healthy
     networks:
       - gaia_network
+    mem_limit: 128m
+    cpus: "0.25"
 
   grafana:
     image: grafana/grafana:11.4.0
@@ -434,7 +440,9 @@ services:
       - grafana_data:/var/lib/grafana
       - ./observability/grafana/provisioning:/etc/grafana/provisioning
     environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      # IMPORTANT: Set GRAFANA_ADMIN_PASSWORD in your .env file before deploying.
+      # The default "changeme" is intentionally obvious — change it for production.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
@@ -444,6 +452,8 @@ services:
         condition: service_healthy
     networks:
       - gaia_network
+    mem_limit: 256m
+    cpus: "0.5"
 
 volumes:
   chroma_data:

@@ -22,7 +22,6 @@ async def process_reminder(ctx: dict, reminder_id: str) -> str:
     async with wide_task("process_reminder", reminder_id=reminder_id):
         log.info(f"Processing reminder task: {reminder_id}")
         await reminder_scheduler.process_task_execution(reminder_id)
-        log.set(outcome="success")
         result = f"Successfully processed reminder {reminder_id}"
         log.info(result)
         return result
@@ -50,7 +49,7 @@ async def cleanup_expired_reminders(ctx: dict) -> str:
                 "updated_at": {"$lt": cutoff_date},
             }
         )
-        log.set(reminders_deleted=result.deleted_count, outcome="success")
+        log.set(reminders_deleted=result.deleted_count)
         message = f"Cleaned up {result.deleted_count} expired reminders"
         log.info(message)
         return message

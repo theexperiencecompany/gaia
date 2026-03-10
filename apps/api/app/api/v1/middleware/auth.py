@@ -107,27 +107,16 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     request.state.user = user_info
                     request.state.authenticated = True
 
-                    # Set auth context on wide event for every downstream log
-                    log.set(
-                        auth={
-                            "user_id": user_info.get("user_id"),
-                            "method": "jwt",
-                            "workos_org": user_info.get("org_id"),
-                        }
-                    )
-
                     # If session was refreshed, store new session token
                     if new_session:
                         request.state.new_session = new_session
                 else:
                     # Session token was present but authentication failed (expired, invalid, etc.)
-                    log.set(
-                        auth={
-                            "method": "jwt",
-                            "failure_reason": "invalid_or_expired_session",
-                            "authenticated": False,
-                        }
-                    )
+                    # Store failure reason in request state so route handlers can log it.
+                    # NOTE: log.set() cannot be used here because WorkOSAuthMiddleware runs
+                    # outside LoggingMiddleware's context (Starlette copies context at call_next),
+                    # so any wide event fields set here would be wiped by log.reset() below.
+                    request.state.auth_failure = "invalid_or_expired_session"
 
             except Exception as e:
                 log.error(f"Authentication middleware error: {e}")
@@ -165,15 +154,6 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                         "impersonated": True,
                     }
                     request.state.authenticated = True
-
-                    # Set auth context on wide event for agent-authenticated requests
-                    log.set(
-                        auth={
-                            "user_id": str(user_data.get("_id")),
-                            "method": "jwt",
-                            "workos_org": None,
-                        }
-                    )
 
         # Process the request
         response = await call_next(request)

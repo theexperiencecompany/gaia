@@ -30,6 +30,7 @@ import json as _json
 import os
 import sys
 import logging
+from collections.abc import Callable
 from pathlib import Path
 
 from loguru import logger
@@ -117,7 +118,7 @@ def _json_stdout_sink(message: object) -> None:
     sys.stdout.flush()
 
 
-def _json_file_sink_factory(log_dir: Path) -> callable:
+def _json_file_sink_factory(log_dir: Path) -> "Callable[..., None]":
     """Create a callable sink that writes flat NDJSON to daily rotating files.
 
     Produces the same flat JSON format as _json_stdout_sink so that Promtail
@@ -132,12 +133,19 @@ def _json_file_sink_factory(log_dir: Path) -> callable:
         key = str(resolved)
 
         fh = _handles.get(key)
-        if fh is None or fh.closed:
+        if fh is None or fh.closed:  # type: ignore[union-attr]
+            # Close stale handles from previous days before opening a new one
+            for old_key in list(_handles):
+                if old_key != key:
+                    try:
+                        _handles.pop(old_key).close()  # type: ignore[union-attr]
+                    except Exception:
+                        pass
             fh = open(resolved, "a", encoding="utf-8")  # noqa: SIM115
             _handles[key] = fh
 
-        fh.write(_build_json_entry(record))
-        fh.flush()
+        fh.write(_build_json_entry(record))  # type: ignore[union-attr]
+        fh.flush()  # type: ignore[union-attr]
 
     return _sink
 

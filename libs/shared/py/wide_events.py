@@ -36,8 +36,8 @@ _LEVEL_ORDER: dict[str, int] = {
     "CRITICAL": 4,
 }
 
-_wide_event: contextvars.ContextVar[dict[str, Any]] = contextvars.ContextVar(
-    "wide_event", default={}
+_wide_event: contextvars.ContextVar[dict[str, Any] | None] = contextvars.ContextVar(
+    "wide_event", default=None
 )
 _max_level: contextvars.ContextVar[str] = contextvars.ContextVar(
     "wide_event_max_level", default="INFO"
@@ -54,6 +54,7 @@ def _generate_trace_id() -> str:
 class UserContext(TypedDict, total=False):
     id: str
     email: str
+    plan: str
 
 
 class ChatContext(TypedDict, total=False):
@@ -211,7 +212,7 @@ class WideEventLogger:
 
     def set(self, **kwargs: Any) -> None:
         """Merge structured context into the current request's wide event."""
-        current = _wide_event.get()
+        current = _wide_event.get() or {}
         _wide_event.set({**current, **kwargs})
 
     # --- Loguru-compatible message methods ---
@@ -254,7 +255,7 @@ class WideEventLogger:
 
     def get(self) -> dict[str, Any]:
         """Return accumulated wide event dict for this request."""
-        return _wide_event.get()
+        return _wide_event.get() or {}
 
     def get_max_level(self) -> str:
         """Return the highest severity level seen during this request."""
@@ -274,7 +275,7 @@ class WideEventLogger:
     # --- Private helpers ---
 
     def _append(self, key: str, message: str, **kwargs: Any) -> None:
-        current = _wide_event.get()
+        current = _wide_event.get() or {}
         entry: dict[str, Any] = {"msg": message, **kwargs}
         items = list(current.get(key, []))
         items.append(entry)

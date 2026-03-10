@@ -26,9 +26,9 @@ scrape_configs:
       - targets:
           - localhost
         labels:
-          service: arq-worker
-          service_name: arq-worker
-          container: arq-worker
+          service: arq_worker
+          service_name: arq_worker
+          container: arq_worker
           __path__: /var/log/gaia-worker/structured-*.json
       - targets:
           - localhost

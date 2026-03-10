@@ -268,13 +268,8 @@ async def execute_workflow_by_id(
             return f"Workflow {workflow_id} executed successfully with {len(execution_messages)} messages"
 
         except Exception as e:
-            error_str = str(e)
-            # Escape curly braces so Loguru's .format() doesn't trip on dict-like
-            # exception messages (e.g. RateLimitExceededException contains {'error': ...})
-            safe_error_str = error_str.replace("{", "{{").replace("}", "}}")
-            log.error(
-                "Error executing workflow %s: %s" % (workflow_id, safe_error_str),
-                exc_info=True,
+            log.exception(
+                f"Error executing workflow {workflow_id}: {e}",
             )
 
             # Complete execution record with failure
@@ -663,9 +658,8 @@ async def create_workflow_completion_notification(
                 f"Successfully stored {len(execution_messages)} messages for workflow {workflow.id}"
             )
         except Exception as storage_error:
-            log.error(
+            log.exception(
                 f"Failed to store messages for workflow {workflow.id}: {storage_error}",
-                exc_info=True,
             )
             raise  # Re-raise to ensure storage failures are visible
     else:

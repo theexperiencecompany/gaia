@@ -89,9 +89,8 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
                         error_count += 1
 
                 except Exception as e:
-                    log.error(
+                    log.exception(
                         f"Error queuing personalization for user {user_id}: {e}",
-                        exc_info=True,
                     )
                     error_count += 1
 
@@ -103,5 +102,5 @@ async def cleanup_stuck_personalization(ctx, max_age_minutes: int = 30) -> str:
 
         except Exception as e:
             error_msg = f"Error in cleanup_stuck_personalization: {e}"
-            log.error(error_msg, exc_info=True)
+            log.exception(error_msg)
             return error_msg
