@@ -1,6 +1,9 @@
 import { useRouter } from "expo-router";
 import { Button, PressableFeedback } from "heroui-native";
+import { useState } from "react";
 import {
+  ActivityIndicator,
+  Alert,
   Image,
   KeyboardAvoidingView,
   Linking,
@@ -9,14 +12,44 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
+import { useAuth } from "@/features/auth/hooks/use-auth";
+import {
+  fetchUserInfo,
+  startOAuthFlow,
+} from "@/features/auth";
+import {
+  storeAuthToken,
+  storeUserInfo,
+} from "@/features/auth/utils/auth-storage";
 import { useResponsive } from "@/lib/responsive";
 
 export default function SignUpScreen() {
   const router = useRouter();
+  const { refreshAuth } = useAuth();
   const { spacing, fontSize, moderateScale, width } = useResponsive();
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleGoogleSignUp = () => {
-    router.replace("/");
+  const handleGoogleSignUp = async () => {
+    setIsLoading(true);
+    try {
+      const token = await startOAuthFlow();
+      await storeAuthToken(token);
+      const userInfo = await fetchUserInfo(token);
+      await storeUserInfo(userInfo);
+      await refreshAuth();
+      router.replace("/");
+    } catch (error) {
+      console.error("Sign up error:", error);
+      Alert.alert(
+        "Sign Up Failed",
+        error instanceof Error
+          ? error.message
+          : "An unexpected error occurred. Please try again.",
+        [{ text: "OK" }],
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const handleSignIn = () => {
@@ -104,17 +137,23 @@ export default function SignUpScreen() {
             {/* Sign Up Form */}
             <View style={{ width: "100%" }}>
               {/* Google Button */}
-              <Button size="lg" variant="ghost" onPress={handleGoogleSignUp}>
-                <Image
-                  source={require("@/assets/icons/google-logo.png")}
-                  style={{
-                    width: moderateScale(20, 0.5),
-                    height: moderateScale(20, 0.5),
-                    marginRight: spacing.sm,
-                  }}
-                  resizeMode="contain"
-                />
-                <Button.Label>Continue with Google</Button.Label>
+              <Button size="lg" variant="ghost" isDisabled={isLoading} onPress={() => { void handleGoogleSignUp(); }}>
+                {isLoading ? (
+                  <ActivityIndicator colorClassName="accent-black" />
+                ) : (
+                  <>
+                    <Image
+                      source={require("@/assets/icons/google-logo.png")}
+                      style={{
+                        width: moderateScale(20, 0.5),
+                        height: moderateScale(20, 0.5),
+                        marginRight: spacing.sm,
+                      }}
+                      resizeMode="contain"
+                    />
+                    <Button.Label>Continue with Google</Button.Label>
+                  </>
+                )}
               </Button>
 
               {/* Sign In Link */}

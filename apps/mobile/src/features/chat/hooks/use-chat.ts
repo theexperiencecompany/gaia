@@ -2,7 +2,7 @@ import {
   extractToolProgressMessage,
   mergeToolOutputIntoToolData,
   upsertTodoProgressToolData,
-} from "@gaia/shared";
+} from "@gaia/shared/chat";
 import type { FlashListRef } from "@shopify/flash-list";
 import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useRef, useState } from "react";

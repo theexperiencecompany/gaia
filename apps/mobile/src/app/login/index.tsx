@@ -15,7 +15,7 @@ import { useAuth } from "@/features/auth/hooks/use-auth";
 import {
   fetchUserInfo,
   startOAuthFlow,
-} from "@/features/auth/utils/auth-service";
+} from "@/features/auth";
 import {
   storeAuthToken,
   storeUserInfo,

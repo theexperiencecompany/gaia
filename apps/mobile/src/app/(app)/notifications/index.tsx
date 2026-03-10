@@ -9,6 +9,7 @@ import {
   useInappNotifications,
   useNotificationActions,
 } from "@/features/notifications";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/lib/responsive";
 
 type NotificationsTab = "unread" | "all";
@@ -16,6 +17,7 @@ type NotificationsTab = "unread" | "all";
 export default function NotificationsScreen() {
   const router = useRouter();
   const { spacing, fontSize } = useResponsive();
+  const insets = useSafeAreaInsets();
   const [activeTab, setActiveTab] = useState<NotificationsTab>("unread");
   const {
     unreadNotifications,
@@ -43,7 +45,7 @@ export default function NotificationsScreen() {
     <View style={{ flex: 1, backgroundColor: "#0b0c0f" }}>
       <View
         style={{
-          paddingTop: spacing.xl * 2,
+          paddingTop: insets.top + spacing.sm,
           paddingHorizontal: spacing.md,
           paddingBottom: spacing.md,
           borderBottomWidth: 1,

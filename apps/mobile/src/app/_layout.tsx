@@ -52,7 +52,7 @@ export default function RootLayout() {
     <QueryProvider>
       <AuthProvider>
         <ChatProvider>
-          <GestureHandlerRootView style={{ flex: 1 }} className="bg:dark">
+          <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#000" }}>
             <HeroUINativeProvider>
               <BottomSheetModalProvider>
                 <Stack screenOptions={{ headerShown: false }}>

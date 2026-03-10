@@ -29,6 +29,7 @@ import type {
   UsageSummary,
 } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/lib/responsive";
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -832,6 +833,7 @@ export default function SettingsScreen() {
   const router = useRouter();
   const { signOut } = useAuth();
   const { spacing, fontSize } = useResponsive();
+  const insets = useSafeAreaInsets();
   const [isSigningOut, setIsSigningOut] = useState(false);
 
   const handleSignOut = useCallback(async () => {
@@ -842,8 +844,14 @@ export default function SettingsScreen() {
         style: "destructive",
         onPress: async () => {
           setIsSigningOut(true);
-          await signOut();
-          router.replace("/login");
+          try {
+            await signOut();
+            router.replace("/login");
+          } catch (error) {
+            console.error("Sign out error:", error);
+          } finally {
+            setIsSigningOut(false);
+          }
         },
       },
     ]);
@@ -854,7 +862,7 @@ export default function SettingsScreen() {
       {/* Header */}
       <View
         style={{
-          paddingTop: spacing.xl * 2,
+          paddingTop: insets.top + spacing.sm,
           paddingHorizontal: spacing.md,
           paddingBottom: spacing.md,
           borderBottomWidth: 1,

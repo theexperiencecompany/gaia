@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "gaia-mobile",
+    "name": "Gaia",
     "slug": "gaia-mobile",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -10,19 +10,21 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "io.heygaia.giamobile",
+      "bundleIdentifier": "io.heygaia.gaiamobile",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "io.heygaia.giamobile",
-      "googleServicesFile": "./google-services.json",
+      "package": "io.heygaia.gaiamobile",
+      "permissions": [
+        "android.permission.POST_NOTIFICATIONS",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ],
       "adaptiveIcon": {
         "backgroundColor": "#141414",
-        "foregroundImage": "./assets/icons/gaialogo.png",
-        "backgroundImage": "./assets/icons/gaialogo.png",
-        "monochromeImage": "./assets/icons/gaialogo.png"
+        "foregroundImage": "./assets/icons/gaialogo.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
@@ -49,9 +51,9 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/background/web.png",
-          "imageWidth": 200,
-          "resizeMode": "cover",
+          "image": "./assets/icons/gaialogo.png",
+          "imageWidth": 160,
+          "resizeMode": "contain",
           "backgroundColor": "#141414",
           "dark": {
             "backgroundColor": "#000000"
@@ -67,8 +69,7 @@
           "icon": "./assets/icons/gaialogo.png",
           "color": "#ffffff",
           "sounds": ["./assets/sound/uwu.mp3"],
-          "defaultChannel": "gaia_channel",
-          "mode": "production"
+          "defaultChannel": "gaia_channel"
         }
       ]
     ],
@@ -84,6 +85,6 @@
         "projectId": "dfc106f0-990f-4593-97ed-7999efde6e8c"
       }
     },
-    "owner": "sanku02"
+    "owner": "gaia"
   }
 }

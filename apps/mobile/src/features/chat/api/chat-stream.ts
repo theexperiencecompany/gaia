@@ -3,7 +3,7 @@ import {
   type StreamToolDataEntry,
   type StreamToolOutput,
   type TodoProgressSnapshot,
-} from "@gaia/shared";
+} from "@gaia/shared/chat";
 
 import { createSSEConnection, type SSEEvent } from "@/lib/sse-client";
 import type { ApiFileData, Message } from "./chat-api";

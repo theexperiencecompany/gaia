@@ -17,9 +17,16 @@ config.resolver.nodeModulesPaths = [
   path.resolve(workspaceRoot, "node_modules"),
 ];
 
-// 3. Add alias for @shared to point to libs/shared
+// 3. Add aliases:
+//    - @shared  → libs/shared  (monorepo shared library)
+//    - @/assets → apps/mobile/assets  (project assets folder)
+//      NOTE: Metro does not read tsconfig paths, so the @/assets alias that
+//      TypeScript resolves must be explicitly mirrored here. Without this,
+//      require("@/assets/...") would fall through to the @/* → ./src/* rule
+//      and fail because ./src/assets/ does not exist.
 config.resolver.extraNodeModules = {
   "@shared": path.resolve(workspaceRoot, "libs/shared"),
+  "@/assets": path.resolve(projectRoot, "assets"),
 };
 
 module.exports = withUniwindConfig(config, {
