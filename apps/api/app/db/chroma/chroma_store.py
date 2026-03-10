@@ -46,6 +46,9 @@ class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
     where the model is unavailable (CI, minimal containers, etc.).
     """
 
+    def __init__(self) -> None:
+        pass
+
     def __call__(self, input: list[str]) -> Any:
         return [[0.0] * 384 for _ in input]
 

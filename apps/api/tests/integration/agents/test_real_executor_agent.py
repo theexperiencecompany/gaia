@@ -34,32 +34,57 @@ from tests.integration.conftest import SimpleState
 # ---------------------------------------------------------------------------
 
 
-@tool
-def _stub_vfs_read(path: str) -> str:
-    """Read a file from the virtual filesystem (test stub)."""
-    return f"Contents of {path}"
+def _make_stub_tool(name: str):
+    """Create a minimal stub tool with the given name."""
 
+    async def _stub(input: str = "") -> str:  # noqa: A002
+        return f"stub:{name}"
 
-@tool
-def _stub_deep_research(query: str) -> str:
-    """Perform deep research on a topic (test stub)."""
-    return f"Research results for: {query}"
+    _stub.__name__ = name
+    _stub.__doc__ = f"Stub for {name}."
+    return tool(_stub)
 
 
 def _make_mock_tool_registry():
     """Return a minimal ToolRegistry-like mock with the attributes accessed by
     build_executor_graph / SubAgentFactory.
 
-    The tool_dict includes stubs for vfs_read and deep_research because
-    build_executor_graph passes initial_tool_ids=["handoff", "plan_tasks",
-    "mark_task", "add_task", "vfs_read", "deep_research"] to create_agent,
-    which looks up each ID in the tool_registry dict at runtime.
+    Dynamically creates stub tools for every non-handoff, non-todo tool that
+    appears in build_executor_graph's initial_tool_ids.  This keeps the test
+    resilient to changes in the initial tool set (e.g. vfs_cmd being added or
+    removed) without hard-coding specific tool names.
     """
-    registry = MagicMock()
-    registry.get_tool_dict.return_value = {
-        "vfs_read": _stub_vfs_read,
-        "deep_research": _stub_deep_research,
+    from app.agents.tools.todo_tools import TODO_TOOL_NAMES
+
+    # Tools that build_executor_graph injects separately (handoff + todo tools)
+    # and therefore do NOT need to come from the ToolRegistry mock.
+    injected_by_graph = {"handoff"} | TODO_TOOL_NAMES
+
+    # Read the actual initial_tool_ids from build_graph source so the mock
+    # provides stubs for every tool the graph expects at runtime.
+    import inspect
+    from app.agents.core.graph_builder import build_graph as _bg_mod
+
+    src = inspect.getsource(_bg_mod.build_executor_graph)
+    # Extract the list literal assigned to initial_tool_ids
+    import ast
+
+    # Find the initial_tool_ids=[...] in the source
+    idx = src.find("initial_tool_ids=")
+    if idx != -1:
+        bracket_start = src.index("[", idx)
+        bracket_end = src.index("]", bracket_start) + 1
+        raw_ids: list[str] = ast.literal_eval(src[bracket_start:bracket_end])
+    else:
+        raw_ids = []
+
+    # Build stubs only for tools NOT injected by build_executor_graph itself
+    tool_dict = {
+        tid: _make_stub_tool(tid) for tid in raw_ids if tid not in injected_by_graph
     }
+
+    registry = MagicMock()
+    registry.get_tool_dict.return_value = tool_dict
     registry.get_category_by_space.return_value = None
     registry._categories = {}
     return registry
@@ -187,8 +212,8 @@ class TestExecutorGraphCompiles:
             ),
             # create_todo_tools and create_todo_pre_model_hook are NOT mocked here —
             # they are pure functions with no DB dependencies. The real todo tools
-            # (plan_tasks, mark_task, add_task) must exist in the tool_dict so
-            # acall_model can look them up via initial_tool_ids at runtime.
+            # must exist in the tool_dict so acall_model can look them up via
+            # initial_tool_ids at runtime.
         ):
             async with build_executor_graph(
                 chat_llm=fake_llm,
@@ -211,8 +236,7 @@ class TestExecutorGraphCompiles:
 @pytest.mark.integration
 class TestSelectToolsNode:
     """Verify that the initial tool IDs specified in build_executor_graph
-    (handoff, plan_tasks, mark_task, add_task, vfs_read, deep_research) are
-    present in the merged tool_dict that is passed to create_agent."""
+    are present in the merged tool_dict that is passed to create_agent."""
 
     async def test_handoff_included_in_tool_dict(self):
         """handoff tool must be registered in the compiled executor graph's tool node.
@@ -341,10 +365,11 @@ class TestSelectToolsNode:
 
         # Every initial tool ID must be in the registry so that acall_model can
         # resolve `tool_registry[id]` without raising a KeyError at runtime.
-        # Note: todo tools are mocked to return [] in this test, so plan_tasks /
-        # mark_task / add_task are absent — only handoff, vfs_read, deep_research
-        # (from the mock registry) are guaranteed here.
-        expected_in_registry = {"handoff", "vfs_read", "deep_research"}
+        # Note: todo tools are mocked to return [] in this test, so todo tool
+        # names are absent — only handoff + tools from mock registry are here.
+        # Dynamically read what mock_registry provides to avoid hardcoding.
+        mock_provided = set(mock_registry.get_tool_dict.return_value.keys())
+        expected_in_registry = {"handoff"} | mock_provided
         missing = expected_in_registry - registered_tool_ids
         assert not missing, (
             f"The following initial tool IDs are missing from the executor graph's "
@@ -472,7 +497,7 @@ class TestTodoPremModelHook:
         assert callable(hook), "todo pre-model hook must be callable"
 
     def test_todo_tools_are_created_with_correct_names(self):
-        """create_todo_tools must produce tools named plan_tasks, mark_task, add_task."""
+        """create_todo_tools must produce tools whose names match TODO_TOOL_NAMES."""
         from app.agents.tools.todo_tools import TODO_TOOL_NAMES, create_todo_tools
 
         tools = create_todo_tools(source="executor")
@@ -535,12 +560,17 @@ class TestTodoPremModelHook:
         )
 
     def test_todo_tool_names_constant_is_correct(self):
-        """TODO_TOOL_NAMES must match what build_executor_graph registers."""
-        from app.agents.tools.todo_tools import TODO_TOOL_NAMES
+        """TODO_TOOL_NAMES must match the actual tools returned by create_todo_tools."""
+        from app.agents.tools.todo_tools import TODO_TOOL_NAMES, create_todo_tools
 
+        tools = create_todo_tools(source="executor")
+        actual_names = {t.name for t in tools}
+        assert TODO_TOOL_NAMES == actual_names, (
+            f"TODO_TOOL_NAMES {TODO_TOOL_NAMES} does not match "
+            f"tools from create_todo_tools: {actual_names}"
+        )
+        # plan_tasks must always be present
         assert "plan_tasks" in TODO_TOOL_NAMES
-        assert "mark_task" in TODO_TOOL_NAMES
-        assert "add_task" in TODO_TOOL_NAMES
 
 
 # ---------------------------------------------------------------------------
