@@ -30,10 +30,10 @@ async def websocket_endpoint(websocket: WebSocket):
     # If client used subprotocol auth, echo back "Bearer" to complete handshake
     protocol_header = websocket.headers.get("sec-websocket-protocol", "")
     if protocol_header.startswith("Bearer, "):
-        auth_token_type = "subprotocol"
+        auth_token_type = "subprotocol"  # nosec B105
         await websocket.accept(subprotocol="Bearer")
     else:
-        auth_token_type = "cookie"
+        auth_token_type = "cookie"  # nosec B105
         await websocket.accept()
 
     log.set(auth_token_type=auth_token_type)

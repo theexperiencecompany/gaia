@@ -19,7 +19,6 @@ from app.agents.templates.mail_templates import (
     process_list_drafts_response,
     process_list_messages_response,
 )
-from app.config.loggers import app_logger as logger
 from shared.py.wide_events import log
 
 from .registry import (
@@ -189,7 +188,6 @@ def gmail_compose_before_hook(
                 return params
 
         writer = get_stream_writer()
-
 
         # Handle different recipient formats based on tool
         if tool == "GMAIL_FORWARD_MESSAGE":

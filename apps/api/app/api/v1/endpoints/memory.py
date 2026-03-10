@@ -40,7 +40,12 @@ async def get_all_memories(
 
     result = await memory_service.get_all_memories(user_id=user_id)
 
-    log.set(memory={"operation": "get_all", "result_count": len(result.results) if result.results else 0})
+    log.set(
+        memory={
+            "operation": "get_all",
+            "result_count": len(result.memories) if result.memories else 0,
+        }
+    )
 
     return result
 
@@ -67,7 +72,10 @@ async def create_memory(
 
     log.set(
         user={"id": user_id},
-        memory={"operation": "create", "content_length": len(request.content) if request.content else 0},
+        memory={
+            "operation": "create",
+            "content_length": len(request.content) if request.content else 0,
+        },
     )
 
     memory_entry = await memory_service.store_memory(

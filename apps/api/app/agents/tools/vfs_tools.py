@@ -26,7 +26,6 @@ from app.agents.tools.vfs_constants import (
     detect_artifact_content_type,
     is_user_visible_path,
 )
-from app.config.loggers import app_logger as logger
 from shared.py.wide_events import log
 from app.decorators import with_rate_limiting
 from app.services.vfs import MongoVFS, get_vfs
@@ -144,7 +143,7 @@ def _resolve_path(
     # .user-visible/ paths map to the current session
     if path.startswith(f"{USER_VISIBLE_FOLDER}/") or path == USER_VISIBLE_FOLDER:
         if not conversation_id:
-            logger.warning(
+            log.warning(
                 "No conversation_id for .user-visible path, falling back to files/"
             )
             files_path = get_files_path(user_id, agent_name)
@@ -197,7 +196,7 @@ async def _emit_artifact_event(
     try:
         writer = get_stream_writer()
     except Exception:
-        logger.debug("Could not emit artifact event (no stream writer)")
+        log.debug("Could not emit artifact event (no stream writer)")
         return
 
     filename = path.rsplit("/", 1)[-1]

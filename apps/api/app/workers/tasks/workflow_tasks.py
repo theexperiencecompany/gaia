@@ -278,7 +278,7 @@ async def execute_workflow_by_id(
                     await complete_execution(
                         execution_id=execution_id,
                         status="failed",
-                        error_message=error_str,
+                        error_message=str(e),
                     )
                 except Exception as e2:
                     log.debug("Failed to complete execution record: %s" % e2)
@@ -374,7 +374,7 @@ async def execute_workflow_by_id(
                 except Exception as notify_err:
                     log.debug("Failed to send failure notification: %s" % notify_err)
 
-            return "Error executing workflow %s: %s" % (workflow_id, error_str)
+            return "Error executing workflow %s: %s" % (workflow_id, str(e))
 
         finally:
             if scheduler:
@@ -434,7 +434,11 @@ async def execute_workflow_as_chat(workflow, user: dict, context: dict) -> list:
             user_id=user_id,
             workflow_title=workflow.title,
         )
-        log.set(conversation_context_found=bool(conversation and conversation.get("conversation_id")))
+        log.set(
+            conversation_context_found=bool(
+                conversation and conversation.get("conversation_id")
+            )
+        )
 
         # Convert workflow steps to the format expected by SelectedWorkflowData
         workflow_steps = []

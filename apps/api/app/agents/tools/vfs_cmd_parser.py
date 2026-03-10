@@ -25,7 +25,6 @@ from app.agents.tools.vfs_constants import (
     detect_artifact_content_type,
     is_user_visible_path,
 )
-from app.config.loggers import app_logger as logger
 from app.services.vfs import MongoVFS, VFSAccessError, get_vfs
 from shared.py.wide_events import log
 from app.services.vfs.path_resolver import (
@@ -362,7 +361,7 @@ class VFSCommandParser:
         # .user-visible/ paths map to the current session
         if path.startswith(f"{USER_VISIBLE_FOLDER}/") or path == USER_VISIBLE_FOLDER:
             if not conversation_id:
-                logger.warning(
+                log.warning(
                     "No conversation_id for .user-visible path, falling back to files/"
                 )
                 agent_root = get_agent_root(user_id, agent_name)

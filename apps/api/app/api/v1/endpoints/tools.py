@@ -55,16 +55,16 @@ async def list_available_tools(
                 mcp_tools = await get_user_mcp_tools(user_id)
                 if mcp_tools:
                     result = merge_tools_responses(cached_global, mcp_tools)
-                    log.set(result_count=result.count)
+                    log.set(result_count=result.total_count)
                     log.set(outcome="success")
                     return result
-            log.set(result_count=cached_global.count)
+            log.set(result_count=cached_global.total_count)
             log.set(outcome="success")
             return cached_global
 
         # Cache miss - build tools response (will also populate cache)
         result = await get_available_tools(user_id=user_id)
-        log.set(result_count=result.count)
+        log.set(result_count=result.total_count)
         log.set(outcome="success")
         return result
     except Exception as e:

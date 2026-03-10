@@ -156,7 +156,7 @@ def _get_user_timezone() -> tzinfo | None:
             dt = datetime.fromisoformat(user_time_str)
             return dt.tzinfo
     except Exception:
-        logger.error("Error getting user timezone", exc_info=True)
+        log.error("Error getting user timezone")
     return None
 
 

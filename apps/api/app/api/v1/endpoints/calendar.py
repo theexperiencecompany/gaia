@@ -50,7 +50,12 @@ async def get_calendar_list(
         access_token = get_google_calendar_token(str(user_id))
 
         calendars = calendar_service.list_calendars(access_token)
-        log.set(calendar={"operation": "list_calendars", "event_count": len(calendars) if isinstance(calendars, list) else None})
+        log.set(
+            calendar={
+                "operation": "list_calendars",
+                "event_count": len(calendars) if isinstance(calendars, list) else None,
+            }
+        )
         return calendars
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -118,7 +123,7 @@ async def query_events(
                 time_range_days = (
                     datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
                 ).days
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
         log.set(
@@ -144,7 +149,12 @@ async def query_events(
             fetch_all=request.fetch_all,
         )
         events = result.get("events", []) if isinstance(result, dict) else result
-        log.set(calendar={"operation": "get_events", "event_count": len(events) if isinstance(events, list) else None})
+        log.set(
+            calendar={
+                "operation": "get_events",
+                "event_count": len(events) if isinstance(events, list) else None,
+            }
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -218,7 +228,7 @@ async def get_events(
                 time_range_days = (
                     datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
                 ).days
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
         log.set(
@@ -244,7 +254,12 @@ async def get_events(
             fetch_all=fetch_all,
         )
         events = result.get("events", []) if isinstance(result, dict) else result
-        log.set(calendar={"operation": "get_events", "event_count": len(events) if isinstance(events, list) else None})
+        log.set(
+            calendar={
+                "operation": "get_events",
+                "event_count": len(events) if isinstance(events, list) else None,
+            }
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -314,7 +329,7 @@ async def get_events_by_calendar(
                 time_range_days = (
                     datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
                 ).days
-            except Exception:
+            except Exception:  # nosec B110
                 pass
 
         log.set(
@@ -337,7 +352,12 @@ async def get_events_by_calendar(
             time_max=time_max,
         )
         events = result.get("events", []) if isinstance(result, dict) else result
-        log.set(calendar={"operation": "get_events", "event_count": len(events) if isinstance(events, list) else None})
+        log.set(
+            calendar={
+                "operation": "get_events",
+                "event_count": len(events) if isinstance(events, list) else None,
+            }
+        )
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -369,7 +389,10 @@ async def create_event(
 
         log.set(
             user={"id": user_id},
-            calendar={"operation": "create_event", "calendar_id": getattr(event, "calendar_id", None)},
+            calendar={
+                "operation": "create_event",
+                "calendar_id": getattr(event, "calendar_id", None),
+            },
         )
 
         # Get token from Composio
@@ -396,9 +419,7 @@ async def get_calendar_preferences(
     try:
         user_id = current_user.get("user_id")
         log.set(user={"id": user_id}, calendar={"operation": "get_preferences"})
-        return calendar_service.get_user_calendar_preferences(
-            str(user_id or "")
-        )
+        return calendar_service.get_user_calendar_preferences(str(user_id or ""))
     except HTTPException as e:
         raise e
     except Exception as e:
