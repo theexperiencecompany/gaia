@@ -75,7 +75,7 @@ export default function Footer() {
         <div className="pointer-events-none absolute inset-x-0 -top-20 z-[-1] h-[30vh] bg-linear-to-t from-background to-transparent" />
 
         <Image
-          src="/images/wallpapers/bands_Gradient_black.png"
+          src="/images/wallpapers/bands_gradient_black.png"
           alt=""
           fill={true}
           className="mt-10 z-[-1]"
