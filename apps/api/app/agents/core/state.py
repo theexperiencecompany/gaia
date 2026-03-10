@@ -1,4 +1,4 @@
-from collections.abc import MutableMapping
+from collections.abc import Iterator, MutableMapping
 from typing import List, Optional
 from typing import Annotated
 
@@ -16,6 +16,9 @@ class DictLikeModel(BaseModel, MutableMapping):
 
     def __delitem__(self, key):
         delattr(self, key)
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self.__dict__)
 
     def __len__(self):
         return len(self.__dict__)
