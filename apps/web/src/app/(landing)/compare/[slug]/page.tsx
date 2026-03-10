@@ -159,7 +159,7 @@ export default async function ComparisonPage({ params }: PageProps) {
                 cellClassName: "text-zinc-400",
               },
             ]}
-            rows={data.rows as unknown as Record<string, string>[]}
+            rows={data.rows}
           />
         </section>
 

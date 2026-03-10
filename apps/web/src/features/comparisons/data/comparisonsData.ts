@@ -20,7 +20,7 @@
  * - Focus on long-tail: "free X alternative", "open source X alternative", "self-hosted X alternative"
  * - See `.agents/plans/programmatic-seo-plan.md` for the full keyword strategy
  */
-export interface ComparisonFeatureRow {
+export interface ComparisonFeatureRow extends Record<string, string> {
   feature: string;
   gaia: string;
   competitor: string;

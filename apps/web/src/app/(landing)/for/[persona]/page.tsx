@@ -354,7 +354,12 @@ export default async function PersonaPage({ params }: PageProps) {
       { name: "GAIA for Every Role", url: `${siteConfig.url}/for` },
       { name: config.breadcrumbName, url: `${siteConfig.url}/for/${persona}` },
     ];
-    const { default: Client } = await config.getClient();
+    let Client: ComponentType;
+    try {
+      ({ default: Client } = await config.getClient());
+    } catch {
+      notFound();
+    }
     return (
       <>
         <JsonLd

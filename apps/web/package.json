@@ -66,6 +66,7 @@
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
     "@microsoft/fetch-event-source": "^2.0.1",
+    "@modelcontextprotocol/sdk": "^1.27.1",
     "@next/mdx": "^16.1.6",
     "@next/third-parties": "^16.1.6",
     "@opennextjs/cloudflare": "^1.17.0",

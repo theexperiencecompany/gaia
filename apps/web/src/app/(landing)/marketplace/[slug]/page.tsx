@@ -232,7 +232,6 @@ export default async function IntegrationPage({ params }: Props) {
   const breadcrumbItems = [
     { name: "Home", url: siteConfig.url },
     { name: "Marketplace", url: `${siteConfig.url}/marketplace` },
-    { name: categoryLabel, url: `${siteConfig.url}/marketplace` },
     { name: integration.name, url: pageUrl },
   ];
 
