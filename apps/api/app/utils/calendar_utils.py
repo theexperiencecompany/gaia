@@ -34,7 +34,7 @@ def fetch_calendar_color(calendar_id: str, user_id: str) -> tuple[str, str]:
 
     try:
         calendar_list = list_calendars(user_id)
-        if calendar_list:
+        if isinstance(calendar_list, dict):
             for cal in calendar_list.get("items", []):
                 if cal.get("id") == calendar_id:
                     return (
