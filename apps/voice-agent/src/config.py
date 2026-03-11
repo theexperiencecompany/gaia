@@ -37,6 +37,14 @@ class VoiceAgentSettings(BaseAppSettings):
     # Deepgram STT (used by livekit-plugins-deepgram)
     DEEPGRAM_API_KEY: Optional[str] = None
 
+    # Silero VAD tuning
+    VAD_MIN_SILENCE_DURATION: float = 0.35
+    VAD_PREFIX_PADDING_DURATION: float = 0.3
+
+    # AgentSession endpointing
+    MIN_ENDPOINTING_DELAY: float = 0.2
+    MAX_ENDPOINTING_DELAY: float = 2.0
+
     model_config = SettingsConfigDict(
         env_file_encoding="utf-8",
         extra="ignore",

@@ -319,7 +319,12 @@ class CustomLLM(LLM):
 
 def prewarm(proc: JobProcess):
     """Preload VAD model to reduce first-turn latency."""
-    proc.userdata["vad"] = silero.VAD.load()
+    from src.config import load_settings
+    s = load_settings()
+    proc.userdata["vad"] = silero.VAD.load(
+        min_silence_duration=s.VAD_MIN_SILENCE_DURATION,
+        prefix_padding_duration=s.VAD_PREFIX_PADDING_DURATION,
+    )
 
 
 async def entrypoint(ctx: JobContext):
@@ -348,6 +353,8 @@ async def entrypoint(ctx: JobContext):
         ),
         turn_detection=MultilingualModel(),
         vad=ctx.proc.userdata["vad"],
+        min_endpointing_delay=settings.MIN_ENDPOINTING_DELAY,
+        max_endpointing_delay=settings.MAX_ENDPOINTING_DELAY,
         preemptive_generation=True,
         use_tts_aligned_transcript=True,
     )
