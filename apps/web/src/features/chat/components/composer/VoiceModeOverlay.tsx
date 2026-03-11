@@ -22,6 +22,7 @@ interface AppProps {
 export function VoiceApp({ onEndCall }: AppProps) {
   const room = useMemo(() => new Room(), []);
   const [sessionStarted, setSessionStarted] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(true);
   const pathname = usePathname();
   let conversationId: string | undefined;
   const match = pathname.match(/^\/c(?:\/([^/?#]+))?/);
@@ -43,39 +44,52 @@ export function VoiceApp({ onEndCall }: AppProps) {
           preConnectBuffer: true,
         }),
         existingOrRefreshConnectionDetails().then((connectionDetails) => {
-          room.connect(
+          return room.connect(
             connectionDetails.serverUrl,
             connectionDetails.participantToken,
           );
         }),
-      ]).catch((error) => {
-        if (aborted) return;
-        toast.error(
-          `There was an error connecting to the agent ${error.name}: ${error.message}`,
-        );
-      });
+      ])
+        .then(() => {
+          if (!aborted) setIsConnecting(false);
+        })
+        .catch((error) => {
+          if (aborted) return;
+          toast.error(
+            `There was an error connecting to the agent ${error.name}: ${error.message}`,
+          );
+          onEndCall();
+        });
     }
     return () => {
       aborted = true;
       room.disconnect();
     };
-  }, [room, sessionStarted]);
+  }, [room, sessionStarted, onEndCall]);
 
   return (
     <div className="flex h-full w-full flex-col">
       <RoomContext.Provider value={room}>
         <RoomAudioRenderer />
         <StartAudio label="Start Audio" />
+        {isConnecting && (
+          <div className="flex h-full w-full items-center justify-center">
+            <div className="flex flex-col items-center gap-3 text-zinc-400">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-zinc-600 border-t-zinc-300" />
+              <span className="text-sm">Connecting to voice agent…</span>
+            </div>
+          </div>
+        )}
         <MotionSessionView
           key="session-view"
-          disabled={!sessionStarted}
+          disabled={!sessionStarted || isConnecting}
           sessionStarted={sessionStarted}
           initial={{ opacity: 0 }}
-          animate={{ opacity: sessionStarted ? 1 : 0 }}
+          animate={{ opacity: sessionStarted && !isConnecting ? 1 : 0 }}
           transition={{
             duration: 0.5,
             ease: "linear",
-            delay: sessionStarted ? 0.5 : 0,
+            delay: sessionStarted && !isConnecting ? 0.5 : 0,
           }}
           onEndCall={onEndCall}
         />

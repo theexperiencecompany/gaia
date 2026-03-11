@@ -20,6 +20,11 @@ export interface VoiceStreamState {
   streamError: string | null;
 }
 
+export interface VoiceStreamActions {
+  clearProgress: () => void;
+  clearStreamError: () => void;
+}
+
 const VOICE_STREAM_TOPICS = [
   "stream-progress",
   "stream-tool-data",
@@ -41,14 +46,26 @@ const INITIAL_STATE: VoiceStreamState = {
 
 export function useVoiceStreamEvents(
   room: import("livekit-client").Room | null,
-): VoiceStreamState {
+): VoiceStreamState & VoiceStreamActions {
   const [state, setState] = useState<VoiceStreamState>(INITIAL_STATE);
-  // Use a ref to access current toolDataEntries in callbacks without stale closure
+  // Ref for immediate access in async merge operations (avoids stale closure)
   const toolDataEntriesRef = useRef<ToolDataEntry[]>([]);
 
   const resetState = useCallback(() => {
     setState(INITIAL_STATE);
     toolDataEntriesRef.current = [];
+  }, []);
+
+  const clearProgress = useCallback(() => {
+    setState((prev) =>
+      prev.progress === null ? prev : { ...prev, progress: null },
+    );
+  }, []);
+
+  const clearStreamError = useCallback(() => {
+    setState((prev) =>
+      prev.streamError === null ? prev : { ...prev, streamError: null },
+    );
   }, []);
 
   useEffect(() => {
@@ -91,14 +108,13 @@ export function useVoiceStreamEvents(
             case "stream-tool-data": {
               const entry = data as unknown as ToolDataEntry;
               if (typeof entry.tool_name === "string") {
+                // Update ref immediately for subsequent merge operations
                 toolDataEntriesRef.current = [
                   ...toolDataEntriesRef.current,
                   entry,
                 ];
-                setState((prev) => ({
-                  ...prev,
-                  toolDataEntries: toolDataEntriesRef.current,
-                }));
+                const updated = toolDataEntriesRef.current;
+                setState((prev) => ({ ...prev, toolDataEntries: updated }));
               }
               break;
             }
@@ -182,5 +198,5 @@ export function useVoiceStreamEvents(
     };
   }, [room, resetState]);
 
-  return state;
+  return { ...state, clearProgress, clearStreamError };
 }

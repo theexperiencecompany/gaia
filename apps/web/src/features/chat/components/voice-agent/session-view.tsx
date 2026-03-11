@@ -5,7 +5,7 @@ import {
 } from "@livekit/components-react";
 import type { TextStreamReader } from "livekit-client";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
 import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import { AgentControlBar } from "@/features/chat/components/voice-agent/agent-control-bar";
@@ -43,13 +43,21 @@ export const SessionView = ({
   const { state: agentState } = useVoiceAssistant();
   const [chatOpen, setChatOpen] = useState(false);
   const room = useRoomContext();
-  const { progress, toolDataEntries, followUpActions, streamError } =
-    useVoiceStreamEvents(room);
+  const {
+    progress,
+    toolDataEntries,
+    followUpActions,
+    streamError,
+    clearProgress,
+    clearStreamError,
+  } = useVoiceStreamEvents(room);
   const { messages } = useChatAndTranscription(
     toolDataEntries,
     followUpActions,
   );
   const [progressKey, setProgressKey] = useState(0);
+  // Track previous agent state to detect speaking→listening transition
+  const prevAgentStateRef = useRef<AgentState>(agentState);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationDescription, setConversationDescription] = useState<
     string | null
@@ -194,24 +202,39 @@ export const SessionView = ({
           if (room) {
             room.disconnect();
           }
+          onEndCall();
         }
       }, 10_000);
 
       return () => clearTimeout(timeout);
     }
-  }, [agentState, sessionStarted, room]);
+  }, [agentState, sessionStarted, room, onEndCall]);
 
+  // Show toast once per error, then clear so it doesn't repeat
   useEffect(() => {
     if (streamError) {
       toast.error(`Voice session error: ${streamError}`);
+      clearStreamError();
     }
-  }, [streamError]);
+  }, [streamError, clearStreamError]);
+
+  // Clear progress spinner when agent transitions from speaking/thinking → listening
+  useEffect(() => {
+    const prev = prevAgentStateRef.current;
+    prevAgentStateRef.current = agentState;
+    if (
+      (prev === "speaking" || prev === "thinking") &&
+      agentState === "listening"
+    ) {
+      clearProgress();
+    }
+  }, [agentState, clearProgress]);
 
   useEffect(() => {
     if (progress) {
       setProgressKey((k) => k + 1);
     }
-  }, [progress?.message]);
+  }, [progress]);
 
   return (
     <main

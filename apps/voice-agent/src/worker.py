@@ -96,6 +96,7 @@ class CustomLLM(LLM):
         self.conversation_description: Optional[str] = None
         self.request_timeout_s = request_timeout_s
         self.room = room
+        self._pending_tasks: set[asyncio.Task] = set()
 
     def set_agent_token(self, token: Optional[str]):
         """Set the authentication token for backend requests."""
@@ -104,7 +105,7 @@ class CustomLLM(LLM):
     async def set_conversation_id(self, conversation_id: Optional[str]):
         """Store and broadcast conversation ID to room participants."""
         self.conversation_id = conversation_id
-        if self.room and self.room.local_participant:
+        if self.room and self.room.local_participant and conversation_id:
             try:
                 await self.room.local_participant.send_text(
                     conversation_id, topic="conversation-id"
@@ -115,13 +116,20 @@ class CustomLLM(LLM):
     async def set_conversation_description(self, description: Optional[str]):
         """Store and broadcast conversation description to room participants."""
         self.conversation_description = description
-        if self.room and self.room.local_participant:
+        if self.room and self.room.local_participant and description:
             try:
                 await self.room.local_participant.send_text(
                     description, topic="conversation-description"
                 )
             except Exception as e:
                 logger.error(f"Failed to send conversation description: {e}")
+
+    def _track_task(self, coro: Any) -> asyncio.Task:
+        """Create and track an asyncio task to prevent GC before completion."""
+        task: asyncio.Task = asyncio.create_task(coro)
+        self._pending_tasks.add(task)
+        task.add_done_callback(self._pending_tasks.discard)
+        return task
 
     async def _publish_event(
         self, topic: str, payload: dict[str, object]
@@ -173,8 +181,12 @@ class CustomLLM(LLM):
                     async for raw in resp.content:
                         if not raw:
                             continue
-                        line = raw.decode("utf-8", errors="ignore").strip()
-                        if not line or not line.startswith("data:"):
+                        try:
+                            line = raw.decode("utf-8").strip()
+                        except UnicodeDecodeError as ude:
+                            logger.warning("SSE line UTF-8 decode error, skipping: %s", ude)
+                            continue
+                        if not line or not line.startswith("data:") or line.startswith(":"):
                             continue
 
                         data = line[5:].strip()
@@ -217,31 +229,31 @@ class CustomLLM(LLM):
                             continue
 
                         if "progress" in event_data and isinstance(event_data["progress"], dict):
-                            asyncio.create_task(
+                            self._track_task(
                                 self._publish_event("stream-progress", event_data["progress"])
                             )
                             continue
 
                         if "tool_data" in event_data and isinstance(event_data["tool_data"], dict):
-                            asyncio.create_task(
+                            self._track_task(
                                 self._publish_event("stream-tool-data", event_data["tool_data"])
                             )
                             continue
 
                         if "tool_output" in event_data and isinstance(event_data["tool_output"], dict):
-                            asyncio.create_task(
+                            self._track_task(
                                 self._publish_event("stream-tool-output", event_data["tool_output"])
                             )
                             continue
 
                         if "todo_progress" in event_data and isinstance(event_data["todo_progress"], dict):
-                            asyncio.create_task(
+                            self._track_task(
                                 self._publish_event("stream-todo-progress", event_data["todo_progress"])
                             )
                             continue
 
                         if "follow_up_actions" in event_data and isinstance(event_data["follow_up_actions"], list):
-                            asyncio.create_task(
+                            self._track_task(
                                 self._publish_event(
                                     "stream-follow-up-actions",
                                     {"actions": event_data["follow_up_actions"]},
@@ -256,19 +268,7 @@ class CustomLLM(LLM):
                         if isinstance(piece, str):
                             piece = re.sub(r"(_BREAK|_MESSAGE|NEW|<|>)", " ", piece)
 
-                            if piece.strip() == "":
-                                piece = " "
-
-                                last = text_buffer[-1] if text_buffer else ""
-                                if (
-                                    last
-                                    and not last.endswith(" ")
-                                    and piece
-                                    and not piece.startswith(" ")
-                                ):
-                                    piece = " " + piece
-
-                        if piece is None or piece == "":
+                        if not piece:
                             continue
 
                         if isinstance(piece, str):
