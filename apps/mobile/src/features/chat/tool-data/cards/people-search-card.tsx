@@ -56,7 +56,7 @@ function PersonRow({ person }: { person: PeopleSearchData }) {
         <View className="flex-row flex-wrap gap-x-3 mt-0.5">
           {person.email && (
             <View className="flex-row items-center gap-1">
-              <HugeiconsIcon icon={Mail01Icon} size={11} color="#8e8e93" />
+              <AppIcon icon={Mail01Icon} size={11} color="#8e8e93" />
               <Text className="text-xs text-[#8e8e93]" numberOfLines={1}>
                 {person.email}
               </Text>
@@ -64,7 +64,7 @@ function PersonRow({ person }: { person: PeopleSearchData }) {
           )}
           {person.phone && (
             <View className="flex-row items-center gap-1">
-              <HugeiconsIcon icon={Call02Icon} size={11} color="#8e8e93" />
+              <AppIcon icon={Call02Icon} size={11} color="#8e8e93" />
               <Text className="text-xs text-[#8e8e93]">{person.phone}</Text>
             </View>
           )}
@@ -79,7 +79,7 @@ export function PeopleSearchCard({ data }: { data: PeopleSearchData[] }) {
     <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
       <Card.Body className="py-3 px-4">
         <View className="flex-row items-center gap-2 mb-3">
-          <HugeiconsIcon icon={UserSearch01Icon} size={14} color="#8e8e93" />
+          <AppIcon icon={UserSearch01Icon} size={14} color="#8e8e93" />
           <Text className="text-xs text-[#8e8e93]">People Search</Text>
           <View className="rounded-full bg-white/10 px-2 py-0.5 ml-auto">
             <Text className="text-[10px] text-[#8e8e93]">

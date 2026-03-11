@@ -127,7 +127,7 @@ function MessageItem({ message }: { message: EmailThreadMessage }) {
           <Text className="text-xs text-[#8e8e93]">
             {formatTime(message.time)}
           </Text>
-          <HugeiconsIcon
+          <AppIcon
             icon={expanded ? ArrowUp01Icon : ArrowDown01Icon}
             size={12}
             color="#8e8e93"
@@ -166,7 +166,7 @@ export function EmailThreadCard({ data }: { data: EmailThreadData }) {
         {/* Header */}
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center gap-2">
-            <HugeiconsIcon icon={Mail01Icon} size={14} color="#8e8e93" />
+            <AppIcon icon={Mail01Icon} size={14} color="#8e8e93" />
             <Text className="text-xs text-[#8e8e93]">Email Thread</Text>
           </View>
           <View className="rounded-full bg-white/10 px-2 py-0.5">

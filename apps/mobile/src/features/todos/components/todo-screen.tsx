@@ -2,7 +2,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Add01Icon, ArrowLeft01Icon, HugeiconsIcon } from "@/components/icons";
+import { Add01Icon, ArrowLeft01Icon, AppIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { useTodos } from "../hooks/use-todos";
@@ -72,7 +72,7 @@ export function TodoScreen() {
             backgroundColor: "rgba(255,255,255,0.05)",
           }}
         >
-          <HugeiconsIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
+          <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
         </Pressable>
 
         <Text
@@ -98,7 +98,7 @@ export function TodoScreen() {
             backgroundColor: "rgba(22,193,255,0.15)",
           }}
         >
-          <HugeiconsIcon icon={Add01Icon} size={18} color="#16c1ff" />
+          <AppIcon icon={Add01Icon} size={18} color="#16c1ff" />
         </Pressable>
       </View>
 

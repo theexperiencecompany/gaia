@@ -7,7 +7,7 @@ import {
   BubbleChatAddIcon,
   Delete02Icon,
   FavouriteIcon,
-  HugeiconsIcon,
+  AppIcon,
   Menu01Icon,
   PencilEdit02Icon,
 } from "@/components/icons";
@@ -109,7 +109,7 @@ export function ChatHeader({
         {/* Left: hamburger menu */}
         <PressableFeedback onPress={onMenuPress}>
           <View style={iconButtonStyle}>
-            <HugeiconsIcon
+            <AppIcon
               icon={Menu01Icon}
               size={iconSize.md}
               color="#ffffff"
@@ -151,7 +151,7 @@ export function ChatHeader({
               backgroundColor: "rgba(255,255,255,0.06)",
             }}
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={AiChipIcon}
               size={moderateScale(11, 0.5)}
               color="#8e8e93"
@@ -166,7 +166,7 @@ export function ChatHeader({
             >
               {currentModel?.name ?? "Select model"}
             </Text>
-            <HugeiconsIcon
+            <AppIcon
               icon={ArrowDownIcon}
               size={moderateScale(10, 0.5)}
               color="#8e8e93"
@@ -179,7 +179,7 @@ export function ChatHeader({
           {hasConversation ? (
             <PressableFeedback onPress={() => setOptionsVisible(true)}>
               <View style={iconButtonStyle}>
-                <HugeiconsIcon
+                <AppIcon
                   icon={PencilEdit02Icon}
                   size={iconSize.md}
                   color="#bbbbbb"
@@ -189,7 +189,7 @@ export function ChatHeader({
           ) : (
             <PressableFeedback onPress={onNewChatPress}>
               <View style={iconButtonStyle}>
-                <HugeiconsIcon
+                <AppIcon
                   icon={BubbleChatAddIcon}
                   size={iconSize.md}
                   color="#bbbbbb"
@@ -435,7 +435,7 @@ export function ChatHeader({
                 paddingVertical: spacing.sm,
               }}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={FavouriteIcon}
                 size={iconSize.md}
                 color={isStarred ? "#f5a623" : "#8e8e93"}
@@ -463,7 +463,7 @@ export function ChatHeader({
                 paddingVertical: spacing.sm,
               }}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={PencilEdit02Icon}
                 size={iconSize.md}
                 color="#8e8e93"
@@ -487,7 +487,7 @@ export function ChatHeader({
                 paddingVertical: spacing.sm,
               }}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={Delete02Icon}
                 size={iconSize.md}
                 color="#ff453a"

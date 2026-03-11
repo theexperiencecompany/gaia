@@ -1,7 +1,7 @@
 import { Button } from "heroui-native";
 import { useRef, useState } from "react";
 import { Keyboard, Pressable, TextInput, View } from "react-native";
-import { ArrowUp02Icon, HugeiconsIcon, PlusSignIcon } from "@/components/icons";
+import { ArrowUp02Icon, AppIcon, PlusSignIcon } from "@/components/icons";
 import { ConnectDrawerTrigger } from "@/features/integrations";
 import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";
@@ -118,7 +118,7 @@ export function ChatInput({
               className="rounded-full"
               onPress={dismissKeyboard}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={PlusSignIcon}
                 size={iconSize.md - 2}
                 color="#8e8e93"
@@ -146,7 +146,7 @@ export function ChatInput({
               onPress={handleSend}
               isDisabled={!message.trim()}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={ArrowUp02Icon}
                 size={iconSize.sm}
                 strokeWidth={2.5}

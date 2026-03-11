@@ -214,7 +214,7 @@ export function AccountSection() {
           marginTop: spacing.md,
         }}
       >
-        <HugeiconsIcon icon={Logout01Icon} size={20} color="#ef4444" />
+        <AppIcon icon={Logout01Icon} size={20} color="#ef4444" />
         <Text style={{ color: "#ef4444", fontSize: fontSize.base }}>
           {isSigningOut ? "Signing out…" : "Sign Out"}
         </Text>

@@ -23,8 +23,8 @@
         "android.permission.VIBRATE"
       ],
       "adaptiveIcon": {
-        "backgroundColor": "#141414",
-        "foregroundImage": "./assets/icons/gaialogo.png"
+        "backgroundColor": "#121212",
+        "foregroundImage": "./assets/icons/adaptive-icon.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,

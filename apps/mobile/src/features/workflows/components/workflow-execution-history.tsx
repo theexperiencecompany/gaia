@@ -5,7 +5,7 @@ import {
   ArrowRight01Icon,
   CheckmarkCircle02Icon,
   Clock04Icon,
-  HugeiconsIcon,
+  AppIcon,
   Loading03Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -36,13 +36,13 @@ function statusBgColor(status: WorkflowExecution["status"]): string {
 function StatusIcon({ status }: { status: WorkflowExecution["status"] }) {
   if (status === "success") {
     return (
-      <HugeiconsIcon icon={CheckmarkCircle02Icon} size={12} color="#22c55e" />
+      <AppIcon icon={CheckmarkCircle02Icon} size={12} color="#22c55e" />
     );
   }
   if (status === "running") {
-    return <HugeiconsIcon icon={Loading03Icon} size={12} color="#f59e0b" />;
+    return <AppIcon icon={Loading03Icon} size={12} color="#f59e0b" />;
   }
-  return <HugeiconsIcon icon={AlertCircleIcon} size={12} color="#ef4444" />;
+  return <AppIcon icon={AlertCircleIcon} size={12} color="#ef4444" />;
 }
 
 function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
@@ -118,7 +118,7 @@ function ExecutionItem({ execution }: { execution: WorkflowExecution }) {
             {relativeDate}
           </Text>
           {isClickable && (
-            <HugeiconsIcon icon={ArrowRight01Icon} size={14} color="#71717a" />
+            <AppIcon icon={ArrowRight01Icon} size={14} color="#71717a" />
           )}
         </View>
       </View>
@@ -189,7 +189,7 @@ export function WorkflowExecutionHistory({
             justifyContent: "center",
           }}
         >
-          <HugeiconsIcon icon={Clock04Icon} size={18} color="#71717a" />
+          <AppIcon icon={Clock04Icon} size={18} color="#71717a" />
         </View>
         <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
           No executions yet

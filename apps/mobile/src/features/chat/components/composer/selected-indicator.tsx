@@ -6,7 +6,7 @@ import Animated, {
 } from "react-native-reanimated";
 import {
   Cancel01Icon,
-  HugeiconsIcon,
+  AppIcon,
   WorkflowSquare10Icon,
   Wrench01Icon,
 } from "@/components/icons";
@@ -57,7 +57,7 @@ export function SelectedIndicator({
         gap: spacing.xs,
       }}
     >
-      <HugeiconsIcon icon={icon} size={iconSize.sm} color="#a1a1aa" />
+      <AppIcon icon={icon} size={iconSize.sm} color="#a1a1aa" />
       <Text
         style={{
           fontSize: fontSize.sm,
@@ -79,7 +79,7 @@ export function SelectedIndicator({
           justifyContent: "center",
         }}
       >
-        <HugeiconsIcon
+        <AppIcon
           icon={Cancel01Icon}
           size={iconSize.sm - 2}
           color="#a1a1aa"

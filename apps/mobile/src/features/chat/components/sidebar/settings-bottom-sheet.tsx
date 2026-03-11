@@ -58,7 +58,7 @@ function SettingsItem({
       onPress={onPress}
       className="flex-row items-center py-3 active:opacity-60"
     >
-      <HugeiconsIcon icon={icon} size={20} color={iconColor} />
+      <AppIcon icon={icon} size={20} color={iconColor} />
       <Text
         className="flex-1 text-[15px] ml-3"
         style={labelColor ? { color: labelColor } : undefined}
@@ -66,7 +66,7 @@ function SettingsItem({
         {label}
       </Text>
       {showArrow && (
-        <HugeiconsIcon icon={ArrowRight01Icon} size={16} color="#48484a" />
+        <AppIcon icon={ArrowRight01Icon} size={16} color="#48484a" />
       )}
     </Pressable>
   );
@@ -162,7 +162,7 @@ export const SettingsBottomSheet = forwardRef<
           className="flex-row items-center py-3 active:opacity-60"
           onPress={() => openLink("https://gaia.com/pricing")}
         >
-          <HugeiconsIcon icon={MagicWand01Icon} size={20} color="#00bbff" />
+          <AppIcon icon={MagicWand01Icon} size={20} color="#00bbff" />
           <Text className="ml-3 text-[15px]" style={{ color: "#00bbff" }}>
             Upgrade to Pro
           </Text>

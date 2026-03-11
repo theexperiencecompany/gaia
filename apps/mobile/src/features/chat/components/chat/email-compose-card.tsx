@@ -61,7 +61,7 @@ export function EmailComposeCard({
       {/* Header */}
       <View className="flex-row items-center justify-between px-4 pt-3 pb-2">
         <View className="flex-row items-center gap-2">
-          <HugeiconsIcon icon={Mail01Icon} size={18} color="#8e8e93" />
+          <AppIcon icon={Mail01Icon} size={18} color="#8e8e93" />
           <Text className="text-sm font-medium text-foreground">
             {isDraft ? "Email Draft" : "Compose Email"}
           </Text>
@@ -73,7 +73,7 @@ export function EmailComposeCard({
             </View>
           )}
         </View>
-        <HugeiconsIcon icon={PencilEdit01Icon} size={14} color="#8e8e93" />
+        <AppIcon icon={PencilEdit01Icon} size={14} color="#8e8e93" />
       </View>
 
       <Separator />

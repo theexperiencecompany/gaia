@@ -1,7 +1,7 @@
 import { PressableFeedback } from "heroui-native";
 import { useEffect, useRef, useState } from "react";
 import { Animated, TextInput, View } from "react-native";
-import { HugeiconsIcon, PlusSignIcon, SentIcon } from "@/components/icons";
+import { AppIcon, PlusSignIcon, SentIcon } from "@/components/icons";
 
 export function ChatInput({
   placeholder = "What can I do for you today?",
@@ -34,7 +34,7 @@ export function ChatInput({
     <View className="flex-row items-end rounded-3xl bg-surface-2 px-3 py-2 border border-border/10 shadow-lg">
       <PressableFeedback onPress={() => {}}>
         <View className="h-10 w-10 items-center justify-center rounded-full">
-          <HugeiconsIcon icon={PlusSignIcon} size={20} color="#8e8e93" />
+          <AppIcon icon={PlusSignIcon} size={20} color="#8e8e93" />
         </View>
       </PressableFeedback>
 
@@ -62,7 +62,7 @@ export function ChatInput({
               canSubmit ? "bg-accent" : "bg-surface-3"
             }`}
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={SentIcon}
               size={18}
               color={canSubmit ? "#000000" : "#666666"}

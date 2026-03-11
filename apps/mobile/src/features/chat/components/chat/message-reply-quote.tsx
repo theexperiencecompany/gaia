@@ -41,7 +41,7 @@ export function MessageReplyQuote({
         gap: spacing.xs,
       }}
     >
-      <HugeiconsIcon
+      <AppIcon
         icon={LinkBackwardIcon}
         size={iconSize.sm - 4}
         color="#6366f1"

@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { FlatList, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { HugeiconsIcon, Notification01Icon } from "@/components/icons";
+import { AppIcon, Notification01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import type {
@@ -215,7 +215,7 @@ export function NotificationsList({
             justifyContent: "center",
           }}
         >
-          <HugeiconsIcon icon={Notification01Icon} size={28} color="#48484a" />
+          <AppIcon icon={Notification01Icon} size={28} color="#48484a" />
         </View>
         <View style={{ alignItems: "center", gap: 4 }}>
           <Text

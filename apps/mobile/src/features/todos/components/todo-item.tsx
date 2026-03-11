@@ -8,7 +8,7 @@ import {
   Delete02Icon,
   Flag02Icon,
   Folder02Icon,
-  HugeiconsIcon,
+  AppIcon,
   Tag01Icon,
   Tick02Icon,
 } from "@/components/icons";
@@ -164,7 +164,7 @@ export function TodoItem({
         }}
       >
         {todo.completed && (
-          <HugeiconsIcon icon={Tick02Icon} size={13} color="#71717a" />
+          <AppIcon icon={Tick02Icon} size={13} color="#71717a" />
         )}
       </Pressable>
 
@@ -223,7 +223,7 @@ export function TodoItem({
                   gap: 4,
                 }}
               >
-                <HugeiconsIcon
+                <AppIcon
                   icon={Calendar03Icon}
                   size={12}
                   color={
@@ -259,7 +259,7 @@ export function TodoItem({
                   gap: 4,
                 }}
               >
-                <HugeiconsIcon
+                <AppIcon
                   icon={Folder02Icon}
                   size={12}
                   color={project.color ?? "#71717a"}
@@ -289,7 +289,7 @@ export function TodoItem({
                   gap: 4,
                 }}
               >
-                <HugeiconsIcon
+                <AppIcon
                   icon={CheckmarkCircle02Icon}
                   size={12}
                   color="#71717a"
@@ -320,7 +320,7 @@ export function TodoItem({
                   gap: 4,
                 }}
               >
-                <HugeiconsIcon icon={Tag01Icon} size={12} color="#71717a" />
+                <AppIcon icon={Tag01Icon} size={12} color="#71717a" />
                 <Text
                   style={{
                     fontSize: fontSize.xs,
@@ -346,7 +346,7 @@ export function TodoItem({
                   gap: 4,
                 }}
               >
-                <HugeiconsIcon
+                <AppIcon
                   icon={Flag02Icon}
                   size={12}
                   color={priorityColor}
@@ -389,10 +389,10 @@ export function TodoItem({
               backgroundColor: "rgba(239,68,68,0.08)",
             }}
           >
-            <HugeiconsIcon icon={Delete02Icon} size={14} color="#ef4444" />
+            <AppIcon icon={Delete02Icon} size={14} color="#ef4444" />
           </Pressable>
         )}
-        <HugeiconsIcon
+        <AppIcon
           icon={ArrowRight01Icon}
           size={16}
           color="rgba(255,255,255,0.18)"

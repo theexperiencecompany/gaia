@@ -168,7 +168,7 @@ function PostStats({
     <View className="flex-row items-center gap-4 mt-2">
       {score !== undefined && (
         <View className="flex-row items-center gap-1">
-          <HugeiconsIcon icon={ArrowUp02Icon} size={16} color={REDDIT_ORANGE} />
+          <AppIcon icon={ArrowUp02Icon} size={16} color={REDDIT_ORANGE} />
           <Text
             className="text-sm font-medium"
             style={{ color: REDDIT_ORANGE }}
@@ -184,7 +184,7 @@ function PostStats({
       )}
       {numComments !== undefined && (
         <View className="flex-row items-center gap-1">
-          <HugeiconsIcon icon={BubbleChatIcon} size={14} color="#8e8e93" />
+          <AppIcon icon={BubbleChatIcon} size={14} color="#8e8e93" />
           <Text className="text-xs text-muted">
             {formatNumber(numComments)}
           </Text>
@@ -323,7 +323,7 @@ function PostView({ post }: { post: RedditPostData }) {
           onPress={() => post.url && Linking.openURL(post.url)}
           className="flex-row items-center gap-1 mt-2 active:opacity-70"
         >
-          <HugeiconsIcon icon={LinkSquare02Icon} size={12} color="#60A5FA" />
+          <AppIcon icon={LinkSquare02Icon} size={12} color="#60A5FA" />
           <Text className="text-xs text-blue-400 flex-1" numberOfLines={1}>
             {post.url}
           </Text>
@@ -373,7 +373,7 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
             {/* Author & meta */}
             <View className="flex-row items-center justify-between mb-2">
               <View className="flex-row items-center gap-1.5">
-                <HugeiconsIcon
+                <AppIcon
                   icon={UserCircle02Icon}
                   size={14}
                   color="#8e8e93"
@@ -404,7 +404,7 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
               </View>
               {comment.score !== undefined && (
                 <View className="flex-row items-center gap-1">
-                  <HugeiconsIcon
+                  <AppIcon
                     icon={ArrowUp02Icon}
                     size={14}
                     color={REDDIT_ORANGE}
@@ -478,7 +478,7 @@ function CreatedView({
   return (
     <View className="rounded-xl bg-white/5 border border-white/10 p-3">
       <View className="flex-row items-center gap-2 mb-2">
-        <HugeiconsIcon icon={CheckmarkCircle02Icon} size={18} color="#4ade80" />
+        <AppIcon icon={CheckmarkCircle02Icon} size={18} color="#4ade80" />
         <Text className="text-sm font-semibold text-green-400">
           {isPost
             ? "Post Created Successfully!"
@@ -509,7 +509,7 @@ function CreatedView({
             >
               View on Reddit
             </Text>
-            <HugeiconsIcon
+            <AppIcon
               icon={LinkSquare02Icon}
               size={12}
               color={REDDIT_ORANGE}

@@ -12,7 +12,7 @@ import Animated, {
 import {
   ArrowUp02Icon,
   Cancel01Icon,
-  HugeiconsIcon,
+  AppIcon,
   LinkBackwardIcon,
   PlusSignIcon,
 } from "@/components/icons";
@@ -325,7 +325,7 @@ export function Composer({
                 overflow: "hidden",
               }}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={LinkBackwardIcon}
                 size={iconSize.sm}
                 color="#a1a1aa"
@@ -366,7 +366,7 @@ export function Composer({
                   marginLeft: spacing.xs,
                 }}
               >
-                <HugeiconsIcon
+                <AppIcon
                   icon={Cancel01Icon}
                   size={iconSize.sm - 2}
                   color="#8e8e93"
@@ -457,7 +457,7 @@ export function Composer({
               className="rounded-full"
               onPress={handlePlusPress}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={PlusSignIcon}
                 size={iconSize.md - 2}
                 color="#8e8e93"
@@ -491,7 +491,7 @@ export function Composer({
                   }}
                 />
               ) : (
-                <HugeiconsIcon
+                <AppIcon
                   icon={ArrowUp02Icon}
                   size={iconSize.sm}
                   strokeWidth={2.5}

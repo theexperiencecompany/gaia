@@ -45,7 +45,7 @@ function ContactRow({ contact }: { contact: ContactData }) {
         <View className="flex-row flex-wrap gap-x-3 mt-0.5">
           {contact.email && (
             <View className="flex-row items-center gap-1">
-              <HugeiconsIcon icon={Mail01Icon} size={11} color="#8e8e93" />
+              <AppIcon icon={Mail01Icon} size={11} color="#8e8e93" />
               <Text className="text-xs text-[#8e8e93]" numberOfLines={1}>
                 {contact.email}
               </Text>
@@ -53,7 +53,7 @@ function ContactRow({ contact }: { contact: ContactData }) {
           )}
           {contact.phone && (
             <View className="flex-row items-center gap-1">
-              <HugeiconsIcon icon={Call02Icon} size={11} color="#8e8e93" />
+              <AppIcon icon={Call02Icon} size={11} color="#8e8e93" />
               <Text className="text-xs text-[#8e8e93]">{contact.phone}</Text>
             </View>
           )}
@@ -68,7 +68,7 @@ export function ContactListCard({ data }: { data: ContactData[] }) {
     <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
       <Card.Body className="py-3 px-4">
         <View className="flex-row items-center gap-2 mb-3">
-          <HugeiconsIcon icon={Contact01Icon} size={14} color="#8e8e93" />
+          <AppIcon icon={Contact01Icon} size={14} color="#8e8e93" />
           <Text className="text-xs text-[#8e8e93]">Contacts</Text>
           <View className="rounded-full bg-white/10 px-2 py-0.5 ml-auto">
             <Text className="text-[10px] text-[#8e8e93]">

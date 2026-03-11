@@ -4,7 +4,7 @@ import {
   Cancel01Icon,
   CheckmarkCircle02Icon,
   Clock04Icon,
-  HugeiconsIcon,
+  AppIcon,
   PlayIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -106,7 +106,7 @@ export function WorkflowCard({ workflow, onPress }: WorkflowCardProps) {
                 gap: 4,
               }}
             >
-              <HugeiconsIcon icon={Clock04Icon} size={14} color="#71717a" />
+              <AppIcon icon={Clock04Icon} size={14} color="#71717a" />
               <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
                 {triggerLabel}
               </Text>
@@ -122,7 +122,7 @@ export function WorkflowCard({ workflow, onPress }: WorkflowCardProps) {
                 gap: 4,
               }}
             >
-              <HugeiconsIcon icon={PlayIcon} size={14} color="#71717a" />
+              <AppIcon icon={PlayIcon} size={14} color="#71717a" />
               <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
                 {runCountText}
               </Text>
@@ -167,7 +167,7 @@ function ActivationChip({ activated }: { activated: boolean }) {
         gap: 4,
       }}
     >
-      <HugeiconsIcon
+      <AppIcon
         icon={activated ? CheckmarkCircle02Icon : Cancel01Icon}
         size={12}
         color={activated ? "#22c55e" : "#ef4444"}

@@ -215,7 +215,7 @@ function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
           width: "100%",
         }}
       >
-        <HugeiconsIcon icon={Delete02Icon} size={iconSize.sm} color="#ffffff" />
+        <AppIcon icon={Delete02Icon} size={iconSize.sm} color="#ffffff" />
         <Text style={{ color: "#ffffff", fontSize: 10, marginTop: 2 }}>
           Delete
         </Text>
@@ -340,7 +340,7 @@ function ChatItem({
             />
           )}
           {item.is_starred && (
-            <HugeiconsIcon
+            <AppIcon
               icon={FavouriteIcon}
               size={iconSize.sm - 2}
               color="#f59e0b"

@@ -50,7 +50,7 @@ function FaviconImage({ url }: { url?: string }) {
   if (!hostname || errored) {
     return (
       <View className="w-4 h-4 rounded-full bg-white/10 items-center justify-center">
-        <HugeiconsIcon icon={Globe02Icon} size={10} color="#8e8e93" />
+        <AppIcon icon={Globe02Icon} size={10} color="#8e8e93" />
       </View>
     );
   }
@@ -159,7 +159,7 @@ export function SearchResultsCard({ data }: { data: SearchResults }) {
         {/* Header */}
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center gap-2">
-            <HugeiconsIcon icon={Search01Icon} size={14} color="#8e8e93" />
+            <AppIcon icon={Search01Icon} size={14} color="#8e8e93" />
             <Text className="text-xs text-muted">Search Results</Text>
           </View>
           <View className="flex-row items-center gap-2">
@@ -213,7 +213,7 @@ export function SearchResultsCard({ data }: { data: SearchResults }) {
         {expanded && newsResults.length > 0 && (
           <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden mt-2">
             <View className="flex-row items-center gap-1.5 py-2 border-b border-white/8">
-              <HugeiconsIcon icon={News01Icon} size={12} color="#8e8e93" />
+              <AppIcon icon={News01Icon} size={12} color="#8e8e93" />
               <Text className="text-[11px] text-muted font-medium">News</Text>
             </View>
             {newsResults.map((article, index) => (

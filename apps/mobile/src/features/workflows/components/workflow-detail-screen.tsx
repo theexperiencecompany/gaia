@@ -11,7 +11,7 @@ import {
   Delete01Icon,
   Edit02Icon,
   FlowCircleIcon,
-  HugeiconsIcon,
+  AppIcon,
   PlayIcon,
   ToggleOffIcon,
   ToggleOnIcon,
@@ -127,7 +127,7 @@ export function WorkflowDetailScreen({
           backgroundColor: "rgba(255,255,255,0.05)",
         }}
       >
-        <HugeiconsIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
+        <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
       </Pressable>
 
       {title ? (
@@ -159,7 +159,7 @@ export function WorkflowDetailScreen({
               backgroundColor: "rgba(255,255,255,0.05)",
             }}
           >
-            <HugeiconsIcon icon={Edit02Icon} size={16} color="#aaa" />
+            <AppIcon icon={Edit02Icon} size={16} color="#aaa" />
           </Pressable>
 
           <Pressable
@@ -177,7 +177,7 @@ export function WorkflowDetailScreen({
             {isDeleting ? (
               <ActivityIndicator size="small" color="#ef4444" />
             ) : (
-              <HugeiconsIcon icon={Delete01Icon} size={16} color="#ef4444" />
+              <AppIcon icon={Delete01Icon} size={16} color="#ef4444" />
             )}
           </Pressable>
         </>
@@ -263,7 +263,7 @@ export function WorkflowDetailScreen({
                 justifyContent: "center",
               }}
             >
-              <HugeiconsIcon icon={FlowCircleIcon} size={24} color="#00bbff" />
+              <AppIcon icon={FlowCircleIcon} size={24} color="#00bbff" />
             </View>
             <View style={{ flex: 1 }}>
               <Text
@@ -380,7 +380,7 @@ export function WorkflowDetailScreen({
               />
             ) : (
               <>
-                <HugeiconsIcon
+                <AppIcon
                   icon={workflow.activated ? ToggleOnIcon : ToggleOffIcon}
                   size={16}
                   color={workflow.activated ? "#00bbff" : "#aaa"}
@@ -417,7 +417,7 @@ export function WorkflowDetailScreen({
               <ActivityIndicator size="small" color="#22c55e" />
             ) : (
               <>
-                <HugeiconsIcon icon={PlayIcon} size={14} color="#22c55e" />
+                <AppIcon icon={PlayIcon} size={14} color="#22c55e" />
                 <Text style={{ fontSize: fontSize.sm, color: "#22c55e" }}>
                   Run Now
                 </Text>

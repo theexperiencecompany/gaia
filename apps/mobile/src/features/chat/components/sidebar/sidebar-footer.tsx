@@ -105,7 +105,7 @@ export function SidebarFooter() {
               opacity: pressed ? 0.6 : 1,
             })}
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={item.icon}
               size={iconSize.sm - 2}
               color="#52525b"
@@ -167,7 +167,7 @@ export function SidebarFooter() {
           })}
           hitSlop={8}
         >
-          <HugeiconsIcon
+          <AppIcon
             icon={Logout01Icon}
             size={iconSize.sm}
             color="#ef4444"

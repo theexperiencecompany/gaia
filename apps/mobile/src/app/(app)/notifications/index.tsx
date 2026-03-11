@@ -101,7 +101,7 @@ export default function NotificationsScreen() {
               backgroundColor: "rgba(255,255,255,0.05)",
             }}
           >
-            <HugeiconsIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
+            <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
           </Pressable>
 
           <View
@@ -112,7 +112,7 @@ export default function NotificationsScreen() {
               marginLeft: spacing.sm + 4,
             }}
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={Notification01Icon}
               size={18}
               color="#8e8e93"

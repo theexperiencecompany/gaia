@@ -2,18 +2,16 @@
  * AppIcon — renders any gaia icon component with size + color props.
  */
 
-import type { IconProps } from "@theexperiencecompany/gaia-icons";
+import type { IconProps } from "@icons";
 import type React from "react";
 
 export type AnyIcon = React.ComponentType<IconProps>;
 
-interface AppIconProps {
+interface AppIconProps extends IconProps {
   icon: AnyIcon;
-  size?: number;
-  color?: string;
 }
 
-export function AppIcon({ icon, size = 24, color = "#ffffff" }: AppIconProps) {
+export function AppIcon({ icon, ...props }: AppIconProps) {
   const Icon = icon;
-  return <Icon size={size} color={color} />;
+  return <Icon {...props} />;
 }

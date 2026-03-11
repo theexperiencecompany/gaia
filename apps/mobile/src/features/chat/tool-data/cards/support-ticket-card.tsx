@@ -85,7 +85,7 @@ export function SupportTicketCard({ data }: { data: SupportTicketData }) {
           <View
             className={`rounded-full p-1 ${isFeature ? "bg-green-500/15" : "bg-[#00bbff]/15"}`}
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={isFeature ? Comment01Icon : HelpCircleIcon}
               size={13}
               color={isFeature ? "#4ade80" : "#00bbff"}

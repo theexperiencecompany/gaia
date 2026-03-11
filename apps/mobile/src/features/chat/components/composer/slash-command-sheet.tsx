@@ -17,7 +17,7 @@ import {
 import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import {
   Cancel01Icon,
-  HugeiconsIcon,
+  AppIcon,
   Search01Icon,
   Wrench01Icon,
 } from "@/components/icons";
@@ -179,7 +179,7 @@ export const SlashCommandSheet = forwardRef<
             marginRight: spacing.sm,
           }}
         >
-          <HugeiconsIcon
+          <AppIcon
             icon={Wrench01Icon}
             size={iconSize.sm}
             color="#a1a1aa"
@@ -268,7 +268,7 @@ export const SlashCommandSheet = forwardRef<
             justifyContent: "center",
           }}
         >
-          <HugeiconsIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
+          <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
         </Pressable>
       </View>
 
@@ -289,7 +289,7 @@ export const SlashCommandSheet = forwardRef<
             backgroundColor: "rgba(142,142,147,0.1)",
           }}
         >
-          <HugeiconsIcon icon={Search01Icon} size={18} color="#8e8e93" />
+          <AppIcon icon={Search01Icon} size={18} color="#8e8e93" />
           <BottomSheetTextInput
             style={{
               flex: 1,

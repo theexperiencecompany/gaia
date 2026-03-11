@@ -59,7 +59,7 @@ export function DocumentCard({ data }: { data: DocumentData }) {
         <View className="flex-row items-center gap-3">
           {/* File icon */}
           <View className="w-10 h-10 rounded-xl bg-[#00bbff]/10 items-center justify-center flex-shrink-0">
-            <HugeiconsIcon icon={File01Icon} size={20} color="#00bbff" />
+            <AppIcon icon={File01Icon} size={20} color="#00bbff" />
           </View>
 
           {/* File info */}
@@ -103,7 +103,7 @@ export function DocumentCard({ data }: { data: DocumentData }) {
               onPress={handleDownload}
               className="flex-row items-center gap-1.5 rounded-xl bg-[#00bbff]/10 px-3 py-2 active:opacity-70 flex-shrink-0"
             >
-              <HugeiconsIcon icon={Download02Icon} size={14} color="#00bbff" />
+              <AppIcon icon={Download02Icon} size={14} color="#00bbff" />
               <Text className="text-xs font-medium text-[#00bbff]">
                 Download
               </Text>

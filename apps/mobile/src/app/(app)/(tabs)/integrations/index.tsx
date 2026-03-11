@@ -92,7 +92,7 @@ export default function IntegrationsPage() {
             paddingVertical: spacing.sm,
           }}
         >
-          <HugeiconsIcon icon={Search01Icon} size={16} color="#90939a" />
+          <AppIcon icon={Search01Icon} size={16} color="#90939a" />
           <TextInput
             value={query}
             onChangeText={setQuery}

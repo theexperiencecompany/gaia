@@ -13,7 +13,7 @@ import {
   FavouriteIcon,
   FlashIcon,
   FlowIcon,
-  HugeiconsIcon,
+  AppIcon,
   MessageMultiple01Icon,
   RepeatIcon,
   Settings01Icon,
@@ -248,7 +248,7 @@ export function ToolCallsCard({ data }: { data: unknown }) {
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center gap-2">
             <View className="w-5 h-5 rounded-md bg-white/10 items-center justify-center">
-              <HugeiconsIcon
+              <AppIcon
                 icon={CpuIcon}
                 size={12}
                 color="#8e8e93"
@@ -286,7 +286,7 @@ export function ToolCallsCard({ data }: { data: unknown }) {
               {/* Timeline spine */}
               <View className="items-center" style={{ width: 20 }}>
                 <View className="w-5 h-5 rounded-md bg-white/8 items-center justify-center mt-0.5">
-                  <HugeiconsIcon
+                  <AppIcon
                     icon={Settings01Icon}
                     size={11}
                     color="#8e8e93"
@@ -306,7 +306,7 @@ export function ToolCallsCard({ data }: { data: unknown }) {
                     {label}
                   </Text>
                   {hasDetails && (
-                    <HugeiconsIcon
+                    <AppIcon
                       icon={ArrowDown01Icon}
                       size={14}
                       color="#8e8e93"
@@ -404,7 +404,7 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
               {author?.name || author?.username || "Unknown"}
             </Text>
             {author?.verified && (
-              <HugeiconsIcon
+              <AppIcon
                 icon={CheckmarkCircle02Icon}
                 size={13}
                 color="#1d9bf0"
@@ -442,7 +442,7 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
       {metrics && (
         <View className="flex-row items-center gap-5 mt-2.5 pt-2 border-t border-white/8">
           <View className="flex-row items-center gap-1">
-            <HugeiconsIcon
+            <AppIcon
               icon={FavouriteIcon}
               size={13}
               color="#8e8e93"
@@ -453,7 +453,7 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
             </Text>
           </View>
           <View className="flex-row items-center gap-1">
-            <HugeiconsIcon
+            <AppIcon
               icon={MessageMultiple01Icon}
               size={13}
               color="#8e8e93"
@@ -464,7 +464,7 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
             </Text>
           </View>
           <View className="flex-row items-center gap-1">
-            <HugeiconsIcon
+            <AppIcon
               icon={RepeatIcon}
               size={13}
               color="#8e8e93"
@@ -475,7 +475,7 @@ function TweetRow({ tweet }: { tweet: TwitterTweetData }) {
             </Text>
           </View>
           <View className="flex-row items-center gap-1">
-            <HugeiconsIcon
+            <AppIcon
               icon={Share08Icon}
               size={13}
               color="#8e8e93"
@@ -503,7 +503,7 @@ export function TwitterSearchCard({ data }: { data: unknown }) {
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center gap-2">
             <View className="w-5 h-5 rounded-md bg-[#1d9bf0]/15 items-center justify-center">
-              <HugeiconsIcon
+              <AppIcon
                 icon={TwitterIcon}
                 size={12}
                 color="#1d9bf0"
@@ -571,7 +571,7 @@ function TwitterUserRow({ user }: { user: TwitterUserData }) {
               {user.name || user.username || "Unknown"}
             </Text>
             {user.verified && (
-              <HugeiconsIcon
+              <AppIcon
                 icon={CheckmarkCircle02Icon}
                 size={13}
                 color="#1d9bf0"
@@ -642,7 +642,7 @@ export function TwitterUsersCard({ data }: { data: unknown }) {
       <Card.Body className="py-3 px-4">
         <View className="flex-row items-center gap-2 mb-3">
           <View className="w-5 h-5 rounded-md bg-[#1d9bf0]/15 items-center justify-center">
-            <HugeiconsIcon
+            <AppIcon
               icon={TwitterIcon}
               size={12}
               color="#1d9bf0"
@@ -717,7 +717,7 @@ export function WorkflowDraftCard({ data }: { data: unknown }) {
           <View
             className={`flex-row items-center gap-1 rounded-full px-2.5 py-1 ${trigger.bg}`}
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={TriggerIcon}
               size={11}
               color={
@@ -738,7 +738,7 @@ export function WorkflowDraftCard({ data }: { data: unknown }) {
         {/* Icon + Title */}
         <View className="flex-row items-start gap-3 mb-2">
           <View className="w-10 h-10 rounded-xl bg-primary/15 items-center justify-center shrink-0">
-            <HugeiconsIcon
+            <AppIcon
               icon={FlowIcon}
               size={20}
               color="#00bbff"
@@ -819,7 +819,7 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
         <View className="flex-row items-start justify-between gap-3 mb-2">
           <View className="flex-row items-center gap-3 flex-1 min-w-0">
             <View className="w-10 h-10 rounded-xl bg-green-500/15 items-center justify-center shrink-0">
-              <HugeiconsIcon
+              <AppIcon
                 icon={FlowIcon}
                 size={20}
                 color="#22c55e"
@@ -841,7 +841,7 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
 
           {/* Created badge */}
           <View className="flex-row items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 shrink-0">
-            <HugeiconsIcon
+            <AppIcon
               icon={CheckmarkCircle02Icon}
               size={11}
               color="#22c55e"
@@ -868,7 +868,7 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
           <View
             className={`self-start flex-row items-center gap-1.5 rounded-full px-2.5 py-1 ${trigger.bg} mb-3`}
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={TriggerIcon}
               size={11}
               color={
@@ -921,7 +921,7 @@ export function MCPAppCard({ data }: { data: unknown }) {
         {/* Header */}
         <View className="flex-row items-center gap-2 mb-3">
           <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
-            <HugeiconsIcon
+            <AppIcon
               icon={CpuIcon}
               size={12}
               color="#00bbff"
@@ -936,7 +936,7 @@ export function MCPAppCard({ data }: { data: unknown }) {
         {/* App info */}
         <View className="flex-row items-start gap-3 mb-3">
           <View className="w-10 h-10 rounded-xl bg-primary/10 items-center justify-center shrink-0">
-            <HugeiconsIcon
+            <AppIcon
               icon={FlowIcon}
               size={20}
               color="#00bbff"
@@ -964,7 +964,7 @@ export function MCPAppCard({ data }: { data: unknown }) {
         {/* Notice */}
         <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2.5">
           <View className="flex-row items-start gap-2">
-            <HugeiconsIcon
+            <AppIcon
               icon={Alert01Icon}
               size={14}
               color="#8e8e93"
@@ -1010,7 +1010,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
                 isUpgradeRequired ? "bg-yellow-500/15" : "bg-red-500/15"
               }`}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={isUpgradeRequired ? UploadCircle01Icon : Clock01Icon}
                 size={20}
                 color={isUpgradeRequired ? "#eab308" : "#ef4444"}
@@ -1062,7 +1062,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
               <View className="gap-1.5">
                 {PRO_BENEFITS.map((benefit) => (
                   <View key={benefit} className="flex-row items-start gap-2">
-                    <HugeiconsIcon
+                    <AppIcon
                       icon={CheckmarkCircle02Icon}
                       size={13}
                       color="#00bbff"
@@ -1087,7 +1087,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
 
               {!!resetLabel && (
                 <View className="flex-row items-center gap-3 rounded-xl bg-white/8 px-3 py-2.5">
-                  <HugeiconsIcon
+                  <AppIcon
                     icon={Clock01Icon}
                     size={16}
                     color="#8e8e93"
@@ -1107,7 +1107,7 @@ export function RateLimitCard({ data }: { data: unknown }) {
               )}
 
               <View className="flex-row items-start gap-2 px-1">
-                <HugeiconsIcon
+                <AppIcon
                   icon={Alert01Icon}
                   size={13}
                   color="#8e8e93"
@@ -1169,7 +1169,7 @@ export function ArtifactCard({ data }: { data: unknown }) {
         {/* Header */}
         <View className="flex-row items-center gap-2 mb-3">
           <View className="w-5 h-5 rounded-md bg-white/10 items-center justify-center">
-            <HugeiconsIcon
+            <AppIcon
               icon={DocumentAttachmentIcon}
               size={12}
               color="#8e8e93"
@@ -1200,7 +1200,7 @@ export function ArtifactCard({ data }: { data: unknown }) {
             >
               <View className="flex-row items-center gap-3">
                 <View className="w-9 h-9 rounded-lg bg-primary/10 items-center justify-center shrink-0">
-                  <HugeiconsIcon
+                  <AppIcon
                     icon={IconComp}
                     size={18}
                     color="#00bbff"

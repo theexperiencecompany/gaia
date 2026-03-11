@@ -50,7 +50,7 @@ export function SidebarHeader({
             })}
             hitSlop={8}
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={ArrowLeft01Icon}
               size={iconSize.sm}
               color="#a1a1aa"
@@ -93,7 +93,7 @@ export function SidebarHeader({
             }}
             pointerEvents="none"
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={Search01Icon}
               size={iconSize.sm}
               color="#6b6b6e"
@@ -111,7 +111,7 @@ export function SidebarHeader({
                 paddingHorizontal: 4,
               }}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={Cancel01Icon}
                 size={iconSize.sm - 2}
                 color="#6b6b6e"
@@ -121,7 +121,7 @@ export function SidebarHeader({
         </View>
 
         <Button variant="secondary" size="sm" isIconOnly onPress={onNewChat}>
-          <HugeiconsIcon
+          <AppIcon
             icon={PencilEdit02Icon}
             size={iconSize.sm}
             color="#ffffff"

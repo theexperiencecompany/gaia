@@ -173,7 +173,7 @@ function TodoCheckbox({ todo }: { todo: TodoItem }) {
       }
     >
       {done && (
-        <HugeiconsIcon
+        <AppIcon
           icon={CheckmarkCircle02Icon}
           size={10}
           color="#ffffff"
@@ -296,7 +296,7 @@ export function TodoCard({ data }: { data: TodoData }) {
                     style={{ backgroundColor: project.color }}
                   />
                 ) : (
-                  <HugeiconsIcon
+                  <AppIcon
                     icon={FolderIcon}
                     size={12}
                     color="#71717a"
@@ -398,7 +398,7 @@ export function TodoCard({ data }: { data: TodoData }) {
                           <View
                             className={`rounded-full px-2 py-0.5 flex-row items-center gap-1 ${priorityConfig[todo.priority].bgColor}`}
                           >
-                            <HugeiconsIcon
+                            <AppIcon
                               icon={Flag02Icon}
                               size={10}
                               color={priorityConfig[todo.priority].iconColor}
@@ -420,7 +420,7 @@ export function TodoCard({ data }: { data: TodoData }) {
                               : "bg-white/5"
                           }`}
                         >
-                          <HugeiconsIcon
+                          <AppIcon
                             icon={Calendar03Icon}
                             size={10}
                             color={
@@ -450,7 +450,7 @@ export function TodoCard({ data }: { data: TodoData }) {
                               style={{ backgroundColor: todo.project.color }}
                             />
                           ) : (
-                            <HugeiconsIcon
+                            <AppIcon
                               icon={FolderIcon}
                               size={10}
                               color="#71717a"
@@ -468,7 +468,7 @@ export function TodoCard({ data }: { data: TodoData }) {
                           key={label}
                           className="rounded-full bg-white/5 px-2 py-0.5 flex-row items-center gap-1"
                         >
-                          <HugeiconsIcon
+                          <AppIcon
                             icon={LayoutGridIcon}
                             size={10}
                             color="#71717a"
@@ -506,7 +506,7 @@ export function TodoCard({ data }: { data: TodoData }) {
     return (
       <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
         <Card.Body className="py-6 px-4 items-center gap-2">
-          <HugeiconsIcon
+          <AppIcon
             icon={CheckmarkCircle02Icon}
             size={28}
             color="#3f3f46"

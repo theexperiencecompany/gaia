@@ -65,7 +65,7 @@ export function EmailFetchCard({ data }: { data: EmailFetchItem[] }) {
       <Card.Body className="py-3 px-4">
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center gap-2">
-            <HugeiconsIcon icon={Mail01Icon} size={14} color="#8e8e93" />
+            <AppIcon icon={Mail01Icon} size={14} color="#8e8e93" />
             <Text className="text-xs text-[#8e8e93]">Fetched Emails</Text>
           </View>
           <View className="rounded-full bg-white/10 px-2 py-0.5">
@@ -78,7 +78,7 @@ export function EmailFetchCard({ data }: { data: EmailFetchItem[] }) {
         <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
           {data.length === 0 ? (
             <View className="py-4 items-center">
-              <HugeiconsIcon icon={MailOpen01Icon} size={20} color="#8e8e93" />
+              <AppIcon icon={MailOpen01Icon} size={20} color="#8e8e93" />
               <Text className="text-xs text-[#8e8e93] mt-2">
                 No emails found
               </Text>

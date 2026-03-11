@@ -17,7 +17,7 @@ import { Pressable, View } from "react-native";
 import {
   Camera01Icon,
   File01Icon,
-  HugeiconsIcon,
+  AppIcon,
   Image01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -218,7 +218,7 @@ export const AttachmentSheet = forwardRef<
                   justifyContent: "center",
                 }}
               >
-                <HugeiconsIcon
+                <AppIcon
                   icon={option.icon}
                   size={iconSize.md - 2}
                   color="#a1a1aa"

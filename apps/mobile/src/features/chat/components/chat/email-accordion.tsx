@@ -1,7 +1,6 @@
-import { HugeiconsIcon } from "@hugeicons/react-native";
 import { Accordion, Card } from "heroui-native";
 import { View } from "react-native";
-import { ArrowDown01Icon, Mail01Icon } from "@/components/icons";
+import { AppIcon, ArrowDown01Icon, Mail01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
 export interface EmailAccordionItem {
@@ -85,10 +84,10 @@ export function EmailAccordion({
       <Accordion.Item value="emails">
         <Accordion.Trigger className="flex-row items-center px-4 py-2.5">
           <View className="flex-row items-center flex-1 gap-2">
-            <HugeiconsIcon icon={Mail01Icon} size={16} color="#8e8e93" />
+            <AppIcon icon={Mail01Icon} size={16} color="#8e8e93" />
             <Text className="text-sm text-[#8e8e93]">{displayTitle}</Text>
           </View>
-          <HugeiconsIcon icon={ArrowDown01Icon} size={14} color="#8e8e93" />
+          <AppIcon icon={ArrowDown01Icon} size={14} color="#8e8e93" />
         </Accordion.Trigger>
         <Accordion.Content>
           <Card

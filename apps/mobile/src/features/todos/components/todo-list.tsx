@@ -1,7 +1,7 @@
 import { useCallback } from "react";
 import { FlatList, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { CheckmarkCircle02Icon, HugeiconsIcon } from "@/components/icons";
+import { CheckmarkCircle02Icon, AppIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import type { Project, Todo } from "../types/todo-types";
@@ -154,7 +154,7 @@ export function TodoList({
               justifyContent: "center",
             }}
           >
-            <HugeiconsIcon
+            <AppIcon
               icon={CheckmarkCircle02Icon}
               size={36}
               color="#3f3f46"

@@ -57,7 +57,7 @@ function NotificationRow({ item }: { item: NotificationItem }) {
   return (
     <View className="flex-row items-start gap-3 py-2.5 border-b border-white/8 last:border-b-0">
       <View className={`rounded-full p-1.5 mt-0.5 ${config.bgColor}`}>
-        <HugeiconsIcon
+        <AppIcon
           icon={isUnread ? Notification02Icon : Notification01Icon}
           size={13}
           color={config.iconColor}
@@ -103,7 +103,7 @@ export function NotificationCard({ data }: { data: NotificationData }) {
     return (
       <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
         <Card.Body className="py-6 px-4 items-center">
-          <HugeiconsIcon icon={Notification01Icon} size={24} color="#8e8e93" />
+          <AppIcon icon={Notification01Icon} size={24} color="#8e8e93" />
           <Text className="text-sm text-[#8e8e93] mt-2">No notifications</Text>
         </Card.Body>
       </Card>
@@ -115,7 +115,7 @@ export function NotificationCard({ data }: { data: NotificationData }) {
       <Card.Body className="py-3 px-4">
         {/* Header */}
         <View className="flex-row items-center gap-2 mb-3">
-          <HugeiconsIcon icon={Notification01Icon} size={14} color="#8e8e93" />
+          <AppIcon icon={Notification01Icon} size={14} color="#8e8e93" />
           <Text className="text-xs text-[#8e8e93]">Notifications</Text>
           <View className="flex-row items-center gap-1.5 ml-auto">
             <View className="rounded-full bg-white/10 px-2 py-0.5">

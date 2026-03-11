@@ -202,7 +202,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
         {/* Header: location + unit toggle */}
         <View className="flex-row items-start justify-between mb-3">
           <View className="flex-row items-start gap-1.5 flex-1">
-            <HugeiconsIcon
+            <AppIcon
               icon={Location01Icon}
               size={14}
               color="#8e8e93"
@@ -236,7 +236,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
         <View className="rounded-xl bg-white/5 border border-white/10 p-3 mb-3">
           <View className="flex-row items-center justify-between">
             <View className="items-center justify-center w-16 h-16">
-              <HugeiconsIcon
+              <AppIcon
                 icon={mainIconName}
                 size={52}
                 color={accentColor}
@@ -278,7 +278,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
         <View className="flex-row gap-2 mb-2">
           {humidity !== undefined && (
             <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 items-center gap-1">
-              <HugeiconsIcon icon={DropletIcon} size={18} color={accentColor} />
+              <AppIcon icon={DropletIcon} size={18} color={accentColor} />
               <Text className="text-[10px] text-muted">Humidity</Text>
               <Text className="text-sm font-semibold text-foreground">
                 {humidity}%
@@ -287,7 +287,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
           )}
           {windSpeed !== undefined && (
             <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 items-center gap-1">
-              <HugeiconsIcon
+              <AppIcon
                 icon={FastWindIcon}
                 size={18}
                 color={accentColor}
@@ -300,7 +300,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
           )}
           {data.main?.pressure !== undefined && (
             <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 items-center gap-1">
-              <HugeiconsIcon icon={CloudIcon} size={18} color={accentColor} />
+              <AppIcon icon={CloudIcon} size={18} color={accentColor} />
               <Text className="text-[10px] text-muted">Pressure</Text>
               <Text className="text-sm font-semibold text-foreground">
                 {data.main.pressure}
@@ -314,7 +314,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
           <View className="flex-row gap-2 mb-2">
             {sunriseStr && (
               <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 flex-row items-center gap-2">
-                <HugeiconsIcon
+                <AppIcon
                   icon={SunriseIcon}
                   size={16}
                   color={accentColor}
@@ -329,7 +329,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
             )}
             {sunsetStr && (
               <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 flex-row items-center gap-2">
-                <HugeiconsIcon
+                <AppIcon
                   icon={SunsetIcon}
                   size={16}
                   color={accentColor}
@@ -367,7 +367,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
                   key={`${day.date}-${dayTemp}`}
                   className="flex-row items-center px-3 py-2 border-b border-white/8"
                 >
-                  <HugeiconsIcon icon={dayIcon} size={20} color={accentColor} />
+                  <AppIcon icon={dayIcon} size={20} color={accentColor} />
                   <Text className="text-xs font-semibold text-foreground ml-2 w-10">
                     {getDayOfWeek(day.date)}
                   </Text>
@@ -379,7 +379,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
                   </Text>
                   <View className="flex-row items-center gap-3">
                     <View className="flex-row items-center gap-1">
-                      <HugeiconsIcon
+                      <AppIcon
                         icon={Sun03Icon}
                         size={14}
                         color="#FCD34D"
@@ -389,7 +389,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
                       </Text>
                     </View>
                     <View className="flex-row items-center gap-1">
-                      <HugeiconsIcon
+                      <AppIcon
                         icon={CloudIcon}
                         size={14}
                         color="#93C5FD"

@@ -47,8 +47,8 @@ export function EmailSentCard({ data }: { data: EmailSentData }) {
         {/* Header */}
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center gap-2">
-            <HugeiconsIcon icon={Mail01Icon} size={16} color="#8e8e93" />
-            <HugeiconsIcon
+            <AppIcon icon={Mail01Icon} size={16} color="#8e8e93" />
+            <AppIcon
               icon={CheckmarkCircle02Icon}
               size={16}
               color="#4ade80"
@@ -86,7 +86,7 @@ export function EmailSentCard({ data }: { data: EmailSentData }) {
 
           {!!data.message && (
             <View className="flex-row items-center gap-1.5 mt-1">
-              <HugeiconsIcon icon={MailSend01Icon} size={12} color="#4ade80" />
+              <AppIcon icon={MailSend01Icon} size={12} color="#4ade80" />
               <Text className="text-sm font-medium text-green-400">
                 {data.message}
               </Text>

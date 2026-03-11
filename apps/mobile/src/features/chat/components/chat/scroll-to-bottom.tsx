@@ -48,7 +48,7 @@ export function ScrollToBottomButton({
           justifyContent: "center",
         }}
       >
-        <HugeiconsIcon
+        <AppIcon
           icon={ArrowDown02Icon}
           size={iconSize.md}
           color="rgba(255,255,255,0.6)"

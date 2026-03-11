@@ -6,7 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Pressable, View } from "react-native";
 import {
   Copy01Icon,
-  HugeiconsIcon,
+  AppIcon,
   Message01Icon,
   Pin02Icon,
   ThumbsDownIcon,
@@ -181,7 +181,7 @@ function CopyButton({ text, iconSize, padding }: CopyButtonProps) {
   return (
     <Pressable onPress={handleCopy} style={{ padding }}>
       <Animated.View style={{ opacity: fadeAnim }}>
-        <HugeiconsIcon
+        <AppIcon
           icon={copied ? Tick02Icon : Copy01Icon}
           size={iconSize}
           color={copied ? "#34c759" : "#8e8e93"}
@@ -283,28 +283,28 @@ function MessageBubble({
                 padding={spacing.xs}
               />
               <Pressable style={{ padding: spacing.xs }}>
-                <HugeiconsIcon
+                <AppIcon
                   icon={ThumbsUpIcon}
                   size={iconSize.sm}
                   color="#8e8e93"
                 />
               </Pressable>
               <Pressable style={{ padding: spacing.xs }}>
-                <HugeiconsIcon
+                <AppIcon
                   icon={ThumbsDownIcon}
                   size={iconSize.sm}
                   color="#8e8e93"
                 />
               </Pressable>
               <Pressable style={{ padding: spacing.xs }}>
-                <HugeiconsIcon
+                <AppIcon
                   icon={Pin02Icon}
                   size={iconSize.sm}
                   color="#8e8e93"
                 />
               </Pressable>
               <Pressable style={{ padding: spacing.xs }}>
-                <HugeiconsIcon
+                <AppIcon
                   icon={Message01Icon}
                   size={iconSize.sm}
                   color="#8e8e93"

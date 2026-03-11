@@ -527,7 +527,7 @@ function ChartItem({ item }: { item: ChartDisplayData }) {
       {/* Item header */}
       <View className="flex-row items-center gap-2 mb-2">
         <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
-          <HugeiconsIcon
+          <AppIcon
             icon={chartTypeIcon}
             size={12}
             color={PRIMARY}
@@ -606,7 +606,7 @@ export function ChartCard({ data }: { data: unknown }) {
         <Card.Body className="py-3 px-4">
           <View className="flex-row items-center gap-2">
             <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
-              <HugeiconsIcon
+              <AppIcon
                 icon={ChartRingIcon}
                 size={12}
                 color={PRIMARY}
@@ -626,7 +626,7 @@ export function ChartCard({ data }: { data: unknown }) {
         {/* Card header */}
         <View className="flex-row items-center gap-2 mb-3">
           <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
-            <HugeiconsIcon
+            <AppIcon
               icon={ChartRingIcon}
               size={12}
               color={PRIMARY}

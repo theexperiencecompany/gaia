@@ -27,30 +27,11 @@ config.resolver.nodeModulesPaths = [
 config.resolver.extraNodeModules = {
   "@shared": path.resolve(workspaceRoot, "libs/shared"),
   "@/assets": path.resolve(projectRoot, "assets"),
-  // Same package as web — JSX runtime shim (below) makes it work on RN
-  "@icons": path.resolve(
-    workspaceRoot,
-    "node_modules/@theexperiencecompany/gaia-icons/dist/stroke-rounded",
-  ),
-};
-
-// Intercept react/jsx-runtime imports that come FROM inside gaia-icons and
-// redirect them to our shim that maps SVG element names to react-native-svg.
-const originalResolveRequest = config.resolver.resolveRequest;
-config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (
-    moduleName === "react/jsx-runtime" &&
-    context.originModulePath.includes("@theexperiencecompany/gaia-icons")
-  ) {
-    return {
-      filePath: path.resolve(projectRoot, "src/lib/svg-jsx-runtime.ts"),
-      type: "sourceFile",
-    };
-  }
-  if (originalResolveRequest) {
-    return originalResolveRequest(context, moduleName, platform);
-  }
-  return context.resolveRequest(context, moduleName, platform);
+  // Mirror the web alias pattern, but point @icons to the RN-safe wrapper.
+  "@icons": path.resolve(projectRoot, "src/lib/gaia-icons.tsx"),
+  // Workspace package not symlinked in node_modules — resolve directly.
+  // Sub-path imports like @gaia/shared/icons resolve to src/icons/index.ts.
+  "@gaia/shared": path.resolve(workspaceRoot, "libs/shared/ts/src"),
 };
 
 module.exports = withUniwindConfig(config, {

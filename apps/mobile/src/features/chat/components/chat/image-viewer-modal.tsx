@@ -21,7 +21,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Cancel01Icon, HugeiconsIcon, Share01Icon } from "@/components/icons";
+import { Cancel01Icon, AppIcon, Share01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -191,7 +191,7 @@ export function ImageViewerModal({
                 backgroundColor: "rgba(255,255,255,0.1)",
               }}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={Cancel01Icon}
                 size={moderateScale(20, 0.5)}
                 color="#ffffff"
@@ -207,7 +207,7 @@ export function ImageViewerModal({
                 backgroundColor: "rgba(255,255,255,0.1)",
               }}
             >
-              <HugeiconsIcon
+              <AppIcon
                 icon={Share01Icon}
                 size={moderateScale(20, 0.5)}
                 color="#ffffff"

@@ -7,7 +7,7 @@ import {
   Calendar03Icon,
   Cancel01Icon,
   CheckmarkSquare03Icon,
-  HugeiconsIcon,
+  AppIcon,
   Mail01Icon,
   Notification01Icon,
   Tick02Icon,
@@ -175,7 +175,7 @@ export function NotificationCard({
               gap: 4,
             }}
           >
-            <HugeiconsIcon icon={Tick02Icon} size={18} color="#00bbff" />
+            <AppIcon icon={Tick02Icon} size={18} color="#00bbff" />
             <Text style={{ fontSize: fontSize.xs - 1, color: "#00bbff" }}>
               Read
             </Text>
@@ -214,7 +214,7 @@ export function NotificationCard({
               gap: 4,
             }}
           >
-            <HugeiconsIcon icon={Cancel01Icon} size={18} color="#ef4444" />
+            <AppIcon icon={Cancel01Icon} size={18} color="#ef4444" />
             <Text style={{ fontSize: fontSize.xs - 1, color: "#ef4444" }}>
               Dismiss
             </Text>
@@ -266,7 +266,7 @@ export function NotificationCard({
               marginTop: 1,
             }}
           >
-            <HugeiconsIcon icon={iconComponent} size={17} color={accentColor} />
+            <AppIcon icon={iconComponent} size={17} color={accentColor} />
           </View>
 
           {/* Main content */}
@@ -321,7 +321,7 @@ export function NotificationCard({
                   hitSlop={10}
                   style={{ opacity: isMarkingAsRead ? 0.4 : 0.6 }}
                 >
-                  <HugeiconsIcon icon={Tick02Icon} size={15} color="#8e8e93" />
+                  <AppIcon icon={Tick02Icon} size={15} color="#8e8e93" />
                 </Pressable>
               )}
             </View>

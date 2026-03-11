@@ -1,82 +1,10 @@
-import type { ToolIconConfig } from "@gaia/shared/icons";
-import {
-  iconAliases,
-  normalizeCategoryName,
-  toolIconConfigs,
-} from "@gaia/shared/icons";
-import {
-  AlarmClockIcon,
-  BodyPartMuscleIcon,
-  Brain02Icon,
-  CheckListIcon,
-  ComputerTerminal01Icon,
-  ConnectIcon,
-  FileEmpty02Icon,
-  FolderFileStorageIcon,
-  Image02Icon,
-  InformationCircleIcon,
-  NotificationIcon,
-  PackageOpenIcon,
-  PuzzleIcon,
-  SourceCodeCircleIcon,
-  SquareArrowUpRight02Icon,
-  Target02Icon,
-  TaskDailyIcon,
-  ToolsIcon,
-  WorkflowCircle06Icon,
-  ZapIcon,
-} from "@icons";
+import { getToolIconConfig, type ToolIconConfig } from "@gaia/shared/icons";
+import { getGaiaIcon, ToolsIcon } from "@icons";
 import type React from "react";
 import { useEffect, useRef } from "react";
 import { Animated, Image, View } from "react-native";
 
 export type { ToolIconConfig };
-
-const iconComponentMap: Record<
-  string,
-  React.ComponentType<{ size?: number; color?: string }>
-> = {
-  CheckListIcon,
-  AlarmClockIcon,
-  PuzzleIcon,
-  FileEmpty02Icon,
-  SourceCodeCircleIcon,
-  Brain02Icon,
-  Image02Icon,
-  Target02Icon,
-  NotificationIcon,
-  InformationCircleIcon,
-  ToolsIcon,
-  ConnectIcon,
-  SquareArrowUpRight02Icon,
-  PackageOpenIcon,
-  ComputerTerminal01Icon,
-  FolderFileStorageIcon,
-  BodyPartMuscleIcon,
-  WorkflowCircle06Icon,
-  TaskDailyIcon,
-  ZapIcon,
-};
-
-function getToolIconConfig(category: string): ToolIconConfig | undefined {
-  const normalizedCategory = normalizeCategoryName(category);
-  const aliasedCategory =
-    iconAliases[normalizedCategory] ||
-    iconAliases[category] ||
-    normalizedCategory;
-  const finalCategory = normalizeCategoryName(aliasedCategory);
-
-  let config = toolIconConfigs[finalCategory];
-
-  if (!config) {
-    const matchingConfig = Object.entries(toolIconConfigs).find(
-      ([key]) => normalizeCategoryName(key) === finalCategory,
-    );
-    if (matchingConfig) config = matchingConfig[1];
-  }
-
-  return config;
-}
 
 function PulsatingBackground({
   bgColorRaw,
@@ -190,7 +118,7 @@ export function getToolCategoryIcon(
       );
     }
 
-    const FallbackIcon = iconComponentMap.ToolsIcon || ToolsIcon;
+    const FallbackIcon = ToolsIcon;
     const fallbackElement = (
       <FallbackIcon size={size} color={config.iconColorRaw} />
     );
@@ -206,8 +134,7 @@ export function getToolCategoryIcon(
     );
   }
 
-  const IconComponent =
-    iconComponentMap[config.icon] || iconComponentMap.ToolsIcon;
+  const IconComponent = getGaiaIcon(config.icon) || ToolsIcon;
   const iconElement = <IconComponent size={size} color={config.iconColorRaw} />;
 
   if (!showBackground) return iconElement;

@@ -12,7 +12,7 @@ import {
   Calendar03Icon,
   Cancel01Icon,
   Flag02Icon,
-  HugeiconsIcon,
+  AppIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -138,7 +138,7 @@ export function CreateTodoModal({
           }}
         >
           <Pressable onPress={handleClose} hitSlop={12}>
-            <HugeiconsIcon icon={Cancel01Icon} size={20} color="#71717a" />
+            <AppIcon icon={Cancel01Icon} size={20} color="#71717a" />
           </Pressable>
 
           <Text
@@ -255,7 +255,7 @@ export function CreateTodoModal({
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
             >
-              <HugeiconsIcon icon={Calendar03Icon} size={14} color="#52525b" />
+              <AppIcon icon={Calendar03Icon} size={14} color="#52525b" />
               <Text
                 style={{
                   fontSize: fontSize.xs,
@@ -359,7 +359,7 @@ export function CreateTodoModal({
             <View
               style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
             >
-              <HugeiconsIcon icon={Flag02Icon} size={14} color="#52525b" />
+              <AppIcon icon={Flag02Icon} size={14} color="#52525b" />
               <Text
                 style={{
                   fontSize: fontSize.xs,
@@ -396,7 +396,7 @@ export function CreateTodoModal({
                       gap: 4,
                     }}
                   >
-                    <HugeiconsIcon
+                    <AppIcon
                       icon={Flag02Icon}
                       size={13}
                       color={isSelected ? opt.color : "#52525b"}

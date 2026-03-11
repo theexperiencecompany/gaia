@@ -1,5 +1,5 @@
 import { Pressable, View } from "react-native";
-import { HugeiconsIcon, PlayIcon, UserCircle02Icon } from "@/components/icons";
+import { AppIcon, PlayIcon, UserCircle02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { useResponsive } from "@/lib/responsive";
@@ -76,7 +76,7 @@ export function CommunityWorkflowCard({
               gap: 4,
             }}
           >
-            <HugeiconsIcon icon={PlayIcon} size={14} color="#71717a" />
+            <AppIcon icon={PlayIcon} size={14} color="#71717a" />
             <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
               {runCountText}
             </Text>
@@ -86,7 +86,7 @@ export function CommunityWorkflowCard({
         {/* Creator avatar */}
         {workflow.creator && (
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <HugeiconsIcon icon={UserCircle02Icon} size={20} color="#71717a" />
+            <AppIcon icon={UserCircle02Icon} size={20} color="#71717a" />
             <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
               {workflow.creator.name}
             </Text>

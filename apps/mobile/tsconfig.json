@@ -5,9 +5,7 @@
     "paths": {
       "@/*": ["./src/*"],
       "@/assets/*": ["./assets/*"],
-      "@icons": [
-        "../../node_modules/@theexperiencecompany/gaia-icons/dist/stroke-rounded"
-      ],
+      "@icons": ["./src/lib/gaia-icons.tsx"],
       "@gaia/shared": ["../../libs/shared/ts/src/index.ts"],
       "@gaia/shared/*": ["../../libs/shared/ts/src/*"],
       "@shared/*": ["../../libs/shared/*"]

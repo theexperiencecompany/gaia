@@ -8,7 +8,7 @@ import {
   ScrollView,
   View,
 } from "react-native";
-import { Copy01Icon, HugeiconsIcon, Tick02Icon } from "@/components/icons";
+import { Copy01Icon, AppIcon, Tick02Icon } from "@/components/icons";
 import { THEME } from "@/features/chat/components/code-block/syntax-theme";
 import { tokenizeLine } from "@/features/chat/components/code-block/tokenizer";
 
@@ -338,7 +338,7 @@ function CodeBlockCopyButton({ code }: { code: string }) {
   return (
     <Pressable onPress={handleCopy} style={{ padding: 6 }} hitSlop={8}>
       <Animated.View style={{ opacity: fadeAnim }}>
-        <HugeiconsIcon
+        <AppIcon
           icon={copied ? Tick02Icon : Copy01Icon}
           size={14}
           color={copied ? "#34c759" : "#71717a"}

@@ -24,7 +24,7 @@ import {
 } from "react-native";
 import {
   Cancel01Icon,
-  HugeiconsIcon,
+  AppIcon,
   Search01Icon,
   Wrench01Icon,
 } from "@/components/icons";
@@ -335,14 +335,14 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
             onPress={() => bottomSheetRef.current?.dismiss()}
             className="w-8 h-8 rounded-full bg-white/5 items-center justify-center active:opacity-60"
           >
-            <HugeiconsIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
+            <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
           </Pressable>
         </View>
 
         {/* Search */}
         <View className="px-4 pb-2">
           <View className="flex-row items-center rounded-xl px-3 py-2.5 bg-white/5">
-            <HugeiconsIcon icon={Search01Icon} size={16} color="#6f737c" />
+            <AppIcon icon={Search01Icon} size={16} color="#6f737c" />
             <TextInput
               className="flex-1 ml-2 text-white text-sm"
               placeholder="Search integrations..."
@@ -409,7 +409,7 @@ export function ConnectDrawerTrigger({ onOpen }: ConnectDrawerTriggerProps) {
         className="rounded-full"
         onPress={handleOpen}
       >
-        <HugeiconsIcon icon={Wrench01Icon} size={18} color="#8e8e93" />
+        <AppIcon icon={Wrench01Icon} size={18} color="#8e8e93" />
       </Button>
 
       <ConnectDrawer ref={drawerRef} onOpen={onOpen} />

@@ -7,7 +7,7 @@ import Animated, {
 import {
   Cancel01Icon,
   File01Icon,
-  HugeiconsIcon,
+  AppIcon,
   Image01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -62,7 +62,7 @@ function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
       {attachment.isUploading ? (
         <ActivityIndicator size="small" color="#a1a1aa" />
       ) : (
-        <HugeiconsIcon
+        <AppIcon
           icon={isImage ? Image01Icon : File01Icon}
           size={iconSize.sm}
           color={attachment.error ? "#ef4444" : "#a1a1aa"}
@@ -115,7 +115,7 @@ function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
           justifyContent: "center",
         }}
       >
-        <HugeiconsIcon
+        <AppIcon
           icon={Cancel01Icon}
           size={iconSize.sm - 2}
           color="#a1a1aa"
