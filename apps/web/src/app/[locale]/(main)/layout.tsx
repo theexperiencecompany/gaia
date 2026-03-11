@@ -1,9 +1,7 @@
 "use client";
 
 import { useDrag } from "@use-gesture/react";
-import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-
 import HeaderManager from "@/components/layout/headers/HeaderManager";
 import StatusBanner from "@/components/layout/StatusBanner";
 import Sidebar from "@/components/layout/sidebar/MainSidebar";
@@ -19,6 +17,7 @@ import { GlobalPricingModal } from "@/features/pricing/components/GlobalPricingM
 import CommandMenu from "@/features/search/components/CommandMenu";
 import { useIsMobile } from "@/hooks/ui/useMobile";
 import { useBackgroundSync } from "@/hooks/useBackgroundSync";
+import { usePathname } from "@/i18n/navigation";
 import ProvidersLayout from "@/layouts/ProvidersLayout";
 import SidebarLayout, { CustomSidebarTrigger } from "@/layouts/SidebarLayout";
 import { apiService } from "@/lib/api";

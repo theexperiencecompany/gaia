@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 
-import LandingPageClient from "@/app/(landing)/client";
+import LandingPageClient from "@/app/[locale]/(landing)/client";
 import JsonLd from "@/components/seo/JsonLd";
 import { getTimeOfDay } from "@/features/landing/utils/timeOfDay";
 import { homepageFAQs } from "@/lib/page-faqs";

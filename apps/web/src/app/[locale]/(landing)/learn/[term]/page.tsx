@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import { getTranslatedComparison } from "@/features/comparisons/data/getTranslatedComparison";
@@ -20,6 +20,7 @@ import {
 
 interface PageProps {
   readonly params: Promise<{
+    readonly locale: string;
     readonly term: string;
   }>;
 }
@@ -60,7 +61,8 @@ export async function generateMetadata({
 }
 
 export default async function GlossaryTermPage({ params }: PageProps) {
-  const { term } = await params;
+  const { locale, term } = await params;
+  setRequestLocale(locale);
   const t = await getTranslations();
   const data = await getTranslatedGlossaryTerm(term);
 

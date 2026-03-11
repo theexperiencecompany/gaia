@@ -2,9 +2,9 @@
 import { Button } from "@heroui/button";
 import { ChatBotIcon, Mail01Icon, StarIcon } from "@icons";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import React, { type FC, useEffect, useState } from "react";
 import { SystemPurpose } from "@/features/chat/api/chatApi";
+import { usePathname } from "@/i18n/navigation";
 import { useChatStore } from "@/stores/chatStore";
 import ChatOptionsDropdown from "./ChatOptionsDropdown";
 

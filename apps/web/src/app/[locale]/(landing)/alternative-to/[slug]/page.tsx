@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 
-import { getTranslations } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import ComparisonTable from "@/components/seo/ComparisonTable";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
@@ -29,7 +29,10 @@ import {
 } from "@/lib/seo";
 
 interface PageProps {
-  readonly params: Promise<{ readonly slug: string }>;
+  readonly params: Promise<{
+    readonly locale: string;
+    readonly slug: string;
+  }>;
 }
 
 export async function generateStaticParams() {
@@ -81,7 +84,8 @@ function FitScoreRow({ score }: { readonly score: number }) {
 }
 
 export default async function AlternativePage({ params }: PageProps) {
-  const { slug } = await params;
+  const { locale, slug } = await params;
+  setRequestLocale(locale);
   const t = await getTranslations();
   const data = await getTranslatedAlternative(slug);
 

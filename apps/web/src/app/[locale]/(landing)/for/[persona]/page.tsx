@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import type { ComponentType } from "react";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
@@ -29,7 +29,10 @@ import {
 } from "@/lib/seo";
 
 interface PageProps {
-  params: Promise<{ readonly persona: string }>;
+  readonly params: Promise<{
+    readonly locale: string;
+    readonly persona: string;
+  }>;
 }
 
 interface PersonaConfig {
@@ -73,7 +76,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
     ],
     breadcrumbName: "AI Assistant for Startup Founders",
     faqs: FOUNDERS_FAQS,
-    getClient: () => import("@/app/(landing)/founders/FoundersClient"),
+    getClient: () => import("@/app/[locale]/(landing)/founders/FoundersClient"),
   },
   "software-developers": {
     metaTitle:
@@ -104,7 +107,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
     breadcrumbName: "AI Assistant for Software Developers",
     faqs: SOFTWARE_DEV_FAQS,
     getClient: () =>
-      import("@/app/(landing)/software-developers/SoftwareDevClient"),
+      import("@/app/[locale]/(landing)/software-developers/SoftwareDevClient"),
   },
   "sales-professionals": {
     metaTitle:
@@ -134,7 +137,8 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
     ],
     breadcrumbName: "AI Assistant for Sales Professionals",
     faqs: SALES_FAQS,
-    getClient: () => import("@/app/(landing)/sales-professionals/SalesClient"),
+    getClient: () =>
+      import("@/app/[locale]/(landing)/sales-professionals/SalesClient"),
   },
   "product-managers": {
     metaTitle:
@@ -164,7 +168,7 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
     breadcrumbName: "AI Assistant for Product Managers",
     faqs: PM_FAQS,
     getClient: () =>
-      import("@/app/(landing)/product-managers/ProductManagerClient"),
+      import("@/app/[locale]/(landing)/product-managers/ProductManagerClient"),
   },
   "engineering-managers": {
     metaTitle:
@@ -194,7 +198,9 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
     breadcrumbName: "AI Assistant for Engineering Managers",
     faqs: EM_FAQS,
     getClient: () =>
-      import("@/app/(landing)/engineering-managers/EngineeringManagerClient"),
+      import(
+        "@/app/[locale]/(landing)/engineering-managers/EngineeringManagerClient"
+      ),
   },
   "agency-owners": {
     metaTitle:
@@ -223,7 +229,8 @@ const SPECIAL_PERSONA_CONFIGS: Record<string, PersonaConfig> = {
     ],
     breadcrumbName: "AI Assistant for Agency Owners",
     faqs: AGENCY_FAQS,
-    getClient: () => import("@/app/(landing)/agency-owners/AgencyClient"),
+    getClient: () =>
+      import("@/app/[locale]/(landing)/agency-owners/AgencyClient"),
   },
 };
 
@@ -353,8 +360,9 @@ function IntegrationBadge({ name }: { name: string }) {
 }
 
 export default async function PersonaPage({ params }: PageProps) {
+  const { locale, persona } = await params;
+  setRequestLocale(locale);
   const t = await getTranslations();
-  const { persona } = await params;
 
   const config = SPECIAL_PERSONA_CONFIGS[persona];
   if (config) {

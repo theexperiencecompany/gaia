@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { cache } from "react";
 
-import BlogPostClient from "@/app/(landing)/blog/client";
+import BlogPostClient from "@/app/[locale]/(landing)/blog/client";
 import { getAllBlogPosts, getAllBlogSlugs, getBlogPost } from "@/lib/blog";
 import {
   generateArticleSchema,

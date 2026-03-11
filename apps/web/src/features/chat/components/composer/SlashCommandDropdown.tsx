@@ -4,13 +4,13 @@ import { ScrollShadow } from "@heroui/scroll-shadow";
 import { Cancel01Icon, GridIcon, SearchIcon } from "@icons";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import { AnimatePresence, m } from "motion/react";
-import { usePathname } from "next/navigation";
 import type React from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SlashCommandMatch } from "@/features/chat/hooks/useSlashCommands";
 import { formatToolName } from "@/features/chat/utils/chatUtils";
 import { getToolCategoryIcon } from "@/features/chat/utils/toolIcons";
 import { IntegrationsCard } from "@/features/integrations/components/IntegrationsCard";
+import { usePathname } from "@/i18n/navigation";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { useIntegrationsAccordion } from "@/stores/uiStore";
 

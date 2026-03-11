@@ -2,7 +2,7 @@ import { Button } from "@heroui/button";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { getTranslations } from "next-intl/server";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import FAQAccordion from "@/components/seo/FAQAccordion";
 import JsonLd from "@/components/seo/JsonLd";
 import { getAllComboSlugs } from "@/features/integrations/data/combosData";
@@ -22,7 +22,10 @@ import {
 } from "@/lib/seo";
 
 interface PageProps {
-  readonly params: Promise<{ readonly combo: string }>;
+  readonly params: Promise<{
+    readonly locale: string;
+    readonly combo: string;
+  }>;
 }
 
 export async function generateStaticParams() {
@@ -60,7 +63,8 @@ export async function generateMetadata({
 }
 
 export default async function AutomateComboPage({ params }: PageProps) {
-  const { combo } = await params;
+  const { locale, combo } = await params;
+  setRequestLocale(locale);
   const t = await getTranslations();
   const data = await getTranslatedCombo(combo);
 

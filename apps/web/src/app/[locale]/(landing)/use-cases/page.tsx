@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Image from "next/image";
-import UseCasesPageClient from "@/app/(landing)/use-cases/client";
+import UseCasesPageClient from "@/app/[locale]/(landing)/use-cases/client";
 import JsonLd from "@/components/seo/JsonLd";
 import { wallpapers } from "@/config/wallpapers";
 import {

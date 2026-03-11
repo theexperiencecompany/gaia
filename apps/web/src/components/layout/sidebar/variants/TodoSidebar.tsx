@@ -12,13 +12,14 @@ import {
   PlusSignIcon,
   Tag01Icon,
 } from "@icons";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Spinner from "@/components/ui/spinner";
 import AddProjectModal from "@/features/todo/components/AddProjectModal";
 import { priorityTextColors } from "@/features/todo/components/TodoItem";
 import TodoModal from "@/features/todo/components/TodoModal";
 import { useTodoData } from "@/features/todo/hooks/useTodoData";
+import { usePathname } from "@/i18n/navigation";
 import { cn } from "@/lib";
 import { Priority } from "@/types/features/todoTypes";
 import { accordionItemStyles } from "../constants";

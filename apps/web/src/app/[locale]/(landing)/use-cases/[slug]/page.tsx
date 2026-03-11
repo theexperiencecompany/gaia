@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import UseCaseDetailClient from "@/app/(landing)/use-cases/[slug]/client";
+import UseCaseDetailClient from "@/app/[locale]/(landing)/use-cases/[slug]/client";
 import JsonLd from "@/components/seo/JsonLd";
 import type { UseCase } from "@/features/use-cases/types";
 import {

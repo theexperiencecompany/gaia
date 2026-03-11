@@ -1,7 +1,8 @@
 "use client";
 
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useCallback } from "react";
+import { usePathname } from "@/i18n/navigation";
 
 import { useIntegrationModalStore } from "@/stores/integrationModalStore";
 
