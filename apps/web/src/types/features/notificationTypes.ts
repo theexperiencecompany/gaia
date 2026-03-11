@@ -1,11 +1,11 @@
-import type { NotificationSource } from "../notifications";
 import type {
-  NotificationStatus as SharedNotificationStatus,
-  NotificationActionType,
   NotificationActionStyle,
+  NotificationActionType,
   PlatformLink,
   PlatformLinksResponse,
+  NotificationStatus as SharedNotificationStatus,
 } from "@shared/types";
+import type { NotificationSource } from "../notifications";
 
 export type { PlatformLink, PlatformLinksResponse };
 
@@ -18,9 +18,9 @@ export enum NotificationType {
 
 // Re-export shared enum as the canonical NotificationStatus for web
 export {
-  NotificationStatus,
-  NotificationActionType as ActionType,
   NotificationActionStyle as ActionStyle,
+  NotificationActionType as ActionType,
+  NotificationStatus,
 } from "@shared/types";
 
 export interface RedirectConfig {

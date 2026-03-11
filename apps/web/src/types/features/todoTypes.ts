@@ -1,20 +1,20 @@
 import type {
+  PaginationMeta as SharedPaginationMeta,
   Priority as SharedPriority,
+  Project as SharedProject,
   SubTask as SharedSubTask,
   Todo as SharedTodo,
-  TodoUpdate as SharedTodoUpdate,
   TodoFilters as SharedTodoFilters,
-  Project as SharedProject,
-  PaginationMeta as SharedPaginationMeta,
+  TodoUpdate as SharedTodoUpdate,
 } from "@shared/types";
 
 export type {
-  Priority,
-  SubTask,
-  TodoUpdate,
-  TodoFilters,
-  Project,
   PaginationMeta,
+  Priority,
+  Project,
+  SubTask,
+  TodoFilters,
+  TodoUpdate,
 } from "@shared/types";
 
 // Re-export Priority enum value (not just type) for consumers that use it as value
