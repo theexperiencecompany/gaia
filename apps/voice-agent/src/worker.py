@@ -97,6 +97,11 @@ class CustomLLM(LLM):
         self.request_timeout_s = request_timeout_s
         self.room = room
         self._pending_tasks: set[asyncio.Task] = set()
+        self._connector = aiohttp.TCPConnector(limit=10, keepalive_timeout=30)
+        self._http_session = aiohttp.ClientSession(
+            connector=self._connector,
+            connector_owner=True,
+        )
 
     def set_agent_token(self, token: Optional[str]):
         """Set the authentication token for backend requests."""
@@ -123,6 +128,11 @@ class CustomLLM(LLM):
                 )
             except Exception as e:
                 logger.error(f"Failed to send conversation description: {e}")
+
+    async def aclose(self) -> None:
+        """Close persistent HTTP session and connector."""
+        await self._http_session.close()
+        await self._connector.close()
 
     def _track_task(self, coro: Any) -> asyncio.Task:
         """Create and track an asyncio task to prevent GC before completion."""
@@ -168,12 +178,12 @@ class CustomLLM(LLM):
             if self.conversation_id:
                 request_body["conversation_id"] = self.conversation_id
 
-            async with aiohttp.ClientSession(timeout=timeout) as session:  # noqa: SIM117
-                async with session.post(
-                    f"{self.base_url}/api/v1/chat-stream",
-                    headers=headers,
-                    json=request_body,
-                ) as resp:
+            async with self._http_session.post(
+                f"{self.base_url}/api/v1/chat-stream",
+                headers=headers,
+                json=request_body,
+                timeout=timeout,
+            ) as resp:
                     resp.raise_for_status()
 
                     text_buffer: list[str] = []
@@ -359,6 +369,7 @@ async def entrypoint(ctx: JobContext):
         logger.info(f"Usage: {summary}")
 
     ctx.add_shutdown_callback(log_usage)
+    ctx.add_shutdown_callback(custom_llm.aclose)
 
     async def _extract_and_set_participant_credentials(
         md: Optional[str], origin: str, who: str
