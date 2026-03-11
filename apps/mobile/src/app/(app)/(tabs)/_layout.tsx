@@ -10,6 +10,7 @@ import {
   ZapIcon,
 } from "@/components/icons";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { selectionHaptic } from "@/lib/haptics";
 
 const TAB_BAR_BG = "#0f1011";
 const ACTIVE_COLOR = "#00bbff";
@@ -23,6 +24,11 @@ export default function TabsLayout() {
   return (
     <ErrorBoundary>
       <Tabs
+        screenListeners={{
+          tabPress: () => {
+            selectionHaptic();
+          },
+        }}
         screenOptions={{
           headerShown: false,
           tabBarStyle: {

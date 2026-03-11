@@ -12,6 +12,7 @@ import {
 import { Pressable, View } from "react-native";
 import { AppIcon, Cancel01Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { impactHaptic, notificationHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
 import type { Note, NoteCreate, NoteUpdate } from "../api/notes-api";
 
@@ -61,6 +62,7 @@ export const NoteEditorSheet = forwardRef<
 
   const handleSave = useCallback(async () => {
     if (isSaving) return;
+    impactHaptic("medium");
     setIsSaving(true);
     try {
       if (editingNote) {
@@ -68,6 +70,7 @@ export const NoteEditorSheet = forwardRef<
       } else {
         await onSaveCreate({ title, content });
       }
+      notificationHaptic("success");
       bottomSheetRef.current?.close();
       reset();
     } finally {

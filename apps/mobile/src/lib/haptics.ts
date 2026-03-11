@@ -12,3 +12,31 @@ export const haptics = {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning),
   selection: () => Haptics.selectionAsync(),
 };
+
+export function selectionHaptic(): void {
+  void Haptics.selectionAsync();
+}
+
+export function impactHaptic(style: "light" | "medium" | "heavy"): void {
+  const styleMap = {
+    light: Haptics.ImpactFeedbackStyle.Light,
+    medium: Haptics.ImpactFeedbackStyle.Medium,
+    heavy: Haptics.ImpactFeedbackStyle.Heavy,
+  };
+  void Haptics.impactAsync(styleMap[style]);
+}
+
+export function notificationHaptic(
+  type: "success" | "warning" | "error",
+): void {
+  const typeMap = {
+    success: Haptics.NotificationFeedbackType.Success,
+    warning: Haptics.NotificationFeedbackType.Warning,
+    error: Haptics.NotificationFeedbackType.Error,
+  };
+  void Haptics.notificationAsync(typeMap[type]);
+}
+
+export function longPressHaptic(): void {
+  void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+}

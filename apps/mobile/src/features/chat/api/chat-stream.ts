@@ -24,6 +24,8 @@ export interface ChatStreamRequest {
   fileData?: ApiFileData[];
   selectedTool?: string | null;
   toolCategory?: string | null;
+  workflowId?: string | null;
+  replyToMessageId?: string | null;
 }
 
 interface StreamEventData {
@@ -76,6 +78,8 @@ export async function fetchChatStream(
     fileData = [],
     selectedTool = null,
     toolCategory = null,
+    workflowId = null,
+    replyToMessageId = null,
   } = request;
 
   const formattedMessages = messages
@@ -93,6 +97,8 @@ export async function fetchChatStream(
     fileData,
     selectedTool,
     toolCategory,
+    workflow_id: workflowId || null,
+    reply_to_message_id: replyToMessageId || null,
     messages: formattedMessages,
   };
 

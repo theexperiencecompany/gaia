@@ -14,7 +14,8 @@ import {
   RobotoMono_500Medium,
 } from "@expo-google-fonts/roboto-mono";
 import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
-import { Stack } from "expo-router";
+import * as Linking from "expo-linking";
+import { Stack, useRouter, useSegments } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { HeroUINativeProvider } from "heroui-native";
@@ -28,7 +29,10 @@ import { AuthProvider } from "@/features/auth";
 import { ChatProvider } from "@/features/chat";
 import { QueryProvider } from "@/lib/query-provider";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
+import { OfflineBanner } from "@/components/OfflineBanner";
 import { useAppTheme } from "@/shared/hooks/use-app-theme";
+import { getRouteForDeepLink, parseDeepLink } from "@/lib/deep-links";
+import { trackScreen } from "@/lib/analytics";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -64,6 +68,45 @@ function ThemeProvider({ children }: { children: React.ReactNode }) {
   return <>{children}</>;
 }
 
+function ScreenTracker() {
+  const segments = useSegments();
+
+  useEffect(() => {
+    const screenName = segments.join("/") || "home";
+    trackScreen(screenName);
+  }, [segments]);
+
+  return null;
+}
+
+function DeepLinkHandler() {
+  const router = useRouter();
+
+  useEffect(() => {
+    const handleUrl = (event: { url: string }) => {
+      const parsed = parseDeepLink(event.url);
+      const route = getRouteForDeepLink(parsed);
+      if (route) {
+        router.push(route as Parameters<typeof router.push>[0]);
+      }
+    };
+
+    const subscription = Linking.addEventListener("url", handleUrl);
+
+    Linking.getInitialURL().then((url) => {
+      if (url) {
+        handleUrl({ url });
+      }
+    });
+
+    return () => {
+      subscription.remove();
+    };
+  }, [router]);
+
+  return null;
+}
+
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({
     Inter_400Regular,
@@ -92,6 +135,9 @@ export default function RootLayout() {
               <GestureHandlerRootView
                 style={{ flex: 1, backgroundColor: "#060a14" }}
               >
+                <ScreenTracker />
+                <DeepLinkHandler />
+                <OfflineBanner />
                 <HeroUINativeProvider>
                   <BottomSheetModalProvider>
                     <Stack screenOptions={{ headerShown: false }}>

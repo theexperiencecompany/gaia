@@ -14,6 +14,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { SupportScreen } from "@/features/settings/components/SupportScreen";
 import {
   AppIcon,
   ArrowLeft01Icon,
@@ -1201,7 +1202,7 @@ function UsageSection() {
 
 // ─── About section ────────────────────────────────────────────────────────────
 
-function AboutSection() {
+function AboutSection({ onContactSupport }: { onContactSupport: () => void }) {
   const { fontSize } = useResponsive();
   const appVersion =
     (Constants.expoConfig?.version ?? Constants.manifest?.version) ?? "1.0.0";
@@ -1240,9 +1241,7 @@ function AboutSection() {
         }
         iconBgColor="rgba(52,211,153,0.15)"
         showChevron
-        onPress={() => {
-          void handleLink("mailto:support@heygaia.io");
-        }}
+        onPress={onContactSupport}
       />
 
       <RowDivider />
@@ -1501,6 +1500,11 @@ export default function SettingsScreen() {
   const { spacing, fontSize } = useResponsive();
   const insets = useSafeAreaInsets();
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [showSupport, setShowSupport] = useState(false);
+
+  if (showSupport) {
+    return <SupportScreen onBack={() => setShowSupport(false)} />;
+  }
 
   const handleSignOut = useCallback(async () => {
     Alert.alert("Sign Out", "Are you sure you want to sign out?", [
@@ -1602,7 +1606,7 @@ export default function SettingsScreen() {
           <UsageSection />
 
           {/* About — version, privacy policy, terms */}
-          <AboutSection />
+          <AboutSection onContactSupport={() => setShowSupport(true)} />
         </SettingsPage>
       </ScrollView>
     </View>

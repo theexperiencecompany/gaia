@@ -118,3 +118,49 @@ export interface McpTestConnectionResponse {
   oauth_url?: string;
   error?: string;
 }
+
+export interface IntegrationListParams {
+  category?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+  featured?: boolean;
+}
+
+export interface ConnectParams {
+  integrationId: string;
+  redirectPath?: string;
+  bearerToken?: string;
+}
+
+export interface DisconnectParams {
+  integrationId: string;
+}
+
+export interface TestConnectionParams {
+  integrationId: string;
+}
+
+type IntegrationEndpointValue =
+  | string
+  | ((id: string) => string);
+
+/**
+ * Resolve an INTEGRATION_ENDPOINTS value to a URL string.
+ * For string endpoints, returns the value directly.
+ * For function endpoints, calls it with the provided id.
+ */
+export function buildIntegrationUrl(
+  endpoint: IntegrationEndpointValue,
+  id?: string,
+): string {
+  if (typeof endpoint === "function") {
+    if (!id) {
+      throw new Error(
+        "buildIntegrationUrl: id is required for parameterised endpoints",
+      );
+    }
+    return endpoint(id);
+  }
+  return endpoint;
+}
