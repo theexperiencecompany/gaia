@@ -34,6 +34,12 @@ from livekit.plugins.turn_detector.multilingual import MultilingualModel
 
 logger = get_contextual_logger("voice")
 
+_SENTENCE_ENDINGS = frozenset({".", "!", "?"})
+_CLAUSE_ENDINGS = frozenset({",", ":", ";"})
+_MIN_FLUSH_CHARS: int = 15
+_COMMA_FLUSH_CHARS: int = 60
+_HARD_FLUSH_CHARS: int = 80
+
 
 def _extract_meta_data(md: Optional[str]) -> tuple[Optional[str], Optional[str]]:
     """Extract agentToken and conversationId from participant metadata JSON."""
@@ -46,7 +52,7 @@ def _extract_meta_data(md: Optional[str]) -> tuple[Optional[str], Optional[str]]
         token = token if isinstance(token, str) and token else None
         conv_id = conv_id if isinstance(conv_id, str) and conv_id else None
         return token, conv_id
-    except Exception:
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
         return None, None
 
 
@@ -73,7 +79,12 @@ def _extract_latest_user_text(chat_ctx: ChatContext) -> str:
 class CustomLLM(LLM):
     """Custom LLM adapter for streaming chat responses from backend."""
 
-    def __init__(self, base_url: str, request_timeout_s: float = 60.0, room=None):
+    def __init__(
+        self,
+        base_url: str,
+        request_timeout_s: float = 60.0,
+        room: Optional[rtc.Room] = None,
+    ) -> None:
         """Initialize CustomLLM with backend URL and optional LiveKit room."""
         super().__init__()
         self.base_url = base_url
@@ -109,6 +120,21 @@ class CustomLLM(LLM):
             except Exception as e:
                 logger.error(f"Failed to send conversation description: {e}")
 
+    async def _publish_event(
+        self, topic: str, payload: dict[str, object]
+    ) -> None:
+        """Serialize and broadcast a structured event to room participants."""
+        if not (self.room and self.room.local_participant):
+            return
+        try:
+            await self.room.local_participant.send_text(
+                json.dumps(payload), topic=topic
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Failed to publish event on topic %r: %s", topic, exc)
+
+    # type: ignore[override]: livekit-agents LLM.chat() signature varies by version;
+    # we accept **kwargs to remain forward-compatible with the plugin API.
     @asynccontextmanager
     async def chat(self, chat_ctx: ChatContext, **kwargs):  # type: ignore[override]
         """
@@ -124,18 +150,18 @@ class CustomLLM(LLM):
             if self.agent_token:
                 headers["Authorization"] = f"Bearer {self.agent_token}"
 
-            payload = {
+            request_body = {
                 "message": user_message,
                 "messages": [{"role": "user", "content": user_message}],
             }
             if self.conversation_id:
-                payload["conversation_id"] = self.conversation_id
+                request_body["conversation_id"] = self.conversation_id
 
             async with aiohttp.ClientSession(timeout=timeout) as session:  # noqa: SIM117
                 async with session.post(
                     f"{self.base_url}/api/v1/chat-stream",
                     headers=headers,
-                    json=payload,
+                    json=request_body,
                 ) as resp:
                     resp.raise_for_status()
 
@@ -160,22 +186,67 @@ class CustomLLM(LLM):
                             break
 
                         try:
-                            payload = json.loads(data)
-                        except json.JSONDecodeError:
+                            event_data = json.loads(data)
+                        except json.JSONDecodeError as exc:
+                            logger.debug("Skipping malformed SSE line: %s", exc)
                             continue
 
-                        conv_id = payload.get("conversation_id")
+                        if not isinstance(event_data, dict):
+                            continue
+
+                        conv_id = event_data.get("conversation_id")
                         if isinstance(conv_id, str) and conv_id:
                             await self.set_conversation_id(conv_id)
                             continue
 
                         # Handle conversation description (title)
-                        conv_desc = payload.get("conversation_description")
+                        conv_desc = event_data.get("conversation_description")
                         if isinstance(conv_desc, str) and conv_desc:
                             await self.set_conversation_description(conv_desc)
                             continue
 
-                        piece = payload.get("response", "")
+                        # Route non-TTS events to LiveKit topics.
+                        # Use fire-and-forget (create_task) to avoid blocking TTS.
+                        if "error" in event_data and isinstance(event_data["error"], str):
+                            await self._publish_event(
+                                "stream-error", {"error": event_data["error"]}
+                            )
+                            continue
+
+                        if "progress" in event_data and isinstance(event_data["progress"], dict):
+                            asyncio.create_task(
+                                self._publish_event("stream-progress", event_data["progress"])
+                            )
+                            continue
+
+                        if "tool_data" in event_data and isinstance(event_data["tool_data"], dict):
+                            asyncio.create_task(
+                                self._publish_event("stream-tool-data", event_data["tool_data"])
+                            )
+                            continue
+
+                        if "tool_output" in event_data and isinstance(event_data["tool_output"], dict):
+                            asyncio.create_task(
+                                self._publish_event("stream-tool-output", event_data["tool_output"])
+                            )
+                            continue
+
+                        if "todo_progress" in event_data and isinstance(event_data["todo_progress"], dict):
+                            asyncio.create_task(
+                                self._publish_event("stream-todo-progress", event_data["todo_progress"])
+                            )
+                            continue
+
+                        if "follow_up_actions" in event_data and isinstance(event_data["follow_up_actions"], list):
+                            asyncio.create_task(
+                                self._publish_event(
+                                    "stream-follow-up-actions",
+                                    {"actions": event_data["follow_up_actions"]},
+                                )
+                            )
+                            continue
+
+                        piece = event_data.get("response", "")
                         if not piece:
                             continue
 
@@ -207,11 +278,11 @@ class CustomLLM(LLM):
 
                         should_flush = False
 
-                        if any(joined.endswith(p) for p in [".", "!", "?"]):
-                            if len(joined) >= 40:
-                                should_flush = True
-
-                        elif len(joined) >= 120:
+                        if joined[-1] in _SENTENCE_ENDINGS and len(joined) >= _MIN_FLUSH_CHARS:
+                            should_flush = True
+                        elif joined[-1] in _CLAUSE_ENDINGS and len(joined) >= _COMMA_FLUSH_CHARS:
+                            should_flush = True
+                        elif len(joined) >= _HARD_FLUSH_CHARS:
                             should_flush = True
 
                         if should_flush:
@@ -221,7 +292,7 @@ class CustomLLM(LLM):
                                 yield ChatChunk(
                                     id="custom", delta=ChoiceDelta(content=out)
                                 )
-                                await asyncio.sleep(0.1)
+                        # NOTE: No sleep here — ElevenLabs turbo handles pacing internally.
 
                     if text_buffer:
                         tail = "".join(text_buffer).strip()
