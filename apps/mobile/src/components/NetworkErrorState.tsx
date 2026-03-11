@@ -1,5 +1,5 @@
 import { AlertCircleIcon, RepeatIcon } from "@icons";
-import { Pressable, Text, View } from "react-native";
+import { Button, Card } from "heroui-native";
 import { AppIcon } from "@/components/icons";
 
 interface NetworkErrorStateProps {
@@ -12,25 +12,40 @@ export function NetworkErrorState({
   message = "Unable to connect to the server. Please check your connection and try again.",
 }: NetworkErrorStateProps) {
   return (
-    <View className="flex-1 items-center justify-center p-6 bg-background">
-      <View className="w-16 h-16 rounded-full bg-red-500/10 items-center justify-center mb-4">
-        <AppIcon icon={AlertCircleIcon} size={32} color="#ef4444" />
-      </View>
-      <Text className="text-white text-lg font-semibold mb-2 text-center">
-        Connection Error
-      </Text>
-      <Text className="text-gray-400 text-center text-sm leading-5 mb-6 max-w-xs">
-        {message}
-      </Text>
-      {onRetry ? (
-        <Pressable
-          onPress={onRetry}
-          className="flex-row items-center gap-2 bg-primary px-6 py-3 rounded-lg"
+    <Card
+      variant="secondary"
+      animation="disable-all"
+      className="flex-1 items-center justify-center rounded-3xl p-6"
+    >
+      <Card.Body className="items-center justify-center gap-3">
+        <Card
+          variant="secondary"
+          animation="disable-all"
+          className="w-16 h-16 rounded-full items-center justify-center mb-1"
         >
-          <AppIcon icon={RepeatIcon} size={16} color="#ffffff" />
-          <Text className="text-white font-medium">Retry</Text>
-        </Pressable>
-      ) : null}
-    </View>
+          <Card.Body className="items-center justify-center p-0">
+            <AppIcon icon={AlertCircleIcon} size={32} color="#ef4444" />
+          </Card.Body>
+        </Card>
+
+        <Card.Title className="text-center">Connection Error</Card.Title>
+
+        <Card.Description className="text-center max-w-xs">
+          {message}
+        </Card.Description>
+
+        {onRetry ? (
+          <Button
+            size="sm"
+            variant="primary"
+            onPress={onRetry}
+            className="mt-2"
+          >
+            <AppIcon icon={RepeatIcon} size={16} color="#ffffff" />
+            <Button.Label>Retry</Button.Label>
+          </Button>
+        ) : null}
+      </Card.Body>
+    </Card>
   );
 }

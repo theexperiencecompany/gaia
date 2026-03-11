@@ -1,16 +1,13 @@
 import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetModal,
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
   useImperativeHandle,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
@@ -67,7 +64,7 @@ export const CreateMCPIntegrationSheet = forwardRef<
   CreateMCPIntegrationSheetRef,
   CreateMCPIntegrationSheetProps
 >(({ onIntegrationCreated }, ref) => {
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const { fontSize, spacing, moderateScale } = useResponsive();
 
   const [form, setForm] = useState<FormState>(INITIAL_FORM);
@@ -88,15 +85,15 @@ export const CreateMCPIntegrationSheet = forwardRef<
 
   useImperativeHandle(ref, () => ({
     open: () => {
-      bottomSheetRef.current?.present();
+      setIsOpen(true);
     },
     close: () => {
-      bottomSheetRef.current?.dismiss();
+      setIsOpen(false);
     },
   }));
 
   const handleClose = useCallback(() => {
-    bottomSheetRef.current?.dismiss();
+    setIsOpen(false);
   }, []);
 
   const handleDismiss = useCallback(() => {
@@ -267,18 +264,6 @@ export const CreateMCPIntegrationSheet = forwardRef<
     }
   }, [savedIntegrationId, form, onIntegrationCreated]);
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.6}
-      />
-    ),
-    [],
-  );
-
   const inputStyle = {
     flex: 1,
     color: "#f4f4f5",
@@ -303,274 +288,290 @@ export const CreateMCPIntegrationSheet = forwardRef<
   const isFormBusy = isSaving || isTesting;
 
   return (
-    <BottomSheetModal
-      ref={bottomSheetRef}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      enablePanDownToClose={!isFormBusy}
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#131416" }}
-      handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
-      onDismiss={handleDismiss}
+    <BottomSheet
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (!open) handleDismiss();
+      }}
     >
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.md,
-          borderBottomWidth: 1,
-          borderBottomColor: "rgba(255,255,255,0.06)",
-        }}
-      >
-        <View style={{ gap: 2 }}>
-          <Text
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={snapPoints}
+          enableDynamicSizing={false}
+          enablePanDownToClose={!isFormBusy}
+          backgroundStyle={{ backgroundColor: "#131416" }}
+          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
+        >
+          {/* Header */}
+          <View
             style={{
-              fontSize: fontSize.base,
-              fontWeight: "600",
-              color: "#fff",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingHorizontal: spacing.md,
+              paddingBottom: spacing.md,
+              borderBottomWidth: 1,
+              borderBottomColor: "rgba(255,255,255,0.06)",
             }}
           >
-            New MCP Integration
-          </Text>
-          <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
-            Connect an MCP server to extend GAIA&apos;s capabilities
-          </Text>
-        </View>
-        <Pressable
-          onPress={handleClose}
-          disabled={isFormBusy}
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 999,
-            backgroundColor: "rgba(255,255,255,0.06)",
-            alignItems: "center",
-            justifyContent: "center",
-            opacity: isFormBusy ? 0.4 : 1,
-          }}
-        >
-          <AppIcon icon={Cancel01Icon} size={16} color="#8e8e93" />
-        </Pressable>
-      </View>
-
-      <BottomSheetScrollView
-        contentContainerStyle={{
-          padding: spacing.md,
-          gap: spacing.sm + 4,
-          paddingBottom: spacing.xl * 2,
-        }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Name */}
-        <View style={fieldWrapperStyle}>
-          <Text style={fieldLabelStyle}>Name *</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <AppIcon icon={PuzzleIcon} size={15} color="#6f737c" />
-            <BottomSheetTextInput
-              style={inputStyle}
-              placeholder="My Integration"
-              placeholderTextColor="#6f737c"
-              value={form.name}
-              onChangeText={(v) => updateField("name", v)}
-              editable={!isFormBusy}
-              returnKeyType="next"
-            />
-          </View>
-        </View>
-
-        {/* Description */}
-        <View style={fieldWrapperStyle}>
-          <Text style={fieldLabelStyle}>Description</Text>
-          <BottomSheetTextInput
-            style={{ ...inputStyle, minHeight: 48 }}
-            placeholder="What does this integration do?"
-            placeholderTextColor="#6f737c"
-            value={form.description}
-            onChangeText={(v) => updateField("description", v)}
-            multiline
-            editable={!isFormBusy}
-            textAlignVertical="top"
-          />
-        </View>
-
-        {/* Server URL */}
-        <View style={fieldWrapperStyle}>
-          <Text style={fieldLabelStyle}>Server URL *</Text>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <AppIcon icon={ConnectIcon} size={15} color="#6f737c" />
-            <BottomSheetTextInput
-              style={inputStyle}
-              placeholder="https://mcp.example.com/sse"
-              placeholderTextColor="#6f737c"
-              value={form.serverUrl}
-              onChangeText={(v) => updateField("serverUrl", v)}
-              editable={!isFormBusy}
-              autoCapitalize="none"
-              autoCorrect={false}
-              keyboardType="url"
-              returnKeyType="next"
-            />
-          </View>
-        </View>
-
-        {/* Auth Type */}
-        <View style={{ gap: spacing.xs }}>
-          <Text style={{ ...fieldLabelStyle, paddingHorizontal: 2 }}>
-            Authentication
-          </Text>
-          <View style={{ flexDirection: "row", gap: spacing.sm }}>
-            {(["none", "bearer"] as AuthType[]).map((type) => {
-              const isSelected = form.authType === type;
-              return (
-                <Pressable
-                  key={type}
-                  onPress={() => updateField("authType", type)}
-                  disabled={isFormBusy}
-                  style={{
-                    flex: 1,
-                    paddingVertical: spacing.sm + 2,
-                    borderRadius: moderateScale(10, 0.5),
-                    alignItems: "center",
-                    backgroundColor: isSelected
-                      ? "rgba(0,187,255,0.15)"
-                      : "rgba(255,255,255,0.06)",
-                    borderWidth: 1,
-                    borderColor: isSelected
-                      ? "rgba(0,187,255,0.4)"
-                      : "transparent",
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      fontWeight: isSelected ? "600" : "400",
-                      color: isSelected ? "#00bbff" : "#8e8e93",
-                    }}
-                  >
-                    {type === "none" ? "None" : "Bearer Token"}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-
-        {/* Bearer Token (conditional) */}
-        {form.authType === "bearer" && (
-          <View style={fieldWrapperStyle}>
-            <Text style={fieldLabelStyle}>Bearer Token</Text>
-            <View
-              style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
-            >
-              <AppIcon icon={ShieldUserIcon} size={15} color="#6f737c" />
-              <BottomSheetTextInput
-                style={inputStyle}
-                placeholder="sk-... or your API token"
-                placeholderTextColor="#6f737c"
-                value={form.bearerToken}
-                onChangeText={(v) => updateField("bearerToken", v)}
-                secureTextEntry
-                editable={!isFormBusy}
-                autoCapitalize="none"
-                autoCorrect={false}
-              />
-            </View>
-          </View>
-        )}
-
-        {/* Test Result */}
-        {(isTesting || testResult !== null || testError !== null) && (
-          <TestConnectionResult
-            isLoading={isTesting}
-            result={testResult}
-            error={testError}
-          />
-        )}
-
-        {/* Action Buttons */}
-        <View style={{ flexDirection: "row", gap: spacing.sm, marginTop: 4 }}>
-          {/* Test Connection */}
-          <Pressable
-            onPress={() => void handleTestConnection()}
-            disabled={isFormBusy || !form.serverUrl.trim()}
-            style={({ pressed }) => ({
-              flex: 1,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              paddingVertical: spacing.sm + 4,
-              borderRadius: moderateScale(12, 0.5),
-              backgroundColor:
-                isTesting || !form.serverUrl.trim()
-                  ? "rgba(255,255,255,0.04)"
-                  : pressed
-                    ? "rgba(255,255,255,0.08)"
-                    : "rgba(255,255,255,0.06)",
-              opacity: isFormBusy && !isTesting ? 0.5 : 1,
-            })}
-          >
-            {isTesting ? (
-              <ActivityIndicator size="small" color="#8e8e93" />
-            ) : (
-              <AppIcon
-                icon={FlashIcon}
-                size={15}
-                color={form.serverUrl.trim() ? "#8e8e93" : "#4a4a4e"}
-              />
-            )}
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                fontWeight: "500",
-                color: form.serverUrl.trim() ? "#8e8e93" : "#4a4a4e",
-              }}
-            >
-              Test
-            </Text>
-          </Pressable>
-
-          {/* Save */}
-          <Pressable
-            onPress={() => void handleSave()}
-            disabled={isFormBusy || !form.name.trim() || !form.serverUrl.trim()}
-            style={({ pressed }) => ({
-              flex: 2,
-              flexDirection: "row",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 6,
-              paddingVertical: spacing.sm + 4,
-              borderRadius: moderateScale(12, 0.5),
-              backgroundColor:
-                !form.name.trim() || !form.serverUrl.trim() || isFormBusy
-                  ? "rgba(0,187,255,0.3)"
-                  : pressed
-                    ? "rgba(0,170,230,0.9)"
-                    : "rgba(0,187,255,0.85)",
-            })}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
+            <View style={{ gap: 2 }}>
               <Text
                 style={{
-                  fontSize: fontSize.sm,
+                  fontSize: fontSize.base,
                   fontWeight: "600",
                   color: "#fff",
                 }}
               >
-                Save Integration
+                New MCP Integration
               </Text>
+              <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
+                Connect an MCP server to extend GAIA&apos;s capabilities
+              </Text>
+            </View>
+            <Pressable
+              onPress={handleClose}
+              disabled={isFormBusy}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 999,
+                backgroundColor: "rgba(255,255,255,0.06)",
+                alignItems: "center",
+                justifyContent: "center",
+                opacity: isFormBusy ? 0.4 : 1,
+              }}
+            >
+              <AppIcon icon={Cancel01Icon} size={16} color="#8e8e93" />
+            </Pressable>
+          </View>
+
+          <BottomSheetScrollView
+            contentContainerStyle={{
+              padding: spacing.md,
+              gap: spacing.sm + 4,
+              paddingBottom: spacing.xl * 2,
+            }}
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+          >
+            {/* Name */}
+            <View style={fieldWrapperStyle}>
+              <Text style={fieldLabelStyle}>Name *</Text>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <AppIcon icon={PuzzleIcon} size={15} color="#6f737c" />
+                <BottomSheetTextInput
+                  style={inputStyle}
+                  placeholder="My Integration"
+                  placeholderTextColor="#6f737c"
+                  value={form.name}
+                  onChangeText={(v) => updateField("name", v)}
+                  editable={!isFormBusy}
+                  returnKeyType="next"
+                />
+              </View>
+            </View>
+
+            {/* Description */}
+            <View style={fieldWrapperStyle}>
+              <Text style={fieldLabelStyle}>Description</Text>
+              <BottomSheetTextInput
+                style={{ ...inputStyle, minHeight: 48 }}
+                placeholder="What does this integration do?"
+                placeholderTextColor="#6f737c"
+                value={form.description}
+                onChangeText={(v) => updateField("description", v)}
+                multiline
+                editable={!isFormBusy}
+                textAlignVertical="top"
+              />
+            </View>
+
+            {/* Server URL */}
+            <View style={fieldWrapperStyle}>
+              <Text style={fieldLabelStyle}>Server URL *</Text>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+              >
+                <AppIcon icon={ConnectIcon} size={15} color="#6f737c" />
+                <BottomSheetTextInput
+                  style={inputStyle}
+                  placeholder="https://mcp.example.com/sse"
+                  placeholderTextColor="#6f737c"
+                  value={form.serverUrl}
+                  onChangeText={(v) => updateField("serverUrl", v)}
+                  editable={!isFormBusy}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  keyboardType="url"
+                  returnKeyType="next"
+                />
+              </View>
+            </View>
+
+            {/* Auth Type */}
+            <View style={{ gap: spacing.xs }}>
+              <Text style={{ ...fieldLabelStyle, paddingHorizontal: 2 }}>
+                Authentication
+              </Text>
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                {(["none", "bearer"] as AuthType[]).map((type) => {
+                  const isSelected = form.authType === type;
+                  return (
+                    <Pressable
+                      key={type}
+                      onPress={() => updateField("authType", type)}
+                      disabled={isFormBusy}
+                      style={{
+                        flex: 1,
+                        paddingVertical: spacing.sm + 2,
+                        borderRadius: moderateScale(10, 0.5),
+                        alignItems: "center",
+                        backgroundColor: isSelected
+                          ? "rgba(0,187,255,0.15)"
+                          : "rgba(255,255,255,0.06)",
+                        borderWidth: 1,
+                        borderColor: isSelected
+                          ? "rgba(0,187,255,0.4)"
+                          : "transparent",
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: fontSize.sm,
+                          fontWeight: isSelected ? "600" : "400",
+                          color: isSelected ? "#00bbff" : "#8e8e93",
+                        }}
+                      >
+                        {type === "none" ? "None" : "Bearer Token"}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </View>
+
+            {/* Bearer Token (conditional) */}
+            {form.authType === "bearer" && (
+              <View style={fieldWrapperStyle}>
+                <Text style={fieldLabelStyle}>Bearer Token</Text>
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 8 }}
+                >
+                  <AppIcon icon={ShieldUserIcon} size={15} color="#6f737c" />
+                  <BottomSheetTextInput
+                    style={inputStyle}
+                    placeholder="sk-... or your API token"
+                    placeholderTextColor="#6f737c"
+                    value={form.bearerToken}
+                    onChangeText={(v) => updateField("bearerToken", v)}
+                    secureTextEntry
+                    editable={!isFormBusy}
+                    autoCapitalize="none"
+                    autoCorrect={false}
+                  />
+                </View>
+              </View>
             )}
-          </Pressable>
-        </View>
-      </BottomSheetScrollView>
-    </BottomSheetModal>
+
+            {/* Test Result */}
+            {(isTesting || testResult !== null || testError !== null) && (
+              <TestConnectionResult
+                isLoading={isTesting}
+                result={testResult}
+                error={testError}
+              />
+            )}
+
+            {/* Action Buttons */}
+            <View
+              style={{ flexDirection: "row", gap: spacing.sm, marginTop: 4 }}
+            >
+              {/* Test Connection */}
+              <Pressable
+                onPress={() => void handleTestConnection()}
+                disabled={isFormBusy || !form.serverUrl.trim()}
+                style={({ pressed }) => ({
+                  flex: 1,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingVertical: spacing.sm + 4,
+                  borderRadius: moderateScale(12, 0.5),
+                  backgroundColor:
+                    isTesting || !form.serverUrl.trim()
+                      ? "rgba(255,255,255,0.04)"
+                      : pressed
+                        ? "rgba(255,255,255,0.08)"
+                        : "rgba(255,255,255,0.06)",
+                  opacity: isFormBusy && !isTesting ? 0.5 : 1,
+                })}
+              >
+                {isTesting ? (
+                  <ActivityIndicator size="small" color="#8e8e93" />
+                ) : (
+                  <AppIcon
+                    icon={FlashIcon}
+                    size={15}
+                    color={form.serverUrl.trim() ? "#8e8e93" : "#4a4a4e"}
+                  />
+                )}
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    fontWeight: "500",
+                    color: form.serverUrl.trim() ? "#8e8e93" : "#4a4a4e",
+                  }}
+                >
+                  Test
+                </Text>
+              </Pressable>
+
+              {/* Save */}
+              <Pressable
+                onPress={() => void handleSave()}
+                disabled={
+                  isFormBusy || !form.name.trim() || !form.serverUrl.trim()
+                }
+                style={({ pressed }) => ({
+                  flex: 2,
+                  flexDirection: "row",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  paddingVertical: spacing.sm + 4,
+                  borderRadius: moderateScale(12, 0.5),
+                  backgroundColor:
+                    !form.name.trim() || !form.serverUrl.trim() || isFormBusy
+                      ? "rgba(0,187,255,0.3)"
+                      : pressed
+                        ? "rgba(0,170,230,0.9)"
+                        : "rgba(0,187,255,0.85)",
+                })}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text
+                    style={{
+                      fontSize: fontSize.sm,
+                      fontWeight: "600",
+                      color: "#fff",
+                    }}
+                  >
+                    Save Integration
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </BottomSheetScrollView>
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
+    </BottomSheet>
   );
 });
 

@@ -3,7 +3,8 @@ import {
   openBrowserAsync,
   WebBrowserPresentationStyle,
 } from "expo-web-browser";
-import { Pressable, View } from "react-native";
+import { Card, PressableFeedback } from "heroui-native";
+import { View } from "react-native";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -43,101 +44,105 @@ export function LinkPreviewCard({
     })();
 
   return (
-    <Pressable
+    <PressableFeedback
       onPress={handlePress}
-      style={({ pressed }) => ({
-        opacity: pressed ? 0.75 : 1,
-        borderRadius: moderateScale(12, 0.5),
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.08)",
-        backgroundColor: "rgba(255,255,255,0.04)",
+      style={{
         marginTop: spacing.sm,
-      })}
+      }}
     >
-      {imageUrl ? (
-        <Image
-          source={{ uri: imageUrl }}
-          style={{
-            width: "100%",
-            height: moderateScale(140, 0.5),
-          }}
-          contentFit="cover"
-        />
-      ) : null}
-
-      <View
+      <Card
         style={{
-          padding: spacing.md,
-          gap: spacing.xs,
+          borderRadius: moderateScale(12, 0.5),
+          overflow: "hidden",
+          borderWidth: 1,
+          borderColor: "rgba(255,255,255,0.08)",
+          backgroundColor: "rgba(255,255,255,0.04)",
         }}
       >
-        <View
+        {imageUrl ? (
+          <Image
+            source={{ uri: imageUrl }}
+            style={{
+              width: "100%",
+              height: moderateScale(140, 0.5),
+            }}
+            contentFit="cover"
+          />
+        ) : null}
+
+        <Card.Body
           style={{
-            flexDirection: "row",
-            alignItems: "center",
+            padding: spacing.md,
             gap: spacing.xs,
           }}
         >
-          {favicon ? (
-            <Image
-              source={{ uri: favicon }}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.xs,
+            }}
+          >
+            {favicon ? (
+              <Image
+                source={{ uri: favicon }}
+                style={{
+                  width: moderateScale(14, 0.5),
+                  height: moderateScale(14, 0.5),
+                  borderRadius: 2,
+                }}
+                contentFit="contain"
+              />
+            ) : null}
+            <Text
               style={{
-                width: moderateScale(14, 0.5),
-                height: moderateScale(14, 0.5),
-                borderRadius: 2,
+                fontSize: fontSize.xs,
+                color: "#8e8e93",
+                flexShrink: 1,
               }}
-              contentFit="contain"
-            />
+              numberOfLines={1}
+            >
+              {displayDomain}
+            </Text>
+          </View>
+
+          {title ? (
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                color: "#ffffff",
+                fontWeight: "600",
+              }}
+              numberOfLines={2}
+            >
+              {title}
+            </Text>
           ) : null}
+
+          {description ? (
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: "#8e8e93",
+                lineHeight: fontSize.xs * 1.4,
+              }}
+              numberOfLines={2}
+            >
+              {description}
+            </Text>
+          ) : null}
+
           <Text
             style={{
               fontSize: fontSize.xs,
-              color: "#8e8e93",
-              flexShrink: 1,
+              color: "#00bbff",
+              marginTop: spacing.xs,
             }}
-            numberOfLines={1}
           >
-            {displayDomain}
+            Open
           </Text>
-        </View>
-
-        {title ? (
-          <Text
-            style={{
-              fontSize: fontSize.sm,
-              color: "#ffffff",
-              fontWeight: "600",
-            }}
-            numberOfLines={2}
-          >
-            {title}
-          </Text>
-        ) : null}
-
-        {description ? (
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#8e8e93",
-              lineHeight: fontSize.xs * 1.4,
-            }}
-            numberOfLines={2}
-          >
-            {description}
-          </Text>
-        ) : null}
-
-        <Text
-          style={{
-            fontSize: fontSize.xs,
-            color: "#00bbff",
-            marginTop: spacing.xs,
-          }}
-        >
-          Open
-        </Text>
-      </View>
-    </Pressable>
+        </Card.Body>
+      </Card>
+    </PressableFeedback>
   );
 }

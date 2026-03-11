@@ -1,10 +1,12 @@
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
+import { BottomSheet } from "heroui-native";
 import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetModal,
-  BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
-import { forwardRef, useCallback, useEffect, useMemo, useState } from "react";
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useState,
+} from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -150,210 +152,216 @@ function CategorySection({
   );
 }
 
-function renderBackdrop(props: BottomSheetBackdropProps) {
-  return (
-    <BottomSheetBackdrop
-      {...props}
-      disappearsOnIndex={-1}
-      appearsOnIndex={0}
-      opacity={0.6}
-    />
-  );
+export interface NotificationPreferencesSheetRef {
+  open: () => void;
+  close: () => void;
 }
 
-export const NotificationPreferencesSheet = forwardRef<BottomSheetModal>(
-  function NotificationPreferencesSheet(_props, ref) {
-    const { spacing, fontSize } = useResponsive();
-    const snapPoints = useMemo(() => SNAP_POINTS, []);
+export const NotificationPreferencesSheet =
+  forwardRef<NotificationPreferencesSheetRef>(
+    function NotificationPreferencesSheet(_props, ref) {
+      const { spacing, fontSize } = useResponsive();
+      const [isOpen, setIsOpen] = useState(false);
 
-    const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
-    const [isLoading, setIsLoading] = useState(false);
-    const [updatingKey, setUpdatingKey] = useState<string | null>(null);
+      useImperativeHandle(ref, () => ({
+        open: () => setIsOpen(true),
+        close: () => setIsOpen(false),
+      }));
 
-    useEffect(() => {
-      let cancelled = false;
-      setIsLoading(true);
+      const [prefs, setPrefs] = useState<NotificationPreferences | null>(null);
+      const [isLoading, setIsLoading] = useState(false);
+      const [updatingKey, setUpdatingKey] = useState<string | null>(null);
 
-      inAppNotificationsApi
-        .getNotificationPreferences()
-        .then((data) => {
-          if (!cancelled) setPrefs(data);
-        })
-        .catch(() => {
-          if (!cancelled)
-            Alert.alert("Error", "Failed to load notification preferences.");
-        })
-        .finally(() => {
-          if (!cancelled) setIsLoading(false);
-        });
+      useEffect(() => {
+        let cancelled = false;
+        setIsLoading(true);
 
-      return () => {
-        cancelled = true;
-      };
-    }, []);
+        inAppNotificationsApi
+          .getNotificationPreferences()
+          .then((data) => {
+            if (!cancelled) setPrefs(data);
+          })
+          .catch(() => {
+            if (!cancelled)
+              Alert.alert("Error", "Failed to load notification preferences.");
+          })
+          .finally(() => {
+            if (!cancelled) setIsLoading(false);
+          });
 
-    const handleToggle = useCallback(
-      async (
-        category: string,
-        channel: keyof NotificationCategoryPreferences,
-        value: boolean,
-      ) => {
-        if (!prefs) return;
+        return () => {
+          cancelled = true;
+        };
+      }, []);
 
-        const key = `${category}.${channel}`;
-        setUpdatingKey(key);
+      const handleToggle = useCallback(
+        async (
+          category: string,
+          channel: keyof NotificationCategoryPreferences,
+          value: boolean,
+        ) => {
+          if (!prefs) return;
 
-        const previousPrefs = prefs;
+          const key = `${category}.${channel}`;
+          setUpdatingKey(key);
 
-        const updatedCategoryPrefs: NotificationCategoryPreferences =
-          category === "global"
-            ? { ...prefs.global, [channel]: value }
-            : {
-                ...(prefs.categories[category] ?? prefs.global),
-                [channel]: value,
-              };
+          const previousPrefs = prefs;
 
-        const updatedPrefs: NotificationPreferences =
-          category === "global"
-            ? { ...prefs, global: updatedCategoryPrefs }
-            : {
-                ...prefs,
-                categories: {
-                  ...prefs.categories,
-                  [category]: updatedCategoryPrefs,
-                },
-              };
+          const updatedCategoryPrefs: NotificationCategoryPreferences =
+            category === "global"
+              ? { ...prefs.global, [channel]: value }
+              : {
+                  ...(prefs.categories[category] ?? prefs.global),
+                  [channel]: value,
+                };
 
-        setPrefs(updatedPrefs);
+          const updatedPrefs: NotificationPreferences =
+            category === "global"
+              ? { ...prefs, global: updatedCategoryPrefs }
+              : {
+                  ...prefs,
+                  categories: {
+                    ...prefs.categories,
+                    [category]: updatedCategoryPrefs,
+                  },
+                };
 
-        try {
-          await inAppNotificationsApi.updateNotificationPreferences(
-            updatedPrefs,
-          );
-        } catch {
-          setPrefs(previousPrefs);
-          Alert.alert("Error", "Failed to update preference.");
-        } finally {
-          setUpdatingKey(null);
-        }
-      },
-      [prefs],
-    );
+          setPrefs(updatedPrefs);
 
-    const categoryEntries = prefs ? Object.entries(prefs.categories) : [];
+          try {
+            await inAppNotificationsApi.updateNotificationPreferences(
+              updatedPrefs,
+            );
+          } catch {
+            setPrefs(previousPrefs);
+            Alert.alert("Error", "Failed to update preference.");
+          } finally {
+            setUpdatingKey(null);
+          }
+        },
+        [prefs],
+      );
 
-    return (
-      <BottomSheetModal
-        ref={ref}
-        snapPoints={snapPoints}
-        backdropComponent={renderBackdrop}
-        backgroundStyle={{ backgroundColor: "#131416" }}
-        handleIndicatorStyle={{ backgroundColor: "#48484a" }}
-      >
-        <BottomSheetScrollView
-          contentContainerStyle={{
-            paddingHorizontal: spacing.md,
-            paddingBottom: spacing.xl,
-          }}
-        >
-          {/* Header */}
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
-              paddingVertical: spacing.md,
-              marginBottom: spacing.sm,
-            }}
-          >
-            <AppIcon icon={Settings01Icon} size={18} color="#8e8e93" />
-            <Text
-              style={{
-                fontSize: fontSize.base,
-                fontWeight: "600",
-                color: "#e8ebef",
-              }}
+      const categoryEntries = prefs ? Object.entries(prefs.categories) : [];
+
+      return (
+        <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+          <BottomSheet.Portal>
+            <BottomSheet.Overlay />
+            <BottomSheet.Content
+              snapPoints={SNAP_POINTS}
+              enableDynamicSizing={false}
+              enablePanDownToClose
+              backgroundStyle={{ backgroundColor: "#131416" }}
+              handleIndicatorStyle={{ backgroundColor: "#48484a", width: 40 }}
             >
-              Notification Preferences
-            </Text>
-          </View>
-
-          {isLoading ? (
-            <View
-              style={{
-                flex: 1,
-                alignItems: "center",
-                justifyContent: "center",
-                paddingVertical: spacing.xl,
-              }}
-            >
-              <ActivityIndicator color="#00bbff" />
-            </View>
-          ) : prefs ? (
-            <>
-              {/* Global section */}
-              <CategorySection
-                category="global"
-                prefs={prefs.global}
-                onToggle={(cat, ch, val) => {
-                  void handleToggle(cat, ch, val);
+              <BottomSheetScrollView
+                contentContainerStyle={{
+                  paddingHorizontal: spacing.md,
+                  paddingBottom: spacing.xl,
                 }}
-                disabled={updatingKey !== null}
-              />
-
-              {/* Per-category sections */}
-              {categoryEntries.length > 0 && (
-                <>
+              >
+                {/* Header */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.sm,
+                    paddingVertical: spacing.md,
+                    marginBottom: spacing.sm,
+                  }}
+                >
+                  <AppIcon icon={Settings01Icon} size={18} color="#8e8e93" />
                   <Text
                     style={{
-                      fontSize: fontSize.xs,
-                      color: "#636366",
-                      marginBottom: spacing.sm,
-                      marginTop: spacing.xs,
+                      fontSize: fontSize.base,
+                      fontWeight: "600",
+                      color: "#e8ebef",
                     }}
                   >
-                    Override global settings per category
+                    Notification Preferences
                   </Text>
-                  {categoryEntries.map(([cat, catPrefs]) => (
+                </View>
+
+                {isLoading ? (
+                  <View
+                    style={{
+                      flex: 1,
+                      alignItems: "center",
+                      justifyContent: "center",
+                      paddingVertical: spacing.xl,
+                    }}
+                  >
+                    <ActivityIndicator color="#00bbff" />
+                  </View>
+                ) : prefs ? (
+                  <>
+                    {/* Global section */}
                     <CategorySection
-                      key={cat}
-                      category={cat}
-                      prefs={catPrefs}
-                      onToggle={(c, ch, val) => {
-                        void handleToggle(c, ch, val);
+                      category="global"
+                      prefs={prefs.global}
+                      onToggle={(cat, ch, val) => {
+                        void handleToggle(cat, ch, val);
                       }}
                       disabled={updatingKey !== null}
                     />
-                  ))}
-                </>
-              )}
-            </>
-          ) : (
-            <View style={{ alignItems: "center", paddingVertical: spacing.xl }}>
-              <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
-                No preferences available.
-              </Text>
-            </View>
-          )}
 
-          <Pressable
-            style={{
-              marginTop: spacing.md,
-              alignItems: "center",
-              paddingVertical: spacing.sm,
-            }}
-            onPress={() => {
-              if (typeof ref === "object" && ref?.current) {
-                ref.current.dismiss();
-              }
-            }}
-          >
-            <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
-              Close
-            </Text>
-          </Pressable>
-        </BottomSheetScrollView>
-      </BottomSheetModal>
-    );
-  },
-);
+                    {/* Per-category sections */}
+                    {categoryEntries.length > 0 && (
+                      <>
+                        <Text
+                          style={{
+                            fontSize: fontSize.xs,
+                            color: "#636366",
+                            marginBottom: spacing.sm,
+                            marginTop: spacing.xs,
+                          }}
+                        >
+                          Override global settings per category
+                        </Text>
+                        {categoryEntries.map(([cat, catPrefs]) => (
+                          <CategorySection
+                            key={cat}
+                            category={cat}
+                            prefs={catPrefs}
+                            onToggle={(c, ch, val) => {
+                              void handleToggle(c, ch, val);
+                            }}
+                            disabled={updatingKey !== null}
+                          />
+                        ))}
+                      </>
+                    )}
+                  </>
+                ) : (
+                  <View
+                    style={{
+                      alignItems: "center",
+                      paddingVertical: spacing.xl,
+                    }}
+                  >
+                    <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
+                      No preferences available.
+                    </Text>
+                  </View>
+                )}
+
+                <Pressable
+                  style={{
+                    marginTop: spacing.md,
+                    alignItems: "center",
+                    paddingVertical: spacing.sm,
+                  }}
+                  onPress={() => setIsOpen(false)}
+                >
+                  <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
+                    Close
+                  </Text>
+                </Pressable>
+              </BottomSheetScrollView>
+            </BottomSheet.Content>
+          </BottomSheet.Portal>
+        </BottomSheet>
+      );
+    },
+  );

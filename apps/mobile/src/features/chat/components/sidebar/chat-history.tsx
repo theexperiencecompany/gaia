@@ -1,9 +1,14 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
-import { PressableFeedback } from "heroui-native";
+import {
+  Button,
+  Card,
+  Divider,
+  PressableFeedback,
+  SkeletonGroup,
+} from "heroui-native";
 import { useCallback, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -146,39 +151,12 @@ function RenameModal({
               gap: spacing.sm,
             }}
           >
-            <Pressable
-              onPress={onCancel}
-              style={{
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.sm,
-                borderRadius: 8,
-                borderWidth: 1,
-                borderColor: "#27272a",
-              }}
-            >
-              <Text style={{ color: "#a1a1aa", fontSize: fontSize.sm }}>
-                Cancel
-              </Text>
-            </Pressable>
-            <Pressable
-              onPress={handleConfirm}
-              style={{
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.sm,
-                borderRadius: 8,
-                backgroundColor: "#2563eb",
-              }}
-            >
-              <Text
-                style={{
-                  color: "#ffffff",
-                  fontSize: fontSize.sm,
-                  fontWeight: "600",
-                }}
-              >
-                Save
-              </Text>
-            </Pressable>
+            <Button variant="ghost" size="sm" onPress={onCancel}>
+              <Button.Label>Cancel</Button.Label>
+            </Button>
+            <Button variant="primary" size="sm" onPress={handleConfirm}>
+              <Button.Label>Save</Button.Label>
+            </Button>
           </View>
         </Pressable>
       </Pressable>
@@ -203,29 +181,25 @@ function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
         {
           justifyContent: "center",
           alignItems: "center",
-          backgroundColor: "#ef4444",
           width: 72,
           borderRadius: 8,
           marginVertical: 1,
           marginRight: 4,
+          overflow: "hidden",
         },
         animatedStyle,
       ]}
     >
-      <Pressable
+      <Button
+        variant="danger"
         onPress={onDelete}
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          width: "100%",
-        }}
+        className="flex-1 w-full rounded-lg items-center justify-center"
       >
         <AppIcon icon={Delete02Icon} size={iconSize.sm} color="#ffffff" />
         <Text style={{ color: "#ffffff", fontSize: 10, marginTop: 2 }}>
           Delete
         </Text>
-      </Pressable>
+      </Button>
     </Reanimated.View>
   );
 }
@@ -484,7 +458,8 @@ function Section({
 
   return (
     <View style={{ marginBottom: 2 }}>
-      <Pressable
+      <Divider className="mx-3 mb-1" />
+      <PressableFeedback
         onPress={onToggle}
         style={{
           flexDirection: "row",
@@ -504,7 +479,7 @@ function Section({
         >
           {title}
         </Text>
-      </Pressable>
+      </PressableFeedback>
       {isExpanded &&
         items.map((item) => (
           <ChatItem
@@ -519,6 +494,40 @@ function Section({
           />
         ))}
     </View>
+  );
+}
+
+function ChatHistorySkeleton() {
+  const { spacing } = useResponsive();
+  return (
+    <SkeletonGroup isLoading className="gap-0">
+      {[1, 2, 3, 4, 5, 6].map((i) => (
+        <View
+          key={i}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm + 2,
+            gap: spacing.sm,
+            marginHorizontal: spacing.xs,
+          }}
+        >
+          <SkeletonGroup.Item
+            className="rounded-full"
+            style={{ width: 8, height: 8 }}
+          />
+          <SkeletonGroup.Item
+            className="rounded-md flex-1"
+            style={{ height: 14 }}
+          />
+          <SkeletonGroup.Item
+            className="rounded-md"
+            style={{ width: 28, height: 10 }}
+          />
+        </View>
+      ))}
+    </SkeletonGroup>
   );
 }
 
@@ -700,123 +709,61 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
   const keyExtractor = useCallback((item: Conversation) => item.id, []);
 
   if (isLoading) {
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator size="small" color="#00bbff" />
-        <Text
-          style={{
-            color: "#52525b",
-            marginTop: spacing.md,
-            fontSize: fontSize.xs,
-          }}
-        >
-          Loading conversations...
-        </Text>
-      </View>
-    );
+    return <ChatHistorySkeleton />;
   }
 
   if (error) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          padding: spacing.lg,
-        }}
+      <Card
+        variant="secondary"
+        className="flex-1 items-center justify-center mx-3 rounded-2xl"
       >
-        <Text
-          style={{
-            color: "#ef4444",
-            fontSize: fontSize.xs,
-            textAlign: "center",
-          }}
-        >
-          {error}
-        </Text>
-      </View>
+        <Card.Body className="items-center justify-center p-4">
+          <Card.Description className="text-center text-danger">
+            {error}
+          </Card.Description>
+        </Card.Body>
+      </Card>
     );
   }
 
   if (filteredConversations.length === 0 && isSearching) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          padding: spacing.lg,
-        }}
+      <Card
+        variant="secondary"
+        className="flex-1 items-center justify-center mx-3 rounded-2xl"
       >
-        <Text
-          style={{
-            color: "#52525b",
-            fontSize: fontSize.sm,
-            textAlign: "center",
-          }}
-        >
-          No results found
-        </Text>
-        <Text
-          style={{
-            color: "#3f3f46",
-            fontSize: fontSize.xs,
-            textAlign: "center",
-            marginTop: spacing.sm,
-          }}
-        >
-          Try a different search term
-        </Text>
-      </View>
+        <Card.Body className="items-center justify-center gap-1 p-4">
+          <Card.Title className="text-center">No results found</Card.Title>
+          <Card.Description className="text-center">
+            Try a different search term
+          </Card.Description>
+        </Card.Body>
+      </Card>
     );
   }
 
   if (conversations.length === 0) {
     return (
-      <View
-        style={{
-          flex: 1,
-          justifyContent: "center",
-          alignItems: "center",
-          padding: spacing.lg,
-          gap: spacing.md,
-        }}
+      <Card
+        variant="secondary"
+        className="flex-1 items-center justify-center mx-3 rounded-2xl"
       >
-        <View
-          style={{
-            width: 56,
-            height: 56,
-            borderRadius: 28,
-            backgroundColor: "rgba(255,255,255,0.04)",
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.06)",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <AppIcon icon={BubbleChatIcon} size={28} color="#3f3f46" />
-        </View>
-        <Text
-          style={{
-            color: "#52525b",
-            fontSize: fontSize.sm,
-            textAlign: "center",
-          }}
-        >
-          No conversations yet
-        </Text>
-        <Text
-          style={{
-            color: "#3f3f46",
-            fontSize: fontSize.xs,
-            textAlign: "center",
-            marginTop: -spacing.xs,
-          }}
-        >
-          Start a new chat to begin
-        </Text>
-      </View>
+        <Card.Body className="items-center justify-center gap-3 py-10 px-5">
+          <Card
+            variant="secondary"
+            className="w-14 h-14 rounded-full items-center justify-center"
+          >
+            <Card.Body className="items-center justify-center p-0">
+              <AppIcon icon={BubbleChatIcon} size={28} color="#3f3f46" />
+            </Card.Body>
+          </Card>
+          <Card.Title className="text-center">No conversations yet</Card.Title>
+          <Card.Description className="text-center">
+            Start a new chat to begin
+          </Card.Description>
+        </Card.Body>
+      </Card>
     );
   }
 

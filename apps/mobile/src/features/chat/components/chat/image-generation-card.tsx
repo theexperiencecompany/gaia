@@ -1,53 +1,12 @@
 import { Image } from "expo-image";
+import { Button, Card, PressableFeedback, Skeleton } from "heroui-native";
 import { useCallback, useState } from "react";
-import { Platform, Pressable, Share, View } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
+import { Platform, Share, View } from "react-native";
 import { HugeiconsIcon, Share01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import type { ImageData } from "../../api/chat-api";
 import { ImageViewerModal } from "./image-viewer-modal";
-
-interface ShimmerPlaceholderProps {
-  width: number;
-}
-
-function ShimmerPlaceholder({ width }: ShimmerPlaceholderProps) {
-  const opacity = useSharedValue(0.3);
-
-  opacity.value = withRepeat(
-    withSequence(
-      withTiming(0.8, { duration: 900 }),
-      withTiming(0.3, { duration: 900 }),
-    ),
-    -1,
-    false,
-  );
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
-
-  return (
-    <Animated.View
-      style={[
-        {
-          width,
-          aspectRatio: 1,
-          borderRadius: 20,
-          backgroundColor: "#27272a",
-        },
-        animatedStyle,
-      ]}
-    />
-  );
-}
 
 interface ImageGenerationCardProps {
   imageData: ImageData;
@@ -92,128 +51,121 @@ export function ImageGenerationCard({
 
   return (
     <>
-      <View
-        style={{
-          backgroundColor: "#18181b",
-          borderRadius: moderateScale(20, 0.5),
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.07)",
-          overflow: "hidden",
-          width: cardWidth,
-        }}
+      <Card
+        variant="secondary"
+        animation="disable-all"
+        style={{ width: cardWidth, overflow: "hidden" }}
+        className="rounded-[20px] border border-white/[0.07] bg-[#18181b]"
       >
-        {/* Image / shimmer area */}
-        {isLoading ? (
-          <View style={{ padding: spacing.sm }}>
-            <ShimmerPlaceholder width={cardWidth - spacing.sm * 2} />
-          </View>
-        ) : (
-          <Pressable onPress={handlePress}>
-            <Image
-              source={{ uri: imageData.url }}
-              style={{ width: cardWidth, aspectRatio: 1 }}
-              contentFit="cover"
-              transition={400}
-              placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
-            />
-          </Pressable>
-        )}
+        <Card.Body className="p-0">
+          {/* Image / skeleton area */}
+          <Skeleton
+            isLoading={isLoading}
+            style={{ width: cardWidth, aspectRatio: 1 }}
+            className="rounded-none"
+          >
+            <PressableFeedback onPress={handlePress}>
+              <Image
+                source={{ uri: imageData.url }}
+                style={{ width: cardWidth, aspectRatio: 1 }}
+                contentFit="cover"
+                transition={400}
+                placeholder={{ blurhash: "L6PZfSi_.AyE_3t7t7R**0o#DgR4" }}
+              />
+            </PressableFeedback>
+          </Skeleton>
 
-        {/* Footer */}
-        <View
-          style={{
-            paddingHorizontal: spacing.md,
-            paddingTop: spacing.sm,
-            paddingBottom: spacing.md,
-            gap: spacing.xs,
-          }}
-        >
-          {isLoading ? (
-            <Text
-              style={{
-                fontSize: fontSize.xs,
-                color: "#71717a",
-                fontStyle: "italic",
-              }}
-            >
-              Generating image...
-            </Text>
-          ) : null}
-
-          {prompt ? (
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                color: "#a1a1aa",
-                lineHeight: 18,
-                fontStyle: "italic",
-              }}
-              numberOfLines={2}
-            >
-              {prompt}
-            </Text>
-          ) : null}
-
-          {caption?.trim() ? (
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                color: "#ffffff",
-                lineHeight: 20,
-              }}
-            >
-              {caption}
-            </Text>
-          ) : null}
-
-          {/* Action buttons */}
-          {!isLoading ? (
-            <View
-              style={{
-                flexDirection: "row",
-                gap: spacing.sm,
-                marginTop: spacing.xs,
-              }}
-            >
-              <Pressable
-                onPress={handleShare}
+          {/* Footer */}
+          <View
+            style={{
+              paddingHorizontal: spacing.md,
+              paddingTop: spacing.sm,
+              paddingBottom: spacing.md,
+              gap: spacing.xs,
+            }}
+          >
+            {isLoading ? (
+              <Text
                 style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.xs,
-                  backgroundColor: "rgba(255,255,255,0.06)",
-                  borderRadius: moderateScale(12, 0.5),
-                  paddingHorizontal: spacing.sm + 2,
-                  paddingVertical: spacing.xs + 2,
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.08)",
+                  fontSize: fontSize.xs,
+                  color: "#71717a",
+                  fontStyle: "italic",
                 }}
               >
-                <HugeiconsIcon
-                  icon={Share01Icon}
-                  size={moderateScale(13, 0.5)}
-                  color="#a1a1aa"
-                />
-                <Text style={{ fontSize: fontSize.xs, color: "#a1a1aa" }}>
-                  Share
-                </Text>
-              </Pressable>
-            </View>
-          ) : null}
-        </View>
+                Generating image...
+              </Text>
+            ) : null}
 
-        {/* Improved prompt row */}
-        {improvedPrompt && !isLoading ? (
-          <ImprovedPromptRow
-            improvedPrompt={improvedPrompt}
-            spacing={spacing}
-            fontSize={fontSize}
-          />
-        ) : null}
-      </View>
+            {prompt ? (
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  color: "#a1a1aa",
+                  lineHeight: 18,
+                  fontStyle: "italic",
+                }}
+                numberOfLines={2}
+              >
+                {prompt}
+              </Text>
+            ) : null}
+
+            {caption?.trim() ? (
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  color: "#ffffff",
+                  lineHeight: 20,
+                }}
+              >
+                {caption}
+              </Text>
+            ) : null}
+
+            {/* Share button */}
+            {!isLoading ? (
+              <View
+                style={{
+                  flexDirection: "row",
+                  gap: spacing.sm,
+                  marginTop: spacing.xs,
+                }}
+              >
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onPress={() => void handleShare()}
+                  animation="disable-all"
+                  className="rounded-xl bg-white/[0.06] border border-white/[0.08] px-3 py-1.5"
+                >
+                  <HugeiconsIcon
+                    icon={Share01Icon}
+                    size={moderateScale(13, 0.5)}
+                    color="#a1a1aa"
+                  />
+                  <Button.Label
+                    style={{ fontSize: fontSize.xs, color: "#a1a1aa" }}
+                  >
+                    Share
+                  </Button.Label>
+                </Button>
+              </View>
+            ) : null}
+          </View>
+
+          {/* Improved prompt row */}
+          {improvedPrompt && !isLoading ? (
+            <ImprovedPromptRow
+              improvedPrompt={improvedPrompt}
+              spacing={spacing}
+              fontSize={fontSize}
+            />
+          ) : null}
+        </Card.Body>
+      </Card>
 
       <ImageViewerModal
-        visible={viewerVisible}
+        isVisible={viewerVisible}
         imageUrl={imageData.url}
         prompt={imageData.prompt}
         improvedPrompt={imageData.improvedPrompt}
@@ -237,7 +189,7 @@ function ImprovedPromptRow({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <Pressable
+    <PressableFeedback
       onPress={() => setExpanded((v) => !v)}
       style={{
         borderTopWidth: 1,
@@ -273,6 +225,6 @@ function ImprovedPromptRow({
           </Text>
         ) : null}
       </View>
-    </Pressable>
+    </PressableFeedback>
   );
 }

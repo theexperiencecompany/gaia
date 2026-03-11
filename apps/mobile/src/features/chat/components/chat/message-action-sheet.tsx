@@ -1,12 +1,14 @@
-import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetModal,
-  BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { forwardRef, useCallback, useMemo, useState } from "react";
+import { BottomSheet } from "heroui-native";
+import {
+  forwardRef,
+  useCallback,
+  useImperativeHandle,
+  useMemo,
+  useState,
+} from "react";
 import { Alert, Pressable, Share, View } from "react-native";
 import {
   AppIcon,
@@ -21,6 +23,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { chatApi } from "../../api/chat-api";
+
 export interface MessageActionConfig {
   messageId: string;
   conversationId: string;
@@ -110,9 +113,11 @@ export const MessageActionSheet = forwardRef<
     },
     ref,
   ) => {
+    const [isOpen, setIsOpen] = useState(false);
     const snapPoints = useMemo(() => ["50%"], []);
     const [selectedReaction, setSelectedReaction] =
       useState<ReactionType | null>(null);
+
     useImperativeHandle(ref, () => ({
       open: () => setIsOpen(true),
       close: () => setIsOpen(false),
@@ -129,22 +134,23 @@ export const MessageActionSheet = forwardRef<
       if (!config) return;
       await Clipboard.setStringAsync(config.content);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      dismiss();
-    }, [config, dismiss]);
+      setIsOpen(false);
+    }, [config]);
 
     const handleShare = useCallback(async () => {
       if (!config) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      dismiss();
+      setIsOpen(false);
       await Share.share({ message: config.content });
-    }, [config, dismiss]);
+    }, [config]);
 
     const handleReply = useCallback(() => {
       if (!config) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       onReply(config.messageId, config.conversationId);
-      dismiss();
-    }, [config, onReply, dismiss]);
+      setIsOpen(false);
+    }, [config, onReply]);
+
     const handleRetry = useCallback(() => {
       if (!config) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -156,12 +162,12 @@ export const MessageActionSheet = forwardRef<
       if (!config) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       onRegenerate?.(config.messageId, config.conversationId);
-      dismiss();
-    }, [config, onRegenerate, dismiss]);
+      setIsOpen(false);
+    }, [config, onRegenerate]);
 
     const handleDelete = useCallback(() => {
       if (!config) return;
-      dismiss();
+      setIsOpen(false);
       Alert.alert(
         "Delete Message",
         "Are you sure you want to delete this message? This action cannot be undone.",
@@ -177,14 +183,14 @@ export const MessageActionSheet = forwardRef<
           },
         ],
       );
-    }, [config, onDelete, dismiss]);
+    }, [config, onDelete]);
 
     const handleBranch = useCallback(() => {
       if (!config) return;
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       onBranch?.(config.messageId, config.conversationId);
-      dismiss();
-    }, [config, onBranch, dismiss]);
+      setIsOpen(false);
+    }, [config, onBranch]);
 
     const handleReaction = useCallback(
       (reaction: ReactionType) => {
@@ -202,176 +208,173 @@ export const MessageActionSheet = forwardRef<
       [config, selectedReaction],
     );
 
-    const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.4}
-        />
-      ),
-      [],
-    );
-    const handleSheetChange = useCallback((index: number) => {
-      if (index === -1) {
-        setSelectedReaction(null);
-      }
-    }, []);
-
     return (
-      <BottomSheetModal
-        ref={ref}
-        snapPoints={snapPoints}
-        enableDynamicSizing={false}
-        enablePanDownToClose
-        backdropComponent={renderBackdrop}
-        backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-        handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
-        onChange={handleSheetChange}
+      <BottomSheet
+        isOpen={isOpen}
+        onOpenChange={(open) => {
+          setIsOpen(open);
+          if (!open) setSelectedReaction(null);
+        }}
       >
-        <BottomSheetScrollView
-          contentContainerStyle={{
-            paddingHorizontal: 16,
-            paddingTop: 8,
-            paddingBottom: 28,
-          }}
-        >
-          {/* Reaction bar — AI messages only */}
-          {config && !config.isUser ? (
-            <>
-              <View
-                style={{
-                  flexDirection: "row",
-                  justifyContent: "center",
-                  gap: 16,
-                  paddingVertical: 12,
-                  marginBottom: 4,
-                }}
-              >
-                <Pressable
-                  onPress={() => handleReaction("thumbsUp")}
-                  style={({ pressed }) => ({
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
-                    backgroundColor:
-                      selectedReaction === "thumbsUp"
-                        ? "rgba(34, 197, 94, 0.2)"
-                        : pressed
-                          ? "rgba(255,255,255,0.08)"
-                          : "rgba(255,255,255,0.05)",
-                    borderWidth: 1,
-                    borderColor:
-                      selectedReaction === "thumbsUp"
-                        ? "rgba(34, 197, 94, 0.5)"
-                        : "rgba(255,255,255,0.1)",
-                  })}
-                >
-                  <AppIcon
-                    icon={ThumbsUpIcon}
-                    size={22}
-                    color={
-                      selectedReaction === "thumbsUp" ? "#22c55e" : "#a1a1aa"
-                    }
-                  />
-                </Pressable>
+        <BottomSheet.Portal>
+          <BottomSheet.Overlay />
+          <BottomSheet.Content
+            snapPoints={snapPoints}
+            enableDynamicSizing={false}
+            enablePanDownToClose
+            backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+            handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
+          >
+            <BottomSheetScrollView
+              contentContainerStyle={{
+                paddingHorizontal: 16,
+                paddingTop: 8,
+                paddingBottom: 28,
+              }}
+            >
+              {/* Reaction bar — AI messages only */}
+              {config && !config.isUser ? (
+                <>
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      justifyContent: "center",
+                      gap: 16,
+                      paddingVertical: 12,
+                      marginBottom: 4,
+                    }}
+                  >
+                    <Pressable
+                      onPress={() => handleReaction("thumbsUp")}
+                      style={({ pressed }) => ({
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 52,
+                        height: 52,
+                        borderRadius: 26,
+                        backgroundColor:
+                          selectedReaction === "thumbsUp"
+                            ? "rgba(34, 197, 94, 0.2)"
+                            : pressed
+                              ? "rgba(255,255,255,0.08)"
+                              : "rgba(255,255,255,0.05)",
+                        borderWidth: 1,
+                        borderColor:
+                          selectedReaction === "thumbsUp"
+                            ? "rgba(34, 197, 94, 0.5)"
+                            : "rgba(255,255,255,0.1)",
+                      })}
+                    >
+                      <AppIcon
+                        icon={ThumbsUpIcon}
+                        size={22}
+                        color={
+                          selectedReaction === "thumbsUp"
+                            ? "#22c55e"
+                            : "#a1a1aa"
+                        }
+                      />
+                    </Pressable>
 
-                <Pressable
-                  onPress={() => handleReaction("thumbsDown")}
-                  style={({ pressed }) => ({
-                    alignItems: "center",
-                    justifyContent: "center",
-                    width: 52,
-                    height: 52,
-                    borderRadius: 26,
-                    backgroundColor:
-                      selectedReaction === "thumbsDown"
-                        ? "rgba(239, 68, 68, 0.2)"
-                        : pressed
-                          ? "rgba(255,255,255,0.08)"
-                          : "rgba(255,255,255,0.05)",
-                    borderWidth: 1,
-                    borderColor:
-                      selectedReaction === "thumbsDown"
-                        ? "rgba(239, 68, 68, 0.5)"
-                        : "rgba(255,255,255,0.1)",
-                  })}
-                >
-                  <AppIcon
-                    icon={ThumbsDownIcon}
-                    size={22}
-                    color={
-                      selectedReaction === "thumbsDown" ? "#ef4444" : "#a1a1aa"
-                    }
-                  />
-                </Pressable>
-              </View>
+                    <Pressable
+                      onPress={() => handleReaction("thumbsDown")}
+                      style={({ pressed }) => ({
+                        alignItems: "center",
+                        justifyContent: "center",
+                        width: 52,
+                        height: 52,
+                        borderRadius: 26,
+                        backgroundColor:
+                          selectedReaction === "thumbsDown"
+                            ? "rgba(239, 68, 68, 0.2)"
+                            : pressed
+                              ? "rgba(255,255,255,0.08)"
+                              : "rgba(255,255,255,0.05)",
+                        borderWidth: 1,
+                        borderColor:
+                          selectedReaction === "thumbsDown"
+                            ? "rgba(239, 68, 68, 0.5)"
+                            : "rgba(255,255,255,0.1)",
+                      })}
+                    >
+                      <AppIcon
+                        icon={ThumbsDownIcon}
+                        size={22}
+                        color={
+                          selectedReaction === "thumbsDown"
+                            ? "#ef4444"
+                            : "#a1a1aa"
+                        }
+                      />
+                    </Pressable>
+                  </View>
+                  <SectionDivider />
+                </>
+              ) : null}
+
+              {/* Section 1 — Message operations */}
+              <ActionRow
+                icon={<AppIcon icon={Copy01Icon} size={20} color="#a1a1aa" />}
+                label="Copy Text"
+                onPress={() => void handleCopyText()}
+              />
+              <ActionRow
+                icon={<AppIcon icon={Copy01Icon} size={20} color="#a1a1aa" />}
+                label="Copy as Markdown"
+                onPress={() => void handleCopyMarkdown()}
+              />
+              <ActionRow
+                icon={<AppIcon icon={Share01Icon} size={20} color="#a1a1aa" />}
+                label="Share"
+                onPress={() => void handleShare()}
+              />
+
               <SectionDivider />
-            </>
-          ) : null}
 
-          {/* Section 1 — Message operations */}
-          <ActionRow
-            icon={<AppIcon icon={Copy01Icon} size={20} color="#a1a1aa" />}
-            label="Copy Text"
-            onPress={() => void handleCopyText()}
-          />
-          <ActionRow
-            icon={<AppIcon icon={Copy01Icon} size={20} color="#a1a1aa" />}
-            label="Copy as Markdown"
-            onPress={() => void handleCopyMarkdown()}
-          />
-          <ActionRow
-            icon={<AppIcon icon={Share01Icon} size={20} color="#a1a1aa" />}
-            label="Share"
-            onPress={() => void handleShare()}
-          />
+              {/* Section 2 — Chat operations */}
+              <ActionRow
+                icon={
+                  <AppIcon icon={LinkBackwardIcon} size={20} color="#a1a1aa" />
+                }
+                label="Reply"
+                onPress={handleReply}
+              />
 
-          <SectionDivider />
+              {config?.isUser ? (
+                <ActionRow
+                  icon={<AppIcon icon={RepeatIcon} size={20} color="#a1a1aa" />}
+                  label="Retry"
+                  onPress={handleRetry}
+                />
+              ) : (
+                <ActionRow
+                  icon={<AppIcon icon={RepeatIcon} size={20} color="#a1a1aa" />}
+                  label="Regenerate"
+                  onPress={handleRegenerate}
+                />
+              )}
 
-          {/* Section 2 — Chat operations */}
-          <ActionRow
-            icon={<AppIcon icon={LinkBackwardIcon} size={20} color="#a1a1aa" />}
-            label="Reply"
-            onPress={handleReply}
-          />
+              <ActionRow
+                icon={
+                  <AppIcon icon={BubbleChatAddIcon} size={20} color="#a1a1aa" />
+                }
+                label="Branch Conversation"
+                onPress={handleBranch}
+              />
 
-          {config?.isUser ? (
-            <ActionRow
-              icon={<AppIcon icon={RepeatIcon} size={20} color="#a1a1aa" />}
-              label="Retry"
-              onPress={handleRetry}
-            />
-          ) : (
-            <ActionRow
-              icon={<AppIcon icon={RepeatIcon} size={20} color="#a1a1aa" />}
-              label="Regenerate"
-              onPress={handleRegenerate}
-            />
-          )}
+              <SectionDivider />
 
-          <ActionRow
-            icon={
-              <AppIcon icon={BubbleChatAddIcon} size={20} color="#a1a1aa" />
-            }
-            label="Branch Conversation"
-            onPress={handleBranch}
-          />
-
-          <SectionDivider />
-
-          {/* Section 3 — Management */}
-          <ActionRow
-            icon={<AppIcon icon={Delete02Icon} size={20} color="#ef4444" />}
-            label="Delete"
-            onPress={handleDelete}
-            destructive
-          />
-        </BottomSheetScrollView>
-      </BottomSheetModal>
+              {/* Section 3 — Management */}
+              <ActionRow
+                icon={<AppIcon icon={Delete02Icon} size={20} color="#ef4444" />}
+                label="Delete"
+                onPress={handleDelete}
+                destructive
+              />
+            </BottomSheetScrollView>
+          </BottomSheet.Content>
+        </BottomSheet.Portal>
+      </BottomSheet>
     );
   },
 );

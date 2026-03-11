@@ -1,14 +1,8 @@
+import { Chip, Skeleton, SkeletonGroup } from "heroui-native";
 import { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  ScrollView,
-  TextInput,
-  View,
-} from "react-native";
-import { HugeiconsIcon, Search01Icon } from "@/components/icons";
+import { FlatList, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
+import { AppSearchInput } from "@/shared/components/ui";
 import { useCommunityIntegrations } from "../hooks/useCommunityIntegrations";
 import type { CommunityIntegration } from "../types";
 import { CommunityIntegrationCard } from "./CommunityIntegrationCard";
@@ -89,12 +83,20 @@ export function CommunityIntegrationsTab({
   const ListEmpty = useCallback(() => {
     if (isLoading) {
       return (
-        <View className="items-center justify-center py-12">
-          <ActivityIndicator size="large" color="#8e8e93" />
-          <Text className="text-muted text-sm mt-3">
-            Loading integrations...
-          </Text>
-        </View>
+        <SkeletonGroup>
+          <View className="gap-3 px-4 py-4">
+            {Array.from({ length: 5 }).map((_, index) => (
+              // biome-ignore lint/suspicious/noArrayIndexKey: static skeleton placeholders
+              <View key={index} className="flex-row items-center gap-3">
+                <Skeleton className="h-12 w-12 rounded-xl" />
+                <View className="flex-1 gap-2">
+                  <Skeleton className="h-4 w-32 rounded-lg" />
+                  <Skeleton className="h-3 w-48 rounded-lg" />
+                </View>
+              </View>
+            ))}
+          </View>
+        </SkeletonGroup>
       );
     }
 
@@ -122,7 +124,9 @@ export function CommunityIntegrationsTab({
     if (!isFetchingNextPage) return null;
     return (
       <View className="items-center py-4">
-        <ActivityIndicator size="small" color="#8e8e93" />
+        <SkeletonGroup>
+          <Skeleton className="h-12 w-full rounded-xl" />
+        </SkeletonGroup>
       </View>
     );
   }, [isFetchingNextPage]);
@@ -130,17 +134,12 @@ export function CommunityIntegrationsTab({
   return (
     <View className="flex-1">
       <View className="px-4 pt-3 pb-2">
-        <View className="flex-row items-center rounded-xl px-3 py-2 bg-muted/10">
-          <HugeiconsIcon icon={Search01Icon} size={18} color="#8e8e93" />
-          <TextInput
-            className="flex-1 ml-2 text-foreground text-sm"
-            placeholder="Search community integrations..."
-            placeholderTextColor="#6b6b6b"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-            returnKeyType="search"
-          />
-        </View>
+        <AppSearchInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search community integrations..."
+          inputClassName="bg-white/5"
+        />
       </View>
 
       <ScrollView
@@ -150,23 +149,17 @@ export function CommunityIntegrationsTab({
         contentContainerStyle={{ gap: 8 }}
       >
         {CATEGORY_FILTERS.map((cat) => (
-          <Pressable
+          <Chip
             key={cat}
+            size="sm"
             onPress={() => setSelectedCategory(cat)}
-            className={`px-3 py-1.5 rounded-full ${
-              selectedCategory === cat ? "bg-accent" : "bg-muted/10"
-            }`}
+            animation="disable-all"
+            variant={selectedCategory === cat ? "primary" : "tertiary"}
+            color={selectedCategory === cat ? "accent" : "default"}
+            className={selectedCategory === cat ? undefined : "bg-white/10"}
           >
-            <Text
-              className={`text-xs font-medium ${
-                selectedCategory === cat
-                  ? "text-accent-foreground"
-                  : "text-muted"
-              }`}
-            >
-              {cat}
-            </Text>
-          </Pressable>
+            <Chip.Label>{cat}</Chip.Label>
+          </Chip>
         ))}
       </ScrollView>
 

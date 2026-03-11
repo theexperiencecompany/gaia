@@ -1,6 +1,12 @@
 import { useRouter } from "expo-router";
-import { Avatar } from "heroui-native";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import {
+  Avatar,
+  Card,
+  Divider,
+  PressableFeedback,
+  Surface,
+} from "heroui-native";
+import { ActivityIndicator, View } from "react-native";
 import {
   AppIcon,
   Calendar03Icon,
@@ -60,118 +66,120 @@ export function SidebarFooter() {
 
   if (isLoading) {
     return (
-      <View
-        style={{
-          borderTopWidth: 1,
-          borderTopColor: "rgba(255,255,255,0.06)",
-          paddingVertical: spacing.sm,
-        }}
-      >
-        <View
-          style={{
-            paddingVertical: spacing.lg,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <ActivityIndicator size="small" color="#00bbff" />
-        </View>
-      </View>
+      <>
+        <Divider />
+        <Surface variant="transparent" style={{ paddingVertical: spacing.sm }}>
+          <View
+            style={{
+              paddingVertical: spacing.lg,
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ActivityIndicator size="small" color="#00bbff" />
+          </View>
+        </Surface>
+      </>
     );
   }
 
   return (
-    <View
-      style={{
-        borderTopWidth: 1,
-        borderTopColor: "rgba(255,255,255,0.06)",
-      }}
-    >
-      <View
-        style={{
-          flexDirection: "row",
-          flexWrap: "wrap",
-          paddingHorizontal: spacing.md,
-          paddingTop: spacing.sm + 2,
-          paddingBottom: spacing.xs,
-          gap: 2,
-        }}
-      >
-        {navItems.map((item) => (
-          <Pressable
-            key={item.label}
-            onPress={item.onPress}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              paddingHorizontal: spacing.sm,
-              paddingVertical: spacing.xs + 2,
-              borderRadius: 6,
-              gap: 4,
-              opacity: pressed ? 0.6 : 1,
-            })}
-          >
-            <AppIcon icon={item.icon} size={iconSize.sm - 2} color="#52525b" />
-            <Text
+    <>
+      <Divider />
+      <Surface variant="transparent">
+        <View
+          style={{
+            flexDirection: "row",
+            flexWrap: "wrap",
+            paddingHorizontal: spacing.md,
+            paddingTop: spacing.sm + 2,
+            paddingBottom: spacing.xs,
+            gap: 2,
+          }}
+        >
+          {navItems.map((item) => (
+            <PressableFeedback
+              key={item.label}
+              onPress={item.onPress}
               style={{
-                fontSize: fontSize.xs - 1,
-                color: "#52525b",
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: spacing.sm,
+                paddingVertical: spacing.xs + 2,
+                borderRadius: 6,
+                gap: 4,
               }}
             >
-              {item.label}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
-
-      <Pressable
-        style={({ pressed }) => ({
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm,
-          gap: spacing.sm + 2,
-          opacity: pressed ? 0.7 : 1,
-        })}
-        onPress={() => router.push("/(app)/settings")}
-      >
-        <Avatar alt={user?.name || "User"} size="sm" color="accent">
-          {profilePicture ? (
-            <Avatar.Image source={{ uri: profilePicture }} />
-          ) : (
-            <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
-          )}
-        </Avatar>
-        <View style={{ flex: 1 }}>
-          <Text
-            style={{ fontSize: fontSize.sm, fontWeight: "600" }}
-            numberOfLines={1}
-          >
-            {user?.name || "User"}
-          </Text>
-          <Text
-            style={{
-              fontSize: fontSize.xs - 1,
-              color: "#52525b",
-              textTransform: "uppercase",
-              fontWeight: "600",
-              letterSpacing: 1,
-            }}
-          >
-            GAIA Free
-          </Text>
+              <AppIcon
+                icon={item.icon}
+                size={iconSize.sm - 2}
+                color="#52525b"
+              />
+              <Text
+                style={{
+                  fontSize: fontSize.xs - 1,
+                  color: "#52525b",
+                }}
+              >
+                {item.label}
+              </Text>
+            </PressableFeedback>
+          ))}
         </View>
-        <Pressable
-          onPress={signOut}
-          style={({ pressed }) => ({
-            padding: spacing.xs + 2,
-            opacity: pressed ? 0.6 : 1,
-          })}
-          hitSlop={8}
-        >
-          <AppIcon icon={Logout01Icon} size={iconSize.sm} color="#ef4444" />
-        </Pressable>
-      </Pressable>
-    </View>
+
+        <Card variant="transparent">
+          <Card.Body>
+            <PressableFeedback
+              onPress={() => router.push("/(app)/settings")}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+                gap: spacing.sm + 2,
+              }}
+            >
+              <Avatar alt={user?.name || "User"} size="sm" color="accent">
+                {profilePicture ? (
+                  <Avatar.Image source={{ uri: profilePicture }} />
+                ) : (
+                  <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
+                )}
+              </Avatar>
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{ fontSize: fontSize.sm, fontWeight: "600" }}
+                  numberOfLines={1}
+                >
+                  {user?.name || "User"}
+                </Text>
+                <Text
+                  style={{
+                    fontSize: fontSize.xs - 1,
+                    color: "#52525b",
+                    textTransform: "uppercase",
+                    fontWeight: "600",
+                    letterSpacing: 1,
+                  }}
+                >
+                  GAIA Free
+                </Text>
+              </View>
+              <PressableFeedback
+                onPress={signOut}
+                hitSlop={8}
+                style={{ padding: spacing.xs + 2 }}
+              >
+                <AppIcon
+                  icon={Logout01Icon}
+                  size={iconSize.sm}
+                  color="#ef4444"
+                />
+              </PressableFeedback>
+            </PressableFeedback>
+          </Card.Body>
+        </Card>
+      </Surface>
+    </>
   );
 }

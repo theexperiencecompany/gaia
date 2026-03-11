@@ -1,6 +1,12 @@
-import { Card } from "heroui-native";
+import {
+  Card,
+  Chip,
+  ListGroup,
+  PressableFeedback,
+  Separator,
+} from "heroui-native";
 import { useEffect, useState } from "react";
-import { Image, Linking, Pressable, View } from "react-native";
+import { Image, Linking, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -85,30 +91,26 @@ function FaviconImage({ url }: { url?: string }) {
   );
 }
 
-function WebResultRow({ result }: { result: WebResult }) {
+function WebResultItem({ result }: { result: WebResult }) {
   const hostname = getHostname(result.url);
   const description = result.content || result.snippet;
 
   return (
-    <Pressable
+    <PressableFeedback
       onPress={() => result.url && Linking.openURL(result.url)}
-      className="py-3 border-b border-white/8 active:opacity-70"
     >
-      <View className="flex-row items-start gap-2.5">
-        <View className="mt-0.5">
+      <ListGroup.Item>
+        <ListGroup.ItemIcon>
           <FaviconImage url={result.url} />
-        </View>
+        </ListGroup.ItemIcon>
         <View className="flex-1 gap-0.5">
-          <Text
-            className="text-sm font-semibold text-foreground"
-            numberOfLines={2}
-          >
+          <ListGroup.ItemText numberOfLines={2}>
             {result.title || hostname || "Untitled"}
-          </Text>
+          </ListGroup.ItemText>
           {!!description && (
-            <Text className="text-xs text-muted leading-4" numberOfLines={2}>
+            <ListGroup.ItemDescription numberOfLines={2}>
               {description}
-            </Text>
+            </ListGroup.ItemDescription>
           )}
           {!!hostname && (
             <Text
@@ -119,35 +121,31 @@ function WebResultRow({ result }: { result: WebResult }) {
             </Text>
           )}
         </View>
-      </View>
-    </Pressable>
+      </ListGroup.Item>
+    </PressableFeedback>
   );
 }
 
-function NewsResultRow({ article }: { article: NewsResult }) {
+function NewsResultItem({ article }: { article: NewsResult }) {
   const hostname = getHostname(article.url);
   const description = article.content;
 
   return (
-    <Pressable
+    <PressableFeedback
       onPress={() => article.url && Linking.openURL(article.url)}
-      className="py-3 border-b border-white/8 active:opacity-70"
     >
-      <View className="flex-row items-start gap-2.5">
-        <View className="mt-0.5">
+      <ListGroup.Item>
+        <ListGroup.ItemIcon>
           <FaviconImage url={article.url} />
-        </View>
+        </ListGroup.ItemIcon>
         <View className="flex-1 gap-0.5">
-          <Text
-            className="text-sm font-semibold text-foreground"
-            numberOfLines={2}
-          >
+          <ListGroup.ItemText numberOfLines={2}>
             {article.title || "Untitled"}
-          </Text>
+          </ListGroup.ItemText>
           {!!description && (
-            <Text className="text-xs text-muted leading-4" numberOfLines={2}>
+            <ListGroup.ItemDescription numberOfLines={2}>
               {description}
-            </Text>
+            </ListGroup.ItemDescription>
           )}
           {!!hostname && (
             <Text
@@ -158,8 +156,8 @@ function NewsResultRow({ article }: { article: NewsResult }) {
             </Text>
           )}
         </View>
-      </View>
-    </Pressable>
+      </ListGroup.Item>
+    </PressableFeedback>
   );
 }
 
@@ -256,11 +254,16 @@ function SearchCompleteCard({ data }: { data: SearchResults }) {
           </View>
           <View className="flex-row items-center gap-2">
             {totalResults > 0 && (
-              <View className="rounded-full bg-white/10 px-2 py-0.5">
-                <Text className="text-[10px] text-muted">
+              <Chip
+                size="sm"
+                variant="secondary"
+                color="default"
+                animation="disable-all"
+              >
+                <Chip.Label>
                   {totalResults} result{totalResults !== 1 ? "s" : ""}
-                </Text>
-              </View>
+                </Chip.Label>
+              </Chip>
             )}
           </View>
         </View>
@@ -287,50 +290,44 @@ function SearchCompleteCard({ data }: { data: SearchResults }) {
 
         {/* Web results */}
         {visibleWebResults.length > 0 && (
-          <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
+          <ListGroup className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
             {visibleWebResults.map((result, index) => (
-              <View
-                key={result.url || result.title || String(index)}
-                className={
-                  index === visibleWebResults.length - 1 ? "border-b-0" : ""
-                }
-              >
-                <WebResultRow result={result} />
+              <View key={result.url || result.title || String(index)}>
+                {index > 0 && <Separator />}
+                <WebResultItem result={result} />
               </View>
             ))}
-          </View>
+          </ListGroup>
         )}
 
         {/* News results (only when expanded) */}
         {expanded && newsResults.length > 0 && (
-          <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden mt-2">
-            <View className="flex-row items-center gap-1.5 py-2 border-b border-white/8">
+          <ListGroup className="rounded-xl bg-white/5 border border-white/8 overflow-hidden mt-2">
+            <View className="flex-row items-center gap-1.5 py-2 px-3 border-b border-white/8">
               <AppIcon icon={News01Icon} size={12} color="#8e8e93" />
               <Text className="text-[11px] text-muted font-medium">News</Text>
             </View>
             {newsResults.map((article, index) => (
-              <View
-                key={article.url || article.title || String(index)}
-                className={index === newsResults.length - 1 ? "border-b-0" : ""}
-              >
-                <NewsResultRow article={article} />
+              <View key={article.url || article.title || String(index)}>
+                {index > 0 && <Separator />}
+                <NewsResultItem article={article} />
               </View>
             ))}
-          </View>
+          </ListGroup>
         )}
 
         {/* Expand / collapse */}
         {hasMore && (
-          <Pressable
+          <PressableFeedback
             onPress={() => setExpanded((prev) => !prev)}
-            className="mt-2.5 py-1.5 items-center active:opacity-70"
+            className="mt-2.5 py-1.5 items-center"
           >
             <Text className="text-xs text-[#00bbff] font-medium">
               {expanded
                 ? "Show less"
                 : `Show all ${totalResults} result${totalResults !== 1 ? "s" : ""}`}
             </Text>
-          </Pressable>
+          </PressableFeedback>
         )}
       </Card.Body>
     </Card>

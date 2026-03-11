@@ -1,7 +1,8 @@
 import { Audio } from "expo-av";
 import * as Haptics from "expo-haptics";
+import { Surface } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Easing, View } from "react-native";
+import { Animated, Easing } from "react-native";
 
 export interface VoiceRecorderState {
   isRecording: boolean;
@@ -66,12 +67,13 @@ function _WaveformBar({ delay }: { delay: number }) {
 
 export function RecordingWaveform({ isCancelling }: { isCancelling: boolean }) {
   return (
-    <View
+    <Surface
       style={{
         flexDirection: "row",
         alignItems: "center",
         gap: 3,
         height: 28,
+        backgroundColor: "transparent",
       }}
     >
       {[0, 60, 120, 180, 240, 180, 120, 60, 0].map((_delay, i) => (
@@ -86,7 +88,7 @@ export function RecordingWaveform({ isCancelling }: { isCancelling: boolean }) {
           }}
         />
       ))}
-    </View>
+    </Surface>
   );
 }
 

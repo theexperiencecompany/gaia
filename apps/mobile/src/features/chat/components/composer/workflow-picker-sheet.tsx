@@ -2,6 +2,7 @@ import {
   BottomSheetFlatList,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -20,7 +21,6 @@ import { Text } from "@/components/ui/text";
 import { useWorkflows } from "@/features/workflows/hooks/use-workflows";
 import type { Workflow } from "@/features/workflows/types/workflow-types";
 import { useResponsive } from "@/lib/responsive";
-import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 export interface WorkflowPickerSheetRef {
   open: () => void;

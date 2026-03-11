@@ -1,5 +1,5 @@
-import { Card } from "heroui-native";
-import { TouchableOpacity, View } from "react-native";
+import { Button, Card, Chip } from "heroui-native";
+import { View } from "react-native";
 import { Text } from "@/components/ui/text";
 
 export type GoalAction = "create" | "update" | "list" | "delete";
@@ -35,20 +35,21 @@ export interface GoalData {
   message?: string;
 }
 
-function getProgressColor(pct: number): string {
-  if (pct >= 90) return "text-emerald-500";
-  if (pct >= 75) return "text-blue-500";
-  if (pct >= 50) return "text-amber-500";
-  if (pct >= 25) return "text-orange-500";
-  return "text-red-500";
-}
-
 function getProgressBarColor(pct: number): string {
   if (pct >= 90) return "bg-emerald-500";
   if (pct >= 75) return "bg-blue-500";
   if (pct >= 50) return "bg-amber-500";
   if (pct >= 25) return "bg-orange-500";
   return "bg-red-500";
+}
+
+function getProgressChipColor(
+  pct: number,
+): "success" | "accent" | "warning" | "danger" {
+  if (pct >= 75) return "success";
+  if (pct >= 50) return "accent";
+  if (pct >= 25) return "warning";
+  return "danger";
 }
 
 function formatDate(dateStr: string): string {
@@ -98,16 +99,20 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
         </Text>
       )}
 
-      {/* Progress bar */}
+      {/* Progress bar with percentage chip */}
       <View className="mb-2">
         <View className="flex-row items-center justify-between mb-1">
           <Text className="text-xs text-zinc-500">Progress</Text>
-          <Text
-            className={`text-xs font-semibold ${getProgressColor(progress)}`}
+          <Chip
+            size="sm"
+            variant="soft"
+            color={getProgressChipColor(progress)}
+            animation="disable-all"
           >
-            {progress}%
-          </Text>
+            <Chip.Label>{progress}%</Chip.Label>
+          </Chip>
         </View>
+        {/* Custom progress bar kept for precise width control */}
         <View className="h-1.5 w-full rounded-full bg-zinc-700 overflow-hidden">
           <View
             className={`h-1.5 rounded-full ${getProgressBarColor(progress)}`}
@@ -119,25 +124,38 @@ function GoalItemCard({ goal }: { goal: GoalItem }) {
       {/* Metadata chips */}
       <View className="flex-row flex-wrap gap-1.5">
         {hasRoadmap && (
-          <View className="rounded-full bg-zinc-800 px-2 py-0.5">
-            <Text className="text-xs text-zinc-400">
+          <Chip
+            size="sm"
+            variant="soft"
+            color="default"
+            animation="disable-all"
+          >
+            <Chip.Label>
               {completedTasks}/{roadmapTasks.length} tasks
-            </Text>
-          </View>
+            </Chip.Label>
+          </Chip>
         )}
 
         {goal.created_at && (
-          <View className="rounded-full bg-zinc-800 px-2 py-0.5">
-            <Text className="text-xs text-zinc-400">
-              {formatDate(goal.created_at)}
-            </Text>
-          </View>
+          <Chip
+            size="sm"
+            variant="soft"
+            color="default"
+            animation="disable-all"
+          >
+            <Chip.Label>{formatDate(goal.created_at)}</Chip.Label>
+          </Chip>
         )}
 
         {goal.todo_project_id && (
-          <View className="rounded-full bg-zinc-800 px-2 py-0.5">
-            <Text className="text-xs text-zinc-400">Linked to Todos</Text>
-          </View>
+          <Chip
+            size="sm"
+            variant="soft"
+            color="default"
+            animation="disable-all"
+          >
+            <Chip.Label>Linked to Todos</Chip.Label>
+          </Chip>
         )}
       </View>
     </View>
@@ -175,16 +193,20 @@ function SingleGoalCreateCard({ goal }: { goal: GoalItem }) {
             </Text>
           )}
 
-          {/* Progress */}
+          {/* Progress bar with percentage chip */}
           <View className="mb-2">
             <View className="flex-row items-center justify-between mb-1">
               <Text className="text-xs text-zinc-500">Progress</Text>
-              <Text
-                className={`text-xs font-semibold ${getProgressColor(progress)}`}
+              <Chip
+                size="sm"
+                variant="soft"
+                color={getProgressChipColor(progress)}
+                animation="disable-all"
               >
-                {progress}%
-              </Text>
+                <Chip.Label>{progress}%</Chip.Label>
+              </Chip>
             </View>
+            {/* Custom progress bar kept for precise width control */}
             <View className="h-1.5 w-full rounded-full bg-zinc-700 overflow-hidden">
               <View
                 className={`h-1.5 rounded-full ${getProgressBarColor(progress)}`}
@@ -202,12 +224,9 @@ function SingleGoalCreateCard({ goal }: { goal: GoalItem }) {
 
         {/* View Goal action */}
         <View className="px-4 pb-4">
-          <TouchableOpacity
-            className="rounded-xl bg-primary px-4 py-2.5 items-center"
-            activeOpacity={0.8}
-          >
-            <Text className="text-sm font-medium text-white">View Goal</Text>
-          </TouchableOpacity>
+          <Button size="sm" className="w-full">
+            View Goal
+          </Button>
         </View>
       </Card.Body>
     </Card>
@@ -259,19 +278,14 @@ export function GoalCard({ data }: { data: GoalData }) {
       <Card variant="secondary" className="mx-4 my-2 rounded-xl">
         <Card.Body className="p-4">
           <View className="flex-row items-center gap-2">
-            <View
-              className={`h-4 w-4 rounded-full items-center justify-center ${
-                action === "delete" ? "bg-red-500/20" : "bg-emerald-500/20"
-              }`}
+            <Chip
+              size="sm"
+              variant="soft"
+              color={action === "delete" ? "danger" : "success"}
+              animation="disable-all"
             >
-              <Text
-                className={`text-xs font-bold ${
-                  action === "delete" ? "text-red-400" : "text-emerald-400"
-                }`}
-              >
-                {action === "delete" ? "✕" : "✓"}
-              </Text>
-            </View>
+              <Chip.Label>{action === "delete" ? "✕" : "✓"}</Chip.Label>
+            </Chip>
             <Text className="text-sm text-zinc-100 flex-1">{data.message}</Text>
           </View>
         </Card.Body>

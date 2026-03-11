@@ -1,3 +1,4 @@
+import { Surface } from "heroui-native";
 import { useEffect } from "react";
 import { View } from "react-native";
 import Animated, {
@@ -32,7 +33,7 @@ export function StreamProgressBar({
   }));
 
   return (
-    <View style={{ gap: spacing.xs }}>
+    <Surface style={{ gap: spacing.xs }}>
       {showLabel && (label || clampedProgress > 0) && (
         <View
           style={{
@@ -73,6 +74,6 @@ export function StreamProgressBar({
           ]}
         />
       </View>
-    </View>
+    </Surface>
   );
 }

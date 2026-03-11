@@ -15,15 +15,14 @@
     "analyze": "expo export --platform ios --source-maps && npx source-map-explorer dist/_expo/static/js/ios/*.js"
   },
   "dependencies": {
-    "@react-native-async-storage/async-storage": "^2.1.2",
-    "@react-native-community/datetimepicker": "^8.3.0",
-    "@react-native-community/netinfo": "^11.4.1",
-    "expo-av": "~15.1.7",
     "@dev-plugins/react-query": "^0.4.0",
     "@expo-google-fonts/inter": "^0.4.2",
     "@expo-google-fonts/roboto-mono": "^0.4.1",
     "@expo/vector-icons": "^15.0.3",
     "@gorhom/bottom-sheet": "^5.2.8",
+    "@react-native-async-storage/async-storage": "^2.1.2",
+    "@react-native-community/datetimepicker": "^8.3.0",
+    "@react-native-community/netinfo": "^11.4.1",
     "@react-navigation/bottom-tabs": "^7.4.0",
     "@react-navigation/drawer": "^7.7.13",
     "@react-navigation/elements": "^2.6.3",
@@ -33,6 +32,7 @@
     "clsx": "^2.1.1",
     "expo": "~55.0.5",
     "expo-auth-session": "~55.0.7",
+    "expo-av": "~15.1.7",
     "expo-blur": "~55.0.8",
     "expo-clipboard": "^55.0.8",
     "expo-constants": "~55.0.7",
@@ -46,7 +46,6 @@
     "expo-linear-gradient": "^55.0.8",
     "expo-linking": "~55.0.7",
     "expo-notifications": "~55.0.11",
-    "expo-random": "^14.0.1",
     "expo-router": "~55.0.4",
     "expo-secure-store": "~55.0.8",
     "expo-splash-screen": "~55.0.10",
@@ -75,6 +74,7 @@
     "zustand": "^5.0.9"
   },
   "devDependencies": {
+    "@react-native-community/cli": "latest",
     "@tailwindcss/postcss": "^4.1.18",
     "@types/react": "^19.2.14",
     "dotenv-cli": "^11.0.0",

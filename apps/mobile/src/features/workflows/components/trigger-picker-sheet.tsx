@@ -3,12 +3,12 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
   useEffect,
   useImperativeHandle,
-  useRef,
   useState,
 } from "react";
 import { ActivityIndicator, Image, Pressable, View } from "react-native";
@@ -270,7 +270,7 @@ export const TriggerPickerSheet = forwardRef<
   TriggerPickerSheetRef,
   TriggerPickerSheetProps
 >(({ onSelect, onSaveConfig }, ref) => {
-  const bottomSheetRef = useRef<BottomSheet>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [schemas, setSchemas] = useState<TriggerSchema[]>([]);
   const [schemasLoading, setSchemasLoading] = useState(false);
@@ -306,9 +306,9 @@ export const TriggerPickerSheet = forwardRef<
     open: () => {
       setSearch("");
       setSelectedMeta(null);
-      bottomSheetRef.current?.expand();
+      setIsOpen(true);
     },
-    close: () => bottomSheetRef.current?.close(),
+    close: () => setIsOpen(false),
   }));
 
   const filtered = STATIC_TRIGGER_META.filter(
@@ -345,7 +345,7 @@ export const TriggerPickerSheet = forwardRef<
       };
       onSaveConfig(legacyOption, triggerConfig);
     }
-    bottomSheetRef.current?.close();
+    setIsOpen(false);
     setSelectedMeta(null);
   };
 
@@ -490,49 +490,52 @@ export const TriggerPickerSheet = forwardRef<
   };
 
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={["60%", "90%"]}
-      enablePanDownToClose
-      backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-      handleIndicatorStyle={{ backgroundColor: "#3f3f46" }}
-      keyboardBehavior="interactive"
-    >
-      {selectedMeta ? (
-        renderConfigPanel()
-      ) : (
-        <>
-          {" "}
-          <View
-            style={{
-              paddingHorizontal: spacing.md,
-              paddingBottom: spacing.sm,
-            }}
-          >
-            <BottomSheetTextInput
-              value={search}
-              onChangeText={setSearch}
-              placeholder="Search triggers..."
-              placeholderTextColor="#52525b"
-              style={{
-                backgroundColor: "#2c2c2e",
-                borderRadius: 10,
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.sm,
-                color: "#fff",
-                fontSize: fontSize.sm,
-              }}
-            />
-          </View>
-          <BottomSheetFlatList
-            data={filtered}
-            keyExtractor={(item: StaticTriggerMeta) => item.id}
-            renderItem={renderListItem}
-            contentContainerStyle={{ paddingBottom: spacing.xl }}
-          />
-        </>
-      )}{" "}
+    <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={["70%", "92%"]}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#141414" }}
+          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
+        >
+          {selectedMeta ? (
+            renderConfigPanel()
+          ) : (
+            <>
+              {" "}
+              <View
+                style={{
+                  paddingHorizontal: spacing.md,
+                  paddingBottom: spacing.sm,
+                }}
+              >
+                <BottomSheetTextInput
+                  value={search}
+                  onChangeText={setSearch}
+                  placeholder="Search triggers..."
+                  placeholderTextColor="#52525b"
+                  style={{
+                    backgroundColor: "#2c2c2e",
+                    borderRadius: 10,
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.sm,
+                    color: "#fff",
+                    fontSize: fontSize.sm,
+                  }}
+                />
+              </View>
+              <BottomSheetFlatList
+                data={filtered}
+                keyExtractor={(item: StaticTriggerMeta) => item.id}
+                renderItem={renderListItem}
+                contentContainerStyle={{ paddingBottom: spacing.xl }}
+              />
+            </>
+          )}{" "}
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
     </BottomSheet>
   );
 });

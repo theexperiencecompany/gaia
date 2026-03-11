@@ -1,4 +1,5 @@
-import { Pressable, View } from "react-native";
+import { Alert, Button, PressableFeedback } from "heroui-native";
+import { View } from "react-native";
 import { Text } from "@/components/ui/text";
 import { useAppUpdate } from "@/hooks/use-app-update";
 
@@ -8,54 +9,34 @@ export function UpdateBanner() {
   if (!isUpdateAvailable) return null;
 
   return (
-    <View
+    <Alert
+      variant="info"
       accessibilityLiveRegion="polite"
       accessibilityLabel="App update available"
-      style={{
-        position: "absolute",
-        top: 0,
-        left: 0,
-        right: 0,
-        zIndex: 9999,
-        backgroundColor: "#00bbff",
-        flexDirection: "row",
-        alignItems: "center",
-        justifyContent: "space-between",
-        paddingHorizontal: 16,
-        paddingVertical: 10,
-      }}
+      className="absolute top-0 left-0 right-0 z-[9999] rounded-none px-4 py-2.5 flex-row items-center justify-between"
     >
-      <Text style={{ color: "#000", fontWeight: "500", fontSize: 13, flex: 1 }}>
+      <Alert.Title className="flex-1 text-[13px] font-medium">
         An update is available
-      </Text>
-      <View style={{ flexDirection: "row", gap: 8 }}>
-        <Pressable
+      </Alert.Title>
+      <View className="flex-row gap-2 items-center">
+        <Button
+          size="sm"
+          variant="primary"
           onPress={applyUpdate}
           accessibilityRole="button"
           accessibilityLabel="Update now"
-          style={{
-            backgroundColor: "#000",
-            borderRadius: 8,
-            paddingHorizontal: 12,
-            paddingVertical: 5,
-          }}
         >
-          <Text style={{ color: "#00bbff", fontWeight: "600", fontSize: 12 }}>
-            Update Now
-          </Text>
-        </Pressable>
-        <Pressable
+          <Button.Label>Update Now</Button.Label>
+        </Button>
+        <PressableFeedback
           onPress={dismissUpdate}
           accessibilityRole="button"
           accessibilityLabel="Dismiss update"
-          style={{
-            paddingHorizontal: 8,
-            paddingVertical: 5,
-          }}
+          className="px-2 py-1"
         >
-          <Text style={{ color: "#000", fontSize: 12 }}>Later</Text>
-        </Pressable>
+          <Text className="text-xs">Later</Text>
+        </PressableFeedback>
       </View>
-    </View>
+    </Alert>
   );
 }

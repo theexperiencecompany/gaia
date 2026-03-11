@@ -1,16 +1,30 @@
 import * as Haptics from "expo-haptics";
+import { Checkbox, Chip } from "heroui-native";
 import { useCallback, useState } from "react";
-import { Pressable, View } from "react-native";
-import { AppIcon, Tick02Icon } from "@/components/icons";
+import { View } from "react-native";
 import { Text } from "@/components/ui/text";
 import { todoApi } from "@/features/todos/api/todo-api";
-import type { Todo } from "@/features/todos/types/todo-types";
+import { Priority, type Todo } from "@/features/todos/types/todo-types";
 import { useResponsive } from "@/lib/responsive";
 
 interface DashboardTodoItemProps {
   todo: Todo;
   onToggled?: (id: string, completed: boolean) => void;
 }
+
+const PRIORITY_COLORS: Record<Priority, string> = {
+  [Priority.HIGH]: "#ef4444",
+  [Priority.MEDIUM]: "#f97316",
+  [Priority.LOW]: "#eab308",
+  [Priority.NONE]: "#71717a",
+};
+
+const PRIORITY_LABELS: Record<Priority, string> = {
+  [Priority.HIGH]: "High",
+  [Priority.MEDIUM]: "Medium",
+  [Priority.LOW]: "Low",
+  [Priority.NONE]: "None",
+};
 
 export function DashboardTodoItem({ todo, onToggled }: DashboardTodoItemProps) {
   const { spacing, fontSize } = useResponsive();
@@ -33,6 +47,9 @@ export function DashboardTodoItem({ todo, onToggled }: DashboardTodoItemProps) {
     }
   }, [completed, isUpdating, todo.id, onToggled]);
 
+  const hasPriority =
+    todo.priority !== undefined && todo.priority !== Priority.NONE;
+
   return (
     <View
       style={{
@@ -46,26 +63,13 @@ export function DashboardTodoItem({ todo, onToggled }: DashboardTodoItemProps) {
         opacity: completed ? 0.45 : 1,
       }}
     >
-      <Pressable
-        onPress={() => {
+      <Checkbox
+        isSelected={completed}
+        onSelectedChange={() => {
           void handleToggle();
         }}
-        hitSlop={10}
-        style={{
-          width: 20,
-          height: 20,
-          borderRadius: 10,
-          borderWidth: completed ? 0 : 1.5,
-          borderColor: "#00bbff",
-          borderStyle: completed ? "solid" : "dashed",
-          backgroundColor: completed ? "rgba(63,63,70,0.8)" : "transparent",
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
-      >
-        {completed && <AppIcon icon={Tick02Icon} size={11} color="#71717a" />}
-      </Pressable>
+        isDisabled={isUpdating}
+      />
 
       <Text
         numberOfLines={1}
@@ -79,6 +83,27 @@ export function DashboardTodoItem({ todo, onToggled }: DashboardTodoItemProps) {
       >
         {todo.title}
       </Text>
+
+      {hasPriority && todo.priority !== undefined && (
+        <Chip
+          variant="soft"
+          size="sm"
+          animation="disable-all"
+          style={{
+            backgroundColor: `${PRIORITY_COLORS[todo.priority]}1a`,
+          }}
+        >
+          <Chip.Label
+            style={{
+              fontSize: fontSize.xs,
+              color: PRIORITY_COLORS[todo.priority],
+              fontWeight: "500",
+            }}
+          >
+            {PRIORITY_LABELS[todo.priority]}
+          </Chip.Label>
+        </Chip>
+      )}
     </View>
   );
 }

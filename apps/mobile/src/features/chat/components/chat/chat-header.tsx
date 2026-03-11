@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { PressableFeedback } from "heroui-native";
+import { Popover, PressableFeedback, TextField } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ActionSheetIOS, Alert, Platform, TextInput, View } from "react-native";
+import { type TextInput, View } from "react-native";
 import {
   BubbleChatAddIcon,
   Cancel01Icon,
@@ -45,6 +45,7 @@ export function ChatHeader({
 
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -61,6 +62,7 @@ export function ChatHeader({
     if (!activeConversation) return;
     impactHaptic("light");
     setEditTitle(activeConversation.title);
+    setIsMenuOpen(false);
     setIsEditing(true);
   }, [activeConversation]);
 
@@ -121,27 +123,6 @@ export function ChatHeader({
     }
   }, [activeConversation, editTitle, cancelEditing, queryClient]);
 
-  const handleOptionsMenu = useCallback(() => {
-    if (!activeConversation) return;
-
-    if (Platform.OS === "ios") {
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: ["Rename", "Cancel"],
-          cancelButtonIndex: 1,
-        },
-        (buttonIndex) => {
-          if (buttonIndex === 0) startEditing();
-        },
-      );
-    } else {
-      Alert.alert(activeConversation.title, undefined, [
-        { text: "Rename", onPress: startEditing },
-        { text: "Cancel", style: "cancel" },
-      ]);
-    }
-  }, [activeConversation, startEditing]);
-
   return (
     <View
       style={{
@@ -179,26 +160,27 @@ export function ChatHeader({
         style={{ flex: 1, alignItems: "center", paddingHorizontal: spacing.sm }}
       >
         {isEditing ? (
-          <TextInput
-            ref={inputRef}
-            value={editTitle}
-            onChangeText={(text) => {
-              if (text.length <= TITLE_MAX_LENGTH) setEditTitle(text);
-            }}
-            onSubmitEditing={commitRename}
-            returnKeyType="done"
-            selectTextOnFocus
-            style={{
-              color: "#ffffff",
-              fontSize: fontSize.md,
-              fontWeight: "600",
-              textAlign: "center",
-              width: "100%",
-              paddingVertical: moderateScale(2, 0.5),
-              borderBottomWidth: 1,
-              borderBottomColor: "#16c1ff",
-            }}
-          />
+          <TextField className="w-full">
+            <TextField.Input
+              ref={inputRef}
+              value={editTitle}
+              onChangeText={(text) => {
+                if (text.length <= TITLE_MAX_LENGTH) setEditTitle(text);
+              }}
+              onSubmitEditing={commitRename}
+              returnKeyType="done"
+              selectTextOnFocus
+              className="w-full"
+              style={{
+                color: "#ffffff",
+                fontSize: fontSize.md,
+                fontWeight: "600",
+                textAlign: "center",
+                borderBottomWidth: 1,
+                borderBottomColor: "#16c1ff",
+              }}
+            />
+          </TextField>
         ) : activeConversation ? (
           <PressableFeedback onPress={startEditing}>
             <Text
@@ -241,15 +223,39 @@ export function ChatHeader({
               </PressableFeedback>
             )}
             {activeConversation && (
-              <PressableFeedback onPress={handleOptionsMenu}>
-                <View style={{ padding: moderateScale(4, 0.5) }}>
-                  <HugeiconsIcon
-                    icon={MoreVerticalIcon}
-                    size={iconSize.md - 2}
-                    color="#bbbbbb"
-                  />
-                </View>
-              </PressableFeedback>
+              <Popover isOpen={isMenuOpen} onOpenChange={setIsMenuOpen}>
+                <Popover.Trigger>
+                  <View style={{ padding: moderateScale(4, 0.5) }}>
+                    <HugeiconsIcon
+                      icon={MoreVerticalIcon}
+                      size={iconSize.md - 2}
+                      color="#bbbbbb"
+                    />
+                  </View>
+                </Popover.Trigger>
+                <Popover.Portal>
+                  <Popover.Overlay onPress={() => setIsMenuOpen(false)} />
+                  <Popover.Content placement="bottom" align="end">
+                    <PressableFeedback onPress={startEditing}>
+                      <View
+                        style={{
+                          paddingHorizontal: spacing.lg,
+                          paddingVertical: spacing.md,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            color: "#ffffff",
+                            fontSize: fontSize.sm,
+                          }}
+                        >
+                          Rename
+                        </Text>
+                      </View>
+                    </PressableFeedback>
+                  </Popover.Content>
+                </Popover.Portal>
+              </Popover>
             )}
             <PressableFeedback onPress={onNewChatPress}>
               <View style={{ padding: moderateScale(4, 0.5) }}>

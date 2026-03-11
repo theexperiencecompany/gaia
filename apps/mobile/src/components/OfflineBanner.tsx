@@ -1,5 +1,6 @@
+import { Alert, CloseButton } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Pressable, Text, View } from "react-native";
+import { Animated } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, Cancel01Icon, GlobeIcon } from "@/components/icons";
 import { useNetwork } from "@/hooks/use-network";
@@ -61,38 +62,24 @@ export function OfflineBanner() {
         paddingTop: insets.top,
       }}
     >
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 8,
-          paddingHorizontal: 16,
-          paddingVertical: 10,
-          backgroundColor: isBackOnline ? "#16a34a" : "#991b1b",
-        }}
+      <Alert
+        variant={isBackOnline ? "success" : "danger"}
+        className="rounded-none px-4 py-2.5"
       >
         <AppIcon icon={GlobeIcon} size={16} color="#ffffff" />
-        <Text
-          style={{
-            flex: 1,
-            fontSize: 13,
-            fontWeight: "600",
-            color: "#ffffff",
-          }}
-        >
+        <Alert.Title className="flex-1 text-[13px] font-semibold">
           {isBackOnline ? "Back online" : "No internet connection"}
-        </Text>
+        </Alert.Title>
         {!isBackOnline && (
-          <Pressable onPress={handleDismiss} hitSlop={8}>
+          <CloseButton onPress={handleDismiss} size="sm">
             <AppIcon
               icon={Cancel01Icon}
               size={16}
               color="rgba(255,255,255,0.7)"
             />
-          </Pressable>
+          </CloseButton>
         )}
-      </View>
+      </Alert>
     </Animated.View>
   );
 }

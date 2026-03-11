@@ -1,6 +1,9 @@
-import { Card } from "heroui-native";
-import { View } from "react-native";
+import { Card, Chip, PressableFeedback, Separator } from "heroui-native";
+import { ScrollView, View } from "react-native";
+import { AppIcon, Calendar03Icon, Clock01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+
+// -- Types --------------------------------------------------------------------
 
 export interface CalendarFetchItem {
   summary?: string;
@@ -10,8 +13,17 @@ export interface CalendarFetchItem {
   location?: string;
   attendees?: Array<{ email?: string; displayName?: string }>;
   calendar_source?: string;
+  calendar_name?: string;
+  background_color?: string;
   organizer?: { email?: string; displayName?: string };
 }
+
+interface CalendarFetchCardProps {
+  data: CalendarFetchItem[];
+  onEventPress?: (event: CalendarFetchItem, index: number) => void;
+}
+
+// -- Helpers ------------------------------------------------------------------
 
 function formatEventTime(dt?: { dateTime?: string; date?: string }): string {
   if (!dt) return "";
@@ -45,81 +57,163 @@ function formatEndTime(dt?: { dateTime?: string; date?: string }): string {
   return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+// -- Event row ----------------------------------------------------------------
+
 interface EventRowProps {
   event: CalendarFetchItem;
+  onPress?: () => void;
 }
 
-function EventRow({ event }: EventRowProps) {
-  const title = event.summary || event.title || "Untitled Event";
+function EventRow({ event, onPress }: EventRowProps) {
+  const title = event.summary ?? event.title ?? "Untitled Event";
   const startTime = formatEventTime(event.start);
   const endTime = formatEndTime(event.end);
   const attendeeCount = event.attendees?.length ?? 0;
-  const source = event.calendar_source;
+  const calendarLabel = event.calendar_source ?? event.calendar_name;
+  const eventColor = event.background_color ?? "#00bbff";
 
-  return (
-    <View className="py-3 px-4">
-      <View className="flex-row items-start justify-between mb-1">
-        <Text
-          className="text-foreground text-sm font-medium flex-1 mr-2"
-          numberOfLines={1}
-        >
-          {title}
-        </Text>
-        {source ? (
-          <View className="bg-primary/15 rounded px-1.5 py-0.5">
-            <Text className="text-primary text-xs" numberOfLines={1}>
-              {source}
+  const content = (
+    <View className="py-3 px-4 flex-row items-start gap-3">
+      {/* Color indicator */}
+      <View
+        className="w-1.5 self-stretch rounded-full mt-1 flex-shrink-0"
+        style={{ backgroundColor: eventColor }}
+      />
+
+      {/* Info */}
+      <View className="flex-1 min-w-0">
+        <View className="flex-row items-start justify-between gap-2 mb-0.5">
+          <Text
+            className="text-sm font-medium text-foreground flex-1"
+            numberOfLines={1}
+          >
+            {title}
+          </Text>
+          {calendarLabel ? (
+            <Chip
+              size="xs"
+              variant="soft"
+              color="accent"
+              className="flex-shrink-0"
+              animation="disable-all"
+            >
+              <Chip.Label numberOfLines={1}>{calendarLabel}</Chip.Label>
+            </Chip>
+          ) : null}
+        </View>
+
+        {startTime ? (
+          <View className="flex-row items-center gap-1 mb-0.5">
+            <AppIcon icon={Clock01Icon} size={11} color="#8e8e93" />
+            <Text className="text-muted text-xs">
+              {startTime}
+              {endTime ? ` – ${endTime}` : ""}
             </Text>
           </View>
         ) : null}
+
+        {event.location ? (
+          <Text className="text-muted text-xs mb-0.5" numberOfLines={1}>
+            {event.location}
+          </Text>
+        ) : null}
+
+        {attendeeCount > 0 ? (
+          <Text className="text-muted text-xs">
+            {attendeeCount} attendee{attendeeCount !== 1 ? "s" : ""}
+          </Text>
+        ) : null}
       </View>
-      {startTime ? (
-        <Text className="text-muted text-xs mb-0.5">
-          {startTime}
-          {endTime ? ` – ${endTime}` : ""}
-        </Text>
-      ) : null}
-      {event.location ? (
-        <Text className="text-muted text-xs mb-0.5" numberOfLines={1}>
-          {event.location}
-        </Text>
-      ) : null}
-      {attendeeCount > 0 ? (
-        <Text className="text-muted text-xs">
-          {attendeeCount} attendee{attendeeCount !== 1 ? "s" : ""}
-        </Text>
-      ) : null}
     </View>
   );
+
+  if (onPress) {
+    return <PressableFeedback onPress={onPress}>{content}</PressableFeedback>;
+  }
+
+  return content;
 }
 
-export function CalendarFetchCard({ data }: { data: CalendarFetchItem[] }) {
+// -- Calendar fetch card ------------------------------------------------------
+
+const MAX_VISIBLE = 5;
+
+export function CalendarFetchCard({
+  data,
+  onEventPress,
+}: CalendarFetchCardProps) {
+  const visibleEvents = data.slice(0, MAX_VISIBLE);
+  const overflow = data.length - MAX_VISIBLE;
+
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-xl overflow-hidden">
-      <View className="flex-row items-center px-4 py-3 border-b border-muted/20">
-        <Text className="text-foreground text-sm font-medium flex-1">
-          {data.length} Event{data.length !== 1 ? "s" : ""}
-        </Text>
-        <Text className="text-muted text-xs">Calendar</Text>
-      </View>
+    <Card
+      variant="secondary"
+      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
+      animation="disable-all"
+    >
+      {/* Header */}
+      <Card.Header className="px-4 py-3 pb-0">
+        <View className="flex-row items-center gap-2">
+          <View className="w-7 h-7 rounded-xl bg-primary/15 items-center justify-center">
+            <AppIcon icon={Calendar03Icon} size={14} color="#00bbff" />
+          </View>
+          <View className="flex-1 min-w-0">
+            <Card.Title>
+              {data.length} Event{data.length !== 1 ? "s" : ""}
+            </Card.Title>
+          </View>
+          <Chip
+            size="sm"
+            variant="soft"
+            color="default"
+            animation="disable-all"
+          >
+            <Chip.Label>Calendar</Chip.Label>
+          </Chip>
+        </View>
+      </Card.Header>
+
       <Card.Body className="p-0">
-        {data.slice(0, 5).map((event, index) => (
-          <View key={`event-${event.summary || event.title || index}`}>
-            {index > 0 && <View className="h-px bg-muted/10 mx-4" />}
-            <EventRow event={event} />
-          </View>
-        ))}
-        {data.length > 5 && (
-          <View className="px-4 py-2 border-t border-muted/10">
-            <Text className="text-muted text-xs text-center">
-              +{data.length - 5} more events
-            </Text>
-          </View>
-        )}
-        {data.length === 0 && (
+        <Separator className="bg-white/8 mt-3" />
+
+        {data.length === 0 ? (
           <View className="px-4 py-3">
             <Text className="text-muted text-sm">No events found</Text>
           </View>
+        ) : (
+          <ScrollView
+            style={{ maxHeight: 380 }}
+            nestedScrollEnabled
+            showsVerticalScrollIndicator={false}
+          >
+            {visibleEvents.map((event, index) => {
+              const key = `${event.summary ?? event.title ?? "event"}-${index}`;
+              return (
+                <View key={key}>
+                  {index > 0 && <Separator className="mx-4 bg-white/8" />}
+                  <EventRow
+                    event={event}
+                    onPress={
+                      onEventPress
+                        ? () => onEventPress(event, index)
+                        : undefined
+                    }
+                  />
+                </View>
+              );
+            })}
+
+            {overflow > 0 ? (
+              <>
+                <Separator className="bg-white/8" />
+                <View className="px-4 py-2.5 items-center">
+                  <Text className="text-muted text-xs">
+                    +{overflow} more event{overflow !== 1 ? "s" : ""}
+                  </Text>
+                </View>
+              </>
+            ) : null}
+          </ScrollView>
         )}
       </Card.Body>
     </Card>

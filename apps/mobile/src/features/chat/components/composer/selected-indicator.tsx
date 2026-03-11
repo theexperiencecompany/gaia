@@ -1,4 +1,4 @@
-import { Pressable } from "react-native";
+import { Chip, CloseButton } from "heroui-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -7,11 +7,9 @@ import Animated, {
 import {
   AppIcon,
   Calendar03Icon,
-  Cancel01Icon,
   WorkflowSquare10Icon,
   Wrench01Icon,
 } from "@/components/icons";
-import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
 function formatToolName(name: string): string {
@@ -35,7 +33,7 @@ export function SelectedIndicator({
   variant,
   onRemove,
 }: SelectedIndicatorProps) {
-  const { spacing, fontSize, iconSize } = useResponsive();
+  const { spacing, iconSize } = useResponsive();
 
   const icon =
     variant === "workflow"
@@ -50,43 +48,25 @@ export function SelectedIndicator({
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(150)}
       layout={LinearTransition.springify()}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        alignSelf: "flex-start",
-        backgroundColor: "#3f3f46",
-        borderRadius: 12,
-        paddingLeft: spacing.sm,
-        paddingRight: spacing.xs,
-        paddingVertical: spacing.xs,
-        marginBottom: spacing.xs,
-        gap: spacing.xs,
-      }}
+      style={{ alignSelf: "flex-start", marginBottom: spacing.xs }}
     >
-      <AppIcon icon={icon} size={iconSize.sm} color="#a1a1aa" />
-      <Text
+      <Chip
+        variant="soft"
+        color="default"
+        size="sm"
+        animation="disable-all"
         style={{
-          fontSize: fontSize.sm,
-          color: "#e4e4e7",
-          fontWeight: "300",
-        }}
-        numberOfLines={1}
-      >
-        {displayLabel}
-      </Text>
-      <Pressable
-        onPress={onRemove}
-        hitSlop={8}
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 6,
+          flexDirection: "row",
           alignItems: "center",
-          justifyContent: "center",
+          gap: spacing.xs,
+          paddingLeft: spacing.sm,
+          paddingRight: spacing.xs,
         }}
       >
-        <AppIcon icon={Cancel01Icon} size={iconSize.sm - 2} color="#a1a1aa" />
-      </Pressable>
+        <AppIcon icon={icon} size={iconSize.sm} color="#a1a1aa" />
+        <Chip.Label>{displayLabel}</Chip.Label>
+        <CloseButton onPress={onRemove} size="sm" hitSlop={8} />
+      </Chip>
     </Animated.View>
   );
 }

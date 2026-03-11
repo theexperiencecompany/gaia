@@ -3,9 +3,9 @@ import {
   splitMessageByBreaks,
 } from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
-import { Avatar } from "heroui-native";
+import { Avatar, PressableFeedback } from "heroui-native";
 import { useCallback, useMemo, useRef } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import { AppIcon, Brain02Icon } from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
@@ -61,7 +61,7 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
       keyboardShouldPersistTaps="handled"
     >
       {actions.map((action) => (
-        <Pressable
+        <PressableFeedback
           key={action}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -79,7 +79,7 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
           <Text style={{ fontSize: fontSize.xs, color: "#ffffff" }}>
             {action}
           </Text>
-        </Pressable>
+        </PressableFeedback>
       ))}
     </ScrollView>
   );
@@ -286,7 +286,7 @@ export function ChatMessage({
   // ---- User message --------------------------------------------------------
   if (isUser) {
     return (
-      <Pressable
+      <PressableFeedback
         onLongPress={handleLongPress}
         delayLongPress={350}
         style={{
@@ -355,13 +355,13 @@ export function ChatMessage({
           picture={user?.picture}
           size={avatarSize}
         />
-      </Pressable>
+      </PressableFeedback>
     );
   }
 
   // ---- AI message ----------------------------------------------------------
   return (
-    <Pressable
+    <PressableFeedback
       onLongPress={handleLongPress}
       delayLongPress={350}
       style={{
@@ -450,13 +450,13 @@ export function ChatMessage({
 
       {/* Memory indicator pill – shown below the AI message when memory was updated */}
       {message.memoryData ? (
-        <Pressable
+        <PressableFeedback
           onPress={() =>
             memorySheetRef.current?.open(message.memoryData as MemoryDataShape)
           }
         >
           <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
-        </Pressable>
+        </PressableFeedback>
       ) : null}
 
       {/* Follow-up action chips */}
@@ -468,6 +468,6 @@ export function ChatMessage({
       ) : null}
 
       <MemoryBottomSheet ref={memorySheetRef} />
-    </Pressable>
+    </PressableFeedback>
   );
 }

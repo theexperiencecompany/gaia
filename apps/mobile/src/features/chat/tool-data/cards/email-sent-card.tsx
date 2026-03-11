@@ -1,6 +1,6 @@
-import { Card } from "heroui-native";
+import { Card, Chip, Divider } from "heroui-native";
 import { View } from "react-native";
-import { HugeiconsIcon, SentIcon } from "@/components/icons";
+import { AppIcon, SentIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
 export interface EmailSentData {
@@ -29,43 +29,63 @@ export function EmailSentCard({ data }: { data: EmailSentData }) {
   const bodyPreview = data.body?.split("\n").find((l) => l.trim()) || "";
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-xl overflow-hidden">
-      <View className="flex-row items-center gap-2 px-4 py-3 border-b border-muted/20">
-        <HugeiconsIcon icon={SentIcon} size={16} color="#22c55e" />
-        <Text className="text-success text-sm font-medium flex-1">
-          Email Sent
-        </Text>
-        {sentTime ? (
-          <Text className="text-muted text-xs">{sentTime}</Text>
-        ) : null}
-      </View>
-      <Card.Body className="p-4">
-        <View className="flex-row mb-2">
-          <Text className="text-muted text-sm" style={{ width: 52 }}>
-            To:
+    <Card
+      variant="secondary"
+      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
+    >
+      <Card.Body className="py-0 px-0">
+        {/* Header */}
+        <View className="flex-row items-center gap-2 px-4 py-3">
+          <View className="rounded-full p-1.5 bg-green-500/15">
+            <AppIcon icon={SentIcon} size={13} color="#4ade80" />
+          </View>
+          <Text className="text-sm font-medium text-green-400 flex-1">
+            Email Sent
           </Text>
-          <Text className="text-foreground text-sm flex-1" numberOfLines={2}>
-            {toDisplay}
-          </Text>
+          {sentTime ? (
+            <Chip
+              size="sm"
+              variant="secondary"
+              color="default"
+              className="bg-white/10"
+            >
+              <Chip.Label>{sentTime}</Chip.Label>
+            </Chip>
+          ) : null}
         </View>
-        <View className="flex-row mb-2">
-          <Text className="text-muted text-sm" style={{ width: 52 }}>
-            Subject:
-          </Text>
-          <Text
-            className="text-foreground text-sm font-medium flex-1"
-            numberOfLines={1}
-          >
-            {data.subject || "No Subject"}
-          </Text>
-        </View>
-        {bodyPreview ? (
-          <View className="mt-1 pt-2 border-t border-muted/20">
-            <Text className="text-muted text-xs" numberOfLines={2}>
-              {bodyPreview}{" "}
+
+        <Divider className="bg-white/8" />
+
+        {/* Body */}
+        <View className="px-4 py-3 gap-2">
+          <View className="flex-row">
+            <Text className="text-[#8e8e93] text-sm" style={{ width: 52 }}>
+              To:
+            </Text>
+            <Text className="text-foreground text-sm flex-1" numberOfLines={2}>
+              {toDisplay}
             </Text>
           </View>
-        ) : null}
+          <View className="flex-row">
+            <Text className="text-[#8e8e93] text-sm" style={{ width: 52 }}>
+              Subject:
+            </Text>
+            <Text
+              className="text-foreground text-sm font-medium flex-1"
+              numberOfLines={1}
+            >
+              {data.subject || "No Subject"}
+            </Text>
+          </View>
+          {bodyPreview ? (
+            <>
+              <Divider className="bg-white/8" />
+              <Text className="text-[#8e8e93] text-xs" numberOfLines={2}>
+                {bodyPreview}
+              </Text>
+            </>
+          ) : null}
+        </View>
       </Card.Body>
     </Card>
   );

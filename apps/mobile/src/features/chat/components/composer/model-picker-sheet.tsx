@@ -1,17 +1,14 @@
 import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
   BottomSheetFlatList,
-  BottomSheetModal,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
   useImperativeHandle,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { Pressable, View } from "react-native";
@@ -128,7 +125,7 @@ export const ModelPickerSheet = forwardRef<
   ModelPickerSheetRef,
   ModelPickerSheetProps
 >(({ currentModelId, onSelectModel }, ref) => {
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -139,6 +136,7 @@ export const ModelPickerSheet = forwardRef<
   const activeModelId = currentModelId ?? currentModel?.model_id;
 
   const snapPoints = useMemo(() => ["55%", "80%"], []);
+
   useImperativeHandle(ref, () => ({
     open: () => setIsOpen(true),
     close: () => setIsOpen(false),
@@ -187,21 +185,9 @@ export const ModelPickerSheet = forwardRef<
       selectModel(model.model_id);
       void AsyncStorage.setItem(MODEL_STORAGE_KEY, model.model_id);
       onSelectModel?.(model.model_id);
-      bottomSheetRef.current?.dismiss();
+      setIsOpen(false);
     },
     [isPending, selectModel, onSelectModel],
-  );
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
-      />
-    ),
-    [],
   );
 
   const renderItem = useCallback(
@@ -388,114 +374,122 @@ export const ModelPickerSheet = forwardRef<
   );
 
   return (
-    <BottomSheetModal
-      ref={bottomSheetRef}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#141414" }}
-      handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
-      keyboardBehavior="interactive"
-      keyboardBlurBehavior="restore"
-    >
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.sm,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: fontSize.lg,
-            fontWeight: "600",
-            color: "#ffffff",
-          }}
+    <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={snapPoints}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#141414" }}
+          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
+          keyboardBehavior="interactive"
+          keyboardBlurBehavior="restore"
         >
-          Select Model
-        </Text>
-        <Pressable
-          onPress={() => bottomSheetRef.current?.dismiss()}
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            backgroundColor: "rgba(142,142,147,0.1)",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
-        </Pressable>
-      </View>
-
-      {/* Search input */}
-      <View
-        style={{
-          marginHorizontal: spacing.md,
-          marginBottom: spacing.sm,
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.xs,
-          backgroundColor: "rgba(255,255,255,0.06)",
-          borderRadius: moderateScale(10, 0.5),
-          paddingHorizontal: spacing.sm,
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.08)",
-        }}
-      >
-        <AppIcon icon={Search01Icon} size={15} color="#52525b" />
-        <BottomSheetTextInput
-          placeholder="Search models..."
-          placeholderTextColor="#52525b"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          style={{
-            flex: 1,
-            paddingVertical: moderateScale(9, 0.5),
-            fontSize: fontSize.sm,
-            color: "#e4e4e7",
-          }}
-          autoCapitalize="none"
-          autoCorrect={false}
-          returnKeyType="search"
-        />
-        {searchQuery.length > 0 && (
-          <Pressable onPress={() => setSearchQuery("")}>
-            <AppIcon icon={Cancel01Icon} size={14} color="#52525b" />
-          </Pressable>
-        )}
-      </View>
-
-      {/* Model list grouped by capability */}
-      <BottomSheetFlatList
-        data={flatItems}
-        keyExtractor={(item: FlatItem) =>
-          item.type === "header" ? `header-${item.group}` : item.model.model_id
-        }
-        renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: 32, paddingTop: spacing.xs }}
-        showsVerticalScrollIndicator={false}
-        ListEmptyComponent={
+          {/* Header */}
           <View
             style={{
+              flexDirection: "row",
               alignItems: "center",
-              paddingVertical: spacing.xl,
-              gap: spacing.sm,
+              justifyContent: "space-between",
+              paddingHorizontal: spacing.md,
+              paddingBottom: spacing.sm,
             }}
           >
-            <AppIcon icon={AiChipIcon} size={32} color="#3a3a3c" />
-            <Text style={{ fontSize: fontSize.sm, color: "#52525b" }}>
-              No models found
+            <Text
+              style={{
+                fontSize: fontSize.lg,
+                fontWeight: "600",
+                color: "#ffffff",
+              }}
+            >
+              Select Model
             </Text>
+            <Pressable
+              onPress={() => setIsOpen(false)}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: "rgba(142,142,147,0.1)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
+            </Pressable>
           </View>
-        }
-      />
-    </BottomSheetModal>
+
+          {/* Search input */}
+          <View
+            style={{
+              marginHorizontal: spacing.md,
+              marginBottom: spacing.sm,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.xs,
+              backgroundColor: "rgba(255,255,255,0.06)",
+              borderRadius: moderateScale(10, 0.5),
+              paddingHorizontal: spacing.sm,
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.08)",
+            }}
+          >
+            <AppIcon icon={Search01Icon} size={15} color="#52525b" />
+            <BottomSheetTextInput
+              placeholder="Search models..."
+              placeholderTextColor="#52525b"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              style={{
+                flex: 1,
+                paddingVertical: moderateScale(9, 0.5),
+                fontSize: fontSize.sm,
+                color: "#e4e4e7",
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery("")}>
+                <AppIcon icon={Cancel01Icon} size={14} color="#52525b" />
+              </Pressable>
+            )}
+          </View>
+
+          {/* Model list grouped by capability */}
+          <BottomSheetFlatList
+            data={flatItems}
+            keyExtractor={(item: FlatItem) =>
+              item.type === "header"
+                ? `header-${item.group}`
+                : item.model.model_id
+            }
+            renderItem={renderItem}
+            contentContainerStyle={{
+              paddingBottom: 32,
+              paddingTop: spacing.xs,
+            }}
+            showsVerticalScrollIndicator={false}
+            ListEmptyComponent={
+              <View
+                style={{
+                  alignItems: "center",
+                  paddingVertical: spacing.xl,
+                  gap: spacing.sm,
+                }}
+              >
+                <AppIcon icon={AiChipIcon} size={32} color="#3a3a3c" />
+                <Text style={{ fontSize: fontSize.sm, color: "#52525b" }}>
+                  No models found
+                </Text>
+              </View>
+            }
+          />
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
+    </BottomSheet>
   );
 });
 

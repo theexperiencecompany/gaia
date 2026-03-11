@@ -1,6 +1,7 @@
 import * as WebBrowser from "expo-web-browser";
+import { Card, Chip, PressableFeedback } from "heroui-native";
 import { useCallback } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import {
   AppIcon,
   DocumentAttachmentIcon,
@@ -61,22 +62,61 @@ function detectFileType(mimeType: string, fileName: string): FileType {
   return "generic";
 }
 
+type ChipColor = React.ComponentProps<typeof Chip>["color"];
+
 interface FileTypeConfig {
-  color: string;
+  chipColor: ChipColor;
+  iconColor: string;
   bgColor: string;
   label: string;
 }
 
 const FILE_TYPE_CONFIGS: Record<FileType, FileTypeConfig> = {
-  pdf: { color: "#ef4444", bgColor: "rgba(239,68,68,0.12)", label: "PDF" },
-  doc: { color: "#3b82f6", bgColor: "rgba(59,130,246,0.12)", label: "DOC" },
-  xls: { color: "#22c55e", bgColor: "rgba(34,197,94,0.12)", label: "XLS" },
-  ppt: { color: "#f97316", bgColor: "rgba(249,115,22,0.12)", label: "PPT" },
-  txt: { color: "#a1a1aa", bgColor: "rgba(161,161,170,0.12)", label: "TXT" },
-  zip: { color: "#eab308", bgColor: "rgba(234,179,8,0.12)", label: "ZIP" },
-  image: { color: "#8b5cf6", bgColor: "rgba(139,92,246,0.12)", label: "IMG" },
+  pdf: {
+    chipColor: "danger",
+    iconColor: "#ef4444",
+    bgColor: "rgba(239,68,68,0.12)",
+    label: "PDF",
+  },
+  doc: {
+    chipColor: "primary",
+    iconColor: "#3b82f6",
+    bgColor: "rgba(59,130,246,0.12)",
+    label: "DOC",
+  },
+  xls: {
+    chipColor: "success",
+    iconColor: "#22c55e",
+    bgColor: "rgba(34,197,94,0.12)",
+    label: "XLS",
+  },
+  ppt: {
+    chipColor: "warning",
+    iconColor: "#f97316",
+    bgColor: "rgba(249,115,22,0.12)",
+    label: "PPT",
+  },
+  txt: {
+    chipColor: "default",
+    iconColor: "#a1a1aa",
+    bgColor: "rgba(161,161,170,0.12)",
+    label: "TXT",
+  },
+  zip: {
+    chipColor: "warning",
+    iconColor: "#eab308",
+    bgColor: "rgba(234,179,8,0.12)",
+    label: "ZIP",
+  },
+  image: {
+    chipColor: "secondary",
+    iconColor: "#8b5cf6",
+    bgColor: "rgba(139,92,246,0.12)",
+    label: "IMG",
+  },
   generic: {
-    color: "#71717a",
+    chipColor: "default",
+    iconColor: "#71717a",
     bgColor: "rgba(113,113,122,0.12)",
     label: "FILE",
   },
@@ -134,85 +174,87 @@ export function FileAttachmentCard({ attachment }: FileAttachmentCardProps) {
   const isPdf = fileType === "pdf";
 
   return (
-    <Pressable
+    <PressableFeedback
       onPress={() => void handleOpen()}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        gap: spacing.sm,
-        backgroundColor: pressed
-          ? "rgba(255,255,255,0.08)"
-          : "rgba(255,255,255,0.05)",
-        borderRadius: moderateScale(12, 0.5),
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.08)",
-        padding: spacing.sm + 2,
-        maxWidth: 280,
-      })}
+      style={{ maxWidth: 280 }}
     >
-      {/* File type icon */}
-      <View
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: moderateScale(10, 0.5),
-          backgroundColor: config.bgColor,
-          alignItems: "center",
-          justifyContent: "center",
-          flexShrink: 0,
-        }}
+      <Card
+        variant="secondary"
+        animation="disable-all"
+        className="rounded-xl border border-white/[0.08] bg-white/[0.05]"
       >
-        <AppIcon icon={IconComponent} size={22} color={config.color} />
-      </View>
-
-      {/* File info */}
-      <View style={{ flex: 1, minWidth: 0, gap: 2 }}>
-        <Text
-          numberOfLines={1}
+        <Card.Body
           style={{
-            fontSize: fontSize.sm,
-            fontWeight: "500",
-            color: "#e4e4e7",
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+            padding: spacing.sm + 2,
           }}
         >
-          {attachment.fileName}
-        </Text>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          {/* File type icon */}
           <View
             style={{
-              paddingHorizontal: 5,
-              paddingVertical: 1,
-              borderRadius: 4,
+              width: 44,
+              height: 44,
+              borderRadius: moderateScale(10, 0.5),
               backgroundColor: config.bgColor,
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
             }}
           >
+            <AppIcon icon={IconComponent} size={22} color={config.iconColor} />
+          </View>
+
+          {/* File metadata */}
+          <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
             <Text
+              numberOfLines={1}
               style={{
-                fontSize: fontSize.xs - 1,
-                fontWeight: "600",
-                color: config.color,
-                letterSpacing: 0.3,
+                fontSize: fontSize.sm,
+                fontWeight: "500",
+                color: "#e4e4e7",
               }}
             >
-              {config.label}
+              {attachment.fileName}
             </Text>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <Chip
+                size="sm"
+                variant="soft"
+                color={config.chipColor}
+                animation="disable-all"
+              >
+                <Chip.Label
+                  style={{
+                    fontSize: fontSize.xs - 1,
+                    fontWeight: "600",
+                    letterSpacing: 0.3,
+                  }}
+                >
+                  {config.label}
+                </Chip.Label>
+              </Chip>
+              {attachment.fileSize !== undefined ? (
+                <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
+                  {formatFileSize(attachment.fileSize)}
+                </Text>
+              ) : null}
+            </View>
           </View>
-          {attachment.fileSize !== undefined ? (
-            <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
-              {formatFileSize(attachment.fileSize)}
-            </Text>
-          ) : null}
-        </View>
-      </View>
 
-      {/* Action icon */}
-      <View style={{ flexShrink: 0, paddingLeft: spacing.xs }}>
-        <AppIcon
-          icon={isPdf ? Download02Icon : LinkSquare02Icon}
-          size={16}
-          color="#71717a"
-        />
-      </View>
-    </Pressable>
+          {/* Action icon */}
+          <View style={{ flexShrink: 0, paddingLeft: spacing.xs }}>
+            <AppIcon
+              icon={isPdf ? Download02Icon : LinkSquare02Icon}
+              size={16}
+              color="#71717a"
+            />
+          </View>
+        </Card.Body>
+      </Card>
+    </PressableFeedback>
   );
 }

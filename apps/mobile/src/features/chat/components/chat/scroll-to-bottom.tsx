@@ -1,5 +1,6 @@
+import { PressableFeedback } from "heroui-native";
 import { useEffect, useRef } from "react";
-import { Animated, Pressable } from "react-native";
+import { Animated } from "react-native";
 import { AppIcon, ArrowDown02Icon } from "@/components/icons";
 import { useResponsive } from "@/lib/responsive";
 
@@ -35,7 +36,7 @@ export function ScrollToBottomButton({
         opacity,
       }}
     >
-      <Pressable
+      <PressableFeedback
         onPress={onPress}
         style={{
           width: buttonSize,
@@ -53,7 +54,7 @@ export function ScrollToBottomButton({
           size={iconSize.md}
           color="rgba(255,255,255,0.6)"
         />
-      </Pressable>
+      </PressableFeedback>
     </Animated.View>
   );
 }

@@ -1,4 +1,4 @@
-import { Avatar } from "heroui-native";
+import { Avatar, Spinner } from "heroui-native";
 import { useEffect, useRef } from "react";
 import { Animated, View } from "react-native";
 import { Text } from "@/components/ui/text";
@@ -11,85 +11,6 @@ interface LoadingIndicatorProps {
   progress?: string;
   toolCategory?: string;
   toolIconUrl?: string | null;
-}
-
-function WaveSpinnerSquare() {
-  const { moderateScale } = useResponsive();
-  const dotSize = moderateScale(5, 0.5);
-  const gap = moderateScale(3, 0.5);
-
-  const delays = [0, 120, 240, 120, 240, 360, 240, 360, 480];
-  const scales = useRef(delays.map(() => new Animated.Value(0.6))).current;
-
-  useEffect(() => {
-    const animations = scales.map((scale, i) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delays[i]),
-          Animated.timing(scale, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-          Animated.timing(scale, {
-            toValue: 0.5,
-            duration: 400,
-            useNativeDriver: true,
-          }),
-        ]),
-      ),
-    );
-
-    animations.forEach((a) => a.start());
-    return () => {
-      scales.forEach((s) => s.stopAnimation());
-    };
-  }, [scales]);
-
-  const dotStyle = {
-    width: dotSize,
-    height: dotSize,
-    borderRadius: dotSize / 2,
-    backgroundColor: "#00bbff",
-  };
-
-  return (
-    <View style={{ flexDirection: "column", gap }}>
-      <View style={{ flexDirection: "row", gap }}>
-        <Animated.View
-          style={[dotStyle, { transform: [{ scale: scales[0] }] }]}
-        />
-        <Animated.View
-          style={[dotStyle, { transform: [{ scale: scales[1] }] }]}
-        />
-        <Animated.View
-          style={[dotStyle, { transform: [{ scale: scales[2] }] }]}
-        />
-      </View>
-      <View style={{ flexDirection: "row", gap }}>
-        <Animated.View
-          style={[dotStyle, { transform: [{ scale: scales[3] }] }]}
-        />
-        <Animated.View
-          style={[dotStyle, { transform: [{ scale: scales[4] }] }]}
-        />
-        <Animated.View
-          style={[dotStyle, { transform: [{ scale: scales[5] }] }]}
-        />
-      </View>
-      <View style={{ flexDirection: "row", gap }}>
-        <Animated.View
-          style={[dotStyle, { transform: [{ scale: scales[6] }] }]}
-        />
-        <Animated.View
-          style={[dotStyle, { transform: [{ scale: scales[7] }] }]}
-        />
-        <Animated.View
-          style={[dotStyle, { transform: [{ scale: scales[8] }] }]}
-        />
-      </View>
-    </View>
-  );
 }
 
 export function LoadingIndicator({
@@ -198,7 +119,11 @@ export function LoadingIndicator({
           </Animated.View>
         ) : null}
 
-        {toolIconElement ? toolIconElement : <WaveSpinnerSquare />}
+        {toolIconElement ? (
+          toolIconElement
+        ) : (
+          <Spinner size="sm" color="default" />
+        )}
       </View>
     </View>
   );

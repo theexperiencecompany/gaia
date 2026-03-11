@@ -1,5 +1,5 @@
-import { Card } from "heroui-native";
-import { TouchableOpacity, View } from "react-native";
+import { Card, Checkbox, Chip, PressableFeedback } from "heroui-native";
+import { View } from "react-native";
 import { Text } from "@/components/ui/text";
 
 export type TodoPriority = "high" | "medium" | "low" | "none";
@@ -58,11 +58,13 @@ export interface TodoData {
   message?: string;
 }
 
-const PRIORITY_DOT_COLOR: Record<TodoPriority, string> = {
-  high: "bg-red-500",
-  medium: "bg-amber-500",
-  low: "bg-blue-500",
-  none: "bg-zinc-600",
+const PRIORITY_CHIP_COLOR: Record<
+  Exclude<TodoPriority, "none">,
+  "danger" | "warning" | "accent"
+> = {
+  high: "danger",
+  medium: "warning",
+  low: "accent",
 };
 
 function formatDueDate(dateStr: string): {
@@ -105,18 +107,17 @@ function TodoItemRow({
   const dueInfo = todo.due_date ? formatDueDate(todo.due_date) : null;
 
   return (
-    <TouchableOpacity
+    <PressableFeedback
       onPress={onPress}
-      activeOpacity={onPress ? 0.7 : 1}
+      disabled={!onPress}
       className="rounded-xl bg-zinc-900 p-3 mb-2"
     >
       <View className="flex-row items-start gap-2">
-        <View
-          className={`mt-1.5 h-3.5 w-3.5 rounded-full shrink-0 border-2 ${
-            todo.completed
-              ? "border-emerald-500 bg-emerald-500"
-              : "border-zinc-600"
-          }`}
+        <Checkbox
+          isSelected={todo.completed}
+          isDisabled
+          className="mt-0.5 shrink-0"
+          animation="disable-all"
         />
         <View className="flex-1">
           <Text
@@ -130,73 +131,66 @@ function TodoItemRow({
 
           <View className="flex-row flex-wrap items-center gap-1.5 mt-1.5">
             {todo.priority !== "none" && (
-              <View className="flex-row items-center gap-1">
-                <View
-                  className={`h-2 w-2 rounded-full ${PRIORITY_DOT_COLOR[todo.priority]}`}
-                />
-                <Text
-                  className={`text-xs capitalize ${
-                    todo.priority === "high"
-                      ? "text-red-400"
-                      : todo.priority === "medium"
-                        ? "text-amber-400"
-                        : "text-blue-400"
-                  }`}
-                >
-                  {todo.priority}
-                </Text>
-              </View>
+              <Chip
+                size="sm"
+                variant="soft"
+                color={PRIORITY_CHIP_COLOR[todo.priority]}
+                animation="disable-all"
+              >
+                <Chip.Label className="capitalize">{todo.priority}</Chip.Label>
+              </Chip>
             )}
 
             {dueInfo && (
-              <View
-                className={`rounded-full px-1.5 py-0.5 ${
+              <Chip
+                size="sm"
+                variant="soft"
+                color={
                   dueInfo.isOverdue
-                    ? "bg-red-500/15"
+                    ? "danger"
                     : dueInfo.isToday
-                      ? "bg-amber-500/15"
-                      : "bg-zinc-800"
-                }`}
+                      ? "warning"
+                      : "default"
+                }
+                animation="disable-all"
               >
-                <Text
-                  className={`text-xs ${
-                    dueInfo.isOverdue
-                      ? "text-red-400"
-                      : dueInfo.isToday
-                        ? "text-amber-400"
-                        : "text-zinc-400"
-                  }`}
-                >
-                  {dueInfo.label}
-                </Text>
-              </View>
+                <Chip.Label>{dueInfo.label}</Chip.Label>
+              </Chip>
             )}
 
             {todo.project && (
-              <View className="flex-row items-center gap-1 rounded-full bg-zinc-800 px-1.5 py-0.5">
+              <Chip
+                size="sm"
+                variant="soft"
+                color="default"
+                animation="disable-all"
+              >
                 {todo.project.color ? (
                   <View
                     className="h-2 w-2 rounded-full"
                     style={{ backgroundColor: todo.project.color }}
                   />
                 ) : null}
-                <Text className="text-xs text-zinc-400" numberOfLines={1}>
-                  {todo.project.name}
-                </Text>
-              </View>
+                <Chip.Label numberOfLines={1}>{todo.project.name}</Chip.Label>
+              </Chip>
             )}
 
             {totalSubtasks > 0 && (
-              <View className="rounded-full bg-zinc-800 px-1.5 py-0.5">
-                <Text className="text-xs text-zinc-400">
+              <Chip
+                size="sm"
+                variant="soft"
+                color="default"
+                animation="disable-all"
+              >
+                <Chip.Label>
                   {completedSubtasks}/{totalSubtasks} subtasks
-                </Text>
-              </View>
+                </Chip.Label>
+              </Chip>
             )}
           </View>
         </View>
       </View>
-    </TouchableOpacity>
+    </PressableFeedback>
   );
 }
 
@@ -360,19 +354,14 @@ export function TodoCard({ data }: { data: TodoData }) {
       <Card variant="secondary" className="mx-4 my-2 rounded-xl">
         <Card.Body className="p-4">
           <View className="flex-row items-center gap-2">
-            <View
-              className={`h-4 w-4 rounded-full items-center justify-center ${
-                action === "delete" ? "bg-red-500/20" : "bg-emerald-500/20"
-              }`}
+            <Chip
+              size="sm"
+              variant="soft"
+              color={action === "delete" ? "danger" : "success"}
+              animation="disable-all"
             >
-              <Text
-                className={`text-xs font-bold ${
-                  action === "delete" ? "text-red-400" : "text-emerald-400"
-                }`}
-              >
-                {action === "delete" ? "✕" : "✓"}
-              </Text>
-            </View>
+              <Chip.Label>{action === "delete" ? "✕" : "✓"}</Chip.Label>
+            </Chip>
             <Text className="text-sm text-zinc-100 flex-1">{data.message}</Text>
           </View>
         </Card.Body>

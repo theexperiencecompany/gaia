@@ -1,18 +1,7 @@
-import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetModal,
-  BottomSheetScrollView,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import * as Clipboard from "expo-clipboard";
-import {
-  forwardRef,
-  useCallback,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { BottomSheet } from "heroui-native";
+import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import {
   AppIcon,
@@ -42,7 +31,7 @@ export const PublishWorkflowModal = forwardRef<
   PublishWorkflowModalRef,
   PublishWorkflowModalProps
 >(({ onPublished, onUnpublished }, ref) => {
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [isPublishing, setIsPublishing] = useState(false);
   const [isUnpublishing, setIsUnpublishing] = useState(false);
@@ -55,10 +44,10 @@ export const PublishWorkflowModal = forwardRef<
     open: (wf: Workflow) => {
       setWorkflow(wf);
       setCopied(false);
-      bottomSheetRef.current?.present();
+      setIsOpen(true);
     },
     close: () => {
-      bottomSheetRef.current?.dismiss();
+      setIsOpen(false);
     },
   }));
 
@@ -106,7 +95,7 @@ export const PublishWorkflowModal = forwardRef<
               const updated: Workflow = { ...workflow, is_public: false };
               setWorkflow(updated);
               onUnpublished(updated);
-              bottomSheetRef.current?.dismiss();
+              setIsOpen(false);
             } catch (err) {
               const message =
                 err instanceof Error
@@ -122,200 +111,191 @@ export const PublishWorkflowModal = forwardRef<
     );
   };
 
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
-      />
-    ),
-    [],
-  );
-
   const isPublished = workflow?.is_public ?? false;
 
   return (
-    <BottomSheetModal
-      ref={bottomSheetRef}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#141414" }}
-      handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
-    >
-      <BottomSheetScrollView
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{
-          paddingHorizontal: spacing.md,
-          paddingBottom: 40,
-          gap: spacing.lg,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
+    <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={snapPoints}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#141414" }}
+          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
         >
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
+          <BottomSheetScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{
+              paddingHorizontal: spacing.md,
+              paddingBottom: 40,
+              gap: spacing.lg,
             }}
           >
-            <AppIcon
-              icon={GlobeIcon}
-              size={18}
-              color={isPublished ? "#22c55e" : "#8e8e93"}
-            />
-            <Text style={{ fontSize: fontSize.lg, fontWeight: "600" }}>
-              {isPublished ? "Published" : "Publish Workflow"}
-            </Text>
-          </View>
-          <Pressable
-            onPress={() => bottomSheetRef.current?.dismiss()}
-            style={{
-              width: 32,
-              height: 32,
-              borderRadius: 999,
-              backgroundColor: "rgba(255,255,255,0.07)",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
-            <AppIcon icon={Cancel01Icon} size={16} color="#8e8e93" />
-          </Pressable>
-        </View>
-
-        {isPublished ? (
-          <View style={{ gap: spacing.md }}>
-            <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
-              Your workflow is publicly accessible via the link below.
-            </Text>
-
             <View
               style={{
-                borderRadius: 12,
-                backgroundColor: "#1c1c1e",
-                padding: spacing.md,
-                borderWidth: 1,
-                borderColor: "rgba(34,197,94,0.2)",
                 flexDirection: "row",
                 alignItems: "center",
-                gap: spacing.sm,
+                justifyContent: "space-between",
               }}
             >
-              <Text
+              <View
                 style={{
-                  flex: 1,
-                  fontSize: fontSize.xs,
-                  color: "#22c55e",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.sm,
                 }}
-                numberOfLines={2}
               >
-                {publicUrl}
-              </Text>
+                <AppIcon
+                  icon={GlobeIcon}
+                  size={18}
+                  color={isPublished ? "#22c55e" : "#8e8e93"}
+                />
+                <Text style={{ fontSize: fontSize.lg, fontWeight: "600" }}>
+                  {isPublished ? "Published" : "Publish Workflow"}
+                </Text>
+              </View>
               <Pressable
-                onPress={() => {
-                  void handleCopyUrl();
-                }}
+                onPress={() => setIsOpen(false)}
                 style={{
                   width: 32,
                   height: 32,
-                  borderRadius: 8,
-                  backgroundColor: copied
-                    ? "rgba(34,197,94,0.15)"
-                    : "rgba(255,255,255,0.07)",
+                  borderRadius: 999,
+                  backgroundColor: "rgba(255,255,255,0.07)",
                   alignItems: "center",
                   justifyContent: "center",
                 }}
               >
-                <AppIcon
-                  icon={copied ? Tick02Icon : Copy01Icon}
-                  size={16}
-                  color={copied ? "#22c55e" : "#8e8e93"}
-                />
+                <AppIcon icon={Cancel01Icon} size={16} color="#8e8e93" />
               </Pressable>
             </View>
 
-            <Pressable
-              onPress={handleUnpublish}
-              disabled={isUnpublishing}
-              style={{
-                borderRadius: 12,
-                paddingVertical: spacing.md,
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "row",
-                gap: spacing.sm,
-                backgroundColor: "rgba(239,68,68,0.1)",
-              }}
-            >
-              {isUnpublishing ? (
-                <ActivityIndicator size="small" color="#ef4444" />
-              ) : (
-                <Text
+            {isPublished ? (
+              <View style={{ gap: spacing.md }}>
+                <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
+                  Your workflow is publicly accessible via the link below.
+                </Text>
+
+                <View
                   style={{
-                    fontSize: fontSize.sm,
-                    fontWeight: "600",
-                    color: "#ef4444",
+                    borderRadius: 12,
+                    backgroundColor: "#1c1c1e",
+                    padding: spacing.md,
+                    borderWidth: 1,
+                    borderColor: "rgba(34,197,94,0.2)",
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: spacing.sm,
                   }}
                 >
-                  Unpublish
-                </Text>
-              )}
-            </Pressable>
-          </View>
-        ) : (
-          <View style={{ gap: spacing.md }}>
-            <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
-              Publishing makes this workflow accessible to anyone with the link
-              and adds it to the community explore section.
-            </Text>
-
-            <Pressable
-              onPress={() => {
-                void handlePublish();
-              }}
-              disabled={isPublishing}
-              style={{
-                borderRadius: 12,
-                paddingVertical: spacing.md,
-                alignItems: "center",
-                justifyContent: "center",
-                flexDirection: "row",
-                gap: spacing.sm,
-                backgroundColor: isPublishing
-                  ? "rgba(34,197,94,0.08)"
-                  : "rgba(34,197,94,0.15)",
-              }}
-            >
-              {isPublishing ? (
-                <ActivityIndicator size="small" color="#22c55e" />
-              ) : (
-                <>
-                  <AppIcon icon={GlobeIcon} size={16} color="#22c55e" />
                   <Text
                     style={{
-                      fontSize: fontSize.sm,
-                      fontWeight: "600",
+                      flex: 1,
+                      fontSize: fontSize.xs,
                       color: "#22c55e",
                     }}
+                    numberOfLines={2}
                   >
-                    Publish to Community
+                    {publicUrl}
                   </Text>
-                </>
-              )}
-            </Pressable>
-          </View>
-        )}
-      </BottomSheetScrollView>
-    </BottomSheetModal>
+                  <Pressable
+                    onPress={() => {
+                      void handleCopyUrl();
+                    }}
+                    style={{
+                      width: 32,
+                      height: 32,
+                      borderRadius: 8,
+                      backgroundColor: copied
+                        ? "rgba(34,197,94,0.15)"
+                        : "rgba(255,255,255,0.07)",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <AppIcon
+                      icon={copied ? Tick02Icon : Copy01Icon}
+                      size={16}
+                      color={copied ? "#22c55e" : "#8e8e93"}
+                    />
+                  </Pressable>
+                </View>
+
+                <Pressable
+                  onPress={handleUnpublish}
+                  disabled={isUnpublishing}
+                  style={{
+                    borderRadius: 12,
+                    paddingVertical: spacing.md,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "row",
+                    gap: spacing.sm,
+                    backgroundColor: "rgba(239,68,68,0.1)",
+                  }}
+                >
+                  {isUnpublishing ? (
+                    <ActivityIndicator size="small" color="#ef4444" />
+                  ) : (
+                    <Text
+                      style={{
+                        fontSize: fontSize.sm,
+                        fontWeight: "600",
+                        color: "#ef4444",
+                      }}
+                    >
+                      Unpublish
+                    </Text>
+                  )}
+                </Pressable>
+              </View>
+            ) : (
+              <View style={{ gap: spacing.md }}>
+                <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
+                  Publishing makes this workflow accessible to anyone with the
+                  link and adds it to the community explore section.
+                </Text>
+
+                <Pressable
+                  onPress={() => {
+                    void handlePublish();
+                  }}
+                  disabled={isPublishing}
+                  style={{
+                    borderRadius: 12,
+                    paddingVertical: spacing.md,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "row",
+                    gap: spacing.sm,
+                    backgroundColor: isPublishing
+                      ? "rgba(34,197,94,0.08)"
+                      : "rgba(34,197,94,0.15)",
+                  }}
+                >
+                  {isPublishing ? (
+                    <ActivityIndicator size="small" color="#22c55e" />
+                  ) : (
+                    <>
+                      <AppIcon icon={GlobeIcon} size={16} color="#22c55e" />
+                      <Text
+                        style={{
+                          fontSize: fontSize.sm,
+                          fontWeight: "600",
+                          color: "#22c55e",
+                        }}
+                      >
+                        Publish to Community
+                      </Text>
+                    </>
+                  )}
+                </Pressable>
+              </View>
+            )}
+          </BottomSheetScrollView>
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
+    </BottomSheet>
   );
 });
 

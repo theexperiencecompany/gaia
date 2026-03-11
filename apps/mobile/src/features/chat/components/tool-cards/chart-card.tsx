@@ -1,3 +1,4 @@
+import { Card, Chip } from "heroui-native";
 import { useMemo } from "react";
 import { ScrollView, View } from "react-native";
 import {
@@ -11,19 +12,15 @@ import { Text } from "@/components/ui/text";
 // -- Constants ----------------------------------------------------------------
 
 const COLORS = {
-  cardBg: "#171920",
-  headerBg: "#181825",
-  headerBorder: "#313244",
-  divider: "rgba(255,255,255,0.08)",
-  text: "#e4e4e7",
+  accentDefault: "#60a5fa",
   subText: "#a1a1aa",
   muted: "#71717a",
   dimmed: "#52525b",
+  text: "#e4e4e7",
   barTrack: "#27272a",
   tableBorder: "#27272a",
   tableHeaderBg: "#1e1e2e",
   fallbackBg: "#1e1e2e",
-  accentDefault: "#60a5fa",
 } as const;
 
 // -- Default palette for unlabeled data points --------------------------------
@@ -507,47 +504,28 @@ export function ChartCard({ toolData }: ChartCardProps) {
 
   if (!data || data.length === 0) {
     return (
-      <View
-        style={{
-          backgroundColor: COLORS.cardBg,
-          borderRadius: 16,
-          padding: 16,
-          borderWidth: 1,
-          borderColor: COLORS.divider,
-          alignItems: "center",
-        }}
-      >
-        <Text style={{ fontSize: 13, color: COLORS.muted }}>
-          No chart data available
-        </Text>
-      </View>
+      <Card variant="secondary" className="mx-4 my-1 rounded-2xl bg-[#171920]">
+        <Card.Body className="py-3 px-4 items-center">
+          <Text style={{ fontSize: 13, color: COLORS.muted }}>
+            No chart data available
+          </Text>
+        </Card.Body>
+      </Card>
     );
   }
 
+  const chartTitle =
+    title ??
+    (type === "bar"
+      ? "Bar Chart"
+      : type === "line"
+        ? "Line Chart"
+        : "Pie Chart");
+
   return (
-    <View
-      style={{
-        backgroundColor: COLORS.cardBg,
-        borderRadius: 16,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: COLORS.divider,
-        marginVertical: 4,
-      }}
-    >
+    <Card variant="secondary" className="mx-4 my-1 rounded-2xl bg-[#171920]">
       {/* Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 8,
-          paddingHorizontal: 14,
-          paddingVertical: 10,
-          backgroundColor: COLORS.headerBg,
-          borderBottomWidth: 1,
-          borderBottomColor: COLORS.headerBorder,
-        }}
-      >
+      <Card.Header className="flex-row items-center gap-2 px-4 pt-3 pb-2 border-b border-white/8">
         <View
           style={{
             width: 28,
@@ -560,61 +538,43 @@ export function ChartCard({ toolData }: ChartCardProps) {
         >
           <ChartTypeIcon type={type} />
         </View>
-        <Text
-          style={{
-            fontSize: 13,
-            fontWeight: "600",
-            color: COLORS.text,
-            flex: 1,
-          }}
-          numberOfLines={1}
-        >
-          {title ??
-            (type === "bar"
-              ? "Bar Chart"
-              : type === "line"
-                ? "Line Chart"
-                : "Pie Chart")}
-        </Text>
-        <View
-          style={{
-            backgroundColor: "rgba(255,255,255,0.06)",
-            borderRadius: 8,
-            paddingHorizontal: 7,
-            paddingVertical: 3,
-          }}
-        >
-          <Text style={{ fontSize: 10, color: COLORS.muted }}>
+        <Card.Title className="text-sm font-semibold flex-1" numberOfLines={1}>
+          {chartTitle}
+        </Card.Title>
+        <Chip variant="soft" color="default" size="sm">
+          <Chip.Label>
             {data.length} {data.length === 1 ? "item" : "items"}
-          </Text>
-        </View>
-      </View>
+          </Chip.Label>
+        </Chip>
+      </Card.Header>
 
       {/* Body */}
-      <ScrollView
-        style={{ maxHeight: 420 }}
-        nestedScrollEnabled
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ padding: 14, gap: 10 }}
-      >
-        {type === "bar" && (
-          <BarChart data={data} xLabel={xLabel} yLabel={yLabel} />
-        )}
+      <Card.Body className="p-0">
+        <ScrollView
+          style={{ maxHeight: 420 }}
+          nestedScrollEnabled
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ padding: 14, gap: 10 }}
+        >
+          {type === "bar" && (
+            <BarChart data={data} xLabel={xLabel} yLabel={yLabel} />
+          )}
 
-        {type === "line" && (
-          <>
-            <LineChartNote xLabel={xLabel} yLabel={yLabel} />
-            <DataTable data={data} type="line" />
-          </>
-        )}
+          {type === "line" && (
+            <>
+              <LineChartNote xLabel={xLabel} yLabel={yLabel} />
+              <DataTable data={data} type="line" />
+            </>
+          )}
 
-        {type === "pie" && (
-          <>
-            <PieLegend data={data} />
-            <DataTable data={data} type="pie" />
-          </>
-        )}
-      </ScrollView>
-    </View>
+          {type === "pie" && (
+            <>
+              <PieLegend data={data} />
+              <DataTable data={data} type="pie" />
+            </>
+          )}
+        </ScrollView>
+      </Card.Body>
+    </Card>
   );
 }

@@ -1,6 +1,6 @@
-import { Card } from "heroui-native";
-import { Pressable, View } from "react-native";
-import { HugeiconsIcon, Mail01Icon } from "@/components/icons";
+import { Card, Chip, Divider, PressableFeedback } from "heroui-native";
+import { View } from "react-native";
+import { AppIcon, Mail01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
 export interface EmailFetchItem {
@@ -45,40 +45,41 @@ function EmailRow({ email, onOpenThread }: EmailRowProps) {
   const relativeDate = formatRelativeDate(email.date);
 
   return (
-    <Pressable
-      onPress={onOpenThread}
-      className="flex-row items-start py-3 px-4 active:bg-muted/10"
-    >
-      <View className="mr-3 mt-1">
-        {email.is_unread ? (
-          <View className="w-2 h-2 rounded-full bg-primary" />
-        ) : (
-          <View className="w-2 h-2" />
-        )}
-      </View>
-      <View className="flex-1 min-w-0">
-        <View className="flex-row items-center justify-between mb-0.5">
+    <PressableFeedback onPress={onOpenThread} className="px-4 py-3">
+      <View className="flex-row items-start">
+        <View className="mr-3 mt-1.5">
+          {email.is_unread ? (
+            <View className="w-2 h-2 rounded-full bg-primary" />
+          ) : (
+            <View className="w-2 h-2" />
+          )}
+        </View>
+        <View className="flex-1 min-w-0">
+          <View className="flex-row items-center justify-between mb-0.5">
+            <Text
+              className={`text-sm flex-1 mr-2 ${email.is_unread ? "text-foreground font-semibold" : "text-foreground"}`}
+              numberOfLines={1}
+            >
+              {senderName}
+            </Text>
+            <Text className="text-[#8e8e93] text-xs shrink-0">
+              {relativeDate}
+            </Text>
+          </View>
           <Text
-            className={`text-sm flex-1 mr-2 ${email.is_unread ? "text-foreground font-semibold" : "text-foreground"}`}
+            className={`text-sm mb-0.5 ${email.is_unread ? "text-foreground font-medium" : "text-foreground/80"}`}
             numberOfLines={1}
           >
-            {senderName}
+            {email.subject || "No Subject"}
           </Text>
-          <Text className="text-muted text-xs shrink-0">{relativeDate}</Text>
+          {email.snippet && (
+            <Text className="text-[#8e8e93] text-xs" numberOfLines={2}>
+              {email.snippet}
+            </Text>
+          )}
         </View>
-        <Text
-          className={`text-sm mb-0.5 ${email.is_unread ? "text-foreground font-medium" : "text-foreground/80"}`}
-          numberOfLines={1}
-        >
-          {email.subject || "No Subject"}
-        </Text>
-        {email.snippet && (
-          <Text className="text-muted text-xs" numberOfLines={2}>
-            {email.snippet}
-          </Text>
-        )}
       </View>
-    </Pressable>
+    </PressableFeedback>
   );
 }
 
@@ -86,34 +87,40 @@ export function EmailFetchCard({ data }: { data: EmailFetchItem[] }) {
   const unreadCount = data.filter((e) => e.is_unread).length;
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-xl overflow-hidden">
-      <View className="flex-row items-center gap-2 px-4 py-3 border-b border-muted/20">
-        <HugeiconsIcon icon={Mail01Icon} size={16} color="#6b6b6b" />
-        <Text className="text-foreground text-sm font-medium flex-1">
-          {data.length} Email{data.length !== 1 ? "s" : ""}
-        </Text>
-        {unreadCount > 0 && (
-          <View className="bg-primary rounded-full px-2 py-0.5">
-            <Text className="text-white text-xs font-medium">
-              {unreadCount} unread
-            </Text>
-          </View>
-        )}
-      </View>
-      <Card.Body className="p-0">
-        {data.slice(0, 5).map((email, index) => (
-          <View key={`email-${email.subject || index}`}>
-            {index > 0 && <View className="h-px bg-muted/10 mx-4" />}
-            <EmailRow email={email} />
-          </View>
-        ))}
-        {data.length > 5 && (
-          <View className="px-4 py-2 border-t border-muted/10">
-            <Text className="text-muted text-xs text-center">
-              +{data.length - 5} more emails
-            </Text>
-          </View>
-        )}
+    <Card
+      variant="secondary"
+      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
+    >
+      <Card.Body className="py-3 px-4">
+        <View className="flex-row items-center gap-2 mb-3">
+          <AppIcon icon={Mail01Icon} size={14} color="#8e8e93" />
+          <Text className="text-xs text-[#8e8e93] flex-1">
+            {data.length} Email{data.length !== 1 ? "s" : ""}
+          </Text>
+          {unreadCount > 0 && (
+            <Chip size="sm" variant="soft" color="accent">
+              <Chip.Label>{unreadCount} unread</Chip.Label>
+            </Chip>
+          )}
+        </View>
+        <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
+          {data.slice(0, 5).map((email, index) => (
+            <View key={`email-${email.subject || index}`}>
+              {index > 0 && <Divider className="bg-white/8" />}
+              <EmailRow email={email} />
+            </View>
+          ))}
+          {data.length > 5 && (
+            <>
+              <Divider className="bg-white/8" />
+              <View className="px-4 py-2">
+                <Text className="text-[#8e8e93] text-xs text-center">
+                  +{data.length - 5} more emails
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
       </Card.Body>
     </Card>
   );

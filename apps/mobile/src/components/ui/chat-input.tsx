@@ -1,6 +1,6 @@
-import { Button } from "heroui-native";
+import { Button, PressableFeedback } from "heroui-native";
 import { useRef, useState } from "react";
-import { Keyboard, Pressable, TextInput, View } from "react-native";
+import { Keyboard, TextInput, View } from "react-native";
 import { AppIcon, ArrowUp02Icon, PlusSignIcon } from "@/components/icons";
 import { ConnectDrawerTrigger } from "@/features/integrations";
 import { useResponsive } from "@/lib/responsive";
@@ -169,7 +169,7 @@ export function ChatInput({
             }}
           >
             {matchingCommands.map((command, index) => (
-              <Pressable
+              <PressableFeedback
                 key={command}
                 onPress={() => runCommand(command)}
                 style={{
@@ -183,7 +183,7 @@ export function ChatInput({
                 <Text style={{ color: "#ffffff", fontSize: fontSize.sm }}>
                   /{command}
                 </Text>
-              </Pressable>
+              </PressableFeedback>
             ))}
           </View>
         )}

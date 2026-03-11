@@ -1,7 +1,6 @@
-import { Image } from "expo-image";
-import { Button } from "heroui-native";
+import { Avatar, Button, Card, Chip } from "heroui-native";
 import { useState } from "react";
-import { ActivityIndicator, Pressable, View } from "react-native";
+import { ActivityIndicator } from "react-native";
 import { HugeiconsIcon, UserIcon, Wrench01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAddPublicIntegration } from "../hooks/useCommunityIntegrations";
@@ -34,78 +33,91 @@ export function CommunityIntegrationCard({
   };
 
   return (
-    <Pressable
+    <Card
+      variant="ghost"
+      animation="press"
       onPress={() => onPress?.(integration)}
-      className="flex-row items-center px-4 py-3 active:opacity-60"
+      className="flex-row items-center px-4 py-3"
     >
-      <View className="w-10 h-10 rounded-xl items-center justify-center bg-muted/10 mr-3">
-        <Image
-          source={{ uri: logoUri }}
-          style={{ width: 32, height: 32 }}
-          contentFit="contain"
-        />
-      </View>
+      <Card.Body className="flex-row items-center p-0">
+        <Avatar
+          alt={integration.name}
+          size="sm"
+          color="default"
+          className="w-10 h-10 rounded-xl mr-3"
+        >
+          <Avatar.Image
+            source={{ uri: logoUri }}
+            style={{ width: 32, height: 32 }}
+          />
+          <Avatar.Fallback>
+            <Text className="text-xs font-medium">
+              {integration.name.charAt(0)}
+            </Text>
+          </Avatar.Fallback>
+        </Avatar>
 
-      <View className="flex-1 mr-3">
-        <View className="flex-row items-center gap-2 mb-0.5">
-          <Text className="font-medium text-sm" numberOfLines={1}>
-            {integration.name}
-          </Text>
-          {integration.category ? (
-            <View className="px-1.5 py-0.5 rounded bg-muted/15">
-              <Text className="text-muted text-[10px]">
-                {integration.category}
+        <Card
+          variant="ghost"
+          animation="disable-all"
+          className="flex-1 mr-3 p-0"
+        >
+          <Card.Body className="p-0 gap-0.5">
+            <Card.Header className="p-0 flex-row items-center gap-2 mb-0.5">
+              <Card.Title className="font-medium text-sm" numberOfLines={1}>
+                {integration.name}
+              </Card.Title>
+              {integration.category ? (
+                <Chip variant="secondary" size="sm">
+                  <Chip.Label className="text-muted text-[10px]">
+                    {integration.category}
+                  </Chip.Label>
+                </Chip>
+              ) : null}
+            </Card.Header>
+
+            <Card.Description className="text-xs" numberOfLines={2}>
+              {integration.description}
+            </Card.Description>
+
+            <Card.Footer className="p-0 flex-row items-center gap-3 mt-1.5">
+              <HugeiconsIcon icon={Wrench01Icon} size={11} color="#6b6b6b" />
+              <Text className="text-muted text-[11px]">
+                {integration.toolCount} tools
               </Text>
-            </View>
-          ) : null}
-        </View>
+              <HugeiconsIcon icon={UserIcon} size={11} color="#6b6b6b" />
+              <Text className="text-muted text-[11px]">
+                {integration.cloneCount} added
+              </Text>
+              {integration.creator?.name ? (
+                <Text className="text-muted text-[11px]" numberOfLines={1}>
+                  by {integration.creator.name}
+                </Text>
+              ) : null}
+            </Card.Footer>
+          </Card.Body>
+        </Card>
 
-        <Text className="text-muted text-xs" numberOfLines={2}>
-          {integration.description}
-        </Text>
-
-        <View className="flex-row items-center gap-3 mt-1.5">
-          <View className="flex-row items-center gap-1">
-            <HugeiconsIcon icon={Wrench01Icon} size={11} color="#6b6b6b" />
-            <Text className="text-muted text-[11px]">
-              {integration.toolCount} tools
-            </Text>
-          </View>
-
-          <View className="flex-row items-center gap-1">
-            <HugeiconsIcon icon={UserIcon} size={11} color="#6b6b6b" />
-            <Text className="text-muted text-[11px]">
-              {integration.cloneCount} added
-            </Text>
-          </View>
-
-          {integration.creator?.name ? (
-            <Text className="text-muted text-[11px]" numberOfLines={1}>
-              by {integration.creator.name}
-            </Text>
-          ) : null}
-        </View>
-      </View>
-
-      <Button
-        size="sm"
-        variant="tertiary"
-        onPress={handleAdd}
-        isDisabled={isPending || added}
-        className={
-          added ? "bg-success/15 px-3 min-w-16" : "bg-muted/10 px-3 min-w-16"
-        }
-      >
-        {isPending ? (
-          <ActivityIndicator size="small" color="#8e8e93" />
-        ) : (
-          <Button.Label
-            className={added ? "text-success text-xs" : "text-muted text-xs"}
-          >
-            {added ? "Added" : "Add"}
-          </Button.Label>
-        )}
-      </Button>
-    </Pressable>
+        <Button
+          size="sm"
+          variant="tertiary"
+          onPress={handleAdd}
+          isDisabled={isPending || added}
+          className={
+            added ? "bg-success/15 px-3 min-w-16" : "bg-muted/10 px-3 min-w-16"
+          }
+        >
+          {isPending ? (
+            <ActivityIndicator size="small" color="#8e8e93" />
+          ) : (
+            <Button.Label
+              className={added ? "text-success text-xs" : "text-muted text-xs"}
+            >
+              {added ? "Added" : "Add"}
+            </Button.Label>
+          )}
+        </Button>
+      </Card.Body>
+    </Card>
   );
 }

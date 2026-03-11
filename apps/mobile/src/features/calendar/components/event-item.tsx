@@ -1,6 +1,6 @@
+import { Card, Chip } from "heroui-native";
 import { View } from "react-native";
 import { AppIcon, Clock01Icon, Location01Icon } from "@/components/icons";
-import { Text } from "@/components/ui/text";
 import type { CalendarEvent } from "../types/calendar-types";
 
 interface EventItemProps {
@@ -21,56 +21,46 @@ function formatTimeRange(startTime: string, endTime: string): string {
 
 export function EventItem({ event }: EventItemProps) {
   return (
-    <View
-      style={{
-        backgroundColor: "#18181b",
-        borderRadius: 10,
-        padding: 12,
-        borderLeftWidth: 3,
-        borderLeftColor: "#00bbff",
-        marginHorizontal: 16,
-        marginVertical: 4,
-      }}
+    <Card
+      variant="secondary"
+      animation="disable-all"
+      className="mx-4 my-1 rounded-xl overflow-hidden border-l-[3px] border-l-primary"
     >
-      <Text
-        style={{
-          color: "#e8ebef",
-          fontSize: 15,
-          fontWeight: "600",
-          marginBottom: 6,
-        }}
-        numberOfLines={2}
-      >
-        {event.title}
-      </Text>
-
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-        <AppIcon icon={Clock01Icon} size={13} color="#8e8e93" />
-        <Text style={{ color: "#8e8e93", fontSize: 13 }}>
-          {event.all_day
-            ? "All day"
-            : formatTimeRange(event.start_time, event.end_time)}
-        </Text>
-      </View>
-
-      {!!event.location && (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 6,
-            marginTop: 4,
-          }}
-        >
-          <AppIcon icon={Location01Icon} size={13} color="#8e8e93" />
-          <Text
-            style={{ color: "#8e8e93", fontSize: 13, flex: 1 }}
-            numberOfLines={1}
-          >
-            {event.location}
-          </Text>
+      <Card.Body className="px-3 py-3 gap-1.5">
+        <View className="flex-row items-start justify-between gap-2">
+          <Card.Title className="flex-1 text-[15px]" numberOfLines={2}>
+            {event.title}
+          </Card.Title>
+          {!!event.calendar_name && (
+            <Chip
+              size="sm"
+              variant="soft"
+              color="primary"
+              animation="disable-all"
+            >
+              <Chip.Label numberOfLines={1}>{event.calendar_name}</Chip.Label>
+            </Chip>
+          )}
         </View>
-      )}
-    </View>
+
+        <View className="flex-row items-center gap-1.5">
+          <AppIcon icon={Clock01Icon} size={13} color="#8e8e93" />
+          <Card.Description className="text-[13px]">
+            {event.all_day
+              ? "All day"
+              : formatTimeRange(event.start_time, event.end_time)}
+          </Card.Description>
+        </View>
+
+        {!!event.location && (
+          <View className="flex-row items-center gap-1.5">
+            <AppIcon icon={Location01Icon} size={13} color="#8e8e93" />
+            <Card.Description className="text-[13px] flex-1" numberOfLines={1}>
+              {event.location}
+            </Card.Description>
+          </View>
+        )}
+      </Card.Body>
+    </Card>
   );
 }

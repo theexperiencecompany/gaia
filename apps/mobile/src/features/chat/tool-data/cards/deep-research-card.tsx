@@ -1,6 +1,6 @@
-import { Card } from "heroui-native";
+import { Card, Chip, PressableFeedback } from "heroui-native";
 import { useEffect, useState } from "react";
-import { Image, Linking, Pressable, View } from "react-native";
+import { Image, Linking, View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -141,15 +141,15 @@ interface RunningSourceRowProps {
 function RunningSourceRow({ source }: RunningSourceRowProps) {
   const hostname = getHostname(source.url);
   return (
-    <Pressable
+    <PressableFeedback
       onPress={() => Linking.openURL(source.url)}
-      className="flex-row items-center gap-2 py-1.5 active:opacity-70"
+      className="flex-row items-center gap-2 py-1.5"
     >
       <FaviconImage url={source.url} />
       <Text className="text-xs text-muted flex-1" numberOfLines={1}>
         {hostname || source.title}
       </Text>
-    </Pressable>
+    </PressableFeedback>
   );
 }
 
@@ -266,26 +266,25 @@ function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
 
   return (
     <View className="py-3 border-b border-white/8">
-      <Pressable
+      <PressableFeedback
         onPress={() => result.url && Linking.openURL(result.url)}
-        className="active:opacity-70"
       >
         <Text className="text-sm font-medium text-[#00bbff]" numberOfLines={2}>
           {result.title || hostname || "Untitled"}
         </Text>
-      </Pressable>
+      </PressableFeedback>
 
       <View className="flex-row items-center gap-1.5 mt-1">
         <FaviconImage url={result.url} />
-        <Pressable
+        <PressableFeedback
           onPress={() => result.url && Linking.openURL(result.url)}
-          className="flex-row items-center gap-1 active:opacity-70"
+          className="flex-row items-center gap-1"
         >
           <Text className="text-[11px] text-muted" numberOfLines={1}>
             {hostname}
           </Text>
           <AppIcon icon={ArrowUpRight01Icon} size={10} color="#8e8e93" />
-        </Pressable>
+        </PressableFeedback>
       </View>
 
       {!!result.content && (
@@ -298,14 +297,14 @@ function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
       )}
 
       {hasFullContent && (
-        <Pressable
+        <PressableFeedback
           onPress={() => setShowFull((prev) => !prev)}
-          className="mt-1.5 active:opacity-70"
+          className="mt-1.5"
         >
           <Text className="text-[11px] text-[#00bbff] font-medium">
             {showFull ? "Show less" : "Show full content"}
           </Text>
-        </Pressable>
+        </PressableFeedback>
       )}
 
       {showFull && !!result.full_content && (
@@ -362,10 +361,10 @@ function OriginalSearchSection({ search }: { search: SearchResults }) {
       {visible.length > 0 && (
         <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
           {visible.map((result, index) => (
-            <Pressable
+            <PressableFeedback
               key={result.url || result.title || String(index)}
               onPress={() => result.url && Linking.openURL(result.url)}
-              className={`py-3 active:opacity-70 ${
+              className={`py-3 ${
                 index < visible.length - 1 ? "border-b border-white/8" : ""
               }`}
             >
@@ -398,20 +397,20 @@ function OriginalSearchSection({ search }: { search: SearchResults }) {
                   )}
                 </View>
               </View>
-            </Pressable>
+            </PressableFeedback>
           ))}
         </View>
       )}
 
       {webResults.length > 3 && (
-        <Pressable
+        <PressableFeedback
           onPress={() => setExpanded((prev) => !prev)}
-          className="mt-2 py-1.5 items-center active:opacity-70"
+          className="mt-2 py-1.5 items-center"
         >
           <Text className="text-xs text-[#00bbff] font-medium">
             {expanded ? "Show less" : `Show all ${webResults.length} results`}
           </Text>
-        </Pressable>
+        </PressableFeedback>
       )}
     </View>
   );
@@ -497,22 +496,24 @@ function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
     <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
       <Card.Body className="py-3 px-4">
         {/* Header */}
-        <Pressable
-          onPress={() => setExpanded((prev) => !prev)}
-          className="active:opacity-70"
-        >
+        <PressableFeedback onPress={() => setExpanded((prev) => !prev)}>
           <View className="flex-row items-center justify-between">
             <View className="flex-row items-center gap-2">
               <AppIcon icon={Search01Icon} size={14} color="#8e8e93" />
               <Text className="text-xs text-muted">Deep Research</Text>
             </View>
-            <View className="rounded-lg bg-white/10 px-3 py-1">
-              <Text className="text-xs text-foreground font-medium">
+            <Chip
+              size="sm"
+              variant="secondary"
+              color="default"
+              animation="disable-all"
+            >
+              <Chip.Label>
                 {expanded ? "Hide results" : "Show results"}
-              </Text>
-            </View>
+              </Chip.Label>
+            </Chip>
           </View>
-        </Pressable>
+        </PressableFeedback>
 
         {/* Summary stats */}
         {(hasEnhanced || hasOriginal) && (
@@ -543,26 +544,20 @@ function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
                 {visibleTabs.map(({ key, label, icon }) => {
                   const isActive = resolvedTab === key;
                   return (
-                    <Pressable
+                    <Chip
                       key={key}
                       onPress={() => setActiveTab(key)}
-                      className={`flex-row items-center gap-1.5 rounded-full px-3 py-1.5 active:opacity-70 ${
-                        isActive ? "bg-[#00bbff]/20" : "bg-white/5"
-                      }`}
+                      variant={isActive ? "primary" : "secondary"}
+                      color={isActive ? "accent" : "default"}
+                      className={isActive ? "" : "bg-white/5"}
                     >
                       <AppIcon
                         icon={icon}
                         size={12}
                         color={isActive ? "#00bbff" : "#8e8e93"}
                       />
-                      <Text
-                        className={`text-xs font-medium ${
-                          isActive ? "text-[#00bbff]" : "text-muted"
-                        }`}
-                      >
-                        {label}
-                      </Text>
-                    </Pressable>
+                      <Chip.Label>{label}</Chip.Label>
+                    </Chip>
                   );
                 })}
               </View>

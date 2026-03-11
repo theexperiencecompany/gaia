@@ -1,6 +1,5 @@
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
-import { Image } from "expo-image";
-import { Button, Chip } from "heroui-native";
+import { Avatar, BottomSheet, Button, Chip } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -53,7 +52,7 @@ interface ConnectDrawerProps {
 
 export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
   ({ onOpen }, ref) => {
-    const bottomSheetRef = useRef<BottomSheetModal>(null);
+    const [isOpen, setIsOpen] = useState(false);
     const bearerTokenSheetRef = useRef<BearerTokenSheetRef>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedFilter, setSelectedFilter] = useState("All");
@@ -65,15 +64,14 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
     const [connectingId, setConnectingId] = useState<string | null>(null);
 
     const snapPoints = useMemo(() => ["70%"], []);
+
     useImperativeHandle(ref, () => ({
       open: () => {
         onOpen?.();
         setIsOpen(true);
         loadIntegrations();
       },
-      close: () => {
-        setIsOpen(false);
-      },
+      close: () => setIsOpen(false),
     }));
 
     const loadIntegrations = async () => {
@@ -141,7 +139,6 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
       } else {
         const authType = integration.authType;
 
-        // Bearer token / API key integrations: show the token input sheet
         if (authType === "bearer") {
           bearerTokenSheetRef.current?.open({
             integrationId: integration.id,
@@ -151,7 +148,6 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
           return;
         }
 
-        // Integrations with no auth: connect directly
         if (authType === "none" || !integration.requiresAuth) {
           setConnectingId(integration.id);
           try {
@@ -166,7 +162,6 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
           return;
         }
 
-        // OAuth integrations: open browser flow
         setConnectingId(integration.id);
         const result = await connectIntegration(integration.id);
 
@@ -191,13 +186,22 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
             className="flex-row items-center px-4 py-3 active:opacity-60"
             disabled={isConnecting}
           >
-            <View className="w-9 h-9 rounded-lg items-center justify-center mr-3">
-              <Image
+            <Avatar
+              alt={integration.name}
+              size="sm"
+              color="default"
+              className="w-9 h-9 rounded-lg mr-3"
+            >
+              <Avatar.Image
                 source={{ uri: integration.logo }}
                 style={{ width: 28, height: 28 }}
-                contentFit="contain"
               />
-            </View>
+              <Avatar.Fallback>
+                <Text className="text-xs font-medium">
+                  {integration.name.charAt(0)}
+                </Text>
+              </Avatar.Fallback>
+            </Avatar>
 
             <View className="flex-1 mr-3">
               <Text className="font-medium text-sm">{integration.name}</Text>
@@ -269,69 +273,82 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
           ref={bearerTokenSheetRef}
           onSuccess={handleBearerTokenSuccess}
         />
-        <BottomSheetModal
-          ref={bottomSheetRef}
-          snapPoints={snapPoints}
-          enableDynamicSizing={false}
-          enablePanDownToClose
-          backdropComponent={renderBackdrop}
-          backgroundStyle={{ backgroundColor: "#141414" }}
-          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
-        >
-          {/* Header */}
-          <View className="flex-row items-center justify-between px-4 pb-3">
-            <Text className="text-lg font-semibold">Connect Tools</Text>
-            <Pressable
-              onPress={() => bottomSheetRef.current?.dismiss()}
-              className="w-8 h-8 rounded-full bg-muted/10 items-center justify-center active:opacity-60"
+        <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+          <BottomSheet.Portal>
+            <BottomSheet.Overlay />
+            <BottomSheet.Content
+              snapPoints={snapPoints}
+              enableDynamicSizing={false}
+              enablePanDownToClose
+              backgroundStyle={{ backgroundColor: "#141414" }}
+              handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
             >
-              <HugeiconsIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
-            </Pressable>
-          </View>
+              {/* Header */}
+              <View className="flex-row items-center justify-between px-4 pb-3">
+                <Text className="text-lg font-semibold">Connect Tools</Text>
+                <Pressable
+                  onPress={() => setIsOpen(false)}
+                  className="w-8 h-8 rounded-full bg-muted/10 items-center justify-center active:opacity-60"
+                >
+                  <HugeiconsIcon
+                    icon={Cancel01Icon}
+                    size={18}
+                    color="#8e8e93"
+                  />
+                </Pressable>
+              </View>
 
-          <View className="px-4 pb-2">
-            <View className="flex-row items-center rounded-xl px-3 py-2 bg-muted/10">
-              <HugeiconsIcon icon={Search01Icon} size={18} color="#8e8e93" />
-              <TextInput
-                className="flex-1 ml-2 text-foreground text-sm"
-                placeholder="Search tools..."
-                placeholderTextColor="#6b6b6b"
-                value={searchQuery}
-                onChangeText={setSearchQuery}
-              />
-            </View>
-          </View>
+              <View className="px-4 pb-2">
+                <View className="flex-row items-center rounded-xl px-3 py-2 bg-muted/10">
+                  <HugeiconsIcon
+                    icon={Search01Icon}
+                    size={18}
+                    color="#8e8e93"
+                  />
+                  <TextInput
+                    className="flex-1 ml-2 text-foreground text-sm"
+                    placeholder="Search tools..."
+                    placeholderTextColor="#6b6b6b"
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
+                  />
+                </View>
+              </View>
 
-          {/* Sticky Filter Chips */}
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            className="px-4 pb-5"
-            contentContainerStyle={{ gap: 8 }}
-          >
-            {FILTER_OPTIONS.map((filter) => (
-              <Chip
-                key={filter}
-                variant={selectedFilter === filter ? "primary" : "secondary"}
-                color={selectedFilter === filter ? "accent" : "default"}
-                onPress={() => setSelectedFilter(filter)}
+              {/* Sticky Filter Chips */}
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                className="px-4 pb-5"
+                contentContainerStyle={{ gap: 8 }}
               >
-                <Chip.Label>{filter}</Chip.Label>
-              </Chip>
-            ))}
-          </ScrollView>
+                {FILTER_OPTIONS.map((filter) => (
+                  <Chip
+                    key={filter}
+                    variant={
+                      selectedFilter === filter ? "primary" : "secondary"
+                    }
+                    color={selectedFilter === filter ? "accent" : "default"}
+                    onPress={() => setSelectedFilter(filter)}
+                  >
+                    <Chip.Label>{filter}</Chip.Label>
+                  </Chip>
+                ))}
+              </ScrollView>
 
-          {/* Scrollable List */}
-          <BottomSheetFlatList
-            data={filteredIntegrations}
-            keyExtractor={(item: IntegrationWithStatus) => item.id}
-            renderItem={renderItem}
-            ListHeaderComponent={ListHeader}
-            ListEmptyComponent={ListEmpty}
-            contentContainerStyle={{ paddingBottom: 24 }}
-            showsVerticalScrollIndicator={false}
-          />
-        </BottomSheetModal>
+              {/* Scrollable List */}
+              <BottomSheetFlatList
+                data={filteredIntegrations}
+                keyExtractor={(item: IntegrationWithStatus) => item.id}
+                renderItem={renderItem}
+                ListHeaderComponent={ListHeader}
+                ListEmptyComponent={ListEmpty}
+                contentContainerStyle={{ paddingBottom: 24 }}
+                showsVerticalScrollIndicator={false}
+              />
+            </BottomSheet.Content>
+          </BottomSheet.Portal>
+        </BottomSheet>
       </>
     );
   },

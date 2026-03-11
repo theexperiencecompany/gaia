@@ -1,8 +1,8 @@
 import { Image } from "expo-image";
+import { Dialog } from "heroui-native";
 import { useCallback, useRef } from "react";
 import {
   Dimensions,
-  Modal,
   Platform,
   Pressable,
   ScrollView,
@@ -21,14 +21,14 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Cancel01Icon, HugeiconsIcon, Share01Icon } from "@/components/icons";
+import { HugeiconsIcon, Share01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get("window");
 
 interface ImageViewerModalProps {
-  visible: boolean;
+  isVisible: boolean;
   imageUrl: string | undefined;
   prompt?: string;
   improvedPrompt?: string;
@@ -36,7 +36,7 @@ interface ImageViewerModalProps {
 }
 
 export function ImageViewerModal({
-  visible,
+  isVisible,
   imageUrl,
   prompt,
   improvedPrompt,
@@ -167,145 +167,158 @@ export function ImageViewerModal({
   const imageDisplaySize = SCREEN_WIDTH - spacing.md * 2;
 
   return (
-    <Modal
-      visible={visible}
-      transparent
-      animationType="fade"
-      statusBarTranslucent
-      onRequestClose={handleClose}
+    <Dialog
+      isOpen={isVisible}
+      onOpenChange={(open) => {
+        if (!open) handleClose();
+      }}
     >
-      <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.95)" }}>
-          {/* Header */}
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-              paddingTop: insets.top + spacing.sm,
-              paddingHorizontal: spacing.md,
-              paddingBottom: spacing.sm,
-              zIndex: 10,
-            }}
-          >
-            <Pressable
-              onPress={handleClose}
-              hitSlop={16}
-              style={{
-                padding: spacing.sm,
-                borderRadius: moderateScale(20, 0.5),
-                backgroundColor: "rgba(255,255,255,0.1)",
-              }}
-            >
-              <HugeiconsIcon
-                icon={Cancel01Icon}
-                size={moderateScale(20, 0.5)}
-                color="#ffffff"
-              />
-            </Pressable>
+      <Dialog.Portal>
+        <Dialog.Overlay />
+        <Dialog.Content
+          isSwipeable={false}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0, 0, 0, 0.95)",
+            borderRadius: 0,
+            width: SCREEN_WIDTH,
+            height: SCREEN_HEIGHT,
+            maxHeight: SCREEN_HEIGHT,
+          }}
+        >
+          <GestureHandlerRootView style={{ flex: 1 }}>
+            <View style={{ flex: 1 }}>
+              {/* Header */}
+              <View
+                style={{
+                  flexDirection: "row",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  paddingTop: insets.top + spacing.sm,
+                  paddingHorizontal: spacing.md,
+                  paddingBottom: spacing.sm,
+                  zIndex: 10,
+                }}
+              >
+                <Dialog.Close
+                  onPress={handleClose}
+                  hitSlop={16}
+                  style={{
+                    padding: spacing.sm,
+                    borderRadius: moderateScale(20, 0.5),
+                    backgroundColor: "rgba(255,255,255,0.1)",
+                  }}
+                  iconProps={{ size: moderateScale(20, 0.5), color: "#ffffff" }}
+                />
 
-            <Pressable
-              onPress={handleShare}
-              hitSlop={16}
-              style={{
-                padding: spacing.sm,
-                borderRadius: moderateScale(20, 0.5),
-                backgroundColor: "rgba(255,255,255,0.1)",
-              }}
-            >
-              <HugeiconsIcon
-                icon={Share01Icon}
-                size={moderateScale(20, 0.5)}
-                color="#ffffff"
-              />
-            </Pressable>
-          </View>
-
-          {/* Image area */}
-          <View
-            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
-          >
-            <GestureDetector gesture={composedGesture}>
-              <Animated.View style={animatedStyle}>
-                {imageUrl ? (
-                  <Image
-                    source={{ uri: imageUrl }}
-                    style={{
-                      width: imageDisplaySize,
-                      height: imageDisplaySize,
-                      borderRadius: moderateScale(16, 0.5),
-                    }}
-                    contentFit="contain"
-                    transition={200}
+                <Pressable
+                  onPress={handleShare}
+                  hitSlop={16}
+                  style={{
+                    padding: spacing.sm,
+                    borderRadius: moderateScale(20, 0.5),
+                    backgroundColor: "rgba(255,255,255,0.1)",
+                  }}
+                >
+                  <HugeiconsIcon
+                    icon={Share01Icon}
+                    size={moderateScale(20, 0.5)}
+                    color="#ffffff"
                   />
-                ) : null}
-              </Animated.View>
-            </GestureDetector>
-          </View>
+                </Pressable>
+              </View>
 
-          {/* Prompt info */}
-          {prompt || improvedPrompt ? (
-            <ScrollView
-              style={{
-                maxHeight: SCREEN_HEIGHT * 0.2,
-                paddingHorizontal: spacing.md,
-                paddingBottom: insets.bottom + spacing.md,
-              }}
-              contentContainerStyle={{ paddingBottom: spacing.md }}
-              showsVerticalScrollIndicator={false}
-            >
-              {prompt ? (
-                <View style={{ marginBottom: spacing.sm }}>
-                  <Text
-                    style={{
-                      fontSize: fontSize.xs,
-                      color: "#a1a1aa",
-                      fontWeight: "600",
-                      marginBottom: 2,
-                    }}
-                  >
-                    Prompt
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      color: "#d4d4d8",
-                      lineHeight: 20,
-                    }}
-                  >
-                    {prompt}
-                  </Text>
-                </View>
-              ) : null}
-              {improvedPrompt ? (
-                <View>
-                  <Text
-                    style={{
-                      fontSize: fontSize.xs,
-                      color: "#a1a1aa",
-                      fontWeight: "600",
-                      marginBottom: 2,
-                    }}
-                  >
-                    Enhanced Prompt
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      color: "#d4d4d8",
-                      lineHeight: 20,
-                    }}
-                  >
-                    {improvedPrompt}
-                  </Text>
-                </View>
-              ) : null}
-            </ScrollView>
-          ) : (
-            <View style={{ height: insets.bottom + spacing.md }} />
-          )}
-        </View>
-      </GestureHandlerRootView>
-    </Modal>
+              {/* Image area */}
+              <View
+                style={{
+                  flex: 1,
+                  justifyContent: "center",
+                  alignItems: "center",
+                }}
+              >
+                <GestureDetector gesture={composedGesture}>
+                  <Animated.View style={animatedStyle}>
+                    {imageUrl ? (
+                      <Image
+                        source={{ uri: imageUrl }}
+                        style={{
+                          width: imageDisplaySize,
+                          height: imageDisplaySize,
+                          borderRadius: moderateScale(16, 0.5),
+                        }}
+                        contentFit="contain"
+                        transition={200}
+                      />
+                    ) : null}
+                  </Animated.View>
+                </GestureDetector>
+              </View>
+
+              {/* Prompt info */}
+              {prompt || improvedPrompt ? (
+                <ScrollView
+                  style={{
+                    maxHeight: SCREEN_HEIGHT * 0.2,
+                    paddingHorizontal: spacing.md,
+                    paddingBottom: insets.bottom + spacing.md,
+                  }}
+                  contentContainerStyle={{ paddingBottom: spacing.md }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {prompt ? (
+                    <View style={{ marginBottom: spacing.sm }}>
+                      <Text
+                        style={{
+                          fontSize: fontSize.xs,
+                          color: "#a1a1aa",
+                          fontWeight: "600",
+                          marginBottom: 2,
+                        }}
+                      >
+                        Prompt
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: fontSize.sm,
+                          color: "#d4d4d8",
+                          lineHeight: 20,
+                        }}
+                      >
+                        {prompt}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {improvedPrompt ? (
+                    <View>
+                      <Text
+                        style={{
+                          fontSize: fontSize.xs,
+                          color: "#a1a1aa",
+                          fontWeight: "600",
+                          marginBottom: 2,
+                        }}
+                      >
+                        Enhanced Prompt
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: fontSize.sm,
+                          color: "#d4d4d8",
+                          lineHeight: 20,
+                        }}
+                      >
+                        {improvedPrompt}
+                      </Text>
+                    </View>
+                  ) : null}
+                </ScrollView>
+              ) : (
+                <View style={{ height: insets.bottom + spacing.md }} />
+              )}
+            </View>
+          </GestureHandlerRootView>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog>
   );
 }

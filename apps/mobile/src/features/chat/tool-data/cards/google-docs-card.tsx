@@ -1,6 +1,6 @@
-import { Card } from "heroui-native";
+import { Button, Card, Chip } from "heroui-native";
 import { useState } from "react";
-import { Image, Linking, Pressable, View } from "react-native";
+import { Image, Linking, View } from "react-native";
 import { SquareArrowUpRight02Icon, ToolsIcon } from "@/components/icons";
 import { AppIcon } from "@/components/icons/app-icon";
 import { Text } from "@/components/ui/text";
@@ -116,28 +116,34 @@ export function GoogleDocsCard({ data }: { data: GoogleDocsData }) {
                 </Text>
               )}
               {!!actionLabel && (
-                <View className="rounded-full bg-[#00bbff]/10 px-2 py-0.5">
-                  <Text className="text-[10px] font-medium text-[#00bbff]">
-                    {actionLabel}
-                  </Text>
-                </View>
+                <Chip
+                  size="xs"
+                  variant="primary"
+                  color="accent"
+                  animation="disable-all"
+                >
+                  <Chip.Label>{actionLabel}</Chip.Label>
+                </Chip>
               )}
             </View>
           </View>
 
           {/* Open button */}
           {!!url && (
-            <Pressable
+            <Button
+              size="sm"
+              variant="secondary"
+              color="accent"
               onPress={handleOpen}
-              className="flex-row items-center gap-1.5 rounded-xl bg-[#00bbff]/10 px-3 py-2 active:opacity-70 flex-shrink-0"
+              className="flex-shrink-0 rounded-xl"
             >
               <AppIcon
                 icon={SquareArrowUpRight02Icon}
                 size={14}
                 color="#00bbff"
               />
-              <Text className="text-xs font-medium text-[#00bbff]">Open</Text>
-            </Pressable>
+              <Button.Label className="text-[#00bbff]">Open</Button.Label>
+            </Button>
           )}
         </View>
       </Card.Body>

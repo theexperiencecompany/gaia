@@ -1,7 +1,6 @@
-import { Card } from "heroui-native";
-import { useState } from "react";
-import { Pressable, View } from "react-native";
-import { HugeiconsIcon, Mail01Icon } from "@/components/icons";
+import { Accordion, Avatar, Card, Chip } from "heroui-native";
+import { View } from "react-native";
+import { AppIcon, Mail01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
 export interface EmailThreadMessage {
@@ -49,50 +48,55 @@ function senderInitials(name: string): string {
   return name.slice(0, 2).toUpperCase();
 }
 
-interface MessageRowProps {
+interface MessageItemProps {
   message: EmailThreadMessage;
   index: number;
 }
 
-function MessageRow({ message, index }: MessageRowProps) {
-  const [expanded, setExpanded] = useState(index === 0);
+function MessageItem({ message, index }: MessageItemProps) {
   const senderName = extractFromName(message.from, message.from_name);
   const initials = senderInitials(senderName);
   const bodyText = message.body || message.snippet || "";
+  const relativeDate = formatRelativeDate(message.date);
 
   return (
-    <Pressable
-      onPress={() => setExpanded((prev) => !prev)}
-      className="px-4 py-3 active:bg-muted/10"
-    >
-      <View className="flex-row items-start gap-3">
-        <View className="w-8 h-8 rounded-full bg-primary/20 items-center justify-center shrink-0">
-          <Text className="text-primary text-xs font-semibold">{initials}</Text>
-        </View>
+    <Accordion.Item value={`msg-${index}`} className="px-0">
+      <Accordion.Trigger className="flex-row items-center gap-3 px-4 py-3">
+        <Avatar alt={senderName} size="sm" className="bg-primary/20 shrink-0">
+          <Avatar.Fallback className="text-primary text-xs font-semibold">
+            {initials}
+          </Avatar.Fallback>
+        </Avatar>
         <View className="flex-1 min-w-0">
-          <View className="flex-row items-center justify-between mb-0.5">
+          <View className="flex-row items-center justify-between">
             <Text
-              className="text-foreground text-sm font-medium"
+              className="text-foreground text-sm font-medium flex-1 mr-2"
               numberOfLines={1}
             >
               {senderName}
             </Text>
-            <Text className="text-muted text-xs ml-2 shrink-0">
-              {formatRelativeDate(message.date)}
-            </Text>
+            {!!relativeDate && (
+              <Text className="text-[#8e8e93] text-xs shrink-0">
+                {relativeDate}
+              </Text>
+            )}
           </View>
-          {expanded ? (
-            <Text className="text-foreground/80 text-sm leading-relaxed">
-              {bodyText}
-            </Text>
-          ) : (
-            <Text className="text-muted text-xs" numberOfLines={1}>
+          {!!bodyText && (
+            <Text className="text-[#8e8e93] text-xs mt-0.5" numberOfLines={1}>
               {bodyText}
             </Text>
           )}
         </View>
-      </View>
-    </Pressable>
+        <Accordion.Indicator iconProps={{ size: 14, color: "#8e8e93" }} />
+      </Accordion.Trigger>
+      <Accordion.Content className="px-4 pb-3 pt-0">
+        <View className="pl-11">
+          <Text className="text-foreground/80 text-sm leading-relaxed">
+            {bodyText}
+          </Text>
+        </View>
+      </Accordion.Content>
+    </Accordion.Item>
   );
 }
 
@@ -100,31 +104,51 @@ export function EmailThreadCard({ data }: { data: EmailThreadData }) {
   const messageCount = data.messages?.length || 0;
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-xl overflow-hidden">
-      <View className="flex-row items-center gap-2 px-4 py-3 border-b border-muted/20">
-        <HugeiconsIcon icon={Mail01Icon} size={16} color="#6b6b6b" />
-        <Text
-          className="text-foreground text-sm font-medium flex-1"
-          numberOfLines={1}
-        >
-          {data.subject || "No Subject"}
-        </Text>
-        <View className="bg-muted/20 rounded-full px-2 py-0.5">
-          <Text className="text-muted text-xs">
-            {messageCount} msg{messageCount !== 1 ? "s" : ""}
+    <Card
+      variant="secondary"
+      className="mx-4 my-2 rounded-2xl bg-[#171920] overflow-hidden"
+    >
+      <Card.Body className="py-3 px-4">
+        {/* Header */}
+        <View className="flex-row items-center gap-2 mb-3">
+          <AppIcon icon={Mail01Icon} size={14} color="#8e8e93" />
+          <Text className="text-xs text-[#8e8e93] flex-1" numberOfLines={1}>
+            {data.subject || "No Subject"}
           </Text>
+          <Chip
+            size="sm"
+            variant="secondary"
+            color="default"
+            className="bg-white/10"
+          >
+            <Chip.Label>
+              {messageCount} msg{messageCount !== 1 ? "s" : ""}
+            </Chip.Label>
+          </Chip>
         </View>
-      </View>
-      <Card.Body className="p-0">
-        {data.messages?.map((message, index) => (
-          <View key={`msg-${message.from || index}-${index}`}>
-            {index > 0 && <View className="h-px bg-muted/10 mx-4" />}
-            <MessageRow message={message} index={index} />
+
+        {/* Messages accordion */}
+        {messageCount > 0 ? (
+          <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
+            <Accordion
+              selectionMode="single"
+              defaultExpandedKeys={["msg-0"]}
+              isDividerVisible={true}
+            >
+              {(data.messages ?? []).map((message, index) => (
+                <MessageItem
+                  key={`msg-${message.from || index}-${index}`}
+                  message={message}
+                  index={index}
+                />
+              ))}
+            </Accordion>
           </View>
-        ))}
-        {messageCount === 0 && (
-          <View className="px-4 py-3">
-            <Text className="text-muted text-sm">No messages in thread</Text>
+        ) : (
+          <View className="rounded-xl bg-white/5 border border-white/8 px-4 py-3">
+            <Text className="text-[#8e8e93] text-sm">
+              No messages in thread
+            </Text>
           </View>
         )}
       </Card.Body>

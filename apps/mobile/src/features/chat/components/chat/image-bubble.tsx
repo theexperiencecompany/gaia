@@ -1,13 +1,7 @@
 import { Image } from "expo-image";
+import { Card, PressableFeedback, Skeleton } from "heroui-native";
 import { useCallback, useState } from "react";
-import { Pressable, View } from "react-native";
-import Animated, {
-  useAnimatedStyle,
-  useSharedValue,
-  withRepeat,
-  withSequence,
-  withTiming,
-} from "react-native-reanimated";
+import { View } from "react-native";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import type { ImageData } from "../../api/chat-api";
@@ -17,37 +11,6 @@ interface ImageBubbleProps {
   imageData: ImageData;
   isGenerating?: boolean;
   caption?: string;
-}
-
-function ShimmerPlaceholder({ width }: { width: number }) {
-  const opacity = useSharedValue(0.3);
-
-  opacity.value = withRepeat(
-    withSequence(
-      withTiming(0.8, { duration: 900 }),
-      withTiming(0.3, { duration: 900 }),
-    ),
-    -1,
-    false,
-  );
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: opacity.value,
-  }));
-
-  return (
-    <Animated.View
-      style={[
-        {
-          width,
-          aspectRatio: 1,
-          borderRadius: 20,
-          backgroundColor: "#27272a",
-        },
-        animatedStyle,
-      ]}
-    />
-  );
 }
 
 export function ImageBubble({
@@ -74,114 +37,91 @@ export function ImageBubble({
 
   return (
     <>
-      <View
-        style={{
-          backgroundColor: "#18181b",
-          borderRadius: moderateScale(20, 0.5),
-          borderWidth: 1,
-          borderColor: "rgba(255,255,255,0.07)",
-          overflow: "hidden",
-          width: cardWidth,
-        }}
+      <Card
+        variant="secondary"
+        animation="disable-all"
+        style={{ width: cardWidth, overflow: "hidden" }}
+        className="rounded-[20px] border border-white/[0.07] bg-[#18181b]"
       >
-        {/* Image / shimmer area */}
-        {isLoading ? (
-          <View style={{ padding: spacing.sm }}>
-            <ShimmerPlaceholder width={cardWidth - spacing.sm * 2} />
-          </View>
-        ) : (
-          <Pressable onPress={handlePress}>
-            <Image
-              source={{ uri: imageData.url }}
-              style={{
-                width: cardWidth,
-                aspectRatio: 1,
-              }}
-              contentFit="cover"
-              transition={400}
-            />
-          </Pressable>
-        )}
-
-        {/* Prompt / caption footer */}
-        {prompt || caption ? (
-          <View
-            style={{
-              paddingHorizontal: spacing.md,
-              paddingTop: spacing.sm,
-              paddingBottom: spacing.md,
-              gap: spacing.xs,
-            }}
+        <Card.Body className="p-0">
+          {/* Image / skeleton area */}
+          <Skeleton
+            isLoading={isLoading}
+            style={{ width: cardWidth, aspectRatio: 1 }}
+            className="rounded-none"
           >
-            {isLoading ? (
-              <Text
-                style={{
-                  fontSize: fontSize.xs,
-                  color: "#71717a",
-                  fontStyle: "italic",
-                }}
-              >
-                Generating image...
-              </Text>
-            ) : null}
+            <PressableFeedback onPress={handlePress}>
+              <Image
+                source={{ uri: imageData.url }}
+                style={{ width: cardWidth, aspectRatio: 1 }}
+                contentFit="cover"
+                transition={400}
+              />
+            </PressableFeedback>
+          </Skeleton>
 
-            {prompt ? (
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  color: "#a1a1aa",
-                  lineHeight: 18,
-                }}
-                numberOfLines={2}
-              >
-                {prompt}
-              </Text>
-            ) : null}
-
-            {caption?.trim() ? (
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  color: "#ffffff",
-                  lineHeight: 20,
-                }}
-              >
-                {caption}
-              </Text>
-            ) : null}
-          </View>
-        ) : isLoading ? (
-          <View
-            style={{
-              paddingHorizontal: spacing.md,
-              paddingBottom: spacing.md,
-              paddingTop: spacing.sm,
-            }}
-          >
-            <Text
+          {/* Footer */}
+          {prompt || caption || isLoading ? (
+            <View
               style={{
-                fontSize: fontSize.xs,
-                color: "#71717a",
-                fontStyle: "italic",
+                paddingHorizontal: spacing.md,
+                paddingTop: spacing.sm,
+                paddingBottom: spacing.md,
+                gap: spacing.xs,
               }}
             >
-              Generating image...
-            </Text>
-          </View>
-        ) : null}
+              {isLoading ? (
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: "#71717a",
+                    fontStyle: "italic",
+                  }}
+                >
+                  Generating image...
+                </Text>
+              ) : null}
 
-        {/* Improved prompt — collapsible */}
-        {improvedPrompt && !isLoading ? (
-          <ImprovedPromptRow
-            improvedPrompt={improvedPrompt}
-            spacing={spacing}
-            fontSize={fontSize}
-          />
-        ) : null}
-      </View>
+              {prompt ? (
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    color: "#a1a1aa",
+                    lineHeight: 18,
+                  }}
+                  numberOfLines={2}
+                >
+                  {prompt}
+                </Text>
+              ) : null}
+
+              {caption?.trim() ? (
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    color: "#ffffff",
+                    lineHeight: 20,
+                  }}
+                >
+                  {caption}
+                </Text>
+              ) : null}
+            </View>
+          ) : null}
+
+          {/* Improved prompt — collapsible */}
+          {improvedPrompt && !isLoading ? (
+            <ImprovedPromptRow
+              improvedPrompt={improvedPrompt}
+              spacing={spacing}
+              fontSize={fontSize}
+            />
+          ) : null}
+        </Card.Body>
+      </Card>
 
       <ImageViewerModal
-        visible={viewerVisible}
+        isVisible={viewerVisible}
         imageUrl={imageData.url}
         prompt={imageData.prompt}
         improvedPrompt={imageData.improvedPrompt}
@@ -205,7 +145,7 @@ function ImprovedPromptRow({
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <Pressable
+    <PressableFeedback
       onPress={() => setExpanded((v) => !v)}
       style={{
         borderTopWidth: 1,
@@ -241,6 +181,6 @@ function ImprovedPromptRow({
           </Text>
         ) : null}
       </View>
-    </Pressable>
+    </PressableFeedback>
   );
 }

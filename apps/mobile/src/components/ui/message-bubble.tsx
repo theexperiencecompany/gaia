@@ -1,9 +1,9 @@
 import { cva, type VariantProps } from "class-variance-authority";
 import * as Clipboard from "expo-clipboard";
-import { Avatar } from "heroui-native";
+import { Avatar, PressableFeedback } from "heroui-native";
 import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated, Pressable, View } from "react-native";
+import { Animated, View } from "react-native";
 import {
   AppIcon,
   Copy01Icon,
@@ -179,7 +179,7 @@ function CopyButton({ text, iconSize, padding }: CopyButtonProps) {
   }, [copied, text, fadeAnim]);
 
   return (
-    <Pressable onPress={handleCopy} style={{ padding }}>
+    <PressableFeedback onPress={handleCopy} style={{ padding }}>
       <Animated.View style={{ opacity: fadeAnim }}>
         <AppIcon
           icon={copied ? Tick02Icon : Copy01Icon}
@@ -187,7 +187,7 @@ function CopyButton({ text, iconSize, padding }: CopyButtonProps) {
           color={copied ? "#34c759" : "#8e8e93"}
         />
       </Animated.View>
-    </Pressable>
+    </PressableFeedback>
   );
 }
 
@@ -282,30 +282,30 @@ function MessageBubble({
                 iconSize={iconSize.sm}
                 padding={spacing.xs}
               />
-              <Pressable style={{ padding: spacing.xs }}>
+              <PressableFeedback style={{ padding: spacing.xs }}>
                 <AppIcon
                   icon={ThumbsUpIcon}
                   size={iconSize.sm}
                   color="#8e8e93"
                 />
-              </Pressable>
-              <Pressable style={{ padding: spacing.xs }}>
+              </PressableFeedback>
+              <PressableFeedback style={{ padding: spacing.xs }}>
                 <AppIcon
                   icon={ThumbsDownIcon}
                   size={iconSize.sm}
                   color="#8e8e93"
                 />
-              </Pressable>
-              <Pressable style={{ padding: spacing.xs }}>
+              </PressableFeedback>
+              <PressableFeedback style={{ padding: spacing.xs }}>
                 <AppIcon icon={Pin02Icon} size={iconSize.sm} color="#8e8e93" />
-              </Pressable>
-              <Pressable style={{ padding: spacing.xs }}>
+              </PressableFeedback>
+              <PressableFeedback style={{ padding: spacing.xs }}>
                 <AppIcon
                   icon={Message01Icon}
                   size={iconSize.sm}
                   color="#8e8e93"
                 />
-              </Pressable>
+              </PressableFeedback>
             </View>
           )}
       </View>
