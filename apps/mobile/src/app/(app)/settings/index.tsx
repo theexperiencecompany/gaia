@@ -282,7 +282,17 @@ function SettingsRow({
   );
 
   if (onPress) {
-    return <Pressable onPress={onPress}>{content}</Pressable>;
+    return (
+      <Pressable
+        onPress={onPress}
+        accessible={true}
+        accessibilityRole="button"
+        accessibilityLabel={label}
+        accessibilityHint={description}
+      >
+        {content}
+      </Pressable>
+    );
   }
 
   return content;

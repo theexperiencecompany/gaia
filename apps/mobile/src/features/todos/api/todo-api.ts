@@ -1,6 +1,7 @@
 import { apiService } from "@/lib/api";
 import { buildQueryString, normalizeListResponse } from "@gaia/shared/api";
 import type {
+  Priority,
   Project,
   Todo,
   TodoCounts,
@@ -75,6 +76,26 @@ export const todoApi = {
 
   bulkDelete: async (todoIds: string[]): Promise<void> => {
     await apiService.delete("/todos/bulk", { todo_ids: todoIds });
+  },
+
+  bulkUpdatePriority: async (
+    todoIds: string[],
+    priority: Priority,
+  ): Promise<void> => {
+    await apiService.post("/todos/bulk/priority", {
+      todo_ids: todoIds,
+      priority,
+    });
+  },
+
+  bulkMoveToProject: async (
+    todoIds: string[],
+    projectId: string | null,
+  ): Promise<void> => {
+    await apiService.post("/todos/bulk/project", {
+      todo_ids: todoIds,
+      project_id: projectId,
+    });
   },
 
   addSubtask: async (todoId: string, title: string): Promise<void> => {

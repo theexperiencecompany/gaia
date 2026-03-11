@@ -18,31 +18,34 @@ export interface ParsedDeepLink {
 
 export function parseDeepLink(url: string): ParsedDeepLink {
   const parsed = Linking.parse(url);
+  // For gaia://chat/123, expo-linking gives: host="chat", path="123"
+  // For gaia://todos,    expo-linking gives: host="todos", path=null
+  const host = parsed.hostname ?? parsed.host ?? "";
   const path = parsed.path ?? "";
 
-  if (path.startsWith("chat/")) {
-    const conversationId = path.replace("chat/", "");
-    return { screen: "chat", params: { conversationId } };
+  if (host === "chat") {
+    const conversationId = path.replace(/^\//, "");
+    return conversationId
+      ? { screen: "chat", params: { conversationId } }
+      : { screen: "unknown", params: {} };
   }
 
-  if (path === "todos") {
-    return { screen: "todos", params: {} };
+  if (host === "todos") {
+    const todoId = path.replace(/^\//, "");
+    return todoId
+      ? { screen: "todo", params: { todoId } }
+      : { screen: "todos", params: {} };
   }
 
-  if (path.startsWith("todos/")) {
-    const todoId = path.replace("todos/", "");
-    return { screen: "todo", params: { todoId } };
-  }
-
-  if (path === "notifications") {
+  if (host === "notifications") {
     return { screen: "notifications", params: {} };
   }
 
-  if (path === "settings") {
+  if (host === "settings") {
     return { screen: "settings", params: {} };
   }
 
-  if (path === "integrations") {
+  if (host === "integrations") {
     return { screen: "integrations", params: {} };
   }
 

@@ -174,6 +174,12 @@ export function Composer({
         workflowPickerRef.current?.open();
         return;
       }
+      if (command === "model") {
+        setMessage("");
+        dismissKeyboard();
+        modelPickerRef.current?.open();
+        return;
+      }
       const handled = onCommand?.(command) ?? false;
       if (handled) {
         setMessage("");

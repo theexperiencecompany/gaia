@@ -19,6 +19,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type { Conversation } from "@/features/chat/types";
+import { impactHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
 import { useChatStore } from "@/stores/chat-store";
 import { chatApi } from "../../api/chat-api";
@@ -64,6 +65,7 @@ export function ChatHeader({
 
   const startEditing = useCallback(() => {
     if (!activeConversation) return;
+    impactHaptic("light");
     setEditTitle(activeConversation.title);
     setIsEditing(true);
   }, [activeConversation]);

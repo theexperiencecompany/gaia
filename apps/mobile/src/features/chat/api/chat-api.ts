@@ -289,6 +289,39 @@ export async function uploadFile(
   return response.json() as Promise<FileUploadResponse>;
 }
 
+export async function branchConversation(
+  conversationId: string,
+  messageId: string,
+): Promise<string | null> {
+  try {
+    const response = await apiService.post<{ conversation_id: string }>(
+      `/conversations/${conversationId}/branch`,
+      { message_id: messageId },
+    );
+    return response.conversation_id;
+  } catch (error) {
+    console.error("Error branching conversation:", error);
+    return null;
+  }
+}
+
+export async function submitMessageFeedback(
+  conversationId: string,
+  messageId: string,
+  feedback: "thumbsUp" | "thumbsDown",
+): Promise<boolean> {
+  try {
+    await apiService.post(
+      `/chat/${conversationId}/messages/${messageId}/feedback`,
+      { feedback },
+    );
+    return true;
+  } catch (error) {
+    console.error("Error submitting feedback:", error);
+    return false;
+  }
+}
+
 export const chatApi = {
   fetchConversation,
   fetchMessages,
@@ -301,6 +334,8 @@ export const chatApi = {
   pinMessage,
   cancelStream,
   uploadFile,
+  branchConversation,
+  submitMessageFeedback,
 };
 
 export * from "./chat-stream";

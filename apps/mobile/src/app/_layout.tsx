@@ -33,6 +33,7 @@ import { OfflineBanner } from "@/components/OfflineBanner";
 import { useAppTheme } from "@/shared/hooks/use-app-theme";
 import { getRouteForDeepLink, parseDeepLink } from "@/lib/deep-links";
 import { trackScreen } from "@/lib/analytics";
+import { UpdateBanner } from "@/components/UpdateBanner";
 
 SplashScreen.preventAutoHideAsync();
 
@@ -137,6 +138,7 @@ export default function RootLayout() {
               >
                 <ScreenTracker />
                 <DeepLinkHandler />
+                <UpdateBanner />
                 <OfflineBanner />
                 <HeroUINativeProvider>
                   <BottomSheetModalProvider>

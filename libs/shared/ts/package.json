@@ -34,7 +34,8 @@
     "./api/conversations": "./src/api/conversationsApi.ts",
     "./utils/dateUtils": "./src/utils/dateUtils.ts",
     "./utils/auth": "./src/utils/auth.ts",
-    "./hooks": "./src/hooks/index.ts"
+    "./hooks": "./src/hooks/index.ts",
+    "./validation": "./src/validation/index.ts"
   },
   "scripts": {
     "build": "tsc",
@@ -46,7 +47,8 @@
     "@infisical/sdk": "^4.0.0",
     "axios": "^1.7.0",
     "dotenv": "^16.4.5",
-    "string-similarity": "^4.0.4"
+    "string-similarity": "^4.0.4",
+    "zod": "^3.25.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
