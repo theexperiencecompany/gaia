@@ -19,9 +19,12 @@ export default function WorkflowDetailPage() {
   const {
     workflow: fetchedWorkflow,
     executions,
+    executionsTotal,
+    hasMoreExecutions,
     isLoading,
     isLoadingExecutions,
     error,
+    loadMoreExecutions,
   } = useWorkflowDetail(workflowId);
 
   const [localWorkflow, setLocalWorkflow] = useState<Workflow | null>(null);
@@ -48,6 +51,8 @@ export default function WorkflowDetailPage() {
       workflowId={workflowId ?? ""}
       workflow={workflow}
       executions={executions}
+      executionsTotal={executionsTotal}
+      hasMoreExecutions={hasMoreExecutions}
       isLoading={isLoading}
       isLoadingExecutions={isLoadingExecutions}
       error={error}
@@ -55,6 +60,7 @@ export default function WorkflowDetailPage() {
       onDeleted={handleDeleted}
       onUpdated={handleUpdated}
       onActivationToggled={handleActivationToggled}
+      onLoadMoreExecutions={() => void loadMoreExecutions()}
     />
   );
 }

@@ -13,16 +13,17 @@ import {
   ThumbsUpIcon,
   Tick02Icon,
 } from "@/components/icons";
+import { MarkdownRenderer } from "@/components/ui/markdown-renderer";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";
 
 const GaiaLogo = require("@shared/assets/logo/gaia.png");
 
-const messageBubbleVariants = cva("px-4 py-2.5 max-w-[100%]", {
+const messageBubbleVariants = cva("px-4 py-3 max-w-[100%]", {
   variants: {
     variant: {
-      sent: "bg-accent self-end rounded-2xl rounded-br-md",
+      sent: "self-end rounded-2xl rounded-br-md",
       received: "bg-surface self-start rounded-2xl rounded-bl-md",
       loading: "bg-transparent self-start",
     },
@@ -237,6 +238,11 @@ function MessageBubble({
       <View className={cn("flex-col", variant !== "sent" && "flex-1")}>
         <View
           {...rest}
+          style={
+            variant === "sent"
+              ? { backgroundColor: "rgba(255,255,255,0.1)" }
+              : undefined
+          }
           className={cn(
             isLoading
               ? "px-0 py-2.5"
@@ -252,17 +258,10 @@ function MessageBubble({
                 </Text>
                 <PulsingDots />
               </View>
+            ) : variant === "received" ? (
+              <MarkdownRenderer content={message ?? ""} />
             ) : (
-              <Text
-                className={cn(
-                  "text-base",
-                  variant === "sent"
-                    ? "text-accent-foreground"
-                    : "text-foreground",
-                )}
-              >
-                {message}
-              </Text>
+              <Text className={cn("text-base", "text-white")}>{message}</Text>
             ))}
         </View>
 

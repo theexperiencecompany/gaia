@@ -186,6 +186,9 @@ importers:
 
   apps/mobile:
     dependencies:
+      '@dev-plugins/react-query':
+        specifier: ^0.4.0
+        version: 0.4.0(@tanstack/react-query@5.90.19(react@19.1.0))(expo@54.0.29)(react@19.1.0)
       '@expo-google-fonts/inter':
         specifier: ^0.4.2
         version: 0.4.2
@@ -246,6 +249,9 @@ importers:
       expo-device:
         specifier: ~8.0.10
         version: 8.0.10(expo@54.0.29)
+      expo-document-picker:
+        specifier: ^55.0.8
+        version: 55.0.8(expo@54.0.29)
       expo-font:
         specifier: ~14.0.10
         version: 14.0.10(expo@54.0.29)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
@@ -255,6 +261,9 @@ importers:
       expo-image:
         specifier: ~3.0.11
         version: 3.0.11(expo@54.0.29)(react-native-web@0.21.2(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
+      expo-image-picker:
+        specifier: ^55.0.11
+        version: 55.0.11(expo@54.0.29)
       expo-linear-gradient:
         specifier: ^15.0.8
         version: 15.0.8(expo@54.0.29)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
@@ -349,6 +358,9 @@ importers:
       '@types/react':
         specifier: ^19.2.14
         version: 19.2.14
+      dotenv-cli:
+        specifier: ^11.0.0
+        version: 11.0.0
       eslint:
         specifier: ^9.25.0
         version: 9.39.2(jiti@2.6.1)
@@ -361,6 +373,9 @@ importers:
       prettier-plugin-tailwindcss:
         specifier: ^0.5.14
         version: 0.5.14(prettier@3.7.4)
+      reactotron-react-native:
+        specifier: ^5.1.18
+        version: 5.1.18(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))
       tailwindcss:
         specifier: ^4.1.18
         version: 4.1.18
@@ -2288,6 +2303,13 @@ packages:
   '@dependents/detective-less@5.0.1':
     resolution: {integrity: sha512-Y6+WUMsTFWE5jb20IFP4YGa5IrGY/+a/FbOSjDF/wz9gepU2hwCYSXRHP/vPwBvwcY3SVMASt4yXxbXNXigmZQ==}
     engines: {node: '>=18'}
+
+  '@dev-plugins/react-query@0.4.0':
+    resolution: {integrity: sha512-/8M2a7DlVTjcdhb4D/E+aHUCOqSS6s53y3fFrOoCyLPxhhhkMujS91pARH6XbF/GRr6p6RBNBJQpWasI6uj7GA==}
+    peerDependencies:
+      '@tanstack/react-query': '*'
+      expo: '>=53.0.5'
+      react: 19.1.0
 
   '@develar/schema-utils@2.6.5':
     resolution: {integrity: sha512-0cp4PsWQ/9avqTVMCtZ+GirikIA36ikvjtHweU4/j8yLtgObI0+JUPhYFScgwlteveGB1rt3Cm8UhN04XayDig==}
@@ -11089,12 +11111,24 @@ packages:
   dot-case@3.0.4:
     resolution: {integrity: sha512-Kv5nKlh6yRrdrGvxeJ2e5y2eRUpkUosIW4A2AS38zwSz27zu7ufDwQPi5Jhs3XAlGNetl3bmnGhQsMtkKJnj3w==}
 
+  dotenv-cli@11.0.0:
+    resolution: {integrity: sha512-r5pA8idbk7GFWuHEU7trSTflWcdBpQEK+Aw17UrSHjS6CReuhrrPcyC3zcQBPQvhArRHnBo/h6eLH1fkCvNlww==}
+    hasBin: true
+
   dotenv-expand@11.0.7:
     resolution: {integrity: sha512-zIHwmZPRshsCdpMDyVsqGmgyP0yT8GAgXUnkdAoJisxvf33k7yO6OuoKmcTGuXPWSsm8Oh88nZicRLA9Y0rUeA==}
     engines: {node: '>=12'}
 
+  dotenv-expand@12.0.3:
+    resolution: {integrity: sha512-uc47g4b+4k/M/SeaW1y4OApx+mtLWl92l5LMPP0GNXctZqELk+YGgOPIIC5elYmUH4OuoK3JLhuRUYegeySiFA==}
+    engines: {node: '>=12'}
+
   dotenv@16.4.7:
     resolution: {integrity: sha512-47qPchRCykZC03FhkYAhrvwU4xDBFIj1QPqaarj6mdM/hgUzfPHcpkHJOn3mJAufFeeAxAzeGsr5X0M4k6fLZQ==}
+    engines: {node: '>=12'}
+
+  dotenv@17.3.1:
+    resolution: {integrity: sha512-IO8C/dzEb6O3F9/twg6ZLXz164a2fhTnEWb95H23Dm4OuN+92NmEAlTrupP9VW6Jm3sO26tQlqyvyi4CsnY9GA==}
     engines: {node: '>=12'}
 
   draco3d@1.5.7:
@@ -11616,6 +11650,11 @@ packages:
     peerDependencies:
       expo: '*'
 
+  expo-document-picker@55.0.8:
+    resolution: {integrity: sha512-p6rYEQ1/h3UqGl3+hzTjv51fsNxoOVfMGSYjHX2/e3cvcy02MWWE+bpj4QEGo9MBwU4RyyIbuv/SCxGtAtG+eA==}
+    peerDependencies:
+      expo: '*'
+
   expo-file-system@19.0.21:
     resolution: {integrity: sha512-s3DlrDdiscBHtab/6W1osrjGL+C2bvoInPJD7sOwmxfJ5Woynv2oc+Fz1/xVXaE/V7HE/+xrHC/H45tu6lZzzg==}
     peerDependencies:
@@ -11631,6 +11670,16 @@ packages:
 
   expo-haptics@15.0.8:
     resolution: {integrity: sha512-lftutojy8Qs8zaDzzjwM3gKHFZ8bOOEZDCkmh2Ddpe95Ra6kt2izeOfOfKuP/QEh0MZ1j9TfqippyHdRd1ZM9g==}
+    peerDependencies:
+      expo: '*'
+
+  expo-image-loader@55.0.0:
+    resolution: {integrity: sha512-NOjp56wDrfuA5aiNAybBIjqIn1IxKeGJ8CECWZncQ/GzjZfyTYAHTCyeApYkdKkMBLHINzI4BbTGSlbCa0fXXQ==}
+    peerDependencies:
+      expo: '*'
+
+  expo-image-picker@55.0.11:
+    resolution: {integrity: sha512-geJklIGdAR2N16iSk86oyJe7QgX5RpqDX1FjKpxO53fF4D0eBmg5Irm6gRwT0b+DHP1kJevZgzzbVJsRAV362g==}
     peerDependencies:
       expo: '*'
 
@@ -14302,6 +14351,9 @@ packages:
     resolution: {integrity: sha512-KZxYo1BUkWD2TVFLr0MQoM8vUUigWD3LlD83a/75BqC+4qE0Hb1Vo5v1FgcfaNXvfXzr+5EhQ6ing/CaBijTlw==}
     engines: {node: '>= 18'}
 
+  mitt@3.0.1:
+    resolution: {integrity: sha512-vKivATfr97l2/QBCYAkXYDbrIWPM2IIKEl7YPhjCvKlG3kE2gm+uBo6nEXK3M5/Ffh/FLpKExzOQ3JJoJGFKBw==}
+
   mkdirp-classic@0.5.3:
     resolution: {integrity: sha512-gKLcREMhtuZRwRAfqP3RFW+TK4JqApVBtOIftVgjuABpAtpxhPGaDcfvbhNvD0B8iD1oUr/txX35NjcaY6Ns/A==}
 
@@ -16177,6 +16229,17 @@ packages:
   react@19.1.0:
     resolution: {integrity: sha512-FS+XFBNvn3GTAWq26joslQgWNoFu08F4kl0J4CgdNKADkdSGXQyTCnKteIAJy96Br6YbpEU1LSzV5dYtjMkMDg==}
     engines: {node: '>=0.10.0'}
+
+  reactotron-core-client@2.9.9:
+    resolution: {integrity: sha512-caI6ZWpfV/gNeCBhm6alxuCpOxYEFxg9FsgVaOXJWZeKjK2egjxkXcUEFWeS3b9mC6Kwi7Wuu79zfeGtkbdAYw==}
+
+  reactotron-core-contract@0.3.2:
+    resolution: {integrity: sha512-39ZNLfxxV7WEOszekIRg56F6VFZrQk7+Lei+8MccNESX3VbQzs1uex/GNesxk6CMTS6ytwqYIBAgLyc9WX/PaA==}
+
+  reactotron-react-native@5.1.18:
+    resolution: {integrity: sha512-Nyb/w7tRQICtfvjAJSN6Q/3aRO8L6eTfEcWpDR/atUyoINkyzducMx6yXA+sz1mazxivY16N3VPkmQ1XohQAcg==}
+    peerDependencies:
+      react-native: '>=0.40.0'
 
   read-binary-file-arch@1.0.6:
     resolution: {integrity: sha512-BNg9EN3DD3GsDXX7Aa8O4p92sryjkmzYYgmgTAc6CA4uGLEDzFfxOxugu21akOxpcXHiEgsYkC6nPsQvLLLmEg==}
@@ -20861,6 +20924,13 @@ snapshots:
     dependencies:
       gonzales-pe: 4.3.0
       node-source-walk: 7.0.1
+
+  '@dev-plugins/react-query@0.4.0(@tanstack/react-query@5.90.19(react@19.1.0))(expo@54.0.29)(react@19.1.0)':
+    dependencies:
+      '@tanstack/react-query': 5.90.19(react@19.1.0)
+      expo: 54.0.29(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.20)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
+      flatted: 3.3.3
+      react: 19.1.0
 
   '@develar/schema-utils@2.6.5':
     dependencies:
@@ -29832,7 +29902,7 @@ snapshots:
 
   axios@1.13.2:
     dependencies:
-      follow-redirects: 1.15.11
+      follow-redirects: 1.15.11(debug@4.4.3)
       form-data: 4.0.5
       proxy-from-env: 1.1.0
     transitivePeerDependencies:
@@ -31509,11 +31579,24 @@ snapshots:
       no-case: 3.0.4
       tslib: 2.8.1
 
+  dotenv-cli@11.0.0:
+    dependencies:
+      cross-spawn: 7.0.6
+      dotenv: 17.3.1
+      dotenv-expand: 12.0.3
+      minimist: 1.2.8
+
   dotenv-expand@11.0.7:
     dependencies:
       dotenv: 16.4.7
 
+  dotenv-expand@12.0.3:
+    dependencies:
+      dotenv: 16.4.7
+
   dotenv@16.4.7: {}
+
+  dotenv@17.3.1: {}
 
   draco3d@1.5.7: {}
 
@@ -32344,6 +32427,10 @@ snapshots:
       expo: 54.0.29(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.20)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
       ua-parser-js: 0.7.41
 
+  expo-document-picker@55.0.8(expo@54.0.29):
+    dependencies:
+      expo: 54.0.29(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.20)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
+
   expo-file-system@19.0.21(expo@54.0.29)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0)):
     dependencies:
       expo: 54.0.29(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.20)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
@@ -32359,6 +32446,15 @@ snapshots:
   expo-haptics@15.0.8(expo@54.0.29):
     dependencies:
       expo: 54.0.29(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.20)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
+
+  expo-image-loader@55.0.0(expo@54.0.29):
+    dependencies:
+      expo: 54.0.29(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.20)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
+
+  expo-image-picker@55.0.11(expo@54.0.29):
+    dependencies:
+      expo: 54.0.29(@babel/core@7.28.5)(@expo/metro-runtime@6.1.2)(expo-router@6.0.20)(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0)
+      expo-image-loader: 55.0.0(expo@54.0.29)
 
   expo-image@3.0.11(expo@54.0.29)(react-native-web@0.21.2(encoding@0.1.13)(react-dom@19.1.0(react@19.1.0))(react@19.1.0))(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0))(react@19.1.0):
     dependencies:
@@ -32873,8 +32969,6 @@ snapshots:
   flatted@3.3.3: {}
 
   flow-enums-runtime@0.0.6: {}
-
-  follow-redirects@1.15.11: {}
 
   follow-redirects@1.15.11(debug@4.4.3):
     optionalDependencies:
@@ -35858,6 +35952,8 @@ snapshots:
     dependencies:
       minipass: 7.1.2
 
+  mitt@3.0.1: {}
+
   mkdirp-classic@0.5.3:
     optional: true
 
@@ -37821,6 +37917,18 @@ snapshots:
       react-dom: 19.1.0(react@19.1.0)
 
   react@19.1.0: {}
+
+  reactotron-core-client@2.9.9:
+    dependencies:
+      reactotron-core-contract: 0.3.2
+
+  reactotron-core-contract@0.3.2: {}
+
+  reactotron-react-native@5.1.18(react-native@0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0)):
+    dependencies:
+      mitt: 3.0.1
+      react-native: 0.81.5(@babel/core@7.28.5)(@types/react@19.2.14)(react@19.1.0)
+      reactotron-core-client: 2.9.9
 
   read-binary-file-arch@1.0.6:
     dependencies:

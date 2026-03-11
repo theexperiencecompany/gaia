@@ -11,11 +11,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
+import { fetchUserInfo, startOAuthFlow } from "@/features/auth";
 import { useAuth } from "@/features/auth/hooks/use-auth";
-import {
-  fetchUserInfo,
-  startOAuthFlow,
-} from "@/features/auth";
 import {
   storeAuthToken,
   storeUserInfo,
@@ -62,7 +59,7 @@ export default function LoginScreen() {
   const logoContainerSize = moderateScale(72, 0.5);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
+    <View style={{ flex: 1, backgroundColor: "#060a14" }}>
       {/* Full Background Image */}
       <Image
         source={require("@/assets/background/login.webp")}

@@ -8,6 +8,7 @@ import type {
   WorkflowExecutionsListResponse,
   WorkflowListResponse,
   WorkflowResponse,
+  WorkflowStatusResponse,
 } from "../types/workflow-types";
 
 interface ListWorkflowsParams
@@ -115,5 +116,37 @@ export const workflowApi = {
 
   getPublicWorkflow: async (id: string): Promise<{ workflow: Workflow }> => {
     return apiService.get<{ workflow: Workflow }>(`/workflows/public/${id}`);
+  },
+
+  regenerateWorkflowSteps: async (
+    id: string,
+    options?: {
+      instruction?: string;
+      force_different_tools?: boolean;
+    },
+  ): Promise<WorkflowResponse> => {
+    return apiService.post<WorkflowResponse>(
+      `/workflows/${id}/regenerate-steps`,
+      {
+        instruction: options?.instruction || "Generate workflow steps",
+        force_different_tools: options?.force_different_tools ?? true,
+      },
+    );
+  },
+
+  publishWorkflow: async (
+    id: string,
+  ): Promise<{ message: string; workflow_id: string }> => {
+    return apiService.post<{ message: string; workflow_id: string }>(
+      `/workflows/${id}/publish`,
+    );
+  },
+
+  unpublishWorkflow: async (id: string): Promise<{ message: string }> => {
+    return apiService.post<{ message: string }>(`/workflows/${id}/unpublish`);
+  },
+
+  getWorkflowStatus: async (id: string): Promise<WorkflowStatusResponse> => {
+    return apiService.get<WorkflowStatusResponse>(`/workflows/${id}/status`);
   },
 };

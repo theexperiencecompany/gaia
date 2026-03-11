@@ -1,0 +1,401 @@
+import {
+  BottomSheetBackdrop,
+  type BottomSheetBackdropProps,
+  BottomSheetFlatList,
+  BottomSheetModal,
+  BottomSheetTextInput,
+} from "@gorhom/bottom-sheet";
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useImperativeHandle,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import {
+  Cancel01Icon,
+  HugeiconsIcon,
+  Search01Icon,
+  Wrench01Icon,
+} from "@/components/icons";
+import { Text } from "@/components/ui/text";
+import { apiService } from "@/lib/api";
+import { useResponsive } from "@/lib/responsive";
+
+interface ToolInfo {
+  name: string;
+  category: string;
+  display_name: string;
+  icon_url?: string;
+  requires_integration: boolean;
+}
+
+interface ToolsListResponse {
+  tools: ToolInfo[];
+  total_count: number;
+  categories: string[];
+}
+
+export interface SlashCommandSheetRef {
+  open: () => void;
+  close: () => void;
+}
+
+interface SlashCommandSheetProps {
+  onSelectTool: (toolName: string, toolCategory: string) => void;
+}
+
+function formatToolName(name: string): string {
+  return name
+    .toLowerCase()
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ")
+    .replace(/\s+tool$/i, "")
+    .trim();
+}
+
+function formatCategoryName(category: string): string {
+  return category
+    .split("_")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+export const SlashCommandSheet = forwardRef<
+  SlashCommandSheetRef,
+  SlashCommandSheetProps
+>(({ onSelectTool }, ref) => {
+  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [tools, setTools] = useState<ToolInfo[]>([]);
+  const [categories, setCategories] = useState<string[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
+  const { spacing, fontSize, iconSize } = useResponsive();
+
+  const snapPoints = useMemo(() => ["60%", "85%"], []);
+
+  useImperativeHandle(ref, () => ({
+    open: () => {
+      bottomSheetRef.current?.present();
+      if (!hasLoaded) {
+        loadTools();
+      }
+    },
+    close: () => {
+      bottomSheetRef.current?.dismiss();
+    },
+  }));
+
+  const loadTools = async () => {
+    setIsLoading(true);
+    try {
+      const data = await apiService.get<ToolsListResponse>("/tools");
+      setTools(data.tools);
+      setCategories(data.categories);
+      setHasLoaded(true);
+    } catch (error) {
+      console.error("Failed to load tools:", error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!hasLoaded) return;
+    // Reset search when sheet reopens
+    setSearchQuery("");
+    setSelectedCategory("all");
+  }, [hasLoaded]);
+
+  const filteredTools = useMemo(() => {
+    let filtered = tools;
+
+    if (selectedCategory !== "all") {
+      filtered = filtered.filter((tool) => tool.category === selectedCategory);
+    }
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = filtered.filter(
+        (tool) =>
+          formatToolName(tool.name).toLowerCase().includes(query) ||
+          tool.category.toLowerCase().includes(query) ||
+          tool.display_name?.toLowerCase().includes(query),
+      );
+    }
+
+    return filtered;
+  }, [tools, selectedCategory, searchQuery]);
+
+  const handleSelect = useCallback(
+    (tool: ToolInfo) => {
+      onSelectTool(tool.name, tool.category);
+      bottomSheetRef.current?.dismiss();
+      setSearchQuery("");
+    },
+    [onSelectTool],
+  );
+
+  const renderBackdrop = useCallback(
+    (props: BottomSheetBackdropProps) => (
+      <BottomSheetBackdrop
+        {...props}
+        disappearsOnIndex={-1}
+        appearsOnIndex={0}
+        opacity={0.5}
+      />
+    ),
+    [],
+  );
+
+  const renderToolItem = useCallback(
+    ({ item }: { item: ToolInfo }) => (
+      <Pressable
+        onPress={() => handleSelect(item)}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.sm + 2,
+          marginHorizontal: spacing.sm,
+          borderRadius: 12,
+        }}
+        android_ripple={{ color: "rgba(255,255,255,0.08)" }}
+      >
+        <View
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            backgroundColor: "#27272a",
+            alignItems: "center",
+            justifyContent: "center",
+            marginRight: spacing.sm,
+          }}
+        >
+          <HugeiconsIcon
+            icon={Wrench01Icon}
+            size={iconSize.sm}
+            color="#a1a1aa"
+          />
+        </View>
+
+        <View style={{ flex: 1, marginRight: spacing.sm }}>
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              color: "#e4e4e7",
+              fontWeight: "400",
+            }}
+            numberOfLines={1}
+          >
+            {formatToolName(item.name)}
+          </Text>
+        </View>
+
+        <View
+          style={{
+            backgroundColor: "#27272a",
+            paddingHorizontal: spacing.sm,
+            paddingVertical: 2,
+            borderRadius: 10,
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.06)",
+          }}
+        >
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              color: "#71717a",
+            }}
+            numberOfLines={1}
+          >
+            {formatCategoryName(item.display_name || item.category)}
+          </Text>
+        </View>
+      </Pressable>
+    ),
+    [handleSelect, spacing, fontSize, iconSize],
+  );
+
+  const allCategories = useMemo(() => ["all", ...categories], [categories]);
+
+  return (
+    <BottomSheetModal
+      ref={bottomSheetRef}
+      snapPoints={snapPoints}
+      enableDynamicSizing={false}
+      enablePanDownToClose
+      backdropComponent={renderBackdrop}
+      backgroundStyle={{ backgroundColor: "#141414" }}
+      handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
+      keyboardBehavior="interactive"
+      keyboardBlurBehavior="restore"
+    >
+      {/* Header */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          paddingHorizontal: spacing.md,
+          paddingBottom: spacing.sm,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: fontSize.lg,
+            fontWeight: "600",
+            color: "#ffffff",
+          }}
+        >
+          Tools
+        </Text>
+        <Pressable
+          onPress={() => bottomSheetRef.current?.dismiss()}
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: "rgba(142,142,147,0.1)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <HugeiconsIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
+        </Pressable>
+      </View>
+
+      {/* Search */}
+      <View
+        style={{
+          paddingHorizontal: spacing.md,
+          paddingBottom: spacing.sm,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            borderRadius: 12,
+            paddingHorizontal: spacing.sm + 2,
+            paddingVertical: spacing.sm,
+            backgroundColor: "rgba(142,142,147,0.1)",
+          }}
+        >
+          <HugeiconsIcon icon={Search01Icon} size={18} color="#8e8e93" />
+          <BottomSheetTextInput
+            style={{
+              flex: 1,
+              marginLeft: spacing.sm,
+              color: "#ffffff",
+              fontSize: fontSize.sm,
+              padding: 0,
+            }}
+            placeholder="Search tools..."
+            placeholderTextColor="#6b6b6b"
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+        </View>
+      </View>
+
+      {/* Category tabs */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={{ maxHeight: 44, paddingBottom: spacing.sm }}
+        contentContainerStyle={{
+          paddingHorizontal: spacing.md,
+          gap: spacing.xs,
+        }}
+      >
+        {allCategories.map((category) => {
+          const isActive = selectedCategory === category;
+          return (
+            <Pressable
+              key={category}
+              onPress={() => setSelectedCategory(category)}
+              style={{
+                paddingHorizontal: spacing.sm + 2,
+                paddingVertical: spacing.xs + 2,
+                borderRadius: 12,
+                backgroundColor: isActive
+                  ? "rgba(63,63,70,0.5)"
+                  : "transparent",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: fontSize.xs,
+                  fontWeight: "500",
+                  color: isActive ? "#ffffff" : "#71717a",
+                }}
+                numberOfLines={1}
+              >
+                {category === "all" ? "All" : formatCategoryName(category)}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      {/* Tool list */}
+      {isLoading ? (
+        <View
+          style={{
+            flex: 1,
+            alignItems: "center",
+            justifyContent: "center",
+            paddingVertical: 32,
+          }}
+        >
+          <ActivityIndicator size="large" color="#8e8e93" />
+          <Text
+            style={{
+              color: "#6b6b6b",
+              fontSize: fontSize.sm,
+              marginTop: spacing.sm,
+            }}
+          >
+            Loading tools...
+          </Text>
+        </View>
+      ) : (
+        <BottomSheetFlatList
+          data={filteredTools}
+          keyExtractor={(item: ToolInfo) => item.name}
+          renderItem={renderToolItem}
+          contentContainerStyle={{ paddingBottom: 24, paddingTop: spacing.xs }}
+          showsVerticalScrollIndicator={false}
+          ListEmptyComponent={
+            <View
+              style={{
+                alignItems: "center",
+                justifyContent: "center",
+                paddingVertical: 32,
+              }}
+            >
+              <Text
+                style={{
+                  color: "#6b6b6b",
+                  fontSize: fontSize.sm,
+                }}
+              >
+                No tools found
+              </Text>
+            </View>
+          }
+        />
+      )}
+    </BottomSheetModal>
+  );
+});
+
+SlashCommandSheet.displayName = "SlashCommandSheet";

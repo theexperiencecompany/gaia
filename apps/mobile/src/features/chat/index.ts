@@ -8,7 +8,6 @@ export * from "@/features/chat/components/chat/chat-input";
 export * from "@/features/chat/components/chat/chat-message";
 export * from "@/features/chat/components/chat/chat-screen-content";
 export * from "@/features/chat/components/chat/email-accordion";
-export * from "@/features/chat/components/chat/email-compose-card";
 export * from "@/features/chat/components/chat-layout";
 export * from "@/features/chat/components/sidebar/sidebar";
 

@@ -1,13 +1,20 @@
 import { useRouter } from "expo-router";
 import { Avatar } from "heroui-native";
 import { ActivityIndicator, Pressable, View } from "react-native";
-import { ArrowDown01Icon, HugeiconsIcon } from "@/components/icons";
+import {
+  AppIcon,
+  Flowchart01Icon,
+  Logout01Icon,
+  Notification01Icon,
+  Settings02Icon,
+  Wrench01Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth";
 import { useResponsive } from "@/lib/responsive";
 
 export function SidebarFooter() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, signOut } = useAuth();
   const router = useRouter();
   const { spacing, fontSize, iconSize } = useResponsive();
 
@@ -20,9 +27,28 @@ export function SidebarFooter() {
     return name[0].toUpperCase();
   };
 
-  const handleOpenSettings = () => {
-    router.push("/(app)/settings");
-  };
+  const navItems = [
+    {
+      icon: Settings02Icon,
+      label: "Settings",
+      onPress: () => router.push("/(app)/settings"),
+    },
+    {
+      icon: Wrench01Icon,
+      label: "Integrations",
+      onPress: () => router.push("/(app)/(tabs)/integrations"),
+    },
+    {
+      icon: Flowchart01Icon,
+      label: "Workflows",
+      onPress: () => router.push("/(app)/(tabs)/workflows"),
+    },
+    {
+      icon: Notification01Icon,
+      label: "Notifications",
+      onPress: () => router.push("/(app)/(tabs)/notifications"),
+    },
+  ];
 
   const profilePicture = user?.picture;
 
@@ -31,7 +57,7 @@ export function SidebarFooter() {
       <View
         style={{
           borderTopWidth: 1,
-          borderTopColor: "rgba(255,255,255,0.1)",
+          borderTopColor: "rgba(255,255,255,0.06)",
           paddingVertical: spacing.sm,
         }}
       >
@@ -52,19 +78,60 @@ export function SidebarFooter() {
     <View
       style={{
         borderTopWidth: 1,
-        borderTopColor: "rgba(255,255,255,0.1)",
-        paddingVertical: spacing.md,
+        borderTopColor: "rgba(255,255,255,0.06)",
       }}
     >
-      <Pressable
+      <View
         style={{
+          flexDirection: "row",
+          flexWrap: "wrap",
+          paddingHorizontal: spacing.md,
+          paddingTop: spacing.sm + 2,
+          paddingBottom: spacing.xs,
+          gap: 2,
+        }}
+      >
+        {navItems.map((item) => (
+          <Pressable
+            key={item.label}
+            onPress={item.onPress}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              paddingHorizontal: spacing.sm,
+              paddingVertical: spacing.xs + 2,
+              borderRadius: 6,
+              gap: 4,
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <HugeiconsIcon
+              icon={item.icon}
+              size={iconSize.sm - 2}
+              color="#52525b"
+            />
+            <Text
+              style={{
+                fontSize: fontSize.xs - 1,
+                color: "#52525b",
+              }}
+            >
+              {item.label}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+
+      <Pressable
+        style={({ pressed }) => ({
           flexDirection: "row",
           alignItems: "center",
           paddingHorizontal: spacing.md,
           paddingVertical: spacing.sm,
-          gap: spacing.md,
-        }}
-        onPress={handleOpenSettings}
+          gap: spacing.sm + 2,
+          opacity: pressed ? 0.7 : 1,
+        })}
+        onPress={() => router.push("/(app)/settings")}
       >
         <Avatar alt={user?.name || "User"} size="sm" color="accent">
           {profilePicture ? (
@@ -83,20 +150,29 @@ export function SidebarFooter() {
           <Text
             style={{
               fontSize: fontSize.xs - 1,
-              color: "#8e8e93",
+              color: "#52525b",
               textTransform: "uppercase",
-              fontWeight: "bold",
-              letterSpacing: 1.5,
+              fontWeight: "600",
+              letterSpacing: 1,
             }}
           >
             GAIA Free
           </Text>
         </View>
-        <HugeiconsIcon
-          icon={ArrowDown01Icon}
-          size={iconSize.sm}
-          color="#8e8e93"
-        />
+        <Pressable
+          onPress={signOut}
+          style={({ pressed }) => ({
+            padding: spacing.xs + 2,
+            opacity: pressed ? 0.6 : 1,
+          })}
+          hitSlop={8}
+        >
+          <HugeiconsIcon
+            icon={Logout01Icon}
+            size={iconSize.sm}
+            color="#ef4444"
+          />
+        </Pressable>
       </Pressable>
     </View>
   );

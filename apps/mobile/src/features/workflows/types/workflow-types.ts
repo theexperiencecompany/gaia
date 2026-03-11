@@ -119,6 +119,7 @@ export interface WorkflowExecutionResponse {
 export interface WorkflowExecutionsListResponse {
   executions: WorkflowExecution[];
   total: number;
+  has_more: boolean;
 }
 
 export interface CommunityWorkflowsResponse {
@@ -143,4 +144,12 @@ export interface UpdateWorkflowPayload {
   prompt?: string;
   trigger_config?: Partial<TriggerConfig>;
   steps?: WorkflowStep[];
+}
+
+export interface WorkflowStatusResponse {
+  workflow_id: string;
+  status: string;
+  activated: boolean;
+  last_execution_at?: string;
+  next_run?: string;
 }

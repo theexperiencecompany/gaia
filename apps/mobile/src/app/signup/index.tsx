@@ -12,11 +12,8 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Text } from "@/components/ui/text";
+import { fetchUserInfo, startOAuthFlow } from "@/features/auth";
 import { useAuth } from "@/features/auth/hooks/use-auth";
-import {
-  fetchUserInfo,
-  startOAuthFlow,
-} from "@/features/auth";
 import {
   storeAuthToken,
   storeUserInfo,
@@ -137,7 +134,14 @@ export default function SignUpScreen() {
             {/* Sign Up Form */}
             <View style={{ width: "100%" }}>
               {/* Google Button */}
-              <Button size="lg" variant="ghost" isDisabled={isLoading} onPress={() => { void handleGoogleSignUp(); }}>
+              <Button
+                size="lg"
+                variant="ghost"
+                isDisabled={isLoading}
+                onPress={() => {
+                  void handleGoogleSignUp();
+                }}
+              >
                 {isLoading ? (
                   <ActivityIndicator colorClassName="accent-black" />
                 ) : (

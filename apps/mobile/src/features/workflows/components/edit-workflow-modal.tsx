@@ -203,11 +203,11 @@ export function EditWorkflowModal({
                     paddingHorizontal: spacing.sm,
                     alignItems: "center",
                     backgroundColor: isActive
-                      ? "rgba(22,193,255,0.15)"
+                      ? "rgba(0,187,255,0.15)"
                       : "#1c1c1e",
                     borderWidth: 1,
                     borderColor: isActive
-                      ? "rgba(22,193,255,0.4)"
+                      ? "rgba(0,187,255,0.4)"
                       : "transparent",
                   }}
                 >
@@ -270,7 +270,7 @@ export function EditWorkflowModal({
               borderRadius: moderateScale(12, 0.5),
               paddingVertical: spacing.md,
               alignItems: "center",
-              backgroundColor: canSubmit && !isUpdating ? "#16c1ff" : "#333",
+              backgroundColor: canSubmit && !isUpdating ? "#00bbff" : "#333",
             }}
           >
             {isUpdating ? (

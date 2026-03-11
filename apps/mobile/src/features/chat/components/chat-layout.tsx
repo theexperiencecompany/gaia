@@ -7,7 +7,9 @@ import DrawerLayout, {
   DrawerType,
 } from "react-native-gesture-handler/ReanimatedDrawerLayout";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { chatApi } from "@/features/chat/api/chat-api";
 import { useResponsive } from "@/lib/responsive";
+import { useChatStore } from "@/stores/chat-store";
 import { useSidebar } from "../hooks/sidebar-context";
 import { useChatContext } from "../hooks/use-chat-context";
 import { ChatHeader } from "./chat/chat-header";
@@ -24,6 +26,23 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
   const { sidebarWidth } = useResponsive();
   const router = useRouter();
 
+  const activeChatId = useChatStore((state) => state.activeChatId);
+  const conversations = useChatStore((state) => state.conversations);
+  const updateConversationTitle = useChatStore(
+    (state) => state.updateConversationTitle,
+  );
+  const removeConversation = useChatStore((state) => state.removeConversation);
+  const updateConversationStarred = useChatStore(
+    (state) => state.updateConversationStarred,
+  );
+
+  const activeConversation = activeChatId
+    ? conversations.find((c) => c.id === activeChatId)
+    : null;
+
+  const conversationTitle = activeConversation?.title ?? null;
+  const isStarred = activeConversation?.is_starred ?? false;
+
   const handleSelectChat = useCallback(
     (chatId: string) => {
       closeSidebar();
@@ -36,8 +55,39 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
     closeSidebar();
     clearActiveMessages();
     setActiveChatId(null);
-    router.replace("/(app)/index");
+    router.replace("/(app)/(tabs)/");
   }, [closeSidebar, clearActiveMessages, router, setActiveChatId]);
+
+  const handleRename = useCallback(
+    (newTitle: string) => {
+      if (!activeChatId) return;
+      updateConversationTitle(activeChatId, newTitle);
+      void chatApi.renameConversation(activeChatId, newTitle);
+    },
+    [activeChatId, updateConversationTitle],
+  );
+
+  const handleDelete = useCallback(() => {
+    if (!activeChatId) return;
+    removeConversation(activeChatId);
+    void chatApi.deleteConversation(activeChatId);
+    clearActiveMessages();
+    setActiveChatId(null);
+    router.replace("/(app)/(tabs)/");
+  }, [
+    activeChatId,
+    removeConversation,
+    clearActiveMessages,
+    setActiveChatId,
+    router,
+  ]);
+
+  const handleStar = useCallback(() => {
+    if (!activeChatId) return;
+    const newStarred = !isStarred;
+    updateConversationStarred(activeChatId, newStarred);
+    void chatApi.toggleStarConversation(activeChatId, newStarred);
+  }, [activeChatId, isStarred, updateConversationStarred]);
 
   const renderDrawerContent = useCallback(
     () => (
@@ -81,7 +131,11 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
             <ChatHeader
               onMenuPress={toggleSidebar}
               onNewChatPress={handleNewChat}
-              onSearchPress={() => {}}
+              conversationTitle={conversationTitle ?? undefined}
+              isStarred={isStarred}
+              onStarPress={handleStar}
+              onRenamePress={handleRename}
+              onDeletePress={handleDelete}
             />
 
             {/* This must be flex:1 so KeyboardAvoidingView can resize */}

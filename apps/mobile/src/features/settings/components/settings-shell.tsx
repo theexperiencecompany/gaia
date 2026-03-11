@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { Pressable, ScrollView, View } from "react-native";
-import { ArrowLeft01Icon, HugeiconsIcon } from "@/components/icons";
+import { AppIcon, ArrowLeft01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 

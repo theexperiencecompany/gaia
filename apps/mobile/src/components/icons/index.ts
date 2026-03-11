@@ -1,21 +1,158 @@
 /**
- * Hugeicons Icon Exports
+ * Icon exports
  *
- * Easy import pattern for Hugeicons in the project
- * Usage: import { Send01Icon, PlusSignIcon, HugeiconsIcon } from '@/assets/icons'
+ * All icons come from @theexperiencecompany/gaia-icons (same package as web).
+ * Metro's JSX runtime shim transparently maps SVG elements to react-native-svg
+ * so these components render correctly on React Native — no build step needed.
  *
- * Browse icons at: https://hugeicons.com/icons
+ * Usage:
+ *   import { ArrowLeft01Icon, Brain02Icon } from "@/components/icons"
+ *   import { ArrowLeft01Icon } from "@icons"
+ *
+ * Any of the 5253 icons from the package can be added here as needed.
  */
 
-// Export commonly used icons from the free package
-export * from "@hugeicons/core-free-icons";
-// Export the HugeiconsIcon wrapper component
-export { HugeiconsIcon } from "@hugeicons/react-native";
-
-/**
- * To add more icons:
- * 1. Visit https://hugeicons.com/icons
- * 2. Find the icon you need
- * 3. Add it to the export list above
- * 4. Import it in your component: import { IconName } from '@/assets/icons'
- */
+export {
+  Add01Icon,
+  AiChipIcon,
+  AlarmClockIcon,
+  Alert01Icon,
+  AlertCircleIcon,
+  Analytics01Icon,
+  ArrowDown01Icon,
+  ArrowDown02Icon,
+  ArrowDownIcon,
+  ArrowLeft01Icon,
+  ArrowRight01Icon,
+  ArrowUp01Icon,
+  ArrowUp02Icon,
+  ArrowUpRight01Icon,
+  BarChartIcon,
+  BodyPartMuscleIcon,
+  BookOpen01Icon,
+  Brain02Icon,
+  BrainIcon,
+  BubbleChatAddIcon,
+  BubbleChatIcon,
+  Calendar03Icon,
+  Call02Icon,
+  Camera01Icon,
+  Cancel01Icon,
+  ChartLineData01Icon,
+  ChartLineData02Icon,
+  ChartRingIcon,
+  CheckListIcon,
+  CheckmarkCircle01Icon,
+  CheckmarkCircle02Icon,
+  CheckmarkSquare03Icon,
+  Clock01Icon,
+  Clock04Icon,
+  CloudAngledRainIcon,
+  CloudAngledZapIcon,
+  CloudFastWindIcon,
+  CloudIcon,
+  CloudLittleRainIcon,
+  CloudSnowIcon,
+  CodeIcon,
+  Comment01Icon,
+  ComputerTerminal01Icon,
+  ConnectIcon,
+  Contact01Icon,
+  Copy01Icon,
+  CpuIcon,
+  CreditCardIcon,
+  CustomerSupportIcon,
+  Delete01Icon,
+  Delete02Icon,
+  DiscordIcon,
+  DocumentAttachmentIcon,
+  Download02Icon,
+  Download04Icon,
+  DropletIcon,
+  Edit02Icon,
+  FastWindIcon,
+  FavouriteIcon,
+  File01Icon,
+  FileEmpty02Icon,
+  Flag02Icon,
+  FlashIcon,
+  FlowCircleIcon,
+  Flowchart01Icon,
+  FlowIcon,
+  Folder02Icon,
+  FolderFileStorageIcon,
+  FolderIcon,
+  Globe02Icon,
+  GlobeIcon,
+  HelpCircleIcon,
+  Image01Icon,
+  Image02Icon,
+  InformationCircleIcon,
+  KeyboardIcon,
+  LayoutGridIcon,
+  LinkBackwardIcon,
+  LinkSquare01Icon,
+  LinkSquare02Icon,
+  Loading03Icon,
+  Location01Icon,
+  Logout01Icon,
+  MagicWand01Icon,
+  Mail01Icon,
+  MailOpen01Icon,
+  MailSend01Icon,
+  Menu01Icon,
+  Message01Icon,
+  MessageMultiple01Icon,
+  News01Icon,
+  Notification01Icon,
+  Notification02Icon,
+  NotificationIcon,
+  PackageOpenIcon,
+  PencilEdit01Icon,
+  PencilEdit02Icon,
+  PieChart01Icon,
+  Pin02Icon,
+  PlayIcon,
+  PlusSignIcon,
+  PuzzleIcon,
+  RepeatIcon,
+  Search01Icon,
+  SentIcon,
+  Settings01Icon,
+  Settings02Icon,
+  Share01Icon,
+  Share08Icon,
+  ShieldUserIcon,
+  SourceCodeCircleIcon,
+  SquareArrowUpRight02Icon,
+  Sun03Icon,
+  SunriseIcon,
+  SunsetIcon,
+  Tag01Icon,
+  Target02Icon,
+  TaskDailyIcon,
+  TelegramIcon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
+  Tick02Icon,
+  ToggleOffIcon,
+  ToggleOnIcon,
+  ToolsIcon,
+  Tornado02Icon,
+  TranslationIcon,
+  TwitterIcon,
+  UploadCircle01Icon,
+  UserCircle02Icon,
+  UserCircleIcon,
+  UserGroupIcon,
+  UserIcon,
+  UserSearch01Icon,
+  WhatsappIcon,
+  WorkflowCircle06Icon,
+  WorkflowSquare10Icon,
+  Wrench01Icon,
+  ZapIcon,
+} from "@icons";
+export type { AnyIcon } from "./app-icon";
+// Universal icon component
+export { AppIcon } from "./app-icon";

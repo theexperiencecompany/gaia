@@ -17,18 +17,19 @@ import {
   ToggleOnIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { useResponsive } from "@/lib/responsive";
 import { useWorkflowActions } from "../hooks/use-workflow-actions";
-import type { Workflow } from "../types/workflow-types";
+import type { Workflow, WorkflowExecution } from "../types/workflow-types";
 import { EditWorkflowModal } from "./edit-workflow-modal";
 import { WorkflowExecutionHistory } from "./workflow-execution-history";
 
 interface WorkflowDetailScreenProps {
   workflowId: string;
   workflow: Workflow | null;
-  executions: ReturnType<
-    typeof import("../hooks/use-workflow-detail").useWorkflowDetail
-  >["executions"];
+  executions: WorkflowExecution[];
+  executionsTotal?: number;
+  hasMoreExecutions?: boolean;
   isLoading: boolean;
   isLoadingExecutions: boolean;
   error: string | null;
@@ -36,11 +37,14 @@ interface WorkflowDetailScreenProps {
   onDeleted: () => void;
   onUpdated: (workflow: Workflow) => void;
   onActivationToggled: (workflow: Workflow) => void;
+  onLoadMoreExecutions?: () => void;
 }
 
 export function WorkflowDetailScreen({
   workflow,
   executions,
+  executionsTotal,
+  hasMoreExecutions,
   isLoading,
   isLoadingExecutions,
   error,
@@ -48,6 +52,7 @@ export function WorkflowDetailScreen({
   onDeleted,
   onUpdated,
   onActivationToggled,
+  onLoadMoreExecutions,
 }: WorkflowDetailScreenProps) {
   const { spacing, fontSize, moderateScale } = useResponsive();
   const {
@@ -61,6 +66,7 @@ export function WorkflowDetailScreen({
   } = useWorkflowActions();
   const [showEdit, setShowEdit] = useState(false);
   const [executeStatus, setExecuteStatus] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState<"steps" | "history">("steps");
 
   const handleToggle = useCallback(async () => {
     if (!workflow) return;
@@ -96,22 +102,54 @@ export function WorkflowDetailScreen({
     );
   }, [workflow, deleteWorkflow, onDeleted]);
 
-  if (isLoading) {
-    return (
-      <View style={{ flex: 1, backgroundColor: "#0b0c0f" }}>
-        <View
+  // Shared back button header
+  const renderHeaderBar = (title?: string) => (
+    <View
+      style={{
+        paddingTop: spacing.xl * 2,
+        paddingHorizontal: spacing.md,
+        paddingBottom: spacing.md,
+        borderBottomWidth: 1,
+        borderBottomColor: "rgba(255,255,255,0.08)",
+        flexDirection: "row",
+        alignItems: "center",
+        gap: spacing.sm,
+      }}
+    >
+      <Pressable
+        onPress={onBack}
+        style={{
+          width: 36,
+          height: 36,
+          borderRadius: 999,
+          alignItems: "center",
+          justifyContent: "center",
+          backgroundColor: "rgba(255,255,255,0.05)",
+        }}
+      >
+        <HugeiconsIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
+      </Pressable>
+
+      {title ? (
+        <Text
           style={{
-            paddingTop: spacing.xl * 2,
-            paddingHorizontal: spacing.md,
-            paddingBottom: spacing.md,
-            borderBottomWidth: 1,
-            borderBottomColor: "rgba(255,255,255,0.08)",
-            flexDirection: "row",
-            alignItems: "center",
+            fontSize: fontSize.base,
+            fontWeight: "600",
+            color: "#fff",
+            flex: 1,
           }}
+          numberOfLines={1}
         >
+          {title}
+        </Text>
+      ) : (
+        <View style={{ flex: 1 }} />
+      )}
+
+      {workflow && (
+        <>
           <Pressable
-            onPress={onBack}
+            onPress={() => setShowEdit(true)}
             style={{
               width: 36,
               height: 36,
@@ -121,13 +159,40 @@ export function WorkflowDetailScreen({
               backgroundColor: "rgba(255,255,255,0.05)",
             }}
           >
-            <HugeiconsIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
+            <HugeiconsIcon icon={Edit02Icon} size={16} color="#aaa" />
           </Pressable>
-        </View>
+
+          <Pressable
+            onPress={handleDelete}
+            disabled={isDeleting}
+            style={{
+              width: 36,
+              height: 36,
+              borderRadius: 999,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(239,68,68,0.12)",
+            }}
+          >
+            {isDeleting ? (
+              <ActivityIndicator size="small" color="#ef4444" />
+            ) : (
+              <HugeiconsIcon icon={Delete01Icon} size={16} color="#ef4444" />
+            )}
+          </Pressable>
+        </>
+      )}
+    </View>
+  );
+
+  if (isLoading) {
+    return (
+      <View style={{ flex: 1, backgroundColor: "#131416" }}>
+        {renderHeaderBar()}
         <View
           style={{ flex: 1, alignItems: "center", justifyContent: "center" }}
         >
-          <ActivityIndicator size="large" color="#16c1ff" />
+          <ActivityIndicator size="large" color="#00bbff" />
         </View>
       </View>
     );
@@ -135,32 +200,8 @@ export function WorkflowDetailScreen({
 
   if (error || !workflow) {
     return (
-      <View style={{ flex: 1, backgroundColor: "#0b0c0f" }}>
-        <View
-          style={{
-            paddingTop: spacing.xl * 2,
-            paddingHorizontal: spacing.md,
-            paddingBottom: spacing.md,
-            borderBottomWidth: 1,
-            borderBottomColor: "rgba(255,255,255,0.08)",
-            flexDirection: "row",
-            alignItems: "center",
-          }}
-        >
-          <Pressable
-            onPress={onBack}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <HugeiconsIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-          </Pressable>
-        </View>
+      <View style={{ flex: 1, backgroundColor: "#131416" }}>
+        {renderHeaderBar()}
         <View
           style={{
             flex: 1,
@@ -184,79 +225,8 @@ export function WorkflowDetailScreen({
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0b0c0f" }}>
-      {/* Header */}
-      <View
-        style={{
-          paddingTop: spacing.xl * 2,
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.md,
-          borderBottomWidth: 1,
-          borderBottomColor: "rgba(255,255,255,0.08)",
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.sm,
-        }}
-      >
-        <Pressable
-          onPress={onBack}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <HugeiconsIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-        </Pressable>
-
-        <Text
-          style={{
-            fontSize: fontSize.base,
-            fontWeight: "600",
-            color: "#fff",
-            flex: 1,
-          }}
-          numberOfLines={1}
-        >
-          {workflow.title}
-        </Text>
-
-        <Pressable
-          onPress={() => setShowEdit(true)}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(255,255,255,0.05)",
-          }}
-        >
-          <HugeiconsIcon icon={Edit02Icon} size={16} color="#aaa" />
-        </Pressable>
-
-        <Pressable
-          onPress={handleDelete}
-          disabled={isDeleting}
-          style={{
-            width: 36,
-            height: 36,
-            borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: "rgba(239,68,68,0.12)",
-          }}
-        >
-          {isDeleting ? (
-            <ActivityIndicator size="small" color="#ef4444" />
-          ) : (
-            <HugeiconsIcon icon={Delete01Icon} size={16} color="#ef4444" />
-          )}
-        </Pressable>
-      </View>
+    <View style={{ flex: 1, backgroundColor: "#131416" }}>
+      {renderHeaderBar(workflow.title)}
 
       <ScrollView
         contentContainerStyle={{
@@ -265,13 +235,13 @@ export function WorkflowDetailScreen({
           paddingBottom: 40,
         }}
       >
-        {/* Status + identity */}
+        {/* Identity card */}
         <View
           style={{
             borderRadius: moderateScale(16, 0.5),
             borderWidth: 1,
             borderColor: "rgba(255,255,255,0.08)",
-            backgroundColor: "#14171c",
+            backgroundColor: "#171920",
             padding: spacing.md,
             gap: spacing.md,
           }}
@@ -285,15 +255,15 @@ export function WorkflowDetailScreen({
           >
             <View
               style={{
-                width: 40,
-                height: 40,
+                width: 44,
+                height: 44,
                 borderRadius: 12,
-                backgroundColor: "rgba(22,193,255,0.12)",
+                backgroundColor: "rgba(0,187,255,0.12)",
                 alignItems: "center",
                 justifyContent: "center",
               }}
             >
-              <HugeiconsIcon icon={FlowCircleIcon} size={22} color="#16c1ff" />
+              <HugeiconsIcon icon={FlowCircleIcon} size={24} color="#00bbff" />
             </View>
             <View style={{ flex: 1 }}>
               <Text
@@ -309,8 +279,9 @@ export function WorkflowDetailScreen({
                 <Text
                   style={{
                     fontSize: fontSize.xs,
-                    color: "#8a9099",
+                    color: "#8e8e93",
                     marginTop: 2,
+                    lineHeight: 16,
                   }}
                 >
                   {workflow.description}
@@ -319,18 +290,21 @@ export function WorkflowDetailScreen({
             </View>
           </View>
 
-          <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          {/* Status chips */}
+          <View
+            style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}
+          >
             <View
               style={{
                 borderRadius: 999,
                 paddingHorizontal: spacing.sm,
-                paddingVertical: 3,
+                paddingVertical: 4,
                 backgroundColor: workflow.activated
-                  ? "rgba(22,193,255,0.15)"
+                  ? "rgba(0,187,255,0.15)"
                   : "rgba(255,255,255,0.07)",
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 4,
+                gap: 5,
               }}
             >
               <View
@@ -338,13 +312,13 @@ export function WorkflowDetailScreen({
                   width: 6,
                   height: 6,
                   borderRadius: 999,
-                  backgroundColor: workflow.activated ? "#16c1ff" : "#555",
+                  backgroundColor: workflow.activated ? "#00bbff" : "#555",
                 }}
               />
               <Text
                 style={{
                   fontSize: fontSize.xs - 1,
-                  color: workflow.activated ? "#9fe6ff" : "#666",
+                  color: workflow.activated ? "#7de4ff" : "#666",
                 }}
               >
                 {workflow.activated ? "Active" : "Inactive"}
@@ -354,24 +328,33 @@ export function WorkflowDetailScreen({
               style={{
                 borderRadius: 999,
                 paddingHorizontal: spacing.sm,
-                paddingVertical: 3,
+                paddingVertical: 4,
                 backgroundColor: "rgba(255,255,255,0.07)",
               }}
             >
-              <Text style={{ fontSize: fontSize.xs - 1, color: "#666" }}>
+              <Text style={{ fontSize: fontSize.xs - 1, color: "#8e8e93" }}>
                 {workflow.trigger_config?.type ?? "manual"}
               </Text>
             </View>
+            {workflow.is_system_workflow && (
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: spacing.sm,
+                  paddingVertical: 4,
+                  backgroundColor: "rgba(0,187,255,0.12)",
+                }}
+              >
+                <Text style={{ fontSize: fontSize.xs - 1, color: "#00bbff" }}>
+                  System
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* Actions */}
-        <View
-          style={{
-            flexDirection: "row",
-            gap: spacing.sm,
-          }}
-        >
+        {/* Action buttons */}
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
           <Pressable
             onPress={() => {
               void handleToggle();
@@ -386,26 +369,26 @@ export function WorkflowDetailScreen({
               flexDirection: "row",
               gap: spacing.xs,
               backgroundColor: workflow.activated
-                ? "rgba(22,193,255,0.15)"
+                ? "rgba(0,187,255,0.15)"
                 : "rgba(255,255,255,0.07)",
             }}
           >
             {isActivating ? (
               <ActivityIndicator
                 size="small"
-                color={workflow.activated ? "#16c1ff" : "#aaa"}
+                color={workflow.activated ? "#00bbff" : "#aaa"}
               />
             ) : (
               <>
                 <HugeiconsIcon
                   icon={workflow.activated ? ToggleOnIcon : ToggleOffIcon}
                   size={16}
-                  color={workflow.activated ? "#16c1ff" : "#aaa"}
+                  color={workflow.activated ? "#00bbff" : "#aaa"}
                 />
                 <Text
                   style={{
                     fontSize: fontSize.sm,
-                    color: workflow.activated ? "#9fe6ff" : "#aaa",
+                    color: workflow.activated ? "#7de4ff" : "#aaa",
                   }}
                 >
                   {workflow.activated ? "Deactivate" : "Activate"}
@@ -455,13 +438,13 @@ export function WorkflowDetailScreen({
           </Text>
         ) : null}
 
-        {/* Prompt */}
+        {/* Prompt / Instructions */}
         {workflow.prompt ? (
           <View style={{ gap: spacing.sm }}>
             <Text
               style={{
                 fontSize: fontSize.xs,
-                color: "#8a9099",
+                color: "#8e8e93",
                 textTransform: "uppercase",
                 letterSpacing: 1.2,
               }}
@@ -471,8 +454,10 @@ export function WorkflowDetailScreen({
             <View
               style={{
                 borderRadius: moderateScale(12, 0.5),
-                backgroundColor: "#111318",
+                backgroundColor: "#171920",
                 padding: spacing.md,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.06)",
               }}
             >
               <Text
@@ -488,22 +473,82 @@ export function WorkflowDetailScreen({
           </View>
         ) : null}
 
-        {/* Execution history */}
-        <View style={{ gap: spacing.sm }}>
-          <Text
+        {/* Steps & History tabs */}
+        <View style={{ gap: spacing.md }}>
+          {/* Tab bar */}
+          <View
             style={{
-              fontSize: fontSize.xs,
-              color: "#8a9099",
-              textTransform: "uppercase",
-              letterSpacing: 1.2,
+              flexDirection: "row",
+              gap: spacing.xs,
+              backgroundColor: "rgba(255,255,255,0.04)",
+              borderRadius: moderateScale(12, 0.5),
+              padding: 4,
             }}
           >
-            Recent Runs
-          </Text>
-          <WorkflowExecutionHistory
-            executions={executions}
-            isLoading={isLoadingExecutions}
-          />
+            {(["steps", "history"] as const).map((tab) => (
+              <Pressable
+                key={tab}
+                onPress={() => setActiveTab(tab)}
+                style={{
+                  flex: 1,
+                  paddingVertical: 8,
+                  borderRadius: moderateScale(10, 0.5),
+                  alignItems: "center",
+                  backgroundColor:
+                    activeTab === tab ? "#171920" : "transparent",
+                }}
+              >
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.sm,
+                      fontWeight: activeTab === tab ? "600" : "400",
+                      color: activeTab === tab ? "#fff" : "#8e8e93",
+                    }}
+                  >
+                    {tab === "steps" ? "Steps" : "History"}
+                  </Text>
+                  {tab === "steps" && workflow.steps.length > 0 && (
+                    <View
+                      style={{
+                        borderRadius: 999,
+                        backgroundColor:
+                          activeTab === "steps"
+                            ? "rgba(0,187,255,0.2)"
+                            : "rgba(255,255,255,0.1)",
+                        paddingHorizontal: 6,
+                        paddingVertical: 1,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: fontSize.xs - 1,
+                          color: activeTab === "steps" ? "#00bbff" : "#8e8e93",
+                        }}
+                      >
+                        {workflow.steps.length}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </Pressable>
+            ))}
+          </View>
+
+          {/* Tab content */}
+          {activeTab === "steps" ? (
+            <WorkflowStepsList steps={workflow.steps} />
+          ) : (
+            <WorkflowExecutionHistory
+              executions={executions}
+              isLoading={isLoadingExecutions}
+              hasMore={hasMoreExecutions}
+              total={executionsTotal}
+              onLoadMore={onLoadMoreExecutions}
+            />
+          )}
         </View>
       </ScrollView>
 
@@ -516,6 +561,143 @@ export function WorkflowDetailScreen({
           onUpdated(updated);
         }}
       />
+    </View>
+  );
+}
+
+function WorkflowStepsList({ steps }: { steps: Workflow["steps"] }) {
+  const { spacing, fontSize } = useResponsive();
+
+  if (steps.length === 0) {
+    return (
+      <View
+        style={{
+          paddingVertical: spacing.xl,
+          alignItems: "center",
+          gap: spacing.sm,
+        }}
+      >
+        <Text style={{ fontSize: fontSize.sm, color: "#71717a" }}>
+          No steps generated yet
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={{ position: "relative", paddingBottom: spacing.lg }}>
+      {/* Timeline line */}
+      <View
+        style={{
+          position: "absolute",
+          left: 13,
+          top: 14,
+          bottom: 20,
+          width: 1,
+          backgroundColor: "rgba(0,187,255,0.4)",
+        }}
+      />
+
+      <View style={{ gap: spacing.xl }}>
+        {steps.map((step, index) => {
+          const categoryLabel =
+            step.category === "gaia"
+              ? "GAIA"
+              : step.category
+                  .replace(/_/g, " ")
+                  .replace(/\b\w/g, (c) => c.toUpperCase());
+          const iconElement = getToolCategoryIcon(step.category, {
+            size: 14,
+            showBackground: false,
+          });
+
+          return (
+            <View
+              key={step.id}
+              style={{
+                flexDirection: "row",
+                alignItems: "flex-start",
+                gap: spacing.md,
+              }}
+            >
+              {/* Step number dot */}
+              <View
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: 999,
+                  backgroundColor: "rgba(0,187,255,0.1)",
+                  borderWidth: 1,
+                  borderColor: "#00bbff",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 1,
+                  flexShrink: 0,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    fontWeight: "600",
+                    color: "#00bbff",
+                  }}
+                >
+                  {index + 1}
+                </Text>
+              </View>
+
+              {/* Step content */}
+              <View style={{ flex: 1, gap: spacing.xs, paddingTop: 4 }}>
+                {/* Category chip */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 5,
+                    alignSelf: "flex-start",
+                    borderRadius: 8,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  {iconElement}
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs - 1,
+                      color: "#8e8e93",
+                    }}
+                  >
+                    {categoryLabel}
+                  </Text>
+                </View>
+
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    fontWeight: "500",
+                    color: "#e4e4e7",
+                    lineHeight: 20,
+                  }}
+                >
+                  {step.title}
+                </Text>
+                {step.description ? (
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs,
+                      color: "#71717a",
+                      lineHeight: 16,
+                    }}
+                  >
+                    {step.description}
+                  </Text>
+                ) : null}
+              </View>
+            </View>
+          );
+        })}
+      </View>
     </View>
   );
 }

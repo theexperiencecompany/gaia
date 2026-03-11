@@ -29,29 +29,43 @@ export function NotificationConnectBanner() {
         borderRadius: moderateScale(14, 0.5),
         borderWidth: 1,
         borderColor: "rgba(255,255,255,0.08)",
-        backgroundColor: "#101318",
+        backgroundColor: "rgba(255,255,255,0.04)",
         padding: spacing.md,
         gap: spacing.sm,
       }}
     >
-      <Text style={{ fontSize: fontSize.sm, color: "#e8ebef" }}>
-        Connect your accounts to unlock richer notifications.
-      </Text>
-      <Text style={{ fontSize: fontSize.xs, color: "#8a9099" }}>
-        Link Telegram, Discord, or Slack from integrations.
-      </Text>
-      <Pressable
-        onPress={() => router.push("/(app)/integrations")}
+      <Text
         style={{
-          alignSelf: "flex-start",
-          borderRadius: 999,
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.xs,
-          backgroundColor: "rgba(22,193,255,0.18)",
+          fontSize: fontSize.sm,
+          fontWeight: "500",
+          color: "#e8ebef",
         }}
       >
-        <Text style={{ fontSize: fontSize.xs, color: "#9fe6ff" }}>
-          Open linked accounts
+        Stay notified on your devices
+      </Text>
+      <Text style={{ fontSize: fontSize.xs, color: "#8a9099" }}>
+        Connect Telegram and Discord to receive GAIA notifications outside the
+        app.
+      </Text>
+      <Pressable
+        onPress={() => router.push("/(app)/(tabs)/integrations")}
+        style={{
+          alignSelf: "flex-start",
+          borderRadius: 8,
+          paddingHorizontal: spacing.md,
+          paddingVertical: 6,
+          backgroundColor: "rgba(22,193,255,0.12)",
+          marginTop: 4,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: fontSize.xs,
+            color: "#16c1ff",
+            fontWeight: "500",
+          }}
+        >
+          Connect platforms
         </Text>
       </Pressable>
     </View>

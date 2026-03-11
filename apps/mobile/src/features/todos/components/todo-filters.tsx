@@ -1,0 +1,112 @@
+import { useRef } from "react";
+import { Pressable, ScrollView, View } from "react-native";
+import { Text } from "@/components/ui/text";
+import { useResponsive } from "@/lib/responsive";
+import type { FilterTab, TodoCounts } from "../types/todo-types";
+
+interface TodoFiltersProps {
+  activeFilter: FilterTab;
+  onFilterChange: (filter: FilterTab) => void;
+  counts: TodoCounts | null;
+}
+
+const FILTERS: {
+  key: FilterTab;
+  label: string;
+  countKey?: keyof TodoCounts;
+}[] = [
+  { key: "all", label: "All", countKey: "inbox" },
+  { key: "today", label: "Today", countKey: "today" },
+  { key: "upcoming", label: "Upcoming", countKey: "upcoming" },
+  { key: "completed", label: "Completed", countKey: "completed" },
+];
+
+export function TodoFilters({
+  activeFilter,
+  onFilterChange,
+  counts,
+}: TodoFiltersProps) {
+  const { spacing, fontSize } = useResponsive();
+  const scrollRef = useRef<ScrollView>(null);
+
+  return (
+    <View
+      style={{
+        paddingVertical: spacing.sm,
+        borderBottomWidth: 1,
+        borderBottomColor: "rgba(255,255,255,0.06)",
+      }}
+    >
+      <ScrollView
+        ref={scrollRef}
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: spacing.md,
+          gap: spacing.sm,
+          alignItems: "center",
+        }}
+      >
+        {FILTERS.map((filter) => {
+          const isActive = activeFilter === filter.key;
+          const count =
+            filter.countKey && counts ? counts[filter.countKey] : null;
+
+          return (
+            <Pressable
+              key={filter.key}
+              onPress={() => onFilterChange(filter.key)}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.xs + 2,
+                borderRadius: 999,
+                backgroundColor: isActive
+                  ? "rgba(22,193,255,0.15)"
+                  : "rgba(255,255,255,0.05)",
+                borderWidth: 1,
+                borderColor: isActive ? "rgba(22,193,255,0.3)" : "transparent",
+                gap: 5,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  fontWeight: isActive ? "600" : "400",
+                  color: isActive ? "#9fe6ff" : "#8e8e93",
+                }}
+              >
+                {filter.label}
+              </Text>
+              {count != null && count > 0 && (
+                <View
+                  style={{
+                    backgroundColor: isActive
+                      ? "rgba(22,193,255,0.25)"
+                      : "rgba(255,255,255,0.08)",
+                    borderRadius: 999,
+                    paddingHorizontal: 6,
+                    paddingVertical: 1,
+                    minWidth: 18,
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs - 1,
+                      fontWeight: "600",
+                      color: isActive ? "#9fe6ff" : "#71717a",
+                    }}
+                  >
+                    {count}
+                  </Text>
+                </View>
+              )}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+    </View>
+  );
+}

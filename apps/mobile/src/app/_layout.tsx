@@ -1,5 +1,7 @@
 import "../../global.css";
 import "react-native-gesture-handler";
+if (__DEV__) require("../lib/reactotron");
+
 import {
   Inter_400Regular,
   Inter_500Medium,
@@ -52,7 +54,9 @@ export default function RootLayout() {
     <QueryProvider>
       <AuthProvider>
         <ChatProvider>
-          <GestureHandlerRootView style={{ flex: 1, backgroundColor: "#000" }}>
+          <GestureHandlerRootView
+            style={{ flex: 1, backgroundColor: "#060a14" }}
+          >
             <HeroUINativeProvider>
               <BottomSheetModalProvider>
                 <Stack screenOptions={{ headerShown: false }}>
@@ -66,7 +70,7 @@ export default function RootLayout() {
                     options={{ headerShown: false }}
                   />
                 </Stack>
-                <StatusBar style="auto" />
+                <StatusBar style="light" />
               </BottomSheetModalProvider>
             </HeroUINativeProvider>
           </GestureHandlerRootView>

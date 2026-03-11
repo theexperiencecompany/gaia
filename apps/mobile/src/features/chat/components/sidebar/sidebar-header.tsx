@@ -1,27 +1,26 @@
 import { Button } from "heroui-native";
-import { Image, Text, TextInput, View } from "react-native";
+import { Image, Pressable, TextInput, View } from "react-native";
 import {
-  BubbleChatIcon,
-  Flowchart01Icon,
-  HugeiconsIcon,
+  AppIcon,
+  ArrowLeft01Icon,
+  Cancel01Icon,
   PencilEdit02Icon,
   Search01Icon,
-  Wrench01Icon,
 } from "@/components/icons";
 import { useResponsive } from "@/lib/responsive";
 
 interface SidebarHeaderProps {
   onNewChat: () => void;
-  onOpenIntegrations: () => void;
-  onOpenNotifications: () => void;
-  onOpenWorkflows: () => void;
+  onClose?: () => void;
+  searchQuery: string;
+  onSearchChange: (query: string) => void;
 }
 
 export function SidebarHeader({
   onNewChat,
-  onOpenIntegrations,
-  onOpenNotifications,
-  onOpenWorkflows,
+  onClose,
+  searchQuery,
+  onSearchChange,
 }: SidebarHeaderProps) {
   const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
 
@@ -30,7 +29,7 @@ export function SidebarHeader({
       style={{
         paddingHorizontal: spacing.md,
         paddingTop: spacing.lg,
-        paddingBottom: spacing.md,
+        paddingBottom: spacing.sm,
       }}
     >
       <View
@@ -38,120 +37,95 @@ export function SidebarHeader({
           flexDirection: "row",
           alignItems: "center",
           gap: moderateScale(12, 0.5),
-          marginBottom: spacing.lg,
+          marginBottom: spacing.md,
           paddingHorizontal: spacing.xs,
         }}
       >
-        <Image
-          source={require("@shared/assets/logo/logo.webp")}
-          style={{
-            width: moderateScale(28, 0.5),
-            height: moderateScale(28, 0.5),
-          }}
-          resizeMode="contain"
-        />
-        <Text
-          style={{
-            fontSize: fontSize.xl,
-            fontWeight: "bold",
-            letterSpacing: -0.5,
-            color: "#ffffff",
-          }}
-        >
-          GAIA
-        </Text>
-      </View>
-
-      <View style={{ flexDirection: "row", alignItems: "center" }}>
-        <View
-          style={{
-            flex: 1,
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: "#1c1c1e",
-            borderRadius: moderateScale(12, 0.5),
-            paddingHorizontal: moderateScale(12, 0.5),
-            paddingVertical: spacing.sm,
-          }}
-        >
-          <HugeiconsIcon
-            icon={Search01Icon}
-            size={iconSize.sm}
-            color="#8e8e93"
+        {onClose ? (
+          <Pressable
+            onPress={onClose}
+            style={({ pressed }) => ({
+              opacity: pressed ? 0.6 : 1,
+              padding: 4,
+            })}
+            hitSlop={8}
+          >
+            <HugeiconsIcon
+              icon={ArrowLeft01Icon}
+              size={iconSize.sm}
+              color="#a1a1aa"
+            />
+          </Pressable>
+        ) : (
+          <Image
+            source={require("@shared/assets/logo/logo.webp")}
+            style={{
+              width: moderateScale(28, 0.5),
+              height: moderateScale(28, 0.5),
+            }}
+            resizeMode="contain"
           />
+        )}
+        <View style={{ flex: 1 }}>
           <TextInput
-            placeholder="Search"
-            placeholderTextColor="#8e8e93"
+            placeholder="Search conversations..."
+            placeholderTextColor="#6b6b6e"
+            value={searchQuery}
+            onChangeText={onSearchChange}
             style={{
               flex: 1,
-              marginLeft: spacing.sm,
               fontSize: fontSize.sm,
               color: "#ffffff",
+              backgroundColor: "#1c1c1e",
+              borderRadius: moderateScale(10, 0.5),
+              paddingHorizontal: moderateScale(12, 0.5),
+              paddingVertical: spacing.sm,
+              paddingLeft: moderateScale(32, 0.5),
             }}
           />
+          <View
+            style={{
+              position: "absolute",
+              left: moderateScale(10, 0.5),
+              top: 0,
+              bottom: 0,
+              justifyContent: "center",
+            }}
+            pointerEvents="none"
+          >
+            <HugeiconsIcon
+              icon={Search01Icon}
+              size={iconSize.sm}
+              color="#6b6b6e"
+            />
+          </View>
+          {searchQuery.length > 0 && (
+            <Pressable
+              onPress={() => onSearchChange("")}
+              style={{
+                position: "absolute",
+                right: moderateScale(8, 0.5),
+                top: 0,
+                bottom: 0,
+                justifyContent: "center",
+                paddingHorizontal: 4,
+              }}
+            >
+              <HugeiconsIcon
+                icon={Cancel01Icon}
+                size={iconSize.sm - 2}
+                color="#6b6b6e"
+              />
+            </Pressable>
+          )}
         </View>
 
-        <Button
-          variant="secondary"
-          size="sm"
-          style={{ marginLeft: spacing.sm }}
-          isIconOnly
-          onPress={onNewChat}
-        >
+        <Button variant="secondary" size="sm" isIconOnly onPress={onNewChat}>
           <HugeiconsIcon
             icon={PencilEdit02Icon}
             size={iconSize.sm}
             color="#ffffff"
           />
-        </Button>
-      </View>
-
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          marginTop: spacing.sm,
-          gap: spacing.sm,
-        }}
-      >
-        <Button
-          variant="tertiary"
-          size="sm"
-          className="rounded-full"
-          onPress={onOpenNotifications}
-        >
-          <HugeiconsIcon
-            icon={BubbleChatIcon}
-            size={iconSize.sm - 1}
-            color="#ddd"
-          />
-          <Button.Label>Notifications</Button.Label>
-        </Button>
-        <Button
-          variant="tertiary"
-          size="sm"
-          className="rounded-full"
-          onPress={onOpenIntegrations}
-        >
-          <HugeiconsIcon
-            icon={Wrench01Icon}
-            size={iconSize.sm - 1}
-            color="#ddd"
-          />
-          <Button.Label>Integrations</Button.Label>
-        </Button>
-        <Button
-          variant="tertiary"
-          size="sm"
-          className="rounded-full"
-          onPress={onOpenWorkflows}
-        >
-          <HugeiconsIcon
-            icon={Flowchart01Icon}
-            size={iconSize.sm - 1}
-            color="#ddd"
-          />
-          <Button.Label>Workflows</Button.Label>
         </Button>
       </View>
     </View>

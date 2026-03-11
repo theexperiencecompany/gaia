@@ -9,8 +9,8 @@ export default function AppLayout() {
 
   if (isLoading) {
     return (
-      <View className="flex-1 justify-center items-center bg-[#0a1929]">
-        <ActivityIndicator size="large" color="#16c1ff" />
+      <View className="flex-1 justify-center items-center bg-background">
+        <ActivityIndicator size="large" color="#00bbff" />
       </View>
     );
   }
@@ -26,17 +26,16 @@ export default function AppLayout() {
           <Stack
             screenOptions={{
               headerShown: false,
-              contentStyle: { backgroundColor: "#0a0a0a" },
-              animation: "none",
-              animationDuration: 0,
+              contentStyle: { backgroundColor: "#060a14" },
+              animation: "slide_from_right",
             }}
           >
-            <Stack.Screen name="index" />
-            <Stack.Screen name="c/[id]" />
-            <Stack.Screen name="integrations/index" />
-            <Stack.Screen name="workflows/index" />
+            <Stack.Screen
+              name="(tabs)"
+              options={{ animation: "none", animationDuration: 0 }}
+            />
+            <Stack.Screen name="c/[id]" options={{ animation: "none" }} />
             <Stack.Screen name="workflows/[id]" />
-            <Stack.Screen name="notifications/index" />
             <Stack.Screen name="settings/index" />
             <Stack.Screen name="test/index" />
           </Stack>

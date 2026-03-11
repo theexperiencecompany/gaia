@@ -5,6 +5,8 @@ import type { Workflow, WorkflowExecution } from "../types/workflow-types";
 interface UseWorkflowDetailState {
   workflow: Workflow | null;
   executions: WorkflowExecution[];
+  executionsTotal: number;
+  hasMoreExecutions: boolean;
   isLoading: boolean;
   isLoadingExecutions: boolean;
   error: string | null;
@@ -13,7 +15,10 @@ interface UseWorkflowDetailState {
 interface UseWorkflowDetailReturn extends UseWorkflowDetailState {
   refetch: () => Promise<void>;
   refetchExecutions: () => Promise<void>;
+  loadMoreExecutions: () => Promise<void>;
 }
+
+const EXECUTIONS_PAGE_SIZE = 10;
 
 export function useWorkflowDetail(
   workflowId: string | null,
@@ -21,6 +26,8 @@ export function useWorkflowDetail(
   const [state, setState] = useState<UseWorkflowDetailState>({
     workflow: null,
     executions: [],
+    executionsTotal: 0,
+    hasMoreExecutions: false,
     isLoading: false,
     isLoadingExecutions: false,
     error: null,
@@ -45,31 +52,48 @@ export function useWorkflowDetail(
     }
   }, [workflowId]);
 
-  const fetchExecutions = useCallback(async () => {
-    if (!workflowId) return;
-    setState((prev) => ({ ...prev, isLoadingExecutions: true }));
-    try {
-      const response = await workflowApi.getWorkflowExecutions(workflowId, {
-        limit: 20,
-      });
-      setState((prev) => ({
-        ...prev,
-        executions: response.executions,
-        isLoadingExecutions: false,
-      }));
-    } catch {
-      setState((prev) => ({ ...prev, isLoadingExecutions: false }));
-    }
-  }, [workflowId]);
+  const fetchExecutions = useCallback(
+    async (reset = true) => {
+      if (!workflowId) return;
+      setState((prev) => ({ ...prev, isLoadingExecutions: true }));
+      try {
+        const offset = reset ? 0 : state.executions.length;
+        const response = await workflowApi.getWorkflowExecutions(workflowId, {
+          limit: EXECUTIONS_PAGE_SIZE,
+          offset,
+        });
+        setState((prev) => ({
+          ...prev,
+          executions: reset
+            ? response.executions
+            : [...prev.executions, ...response.executions],
+          executionsTotal: response.total,
+          hasMoreExecutions: response.has_more,
+          isLoadingExecutions: false,
+        }));
+      } catch {
+        setState((prev) => ({ ...prev, isLoadingExecutions: false }));
+      }
+    },
+    [workflowId, state.executions.length],
+  );
 
   useEffect(() => {
     void fetchWorkflow();
-    void fetchExecutions();
-  }, [fetchWorkflow, fetchExecutions]);
+    void fetchExecutions(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workflowId]);
+
+  const loadMoreExecutions = useCallback(async () => {
+    if (!state.isLoadingExecutions && state.hasMoreExecutions) {
+      await fetchExecutions(false);
+    }
+  }, [state.isLoadingExecutions, state.hasMoreExecutions, fetchExecutions]);
 
   return {
     ...state,
     refetch: fetchWorkflow,
-    refetchExecutions: fetchExecutions,
+    refetchExecutions: () => fetchExecutions(true),
+    loadMoreExecutions,
   };
 }

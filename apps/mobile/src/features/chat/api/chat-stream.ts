@@ -6,7 +6,7 @@ import {
 } from "@gaia/shared/chat";
 
 import { createSSEConnection, type SSEEvent } from "@/lib/sse-client";
-import type { ApiFileData, Message } from "./chat-api";
+import type { ApiFileData, ImageData, Message } from "./chat-api";
 
 export interface StreamCallbacks {
   onChunk: (text: string) => void;
@@ -22,8 +22,30 @@ export interface StreamCallbacks {
   onTodoProgress?: (snapshot: TodoProgressSnapshot) => void;
   onStreamId?: (streamId: string) => void;
   onFollowUpActions?: (actions: string[]) => void;
+  onMainResponseComplete?: () => void;
+  onConversationDescription?: (description: string) => void;
+  onImageData?: (data: ImageData) => void;
+  onMemoryData?: (data: unknown) => void;
   onDone: () => void;
   onError?: (error: Error) => void;
+}
+
+export interface SelectedWorkflow {
+  id: string;
+  name: string;
+  [key: string]: unknown;
+}
+
+export interface SelectedCalendarEvent {
+  id: string;
+  summary: string;
+  [key: string]: unknown;
+}
+
+export interface ReplyToMessage {
+  id: string;
+  content: string;
+  role: "user" | "assistant";
 }
 
 export interface ChatStreamRequest {
@@ -34,6 +56,9 @@ export interface ChatStreamRequest {
   fileData?: ApiFileData[];
   selectedTool?: string | null;
   toolCategory?: string | null;
+  selectedWorkflow?: SelectedWorkflow | null;
+  selectedCalendarEvent?: SelectedCalendarEvent | null;
+  replyToMessage?: ReplyToMessage | null;
 }
 
 export async function fetchChatStream(
@@ -48,6 +73,9 @@ export async function fetchChatStream(
     fileData = [],
     selectedTool = null,
     toolCategory = null,
+    selectedWorkflow = null,
+    selectedCalendarEvent = null,
+    replyToMessage = null,
   } = request;
 
   const formattedMessages = messages
@@ -65,6 +93,9 @@ export async function fetchChatStream(
     fileData,
     selectedTool,
     toolCategory,
+    selectedWorkflow,
+    selectedCalendarEvent,
+    replyToMessage,
     messages: formattedMessages,
   };
 
@@ -137,11 +168,44 @@ export async function fetchChatStream(
             continue;
           }
 
+          if (parsed.type === "main_response_complete") {
+            callbacks.onMainResponseComplete?.();
+            continue;
+          }
+
+          if (parsed.type === "conversation_description") {
+            callbacks.onConversationDescription?.(parsed.description);
+            continue;
+          }
+
           if (
             parsed.type === "follow_up_actions" &&
             parsed.actions.length > 0
           ) {
             callbacks.onFollowUpActions?.(parsed.actions);
+            continue;
+          }
+
+          if (parsed.type === "unknown") {
+            const payload = parsed.payload;
+
+            if (payload.image_data && typeof payload.image_data === "object") {
+              callbacks.onImageData?.(payload.image_data as ImageData);
+              continue;
+            }
+
+            if (payload.status === "generating_image") {
+              callbacks.onProgress?.("Generating image...");
+              callbacks.onImageData?.({
+                url: "",
+                prompt: (payload.prompt as string) || "",
+              });
+              continue;
+            }
+
+            if (payload.memory_data) {
+              callbacks.onMemoryData?.(payload.memory_data);
+            }
           }
         }
       },

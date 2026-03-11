@@ -1,9 +1,11 @@
 import { Card } from "heroui-native";
 import React from "react";
 import { View } from "react-native";
+import { AppIcon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-
 import { EmailComposeCard } from "../components/chat/email-compose-card";
+import type { ToolCallEntry } from "../components/chat/tool-calls-section";
+import { ToolCallsSection } from "../components/chat/tool-calls-section";
 import type { EmailComposeData, ToolDataEntry } from "./registry";
 import {
   ArtifactCard,
@@ -15,6 +17,8 @@ import {
   type CalendarFetchItem,
   type CalendarOption,
   CalendarOptionsCard,
+  ChartCard,
+  type ChartDisplayData,
   type CodeData,
   CodeExecutionCard,
   type ContactData,
@@ -48,7 +52,8 @@ import {
   type SupportTicketData,
   TodoCard,
   type TodoData,
-  ToolCallsCard,
+  TodoProgressCard,
+  type TodoProgressData,
   TwitterSearchCard,
   TwitterUsersCard,
   WeatherCard,
@@ -56,6 +61,10 @@ import {
   WorkflowCreatedCard,
   WorkflowDraftCard,
 } from "./tool-cards";
+
+function MemoryBrainIcon({ size = 12 }: { size?: number }) {
+  return <AppIcon icon={Brain02Icon} size={size} color="#818cf8" />;
+}
 
 const GROUPED_TOOLS = new Set<string>([
   "search_results",
@@ -69,6 +78,7 @@ const GROUPED_TOOLS = new Set<string>([
   "email_sent_data",
   "artifact_data",
   "twitter_user_data",
+  "chart_data",
 ]);
 
 const flattenOneLevel = (value: unknown): unknown[] => {
@@ -292,9 +302,16 @@ const TOOL_RENDERERS: Record<
     );
   },
 
-  tool_calls_data: (data, baseKey) => (
-    <ToolCallsCard key={baseKey} data={data} />
-  ),
+  tool_calls_data: (data, baseKey) => {
+    const calls = (
+      Array.isArray(data) ? (data as unknown[]).flat(1) : [data]
+    ) as ToolCallEntry[];
+    return (
+      <View key={baseKey} style={{ paddingHorizontal: 16, paddingVertical: 4 }}>
+        <ToolCallsSection tool_calls_data={calls} />
+      </View>
+    );
+  },
 
   twitter_search_data: (data, baseKey) => (
     <TwitterSearchCard key={baseKey} data={data} />
@@ -334,56 +351,54 @@ const TOOL_RENDERERS: Record<
     );
   },
 
-  memory_data: (_data, baseKey) => (
-    <Card
-      key={baseKey}
-      variant="secondary"
-      className="mx-4 my-2 rounded-2xl bg-[#171920]"
-    >
-      <Card.Body className="py-3 px-4">
-        <Text className="text-xs text-muted mb-1">Memory</Text>
-        <Text className="text-foreground text-sm">Memory updated</Text>
-      </Card.Body>
-    </Card>
-  ),
+  memory_data: (data, baseKey) => {
+    const mem = data as {
+      type?: string;
+      operation?: string;
+      status?: string;
+      count?: number;
+      content?: string;
+    } | null;
 
-  todo_progress: (data, baseKey) => {
-    const progress = data as Record<
-      string,
-      {
-        todos?: { id: string; content: string; status: string }[];
-        source?: string;
-      }
-    >;
-    const allTodos: {
-      id: string;
-      content: string;
-      status: string;
-      source: string;
-    }[] = [];
-    const sourceRows: {
-      source: string;
-      todos: { id: string; content: string; status: string }[];
-    }[] = [];
-    for (const [source, snapshot] of Object.entries(progress)) {
-      if (snapshot?.todos) {
-        sourceRows.push({ source, todos: snapshot.todos });
-        for (const todo of snapshot.todos) {
-          allTodos.push({ ...todo, source });
+    let label = "Memory updated";
+    let detail: string | null = null;
+
+    if (mem) {
+      if (mem.type === "memory_stored") {
+        label = "Memory stored";
+        if (mem.content) detail = mem.content;
+      } else if (mem.status === "success") {
+        switch (mem.operation) {
+          case "create":
+            label = "Memory created";
+            if (mem.content) detail = mem.content;
+            break;
+          case "search":
+            label =
+              mem.count === 0
+                ? "No memories found"
+                : mem.count === 1
+                  ? "Found 1 memory"
+                  : `Found ${mem.count} memories`;
+            break;
+          case "list":
+            label =
+              mem.count === 0
+                ? "No memories"
+                : `Retrieved ${mem.count} memories`;
+            break;
+          default:
+            label = "Memory operation completed";
         }
+      } else if (mem.status === "storing") {
+        label = "Storing memory...";
+      } else if (mem.status === "searching") {
+        label = "Searching memories...";
+      } else if (mem.status === "retrieving") {
+        label = "Retrieving memories...";
       }
     }
-    if (allTodos.length === 0) return null;
-    const completedCount = allTodos.filter(
-      (t) => t.status === "completed",
-    ).length;
-    const completionPct = Math.round((completedCount / allTodos.length) * 100);
-    const statusIcon: Record<string, string> = {
-      completed: "\u2713",
-      in_progress: "\u2192",
-      cancelled: "\u2717",
-      pending: "\u25CB",
-    };
+
     return (
       <Card
         key={baseKey}
@@ -391,70 +406,32 @@ const TOOL_RENDERERS: Record<
         className="mx-4 my-2 rounded-2xl bg-[#171920]"
       >
         <Card.Body className="py-3 px-4">
-          <View className="flex-row items-center justify-between mb-1.5">
-            <Text className="text-xs text-muted">Task Progress</Text>
-            <Text className="text-xs text-muted">
-              {completedCount}/{allTodos.length}
-            </Text>
+          <View className="flex-row items-center gap-2">
+            <View className="rounded-full bg-indigo-500/20 p-1">
+              <MemoryBrainIcon size={12} />
+            </View>
+            <Text className="text-xs text-muted">Memory</Text>
           </View>
-          <View className="h-1.5 rounded-full bg-muted/30 mb-2">
-            <View
-              className="h-1.5 rounded-full bg-primary"
-              style={{ width: `${completionPct}%` }}
-            />
-          </View>
-          <Text className="text-[10px] text-muted mb-2">
-            {completionPct}% complete • {Object.keys(progress).length} source
-            {Object.keys(progress).length > 1 ? "s" : ""}
+          <Text className="text-foreground text-sm font-medium mt-1.5">
+            {label}
           </Text>
-          {sourceRows.map(({ source, todos }) => {
-            const sourceCompletedCount = todos.filter(
-              (todo) => todo.status === "completed",
-            ).length;
-            const sourcePct = Math.round(
-              (sourceCompletedCount / todos.length) * 100,
-            );
-
-            return (
-              <View
-                key={source}
-                className="rounded-xl bg-white/5 border border-white/8 px-3 py-2.5 mb-2"
-              >
-                <View className="flex-row items-center justify-between mb-1.5">
-                  <Text className="text-xs text-foreground font-medium capitalize">
-                    {source.replaceAll("_", " ")}
-                  </Text>
-                  <Text className="text-[10px] text-muted">
-                    {sourceCompletedCount}/{todos.length}
-                  </Text>
-                </View>
-                <View className="h-1 rounded-full bg-muted/30 mb-2">
-                  <View
-                    className="h-1 rounded-full bg-primary"
-                    style={{ width: `${sourcePct}%` }}
-                  />
-                </View>
-                {todos.map((todo) => (
-                  <View
-                    key={`${source}-${todo.id}`}
-                    className="flex-row items-start gap-2 mb-1"
-                  >
-                    <Text className="text-xs text-muted w-4">
-                      {statusIcon[todo.status] ?? "\u25CB"}
-                    </Text>
-                    <Text
-                      className={`text-xs flex-1 ${todo.status === "completed" ? "text-success" : todo.status === "in_progress" ? "text-primary" : "text-muted"}`}
-                    >
-                      {todo.content}
-                    </Text>
-                  </View>
-                ))}
-              </View>
-            );
-          })}
+          {!!detail && (
+            <Text className="text-xs text-muted mt-1" numberOfLines={3}>
+              {detail}
+            </Text>
+          )}
         </Card.Body>
       </Card>
     );
+  },
+
+  todo_progress: (data, baseKey) => (
+    <TodoProgressCard key={baseKey} data={data as TodoProgressData} />
+  ),
+
+  chart_data: (data, baseKey) => {
+    const charts = (Array.isArray(data) ? data : [data]) as ChartDisplayData[];
+    return <ChartCard key={baseKey} data={charts} />;
   },
 };
 

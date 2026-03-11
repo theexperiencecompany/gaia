@@ -45,7 +45,7 @@ export async function createSSEConnection(
   const es = new EventSource(url, {
     method: "POST",
     headers: {
-      Cookie: `wos_session=${token}`,
+      Authorization: `Bearer ${token}`,
       Accept: "text/event-stream",
       "Content-Type": "application/json",
       "x-timezone": getTimezone(),

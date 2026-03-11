@@ -1,4 +1,4 @@
-import { useRouter } from "expo-router";
+import { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChatHistory } from "./chat-history";
 import { SidebarFooter } from "./sidebar-footer";
@@ -7,25 +7,30 @@ import { SidebarHeader } from "./sidebar-header";
 interface SidebarProps {
   onSelectChat: (chatId: string) => void;
   onNewChat: () => void;
+  onClose?: () => void;
 }
 
 export const SIDEBAR_WIDTH = 300;
 
-export function SidebarContent({ onSelectChat, onNewChat }: SidebarProps) {
-  const router = useRouter();
+export function SidebarContent({
+  onSelectChat,
+  onNewChat,
+  onClose,
+}: SidebarProps) {
+  const [searchQuery, setSearchQuery] = useState("");
 
   return (
     <SafeAreaView
-      style={{ flex: 1, backgroundColor: "#141414" }}
+      style={{ flex: 1, backgroundColor: "#0f1011" }}
       edges={["top", "bottom"]}
     >
       <SidebarHeader
         onNewChat={onNewChat}
-        onOpenIntegrations={() => router.push("/(app)/integrations")}
-        onOpenNotifications={() => router.push("/(app)/notifications")}
-        onOpenWorkflows={() => router.push("/(app)/workflows")}
+        onClose={onClose}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
       />
-      <ChatHistory onSelectChat={onSelectChat} />
+      <ChatHistory onSelectChat={onSelectChat} searchQuery={searchQuery} />
       <SidebarFooter />
     </SafeAreaView>
   );

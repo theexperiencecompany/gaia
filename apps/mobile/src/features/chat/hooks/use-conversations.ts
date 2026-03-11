@@ -32,15 +32,18 @@ export function groupConversationsByDate(
   yesterday.setDate(yesterday.getDate() - 1);
   const lastWeek = new Date(today);
   lastWeek.setDate(lastWeek.getDate() - 7);
+  const last30Days = new Date(today);
+  last30Days.setDate(last30Days.getDate() - 30);
 
   const starred: Conversation[] = [];
   const todayChats: Conversation[] = [];
   const yesterdayChats: Conversation[] = [];
   const lastWeekChats: Conversation[] = [];
-  const previousChats: Conversation[] = [];
+  const last30DaysChats: Conversation[] = [];
+  const olderChats: Conversation[] = [];
 
-  conversations.forEach((conv) => {
-    const convDate = new Date(conv.created_at);
+  for (const conv of conversations) {
+    const convDate = new Date(conv.updated_at || conv.created_at);
 
     if (conv.is_starred) {
       starred.push(conv);
@@ -50,16 +53,19 @@ export function groupConversationsByDate(
       yesterdayChats.push(conv);
     } else if (convDate >= lastWeek) {
       lastWeekChats.push(conv);
+    } else if (convDate >= last30Days) {
+      last30DaysChats.push(conv);
     } else {
-      previousChats.push(conv);
+      olderChats.push(conv);
     }
-  });
+  }
 
   return {
     starred,
     today: todayChats,
     yesterday: yesterdayChats,
     lastWeek: lastWeekChats,
-    previousChats,
+    last30Days: last30DaysChats,
+    older: olderChats,
   };
 }

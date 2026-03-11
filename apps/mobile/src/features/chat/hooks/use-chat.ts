@@ -9,13 +9,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useShallow } from "zustand/react/shallow";
 import { useChatStore } from "@/stores/chat-store";
 import {
+  type ApiFileData,
   type ApiToolData,
   cancelStream as cancelStreamRequest,
   chatApi,
   fetchChatStream,
   type Message,
+  type ReplyToMessageData,
 } from "../api/chat-api";
 import { chatKeys, useConversationQuery } from "../api/queries";
+import type { AttachmentFile } from "../components/composer/attachment-preview";
 
 const EMPTY_MESSAGES: Message[] = [];
 
@@ -25,14 +28,23 @@ interface UseChatOptions {
   onNavigate?: (conversationId: string) => void;
 }
 
+interface SendMessageOptions {
+  replyToMessage?: ReplyToMessageData | null;
+  selectedWorkflow?: { id: string; name: string } | null;
+  selectedTool?: string | null;
+  toolCategory?: string | null;
+  attachments?: AttachmentFile[];
+}
+
 interface UseChatReturn {
   messages: Message[];
   isTyping: boolean;
   isLoading: boolean;
   progress: string | null;
+  progressToolName: string | null;
   conversationId: string | null;
-  flatListRef: React.RefObject<FlashListRef<Message> | null>;
-  sendMessage: (text: string) => Promise<void>;
+  flatListRef: React.RefObject<FlashListRef<unknown> | null>;
+  sendMessage: (text: string, options?: SendMessageOptions) => Promise<void>;
   cancelStream: () => void;
   scrollToBottom: () => void;
   refetch: () => Promise<void>;
@@ -40,9 +52,9 @@ interface UseChatReturn {
 
 export function useChat(
   chatId: string | null,
-  options?: UseChatOptions,
+  chatOptions?: UseChatOptions,
 ): UseChatReturn {
-  const flatListRef = useRef<FlashListRef<Message>>(null);
+  const flatListRef = useRef<FlashListRef<unknown>>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamIdRef = useRef<string | null>(null);
   const streamingResponseRef = useRef<string>("");
@@ -104,6 +116,11 @@ export function useChat(
       ? streamingState.progress
       : null;
 
+  const progressToolName =
+    streamingState.conversationId === currentConversationId
+      ? streamingState.progressToolName
+      : null;
+
   useEffect(() => {
     if (cachedMessages && cachedMessages.length > 0 && currentConversationId) {
       chatApi.markConversationAsRead(currentConversationId);
@@ -125,11 +142,21 @@ export function useChat(
       isStreaming: false,
       isTyping: false,
       conversationId: null,
+      progress: null,
+      progressToolName: null,
     });
   }, []);
 
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, options?: SendMessageOptions) => {
+      const {
+        replyToMessage = null,
+        selectedWorkflow = null,
+        selectedTool = null,
+        toolCategory = null,
+        attachments = [],
+      } = options ?? {};
+
       cancelStream();
       const store = useChatStore.getState();
 
@@ -138,6 +165,7 @@ export function useChat(
         text,
         isUser: true,
         timestamp: new Date(),
+        replyToMessage: replyToMessage ?? null,
       };
 
       const aiMessage: Message = {
@@ -170,6 +198,7 @@ export function useChat(
         isStreaming: true,
         conversationId: storeKey,
         progress: null,
+        progressToolName: null,
       });
       streamingResponseRef.current = "";
       streamingToolDataRef.current = [];
@@ -181,11 +210,45 @@ export function useChat(
             ? existingConvId
             : null;
 
+        // Upload any pending attachments before streaming
+        const uploadedFileData: ApiFileData[] = [];
+        if (attachments.length > 0) {
+          const uploadResults = await Promise.allSettled(
+            attachments.map((att) =>
+              chatApi.uploadFile({
+                uri: att.uri,
+                name: att.name,
+                mimeType: att.mimeType,
+              }),
+            ),
+          );
+
+          for (const result of uploadResults) {
+            if (result.status === "fulfilled") {
+              uploadedFileData.push({
+                fileId: result.value.fileId,
+                fileName: result.value.fileName,
+                fileSize: result.value.fileSize,
+                contentType: result.value.contentType,
+                url: result.value.url,
+              });
+            } else {
+              console.warn("[useChat] File upload failed:", result.reason);
+            }
+          }
+        }
+
         const controller = await fetchChatStream(
           {
             message: text,
             conversationId: apiConversationId,
             messages: [...existingMessages, userMessage],
+            replyToMessage: replyToMessage ?? null,
+            selectedWorkflow: selectedWorkflow ?? null,
+            selectedTool: selectedTool ?? null,
+            toolCategory: toolCategory ?? null,
+            fileData: uploadedFileData,
+            fileIds: uploadedFileData.map((f) => f.fileId),
           },
           {
             onConversationCreated: (
@@ -222,7 +285,7 @@ export function useChat(
 
                 activeConvIdRef.current = newConvId;
                 setCurrentConversationId(newConvId);
-                options?.onNavigate?.(newConvId);
+                chatOptions?.onNavigate?.(newConvId);
               } else {
                 store.setMessages(storeKey, updatedMsgs);
               }
@@ -236,8 +299,11 @@ export function useChat(
                   streamingResponseRef.current,
                 );
             },
-            onProgress: (message) => {
-              useChatStore.getState().setStreamingState({ progress: message });
+            onProgress: (message, toolName) => {
+              useChatStore.getState().setStreamingState({
+                progress: message,
+                progressToolName: toolName ?? null,
+              });
             },
             onToolData: (entry) => {
               const progressMessage = extractToolProgressMessage(entry);
@@ -297,6 +363,38 @@ export function useChat(
                 .getState()
                 .updateLastMessageFollowUp(activeConvIdRef.current!, actions);
             },
+            onMainResponseComplete: () => {
+              useChatStore.getState().setStreamingState({
+                isTyping: false,
+                progress: null,
+                progressToolName: null,
+              });
+            },
+            onConversationDescription: (description) => {
+              const convId = activeConvIdRef.current;
+              if (convId && !convId.startsWith("temp-")) {
+                useChatStore
+                  .getState()
+                  .updateConversationTitle(convId, description);
+                queryClient.invalidateQueries({
+                  queryKey: chatKeys.conversations(),
+                });
+              }
+            },
+            onImageData: (data) => {
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  imageData: data,
+                });
+            },
+            onMemoryData: (data) => {
+              useChatStore
+                .getState()
+                .updateLastAssistantMessage(activeConvIdRef.current!, {
+                  memoryData: data as Record<string, unknown>,
+                });
+            },
             onDone: () => {
               const finalConvId = activeConvIdRef.current;
               const store = useChatStore.getState();
@@ -315,6 +413,7 @@ export function useChat(
                 isStreaming: false,
                 conversationId: null,
                 progress: null,
+                progressToolName: null,
               });
               abortControllerRef.current = null;
               streamIdRef.current = null;
@@ -329,6 +428,7 @@ export function useChat(
                 isStreaming: false,
                 conversationId: null,
                 progress: null,
+                progressToolName: null,
               });
               useChatStore
                 .getState()
@@ -347,6 +447,8 @@ export function useChat(
           isTyping: false,
           isStreaming: false,
           conversationId: null,
+          progress: null,
+          progressToolName: null,
         });
       }
     },
@@ -356,7 +458,7 @@ export function useChat(
       cancelStream,
       cachedMessages,
       queryClient,
-      options,
+      chatOptions,
     ],
   );
 
@@ -371,6 +473,7 @@ export function useChat(
     isTyping,
     isLoading,
     progress,
+    progressToolName,
     conversationId: currentConversationId,
     flatListRef,
     sendMessage,

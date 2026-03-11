@@ -6,7 +6,6 @@ import {
   useEffect,
   useState,
 } from "react";
-import { setOnUnauthorized } from "@/lib/api";
 import type { UserInfo } from "@/features/auth/types";
 import {
   getAuthToken,
@@ -15,6 +14,7 @@ import {
   removeUserInfo,
 } from "@/features/auth/utils/auth-storage";
 import { unregisterDeviceOnLogout } from "@/features/notifications/utils/notification-storage";
+import { setOnUnauthorized } from "@/lib/api";
 
 interface AuthContextType {
   isAuthenticated: boolean;

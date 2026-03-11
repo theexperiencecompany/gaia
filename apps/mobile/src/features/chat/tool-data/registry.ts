@@ -32,7 +32,8 @@ export type ToolName =
   | "rate_limit_data"
   | "artifact_data"
   | "memory_data"
-  | "todo_progress";
+  | "todo_progress"
+  | "chart_data";
 
 export interface EmailComposeData {
   to: string[];
@@ -96,6 +97,7 @@ export interface ToolDataMap {
   artifact_data: GenericToolData[];
   memory_data: GenericToolData;
   todo_progress: GenericToolData;
+  chart_data: GenericToolData[];
 }
 
 export interface ToolDataEntry {
@@ -140,6 +142,7 @@ export function isKnownTool(name: string): name is ToolName {
     "artifact_data",
     "memory_data",
     "todo_progress",
+    "chart_data",
   ]);
   return knownTools.has(name);
 }

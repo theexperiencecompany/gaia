@@ -9,7 +9,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { HugeiconsIcon, Logout01Icon } from "@/components/icons";
+import { AppIcon, Logout01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth";
 import { apiService } from "@/lib/api";

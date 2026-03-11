@@ -1,10 +1,22 @@
-import { Pressable, View } from "react-native";
+import * as Haptics from "expo-haptics";
+import { Avatar } from "heroui-native";
+import { useCallback, useMemo } from "react";
+import { Pressable, ScrollView, View } from "react-native";
+import { AppIcon, Brain02Icon } from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
+import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
 import { ToolDataRenderer } from "../../tool-data";
 import type { Message } from "../../types";
 import { splitMessageByBreaks } from "../../utils/messageBreakUtils";
+import { parseThinkingFromText } from "../../utils/thinkingParser";
+import { ImageBubble } from "./image-bubble";
+import { LoadingIndicator } from "./loading-indicator";
+import { MessageReplyQuote } from "./message-reply-quote";
+import { ThinkingBubble } from "./thinking-bubble";
+
+// -- Follow-up actions --------------------------------------------------------
 
 interface FollowUpActionsProps {
   actions: string[];
@@ -17,26 +29,32 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
   if (!actions.length) return null;
 
   return (
-    <View
-      style={{
-        marginTop: spacing.sm,
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      style={{ marginTop: spacing.sm }}
+      contentContainerStyle={{
         flexDirection: "row",
-        flexWrap: "wrap",
         gap: spacing.sm,
         paddingLeft: moderateScale(32, 0.5),
+        paddingRight: spacing.md,
       }}
+      keyboardShouldPersistTaps="handled"
     >
       {actions.map((action) => (
         <Pressable
           key={action}
-          onPress={() => onActionPress?.(action)}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            onActionPress?.(action);
+          }}
           style={{
-            borderRadius: moderateScale(8, 0.5),
-            borderWidth: 2,
-            borderStyle: "dotted",
-            borderColor: "rgba(255,255,255,0.1)",
+            borderRadius: moderateScale(20, 0.5),
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.15)",
+            backgroundColor: "rgba(255,255,255,0.05)",
             paddingHorizontal: spacing.md,
-            paddingVertical: spacing.sm,
+            paddingVertical: spacing.xs + 2,
           }}
         >
           <Text style={{ fontSize: fontSize.xs, color: "#ffffff" }}>
@@ -44,13 +62,141 @@ function FollowUpActions({ actions, onActionPress }: FollowUpActionsProps) {
           </Text>
         </Pressable>
       ))}
+    </ScrollView>
+  );
+}
+
+// -- Memory indicator ---------------------------------------------------------
+
+type MemoryDataShape = {
+  type?: string;
+  operation?: string;
+  status?: string;
+  count?: number;
+  content?: string;
+} | null;
+
+function getMemoryLabel(memoryData: MemoryDataShape): string | null {
+  if (!memoryData) return null;
+
+  if (memoryData.type === "memory_stored") return "Memory stored";
+
+  if (memoryData.status === "success") {
+    switch (memoryData.operation) {
+      case "create":
+        return "Memory created";
+      case "search":
+        if (memoryData.count === 0) return "No memories found";
+        if (memoryData.count === 1) return "Found 1 memory";
+        return `Found ${memoryData.count} memories`;
+      case "list":
+        if (memoryData.count === 0) return "No memories";
+        return `Retrieved ${memoryData.count} memories`;
+      default:
+        return "Memory updated";
+    }
+  }
+
+  if (memoryData.status === "storing") return "Storing memory...";
+  if (memoryData.status === "searching") return "Searching memories...";
+  if (memoryData.status === "retrieving") return "Retrieving memories...";
+
+  return null;
+}
+
+function MemoryIndicator({ memoryData }: { memoryData: MemoryDataShape }) {
+  const { spacing, fontSize, moderateScale } = useResponsive();
+  const label = getMemoryLabel(memoryData);
+  if (!label) return null;
+
+  return (
+    <View
+      style={{
+        marginTop: spacing.xs + 2,
+        paddingLeft: moderateScale(32, 0.5),
+        paddingRight: spacing.md,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          alignSelf: "flex-start",
+          gap: spacing.xs,
+          backgroundColor: "rgba(99, 102, 241, 0.12)",
+          borderRadius: moderateScale(12, 0.5),
+          paddingHorizontal: spacing.sm + 2,
+          paddingVertical: spacing.xs,
+          borderWidth: 1,
+          borderColor: "rgba(99, 102, 241, 0.2)",
+        }}
+      >
+        <AppIcon
+          icon={Brain02Icon}
+          size={moderateScale(11, 0.5)}
+          color="#818cf8"
+        />
+        <Text
+          style={{
+            fontSize: fontSize.xs - 1,
+            color: "#818cf8",
+            fontWeight: "500",
+          }}
+        >
+          {label}
+        </Text>
+      </View>
     </View>
   );
 }
 
+// -- User avatar --------------------------------------------------------------
+
+interface UserAvatarProps {
+  name?: string;
+  picture?: string;
+  size: number;
+}
+
+function UserAvatar({ name, picture, size }: UserAvatarProps) {
+  const initials = name
+    ? name
+        .split(" ")
+        .map((n) => n[0])
+        .join("")
+        .slice(0, 2)
+        .toUpperCase()
+    : "U";
+
+  return (
+    <Avatar
+      alt={name ?? "User"}
+      size="sm"
+      color="default"
+      style={{ width: size, height: size }}
+    >
+      {picture ? <Avatar.Image source={{ uri: picture }} /> : null}
+      <Avatar.Fallback>
+        <Text
+          style={{
+            fontSize: size * 0.4,
+            fontWeight: "600",
+            color: "#ffffff",
+          }}
+        >
+          {initials}
+        </Text>
+      </Avatar.Fallback>
+    </Avatar>
+  );
+}
+
+// -- ChatMessage --------------------------------------------------------------
+
 interface ChatMessageProps {
   message: Message;
   onFollowUpAction?: (action: string) => void;
+  onReply?: (message: Message) => void;
   isLoading?: boolean;
   loadingMessage?: string;
 }
@@ -58,27 +204,106 @@ interface ChatMessageProps {
 export function ChatMessage({
   message,
   onFollowUpAction,
+  onReply,
   isLoading = false,
   loadingMessage = "Thinking...",
 }: ChatMessageProps) {
   const isUser = message.isUser;
-  const { spacing, width } = useResponsive();
+  const { spacing, width, moderateScale } = useResponsive();
+  const { user } = useAuth();
 
-  const rawText = message.text ?? "";
-  const messageParts = splitMessageByBreaks(rawText).filter(Boolean);
+  const avatarSize = moderateScale(24, 0.5);
 
-  const hasContent = messageParts.length > 0;
-  const showLoadingState = !isUser && isLoading && !hasContent;
+  // Strip <thinking> tags from raw text so they are never rendered in the bubble.
+  const parsedContent = useMemo(
+    () => parseThinkingFromText(message.text ?? ""),
+    [message.text],
+  );
 
-  // Message max width adapts to screen size (85% of screen width, min 280, max 400)
-  const messageMaxWidth = Math.min(Math.max(width * 0.85, 280), 400);
+  const messageParts = splitMessageByBreaks(parsedContent.cleanText).filter(
+    Boolean,
+  );
 
+  const _hasContent = messageParts.length > 0;
+  const showLoadingState = !isUser && isLoading && !_hasContent;
+
+  // Determine if the image is still being generated (imageData present but url is empty)
+  const isGeneratingImage =
+    !isUser && message.imageData != null && !message.imageData.url;
+
+  // Message max width adapts to screen size (80% of screen width, min 280, max 400)
+  const messageMaxWidth = Math.min(Math.max(width * 0.8, 280), 400);
+
+  const handleLongPress = useCallback(() => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onReply?.(message);
+  }, [onReply, message]);
+
+  // ---- User message --------------------------------------------------------
+  if (isUser) {
+    return (
+      <Pressable
+        onLongPress={handleLongPress}
+        delayLongPress={350}
+        style={{
+          flexDirection: "row",
+          paddingVertical: spacing.sm,
+          alignItems: "flex-end",
+          justifyContent: "flex-end",
+          paddingHorizontal: spacing.md,
+          gap: spacing.sm,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "column",
+            gap: spacing.xs,
+            maxWidth: messageMaxWidth,
+          }}
+        >
+          {message.replyToMessage && (
+            <MessageReplyQuote
+              replyToMessage={message.replyToMessage}
+              isUserMessage={true}
+            />
+          )}
+          {messageParts.map((part, index) => (
+            <MessageBubble
+              key={`${message.id}-${index}`}
+              message={part}
+              variant="sent"
+              showAvatar={false}
+              grouped={
+                messageParts.length === 1
+                  ? "none"
+                  : index === 0
+                    ? "first"
+                    : index === messageParts.length - 1
+                      ? "last"
+                      : "middle"
+              }
+            />
+          ))}
+        </View>
+
+        <UserAvatar
+          name={user?.name}
+          picture={user?.picture}
+          size={avatarSize}
+        />
+      </Pressable>
+    );
+  }
+
+  // ---- AI message ----------------------------------------------------------
   return (
-    <View
+    <Pressable
+      onLongPress={handleLongPress}
+      delayLongPress={350}
       style={{
         flexDirection: "column",
         paddingVertical: spacing.sm,
-        alignItems: isUser ? "flex-end" : "flex-start",
+        alignItems: "flex-start",
       }}
     >
       <View
@@ -89,19 +314,40 @@ export function ChatMessage({
           maxWidth: messageMaxWidth,
         }}
       >
-        {!isUser && message.toolData?.length ? (
+        {/* Tool data cards */}
+        {message.toolData?.length ? (
           <ToolDataRenderer toolData={message.toolData} />
         ) : null}
 
-        {showLoadingState ? (
-          <MessageBubble message={loadingMessage} variant="loading" />
+        {/* Thinking / reasoning bubble (collapsible) */}
+        {parsedContent.thinking ? (
+          <View style={{ paddingLeft: avatarSize + spacing.sm }}>
+            <ThinkingBubble thinkingContent={parsedContent.thinking} />
+          </View>
+        ) : null}
+
+        {/* Image data */}
+        {message.imageData || isGeneratingImage ? (
+          <ImageBubble
+            imageData={message.imageData ?? { url: "", prompt: "" }}
+            isGenerating={isGeneratingImage}
+            caption={
+              messageParts.length > 0 ? messageParts.join(" ") : undefined
+            }
+          />
+        ) : showLoadingState ? (
+          <LoadingIndicator
+            progress={
+              loadingMessage !== "Thinking..." ? loadingMessage : undefined
+            }
+          />
         ) : (
           messageParts.map((part, index) => (
             <MessageBubble
               key={`${message.id}-${index}`}
               message={part}
-              variant={isUser ? "sent" : "received"}
-              showAvatar={!isUser && index === 0}
+              variant="received"
+              showAvatar={index === 0}
               grouped={
                 messageParts.length === 1
                   ? "none"
@@ -116,12 +362,18 @@ export function ChatMessage({
         )}
       </View>
 
-      {!isUser && message.followUpActions?.length ? (
+      {/* Memory indicator pill – shown below the AI message when memory was updated */}
+      {message.memoryData ? (
+        <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
+      ) : null}
+
+      {/* Follow-up action chips */}
+      {message.followUpActions?.length ? (
         <FollowUpActions
           actions={message.followUpActions}
           onActionPress={onFollowUpAction}
         />
       ) : null}
-    </View>
+    </Pressable>
   );
 }

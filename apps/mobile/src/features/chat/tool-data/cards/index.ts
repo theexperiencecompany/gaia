@@ -18,6 +18,8 @@ export {
   type CalendarOption,
   CalendarOptionsCard,
 } from "./calendar-options-card";
+// Chart Card
+export { ChartCard, type ChartDisplayData } from "./chart-card";
 // Code Card
 export { type CodeData, CodeExecutionCard } from "./code-execution-card";
 // Contact Cards
@@ -66,5 +68,11 @@ export {
 } from "./support-ticket-card";
 // Todo & Goal Cards
 export { TodoCard, type TodoData } from "./todo-card";
+export {
+  TodoProgressCard,
+  type TodoProgressData,
+  type TodoProgressItem,
+  type TodoProgressSnapshot,
+} from "./todo-progress-card";
 // Weather Card
 export { WeatherCard, type WeatherData } from "./weather-card";

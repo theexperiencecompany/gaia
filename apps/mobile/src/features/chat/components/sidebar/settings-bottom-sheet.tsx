@@ -9,6 +9,8 @@ import { Avatar } from "heroui-native";
 import { forwardRef, useCallback, useMemo } from "react";
 import { Linking, Pressable, View } from "react-native";
 import {
+  type AnyIcon,
+  AppIcon,
   ArrowRight01Icon,
   BookOpen01Icon,
   BrainIcon,
@@ -16,7 +18,6 @@ import {
   CustomerSupportIcon,
   DiscordIcon,
   Download04Icon,
-  HugeiconsIcon,
   KeyboardIcon,
   Logout01Icon,
   MagicWand01Icon,
@@ -36,7 +37,7 @@ interface SettingsBottomSheetProps {
 }
 
 interface SettingsItemProps {
-  icon: unknown;
+  icon: AnyIcon;
   label: string;
   onPress: () => void;
   iconColor?: string;

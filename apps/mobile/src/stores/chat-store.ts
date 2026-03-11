@@ -7,6 +7,7 @@ interface StreamingState {
   isStreaming: boolean;
   conversationId: string | null;
   progress: string | null;
+  progressToolName: string | null;
 }
 
 interface ChatState {
@@ -31,6 +32,8 @@ interface ChatState {
   setConversations: (conversations: Conversation[]) => void;
   addConversation: (conversation: Conversation) => void;
   updateConversationTitle: (conversationId: string, title: string) => void;
+  removeConversation: (conversationId: string) => void;
+  updateConversationStarred: (conversationId: string, starred: boolean) => void;
 }
 
 export const useChatStore = create<ChatState>((set, _get) => ({
@@ -42,6 +45,7 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     isStreaming: false,
     conversationId: null,
     progress: null,
+    progressToolName: null,
   },
 
   setActiveChatId: (id) => set({ activeChatId: id }),
@@ -142,6 +146,18 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     set((state) => ({
       conversations: state.conversations.map((c) =>
         c.id === conversationId ? { ...c, title } : c,
+      ),
+    })),
+
+  removeConversation: (conversationId) =>
+    set((state) => ({
+      conversations: state.conversations.filter((c) => c.id !== conversationId),
+    })),
+
+  updateConversationStarred: (conversationId, starred) =>
+    set((state) => ({
+      conversations: state.conversations.map((c) =>
+        c.id === conversationId ? { ...c, is_starred: starred } : c,
       ),
     })),
 }));

@@ -4,22 +4,31 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Linking,
   Pressable,
   ScrollView,
   Switch,
   TextInput,
   View,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  AppIcon,
   ArrowLeft01Icon,
-  BrainIcon,
-  ChartLineData01Icon,
+  ArrowRight01Icon,
+  ChartLineData02Icon,
+  CreditCardIcon,
   DiscordIcon,
-  HugeiconsIcon,
+  DocumentAttachmentIcon,
+  GlobeIcon,
+  InformationCircleIcon,
   Logout01Icon,
-  Settings02Icon,
+  Mail01Icon,
+  Notification01Icon,
+  ShieldUserIcon,
   TelegramIcon,
-  UserCircleIcon,
+  TranslationIcon,
+  UserCircle02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth";
@@ -29,10 +38,247 @@ import type {
   UsageSummary,
 } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/lib/responsive";
 
-// ─── Helpers ────────────────────────────────────────────────────────────────
+// ─── Color tokens ─────────────────────────────────────────────────────────────
+const C = {
+  bg: "#131416",
+  sectionBg: "#171920",
+  divider: "rgba(255,255,255,0.06)",
+  text: "#ffffff",
+  textMuted: "#8e8e93",
+  textSubtle: "#5a5a5e",
+  primary: "#00bbff",
+  primaryBg: "rgba(0,187,255,0.15)",
+  primaryBorder: "rgba(0,187,255,0.35)",
+  danger: "#ef4444",
+  dangerBg: "rgba(239,68,68,0.1)",
+  warning: "#f59e0b",
+  success: "#22c55e",
+  iconBg: "rgba(255,255,255,0.07)",
+};
+
+// ─── Layout primitives ────────────────────────────────────────────────────────
+
+function SettingsPage({ children }: { children: React.ReactNode }) {
+  const { spacing } = useResponsive();
+  return (
+    <View style={{ gap: spacing.lg, paddingHorizontal: spacing.md }}>
+      {children}
+    </View>
+  );
+}
+
+function SettingsSection({
+  title,
+  description,
+  children,
+}: {
+  title?: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  const { fontSize, spacing } = useResponsive();
+  return (
+    <View>
+      {title ? (
+        <Text
+          style={{
+            fontSize: fontSize.xs,
+            fontWeight: "600",
+            textTransform: "uppercase",
+            letterSpacing: 0.8,
+            color: C.textMuted,
+            marginBottom: spacing.xs,
+            paddingHorizontal: 4,
+          }}
+        >
+          {title}
+        </Text>
+      ) : null}
+      {description ? (
+        <Text
+          style={{
+            fontSize: fontSize.sm,
+            color: C.textMuted,
+            marginBottom: spacing.sm,
+            paddingHorizontal: 4,
+          }}
+        >
+          {description}
+        </Text>
+      ) : null}
+      <View
+        style={{
+          backgroundColor: C.sectionBg,
+          borderRadius: 16,
+          overflow: "hidden",
+        }}
+      >
+        {children}
+      </View>
+    </View>
+  );
+}
+
+function RowDivider() {
+  return (
+    <View
+      style={{
+        height: 1,
+        backgroundColor: C.divider,
+        marginHorizontal: 16,
+      }}
+    />
+  );
+}
+
+interface SettingsRowProps {
+  label: string;
+  description?: string;
+  icon?: React.ReactNode;
+  iconBgColor?: string;
+  children?: React.ReactNode;
+  variant?: "default" | "danger";
+  onPress?: () => void;
+  showChevron?: boolean;
+  stacked?: boolean;
+}
+
+function SettingsRow({
+  label,
+  description,
+  icon,
+  iconBgColor,
+  children,
+  variant = "default",
+  onPress,
+  showChevron = false,
+  stacked = false,
+}: SettingsRowProps) {
+  const { spacing, fontSize } = useResponsive();
+  const labelColor = variant === "danger" ? C.danger : C.text;
+
+  const iconContainer = icon ? (
+    <View
+      style={{
+        width: 34,
+        height: 34,
+        borderRadius: 9,
+        backgroundColor: iconBgColor ?? C.iconBg,
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      {icon}
+    </View>
+  ) : null;
+
+  const content = stacked ? (
+    <View style={{ padding: spacing.md }}>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm + 2,
+          marginBottom: children ? spacing.sm : 0,
+        }}
+      >
+        {iconContainer}
+        <View>
+          <Text
+            style={{
+              fontSize: fontSize.sm + 1,
+              color: labelColor,
+              fontWeight: "400",
+            }}
+          >
+            {label}
+          </Text>
+          {description ? (
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: C.textMuted,
+                marginTop: 2,
+              }}
+            >
+              {description}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      {children ? <View>{children}</View> : null}
+    </View>
+  ) : (
+    <View
+      style={{
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: spacing.md,
+        paddingVertical: 13,
+        minHeight: 52,
+      }}
+    >
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm + 2,
+          flex: 1,
+          minWidth: 0,
+        }}
+      >
+        {iconContainer}
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            style={{
+              fontSize: fontSize.sm + 1,
+              color: labelColor,
+              fontWeight: "400",
+            }}
+          >
+            {label}
+          </Text>
+          {description ? (
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: C.textMuted,
+                marginTop: 2,
+              }}
+            >
+              {description}
+            </Text>
+          ) : null}
+        </View>
+      </View>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm,
+          flexShrink: 0,
+          marginLeft: spacing.sm,
+        }}
+      >
+        {children}
+        {showChevron ? (
+          <AppIcon icon={ArrowRight01Icon} size={16} color={C.textMuted} />
+        ) : null}
+      </View>
+    </View>
+  );
+
+  if (onPress) {
+    return <Pressable onPress={onPress}>{content}</Pressable>;
+  }
+
+  return content;
+}
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function getInitials(name?: string): string {
   if (!name) return "U";
@@ -51,123 +297,15 @@ function getDeviceTimezone(): string {
   }
 }
 
-// ─── Sub-components ──────────────────────────────────────────────────────────
+// ─── Account section ─────────────────────────────────────────────────────────
 
-function SectionTitle({ children }: { children: string }) {
-  const { spacing, fontSize } = useResponsive();
-  return (
-    <Text
-      style={{
-        fontSize: fontSize.xs,
-        color: "#8e8e93",
-        textTransform: "uppercase",
-        letterSpacing: 1,
-        paddingHorizontal: spacing.md,
-        marginBottom: spacing.xs,
-        marginTop: spacing.lg,
-      }}
-    >
-      {children}
-    </Text>
-  );
-}
-
-function Divider() {
-  return (
-    <View
-      style={{
-        height: 1,
-        backgroundColor: "rgba(255,255,255,0.06)",
-        marginLeft: 56,
-      }}
-    />
-  );
-}
-
-interface RowProps {
-  icon?: React.ReactNode;
-  label: string;
-  value?: string;
-  onPress?: () => void;
-  right?: React.ReactNode;
-  labelColor?: string;
-  showChevron?: boolean;
-}
-
-function Row({
-  icon,
-  label,
-  value,
-  onPress,
-  right,
-  labelColor,
-  showChevron = false,
-}: RowProps) {
-  const { spacing, fontSize } = useResponsive();
-  return (
-    <Pressable
-      onPress={onPress}
-      disabled={!onPress}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        paddingHorizontal: spacing.md,
-        paddingVertical: 13,
-        backgroundColor:
-          pressed && onPress ? "rgba(255,255,255,0.04)" : "transparent",
-        gap: 12,
-      })}
-    >
-      {icon ? (
-        <View
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          {icon}
-        </View>
-      ) : null}
-      <Text
-        style={{
-          flex: 1,
-          fontSize: fontSize.base,
-          color: labelColor ?? "#e8ebef",
-        }}
-      >
-        {label}
-      </Text>
-      {value ? (
-        <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>{value}</Text>
-      ) : null}
-      {right}
-      {showChevron && <Text style={{ color: "#48484a", fontSize: 16 }}>›</Text>}
-    </Pressable>
-  );
-}
-
-function Card({ children }: { children: React.ReactNode }) {
-  const { spacing } = useResponsive();
-  return (
-    <View
-      style={{
-        backgroundColor: "#1c1c1e",
-        borderRadius: 12,
-        marginHorizontal: spacing.md,
-        overflow: "hidden",
-      }}
-    >
-      {children}
-    </View>
-  );
-}
-
-// ─── Account card at top ─────────────────────────────────────────────────────
-
-function AccountCard() {
+function AccountSection({
+  onSignOut,
+  isSigningOut,
+}: {
+  onSignOut: () => void;
+  isSigningOut: boolean;
+}) {
   const { user, refreshAuth } = useAuth();
   const { spacing, fontSize } = useResponsive();
   const [name, setName] = useState(user?.name ?? "");
@@ -201,148 +339,219 @@ function AccountCard() {
   }, [name, user?.name, refreshAuth]);
 
   return (
-    <View
-      style={{
-        marginHorizontal: spacing.md,
-        backgroundColor: "#1c1c1e",
-        borderRadius: 16,
-        padding: spacing.lg,
-        alignItems: "center",
-        gap: spacing.md,
-      }}
-    >
-      <Avatar alt={user?.name ?? "User"} size="lg" color="accent">
-        {user?.picture ? (
-          <Avatar.Image source={{ uri: user.picture }} />
-        ) : (
-          <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
-        )}
-      </Avatar>
-
-      {isEditing ? (
-        <View
+    <SettingsSection title="Account">
+      {/* Avatar + profile summary */}
+      <View
+        style={{
+          alignItems: "center",
+          paddingTop: spacing.lg,
+          paddingBottom: spacing.md,
+          gap: spacing.sm,
+        }}
+      >
+        <Avatar alt={user?.name ?? "User"} size="lg" color="accent">
+          {user?.picture ? (
+            <Avatar.Image source={{ uri: user.picture }} />
+          ) : (
+            <Avatar.Fallback>{getInitials(user?.name)}</Avatar.Fallback>
+          )}
+        </Avatar>
+        <Text
           style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.sm,
-            width: "100%",
+            fontSize: fontSize.base,
+            fontWeight: "600",
+            color: C.text,
           }}
         >
-          <TextInput
-            ref={inputRef}
-            value={name}
-            onChangeText={setName}
-            autoFocus
-            returnKeyType="done"
-            onSubmitEditing={() => {
-              void handleSaveName();
-            }}
-            style={{
-              flex: 1,
-              backgroundColor: "#2c2c2e",
-              borderRadius: 8,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.sm,
-              fontSize: fontSize.base,
-              color: "#fff",
-              textAlign: "center",
-            }}
-          />
-          <Pressable
-            onPress={() => {
-              void handleSaveName();
-            }}
-            disabled={isSaving}
-            style={{
-              backgroundColor: "#16c1ff",
-              borderRadius: 8,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.sm,
-              opacity: isSaving ? 0.6 : 1,
-            }}
-          >
-            {isSaving ? (
-              <ActivityIndicator size="small" color="#000" />
-            ) : (
-              <Text
+          {user?.name || ""}
+        </Text>
+        <Text style={{ fontSize: fontSize.sm, color: C.textMuted }}>
+          {user?.email || ""}
+        </Text>
+      </View>
+
+      <RowDivider />
+
+      {/* Name */}
+      <SettingsRow
+        label="Name"
+        icon={<AppIcon icon={UserCircle02Icon} size={18} color={C.primary} />}
+        iconBgColor={C.primaryBg}
+        stacked
+      >
+        {isEditing ? (
+          <View style={{ gap: spacing.sm }}>
+            <TextInput
+              ref={inputRef}
+              value={name}
+              onChangeText={setName}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={() => {
+                void handleSaveName();
+              }}
+              style={{
+                backgroundColor: "rgba(255,255,255,0.06)",
+                borderRadius: 10,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+                fontSize: fontSize.base,
+                color: C.text,
+              }}
+            />
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <Pressable
+                onPress={() => {
+                  void handleSaveName();
+                }}
+                disabled={isSaving}
                 style={{
-                  color: "#000",
-                  fontWeight: "600",
-                  fontSize: fontSize.sm,
+                  flex: 1,
+                  backgroundColor: C.primary,
+                  borderRadius: 10,
+                  paddingVertical: spacing.sm,
+                  alignItems: "center",
+                  opacity: isSaving ? 0.6 : 1,
                 }}
               >
-                Save
-              </Text>
-            )}
-          </Pressable>
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <Text
+                    style={{
+                      color: "#000",
+                      fontWeight: "600",
+                      fontSize: fontSize.sm,
+                    }}
+                  >
+                    Save Changes
+                  </Text>
+                )}
+              </Pressable>
+              <Pressable
+                onPress={() => {
+                  setIsEditing(false);
+                  setName(user?.name ?? "");
+                }}
+                style={{
+                  flex: 1,
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                  borderRadius: 10,
+                  paddingVertical: spacing.sm,
+                  alignItems: "center",
+                }}
+              >
+                <Text style={{ color: C.textMuted, fontSize: fontSize.sm }}>
+                  Cancel
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : (
           <Pressable
-            onPress={() => {
-              setIsEditing(false);
-              setName(user?.name ?? "");
+            onPress={() => setIsEditing(true)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              backgroundColor: "rgba(255,255,255,0.05)",
+              borderRadius: 10,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm + 2,
             }}
-            style={{ paddingHorizontal: spacing.sm }}
           >
-            <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
-              Cancel
+            <Text style={{ fontSize: fontSize.sm, color: C.text }}>
+              {user?.name || "Tap to set name"}
             </Text>
+            <AppIcon icon={ArrowRight01Icon} size={14} color={C.textMuted} />
           </Pressable>
-        </View>
-      ) : (
-        <Pressable onPress={() => setIsEditing(true)}>
-          <Text
-            style={{
-              fontSize: fontSize.base,
-              fontWeight: "600",
-              color: "#e8ebef",
-            }}
-          >
-            {user?.name ?? "User"}
-          </Text>
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#8e8e93",
-              textAlign: "center",
-              marginTop: 2,
-            }}
-          >
-            Tap to edit name
-          </Text>
-        </Pressable>
-      )}
+        )}
+      </SettingsRow>
 
-      <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
-        {user?.email ?? ""}
-      </Text>
-    </View>
+      <RowDivider />
+
+      {/* Email */}
+      <SettingsRow
+        label="Email"
+        icon={<AppIcon icon={Mail01Icon} size={18} color="#a78bfa" />}
+        iconBgColor="rgba(167,139,250,0.15)"
+      >
+        <Text
+          style={{ fontSize: fontSize.sm, color: C.textMuted }}
+          numberOfLines={1}
+        >
+          {user?.email ?? ""}
+        </Text>
+      </SettingsRow>
+
+      <RowDivider />
+
+      {/* Sign Out */}
+      <SettingsRow
+        label={isSigningOut ? "Signing out…" : "Sign Out"}
+        description="Sign out of your account on this device"
+        icon={<AppIcon icon={Logout01Icon} size={18} color={C.danger} />}
+        iconBgColor={C.dangerBg}
+        variant="danger"
+        onPress={isSigningOut ? undefined : onSignOut}
+      >
+        <View
+          style={{
+            backgroundColor: C.dangerBg,
+            borderRadius: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            opacity: isSigningOut ? 0.6 : 1,
+          }}
+        >
+          <Text
+            style={{
+              color: C.danger,
+              fontSize: fontSize.xs,
+              fontWeight: "600",
+            }}
+          >
+            {isSigningOut ? "…" : "Sign out"}
+          </Text>
+        </View>
+      </SettingsRow>
+    </SettingsSection>
   );
 }
 
-// ─── Preferences inline ───────────────────────────────────────────────────────
+// ─── Preferences section ─────────────────────────────────────────────────────
 
 const PROFESSIONS = [
-  "Software Engineer",
-  "Product Manager",
-  "Designer",
-  "Data Scientist",
-  "Marketing",
-  "Student",
-  "Other",
+  { value: "student", label: "Student" },
+  { value: "developer", label: "Software Developer" },
+  { value: "designer", label: "Designer" },
+  { value: "manager", label: "Manager" },
+  { value: "entrepreneur", label: "Entrepreneur" },
+  { value: "consultant", label: "Consultant" },
+  { value: "researcher", label: "Researcher" },
+  { value: "teacher", label: "Teacher" },
+  { value: "writer", label: "Writer" },
+  { value: "analyst", label: "Analyst" },
+  { value: "engineer", label: "Engineer" },
+  { value: "marketer", label: "Marketer" },
+  { value: "other", label: "Other" },
 ];
 
-const RESPONSE_STYLES: { value: string; label: string }[] = [
-  { value: "concise", label: "Concise" },
+const RESPONSE_STYLES = [
+  { value: "brief", label: "Brief" },
   { value: "detailed", label: "Detailed" },
-  { value: "balanced", label: "Balanced" },
+  { value: "casual", label: "Casual" },
+  { value: "professional", label: "Professional" },
 ];
 
-function PreferencesCard() {
+function PreferencesSection() {
   const { spacing, fontSize } = useResponsive();
   const [prefs, setPrefs] = useState<OnboardingPreferences>({});
   const [customInstructions, setCustomInstructions] = useState("");
   const [timezone] = useState(getDeviceTimezone);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -375,6 +584,7 @@ function PreferencesCard() {
         }),
         settingsApi.updateTimezone(timezone),
       ]);
+      setHasUnsavedChanges(false);
       Alert.alert("Saved", "Preferences updated.");
     } catch {
       Alert.alert("Error", "Failed to save preferences.");
@@ -385,167 +595,208 @@ function PreferencesCard() {
 
   if (isLoading) {
     return (
-      <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
-        <ActivityIndicator color="#16c1ff" />
-      </View>
+      <SettingsSection title="Preferences">
+        <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
+          <ActivityIndicator color={C.primary} />
+        </View>
+      </SettingsSection>
     );
   }
 
   return (
-    <View style={{ marginHorizontal: spacing.md, gap: spacing.md }}>
-      {/* Profession */}
-      <View style={{ gap: spacing.sm }}>
-        <Text
-          style={{ fontSize: fontSize.xs, color: "#8e8e93", paddingLeft: 4 }}
+    <>
+      <SettingsSection title="Preferences">
+        {/* Timezone */}
+        <SettingsRow
+          label="Timezone"
+          description="Auto-detected from your device"
+          icon={<AppIcon icon={GlobeIcon} size={18} color="#34d399" />}
+          iconBgColor="rgba(52,211,153,0.15)"
         >
-          Profession
-        </Text>
-        <View
-          style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}
-        >
-          {PROFESSIONS.map((p) => {
-            const isActive = prefs.profession === p;
-            return (
-              <Pressable
-                key={p}
-                onPress={() => setPrefs((prev) => ({ ...prev, profession: p }))}
-                style={{
-                  borderRadius: 999,
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: 6,
-                  backgroundColor: isActive
-                    ? "rgba(22,193,255,0.2)"
-                    : "#1c1c1e",
-                  borderWidth: 1,
-                  borderColor: isActive
-                    ? "rgba(22,193,255,0.5)"
-                    : "transparent",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: isActive ? "#9fe6ff" : "#c5cad2",
-                  }}
-                >
-                  {p}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* Response style */}
-      <View style={{ gap: spacing.sm }}>
-        <Text
-          style={{ fontSize: fontSize.xs, color: "#8e8e93", paddingLeft: 4 }}
-        >
-          Response Style
-        </Text>
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          {RESPONSE_STYLES.map(({ value, label }) => {
-            const isActive = prefs.response_style === value;
-            return (
-              <Pressable
-                key={value}
-                onPress={() =>
-                  setPrefs((prev) => ({ ...prev, response_style: value }))
-                }
-                style={{
-                  flex: 1,
-                  borderRadius: 10,
-                  paddingVertical: spacing.md,
-                  alignItems: "center",
-                  backgroundColor: isActive
-                    ? "rgba(22,193,255,0.2)"
-                    : "#1c1c1e",
-                  borderWidth: 1,
-                  borderColor: isActive
-                    ? "rgba(22,193,255,0.5)"
-                    : "transparent",
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: isActive ? "#9fe6ff" : "#c5cad2",
-                    fontWeight: isActive ? "600" : "400",
-                  }}
-                >
-                  {label}
-                </Text>
-              </Pressable>
-            );
-          })}
-        </View>
-      </View>
-
-      {/* Custom instructions */}
-      <View style={{ gap: spacing.sm }}>
-        <Text
-          style={{ fontSize: fontSize.xs, color: "#8e8e93", paddingLeft: 4 }}
-        >
-          Custom Instructions
-        </Text>
-        <TextInput
-          value={customInstructions}
-          onChangeText={setCustomInstructions}
-          placeholder="Tell GAIA how you'd like it to respond…"
-          placeholderTextColor="#555"
-          multiline
-          numberOfLines={3}
-          style={{
-            backgroundColor: "#1c1c1e",
-            borderRadius: 10,
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.md,
-            fontSize: fontSize.sm,
-            color: "#fff",
-            minHeight: 88,
-            textAlignVertical: "top",
-          }}
-        />
-      </View>
-
-      {/* Timezone display */}
-      <Row label="Timezone" value={timezone} />
-
-      {/* Save */}
-      <Pressable
-        onPress={() => {
-          void handleSave();
-        }}
-        disabled={isSaving}
-        style={{
-          backgroundColor: "#16c1ff",
-          borderRadius: 10,
-          paddingVertical: spacing.md,
-          alignItems: "center",
-          opacity: isSaving ? 0.6 : 1,
-        }}
-      >
-        {isSaving ? (
-          <ActivityIndicator color="#000" />
-        ) : (
           <Text
+            style={{ fontSize: fontSize.xs, color: C.textMuted }}
+            numberOfLines={1}
+          >
+            {timezone}
+          </Text>
+        </SettingsRow>
+
+        <RowDivider />
+
+        {/* Language */}
+        <SettingsRow
+          label="Language"
+          description="App display language"
+          icon={<AppIcon icon={TranslationIcon} size={18} color="#fb923c" />}
+          iconBgColor="rgba(251,146,60,0.15)"
+          showChevron
+        >
+          <Text style={{ fontSize: fontSize.sm, color: C.textMuted }}>
+            English
+          </Text>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection title="Identity">
+        {/* Profession */}
+        <SettingsRow label="Profession" stacked>
+          <View
             style={{
-              color: "#000",
-              fontWeight: "600",
-              fontSize: fontSize.base,
+              flexDirection: "row",
+              flexWrap: "wrap",
+              gap: spacing.sm,
             }}
           >
-            Save Preferences
-          </Text>
-        )}
-      </Pressable>
-    </View>
+            {PROFESSIONS.map(({ value, label }) => {
+              const isActive = prefs.profession === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => {
+                    setPrefs((prev) => ({ ...prev, profession: value }));
+                    setHasUnsavedChanges(true);
+                  }}
+                  style={{
+                    borderRadius: 999,
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: 6,
+                    backgroundColor: isActive
+                      ? C.primaryBg
+                      : "rgba(255,255,255,0.06)",
+                    borderWidth: 1,
+                    borderColor: isActive ? C.primaryBorder : "transparent",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs,
+                      color: isActive ? C.primary : "#c5cad2",
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </SettingsRow>
+      </SettingsSection>
+
+      <SettingsSection title="Conversation">
+        {/* Response Style */}
+        <SettingsRow label="Response Style" stacked>
+          <View
+            style={{ flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }}
+          >
+            {RESPONSE_STYLES.map(({ value, label }) => {
+              const isActive = prefs.response_style === value;
+              return (
+                <Pressable
+                  key={value}
+                  onPress={() => {
+                    setPrefs((prev) => ({
+                      ...prev,
+                      response_style: value,
+                    }));
+                    setHasUnsavedChanges(true);
+                  }}
+                  style={{
+                    flex: 1,
+                    minWidth: "40%",
+                    borderRadius: 10,
+                    paddingVertical: spacing.sm + 2,
+                    alignItems: "center",
+                    backgroundColor: isActive
+                      ? C.primaryBg
+                      : "rgba(255,255,255,0.06)",
+                    borderWidth: 1,
+                    borderColor: isActive ? C.primaryBorder : "transparent",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.sm,
+                      color: isActive ? C.primary : "#c5cad2",
+                      fontWeight: isActive ? "600" : "400",
+                    }}
+                  >
+                    {label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </SettingsRow>
+
+        <RowDivider />
+
+        {/* Custom Instructions */}
+        <SettingsRow
+          label="Custom Instructions"
+          description="Included in every conversation."
+          stacked
+        >
+          <TextInput
+            value={customInstructions}
+            onChangeText={(text) => {
+              setCustomInstructions(text);
+              setHasUnsavedChanges(true);
+            }}
+            placeholder="Add specific instructions for how GAIA should assist you..."
+            placeholderTextColor="#555"
+            multiline
+            numberOfLines={3}
+            style={{
+              backgroundColor: "rgba(255,255,255,0.06)",
+              borderRadius: 12,
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.md,
+              fontSize: fontSize.sm,
+              color: C.text,
+              minHeight: 88,
+              textAlignVertical: "top",
+            }}
+          />
+        </SettingsRow>
+      </SettingsSection>
+
+      {/* Save button */}
+      {hasUnsavedChanges ? (
+        <Pressable
+          onPress={() => {
+            void handleSave();
+          }}
+          disabled={isSaving}
+          style={{
+            backgroundColor: C.primary,
+            borderRadius: 12,
+            paddingVertical: spacing.md,
+            alignItems: "center",
+            opacity: isSaving ? 0.6 : 1,
+          }}
+        >
+          {isSaving ? (
+            <ActivityIndicator color="#000" />
+          ) : (
+            <Text
+              style={{
+                color: "#000",
+                fontWeight: "600",
+                fontSize: fontSize.base,
+              }}
+            >
+              Save Preferences
+            </Text>
+          )}
+        </Pressable>
+      ) : null}
+    </>
   );
 }
 
-// ─── Notifications toggles ────────────────────────────────────────────────────
+// ─── Notifications section ────────────────────────────────────────────────────
 
-function NotificationsCard() {
+function NotificationsSection() {
   const [channels, setChannels] = useState<ChannelPreferences>({
     telegram: false,
     discord: false,
@@ -588,54 +839,77 @@ function NotificationsCard() {
 
   if (isLoading) {
     return (
-      <Card>
+      <SettingsSection title="Notifications">
         <View style={{ alignItems: "center", padding: 20 }}>
-          <ActivityIndicator color="#16c1ff" />
+          <ActivityIndicator color={C.primary} />
         </View>
-      </Card>
+      </SettingsSection>
     );
   }
 
   return (
-    <Card>
-      <Row
-        icon={<HugeiconsIcon icon={TelegramIcon} size={20} color="#2AABEE" />}
+    <SettingsSection
+      title="Notifications"
+      description="Choose where to receive GAIA notifications."
+    >
+      {/* Push notifications (opens OS settings) */}
+      <SettingsRow
+        label="Push Notifications"
+        description="Device alerts and reminders"
+        icon={<AppIcon icon={Notification01Icon} size={18} color="#fbbf24" />}
+        iconBgColor="rgba(251,191,36,0.15)"
+        showChevron
+        onPress={() => {
+          void Linking.openSettings();
+        }}
+      />
+
+      <RowDivider />
+
+      {/* Telegram */}
+      <SettingsRow
         label="Telegram"
-        right={
-          <Switch
-            value={channels.telegram}
-            onValueChange={(val) => {
-              void handleToggle("telegram", val);
-            }}
-            disabled={updating === "telegram"}
-            trackColor={{ false: "#3a3a3c", true: "rgba(22,193,255,0.6)" }}
-            thumbColor={channels.telegram ? "#16c1ff" : "#8e8e93"}
-          />
-        }
-      />
-      <Divider />
-      <Row
-        icon={<HugeiconsIcon icon={DiscordIcon} size={20} color="#5865F2" />}
+        description="Send notifications to this platform"
+        icon={<AppIcon icon={TelegramIcon} size={18} color="#2AABEE" />}
+        iconBgColor="rgba(42,171,238,0.15)"
+      >
+        <Switch
+          value={channels.telegram}
+          onValueChange={(val) => {
+            void handleToggle("telegram", val);
+          }}
+          disabled={updating === "telegram"}
+          trackColor={{ false: "#3a3a3c", true: "rgba(0,187,255,0.45)" }}
+          thumbColor={channels.telegram ? C.primary : "#8e8e93"}
+        />
+      </SettingsRow>
+
+      <RowDivider />
+
+      {/* Discord */}
+      <SettingsRow
         label="Discord"
-        right={
-          <Switch
-            value={channels.discord}
-            onValueChange={(val) => {
-              void handleToggle("discord", val);
-            }}
-            disabled={updating === "discord"}
-            trackColor={{ false: "#3a3a3c", true: "rgba(22,193,255,0.6)" }}
-            thumbColor={channels.discord ? "#16c1ff" : "#8e8e93"}
-          />
-        }
-      />
-    </Card>
+        description="Send notifications to this platform"
+        icon={<AppIcon icon={DiscordIcon} size={18} color="#5865F2" />}
+        iconBgColor="rgba(88,101,242,0.15)"
+      >
+        <Switch
+          value={channels.discord}
+          onValueChange={(val) => {
+            void handleToggle("discord", val);
+          }}
+          disabled={updating === "discord"}
+          trackColor={{ false: "#3a3a3c", true: "rgba(0,187,255,0.45)" }}
+          thumbColor={channels.discord ? C.primary : "#8e8e93"}
+        />
+      </SettingsRow>
+    </SettingsSection>
   );
 }
 
-// ─── Usage card ───────────────────────────────────────────────────────────────
+// ─── Usage section ────────────────────────────────────────────────────────────
 
-function UsageCard() {
+function UsageSection() {
   const { spacing, fontSize } = useResponsive();
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -659,171 +933,306 @@ function UsageCard() {
 
   if (isLoading) {
     return (
-      <Card>
-        <View style={{ alignItems: "center", padding: 20 }}>
-          <ActivityIndicator color="#16c1ff" />
-        </View>
-      </Card>
+      <View style={{ alignItems: "center", paddingVertical: spacing.lg }}>
+        <ActivityIndicator color={C.primary} />
+      </View>
     );
   }
 
   if (!summary) {
     return (
-      <Card>
-        <View style={{ padding: 20 }}>
-          <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
+      <SettingsSection title="Usage">
+        <View style={{ padding: spacing.lg, alignItems: "center" }}>
+          <Text style={{ color: C.textMuted, fontSize: fontSize.sm }}>
             No usage data available.
           </Text>
         </View>
-      </Card>
+      </SettingsSection>
     );
   }
 
-  const entries = Object.entries(summary.features);
+  const featureEntries = Object.entries(summary.features).filter(
+    ([, feature]) => feature.periods[period],
+  );
   const isPro = summary.plan_type !== "free";
+  const periodLabel = period === "day" ? "daily" : "monthly";
+
+  const getProgressColor = (pct: number) => {
+    if (pct >= 90) return C.danger;
+    if (pct >= 70) return C.warning;
+    return C.success;
+  };
 
   return (
-    <View style={{ marginHorizontal: spacing.md, gap: spacing.md }}>
-      {/* Plan row */}
+    <>
+      {/* Subscription info */}
+      <SettingsSection title="Subscription">
+        <SettingsRow
+          label="Current Plan"
+          description={
+            isPro
+              ? "Full access to all features"
+              : "Limited usage — upgrade for more"
+          }
+          icon={
+            <AppIcon
+              icon={CreditCardIcon}
+              size={18}
+              color={isPro ? C.primary : C.textMuted}
+            />
+          }
+          iconBgColor={isPro ? C.primaryBg : C.iconBg}
+        >
+          <View
+            style={{
+              backgroundColor: isPro ? C.primaryBg : "rgba(255,255,255,0.06)",
+              borderRadius: 999,
+              paddingHorizontal: 10,
+              paddingVertical: 4,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                fontWeight: "700",
+                color: isPro ? C.primary : "#c5cad2",
+              }}
+            >
+              {summary.plan_type?.toUpperCase() || "FREE"}
+            </Text>
+          </View>
+        </SettingsRow>
+
+        {!isPro ? (
+          <>
+            <RowDivider />
+            <SettingsRow
+              label="Upgrade to Pro"
+              description="25–250x higher limits, priority support"
+              icon={
+                <AppIcon
+                  icon={ChartLineData02Icon}
+                  size={18}
+                  color={C.primary}
+                />
+              }
+              iconBgColor={C.primaryBg}
+              showChevron
+              onPress={() => {
+                Alert.alert(
+                  "Upgrade",
+                  "Visit the web app to manage your subscription.",
+                );
+              }}
+            />
+          </>
+        ) : null}
+      </SettingsSection>
+
+      {/* Usage section with period selector */}
       <View
         style={{
-          backgroundColor: "#1c1c1e",
-          borderRadius: 12,
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.md,
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
         }}
       >
-        <View>
-          <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
-            Current Plan
-          </Text>
-          <Text
-            style={{
-              fontSize: fontSize.base,
-              fontWeight: "600",
-              color: "#e8ebef",
-              marginTop: 2,
-            }}
-          >
-            {isPro ? "Pro" : "Free"}
-          </Text>
-        </View>
-        {!isPro && (
-          <View
-            style={{
-              backgroundColor: "#16c1ff",
-              borderRadius: 8,
-              paddingHorizontal: spacing.md,
-              paddingVertical: 6,
-            }}
-          >
-            <Text
-              style={{
-                color: "#000",
-                fontWeight: "700",
-                fontSize: fontSize.sm,
-              }}
-            >
-              Upgrade
-            </Text>
-          </View>
-        )}
-      </View>
-
-      {/* Period picker */}
-      <View style={{ flexDirection: "row", gap: spacing.sm }}>
-        {(["day", "month"] as const).map((key) => {
-          const isActive = period === key;
-          return (
-            <Pressable
-              key={key}
-              onPress={() => setPeriod(key)}
-              style={{
-                borderRadius: 999,
-                paddingHorizontal: spacing.md,
-                paddingVertical: 6,
-                backgroundColor: isActive ? "rgba(22,193,255,0.2)" : "#1c1c1e",
-                borderWidth: 1,
-                borderColor: isActive ? "rgba(22,193,255,0.4)" : "transparent",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  color: isActive ? "#9fe6ff" : "#c5cad2",
-                  fontWeight: isActive ? "600" : "400",
-                }}
-              >
-                {key === "day" ? "Daily" : "Monthly"}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
-
-      {/* Feature bars */}
-      {entries.length > 0 && (
-        <View
+        <Text
           style={{
-            backgroundColor: "#1c1c1e",
-            borderRadius: 12,
-            padding: spacing.md,
-            gap: spacing.lg,
+            fontSize: fontSize.xs,
+            fontWeight: "600",
+            textTransform: "uppercase",
+            letterSpacing: 0.8,
+            color: C.textMuted,
+            paddingHorizontal: 4,
           }}
         >
-          {entries.map(([key, feature]) => {
-            const p = feature.periods[period];
-            if (!p) return null;
-            const pct = Math.min(p.percentage, 100);
-            const barColor =
-              pct >= 90 ? "#ef4444" : pct >= 70 ? "#f59e0b" : "#16c1ff";
+          Usage
+        </Text>
+        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+          {(["day", "month"] as const).map((key) => {
+            const isActive = period === key;
             return (
-              <View key={key} style={{ gap: 6 }}>
-                <View
+              <Pressable
+                key={key}
+                onPress={() => setPeriod(key)}
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: spacing.md,
+                  paddingVertical: 5,
+                  backgroundColor: isActive
+                    ? C.primaryBg
+                    : "rgba(255,255,255,0.07)",
+                }}
+              >
+                <Text
                   style={{
-                    flexDirection: "row",
-                    justifyContent: "space-between",
+                    fontSize: fontSize.xs,
+                    color: isActive ? C.primary : "#c5cad2",
+                    fontWeight: isActive ? "600" : "400",
                   }}
                 >
-                  <Text style={{ fontSize: fontSize.sm, color: "#e8ebef" }}>
-                    {feature.title}
-                  </Text>
-                  <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
-                    {p.used} / {p.limit}
-                  </Text>
-                </View>
-                <View
-                  style={{
-                    height: 6,
-                    borderRadius: 3,
-                    backgroundColor: "rgba(255,255,255,0.1)",
-                    overflow: "hidden",
-                  }}
-                >
-                  <View
-                    style={{
-                      height: "100%",
-                      width: `${pct}%`,
-                      borderRadius: 3,
-                      backgroundColor: barColor,
-                    }}
-                  />
-                </View>
-                <Text style={{ fontSize: fontSize.xs - 1, color: "#5a5a5e" }}>
-                  {p.remaining} remaining
-                  {p.reset_time
-                    ? ` · resets ${new Date(p.reset_time).toLocaleDateString()}`
-                    : ""}
+                  {key === "day" ? "Daily" : "Monthly"}
                 </Text>
-              </View>
+              </Pressable>
             );
           })}
         </View>
-      )}
-    </View>
+      </View>
+
+      <SettingsSection>
+        {featureEntries.length === 0 ? (
+          <View
+            style={{
+              padding: spacing.lg,
+              alignItems: "center",
+              gap: spacing.sm,
+            }}
+          >
+            <AppIcon
+              icon={ChartLineData02Icon}
+              size={32}
+              color={C.textSubtle}
+            />
+            <Text
+              style={{
+                fontSize: fontSize.base,
+                fontWeight: "500",
+                color: C.text,
+                marginTop: 4,
+              }}
+            >
+              No limits configured
+            </Text>
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                color: C.textMuted,
+                textAlign: "center",
+              }}
+            >
+              No {periodLabel} limits are configured for your{" "}
+              {summary.plan_type?.toUpperCase()} plan.
+            </Text>
+          </View>
+        ) : (
+          featureEntries.map(([key, feature], index) => {
+            const p = feature.periods[period];
+            if (!p) return null;
+            const pct = Math.min(p.percentage, 100);
+            return (
+              <View key={key}>
+                {index > 0 && <RowDivider />}
+                <SettingsRow
+                  label={feature.title}
+                  description={feature.description}
+                  stacked
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: spacing.sm,
+                    }}
+                  >
+                    <View
+                      style={{
+                        flex: 1,
+                        height: 5,
+                        borderRadius: 3,
+                        backgroundColor: "rgba(255,255,255,0.08)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <View
+                        style={{
+                          height: "100%",
+                          width: `${pct}%`,
+                          borderRadius: 3,
+                          backgroundColor: getProgressColor(pct),
+                        }}
+                      />
+                    </View>
+                    <Text
+                      style={{
+                        fontSize: fontSize.xs,
+                        color: C.textMuted,
+                        flexShrink: 0,
+                        minWidth: 80,
+                        textAlign: "right",
+                      }}
+                    >
+                      {p.used.toLocaleString()} / {p.limit.toLocaleString()}
+                    </Text>
+                  </View>
+                </SettingsRow>
+              </View>
+            );
+          })
+        )}
+      </SettingsSection>
+    </>
+  );
+}
+
+// ─── About section ────────────────────────────────────────────────────────────
+
+const APP_VERSION = "1.0.0";
+
+function AboutSection() {
+  const { fontSize } = useResponsive();
+
+  const handleLink = useCallback(async (url: string) => {
+    try {
+      await Linking.openURL(url);
+    } catch {
+      Alert.alert("Error", "Could not open link.");
+    }
+  }, []);
+
+  return (
+    <SettingsSection title="About">
+      {/* App version */}
+      <SettingsRow
+        label="Version"
+        icon={
+          <AppIcon icon={InformationCircleIcon} size={18} color={C.textMuted} />
+        }
+        iconBgColor={C.iconBg}
+      >
+        <Text style={{ fontSize: fontSize.sm, color: C.textMuted }}>
+          {APP_VERSION}
+        </Text>
+      </SettingsRow>
+
+      <RowDivider />
+
+      {/* Privacy Policy */}
+      <SettingsRow
+        label="Privacy Policy"
+        icon={<AppIcon icon={ShieldUserIcon} size={18} color="#818cf8" />}
+        iconBgColor="rgba(129,140,248,0.15)"
+        showChevron
+        onPress={() => {
+          void handleLink("https://heygaia.io/privacy");
+        }}
+      />
+
+      <RowDivider />
+
+      {/* Terms of Service */}
+      <SettingsRow
+        label="Terms of Service"
+        icon={
+          <AppIcon icon={DocumentAttachmentIcon} size={18} color="#94a3b8" />
+        }
+        iconBgColor="rgba(148,163,184,0.12)"
+        showChevron
+        onPress={() => {
+          void handleLink("https://heygaia.io/terms");
+        }}
+      />
+    </SettingsSection>
   );
 }
 
@@ -858,7 +1267,7 @@ export default function SettingsScreen() {
   }, [signOut, router]);
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#0b0c0f" }}>
+    <View style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
       <View
         style={{
@@ -866,7 +1275,7 @@ export default function SettingsScreen() {
           paddingHorizontal: spacing.md,
           paddingBottom: spacing.md,
           borderBottomWidth: 1,
-          borderBottomColor: "rgba(255,255,255,0.08)",
+          borderBottomColor: C.divider,
           flexDirection: "row",
           alignItems: "center",
         }}
@@ -882,14 +1291,14 @@ export default function SettingsScreen() {
             backgroundColor: "rgba(255,255,255,0.05)",
           }}
         >
-          <HugeiconsIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
+          <AppIcon icon={ArrowLeft01Icon} size={18} color={C.text} />
         </Pressable>
         <Text
           style={{
             marginLeft: spacing.md,
             fontSize: fontSize.base,
             fontWeight: "600",
-            color: "#fff",
+            color: C.text,
             flex: 1,
           }}
         >
@@ -900,153 +1309,32 @@ export default function SettingsScreen() {
       <ScrollView
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: 60, paddingTop: spacing.lg }}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + spacing.lg,
+          paddingTop: spacing.lg,
+        }}
       >
-        {/* ── Account ── */}
-        <AccountCard />
-
-        {/* ── Preferences ── */}
-        <SectionTitle>Preferences</SectionTitle>
-        <Card>
-          <Row
-            icon={
-              <View
-                style={{
-                  backgroundColor: "rgba(99,102,241,0.2)",
-                  borderRadius: 8,
-                  width: 32,
-                  height: 32,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <HugeiconsIcon
-                  icon={UserCircleIcon}
-                  size={18}
-                  color="#818cf8"
-                />
-              </View>
-            }
-            label="Profile & AI settings"
-            showChevron
-            onPress={() => {}}
-          />
-        </Card>
-
-        <View style={{ marginTop: spacing.md }}>
-          <PreferencesCard />
-        </View>
-
-        {/* ── Notifications ── */}
-        <SectionTitle>Notifications</SectionTitle>
-        <NotificationsCard />
-
-        {/* ── Usage ── */}
-        <SectionTitle>Usage</SectionTitle>
-        <Card>
-          <Row
-            icon={
-              <View
-                style={{
-                  backgroundColor: "rgba(22,193,255,0.12)",
-                  borderRadius: 8,
-                  width: 32,
-                  height: 32,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <HugeiconsIcon
-                  icon={ChartLineData01Icon}
-                  size={18}
-                  color="#16c1ff"
-                />
-              </View>
-            }
-            label="Usage & Limits"
-          />
-        </Card>
-        <View style={{ marginTop: spacing.md }}>
-          <UsageCard />
-        </View>
-
-        {/* ── Memories ── */}
-        <SectionTitle>Memory</SectionTitle>
-        <Card>
-          <Row
-            icon={
-              <View
-                style={{
-                  backgroundColor: "rgba(168,85,247,0.15)",
-                  borderRadius: 8,
-                  width: 32,
-                  height: 32,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <HugeiconsIcon icon={BrainIcon} size={18} color="#a855f7" />
-              </View>
-            }
-            label="Memories"
-            value="Manage"
-            showChevron
-            onPress={() => {}}
-          />
-        </Card>
-
-        {/* ── Customization ── */}
-        <SectionTitle>Customization</SectionTitle>
-        <Card>
-          <Row
-            icon={
-              <View
-                style={{
-                  backgroundColor: "rgba(251,191,36,0.12)",
-                  borderRadius: 8,
-                  width: 32,
-                  height: 32,
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <HugeiconsIcon
-                  icon={Settings02Icon}
-                  size={18}
-                  color="#fbbf24"
-                />
-              </View>
-            }
-            label="Appearance"
-            showChevron
-            onPress={() => {}}
-          />
-        </Card>
-
-        {/* ── Sign Out ── */}
-        <View style={{ marginTop: spacing.xl, marginHorizontal: spacing.md }}>
-          <Pressable
-            onPress={() => {
+        <SettingsPage>
+          {/* Account — profile photo, name, email, logout */}
+          <AccountSection
+            onSignOut={() => {
               void handleSignOut();
             }}
-            disabled={isSigningOut}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              backgroundColor: "rgba(239,68,68,0.08)",
-              borderRadius: 12,
-              paddingHorizontal: spacing.md,
-              paddingVertical: 14,
-              opacity: isSigningOut ? 0.6 : 1,
-            }}
-          >
-            <HugeiconsIcon icon={Logout01Icon} size={20} color="#ef4444" />
-            <Text style={{ color: "#ef4444", fontSize: fontSize.base }}>
-              {isSigningOut ? "Signing out…" : "Sign Out"}
-            </Text>
-          </Pressable>
-        </View>
+            isSigningOut={isSigningOut}
+          />
+
+          {/* Preferences — timezone, language, identity, conversation */}
+          <PreferencesSection />
+
+          {/* Notifications — push, telegram, discord */}
+          <NotificationsSection />
+
+          {/* Usage — subscription info + API usage stats */}
+          <UsageSection />
+
+          {/* About — version, privacy policy, terms */}
+          <AboutSection />
+        </SettingsPage>
       </ScrollView>
     </View>
   );

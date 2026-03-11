@@ -10,7 +10,8 @@
     ".": "./src/index.ts",
     "./bots": "./src/bots/index.ts",
     "./chat": "./src/chat/index.ts",
-    "./cli": "./src/cli/index.ts"
+    "./cli": "./src/cli/index.ts",
+    "./icons": "./src/icons/index.ts"
   },
   "scripts": {
     "build": "tsc",

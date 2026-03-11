@@ -24,6 +24,15 @@ repos:
       - id: detect-private-key
         priority: 0
 
+  - repo: local
+    hooks:
+      - id: biome-mobile
+        name: Biome lint/format (mobile)
+        entry: bash -c 'cd apps/mobile && pnpm lint:fix'
+        language: system
+        files: ^apps/mobile/.*\.(js|jsx|ts|tsx|json)$
+        pass_filenames: false
+
   - repo: https://github.com/Yelp/detect-secrets
     rev: v1.4.0
     hooks:
