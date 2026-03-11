@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Gaia",
-    "slug": "gaia-mobile",
+    "slug": "gaia",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icons/gaialogo.png",
@@ -38,7 +38,10 @@
               "pathPrefix": "/callback"
             }
           ],
-          "category": ["BROWSABLE", "DEFAULT"]
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
         }
       ]
     },
@@ -68,7 +71,9 @@
         {
           "icon": "./assets/icons/gaialogo.png",
           "color": "#ffffff",
-          "sounds": ["./assets/sound/uwu.mp3"],
+          "sounds": [
+            "./assets/sound/uwu.mp3"
+          ],
           "defaultChannel": "gaia_channel"
         }
       ]
@@ -82,9 +87,9 @@
         "root": "./src/app"
       },
       "eas": {
-        "projectId": "dfc106f0-990f-4593-97ed-7999efde6e8c"
+        "projectId": "d40e3b70-3315-4212-9f89-c3efb7f1ef85"
       }
     },
-    "owner": "gaia"
+    "owner": "aryanranderiya"
   }
 }
