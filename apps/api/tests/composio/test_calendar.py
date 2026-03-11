@@ -9,7 +9,7 @@ API credentials; all network I/O and service-layer calls are replaced with
 What is being tested
 --------------------
 All nine handler functions defined inside
-``app.agents.tools.calendar_tool.register_calendar_custom_tools``:
+``app.agents.tools.integrations.calendar_tool.register_calendar_custom_tools``:
 
 * CUSTOM_LIST_CALENDARS
 * CUSTOM_GET_DAY_SUMMARY
@@ -170,7 +170,7 @@ class TestCustomListCalendars:
     def test_happy_path_short(self):
         fake_calendars = [{"id": "cal1", "summary": "Work"}]
         with patch(
-            "app.agents.tools.calendar_tool.calendar_service.list_calendars",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.list_calendars",
             return_value=fake_calendars,
         ) as mock_list:
             result = self.handler(
@@ -185,7 +185,7 @@ class TestCustomListCalendars:
     def test_happy_path_full(self):
         fake_calendars = [{"id": "cal1"}, {"id": "cal2"}]
         with patch(
-            "app.agents.tools.calendar_tool.calendar_service.list_calendars",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.list_calendars",
             return_value=fake_calendars,
         ):
             result = self.handler(
@@ -206,7 +206,7 @@ class TestCustomListCalendars:
 
     def test_service_raises_propagates(self):
         with patch(
-            "app.agents.tools.calendar_tool.calendar_service.list_calendars",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.list_calendars",
             side_effect=RuntimeError("Google API down"),
         ):
             with pytest.raises(RuntimeError, match="Google API down"):
@@ -231,7 +231,7 @@ class TestCustomGetDaySummary:
         self.handler = self.handlers["CUSTOM_GET_DAY_SUMMARY"]
 
     def _run(self, request: GetDaySummaryInput, creds=None):
-        creds = creds or AUTH_CREDS_BASIC
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -242,19 +242,19 @@ class TestCustomGetDaySummary:
         """Context-manager helper that patches calendar_service calls."""
         events = events or []
         get_events_patch = patch(
-            "app.agents.tools.calendar_tool.calendar_service.get_calendar_events",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_events",
             return_value={"events": events},
         )
         metadata_patch = patch(
-            "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
             return_value=({}, {}),
         )
         format_patch = patch(
-            "app.agents.tools.calendar_tool.calendar_service.format_event_for_frontend",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.format_event_for_frontend",
             side_effect=lambda ev, cm, nm: ev,
         )
         user_patch = patch(
-            "app.agents.tools.calendar_tool.user_service.get_user_by_id",
+            "app.agents.tools.integrations.calendar_tool.user_service.get_user_by_id",
             return_value={"timezone": "UTC"},
         )
         return get_events_patch, metadata_patch, format_patch, user_patch
@@ -333,15 +333,15 @@ class TestCustomGetDaySummary:
         events = [{"start": {"date": "2026-03-03"}, "end": {"date": "2026-03-04"}}]
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_events",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_events",
                 return_value={"events": events},
             ),
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 side_effect=RuntimeError("metadata unavailable"),
             ),
             patch(
-                "app.agents.tools.calendar_tool.user_service.get_user_by_id",
+                "app.agents.tools.integrations.calendar_tool.user_service.get_user_by_id",
                 return_value={"timezone": "UTC"},
             ),
         ):
@@ -365,7 +365,7 @@ class TestCustomFetchEvents:
         self.handler = self.handlers["CUSTOM_FETCH_EVENTS"]
 
     def _run(self, request: FetchEventsInput, creds=None):
-        creds = creds or AUTH_CREDS_BASIC
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -376,15 +376,15 @@ class TestCustomFetchEvents:
         events = [{"id": "ev1", "summary": "Team meeting"}]
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_events",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_events",
                 return_value={"events": events, "has_more": False},
             ),
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.format_event_for_frontend",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.format_event_for_frontend",
                 side_effect=lambda ev, cm, nm: ev,
             ),
         ):
@@ -397,11 +397,11 @@ class TestCustomFetchEvents:
     def test_happy_path_empty_events(self):
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_events",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_events",
                 return_value={"events": [], "has_more": False},
             ),
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
         ):
@@ -414,11 +414,11 @@ class TestCustomFetchEvents:
         """Specific calendar IDs should be forwarded to get_calendar_events."""
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_events",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_events",
                 return_value={"events": [], "has_more": False},
             ) as mock_get,
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
         ):
@@ -431,11 +431,11 @@ class TestCustomFetchEvents:
         """Empty calendar_ids list should pass None (fetch from all)."""
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_events",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_events",
                 return_value={"events": [], "has_more": False},
             ) as mock_get,
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
         ):
@@ -448,11 +448,11 @@ class TestCustomFetchEvents:
         events = [{"id": "ev1"}]
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_events",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_events",
                 return_value={"events": events, "has_more": False},
             ),
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 side_effect=RuntimeError("metadata unavailable"),
             ),
         ):
@@ -480,7 +480,7 @@ class TestCustomFindEvent:
         self.handler = self.handlers["CUSTOM_FIND_EVENT"]
 
     def _run(self, request: FindEventInput, creds=None):
-        creds = creds or AUTH_CREDS_BASIC
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -491,15 +491,15 @@ class TestCustomFindEvent:
         matching = [{"id": "ev42", "summary": "Sprint review"}]
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.search_calendar_events_native",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.search_calendar_events_native",
                 return_value={"matching_events": matching},
             ),
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.format_event_for_frontend",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.format_event_for_frontend",
                 side_effect=lambda ev, cm, nm: ev,
             ),
         ):
@@ -513,11 +513,11 @@ class TestCustomFindEvent:
     def test_happy_path_no_matches(self):
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.search_calendar_events_native",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.search_calendar_events_native",
                 return_value={"matching_events": []},
             ),
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
         ):
@@ -529,11 +529,11 @@ class TestCustomFindEvent:
     def test_query_forwarded_to_service(self):
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.search_calendar_events_native",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.search_calendar_events_native",
                 return_value={"matching_events": []},
             ) as mock_search,
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
         ):
@@ -546,11 +546,11 @@ class TestCustomFindEvent:
         matching = [{"id": "ev1"}]
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.search_calendar_events_native",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.search_calendar_events_native",
                 return_value={"matching_events": matching},
             ),
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 side_effect=RuntimeError("oops"),
             ),
         ):
@@ -577,7 +577,7 @@ class TestCustomGetEvent:
         self.handler = self.handlers["CUSTOM_GET_EVENT"]
 
     def _run(self, request: GetEventInput, creds=None):
-        creds = creds or AUTH_CREDS_BASIC
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -596,7 +596,7 @@ class TestCustomGetEvent:
         mock_response.raise_for_status.return_value = None
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.get",
+            "app.agents.tools.integrations.calendar_tool._http_client.get",
             return_value=mock_response,
         ):
             result = self._run(self._make_request("ev1"))
@@ -620,7 +620,7 @@ class TestCustomGetEvent:
         )
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.get",
+            "app.agents.tools.integrations.calendar_tool._http_client.get",
             return_value=mock_response,
         ):
             result = self._run(request)
@@ -630,7 +630,7 @@ class TestCustomGetEvent:
     def test_http_404_all_events_fail_raises_runtime_error(self):
         """When all requests fail, the handler must raise RuntimeError."""
         with patch(
-            "app.agents.tools.calendar_tool._http_client.get",
+            "app.agents.tools.integrations.calendar_tool._http_client.get",
             side_effect=_http_status_error(404),
         ):
             with pytest.raises(RuntimeError, match="Failed to get events"):
@@ -656,7 +656,7 @@ class TestCustomGetEvent:
         )
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.get",
+            "app.agents.tools.integrations.calendar_tool._http_client.get",
             side_effect=_side_effect,
         ):
             result = self._run(request)
@@ -683,7 +683,7 @@ class TestCustomDeleteEvent:
         self.handler = self.handlers["CUSTOM_DELETE_EVENT"]
 
     def _run(self, request: DeleteEventInput, creds=None):
-        creds = creds or AUTH_CREDS_BASIC
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -701,7 +701,7 @@ class TestCustomDeleteEvent:
         mock_response.raise_for_status.return_value = None
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.delete",
+            "app.agents.tools.integrations.calendar_tool._http_client.delete",
             return_value=mock_response,
         ):
             result = self._run(self._make_request("ev1"))
@@ -724,7 +724,7 @@ class TestCustomDeleteEvent:
         )
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.delete",
+            "app.agents.tools.integrations.calendar_tool._http_client.delete",
             return_value=mock_response,
         ):
             result = self._run(request)
@@ -733,7 +733,7 @@ class TestCustomDeleteEvent:
 
     def test_http_404_all_fail_raises_runtime_error(self):
         with patch(
-            "app.agents.tools.calendar_tool._http_client.delete",
+            "app.agents.tools.integrations.calendar_tool._http_client.delete",
             side_effect=_http_status_error(404),
         ):
             with pytest.raises(RuntimeError, match="Failed to delete events"):
@@ -741,7 +741,7 @@ class TestCustomDeleteEvent:
 
     def test_http_401_all_fail_raises_runtime_error(self):
         with patch(
-            "app.agents.tools.calendar_tool._http_client.delete",
+            "app.agents.tools.integrations.calendar_tool._http_client.delete",
             side_effect=_http_status_error(401),
         ):
             with pytest.raises(RuntimeError, match="Failed to delete events"):
@@ -764,7 +764,7 @@ class TestCustomDeleteEvent:
         )
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.delete",
+            "app.agents.tools.integrations.calendar_tool._http_client.delete",
             side_effect=_side_effect,
         ):
             result = self._run(request)
@@ -791,7 +791,7 @@ class TestCustomPatchEvent:
         self.handler = self.handlers["CUSTOM_PATCH_EVENT"]
 
     def _run(self, request: PatchEventInput, creds=None):
-        creds = creds or AUTH_CREDS_BASIC
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -805,7 +805,7 @@ class TestCustomPatchEvent:
         mock_response.raise_for_status.return_value = None
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.patch",
+            "app.agents.tools.integrations.calendar_tool._http_client.patch",
             return_value=mock_response,
         ) as mock_patch:
             result = self._run(
@@ -825,7 +825,7 @@ class TestCustomPatchEvent:
         mock_response.raise_for_status.return_value = None
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.patch",
+            "app.agents.tools.integrations.calendar_tool._http_client.patch",
             return_value=mock_response,
         ) as mock_patch:
             self._run(
@@ -847,7 +847,7 @@ class TestCustomPatchEvent:
         mock_response.raise_for_status.return_value = None
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.patch",
+            "app.agents.tools.integrations.calendar_tool._http_client.patch",
             return_value=mock_response,
         ) as mock_patch:
             self._run(
@@ -869,7 +869,7 @@ class TestCustomPatchEvent:
         mock_response.raise_for_status.return_value = None
 
         with patch(
-            "app.agents.tools.calendar_tool._http_client.patch",
+            "app.agents.tools.integrations.calendar_tool._http_client.patch",
             return_value=mock_response,
         ) as mock_patch:
             self._run(PatchEventInput(event_id="ev1"))
@@ -885,7 +885,7 @@ class TestCustomPatchEvent:
 
     def test_http_error_propagates(self):
         with patch(
-            "app.agents.tools.calendar_tool._http_client.patch",
+            "app.agents.tools.integrations.calendar_tool._http_client.patch",
             side_effect=_http_status_error(403),
         ):
             with pytest.raises(httpx.HTTPStatusError):
@@ -910,7 +910,7 @@ class TestCustomAddRecurrence:
         self.handler = self.handlers["CUSTOM_ADD_RECURRENCE"]
 
     def _run(self, request: AddRecurrenceInput, creds=None):
-        creds = creds or AUTH_CREDS_BASIC
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -939,7 +939,7 @@ class TestCustomAddRecurrence:
 
     def test_happy_path_daily_recurrence(self):
         client, _, _ = self._make_mock_client()
-        with patch("app.agents.tools.calendar_tool._http_client", client):
+        with patch("app.agents.tools.integrations.calendar_tool._http_client", client):
             result = self._run(
                 AddRecurrenceInput(
                     event_id="ev1",
@@ -958,7 +958,7 @@ class TestCustomAddRecurrence:
             "recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]
         }
 
-        with patch("app.agents.tools.calendar_tool._http_client", client):
+        with patch("app.agents.tools.integrations.calendar_tool._http_client", client):
             result = self._run(
                 AddRecurrenceInput(
                     event_id="ev1",
@@ -971,7 +971,7 @@ class TestCustomAddRecurrence:
 
     def test_happy_path_with_count(self):
         client, _, _ = self._make_mock_client()
-        with patch("app.agents.tools.calendar_tool._http_client", client):
+        with patch("app.agents.tools.integrations.calendar_tool._http_client", client):
             result = self._run(
                 AddRecurrenceInput(
                     event_id="ev1",
@@ -984,7 +984,7 @@ class TestCustomAddRecurrence:
 
     def test_happy_path_with_until_date(self):
         client, _, _ = self._make_mock_client()
-        with patch("app.agents.tools.calendar_tool._http_client", client):
+        with patch("app.agents.tools.integrations.calendar_tool._http_client", client):
             result = self._run(
                 AddRecurrenceInput(
                     event_id="ev1",
@@ -997,7 +997,7 @@ class TestCustomAddRecurrence:
 
     def test_interval_included_when_not_one(self):
         client, _, _ = self._make_mock_client()
-        with patch("app.agents.tools.calendar_tool._http_client", client):
+        with patch("app.agents.tools.integrations.calendar_tool._http_client", client):
             result = self._run(
                 AddRecurrenceInput(
                     event_id="ev1",
@@ -1010,7 +1010,7 @@ class TestCustomAddRecurrence:
 
     def test_interval_not_included_when_one(self):
         client, _, _ = self._make_mock_client()
-        with patch("app.agents.tools.calendar_tool._http_client", client):
+        with patch("app.agents.tools.integrations.calendar_tool._http_client", client):
             result = self._run(
                 AddRecurrenceInput(event_id="ev1", frequency="DAILY", interval=1)
             )
@@ -1019,7 +1019,7 @@ class TestCustomAddRecurrence:
 
     def test_get_fails_propagates(self):
         with patch(
-            "app.agents.tools.calendar_tool._http_client.get",
+            "app.agents.tools.integrations.calendar_tool._http_client.get",
             side_effect=_http_status_error(404),
         ):
             with pytest.raises(httpx.HTTPStatusError):
@@ -1035,7 +1035,7 @@ class TestCustomAddRecurrence:
         client.get.return_value = get_resp
         client.put.side_effect = _http_status_error(500)
 
-        with patch("app.agents.tools.calendar_tool._http_client", client):
+        with patch("app.agents.tools.integrations.calendar_tool._http_client", client):
             with pytest.raises(httpx.HTTPStatusError):
                 self._run(AddRecurrenceInput(event_id="ev1", frequency="DAILY"))
 
@@ -1061,7 +1061,7 @@ class TestCustomCreateEvent:
         self.handler = self.handlers["CUSTOM_CREATE_EVENT"]
 
     def _run(self, request: CreateEventInput, creds=None):
-        creds = creds or AUTH_CREDS_BASIC
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -1089,11 +1089,11 @@ class TestCustomCreateEvent:
 
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
             patch(
-                "app.agents.tools.calendar_tool._http_client.post",
+                "app.agents.tools.integrations.calendar_tool._http_client.post",
                 return_value=mock_response,
             ),
         ):
@@ -1124,11 +1124,11 @@ class TestCustomCreateEvent:
 
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
             patch(
-                "app.agents.tools.calendar_tool._http_client.post",
+                "app.agents.tools.integrations.calendar_tool._http_client.post",
                 return_value=mock_response,
             ),
         ):
@@ -1141,11 +1141,11 @@ class TestCustomCreateEvent:
     def test_confirm_immediately_http_error_propagates(self):
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
             patch(
-                "app.agents.tools.calendar_tool._http_client.post",
+                "app.agents.tools.integrations.calendar_tool._http_client.post",
                 side_effect=_http_status_error(500, method="POST"),
             ),
         ):
@@ -1163,7 +1163,7 @@ class TestCustomCreateEvent:
         color_map = {"primary": "#4285f4"}
         name_map = {"primary": "My Calendar"}
         with patch(
-            "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
             return_value=(color_map, name_map),
         ):
             result = self._run(
@@ -1184,7 +1184,7 @@ class TestCustomCreateEvent:
 
     def test_prepare_for_confirmation_message_present(self):
         with patch(
-            "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
             return_value=({}, {}),
         ):
             result = self._run(
@@ -1200,7 +1200,7 @@ class TestCustomCreateEvent:
     def test_unknown_calendar_uses_default_color(self):
         """Calendar not in color_map should fall back to #4285f4."""
         with patch(
-            "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
             return_value=({}, {}),
         ):
             result = self._run(
@@ -1224,11 +1224,11 @@ class TestCustomCreateEvent:
 
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
             patch(
-                "app.agents.tools.calendar_tool._http_client.post",
+                "app.agents.tools.integrations.calendar_tool._http_client.post",
                 return_value=mock_response,
             ) as mock_post,
         ):
@@ -1250,7 +1250,7 @@ class TestCustomCreateEvent:
 
     def test_all_day_event_uses_date_format(self):
         with patch(
-            "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
             return_value=({}, {}),
         ):
             result = self._run(
@@ -1270,7 +1270,7 @@ class TestCustomCreateEvent:
         """An unparseable start_datetime causes the event to be skipped (error collected)."""
         with (
             patch(
-                "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
                 return_value=({}, {}),
             ),
         ):
@@ -1285,7 +1285,7 @@ class TestCustomCreateEvent:
     def test_metadata_failure_falls_back_to_empty_maps(self):
         """If get_calendar_metadata_map raises, handler should fall back to empty maps."""
         with patch(
-            "app.agents.tools.calendar_tool.calendar_service.get_calendar_metadata_map",
+            "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
             side_effect=RuntimeError("service unavailable"),
         ):
             result = self._run(
@@ -1341,11 +1341,12 @@ class TestRegisterCalendarCustomTools:
             "GOOGLECALENDAR_CUSTOM_DELETE_EVENT",
             "GOOGLECALENDAR_CUSTOM_PATCH_EVENT",
             "GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE",
+            "GOOGLECALENDAR_CUSTOM_GATHER_CONTEXT",
         }
 
         assert set(result) == expected_slugs
 
-    def test_returns_nine_tools(self):
+    def test_returns_ten_tools(self):
         composio_mock = MagicMock()
 
         def _fake(toolkit):
@@ -1356,10 +1357,10 @@ class TestRegisterCalendarCustomTools:
 
         composio_mock.tools.custom_tool.side_effect = _fake
         result = register_calendar_custom_tools(composio_mock)
-        assert len(result) == 9
+        assert len(result) == 10
 
-    def test_all_nine_handlers_are_captured(self):
-        """Ensure all nine inner functions are decorated and captured."""
+    def test_all_ten_handlers_are_captured(self):
+        """Ensure all ten inner functions are decorated and captured."""
         _, handlers = _make_composio_mock()
         expected_names = {
             "CUSTOM_LIST_CALENDARS",
@@ -1371,5 +1372,6 @@ class TestRegisterCalendarCustomTools:
             "CUSTOM_PATCH_EVENT",
             "CUSTOM_ADD_RECURRENCE",
             "CUSTOM_CREATE_EVENT",
+            "CUSTOM_GATHER_CONTEXT",
         }
         assert set(handlers.keys()) == expected_names

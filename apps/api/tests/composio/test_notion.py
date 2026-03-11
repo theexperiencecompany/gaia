@@ -332,9 +332,9 @@ class TestInsertMarkdown:
         result = fn(request, MagicMock(), AUTH_CREDENTIALS)
 
         assert result["after"] == "blk-after-me"
-        # after param must be forwarded to Composio execute
-        call_kwargs = composio.tools.execute.call_args.kwargs
-        assert call_kwargs["arguments"]["after"] == "blk-after-me"
+        # after param must be forwarded to Composio execute (first call only)
+        first_call_kwargs = composio.tools.execute.call_args_list[0].kwargs
+        assert first_call_kwargs["arguments"]["after"] == "blk-after-me"
 
     def test_insert_markdown_raises_on_empty_markdown(self):
         composio = _make_composio_mock()
@@ -728,12 +728,13 @@ class TestRegisterNotionCustomTools:
             "NOTION_INSERT_MARKDOWN",
             "NOTION_FETCH_DATA",
             "NOTION_CUSTOM_CREATE_TEST_PAGE",
+            "NOTION_CUSTOM_GATHER_CONTEXT",
         }
 
-    def test_registers_five_tools(self):
+    def test_registers_six_tools(self):
         composio = _make_composio_mock()
         register_notion_custom_tools(composio)
-        assert composio.tools.custom_tool.call_count == 5
+        assert composio.tools.custom_tool.call_count == 6
 
     def test_all_tool_functions_are_callable(self):
         composio = _make_composio_mock()

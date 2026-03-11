@@ -56,15 +56,25 @@ from app.models.twitter_models import (
     SearchUsersInput,
 )
 from app.utils.twitter_utils import (
+    create_tweet,
+    follow_user,
     get_access_token,
     get_my_user_id,
     lookup_user_by_username,
-    follow_user,
-    unfollow_user,
-    create_tweet,
     search_tweets,
     twitter_headers,
+    unfollow_user,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_stream_writer():
+    """Patch get_stream_writer in twitter_tool for every test in this module."""
+    with patch(
+        "app.agents.tools.integrations.twitter_tool.get_stream_writer",
+        return_value=lambda _: None,
+    ):
+        yield
 
 
 # ---------------------------------------------------------------------------

@@ -815,5 +815,6 @@ class TestRegisterLinkedInCustomTools:
             "LINKEDIN_CUSTOM_REACT_TO_POST",
             "LINKEDIN_CUSTOM_DELETE_REACTION",
             "LINKEDIN_CUSTOM_GET_POST_REACTIONS",
+            "LINKEDIN_CUSTOM_GATHER_CONTEXT",
         }
-        assert len(names) == 6
+        assert len(names) == 7

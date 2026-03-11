@@ -526,7 +526,7 @@ class TestGetUnreadCount:
 
         from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
 
-        request = GetUnreadCountInput(label_id="Label_123")
+        request = GetUnreadCountInput(label_ids=["Label_123"])
 
         with patch(
             "app.services.composio.custom_tools.gmail_tools._http_client",
@@ -586,7 +586,7 @@ class TestGetUnreadCount:
             )
 
         # dict.get() returns None when key is absent
-        assert result["unreadCount"] is None
+        assert result["unreadCount"] == 0
 
     def test_get_unread_count_401_raises(
         self, gmail_tools, mock_gmail_credentials, mock_http_client
@@ -804,6 +804,7 @@ class TestRegisterGmailCustomTools:
             "GMAIL_STAR_EMAIL",
             "GMAIL_GET_UNREAD_COUNT",
             "GMAIL_GET_CONTACT_LIST",
+            "GMAIL_CUSTOM_GATHER_CONTEXT",
         ]
         assert result == expected_names
 
@@ -881,7 +882,7 @@ class TestInputModelValidation:
         from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
 
         req = GetUnreadCountInput()
-        assert req.label_id == "INBOX"
+        assert req.label_ids is None
 
     def test_schedule_send_input_model_fields(self):
         from app.services.composio.custom_tools.gmail_tools import ScheduleSendInput
