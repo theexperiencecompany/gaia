@@ -71,8 +71,7 @@
           "sounds": ["./assets/sound/uwu.mp3"],
           "defaultChannel": "gaia_channel"
         }
-      ],
-      "react-native-webview"
+      ]
     ],
     "experiments": {
       "typedRoutes": true,
