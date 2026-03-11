@@ -350,7 +350,7 @@ class GaiaTaskService:
             usage_metadata_callback=UsageMetadataCallbackHandler(),
         )
 
-        # Send WebSocket notification
+        # Send WebSocket notification + in-app notification
         try:
             from app.core.websocket_manager import get_websocket_manager
 
@@ -366,6 +366,62 @@ class GaiaTaskService:
             )
         except Exception as e:
             logger.warning(f"Failed to send task activation WebSocket: {e}")
+
+        try:
+            from app.models.notification.notification_models import (
+                ActionConfig,
+                ActionStyle,
+                ActionType,
+                ChannelConfig,
+                NotificationAction,
+                NotificationContent,
+                NotificationRequest,
+                NotificationSourceEnum,
+                NotificationType,
+                RedirectConfig,
+            )
+            from app.services.notification_service import notification_service
+
+            trigger_type = trigger_event.get("type", "event")
+            sender = trigger_event.get("sender", "")
+            body = f"New {trigger_type} received"
+            if sender:
+                body += f" from {sender}"
+
+            await notification_service.create_notification(
+                NotificationRequest(
+                    user_id=user_id,
+                    source=NotificationSourceEnum.SYSTEM,
+                    type=NotificationType.INFO,
+                    content=NotificationContent(
+                        title=f"Task Update: {task.title}",
+                        body=body,
+                        actions=[
+                            NotificationAction(
+                                type=ActionType.REDIRECT,
+                                label="View Task",
+                                style=ActionStyle.PRIMARY,
+                                config=ActionConfig(
+                                    redirect=RedirectConfig(
+                                        url=f"/c/{task.task_conversation_id}",
+                                        open_in_new_tab=False,
+                                        close_notification=True,
+                                    )
+                                ),
+                            )
+                        ],
+                    ),
+                    channels=[
+                        ChannelConfig(channel_type="inapp", enabled=True, priority=1)
+                    ],
+                    metadata={
+                        "task_id": task.id,
+                        "conversation_id": task.task_conversation_id,
+                    },
+                )
+            )
+        except Exception as e:
+            logger.warning(f"Failed to send task activation notification: {e}")
 
         logger.info(f"Task {task.id} activated for user {user_id}")
         return complete_message

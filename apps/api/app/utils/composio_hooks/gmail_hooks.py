@@ -658,10 +658,11 @@ def gmail_send_draft_after_hook(
             }
             writer(payload)
 
-        # Keep the response minimal for LLM
+        # Keep the response minimal for LLM but include threadId for task tracking
         if "successful" in response["data"] and response["data"]["successful"]:
             return {
                 "id": response["data"].get("id", ""),
+                "threadId": response["data"].get("threadId", ""),
                 "successful": True,
                 "message": "Draft sent successfully",
             }
@@ -670,6 +671,39 @@ def gmail_send_draft_after_hook(
 
     except Exception as e:
         logger.error(f"Error in gmail_send_draft_after_hook: {e}")
+        return response["data"]
+
+
+@register_after_hook(
+    tools=["GMAIL_SEND_EMAIL", "GMAIL_CREATE_EMAIL_DRAFT", "GMAIL_REPLY_TO_THREAD"]
+)
+def gmail_send_after_hook(
+    tool: str, toolkit: str, response: ToolExecutionResponse
+) -> Any:
+    """Process send/reply/draft-create responses to include threadId for task tracking."""
+    try:
+        data = response["data"]
+        if not data or "error" in data:
+            return data
+
+        # Extract threadId from various response shapes
+        thread_id = (
+            data.get("threadId")
+            or data.get("thread_id")
+            or data.get("response_data", {}).get("threadId", "")
+        )
+        message_id = data.get("id") or data.get("message_id", "")
+
+        return {
+            "id": message_id,
+            "threadId": thread_id,
+            "successful": data.get("successful", True),
+            "message": f"{'Email' if 'SEND' in tool else 'Draft'} "
+            f"{'sent' if 'SEND' in tool else 'created'} successfully",
+        }
+
+    except Exception as e:
+        logger.error(f"Error in gmail_send_after_hook: {e}")
         return response["data"]
 
 

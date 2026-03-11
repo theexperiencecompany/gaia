@@ -97,6 +97,32 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     return ""
 
 
+def _format_matched_tasks_context(trigger_context: dict) -> str:
+    """Format matched GaiaTasks for injection into workflow execution messages."""
+    trigger_data = trigger_context.get("trigger_data", trigger_context)
+    matched_tasks = trigger_data.get("_matched_gaia_tasks", [])
+    if not matched_tasks:
+        return ""
+
+    lines = [
+        "\n\n**MATCHED ACTIVE TASKS:**",
+        "The following GaiaTasks matched this email trigger. "
+        "These tasks are tracking multi-step interactions. "
+        "Prioritize processing emails related to these tasks:",
+    ]
+    for t in matched_tasks:
+        lines.append(
+            f'- Task "{t.get("title", "Unknown")}" (ID: {t.get("id", "?")}) | '
+            f"category: {t.get('category', 'general')} | "
+            f"waiting for: {t.get('waiting_for', 'N/A')}"
+        )
+    lines.append(
+        "The task will be automatically activated in its dedicated "
+        "conversation after this workflow completes."
+    )
+    return "\n".join(lines)
+
+
 async def _get_active_tasks_section(user_id: str) -> str:
     """Fetch active GaiaTasks and format for agent context injection."""
     try:
@@ -288,7 +314,7 @@ async def format_workflow_execution_message(
         email_data = trigger_context.get("email_data", {})
         msg_text = email_data.get("message_text", "")
 
-        return EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
+        result = EMAIL_TRIGGERED_WORKFLOW_PROMPT.format(
             email_sender=email_data.get("sender", "Unknown"),
             email_subject=email_data.get("subject", "No Subject"),
             email_content_preview=msg_text[:200]
@@ -296,6 +322,13 @@ async def format_workflow_execution_message(
             trigger_timestamp=trigger_context.get("triggered_at", "Unknown"),
             **common_args,
         )
+
+        # Inject matched GaiaTasks context if present
+        matched_tasks_section = _format_matched_tasks_context(trigger_context)
+        if matched_tasks_section:
+            result += matched_tasks_section
+
+        return result
 
     # Manual workflow execution
     return WORKFLOW_EXECUTION_PROMPT.format(
