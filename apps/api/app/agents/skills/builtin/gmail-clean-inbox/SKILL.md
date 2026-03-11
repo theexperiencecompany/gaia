@@ -1,114 +1,176 @@
 ---
 name: gmail-clean-inbox
-description: Intelligently clean Gmail inbox - audit labels, identify patterns, batch categorize, archive old messages, present cleanup summary
+description: Structured inbox cleanup with clear label strategy, safe batching, and conservative actions.
 target: gmail_agent
 ---
 
-# Gmail: Clean & Organize Inbox
+# Gmail: Clean Inbox
 
 ## When to Activate
-User wants inbox zero, wants to clean up, organize, or manage their Gmail inbox.
+- User asks to clean, organize, or reduce inbox noise
+- Scheduled inbox-maintenance runs (for example: last 6 hours)
 
-## Step 1: Audit Current State
+## Goal
+Keep important/actionable emails visible and reduce low-value clutter using
+labels, archive, star, and read-state updates safely.
 
-Use lightweight counting first to avoid large message payloads.
-`GMAIL_LIST_LABELS` and `GMAIL_GET_UNREAD_COUNT` are safe to call directly.
+## Tools to Use
+- `GMAIL_LIST_LABELS`
+- `GMAIL_GET_UNREAD_COUNT_WINDOW`
+- `GMAIL_GET_UNREAD_COUNT`
+- `GMAIL_FETCH_EMAILS`
+- `GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID`
+- `GMAIL_BATCH_MODIFY_MESSAGES`
+- `GMAIL_ADD_LABEL_TO_EMAIL`
+- `GMAIL_MODIFY_THREAD_LABELS`
+- `GMAIL_CREATE_LABEL` (fallback mode only)
+- `GMAIL_ARCHIVE_EMAIL`
+- `GMAIL_MARK_AS_READ`
+- `GMAIL_STAR_EMAIL`
 
+## Label Strategy
+
+### 1) Preserve mode (default)
+If the user already has a meaningful label system, reuse it.
+- Do not rename/delete labels.
+- Do not create new labels unless required.
+
+### 2) Fallback mode (no usable structure found)
+Create and use only this minimal set:
+- `GAIA/Action Required`
+- `GAIA/Priority`
+- `GAIA/Waiting`
+- `GAIA/Newsletters`
+- `GAIA/Receipts`
+- `GAIA/Notifications`
+
+## Execution Strategy
+
+### Step 1: Load policy + detect label mode
+1. Read memory for VIP senders, protected senders, protected labels, and archive
+   preferences.
+2. Call `GMAIL_LIST_LABELS`.
+3. Choose preserve mode or fallback mode.
+
+### Step 2: Measure scope first
+Preferred for 6-hour run:
 ```
-GMAIL_LIST_LABELS()
+GMAIL_GET_UNREAD_COUNT_WINDOW(hours=6, label_ids=["INBOX"])
+```
 
-# Per-label unread + total counts
+Fallback:
+```
 GMAIL_GET_UNREAD_COUNT(
-  label_ids=["INBOX", "CATEGORY_PROMOTIONS", "CATEGORY_UPDATES", "CATEGORY_SOCIAL"]
-)
-
-# Inbox unread via query estimate
-GMAIL_GET_UNREAD_COUNT(query="is:unread", label_ids=["INBOX"])
-```
-
-## Step 2: Identify Cleanup Patterns
-
-Use query-based counting to identify opportunities without fetching full email
-lists:
-
-```
-GMAIL_GET_UNREAD_COUNT(
-  query="category:promotions is:unread",
+  query="in:inbox is:unread after:<unix_timestamp_for_now_minus_6h>",
   label_ids=["INBOX"]
 )
+```
 
-GMAIL_GET_UNREAD_COUNT(
-  query="from:notifications@github.com is:unread",
-  label_ids=["INBOX"]
+### Step 3: Build batches using pagination (real API behavior)
+Do NOT invent index slicing. Build batches from paginated fetch results.
+
+Use:
+```
+GMAIL_FETCH_EMAILS(
+  query="in:inbox is:unread after:<since_timestamp>",
+  include_payload=false,
+  ids_only=true,
+  max_results=20,
+  page_token=<optional>
 )
-
-GMAIL_GET_UNREAD_COUNT(
-  query="is:unread before:2025/01/01",
-  label_ids=["INBOX"]
-)
-
-GMAIL_GET_UNREAD_COUNT(
-  query="is:unread category:updates",
-  label_ids=["INBOX"]
-)
 ```
 
-If query counting is unavailable in a specific environment, fallback to
-`GMAIL_FETCH_EMAILS(query="...", include_payload=false)` in parent context.
+Batch creation rule:
+- Each API page (`max_results=20`) is one batch.
+- Next batch comes from `next_page_token`.
+- This guarantees non-overlapping batches.
 
-## Step 3: Present Cleanup Plan
+### Step 4: Spawn one subagent per batch
+Each batch subagent must do all actions for its own messages:
+- classify
+- label
+- star if needed
+- archive/mark read if needed
 
-Before acting, present findings and get consent:
+Do not spawn separate subagents for separate actions.
+
+Subagent contract:
 ```
-Inbox Audit:
-  Total in inbox: 847
-  Unread: 234
-
-  Cleanup opportunities:
-  1. 78 unread promotions → Archive all? (saves 78 emails)
-  2. 45 GitHub notifications older than 7 days → Archive? (saves 45)
-  3. 32 newsletter emails → Archive + create filter? (saves 32)
-  4. 28 old calendar notifications → Trash? (saves 28)
-  
-  Estimated cleanup: 183 emails (78% of unread)
-  
-  Which actions should I proceed with? (all/specific numbers)
+Batch task
+- batch_id: <n>
+- message_ids: [<up to 20 ids>]
+- mode: preserve|fallback
+- vip_senders: [...]
+- protected_senders: [...]
+- protected_labels: [...]
+- rules:
+  - never_delete: true
+  - keep_important_in_inbox: true
+  - mark_read_only_for_low_value: true
 ```
 
-## Step 4: Execute Cleanup
+## Action Policy (Concrete)
 
-**Only after user confirms**, batch process:
+### Priority / Action-required
+Apply when email has direct ask, approval request, hard deadline, or high-risk
+topic.
+- Apply label: `Priority` or `Action Required` (preserve-mode equivalent)
+- Keep in inbox
+- Keep unread
+- Star only if urgency is high (deadline <= 24h, blocker, security/legal/finance risk)
 
-- **Audit labels first**: Use `GMAIL_LIST_LABELS` to find the correct label IDs (especially for custom labels).
-- **Count first, fetch IDs only for approved actions**: After user confirms,
-  call `GMAIL_FETCH_EMAILS(query="...", include_payload=false)` for each
-  selected cleanup query and paginate with `next_page_token` to collect all
-  `message_id`s.
-- **Prefer batch operations**: Use `GMAIL_BATCH_MODIFY_MESSAGES` whenever you are modifying many emails at once (archive, mark read/unread, apply/remove labels). Chunk large operations (up to 1,000 message IDs per call).
-- **Single-message label changes**: Use `GMAIL_ADD_LABEL_TO_EMAIL` when you only need to adjust one message.
-- **Thread-wide label changes**: Use `GMAIL_MODIFY_THREAD_LABELS` to label/unlabel an entire thread.
-- **Delete carefully**: Prefer `GMAIL_MOVE_TO_TRASH` for reversible cleanup; use `GMAIL_BATCH_DELETE_MESSAGES` only for permanent deletion and only with explicit user confirmation.
+### Newsletters / Promotions
+Apply when clearly bulk, recurring, or marketing content.
+- Apply label: `Newsletters`
+- Archive
+- Mark as read
 
-## Step 5: Summary Report
+### Receipts / Routine Finance confirmations
+Apply for receipts, order confirmations, payment confirmations with no action
+needed.
+- Apply label: `Receipts`
+- Archive
+- Mark as read
 
-```
-Inbox Cleanup Complete:
-  Before: 847 emails (234 unread)
-  After:  664 emails (51 unread)
-  
-  Actions taken:
-  - Archived 78 promotions
-  - Archived 45 old GitHub notifications
-  - Trashed 28 calendar notifications
-  - Labeled 32 newsletters as "newsletters"
-  
-  Tip: I can help set up Gmail filters to auto-archive these in the future.
-```
+### Automated Notifications
+If no user action required:
+- Apply label: `Notifications`
+- Archive
+- Mark as read
+
+If action is required, treat as `Action Required` instead.
+
+### Uncertain emails
+- Keep in inbox
+- Keep unread
+- Do not archive aggressively
+
+## Rules for Star / Archive / Read
+
+### Star
+Star only when truly urgent/high-impact.
+
+### Archive
+Archive only low-value or clearly non-actionable messages.
+
+### Mark as read
+Mark as read only when clearly non-actionable (newsletters, receipts, routine
+notifications).
+
+Never mark read for important/action-required/uncertain emails.
 
 ## Safety Rules
-- NEVER delete/trash without explicit user consent
-- NEVER touch starred or important emails
-- NEVER auto-process emails less than 24h old
-- Always present plan first, act second
-- Use archive (remove INBOX) over trash when possible
-- Report exactly what was done after cleanup
+- Never delete or permanently remove emails in this skill
+- Never remove existing user stars
+- Never remove protected labels
+- Preserve mode must not disturb user label architecture
+
+## Final Output
+Return concise summary:
+- total processed
+- count by class
+- labels applied
+- starred count
+- archived count
+- marked-read count
+- skipped/protected count

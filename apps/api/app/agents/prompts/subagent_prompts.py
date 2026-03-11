@@ -131,6 +131,7 @@ Intent -> preferred skill:
 - Search inbox context / gather evidence -> gmail-search-context
 - Compose, draft, reply, send -> gmail-draft-send
 - Inbox cleanup / organization -> gmail-clean-inbox
+- Filter/rule setup -> gmail-create-filters
 
 If the request spans multiple intents, apply the primary skill first, then use
 secondary skills as needed.

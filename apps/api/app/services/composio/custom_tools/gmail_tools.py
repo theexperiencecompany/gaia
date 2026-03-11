@@ -88,6 +88,30 @@ class GetUnreadCountInput(BaseModel):
     )
 
 
+class GetUnreadCountWindowInput(BaseModel):
+    """Input for getting unread count in a rolling time window."""
+
+    hours: int = Field(
+        default=6,
+        ge=1,
+        le=168,
+        description="Rolling lookback window in hours (1-168).",
+    )
+    label_ids: Optional[List[str]] = Field(
+        default=None,
+        description="Optional Gmail label IDs to constrain the count. "
+        "Defaults to INBOX when omitted.",
+    )
+    additional_query: Optional[str] = Field(
+        default=None,
+        description="Optional extra Gmail query filter appended to the window query.",
+    )
+    include_spam_trash: bool = Field(
+        default=False,
+        description="Whether to include Spam and Trash in the count.",
+    )
+
+
 class ScheduleSendInput(BaseModel):
     """Input for scheduling an email to send later."""
 
@@ -380,6 +404,68 @@ def register_gmail_custom_tools(composio: Composio):
         }
 
     @composio.tools.custom_tool(toolkit="gmail")
+    def GET_UNREAD_COUNT_WINDOW(
+        request: GetUnreadCountWindowInput,
+        execute_request: Any,
+        auth_credentials: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Get unread message count in the last N hours.
+
+        This is optimized for cleanup workflows that need a rolling time window
+        (for example: unread emails in the last 6 hours) without fetching full
+        messages.
+        """
+
+        headers = _auth_headers(auth_credentials)
+
+        hours = max(1, min(request.hours, 168))
+        since_dt = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(
+            hours=hours
+        )
+        since_ts = int(since_dt.timestamp())
+
+        label_ids = [label for label in (request.label_ids or ["INBOX"]) if label]
+
+        window_query = f"after:{since_ts} is:unread"
+        if request.additional_query and request.additional_query.strip():
+            query = f"{request.additional_query.strip()} {window_query}"
+        else:
+            query = window_query
+
+        params: Dict[str, Any] = {
+            "maxResults": 1,
+            "includeSpamTrash": request.include_spam_trash,
+            "q": query,
+        }
+        if label_ids:
+            params["labelIds"] = label_ids
+
+        resp = _http_client.get(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+            headers=headers,
+            params=params,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+
+        estimate = data.get("resultSizeEstimate", 0)
+        if isinstance(estimate, int):
+            unread_count = max(0, estimate)
+        else:
+            messages = data.get("messages", [])
+            unread_count = len(messages) if isinstance(messages, list) else 0
+
+        return {
+            "hours": hours,
+            "since_timestamp": since_ts,
+            "since_iso": since_dt.isoformat(),
+            "query": query,
+            "label_ids": label_ids,
+            "unreadCount": unread_count,
+            "is_estimate": True,
+        }
+
+    @composio.tools.custom_tool(toolkit="gmail")
     def GET_CONTACT_LIST(
         request: GetContactListInput,
         execute_request: Any,
@@ -485,6 +571,7 @@ def register_gmail_custom_tools(composio: Composio):
         "GMAIL_ARCHIVE_EMAIL",
         "GMAIL_STAR_EMAIL",
         "GMAIL_GET_UNREAD_COUNT",
+        "GMAIL_GET_UNREAD_COUNT_WINDOW",
         "GMAIL_GET_CONTACT_LIST",
         "GMAIL_CUSTOM_GATHER_CONTEXT",
     ]
