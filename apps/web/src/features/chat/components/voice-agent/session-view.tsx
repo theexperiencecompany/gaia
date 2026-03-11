@@ -7,8 +7,10 @@ import type { TextStreamReader } from "livekit-client";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import ChatRenderer from "@/features/chat/components/interface/ChatRenderer";
+import { LoadingIndicator } from "@/features/chat/components/interface/LoadingIndicator";
 import { AgentControlBar } from "@/features/chat/components/voice-agent/agent-control-bar";
 import useChatAndTranscription from "@/features/chat/components/voice-agent/hooks/useChatAndTranscription";
+import { useVoiceStreamEvents } from "@/features/chat/components/voice-agent/hooks/useVoiceStreamEvents";
 import { MediaTiles } from "@/features/chat/components/voice-agent/media-tiles";
 import {
   trackConversationCreated,
@@ -40,8 +42,14 @@ export const SessionView = ({
 }: React.ComponentProps<"div"> & SessionViewProps) => {
   const { state: agentState } = useVoiceAssistant();
   const [chatOpen, setChatOpen] = useState(false);
-  const { messages } = useChatAndTranscription();
   const room = useRoomContext();
+  const { progress, toolDataEntries, followUpActions, streamError } =
+    useVoiceStreamEvents(room);
+  const { messages } = useChatAndTranscription(
+    toolDataEntries,
+    followUpActions,
+  );
+  const [progressKey, setProgressKey] = useState(0);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [conversationDescription, setConversationDescription] = useState<
     string | null
@@ -193,6 +201,18 @@ export const SessionView = ({
     }
   }, [agentState, sessionStarted, room]);
 
+  useEffect(() => {
+    if (streamError) {
+      toast.error(`Voice session error: ${streamError}`);
+    }
+  }, [streamError]);
+
+  useEffect(() => {
+    if (progress) {
+      setProgressKey((k) => k + 1);
+    }
+  }, [progress?.message]);
+
   return (
     <main
       ref={ref}
@@ -219,6 +239,20 @@ export const SessionView = ({
               )}
             >
               <div className="mx-auto max-w-[62rem]">
+                {progress && (
+                  <LoadingIndicator
+                    loadingText={progress.message}
+                    loadingTextKey={progressKey}
+                    toolInfo={
+                      progress.tool_category
+                        ? {
+                            toolCategory: progress.tool_category,
+                            showCategory: true,
+                          }
+                        : undefined
+                    }
+                  />
+                )}
                 <ChatRenderer convoMessages={messages} />
               </div>
             </div>
