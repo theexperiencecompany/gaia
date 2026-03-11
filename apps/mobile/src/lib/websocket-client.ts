@@ -148,6 +148,13 @@ class WebSocketManager {
     }
   }
 
+  /**
+   * Emit a typed event message to the server.
+   */
+  emit(eventType: string, data: unknown): void {
+    this.send({ type: eventType, data });
+  }
+
   onConnect(handler: ConnectionHandler): void {
     this.connectionHandlers.add(handler);
   }

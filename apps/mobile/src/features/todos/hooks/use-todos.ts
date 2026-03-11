@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { wsManager } from "@/lib/websocket-client";
+import { WS_EVENTS } from "@/lib/websocket-events";
 import { todoApi } from "../api/todo-api";
 import type {
   FilterTab,
@@ -110,6 +112,38 @@ export function useTodos(options: UseTodosOptions = {}): UseTodosReturn {
   useEffect(() => {
     void fetchData(state.activeFilter);
   }, [state.activeFilter, fetchData, search, priority, label, projectId]);
+
+  // Keep a stable ref to the current filter so the WS handler doesn't
+  // need to be re-created on every filter change.
+  const activeFilterRef = useRef(state.activeFilter);
+  useEffect(() => {
+    activeFilterRef.current = state.activeFilter;
+  }, [state.activeFilter]);
+
+  useEffect(() => {
+    const handleTodoEvent = () => {
+      void fetchData(activeFilterRef.current, true);
+    };
+
+    const unsubCreated = wsManager.subscribe(
+      WS_EVENTS.TODO_CREATED,
+      handleTodoEvent,
+    );
+    const unsubUpdated = wsManager.subscribe(
+      WS_EVENTS.TODO_UPDATED,
+      handleTodoEvent,
+    );
+    const unsubDeleted = wsManager.subscribe(
+      WS_EVENTS.TODO_DELETED,
+      handleTodoEvent,
+    );
+
+    return () => {
+      unsubCreated();
+      unsubUpdated();
+      unsubDeleted();
+    };
+  }, [fetchData]);
 
   const setActiveFilter = useCallback((filter: FilterTab) => {
     setState((prev) => ({ ...prev, activeFilter: filter }));

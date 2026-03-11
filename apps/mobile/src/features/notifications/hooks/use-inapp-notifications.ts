@@ -4,6 +4,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { wsManager } from "@/lib/websocket-client";
+import { WS_EVENTS } from "@/lib/websocket-events";
 import { inAppNotificationsApi } from "../api";
 import {
   type InAppNotification,
@@ -110,6 +113,33 @@ function getErrorMessage(
 
 export function useInappNotifications(): UseInappNotificationsResult {
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const invalidateAll = () => {
+      void queryClient.invalidateQueries({
+        queryKey: notificationsKeys.all,
+      });
+    };
+
+    const unsubDelivered = wsManager.subscribe(
+      WS_EVENTS.NOTIFICATION_DELIVERED,
+      invalidateAll,
+    );
+    const unsubRead = wsManager.subscribe(
+      WS_EVENTS.NOTIFICATION_READ,
+      invalidateAll,
+    );
+    const unsubUpdated = wsManager.subscribe(
+      WS_EVENTS.NOTIFICATION_UPDATED,
+      invalidateAll,
+    );
+
+    return () => {
+      unsubDelivered();
+      unsubRead();
+      unsubUpdated();
+    };
+  }, [queryClient]);
 
   const unreadQuery = useQuery({
     queryKey: notificationsKeys.unread(),

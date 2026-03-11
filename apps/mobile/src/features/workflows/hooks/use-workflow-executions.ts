@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { wsManager } from "@/lib/websocket-client";
+import { WS_EVENTS } from "@/lib/websocket-events";
 import { workflowApi } from "../api/workflow-api";
 import type { WorkflowExecution } from "../types";
 
@@ -82,6 +84,46 @@ export function useWorkflowExecutions(
     setOffset(0);
     await fetchExecutions(true);
   }, [fetchExecutions]);
+
+  // Keep a stable ref to the refresh function so the WS handler closure
+  // is not recreated on each render.
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
+
+  useEffect(() => {
+    if (!workflowId) return;
+
+    const handleExecutionEvent = (message: unknown) => {
+      const msg = message as Record<string, unknown>;
+      const eventWorkflowId =
+        typeof msg.workflow_id === "string" ? msg.workflow_id : null;
+
+      if (!eventWorkflowId || eventWorkflowId === workflowId) {
+        void refreshRef.current();
+      }
+    };
+
+    const unsubStarted = wsManager.subscribe(
+      WS_EVENTS.WORKFLOW_RUN_STARTED,
+      handleExecutionEvent,
+    );
+    const unsubCompleted = wsManager.subscribe(
+      WS_EVENTS.WORKFLOW_RUN_COMPLETED,
+      handleExecutionEvent,
+    );
+    const unsubFailed = wsManager.subscribe(
+      WS_EVENTS.WORKFLOW_RUN_FAILED,
+      handleExecutionEvent,
+    );
+
+    return () => {
+      unsubStarted();
+      unsubCompleted();
+      unsubFailed();
+    };
+  }, [workflowId]);
 
   return { executions, isLoading, error, total, hasMore, loadMore, refresh };
 }
