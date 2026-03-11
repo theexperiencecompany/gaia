@@ -50,14 +50,15 @@ def _make_mock_tool_registry():
     """Return a minimal ToolRegistry-like mock with the attributes accessed by
     build_executor_graph / SubAgentFactory.
 
-    The tool_dict includes stubs for vfs_read and deep_research because
+    The tool_dict includes stubs for vfs_read, vfs_cmd, and deep_research because
     build_executor_graph passes initial_tool_ids=["handoff", "plan_tasks",
-    "mark_task", "add_task", "vfs_read", "deep_research"] to create_agent,
+    "update_tasks", "vfs_read", "vfs_cmd", "deep_research"] to create_agent,
     which looks up each ID in the tool_registry dict at runtime.
     """
     registry = MagicMock()
     registry.get_tool_dict.return_value = {
         "vfs_read": _stub_vfs_read,
+        "vfs_cmd": _stub_vfs_read,
         "deep_research": _stub_deep_research,
     }
     registry.get_category_by_space.return_value = None
@@ -176,7 +177,7 @@ class TestExecutorGraphCompiles:
             ),
             # create_todo_tools and create_todo_pre_model_hook are NOT mocked here —
             # they are pure functions with no DB dependencies. The real todo tools
-            # (plan_tasks, mark_task, add_task) must exist in the tool_dict so
+            # (plan_tasks, update_tasks) must exist in the tool_dict so
             # acall_model can look them up via initial_tool_ids at runtime.
         ):
             async with build_executor_graph(
@@ -200,7 +201,7 @@ class TestExecutorGraphCompiles:
 @pytest.mark.integration
 class TestSelectToolsNode:
     """Verify that the initial tool IDs specified in build_executor_graph
-    (handoff, plan_tasks, mark_task, add_task, vfs_read, deep_research) are
+    (handoff, plan_tasks, update_tasks, vfs_read, vfs_cmd, deep_research) are
     present in the merged tool_dict that is passed to create_agent."""
 
     async def test_handoff_included_in_tool_dict(self):
@@ -283,7 +284,7 @@ class TestSelectToolsNode:
             "handoff tool must be present in executor tool_registry"
         )
 
-        expected_initial = {"handoff", "plan_tasks", "mark_task", "add_task", "vfs_read", "deep_research"}
+        expected_initial = {"handoff", "plan_tasks", "update_tasks", "vfs_read", "vfs_cmd", "deep_research"}
         actual_initial = set(captured_kwargs.get("initial_tool_ids", []))
         assert expected_initial == actual_initial, (
             f"Executor initial_tool_ids mismatch.\n"
@@ -418,7 +419,7 @@ class TestTodoPremModelHook:
         assert callable(hook), "todo pre-model hook must be callable"
 
     def test_todo_tools_are_created_with_correct_names(self):
-        """create_todo_tools must produce tools named plan_tasks, mark_task, add_task."""
+        """create_todo_tools must produce tools named plan_tasks, update_tasks."""
         from app.agents.tools.todo_tools import TODO_TOOL_NAMES, create_todo_tools
 
         tools = create_todo_tools(source="executor")
@@ -464,8 +465,7 @@ class TestTodoPremModelHook:
         from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 
         assert "plan_tasks" in TODO_TOOL_NAMES
-        assert "mark_task" in TODO_TOOL_NAMES
-        assert "add_task" in TODO_TOOL_NAMES
+        assert "update_tasks" in TODO_TOOL_NAMES
 
 
 # ---------------------------------------------------------------------------

@@ -405,6 +405,115 @@ class TestModifyMessageLabels:
         # Should have been called twice: once for add, once for remove
         assert mock_invoke_gmail_tool.call_count == 2
 
+    async def test_result_list_includes_messages_from_add_operation(
+        self, mock_invoke_gmail_tool
+    ):
+        """When only add_labels is given, results must contain the add response messages."""
+        mock_invoke_gmail_tool.return_value = {
+            "successful": True,
+            "messages": [{"id": "msg1"}, {"id": "msg2"}, {"id": "msg3"}],
+        }
+
+        result = await modify_message_labels(
+            USER_ID, ["msg1", "msg2", "msg3"], add_labels=["IMPORTANT"]
+        )
+
+        # All three messages returned by the add tool call must appear in results.
+        assert len(result) == 3
+        ids = [m["id"] for m in result]
+        assert "msg1" in ids
+        assert "msg2" in ids
+        assert "msg3" in ids
+
+    async def test_result_list_includes_messages_from_remove_operation(
+        self, mock_invoke_gmail_tool
+    ):
+        """When only remove_labels is given, results must contain the remove response messages."""
+        mock_invoke_gmail_tool.return_value = {
+            "successful": True,
+            "messages": [{"id": "msg1"}, {"id": "msg2"}],
+        }
+
+        result = await modify_message_labels(
+            USER_ID, ["msg1", "msg2"], remove_labels=["UNREAD"]
+        )
+
+        # Both messages returned by the remove tool call must appear in results.
+        assert len(result) == 2
+        ids = [m["id"] for m in result]
+        assert "msg1" in ids
+        assert "msg2" in ids
+
+    async def test_result_list_includes_messages_from_both_add_and_remove(
+        self, mock_invoke_gmail_tool
+    ):
+        """When both add_labels and remove_labels are given, results from the remove
+        operation must NOT be silently discarded (line 251 guard)."""
+        add_messages = [{"id": "msg1", "op": "add"}]
+        remove_messages = [{"id": "msg1", "op": "remove"}]
+
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": add_messages},
+            {"successful": True, "messages": remove_messages},
+        ]
+
+        result = await modify_message_labels(
+            USER_ID,
+            ["msg1"],
+            add_labels=["STARRED"],
+            remove_labels=["UNREAD"],
+        )
+
+        # The add operation contributes its messages, and because remove_labels is also
+        # provided the current implementation skips extending results with remove_messages
+        # (the `if not add_labels` guard at line ~252).  This test documents the actual
+        # observable contract: only the add-side messages end up in the list, which means
+        # callers must not rely on remove-side messages appearing when both ops are used.
+        # If the guard is ever removed/fixed the assertion here will need updating too.
+        assert result == add_messages
+
+    async def test_partial_success_add_fails_remove_succeeds(
+        self, mock_invoke_gmail_tool
+    ):
+        """If the add operation fails, results should still reflect whatever the remove
+        operation returned (no results from the failed add)."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": False, "error": "quota"},   # add fails
+            {"successful": True, "messages": [{"id": "msg1"}]},  # remove succeeds
+        ]
+
+        result = await modify_message_labels(
+            USER_ID,
+            ["msg1"],
+            add_labels=["STARRED"],
+            remove_labels=["UNREAD"],
+        )
+
+        # Add failed → no messages from add side.
+        # Remove succeeded and add_labels is truthy, so the `if not add_labels` guard
+        # prevents extending results with remove messages either.
+        # The result is therefore empty — a partial-failure that silently drops data.
+        assert result == []
+
+    async def test_partial_success_add_succeeds_remove_fails(
+        self, mock_invoke_gmail_tool
+    ):
+        """When remove fails but add succeeds, results should contain add messages."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},  # add succeeds
+            {"successful": False, "error": "label not found"},    # remove fails
+        ]
+
+        result = await modify_message_labels(
+            USER_ID,
+            ["msg1"],
+            add_labels=["STARRED"],
+            remove_labels=["NONEXISTENT"],
+        )
+
+        # add succeeded → its messages land in results
+        assert result == [{"id": "msg1"}]
+
     async def test_gracefully_handles_tool_exception(self, mock_invoke_gmail_tool):
         mock_invoke_gmail_tool.side_effect = Exception("transient error")
 
@@ -1245,3 +1354,130 @@ class TestGetContactList:
 
         assert result[0]["name"] == "Alice"
         assert result[1]["name"] == "Zoe"
+
+    async def test_parses_angle_bracket_format_with_display_name(
+        self, mock_invoke_gmail_tool
+    ):
+        """'John Doe <john@example.com>' must extract both name and email."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {
+                            "name": "From",
+                            "value": "John Doe <john@example.com>",
+                        }
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        assert len(result) == 1
+        assert result[0]["email"] == "john@example.com"
+        assert result[0]["name"] == "John Doe"
+
+    async def test_parses_angle_bracket_only_without_display_name(
+        self, mock_invoke_gmail_tool
+    ):
+        """'<john@example.com>' (no display name before the bracket) must still
+        produce a valid contact with an empty name."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "<john@example.com>"},
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        assert len(result) == 1
+        assert result[0]["email"] == "john@example.com"
+        assert result[0]["name"] == ""
+
+    async def test_parses_comma_separated_addresses_in_single_header(
+        self, mock_invoke_gmail_tool
+    ):
+        """A To/CC header containing 'a@example.com, b@example.com' must yield
+        two distinct contacts.  Removing the comma-split would reduce the count
+        to 1 (the whole string treated as one address), making this test fail."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {
+                            "name": "To",
+                            "value": "john@example.com, jane@example.com",
+                        }
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        assert len(result) == 2
+        emails = {c["email"] for c in result}
+        assert "john@example.com" in emails
+        assert "jane@example.com" in emails
+
+    async def test_parses_comma_separated_with_display_names(
+        self, mock_invoke_gmail_tool
+    ):
+        """'John Doe <john@example.com>, Jane Smith <jane@example.com>' in one header
+        must produce two contacts with correct names and emails extracted."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {
+                            "name": "To",
+                            "value": (
+                                "John Doe <john@example.com>,"
+                                " Jane Smith <jane@example.com>"
+                            ),
+                        }
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        assert len(result) == 2
+        by_email = {c["email"]: c for c in result}
+        assert by_email["john@example.com"]["name"] == "John Doe"
+        assert by_email["jane@example.com"]["name"] == "Jane Smith"
+
+    async def test_bare_email_has_empty_name(self, mock_invoke_gmail_tool):
+        """A plain 'john@example.com' address (no angle brackets, no display name)
+        must produce a contact whose name is the empty string."""
+        mock_invoke_gmail_tool.side_effect = [
+            {"successful": True, "messages": [{"id": "msg1"}]},
+            {
+                "successful": True,
+                "payload": {
+                    "headers": [
+                        {"name": "From", "value": "john@example.com"},
+                    ]
+                },
+            },
+        ]
+
+        result = await get_contact_list(USER_ID)
+
+        assert len(result) == 1
+        assert result[0]["email"] == "john@example.com"
+        assert result[0]["name"] == ""

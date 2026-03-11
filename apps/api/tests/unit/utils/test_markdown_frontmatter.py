@@ -17,9 +17,8 @@ class TestSplitYamlFrontmatter:
 
         assert result is not None
         frontmatter, body = result
-        assert "title: Hello" in frontmatter
-        assert "author: Test" in frontmatter
-        assert "# Body here" in body
+        assert frontmatter == "title: Hello\nauthor: Test"
+        assert body == "# Body here\nParagraph."
 
     def test_empty_body(self):
         content = "---\nkey: value\n---\n"
@@ -27,8 +26,8 @@ class TestSplitYamlFrontmatter:
 
         assert result is not None
         frontmatter, body = result
-        assert "key: value" in frontmatter
-        assert body.strip() == ""
+        assert frontmatter == "key: value"
+        assert body == ""
 
     def test_no_frontmatter(self):
         content = "# Just a heading\nSome text."
@@ -38,8 +37,9 @@ class TestSplitYamlFrontmatter:
     def test_empty_string(self):
         assert split_yaml_frontmatter("") is None
 
-    def test_none_input(self):
-        assert split_yaml_frontmatter(None) is None
+    def test_whitespace_only_input(self):
+        """A string of only whitespace has no frontmatter delimiter."""
+        assert split_yaml_frontmatter("   ") is None
 
     def test_unclosed_frontmatter(self):
         content = "---\nkey: value\nno closing delimiter"
@@ -60,9 +60,8 @@ class TestSplitYamlFrontmatter:
 
         assert result is not None
         frontmatter, body = result
-        assert "name: test-skill" in frontmatter
-        assert "Line 1" in body
-        assert "Line 3" in body
+        assert frontmatter == "name: test-skill"
+        assert body == "Line 1\nLine 2\nLine 3"
 
     def test_content_not_starting_with_delimiter(self):
         content = "some text\n---\nkey: value\n---\nbody"
@@ -75,7 +74,9 @@ class TestSplitYamlFrontmatter:
 
         assert result is not None
         frontmatter, body = result
-        assert "title: Hello" in frontmatter
+        # splitlines(keepends=True) preserves line endings; rstrip("\r\n") strips the trailing one
+        assert frontmatter == "title: Hello"
+        assert body == "Body text"
 
 
 @pytest.mark.unit

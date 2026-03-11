@@ -12,7 +12,7 @@ WHAT THIS TESTS (REAL GAIA CODE):
   ``manage_system_prompts_node`` in the hook chain.
 
 Mock surfaces:
-- LLM: FakeMessagesListChatModel
+- LLM: BindableToolsFakeModel (wraps FakeMessagesListChatModel with bind_tools support)
 - Store: InMemoryStore (no ChromaDB)
 - Checkpointer: MemorySaver (no PostgreSQL)
 
@@ -25,9 +25,6 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from langchain_core.language_models.fake_chat_models import (
-    FakeMessagesListChatModel,
-)
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
@@ -38,7 +35,7 @@ from tests.e2e.conftest import (
     make_mock_store,
     make_node_config,
 )
-from tests.helpers import assert_tool_called, extract_tool_calls
+from tests.helpers import BindableToolsFakeModel, assert_tool_called, extract_tool_calls
 
 
 @tool
@@ -152,7 +149,7 @@ class TestMultiToolScenario:
         real pre-model hooks. Two tools are called in sequence: get_weather then
         create_note. We verify both ToolMessages appear in the final state.
         """
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -203,7 +200,7 @@ class TestMultiToolScenario:
         self, thread_config, in_memory_store, memory_saver
     ):
         """Tool calls in the message history must appear in the order they were executed."""
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -262,7 +259,7 @@ class TestMultiToolScenario:
         1. Only the latest system prompt (manage_system_prompts_node did its job)
         2. No unanswered tool calls remain (filter_messages_node did its job)
         """
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[AIMessage(content="All cleaned up.")]
         )
 

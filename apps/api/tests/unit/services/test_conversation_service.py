@@ -15,6 +15,7 @@ from app.services.conversation_service import (
     delete_conversation,
     delete_all_conversations,
     get_conversation,
+    get_conversations,
     mark_conversation_as_read,
     mark_conversation_as_unread,
     star_conversation,
@@ -152,6 +153,28 @@ class TestGetConversation:
             await get_conversation("nonexistent", test_user)
 
         assert exc_info.value.status_code == 404
+
+    async def test_get_conversation_wrong_user_returns_none(self, mock_collection):
+        """A different user's conversation must not be returned.
+
+        The MongoDB query is expected to include BOTH conversation_id AND user_id so
+        that the lookup returns nothing for a user who does not own the conversation.
+        """
+        # Simulate MongoDB correctly honouring the user_id filter: no document found
+        mock_collection.find_one = AsyncMock(return_value=None)
+
+        other_user = {"user_id": "user_other"}
+
+        with pytest.raises(HTTPException) as exc_info:
+            await get_conversation("conv_abc", other_user)
+
+        assert exc_info.value.status_code == 404
+
+        # Critical: verify the filter sent to MongoDB contained the caller's user_id,
+        # not the owner's user_id, so removing user_id from the query would break this.
+        call_filter = mock_collection.find_one.call_args[0][0]
+        assert call_filter.get("user_id") == "user_other"
+        assert call_filter.get("conversation_id") == "conv_abc"
 
 
 @pytest.mark.unit
@@ -309,3 +332,135 @@ class TestHelperFunctions:
         result = _convert_ids(conversations)
 
         assert result[0]["_id"] == str(oid)
+
+
+@pytest.mark.unit
+class TestListConversations:
+    """Tests that verify get_conversations passes correct filters to MongoDB.
+
+    The invariant being protected: removing the user_id filter from any query
+    inside get_conversations must cause at least one test here to fail.
+    """
+
+    def _make_cursor(self, docs: list):
+        """Return a mock async cursor that supports .sort().skip().limit().to_list()."""
+        cursor = MagicMock()
+        cursor.sort.return_value = cursor
+        cursor.skip.return_value = cursor
+        cursor.limit.return_value = cursor
+        cursor.to_list = AsyncMock(return_value=docs)
+        return cursor
+
+    async def test_list_conversations_filters_by_user_id(self, mock_collection):
+        """Every MongoDB query in get_conversations must include the caller's user_id."""
+        user = {"user_id": "user_abc"}
+
+        mock_collection.find.return_value = self._make_cursor([])
+        mock_collection.count_documents = AsyncMock(return_value=0)
+
+        await get_conversations(user, page=1, limit=10)
+
+        assert mock_collection.find.call_count >= 1
+        for call in mock_collection.find.call_args_list:
+            query_filter = call[0][0]
+            assert query_filter.get("user_id") == "user_abc", (
+                "Every find() call must include user_id == 'user_abc'; "
+                "a call without user_id would expose other users' data."
+            )
+
+        # count_documents must also be scoped to the correct user
+        count_filter = mock_collection.count_documents.call_args[0][0]
+        assert count_filter.get("user_id") == "user_abc"
+
+    async def test_list_conversations_different_users_see_only_their_own(
+        self, mock_collection
+    ):
+        """Queries for two different users must carry distinct user_id values."""
+        mock_collection.find.return_value = self._make_cursor([])
+        mock_collection.count_documents = AsyncMock(return_value=0)
+
+        await get_conversations({"user_id": "user_1"}, page=1, limit=10)
+        calls_user_1 = [c[0][0] for c in mock_collection.find.call_args_list]
+
+        mock_collection.find.reset_mock()
+        mock_collection.count_documents.reset_mock()
+        mock_collection.find.return_value = self._make_cursor([])
+        mock_collection.count_documents = AsyncMock(return_value=0)
+
+        await get_conversations({"user_id": "user_2"}, page=1, limit=10)
+        calls_user_2 = [c[0][0] for c in mock_collection.find.call_args_list]
+
+        for f in calls_user_1:
+            assert f.get("user_id") == "user_1"
+        for f in calls_user_2:
+            assert f.get("user_id") == "user_2"
+
+    async def test_list_conversations_pagination_skip_and_limit_applied(
+        self, mock_collection
+    ):
+        """Skip and limit must reflect the requested page and limit values."""
+        user = {"user_id": "user_abc"}
+
+        starred_cursor = self._make_cursor([])
+        non_starred_cursor = self._make_cursor([])
+        mock_collection.find.side_effect = [starred_cursor, non_starred_cursor]
+        mock_collection.count_documents = AsyncMock(return_value=50)
+
+        await get_conversations(user, page=3, limit=5)
+
+        # The non-starred cursor should have skip((3-1)*5 = 10) and limit(5)
+        non_starred_cursor.skip.assert_called_once_with(10)
+        non_starred_cursor.limit.assert_called_once_with(5)
+
+    async def test_list_conversations_sorted_by_created_at_descending(
+        self, mock_collection
+    ):
+        """Results must be sorted newest-first (createdAt descending = -1)."""
+        user = {"user_id": "user_abc"}
+
+        starred_cursor = self._make_cursor([])
+        non_starred_cursor = self._make_cursor([])
+        mock_collection.find.side_effect = [starred_cursor, non_starred_cursor]
+        mock_collection.count_documents = AsyncMock(return_value=0)
+
+        await get_conversations(user, page=1, limit=10)
+
+        # Both cursors must sort by createdAt descending
+        for cursor in [starred_cursor, non_starred_cursor]:
+            cursor.sort.assert_called_once_with("createdAt", -1)
+
+    async def test_list_conversations_returns_pagination_metadata(
+        self, mock_collection
+    ):
+        """Response must include total, page, limit and total_pages fields."""
+        user = {"user_id": "user_abc"}
+
+        mock_collection.find.return_value = self._make_cursor([])
+        mock_collection.count_documents = AsyncMock(return_value=25)
+
+        result = await get_conversations(user, page=2, limit=10)
+
+        assert result["page"] == 2
+        assert result["limit"] == 10
+        assert "total" in result
+        assert "total_pages" in result
+        # 25 non-starred docs with limit 10 → 3 pages
+        assert result["total_pages"] == 3
+
+    async def test_list_conversations_excludes_bot_sources(self, mock_collection):
+        """Conversations from bot sources must be excluded via $nin filter."""
+        user = {"user_id": "user_abc"}
+
+        mock_collection.find.return_value = self._make_cursor([])
+        mock_collection.count_documents = AsyncMock(return_value=0)
+
+        await get_conversations(user, page=1, limit=10)
+
+        bot_sources = ["telegram", "discord", "slack", "whatsapp"]
+        for call in mock_collection.find.call_args_list:
+            query_filter = call[0][0]
+            source_filter = query_filter.get("source", {})
+            excluded = source_filter.get("$nin", [])
+            assert set(bot_sources).issubset(set(excluded)), (
+                "Bot sources must be excluded from conversation listings"
+            )

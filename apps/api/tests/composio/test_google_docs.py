@@ -15,7 +15,7 @@ import pytest
 # ---------------------------------------------------------------------------
 # Production imports – failures here mean the module is gone/renamed
 # ---------------------------------------------------------------------------
-from app.agents.tools.google_docs_tool import (
+from app.agents.tools.integrations.google_docs_tool import (
     _auth_headers,
     _get_access_token,
     register_google_docs_custom_tools,
@@ -126,7 +126,7 @@ class TestCustomShareDoc:
         request = self._share_request()
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.post.return_value = self._permission_response("perm-1")
             result = fn(request, MagicMock(), AUTH_CREDENTIALS)
@@ -147,7 +147,7 @@ class TestCustomShareDoc:
         request = self._share_request(emails=["alice@example.com", "bob@example.com"])
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.post.side_effect = [
                 self._permission_response("perm-a"),
@@ -175,7 +175,7 @@ class TestCustomShareDoc:
         error_response.text = "Forbidden"
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.post.side_effect = [
                 self._permission_response("perm-ok"),
@@ -207,7 +207,7 @@ class TestCustomShareDoc:
         error_response.text = "Internal Server Error"
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.post.return_value = MagicMock(
                 raise_for_status=MagicMock(
@@ -227,7 +227,7 @@ class TestCustomShareDoc:
         request = self._share_request()
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.post.return_value = self._permission_response()
             fn(request, MagicMock(), AUTH_CREDENTIALS)
@@ -245,7 +245,7 @@ class TestCustomShareDoc:
         request = self._share_request()
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.post.return_value = self._permission_response()
             fn(request, MagicMock(), AUTH_CREDENTIALS)
@@ -262,7 +262,7 @@ class TestCustomShareDoc:
         request = ShareDocInput(document_id=DOC_ID, recipients=recipients)
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.post.return_value = self._permission_response()
             fn(request, MagicMock(), AUTH_CREDENTIALS)
@@ -528,7 +528,7 @@ class TestCustomDeleteDoc:
         request = DeleteDocInput(document_id=DOC_ID)
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.delete.return_value = MagicMock(
                 raise_for_status=MagicMock(return_value=None)
@@ -546,7 +546,7 @@ class TestCustomDeleteDoc:
         request = DeleteDocInput(document_id=DOC_ID)
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.delete.return_value = MagicMock(
                 raise_for_status=MagicMock(return_value=None)
@@ -565,7 +565,7 @@ class TestCustomDeleteDoc:
         request = DeleteDocInput(document_id=DOC_ID)
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.delete.return_value = MagicMock(
                 raise_for_status=MagicMock(return_value=None)
@@ -589,7 +589,7 @@ class TestCustomDeleteDoc:
         error_response.text = "File not found"
 
         with patch(
-            "app.agents.tools.google_docs_tool._http_client"
+            "app.agents.tools.integrations.google_docs_tool._http_client"
         ) as mock_client:
             mock_client.delete.return_value = MagicMock(
                 raise_for_status=MagicMock(
@@ -627,12 +627,13 @@ class TestRegisterGoogleDocsCustomTools:
             "GOOGLEDOCS_CUSTOM_SHARE_DOC",
             "GOOGLEDOCS_CUSTOM_CREATE_TOC",
             "GOOGLEDOCS_CUSTOM_DELETE_DOC",
+            "GOOGLEDOCS_CUSTOM_GATHER_CONTEXT",
         }
 
-    def test_registers_three_tools(self):
+    def test_registers_four_tools(self):
         composio = _make_composio_mock()
         register_google_docs_custom_tools(composio)
-        assert composio.tools.custom_tool.call_count == 3
+        assert composio.tools.custom_tool.call_count == 4
 
     def test_all_tool_functions_are_callable(self):
         composio = _make_composio_mock()

@@ -12,7 +12,7 @@ WHAT THIS TESTS (REAL GAIA CODE):
   GAIA ``State`` TypedDict, not the generic LangGraph ``MessagesState``.
 
 Mock surfaces:
-- LLM: FakeMessagesListChatModel
+- LLM: BindableToolsFakeModel (wraps FakeMessagesListChatModel with bind_tools support)
 - store: InMemoryStore (no ChromaDB, no real tool indexing)
 - Checkpointer: MemorySaver (no PostgreSQL)
 - External API calls (memory service, tool registry): mocked via patch
@@ -27,9 +27,6 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from langchain_core.language_models.fake_chat_models import (
-    FakeMessagesListChatModel,
-)
 from langchain_core.messages import AIMessage, HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
@@ -37,6 +34,7 @@ from langgraph.store.memory import InMemoryStore
 from app.override.langgraph_bigtool.utils import State
 from tests.e2e.conftest import build_gaia_test_graph, make_gaia_state
 from tests.factories import make_config
+from tests.helpers import BindableToolsFakeModel
 
 
 @pytest.mark.e2e
@@ -56,7 +54,7 @@ class TestWorkflowExecution:
         state_fields = State.__annotations__
         assert "todos" in state_fields, (
             "GAIA State must have a 'todos' channel. "
-            "This channel is used by plan_tasks, mark_task, and add_task tools."
+            "This channel is used by plan_tasks and update_tasks tools."
         )
 
     async def test_gaia_state_schema_has_messages_channel(self):
@@ -82,7 +80,7 @@ class TestWorkflowExecution:
         'selected_tool_ids' — channels that exist only in the GAIA State schema,
         not in generic LangGraph MessagesState.
         """
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[AIMessage(content="Workflow complete.")]
         )
 
@@ -115,7 +113,7 @@ class TestWorkflowExecution:
         This tests that the same thread_id produces accumulated state after
         multiple calls — the same pattern used by build_comms_graph in production.
         """
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(content="Response to first message."),
                 AIMessage(content="Response to second message."),
@@ -164,10 +162,10 @@ class TestWorkflowExecution:
         """
         checkpointer = MemorySaver()
 
-        fake_llm_a = FakeMessagesListChatModel(
+        fake_llm_a = BindableToolsFakeModel(
             responses=[AIMessage(content="Response for thread A.")]
         )
-        fake_llm_b = FakeMessagesListChatModel(
+        fake_llm_b = BindableToolsFakeModel(
             responses=[AIMessage(content="Response for thread B.")]
         )
 
@@ -217,29 +215,51 @@ class TestWorkflowExecution:
 
         If build_graph.py is deleted, this test fails immediately on import.
         """
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        from langchain_core.language_models.fake_chat_models import (
-            FakeMessagesListChatModel,
-        )
-
         # Import the real build_comms_graph from production code
         from app.agents.core.graph_builder.build_graph import build_comms_graph
 
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[AIMessage(content="Comms agent response.")]
         )
 
-        # Patch the external dependencies that build_comms_graph uses
+        # Patch the external dependencies that build_comms_graph uses.
+        # Patch targets must be the names as imported in build_graph.py.
         with (
             patch(
-                "app.agents.tools.core.store.get_tools_store",
-                new_callable=AsyncMock,
-                return_value=InMemoryStore(),
+                "app.agents.core.graph_builder.build_graph.get_tools_store",
+                new=AsyncMock(return_value=InMemoryStore()),
             ),
             patch(
-                "app.agents.middleware.factory.create_comms_middleware",
+                "app.agents.core.graph_builder.build_graph.create_comms_middleware",
                 return_value=[],
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new=AsyncMock(return_value=None),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+                return_value=[],
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+                new=AsyncMock(return_value=AIMessage(content='{"actions": []}')),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
+                new=AsyncMock(return_value={"tool_names": []}),
+            ),
+            patch(
+                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+                return_value=lambda _: None,
+            ),
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new=AsyncMock(return_value=(None, "executor not available in tests")),
+            ),
+            patch(
+                "app.agents.tools.memory_tools.memory_service",
+                new_callable=MagicMock,
             ),
         ):
             async with build_comms_graph(
@@ -259,31 +279,31 @@ class TestWorkflowExecution:
 
         If build_graph.py is deleted, this test fails immediately on import.
         """
-        from unittest.mock import AsyncMock, MagicMock, patch
-
-        from langchain_core.language_models.fake_chat_models import (
-            FakeMessagesListChatModel,
-        )
-
         from app.agents.core.graph_builder.build_graph import build_executor_graph
 
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[AIMessage(content="Executor agent response.")]
         )
 
         mock_registry = MagicMock()
         mock_registry.get_tool_dict.return_value = {}
 
+        async def _dummy_retrieve_tools(query: str = "") -> list:
+            """Stub retrieve tools coroutine (always returns empty list)."""
+            return []
+
         with (
             patch(
                 "app.agents.core.graph_builder.build_graph.get_tool_registry",
-                new_callable=AsyncMock,
-                return_value=mock_registry,
+                new=AsyncMock(return_value=mock_registry),
             ),
             patch(
                 "app.agents.core.graph_builder.build_graph.get_tools_store",
-                new_callable=AsyncMock,
-                return_value=InMemoryStore(),
+                new=AsyncMock(return_value=InMemoryStore()),
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new=AsyncMock(return_value=None),
             ),
             patch(
                 "app.agents.core.graph_builder.build_graph.create_executor_middleware",
@@ -291,7 +311,7 @@ class TestWorkflowExecution:
             ),
             patch(
                 "app.agents.core.graph_builder.build_graph.get_retrieve_tools_function",
-                return_value=AsyncMock(return_value={"tools_to_bind": [], "response": []}),
+                return_value=_dummy_retrieve_tools,
             ),
         ):
             async with build_executor_graph(

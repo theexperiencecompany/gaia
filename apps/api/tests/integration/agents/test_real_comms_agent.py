@@ -60,55 +60,79 @@ def _make_chroma_store_mock() -> MagicMock:
 
 
 # ---------------------------------------------------------------------------
-# Module-level patches applied for every test in this file
+# Boundary-only patches for follow_up_actions_node
+#
+# We mock ONLY the two external I/O boundaries:
+#   1. get_free_llm_chain  – prevents real LLM client initialisation
+#   2. get_stream_writer   – prevents LangGraph stream context requirement
+#   3. invoke_with_fallback – the actual LLM network call
+#   4. get_user_integration_capabilities – external HTTP/DB call
+#
+# The node's internal logic RUNS FOR REAL:
+#   - messages[-2:] slicing
+#   - SUGGEST_FOLLOW_UP_ACTIONS.format(...) prompt construction
+#   - PydanticOutputParser.parse() parsing
+#   - _pretty_print_messages() formatting
+#
+# invoke_with_fallback is mocked to return valid JSON so that the parser
+# actually exercises its code path.
 # ---------------------------------------------------------------------------
 
-# Patch the chroma tools store so get_tools_store() does not need a real
-# ChromaDB connection.  We also patch get_checkpointer_manager so that
-# build_comms_graph falls through to the InMemorySaver branch.
-COMMON_PATCHES = [
-    # Prevent real ChromaDB / Google Embeddings initialisation
-    patch(
-        "app.agents.tools.core.store.providers.aget",
-        new_callable=AsyncMock,
-    ),
-    # Prevent PostgreSQL checkpointer from being fetched
-    patch(
-        "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
-        new_callable=AsyncMock,
-    ),
-    # Prevent follow_up_actions_node from calling real LLMs or external services
-    patch(
-        "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
-        return_value=[],
-    ),
-    patch(
-        "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
-        new_callable=AsyncMock,
-        return_value=AIMessage(content='{"actions": []}'),
-    ),
-    patch(
-        "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-        new_callable=AsyncMock,
-        return_value={"tool_names": []},
-    ),
-    # Prevent get_stream_writer from requiring a real LangGraph stream context
-    patch(
-        "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
-        return_value=lambda _: None,
-    ),
-    # Prevent call_executor from trying to reach a real executor agent
-    patch(
-        "app.agents.tools.executor_tool.prepare_executor_execution",
-        new_callable=AsyncMock,
-        return_value=(None, "executor not available in tests"),
-    ),
-    # Prevent memory_tools from calling the real memory service
-    patch(
-        "app.agents.tools.memory_tools.memory_service",
-        new_callable=MagicMock,
-    ),
-]
+_VALID_FOLLOW_UP_JSON = (
+    '{"actions": ["Schedule a follow-up meeting", "Send summary email", '
+    '"Update the task list", "Check calendar availability"]}'
+)
+
+
+def _follow_up_node_io_patches(
+    *,
+    writer_fn: Any = None,
+    llm_response: str = _VALID_FOLLOW_UP_JSON,
+    capabilities: dict | None = None,
+) -> list:
+    """
+    Return a list of context-manager patches that mock ONLY the I/O
+    boundaries of follow_up_actions_node.
+
+    Parameters
+    ----------
+    writer_fn:
+        Callable to use as the stream writer.  Defaults to a no-op lambda.
+    llm_response:
+        String content the mocked LLM call should return.
+    capabilities:
+        Dict returned by get_user_integration_capabilities.
+    """
+    if writer_fn is None:
+        writer_fn = lambda _: None  # noqa: E731
+
+    if capabilities is None:
+        capabilities = {"tool_names": []}
+
+    return [
+        # I/O boundary 1: LLM chain initialisation (no real client)
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
+            return_value=MagicMock(),
+        ),
+        # I/O boundary 2: actual LLM network call
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
+            new_callable=AsyncMock,
+            return_value=AIMessage(content=llm_response),
+        ),
+        # I/O boundary 3: external integrations DB/HTTP call
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
+            new_callable=AsyncMock,
+            return_value=capabilities,
+        ),
+        # I/O boundary 4: LangGraph stream context
+        patch(
+            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
+            return_value=writer_fn,
+        ),
+    ]
 
 
 @pytest.fixture()
@@ -117,12 +141,14 @@ async def comms_graph_simple(monkeypatch):
     Build the REAL comms agent graph with:
     - FakeMessagesListChatModel (single plain-text response, no tool calls)
     - InMemorySaver checkpointer
-    - All external I/O mocked
+    - All external I/O mocked at boundaries only
 
     Yields the compiled CompiledGraph so tests can call ainvoke / aget_state.
     """
     fake_llm = create_fake_llm(["Hello! How can I help you today?"])
     store_mock = _make_chroma_store_mock()
+
+    io_patches = _follow_up_node_io_patches()
 
     with (
         patch(
@@ -135,24 +161,7 @@ async def comms_graph_simple(monkeypatch):
             new_callable=AsyncMock,
             return_value=None,  # None → use InMemorySaver branch
         ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
-            return_value=[],
-        ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
-            new_callable=AsyncMock,
-            return_value=AIMessage(content='{"actions": []}'),
-        ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-            new_callable=AsyncMock,
-            return_value={"tool_names": []},
-        ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
-            return_value=lambda _: None,
-        ),
+        *io_patches,
         patch(
             "app.agents.tools.executor_tool.prepare_executor_execution",
             new_callable=AsyncMock,
@@ -189,6 +198,8 @@ async def comms_graph_with_tool_call(monkeypatch):
     )
     store_mock = _make_chroma_store_mock()
 
+    io_patches = _follow_up_node_io_patches()
+
     with (
         patch(
             "app.agents.tools.core.store.providers.aget",
@@ -200,24 +211,7 @@ async def comms_graph_with_tool_call(monkeypatch):
             new_callable=AsyncMock,
             return_value=None,
         ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
-            return_value=[],
-        ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
-            new_callable=AsyncMock,
-            return_value=AIMessage(content='{"actions": []}'),
-        ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-            new_callable=AsyncMock,
-            return_value={"tool_names": []},
-        ),
-        patch(
-            "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
-            return_value=lambda _: None,
-        ),
+        *io_patches,
         # Make the executor tool return immediately with a fixed string
         patch(
             "app.agents.tools.executor_tool.prepare_executor_execution",
@@ -553,7 +547,7 @@ class TestRealCommsAgent:
         assert "Message from thread A" not in msgs_b
 
     # ------------------------------------------------------------------
-    # 5. Memory node (end_graph_hook) is invoked
+    # 5. follow_up_actions_node runs internal logic (not over-mocked)
     # ------------------------------------------------------------------
 
     async def test_memory_node_called_via_end_graph_hooks(self):
@@ -563,6 +557,8 @@ class TestRealCommsAgent:
         when the graph finishes a turn without tool calls.
 
         We spy on get_stream_writer's return value to confirm the node fired.
+        The node's internal logic (message slicing, prompt construction, parser)
+        runs for real; only the LLM I/O boundary and stream writer are mocked.
         """
         store_mock = _make_chroma_store_mock()
         fake_llm = create_fake_llm(["All done!"])
@@ -571,6 +567,15 @@ class TestRealCommsAgent:
 
         def capturing_writer(data: Any) -> None:
             writer_calls.append(data)
+
+        io_patches = _follow_up_node_io_patches(
+            writer_fn=capturing_writer,
+            # Return valid JSON so that PydanticOutputParser.parse() runs for real
+            llm_response=(
+                '{"actions": ["Do A", "Do B", "Do C", "Do D"]}'
+            ),
+            capabilities={"tool_names": ["call_executor"]},
+        )
 
         with (
             patch(
@@ -583,24 +588,7 @@ class TestRealCommsAgent:
                 new_callable=AsyncMock,
                 return_value=None,
             ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_free_llm_chain",
-                return_value=[],
-            ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.invoke_with_fallback",
-                new_callable=AsyncMock,
-                return_value=AIMessage(content='{"actions": ["Do A", "Do B"]}'),
-            ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_user_integration_capabilities",
-                new_callable=AsyncMock,
-                return_value={"tool_names": ["call_executor"]},
-            ),
-            patch(
-                "app.agents.core.nodes.follow_up_actions_node.get_stream_writer",
-                return_value=capturing_writer,
-            ),
+            *io_patches,
             patch(
                 "app.agents.tools.executor_tool.prepare_executor_execution",
                 new_callable=AsyncMock,
@@ -632,4 +620,348 @@ class TestRealCommsAgent:
         assert "main_response_complete" in keys_written or "follow_up_actions" in keys_written, (
             f"Expected follow_up_actions_node to write 'main_response_complete' or "
             f"'follow_up_actions'; got keys: {keys_written}"
+        )
+
+    async def test_follow_up_node_internal_logic_runs_for_real(self):
+        """
+        Verify that follow_up_actions_node's internal message slicing and
+        PydanticOutputParser path execute for real (not mocked away).
+
+        We provide enough messages (>= 2) to bypass the early-exit guard so that
+        the slice `messages[-2:]` and `parser.parse()` are exercised.
+
+        The writer should receive `follow_up_actions` whose content came from the
+        parser actually parsing _VALID_FOLLOW_UP_JSON.
+        """
+        store_mock = _make_chroma_store_mock()
+        # Give the main agent enough responses for two human messages
+        fake_llm = create_fake_llm(["Response A", "Response B", "Response C"])
+
+        received_actions: list[list[str]] = []
+
+        def capturing_writer(data: Any) -> None:
+            if isinstance(data, dict) and "follow_up_actions" in data:
+                received_actions.append(data["follow_up_actions"])
+
+        io_patches = _follow_up_node_io_patches(
+            writer_fn=capturing_writer,
+            llm_response=_VALID_FOLLOW_UP_JSON,
+        )
+
+        with (
+            patch(
+                "app.agents.tools.core.store.providers.aget",
+                new_callable=AsyncMock,
+                return_value=store_mock,
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            *io_patches,
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                return_value=(None, "executor not available in tests"),
+            ),
+            patch(
+                "app.agents.tools.memory_tools.memory_service",
+                new_callable=MagicMock,
+            ),
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                config = _thread_config()
+                # Two messages so len(messages) >= 2 — the node won't early-exit
+                await graph.ainvoke(
+                    {
+                        "messages": [
+                            HumanMessage(content="First question"),
+                            HumanMessage(content="Second question"),
+                        ]
+                    },
+                    config=config,
+                )
+
+        # The parser ran and produced the expected actions list
+        assert len(received_actions) >= 1, (
+            "follow_up_actions_node should have written follow_up_actions "
+            "(internal PydanticOutputParser path ran)"
+        )
+        flat = [a for batch in received_actions for a in batch]
+        assert len(flat) >= 1, "Parser should have produced at least one action"
+
+    # ------------------------------------------------------------------
+    # 6. Error path coverage
+    # ------------------------------------------------------------------
+
+    async def test_node_exception_propagates_correctly(self):
+        """
+        When a pre_model_hook (filter_messages_node) raises an unhandled exception,
+        the exception must propagate out of ainvoke as the original exception type
+        — not silently swallowed, and not re-wrapped as a generic Exception that
+        hides the original type.
+
+        This test will FAIL if filter_messages_node's exception handler is removed
+        AND the graph simply swallows the error, or if the error is re-raised as a
+        different type.
+
+        Design note: filter_messages_node wraps errors internally and returns state
+        on failure, which means a patched internal sub-call that raises won't cause
+        the graph to fail by default.  To prove exception-propagation behaviour we
+        patch the node itself to raise directly, bypassing its own guard, then
+        verify the exception propagates to the caller unchanged.
+        """
+        store_mock = _make_chroma_store_mock()
+        fake_llm = create_fake_llm(["Should not be reached"])
+
+        sentinel = RuntimeError("injected-filter-messages-failure")
+
+        async def raising_filter_messages_node(state, config, store):
+            raise sentinel
+
+        io_patches = _follow_up_node_io_patches()
+
+        with (
+            patch(
+                "app.agents.tools.core.store.providers.aget",
+                new_callable=AsyncMock,
+                return_value=store_mock,
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            *io_patches,
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                return_value=(None, "executor not available in tests"),
+            ),
+            patch(
+                "app.agents.tools.memory_tools.memory_service",
+                new_callable=MagicMock,
+            ),
+            # Replace filter_messages_node in the hooks module used by create_agent
+            patch(
+                "app.override.langgraph_bigtool.hooks.execute_hooks",
+                side_effect=sentinel,
+            ),
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                config = _thread_config()
+                with pytest.raises(RuntimeError) as exc_info:
+                    await graph.ainvoke(
+                        {"messages": [HumanMessage(content="Trigger the error")]},
+                        config=config,
+                    )
+
+        # The exception must be exactly the RuntimeError we injected, not a
+        # generic Exception wrapping it — this ensures the type is not swallowed.
+        assert exc_info.type is RuntimeError, (
+            f"Expected RuntimeError to propagate unchanged, got {exc_info.type}"
+        )
+        assert "injected-filter-messages-failure" in str(exc_info.value), (
+            "Original exception message must be preserved in the propagated error"
+        )
+
+    async def test_comms_agent_handles_empty_messages(self):
+        """
+        Sending an empty messages list must not crash the graph.
+
+        The production filter_messages_node and manage_system_prompts_node both
+        have early-exit guards for empty message lists.  If those guards are
+        removed, this test will detect the regression by catching the resulting
+        exception (KeyError / IndexError).
+        """
+        store_mock = _make_chroma_store_mock()
+        fake_llm = create_fake_llm(["Graceful empty response"])
+
+        io_patches = _follow_up_node_io_patches()
+
+        with (
+            patch(
+                "app.agents.tools.core.store.providers.aget",
+                new_callable=AsyncMock,
+                return_value=store_mock,
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            *io_patches,
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                return_value=(None, "executor not available in tests"),
+            ),
+            patch(
+                "app.agents.tools.memory_tools.memory_service",
+                new_callable=MagicMock,
+            ),
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                config = _thread_config()
+                # An empty messages list — must not crash; graph may return
+                # normally or raise a meaningful validation error, but must
+                # NOT raise a bare IndexError or KeyError from the node logic.
+                try:
+                    result = await graph.ainvoke(
+                        {"messages": []},
+                        config=config,
+                    )
+                    # If it completes without error, the result must still carry
+                    # a messages key (state contract is preserved).
+                    assert "messages" in result, (
+                        "State contract broken: 'messages' key missing after empty input"
+                    )
+                except (KeyError, IndexError) as exc:
+                    pytest.fail(
+                        f"Graph crashed with {type(exc).__name__} on empty messages input: {exc}"
+                    )
+
+    async def test_comms_agent_handles_malformed_tool_call(self):
+        """
+        When the LLM returns a tool call with invalid / missing arguments, the
+        graph must return an error ToolMessage to the caller rather than crashing
+        with an unhandled exception.
+
+        The production DynamicToolNode wraps tool errors into ToolMessages so the
+        graph can continue.  If that wrapping is removed, this test will fail
+        because ainvoke will raise instead of returning a ToolMessage.
+        """
+        # The fake LLM emits a tool call with an empty args dict — call_executor
+        # requires a "task" argument, so this is intentionally malformed.
+        malformed_tool_call = {
+            "name": "call_executor",
+            "args": {},  # missing required "task" field
+            "id": "malformed_call_001",
+            "type": "tool_call",
+        }
+        fake_llm = create_fake_llm_with_tool_calls(
+            [malformed_tool_call, "I encountered an issue."]
+        )
+        store_mock = _make_chroma_store_mock()
+
+        io_patches = _follow_up_node_io_patches()
+
+        with (
+            patch(
+                "app.agents.tools.core.store.providers.aget",
+                new_callable=AsyncMock,
+                return_value=store_mock,
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            *io_patches,
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                return_value=(None, "executor not available in tests"),
+            ),
+            patch(
+                "app.agents.tools.memory_tools.memory_service",
+                new_callable=MagicMock,
+            ),
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                config = _thread_config()
+                # Must not raise — error should be surfaced as a ToolMessage
+                result = await graph.ainvoke(
+                    {"messages": [HumanMessage(content="Do the malformed task")]},
+                    config=config,
+                )
+
+        messages = result["messages"]
+        tool_messages = [m for m in messages if isinstance(m, ToolMessage)]
+
+        # The graph must have produced a ToolMessage for the malformed call,
+        # proving the error was returned to the caller rather than crashing.
+        assert len(tool_messages) >= 1, (
+            "Malformed tool call should produce a ToolMessage (error surfaced to caller), "
+            "not a crash"
+        )
+        ids_seen = {tm.tool_call_id for tm in tool_messages}
+        assert "malformed_call_001" in ids_seen, (
+            f"Expected ToolMessage for malformed_call_001; got IDs: {ids_seen}"
+        )
+
+    async def test_comms_agent_timeout_handling(self):
+        """
+        When the LLM call raises asyncio.TimeoutError, the exception must
+        propagate to the caller with the original TimeoutError type intact —
+        it must NOT be swallowed silently or converted to a different type.
+
+        This test will FAIL if:
+        - The graph swallows the TimeoutError (returns normally instead of raising)
+        - The graph re-raises as a generic Exception hiding the original type
+
+        Note: asyncio.TimeoutError is a subclass of TimeoutError in Python 3.11+.
+        We check for asyncio.TimeoutError directly.
+        """
+        store_mock = _make_chroma_store_mock()
+
+        # The LLM raises TimeoutError immediately when invoked
+        timeout_error = asyncio.TimeoutError("LLM request timed out")
+
+        class TimeoutFakeLLM(FakeMessagesListChatModel):
+            def bind_tools(self, tools: Any, **kwargs: Any) -> "TimeoutFakeLLM":
+                return self
+
+            async def ainvoke(self, *args, **kwargs):
+                raise timeout_error
+
+        fake_llm = TimeoutFakeLLM(responses=[])
+
+        io_patches = _follow_up_node_io_patches()
+
+        with (
+            patch(
+                "app.agents.tools.core.store.providers.aget",
+                new_callable=AsyncMock,
+                return_value=store_mock,
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new_callable=AsyncMock,
+                return_value=None,
+            ),
+            *io_patches,
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                return_value=(None, "executor not available in tests"),
+            ),
+            patch(
+                "app.agents.tools.memory_tools.memory_service",
+                new_callable=MagicMock,
+            ),
+        ):
+            async with build_comms_graph(
+                chat_llm=fake_llm, in_memory_checkpointer=True
+            ) as graph:
+                config = _thread_config()
+                with pytest.raises((asyncio.TimeoutError, TimeoutError)) as exc_info:
+                    await graph.ainvoke(
+                        {"messages": [HumanMessage(content="Trigger timeout")]},
+                        config=config,
+                    )
+
+        # Verify the original exception type is preserved (not swallowed or re-typed)
+        assert issubclass(exc_info.type, (asyncio.TimeoutError, TimeoutError)), (
+            f"Expected TimeoutError to propagate, got {exc_info.type}. "
+            "The graph must not swallow or re-type timeout errors."
         )

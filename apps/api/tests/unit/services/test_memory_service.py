@@ -291,6 +291,76 @@ class TestStoreMemory:
 
         assert result is None
 
+    async def test_store_memory_sync_result_parsed_correctly(self, service):
+        """When API returns a sync (non-async) result, the memory content is stored."""
+        mock_client = AsyncMock()
+        mock_client.add = AsyncMock(
+            return_value={
+                "results": [
+                    {
+                        "id": "mem_sync_01",
+                        "memory": "User prefers dark mode",
+                        "event": "ADD",
+                        "structured_attributes": {"theme": "dark"},
+                    }
+                ]
+            }
+        )
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.store_memory(
+                "I prefer dark mode", "user_123", async_mode=False
+            )
+
+        assert result is not None
+        assert result.id == "mem_sync_01"
+        assert result.content == "User prefers dark mode"
+        assert result.user_id == "user_123"
+        assert result.metadata.get("theme") == "dark"
+
+    async def test_store_memory_direct_list_response(self, service):
+        """When API returns a direct list (fallback branch), first item is parsed."""
+        mock_client = AsyncMock()
+        mock_client.add = AsyncMock(
+            return_value=[
+                {
+                    "id": "mem_list_01",
+                    "memory": "User likes Python",
+                    "event": "ADD",
+                }
+            ]
+        )
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.store_memory("I like Python", "user_123")
+
+        assert result is not None
+        assert result.id == "mem_list_01"
+        assert result.content == "User likes Python"
+        assert result.user_id == "user_123"
+
+    async def test_store_memory_unexpected_response_format_returns_none(self, service):
+        """When API returns an unrecognised format, store_memory returns None."""
+        mock_client = AsyncMock()
+        mock_client.add = AsyncMock(return_value="unexpected string response")
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.store_memory("Test", "user_123")
+
+        assert result is None
+
+    async def test_store_memory_error_response_in_results_returns_none(self, service):
+        """When the results list contains an entry with no memory content, returns None."""
+        mock_client = AsyncMock()
+        mock_client.add = AsyncMock(
+            return_value={"results": [{"event": "NOOP", "memory": ""}]}
+        )
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.store_memory("Test", "user_123")
+
+        assert result is None
+
 
 @pytest.mark.unit
 class TestSearchMemories:
@@ -323,6 +393,88 @@ class TestSearchMemories:
         with patch.object(service, "_get_client", return_value=mock_client):
             result = await service.search_memories("query", "user_123")
 
+        assert result.total_count == 0
+
+    async def test_search_list_response_all_items_processed(self, service):
+        """When ChromaDB returns a direct LIST, every item is parsed and returned."""
+        mock_client = AsyncMock()
+        mock_client.search = AsyncMock(
+            return_value=[
+                {"id": "m1", "memory": "Fact one", "score": 0.8},
+                {"id": "m2", "memory": "Fact two", "score": 0.7},
+                {"id": "m3", "memory": "Fact three", "score": 0.6},
+            ]
+        )
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.search_memories("facts", "user_123")
+
+        assert isinstance(result, MemorySearchResult)
+        assert result.total_count == 3
+        contents = {m.content for m in result.memories}
+        assert contents == {"Fact one", "Fact two", "Fact three"}
+        # All entries must be scoped to the requesting user
+        assert all(m.user_id == "user_123" for m in result.memories)
+
+    async def test_search_dict_response_format_processed_correctly(self, service):
+        """When ChromaDB returns a DICT with 'results' key, memories are extracted."""
+        mock_client = AsyncMock()
+        mock_client.search = AsyncMock(
+            return_value={
+                "results": [
+                    {"id": "m1", "memory": "Likes coffee", "score": 0.95},
+                    {"id": "m2", "memory": "Uses Linux", "score": 0.85},
+                ],
+                "relations": [
+                    {"source": "user", "relation": "likes", "destination": "coffee"}
+                ],
+            }
+        )
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.search_memories("preferences", "user_123")
+
+        assert result.total_count == 2
+        assert result.memories[0].content == "Likes coffee"
+        assert result.memories[1].content == "Uses Linux"
+        # Relations extracted from dict response
+        assert len(result.relations) == 1
+        assert result.relations[0].source == "user"
+
+    async def test_search_empty_results_returns_empty_list_no_error(self, service):
+        """Empty results from either format return an empty MemorySearchResult."""
+        mock_client = AsyncMock()
+        mock_client.search = AsyncMock(return_value={"results": [], "relations": []})
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.search_memories("nothing", "user_123")
+
+        assert isinstance(result, MemorySearchResult)
+        assert result.total_count == 0
+        assert result.memories == []
+        assert result.relations == []
+
+    async def test_search_empty_list_response_returns_empty_no_error(self, service):
+        """Empty list response returns an empty MemorySearchResult without raising."""
+        mock_client = AsyncMock()
+        mock_client.search = AsyncMock(return_value=[])
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.search_memories("nothing", "user_123")
+
+        assert isinstance(result, MemorySearchResult)
+        assert result.total_count == 0
+        assert result.memories == []
+
+    async def test_search_unexpected_response_format_returns_empty(self, service):
+        """An unrecognised response format (not dict, not list) returns empty result."""
+        mock_client = AsyncMock()
+        mock_client.search = AsyncMock(return_value="unexpected string")
+
+        with patch.object(service, "_get_client", return_value=mock_client):
+            result = await service.search_memories("query", "user_123")
+
+        assert isinstance(result, MemorySearchResult)
         assert result.total_count == 0
 
 

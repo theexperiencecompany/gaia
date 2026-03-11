@@ -15,7 +15,7 @@ before the model is called again — which is what allows the fake LLM
 to respond correctly in turn 2 without being confused by stale tool calls.
 
 Mock surfaces:
-- LLM: FakeMessagesListChatModel
+- LLM: BindableToolsFakeModel (wraps FakeMessagesListChatModel with bind_tools support)
 - Store: InMemoryStore (no ChromaDB)
 - Checkpointer: MemorySaver (no PostgreSQL)
 - email sending: a @tool stub is used, but the graph infrastructure is real
@@ -29,9 +29,6 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from langchain_core.language_models.fake_chat_models import (
-    FakeMessagesListChatModel,
-)
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
@@ -42,7 +39,7 @@ from tests.e2e.conftest import (
     make_mock_store,
     make_node_config,
 )
-from tests.helpers import assert_tool_called, extract_tool_calls
+from tests.helpers import BindableToolsFakeModel, assert_tool_called, extract_tool_calls
 
 
 @tool
@@ -132,7 +129,7 @@ class TestSendEmailFlow:
         The tool execution path uses the real DynamicToolNode from the GAIA
         override package.
         """
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -185,7 +182,7 @@ class TestSendEmailFlow:
         in addition to 'messages'. This confirms the graph is using the real
         GAIA State from app.override.langgraph_bigtool.utils, not a generic state.
         """
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[AIMessage(content="No tool needed here.")]
         )
 

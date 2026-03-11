@@ -8,14 +8,14 @@ core behaviour changes.
 """
 
 from typing import Any, Dict
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
 # ---------------------------------------------------------------------------
 # Production imports – if these fail the module is gone/renamed
 # ---------------------------------------------------------------------------
-from app.agents.tools.notion_tool import register_notion_custom_tools
+from app.agents.tools.integrations.notion_tool import register_notion_custom_tools
 from app.models.notion_models import (
     CreateTestPageInput,
     FetchDataInput,
@@ -322,6 +322,7 @@ class TestInsertMarkdown:
         assert result["after"] is None
 
     def test_insert_markdown_with_after_parameter(self):
+        """The `after` param must be forwarded on the FIRST block insertion call."""
         composio = _make_composio_mock()
         composio.tools.execute.return_value = {
             "successful": True,
@@ -338,9 +339,11 @@ class TestInsertMarkdown:
         result = fn(request, MagicMock(), AUTH_CREDENTIALS)
 
         assert result["after"] == "blk-after-me"
-        # after param must be forwarded to Composio execute
-        call_kwargs = composio.tools.execute.call_args.kwargs
-        assert call_kwargs["arguments"]["after"] == "blk-after-me"
+        # `after` is forwarded only on the FIRST block call; check call_args_list
+        all_calls = composio.tools.execute.call_args_list
+        assert len(all_calls) >= 1
+        first_call_args = all_calls[0].kwargs["arguments"]
+        assert first_call_args["after"] == "blk-after-me"
 
     def test_insert_markdown_raises_on_empty_markdown(self):
         composio = _make_composio_mock()
@@ -372,7 +375,7 @@ class TestInsertMarkdown:
             fn(request, MagicMock(), AUTH_CREDENTIALS)
 
     def test_insert_markdown_after_param_omitted_when_none(self):
-        """When after=None, the after key must NOT be sent to Composio."""
+        """When after=None, the after key must NOT appear in any Composio execute call."""
         composio = _make_composio_mock()
         composio.tools.execute.return_value = {
             "successful": True,
@@ -387,8 +390,8 @@ class TestInsertMarkdown:
         )
         fn(request, MagicMock(), AUTH_CREDENTIALS)
 
-        call_kwargs = composio.tools.execute.call_args.kwargs
-        assert "after" not in call_kwargs["arguments"]
+        for c in composio.tools.execute.call_args_list:
+            assert "after" not in c.kwargs["arguments"]
 
 
 # ---------------------------------------------------------------------------
@@ -402,8 +405,6 @@ class TestFetchData:
 
     def _fake_search_response(self, items: list, has_more: bool = False):
         """Build a fake httpx Response for the Notion search endpoint."""
-        import json
-
         mock_resp = MagicMock()
         mock_resp.json.return_value = {"results": items, "has_more": has_more}
         mock_resp.raise_for_status.return_value = None
@@ -594,6 +595,56 @@ class TestFetchData:
         assert result["count"] == 1
         assert result["values"][0]["id"] == "pg-good"
 
+    def test_search_pages_by_title(self):
+        """Searching by title sends the query and returns only matching pages."""
+        composio = _make_composio_mock()
+        fns = _register_and_extract(composio)
+        fn = fns["FETCH_DATA"]
+
+        request = FetchDataInput(fetch_type="pages", query="Quarterly Review")
+
+        matching_page = self._page_item("pg-qr", "Quarterly Review")
+
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = self._fake_search_response([matching_page])
+            result = fn(request, MagicMock(), AUTH_CREDENTIALS)
+
+        # The query must be forwarded verbatim to the Notion search API
+        call_kwargs = mock_post.call_args.kwargs
+        assert call_kwargs["json"]["query"] == "Quarterly Review"
+        assert call_kwargs["json"]["filter"]["value"] == "page"
+
+        # The returned value must reflect the matched page
+        assert result["count"] == 1
+        assert result["values"][0]["id"] == "pg-qr"
+        assert result["values"][0]["title"] == "Quarterly Review"
+        assert result["values"][0]["type"] == "page"
+
+    def test_get_database_schema(self):
+        """Fetching databases returns id, title, and type for each database."""
+        composio = _make_composio_mock()
+        fns = _register_and_extract(composio)
+        fn = fns["FETCH_DATA"]
+
+        request = FetchDataInput(fetch_type="databases")
+
+        db_item = self._database_item("db-schema-1", "Project Tracker")
+
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = self._fake_search_response([db_item])
+            result = fn(request, MagicMock(), AUTH_CREDENTIALS)
+
+        # Verify the correct structure is returned for a database entry
+        assert result["count"] == 1
+        schema_entry = result["values"][0]
+        assert schema_entry["id"] == "db-schema-1"
+        assert schema_entry["title"] == "Project Tracker"
+        assert schema_entry["type"] == "database"
+
+        # The filter must request databases specifically
+        call_kwargs = mock_post.call_args.kwargs
+        assert call_kwargs["json"]["filter"]["value"] == "database"
+
 
 # ---------------------------------------------------------------------------
 # CUSTOM_CREATE_TEST_PAGE
@@ -713,6 +764,65 @@ class TestCustomCreateTestPage:
         call_kwargs = mock_post.call_args.kwargs
         assert call_kwargs["headers"]["Authorization"] == "Bearer secret-notion-token"
 
+    def test_create_page_with_properties(self):
+        """Page creation must send parent and title properties to the Notion API."""
+        composio = _make_composio_mock()
+        fns = _register_and_extract(composio)
+        fn = fns["CUSTOM_CREATE_TEST_PAGE"]
+
+        request = CreateTestPageInput(
+            title="Sprint Planning", parent_page_id="sprint-parent-id"
+        )
+
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = self._make_create_response("sprint-page-id")
+            result = fn(request, MagicMock(), AUTH_CREDENTIALS)
+
+        # Verify the returned page_id matches what the API returned
+        assert result["page_id"] == "sprint-page-id"
+        assert result["url"] == "https://notion.so/sprint-page-id"
+
+        # Verify the exact payload sent to the Notion pages API
+        call_kwargs = mock_post.call_args.kwargs
+        payload = call_kwargs["json"]
+
+        # Parent must be set correctly
+        assert payload["parent"] == {"page_id": "sprint-parent-id"}
+
+        # Title property must carry the exact text provided
+        title_blocks = payload["properties"]["title"]
+        assert len(title_blocks) == 1
+        assert title_blocks[0]["text"]["content"] == "Sprint Planning"
+
+    def test_auth_failure_returns_error(self):
+        """When the Notion API responds with a 401, a RuntimeError must be raised."""
+        import httpx
+
+        composio = _make_composio_mock()
+        fns = _register_and_extract(composio)
+        fn = fns["CUSTOM_CREATE_TEST_PAGE"]
+
+        request = CreateTestPageInput(
+            title="Auth Fail Page", parent_page_id="par-auth"
+        )
+
+        unauthorized_response = MagicMock()
+        unauthorized_response.status_code = 401
+        unauthorized_response.text = "Unauthorized"
+
+        with patch("httpx.post") as mock_post:
+            mock_post.return_value = MagicMock(
+                raise_for_status=MagicMock(
+                    side_effect=httpx.HTTPStatusError(
+                        "401 Unauthorized",
+                        request=MagicMock(),
+                        response=unauthorized_response,
+                    )
+                )
+            )
+            with pytest.raises(RuntimeError, match="Failed to create page"):
+                fn(request, MagicMock(), AUTH_CREDENTIALS)
+
 
 # ---------------------------------------------------------------------------
 # register_notion_custom_tools – registration contract
@@ -732,12 +842,13 @@ class TestRegisterNotionCustomTools:
             "NOTION_INSERT_MARKDOWN",
             "NOTION_FETCH_DATA",
             "NOTION_CUSTOM_CREATE_TEST_PAGE",
+            "NOTION_CUSTOM_GATHER_CONTEXT",
         }
 
-    def test_registers_five_tools(self):
+    def test_registers_six_tools(self):
         composio = _make_composio_mock()
         register_notion_custom_tools(composio)
-        assert composio.tools.custom_tool.call_count == 5
+        assert composio.tools.custom_tool.call_count == 6
 
     def test_all_tool_functions_are_callable(self):
         composio = _make_composio_mock()

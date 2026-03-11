@@ -188,6 +188,56 @@ class TestCheckInactiveUsers:
         query = mock_col.find.call_args[0][0]
         assert query["is_active"] == {"$ne": False}
 
+    async def test_query_includes_or_clause_for_email_resend_prevention(self, ctx):
+        """The $or clause prevents re-emailing users who received a recent email.
+
+        If the $or clause is removed from user_tasks, this test must fail.
+        """
+        mock_cursor = MagicMock()
+        mock_cursor.to_list = AsyncMock(return_value=[])
+
+        with (
+            patch(
+                "app.db.mongodb.collections.users_collection"
+            ) as mock_col,
+            patch("app.utils.email_utils.send_inactive_user_email"),
+        ):
+            mock_col.find = MagicMock(return_value=mock_cursor)
+            await check_inactive_users(ctx)
+
+        query = mock_col.find.call_args[0][0]
+
+        # $or clause must be present to prevent repeat emails
+        assert "$or" in query, "Query must include $or clause to prevent re-emailing"
+
+        # The $or clause must reference last_inactive_email_sent
+        or_clauses = query["$or"]
+        assert any(
+            "last_inactive_email_sent" in clause for clause in or_clauses
+        ), "At least one $or clause must check last_inactive_email_sent"
+
+        # Verify both expected conditions are present:
+        # 1. field does not exist (first-time email)
+        # 2. field is older than 7 days (re-email allowed after a week)
+        clause_keys = [list(c.keys())[0] for c in or_clauses if c]
+        assert clause_keys.count("last_inactive_email_sent") == 2, (
+            "Both $exists and $lt conditions on last_inactive_email_sent must be present"
+        )
+
+        exists_clause = next(
+            c for c in or_clauses
+            if "last_inactive_email_sent" in c
+            and "$exists" in c["last_inactive_email_sent"]
+        )
+        assert exists_clause["last_inactive_email_sent"]["$exists"] is False
+
+        lt_clause = next(
+            c for c in or_clauses
+            if "last_inactive_email_sent" in c
+            and "$lt" in c["last_inactive_email_sent"]
+        )
+        assert lt_clause["last_inactive_email_sent"]["$lt"] is not None
+
     async def test_db_exception_propagates(self, ctx):
         with patch(
             "app.db.mongodb.collections.users_collection"

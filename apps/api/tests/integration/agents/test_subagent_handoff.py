@@ -915,3 +915,729 @@ async def _async_iter(items):
     """Yield items from a list as an async iterator (for mocking astream)."""
     for item in items:
         yield item
+
+
+# ---------------------------------------------------------------------------
+# Test: handoff() async function called directly
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestHandoffFunctionDirectly:
+    """Call the handoff() coroutine directly (not through a compiled graph)
+    and verify it returns the expected result and correctly passes state to
+    the subagent."""
+
+    async def test_handoff_function_directly(self):
+        """Calling handoff() directly must return the subagent's response
+        string and must route state through execute_subagent_stream."""
+        from app.agents.core.subagents.handoff_tools import (
+            handoff,
+            _resolve_subagent,
+        )
+
+        user_id = str(uuid4())
+        thread_id = str(uuid4())
+
+        fake_graph = MagicMock()
+        fake_graph.astream = MagicMock(
+            return_value=_async_iter(
+                [("messages", (AIMessageChunk(content="direct handoff result"), {}))]
+            )
+        )
+
+        config = {
+            "configurable": {
+                "user_id": user_id,
+                "thread_id": thread_id,
+                "stream_id": "stream-abc",
+            }
+        }
+
+        # The underlying coroutine is stored in handoff.coroutine for @tool-wrapped async fns
+        underlying = getattr(handoff, "coroutine", None) or handoff
+
+        fake_subagent_config = {"configurable": {"thread_id": f"gmail_{thread_id}"}}
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new=AsyncMock(
+                    return_value=(fake_graph, "gmail_agent", "gmail", False)
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
+                new=AsyncMock(return_value=SystemMessage(content="You are Gmail agent.")),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_initial_messages",
+                new=AsyncMock(
+                    return_value=[
+                        SystemMessage(content="sys"),
+                        SystemMessage(content="ctx"),
+                        HumanMessage(content="Send an email"),
+                    ]
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_agent_config",
+                return_value=fake_subagent_config,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                new=AsyncMock(return_value="direct handoff result"),
+            ) as mock_execute,
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
+                return_value=None,
+            ),
+        ):
+            result = await underlying(
+                subagent_id="gmail",
+                task="Send an email to Bob",
+                config=config,
+            )
+
+        assert result == "direct handoff result"
+        mock_execute.assert_awaited_once()
+        # Verify the execution context passed to execute_subagent_stream has
+        # correct agent_name and integration_id
+        ctx_arg = mock_execute.call_args.kwargs.get(
+            "ctx"
+        ) or mock_execute.call_args.args[0]
+        assert ctx_arg.agent_name == "gmail_agent"
+        assert ctx_arg.integration_id == "gmail"
+
+    async def test_handoff_passes_task_in_state(self):
+        """The task argument supplied to handoff() must appear in the initial
+        messages forwarded to execute_subagent_stream."""
+        from app.agents.core.subagents.handoff_tools import handoff
+
+        underlying = getattr(handoff, "coroutine", None) or handoff
+
+        user_id = str(uuid4())
+        thread_id = str(uuid4())
+        captured_states: list[dict] = []
+
+        async def capture_execute(ctx, stream_writer=None, integration_metadata=None):
+            captured_states.append(ctx.initial_state)
+            return "ok"
+
+        fake_subagent_config = {"configurable": {"thread_id": f"notion_{thread_id}"}}
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new=AsyncMock(
+                    return_value=(MagicMock(), "notion_agent", "notion", False)
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
+                new=AsyncMock(return_value=SystemMessage(content="sys")),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_initial_messages",
+                new=AsyncMock(
+                    return_value=[
+                        SystemMessage(content="sys"),
+                        SystemMessage(content="ctx"),
+                        HumanMessage(content="Take a note about dogs"),
+                    ]
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_agent_config",
+                return_value=fake_subagent_config,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                new=capture_execute,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
+                return_value=None,
+            ),
+        ):
+            await underlying(
+                subagent_id="notion",
+                task="Take a note about dogs",
+                config={
+                    "configurable": {
+                        "user_id": user_id,
+                        "thread_id": thread_id,
+                    }
+                },
+            )
+
+        assert len(captured_states) == 1
+        messages = captured_states[0].get("messages", [])
+        human_messages = [m for m in messages if isinstance(m, HumanMessage)]
+        assert len(human_messages) == 1
+        assert human_messages[0].content == "Take a note about dogs"
+
+
+# ---------------------------------------------------------------------------
+# Test: custom MCP path (lines 244-271 of handoff_tools.py)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestCustomMCPPath:
+    """Verify that the custom MCP branch in _resolve_subagent (lines 244-271)
+    is exercised: when _get_subagent_by_id returns a dict (MongoDB custom MCP),
+    create_subagent_for_user must be called and agent_name must follow the
+    'custom_mcp_{integration_id}' convention.
+
+    If the custom MCP path is broken (e.g. `isinstance(integration, dict)` check
+    removed), these tests MUST fail.
+    """
+
+    async def test_custom_mcp_path_calls_create_subagent_for_user(self):
+        """When the integration resolved is a plain dict (custom MCP from MongoDB),
+        _resolve_subagent must call create_subagent_for_user and return is_custom=True."""
+        from app.agents.core.subagents.handoff_tools import _resolve_subagent
+
+        custom_integration_id = "fb9dfd7e05f8"
+        fake_graph = MagicMock()
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new=AsyncMock(
+                    return_value={
+                        "id": custom_integration_id,
+                        "name": "Semantic Scholar",
+                        "source": "custom",
+                        "managed_by": "mcp",
+                        "mcp_config": {"server_url": "http://localhost:9000"},
+                        "icon_url": None,
+                        "subagent_config": None,
+                    }
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
+                new=AsyncMock(return_value=fake_graph),
+            ) as mock_create,
+        ):
+            graph, agent_name, int_id, is_custom = await _resolve_subagent(
+                subagent_id=f"subagent:{custom_integration_id}",
+                user_id="user-123",
+            )
+
+        mock_create.assert_awaited_once_with(custom_integration_id, "user-123")
+        assert graph is fake_graph
+        assert agent_name == f"custom_mcp_{custom_integration_id}"
+        assert int_id == custom_integration_id
+        assert is_custom is True
+
+    async def test_custom_mcp_path_invoked(self):
+        """End-to-end: handoff() with a custom MCP subagent must reach the
+        custom MCP branch, call create_subagent_for_user, and return a result.
+
+        Breaking the `isinstance(integration, dict)` guard at line 244 of
+        handoff_tools.py will cause this test to fail because the execution
+        will fall through to the platform-integration branch which raises
+        AttributeError (dict has no .subagent_config attribute).
+        """
+        from app.agents.core.subagents.handoff_tools import handoff
+
+        underlying = getattr(handoff, "coroutine", None) or handoff
+
+        user_id = str(uuid4())
+        thread_id = str(uuid4())
+        custom_id = "ab12cd34ef56"
+        fake_graph = MagicMock()
+
+        custom_dict = {
+            "id": custom_id,
+            "name": "My Custom MCP",
+            "source": "custom",
+            "managed_by": "mcp",
+            "mcp_config": {"server_url": "http://localhost:9999"},
+            "icon_url": "http://example.com/icon.png",
+            "subagent_config": None,
+        }
+
+        fake_subagent_config = {
+            "configurable": {"thread_id": f"custom_mcp_{custom_id}_{thread_id}"}
+        }
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new=AsyncMock(return_value=custom_dict),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
+                new=AsyncMock(return_value=fake_graph),
+            ) as mock_create,
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
+                new=AsyncMock(return_value=SystemMessage(content="custom mcp sys")),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_initial_messages",
+                new=AsyncMock(
+                    return_value=[
+                        SystemMessage(content="custom mcp sys"),
+                        SystemMessage(content="ctx"),
+                        HumanMessage(content="fetch paper data"),
+                    ]
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_agent_config",
+                return_value=fake_subagent_config,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                new=AsyncMock(return_value="custom mcp result"),
+            ) as mock_execute,
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                return_value=MagicMock(),
+            ),
+        ):
+            result = await underlying(
+                subagent_id=f"subagent:{custom_id}",
+                task="fetch paper data",
+                config={
+                    "configurable": {
+                        "user_id": user_id,
+                        "thread_id": thread_id,
+                    }
+                },
+            )
+
+        # create_subagent_for_user must have been invoked (custom MCP branch)
+        mock_create.assert_awaited_once_with(custom_id, user_id)
+        assert result == "custom mcp result"
+        # Verify the execution context has is_custom reflected in agent_name
+        ctx_arg = mock_execute.call_args.kwargs.get(
+            "ctx"
+        ) or mock_execute.call_args.args[0]
+        assert ctx_arg.agent_name == f"custom_mcp_{custom_id}"
+        assert ctx_arg.integration_id == custom_id
+
+    async def test_custom_mcp_path_requires_user_id(self):
+        """If user_id is None, the custom MCP path must return an error tuple
+        without calling create_subagent_for_user."""
+        from app.agents.core.subagents.handoff_tools import _resolve_subagent
+
+        custom_id = "deadbeef0000"
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new=AsyncMock(
+                    return_value={
+                        "id": custom_id,
+                        "name": "No Auth MCP",
+                        "source": "custom",
+                        "managed_by": "mcp",
+                        "mcp_config": None,
+                        "icon_url": None,
+                        "subagent_config": None,
+                    }
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
+                new=AsyncMock(return_value=MagicMock()),
+            ) as mock_create,
+        ):
+            graph, agent_name, error_or_id, is_custom = await _resolve_subagent(
+                subagent_id=custom_id,
+                user_id=None,
+            )
+
+        mock_create.assert_not_awaited()
+        assert graph is None
+        assert agent_name is None
+        assert error_or_id is not None
+        assert "requires authentication" in error_or_id.lower() or "sign in" in error_or_id.lower()
+
+    async def test_custom_mcp_path_returns_error_when_create_fails(self):
+        """If create_subagent_for_user returns None, _resolve_subagent must
+        return an error tuple (not a graph)."""
+        from app.agents.core.subagents.handoff_tools import _resolve_subagent
+
+        custom_id = "failfail1234"
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._get_subagent_by_id",
+                new=AsyncMock(
+                    return_value={
+                        "id": custom_id,
+                        "name": "Broken MCP",
+                        "source": "custom",
+                        "managed_by": "mcp",
+                        "mcp_config": None,
+                        "icon_url": None,
+                        "subagent_config": None,
+                    }
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_for_user",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            graph, agent_name, error_or_id, is_custom = await _resolve_subagent(
+                subagent_id=custom_id,
+                user_id="user-xyz",
+            )
+
+        assert graph is None
+        assert "Failed to create" in (error_or_id or "")
+
+
+# ---------------------------------------------------------------------------
+# Test: handoff thread isolation via handoff()
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestHandoffThreadIsolation:
+    """Verify that handoffs to different subagents produce different thread IDs
+    so there is no state bleeding between subagent invocations."""
+
+    async def test_handoff_thread_isolation(self):
+        """Two handoff() calls with different subagent_ids but the same parent
+        thread must produce different subagent_thread_ids (no state bleeding).
+
+        The thread_id is constructed as '{integration_id}_{parent_thread_id}'
+        inside the handoff() coroutine itself; we capture it by intercepting
+        build_agent_config to record the thread_id argument it receives.
+        """
+        from app.agents.core.subagents.handoff_tools import handoff
+
+        underlying = getattr(handoff, "coroutine", None) or handoff
+
+        user_id = str(uuid4())
+        parent_thread_id = str(uuid4())
+        captured_thread_ids: list[str] = []
+
+        def capture_build_agent_config(**kwargs):
+            captured_thread_ids.append(kwargs.get("thread_id", ""))
+            return {"configurable": {"thread_id": kwargs.get("thread_id", "")}}
+
+        config = {
+            "configurable": {
+                "user_id": user_id,
+                "thread_id": parent_thread_id,
+            }
+        }
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                new=AsyncMock(return_value="done"),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
+                new=AsyncMock(return_value=SystemMessage(content="sys")),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_initial_messages",
+                new=AsyncMock(
+                    return_value=[
+                        SystemMessage(content="sys"),
+                        SystemMessage(content="ctx"),
+                        HumanMessage(content="task"),
+                    ]
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_agent_config",
+                side_effect=capture_build_agent_config,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
+                return_value=None,
+            ),
+        ):
+            # Handoff to "gmail"
+            with patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new=AsyncMock(
+                    return_value=(MagicMock(), "gmail_agent", "gmail", False)
+                ),
+            ):
+                await underlying(
+                    subagent_id="gmail",
+                    task="send email",
+                    config=config,
+                )
+
+            # Handoff to "notion"
+            with patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new=AsyncMock(
+                    return_value=(MagicMock(), "notion_agent", "notion", False)
+                ),
+            ):
+                await underlying(
+                    subagent_id="notion",
+                    task="take a note",
+                    config=config,
+                )
+
+        assert len(captured_thread_ids) == 2
+        thread_a, thread_b = captured_thread_ids
+        # Thread IDs must differ for different subagents sharing the same parent thread
+        assert thread_a != thread_b, (
+            f"Thread A ({thread_a}) must differ from Thread B ({thread_b})"
+        )
+        # Both must embed the parent thread_id
+        assert parent_thread_id in thread_a
+        assert parent_thread_id in thread_b
+
+    async def test_handoff_thread_id_encodes_integration_id(self):
+        """The subagent thread ID must be prefixed with the integration ID so
+        the format '{integration_id}_{parent_thread_id}' is preserved.
+
+        The thread_id is assembled as '{int_id}_{thread_id}' in handoff() before
+        being passed to build_agent_config(); we capture it there.
+        """
+        from app.agents.core.subagents.handoff_tools import handoff
+
+        underlying = getattr(handoff, "coroutine", None) or handoff
+
+        user_id = str(uuid4())
+        parent_thread_id = "fixed-parent-thread-999"
+        captured_thread_ids: list[str] = []
+
+        def capture_build(thread_id=None, **kwargs):
+            captured_thread_ids.append(thread_id or "")
+            return {"configurable": {"thread_id": thread_id or ""}}
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new=AsyncMock(
+                    return_value=(MagicMock(), "calendar_agent", "googlecalendar", False)
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
+                new=AsyncMock(return_value=SystemMessage(content="sys")),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_initial_messages",
+                new=AsyncMock(
+                    return_value=[
+                        SystemMessage(content="sys"),
+                        SystemMessage(content="ctx"),
+                        HumanMessage(content="schedule"),
+                    ]
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_agent_config",
+                side_effect=capture_build,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                new=AsyncMock(return_value="done"),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
+                return_value=None,
+            ),
+        ):
+            await underlying(
+                subagent_id="googlecalendar",
+                task="schedule meeting",
+                config={
+                    "configurable": {
+                        "user_id": user_id,
+                        "thread_id": parent_thread_id,
+                    }
+                },
+            )
+
+        assert len(captured_thread_ids) == 1
+        assert captured_thread_ids[0] == f"googlecalendar_{parent_thread_id}", (
+            f"Expected 'googlecalendar_{parent_thread_id}', got '{captured_thread_ids[0]}'"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Test: tool call arguments are correctly passed through handoff
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestHandoffWithToolCallArgs:
+    """Verify that arguments supplied in the tool call (subagent_id, task)
+    are correctly forwarded through the handoff pipeline."""
+
+    async def test_handoff_with_tool_call_args(self):
+        """subagent_id and task arguments must reach _resolve_subagent and
+        build_initial_messages unchanged."""
+        from app.agents.core.subagents.handoff_tools import handoff
+
+        underlying = getattr(handoff, "coroutine", None) or handoff
+
+        user_id = str(uuid4())
+        thread_id = str(uuid4())
+        expected_task = "Reply to Alice's email with the quarterly report attached"
+        expected_subagent_id = "gmail"
+
+        captured_resolve_args: list[tuple] = []
+        captured_build_args: list[dict] = []
+
+        async def capture_resolve(subagent_id, user_id):
+            captured_resolve_args.append((subagent_id, user_id))
+            return MagicMock(), "gmail_agent", "gmail", False
+
+        async def capture_build(**kwargs):
+            captured_build_args.append(kwargs)
+            return [
+                SystemMessage(content="sys"),
+                SystemMessage(content="ctx"),
+                HumanMessage(content=kwargs.get("task", "")),
+            ]
+
+        fake_subagent_config = {"configurable": {"thread_id": f"gmail_{thread_id}"}}
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new=capture_resolve,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
+                new=AsyncMock(return_value=SystemMessage(content="sys")),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_initial_messages",
+                new=capture_build,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_agent_config",
+                return_value=fake_subagent_config,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                new=AsyncMock(return_value="args test result"),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
+                return_value=None,
+            ),
+        ):
+            result = await underlying(
+                subagent_id=expected_subagent_id,
+                task=expected_task,
+                config={
+                    "configurable": {
+                        "user_id": user_id,
+                        "thread_id": thread_id,
+                    }
+                },
+            )
+
+        assert result == "args test result"
+
+        # subagent_id must reach _resolve_subagent unmodified
+        assert len(captured_resolve_args) == 1
+        assert captured_resolve_args[0][0] == expected_subagent_id
+
+        # task must reach build_initial_messages unmodified
+        assert len(captured_build_args) == 1
+        assert captured_build_args[0]["task"] == expected_task
+
+    async def test_handoff_user_id_passed_to_resolve_subagent(self):
+        """user_id from configurable must be forwarded to _resolve_subagent
+        so auth checks inside the custom MCP / MCP-auth paths receive it."""
+        from app.agents.core.subagents.handoff_tools import handoff
+
+        underlying = getattr(handoff, "coroutine", None) or handoff
+
+        user_id = "explicit-user-id-xyz"
+        thread_id = str(uuid4())
+        captured: list[str | None] = []
+
+        async def capture_resolve(subagent_id, user_id):
+            captured.append(user_id)
+            return MagicMock(), "notion_agent", "notion", False
+
+        fake_subagent_config = {"configurable": {"thread_id": f"notion_{thread_id}"}}
+
+        with (
+            patch(
+                "app.agents.core.subagents.handoff_tools._resolve_subagent",
+                new=capture_resolve,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
+                new=AsyncMock(return_value=SystemMessage(content="sys")),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_initial_messages",
+                new=AsyncMock(
+                    return_value=[
+                        SystemMessage(content="sys"),
+                        SystemMessage(content="ctx"),
+                        HumanMessage(content="task"),
+                    ]
+                ),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.build_agent_config",
+                return_value=fake_subagent_config,
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.execute_subagent_stream",
+                new=AsyncMock(return_value="ok"),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_stream_writer",
+                return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.subagents.handoff_tools.get_integration_by_id",
+                return_value=None,
+            ),
+        ):
+            await underlying(
+                subagent_id="notion",
+                task="take note",
+                config={
+                    "configurable": {
+                        "user_id": user_id,
+                        "thread_id": thread_id,
+                    }
+                },
+            )
+
+        assert len(captured) == 1
+        assert captured[0] == user_id, (
+            f"Expected user_id='{user_id}' passed to _resolve_subagent, got '{captured[0]}'"
+        )

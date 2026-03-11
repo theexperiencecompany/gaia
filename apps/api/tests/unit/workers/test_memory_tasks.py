@@ -64,6 +64,14 @@ class TestStoreMemoriesBatch:
 
         assert "Stored 1 emails in mem0 successfully" in result
         mock_svc.store_memory_batch.assert_called_once()
+        # Verify the actual memory content stored, not just the return string.
+        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
+        stored_messages = call_kwargs["messages"]
+        assert len(stored_messages) == 1
+        assert stored_messages[0]["role"] == "user"
+        assert "Conference Acceptance" in stored_messages[0]["content"]
+        assert "no-reply@pycon.org" in stored_messages[0]["content"]
+        assert "Python conference" in stored_messages[0]["content"]
 
     async def test_batch_stored_successfully(self, ctx, multi_email_batch):
         with patch(
@@ -80,6 +88,16 @@ class TestStoreMemoriesBatch:
             )
 
         assert "Stored 3 emails in mem0 successfully" in result
+        # Verify all 3 memory objects were actually constructed and passed.
+        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
+        stored_messages = call_kwargs["messages"]
+        assert len(stored_messages) == 3, (
+            f"Expected 3 memory objects in DB call, got {len(stored_messages)}"
+        )
+        contents = [m["content"] for m in stored_messages]
+        assert any("GitHub Pro" in c for c in contents), "GitHub renewal email missing"
+        assert any("Acme Corp" in c for c in contents), "Offer letter email missing"
+        assert any("San Francisco" in c for c in contents), "Flight email missing"
 
     async def test_mem0_filters_all_returns_non_memorable_message(
         self, ctx, single_email
@@ -255,3 +273,50 @@ class TestStoreMemoriesBatch:
                 mock_svc.store_memory_batch = AsyncMock(return_value=True)
                 result = await store_memories_batch(ctx, "user_abc", single_email)
             assert "Stored 1 emails" in result
+
+    async def test_store_memories_batch_saves_all(self, ctx):
+        """A batch of 5 emails must produce exactly 5 memory objects written to
+        the DB (via store_memory_batch).  If any are silently dropped, the
+        assertion on stored_messages length will catch it."""
+        emails = [
+            {
+                "content": f"Email body number {i}",
+                "metadata": {
+                    "subject": f"Subject {i}",
+                    "sender": f"sender{i}@example.com",
+                },
+            }
+            for i in range(1, 6)
+        ]
+
+        with patch(
+            "app.workers.tasks.memory_tasks.memory_service"
+        ) as mock_svc:
+            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+            result = await store_memories_batch(ctx, "user_batch", emails)
+
+        assert "Stored 5 emails in mem0 successfully" in result
+
+        call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
+        stored_messages = call_kwargs["messages"]
+        assert len(stored_messages) == 5, (
+            f"All 5 emails must be saved; only {len(stored_messages)} were stored"
+        )
+        for i in range(1, 6):
+            matching = [
+                m for m in stored_messages if f"Email body number {i}" in m["content"]
+            ]
+            assert matching, f"Email {i} content was not saved to the DB"
+        assert call_kwargs["user_id"] == "user_batch"
+
+    async def test_store_memories_batch_empty(self, ctx):
+        """An empty batch must return early with no DB writes at all."""
+        with patch(
+            "app.workers.tasks.memory_tasks.memory_service"
+        ) as mock_svc:
+            mock_svc.store_memory_batch = AsyncMock(return_value=True)
+            result = await store_memories_batch(ctx, "user_empty", [])
+
+        assert "No emails to process" in result
+        # No DB write should have happened.
+        mock_svc.store_memory_batch.assert_not_called()

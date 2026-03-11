@@ -1,17 +1,17 @@
-"""E2E test: GAIA todo tools (plan_tasks, mark_task, add_task) wired into a real graph.
+"""E2E test: GAIA todo tools (plan_tasks, update_tasks) wired into a real graph.
 
 WHAT THIS TESTS (REAL GAIA CODE):
 - ``create_todo_tools`` from ``app.agents.tools.todo_tools`` — the real
-  plan_tasks, mark_task, and add_task tools used by the executor agent.
+  plan_tasks and update_tasks tools used by the executor agent.
 - The ``todos`` channel in GAIA's ``State`` (via InjectedState) is updated
-  correctly when plan_tasks / mark_task / add_task execute.
+  correctly when plan_tasks / update_tasks execute.
 - ``filter_messages_node`` and ``manage_system_prompts_node`` run as
   pre-model hooks inside the compiled GAIA graph.
 - ``create_agent`` from ``app.override.langgraph_bigtool.create_agent``
   compiles the graph.
 
 Mock surfaces:
-- LLM: FakeMessagesListChatModel
+- LLM: BindableToolsFakeModel (wraps FakeMessagesListChatModel with bind_tools support)
 - Store: InMemoryStore (no ChromaDB)
 - Checkpointer: MemorySaver (no PostgreSQL)
 - No real database or scheduler calls
@@ -21,14 +21,11 @@ DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 """
 
-from typing import Any
 from uuid import uuid4
 
 import pytest
-from langchain_core.language_models.fake_chat_models import (
-    FakeMessagesListChatModel,
-)
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+from langgraph.checkpoint.memory import MemorySaver
 
 from app.agents.tools.todo_tools import (
     TODO_TOOL_NAMES,
@@ -36,7 +33,7 @@ from app.agents.tools.todo_tools import (
     create_todo_tools,
 )
 from tests.e2e.conftest import build_gaia_test_graph
-from tests.helpers import assert_tool_called, extract_tool_calls
+from tests.helpers import BindableToolsFakeModel, assert_tool_called, extract_tool_calls
 
 
 @pytest.mark.e2e
@@ -55,7 +52,7 @@ class TestCreateTodoFlow:
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -111,7 +108,7 @@ class TestCreateTodoFlow:
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -154,17 +151,21 @@ class TestCreateTodoFlow:
             "plan_tasks must set subsequent tasks to pending"
         )
 
-    async def test_add_task_tool_appends_to_todos(
+    async def test_update_tasks_adds_new_task_to_todos(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """add_task must append a new todo to existing todos in state.
+        """update_tasks must append a new todo to existing todos in state.
 
-        Sequence: plan_tasks creates 1 task → add_task adds a second → verify 2 todos.
+        Sequence: plan_tasks creates 1 task → update_tasks adds a second → verify 2 todos.
+
+        update_tasks is the real production tool that replaces the non-existent
+        add_task tool. When passed a TaskUpdate without task_id, it appends a
+        new task to the current todos list.
         """
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
-        fake_llm = FakeMessagesListChatModel(
+        fake_llm = BindableToolsFakeModel(
             responses=[
                 # Turn 1: plan one task
                 AIMessage(
@@ -178,14 +179,18 @@ class TestCreateTodoFlow:
                         }
                     ],
                 ),
-                # Turn 2: add another task
+                # Turn 2: add another task via update_tasks (no task_id = new task)
                 AIMessage(
                     content="",
                     tool_calls=[
                         {
-                            "id": "call_add_001",
-                            "name": "add_task",
-                            "args": {"content": "Bonus task discovered later"},
+                            "id": "call_update_add_001",
+                            "name": "update_tasks",
+                            "args": {
+                                "updates": [
+                                    {"content": "Bonus task discovered later"}
+                                ]
+                            },
                             "type": "tool_call",
                         }
                     ],
@@ -208,28 +213,28 @@ class TestCreateTodoFlow:
 
         todos = result.get("todos", [])
         assert len(todos) == 2, (
-            f"Expected 2 todos after plan_tasks + add_task, got {len(todos)}"
+            f"Expected 2 todos after plan_tasks + update_tasks (add), got {len(todos)}"
         )
         todo_contents = [t["content"] for t in todos]
         assert "Initial task" in todo_contents
         assert "Bonus task discovered later" in todo_contents
 
-    async def test_mark_task_tool_updates_status(
+    async def test_update_tasks_updates_status_of_existing_task(
         self, thread_config, in_memory_store, memory_saver
     ):
-        """mark_task must update the status of an existing todo by ID.
+        """update_tasks must update the status of an existing todo by ID.
 
-        Sequence: plan_tasks creates a task → read its ID → mark_task sets it completed.
-        We verify the status transition happened through the real mark_task tool.
+        Sequence: plan_tasks creates a task → read its ID → update_tasks sets it completed.
+
+        update_tasks is the real production tool that replaces the non-existent
+        mark_task tool. When passed a TaskUpdate with task_id and status, it
+        updates the matching task's status in place.
         """
         todo_tools = create_todo_tools(source="test")
         tool_registry = {t.name: t for t in todo_tools}
 
-        # We need to capture the todo ID created by plan_tasks to feed it to mark_task.
-        # We do this with a two-phase graph run.
-
         # Phase 1: plan one task and capture its ID
-        fake_llm_phase1 = FakeMessagesListChatModel(
+        fake_llm_phase1 = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
@@ -262,15 +267,15 @@ class TestCreateTodoFlow:
         assert len(todos_after_plan) == 1
         task_id = todos_after_plan[0]["id"]
 
-        # Phase 2: mark the task completed using its real ID
-        fake_llm_phase2 = FakeMessagesListChatModel(
+        # Phase 2: mark the task completed using update_tasks with its real ID
+        fake_llm_phase2 = BindableToolsFakeModel(
             responses=[
                 AIMessage(
                     content="",
                     tool_calls=[
                         {
-                            "id": "call_mark_001",
-                            "name": "mark_task",
+                            "id": "call_update_001",
+                            "name": "update_tasks",
                             "args": {
                                 "updates": [
                                     {"task_id": task_id, "status": "completed"}
@@ -292,7 +297,7 @@ class TestCreateTodoFlow:
             checkpointer=MemorySaver(),
             store=in_memory_store,
         )
-        # Pre-populate todos so mark_task has something to update
+        # Pre-populate todos so update_tasks has something to update
         result_phase2 = await graph_phase2.ainvoke(
             {
                 "messages": [HumanMessage(content="Mark the task done")],
@@ -300,11 +305,11 @@ class TestCreateTodoFlow:
             },
             config=config_phase2,
         )
-        todos_after_mark = result_phase2.get("todos", [])
-        assert len(todos_after_mark) == 1
-        assert todos_after_mark[0]["status"] == "completed", (
-            f"mark_task must update status to 'completed', got "
-            f"'{todos_after_mark[0]['status']}'"
+        todos_after_update = result_phase2.get("todos", [])
+        assert len(todos_after_update) == 1
+        assert todos_after_update[0]["status"] == "completed", (
+            f"update_tasks must update status to 'completed', got "
+            f"'{todos_after_update[0]['status']}'"
         )
 
     async def test_todo_tool_names_match_registry_constants(self):
@@ -330,7 +335,6 @@ class TestCreateTodoFlow:
         latest non-memory SystemMessage.
         """
         from unittest.mock import MagicMock
-        from langchain_core.messages import SystemMessage
 
         from tests.e2e.conftest import make_gaia_state, make_mock_store, make_node_config
 
@@ -363,7 +367,3 @@ class TestCreateTodoFlow:
         assert "abc123" in updated_system.content, (
             "create_todo_pre_model_hook must inject todo ID into the system message"
         )
-
-
-# Import MemorySaver at test-level for phase-2 use
-from langgraph.checkpoint.memory import MemorySaver

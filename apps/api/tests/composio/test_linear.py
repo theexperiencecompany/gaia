@@ -22,7 +22,7 @@ from unittest.mock import MagicMock, call, patch
 import pytest
 
 # --- import the real production module (tests fail if it is deleted) ---
-from app.agents.tools.linear_tool import register_linear_custom_tools
+from app.agents.tools.integrations.linear_tool import register_linear_custom_tools
 from app.models.linear_models import (
     BulkUpdateIssuesInput,
     CreateIssueInput,

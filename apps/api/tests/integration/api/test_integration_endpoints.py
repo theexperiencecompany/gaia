@@ -352,3 +352,141 @@ class TestUserIntegrationEndpoints:
         call_args = mock_remove.call_args
         # second positional arg is integration_id
         assert call_args.args[1] == "slack"
+
+
+# ---------------------------------------------------------------------------
+# Auth enforcement tests
+# These tests verify that ALL endpoints reject unauthenticated requests with
+# 401. If auth enforcement is removed, these tests MUST fail.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestIntegrationEndpointAuthEnforcement:
+    """Verify all integration endpoints enforce authentication.
+
+    These tests use the unauthenticated_client fixture which does NOT inject
+    a user into the request state. If the Depends(get_user_id) guard is removed
+    from any endpoint, the corresponding test will fail.
+    """
+
+    async def test_list_integrations_unauthenticated_returns_401(
+        self, unauthenticated_client
+    ):
+        """GET /integrations/users/me/integrations without auth must return 401."""
+        response = await unauthenticated_client.get(_BASE)
+        assert response.status_code == 401
+
+    async def test_add_integration_unauthenticated_returns_401(
+        self, unauthenticated_client
+    ):
+        """POST /integrations/users/me/integrations without auth must return 401."""
+        response = await unauthenticated_client.post(
+            _BASE, json={"integration_id": "gmail"}
+        )
+        assert response.status_code == 401
+
+    async def test_remove_integration_unauthenticated_returns_401(
+        self, unauthenticated_client
+    ):
+        """DELETE /integrations/users/me/integrations/{id} without auth must return 401."""
+        response = await unauthenticated_client.delete(f"{_BASE}/gmail")
+        assert response.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Endpoint logic tests – mock at the immediate dependency boundary
+# These test that the endpoint's OWN branching logic (not just service results)
+# produces the correct HTTP status codes. The service is mocked at the point
+# where the endpoint calls it so the endpoint's error mapping is exercised.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestIntegrationEndpointLogic:
+    """Test endpoint-level decision logic for integration routes.
+
+    Mocking is done at the service function level (the outermost function the
+    endpoint directly awaits). This ensures the endpoint's own try/except blocks,
+    ValueError → 400 mapping, and False-return → 404 mapping are tested and
+    would fail if that logic were deleted.
+    """
+
+    @patch(
+        "app.api.v1.endpoints.integrations.user.add_user_integration_service",
+        new_callable=AsyncMock,
+    )
+    async def test_add_already_connected_integration_returns_400(
+        self, mock_add, test_client
+    ):
+        """POST with an already-connected integration must return 400.
+
+        The endpoint maps ValueError to 400. If that mapping is removed,
+        this test fails.
+        """
+        mock_add.side_effect = ValueError("Integration 'gmail' already added to workspace")
+
+        response = await test_client.post(_BASE, json={"integration_id": "gmail"})
+
+        assert response.status_code == 400
+        detail = response.json()["detail"]
+        assert "already" in detail.lower()
+
+    @patch(
+        "app.api.v1.endpoints.integrations.user.remove_user_integration",
+        new_callable=AsyncMock,
+    )
+    async def test_remove_nonexistent_integration_returns_404(
+        self, mock_remove, test_client
+    ):
+        """DELETE a non-existent integration must return 404.
+
+        The endpoint checks the bool return value of remove_user_integration
+        and raises HTTPException(404) when False. If that check is removed,
+        this test fails because a 200 would be returned instead.
+        """
+        mock_remove.return_value = False
+
+        response = await test_client.delete(f"{_BASE}/does-not-exist")
+
+        assert response.status_code == 404
+        detail = response.json()["detail"].lower()
+        assert "not found" in detail
+
+    @patch(
+        "app.api.v1.endpoints.integrations.user.remove_user_integration",
+        new_callable=AsyncMock,
+    )
+    async def test_remove_existing_integration_does_not_return_404(
+        self, mock_remove, test_client
+    ):
+        """DELETE an existing integration must NOT return 404.
+
+        Complements test_remove_nonexistent_integration_returns_404 – ensures
+        the 404 is only raised when remove returns False, not on success.
+        """
+        mock_remove.return_value = True
+
+        response = await test_client.delete(f"{_BASE}/gmail")
+
+        assert response.status_code == 200
+
+    @patch(
+        "app.api.v1.endpoints.integrations.user.add_user_integration_service",
+        new_callable=AsyncMock,
+    )
+    async def test_add_integration_unknown_id_returns_400(
+        self, mock_add, test_client
+    ):
+        """POST with unknown integration_id must return 400, not 404 or 500.
+
+        The service raises ValueError for unknown IDs; the endpoint must map
+        this to a 400 response.
+        """
+        mock_add.side_effect = ValueError("Integration 'unknown-xyz' not found")
+
+        response = await test_client.post(
+            _BASE, json={"integration_id": "unknown-xyz"}
+        )
+
+        assert response.status_code == 400

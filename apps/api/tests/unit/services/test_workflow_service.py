@@ -4,6 +4,8 @@ Covers:
   - app/services/workflow/execution_service.py
   - app/services/workflow/validators.py
   - app/services/workflow/queue_service.py
+  - app/services/workflow/service.py  (WorkflowService — state machine transitions)
+  - app/services/workflow/generation_service.py  (enrich_steps)
 """
 
 import pytest
@@ -21,8 +23,19 @@ from app.services.workflow.execution_service import (
 )
 from app.services.workflow.validators import WorkflowValidator
 from app.services.workflow.queue_service import WorkflowQueueService
+from app.services.workflow.generation_service import enrich_steps
+from app.services.workflow.service import WorkflowService
 from app.models.workflow_execution_models import WorkflowExecution, WorkflowExecutionsResponse
-from app.models.workflow_models import Workflow, TriggerConfig, TriggerType, WorkflowStep
+from app.models.workflow_models import (
+    GeneratedStep,
+    Workflow,
+    TriggerConfig,
+    TriggerType,
+    WorkflowExecutionRequest,
+    WorkflowExecutionResponse,
+    WorkflowStep,
+)
+from app.utils.exceptions import TriggerRegistrationError
 
 
 # ---------------------------------------------------------------------------
@@ -448,36 +461,42 @@ class TestGetWorkflowExecutions:
 class TestWorkflowValidator:
     def test_passes_for_valid_activated_workflow(self):
         wf = _make_workflow(activated=True)
-        # Should not raise
-        # Note: validate_for_execution is expected to raise on invalid workflows
-        # For a fully valid workflow, we verify no exception is raised.
-        try:
-            WorkflowValidator.validate_for_execution(wf)
-            raised = False
-        except Exception:
-            raised = True
-        assert raised is False
+        # Should not raise any exception for a fully valid workflow.
+        WorkflowValidator.validate_for_execution(wf)
 
     def test_raises_when_workflow_is_deactivated(self):
         wf = _make_workflow(activated=False)
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             WorkflowValidator.validate_for_execution(wf)
 
     def test_raises_when_steps_are_empty(self):
         wf = _make_workflow(steps=[])
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             WorkflowValidator.validate_for_execution(wf)
 
     def test_raises_when_trigger_config_is_none(self):
         wf = _make_workflow()
         # Force trigger_config to None post-construction to test the validator
         object.__setattr__(wf, "trigger_config", None)
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             WorkflowValidator.validate_for_execution(wf)
 
     def test_is_static_method(self):
         # validate_for_execution should be callable without instantiation
         assert callable(WorkflowValidator.validate_for_execution)
+
+    def test_error_message_contains_all_failures_when_multiple_errors(self):
+        wf = _make_workflow(activated=False, steps=[])
+        # Force trigger_config to None so all three checks fail simultaneously
+        object.__setattr__(wf, "trigger_config", None)
+        with pytest.raises(ValueError) as exc_info:
+            WorkflowValidator.validate_for_execution(wf)
+        message = str(exc_info.value)
+        assert "Workflow is deactivated" in message
+        assert "Workflow has no steps defined" in message
+        assert "Missing trigger configuration" in message
+        # All three errors should be joined with "; " in a single exception
+        assert message.count(";") == 2
 
 
 # ---------------------------------------------------------------------------
@@ -749,3 +768,426 @@ class TestWorkflowQueueServiceFlags:
 
         # Should not raise
         await WorkflowQueueService.clear_workflow_generating_flag("todo_abc")
+
+
+# ---------------------------------------------------------------------------
+# enrich_steps  (generation_service — pure Python, no I/O)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestEnrichSteps:
+    """Tests for enrich_steps(), which converts GeneratedStep objects to full dicts."""
+
+    def test_correct_number_of_steps_generated(self):
+        raw = [
+            GeneratedStep(title="Fetch emails", category="gmail", description="Pull inbox"),
+            GeneratedStep(title="Summarise", category="gaia", description="Summarise content"),
+            GeneratedStep(title="Send reply", category="gmail", description="Reply to sender"),
+        ]
+        result = enrich_steps(raw)
+        assert len(result) == 3
+
+    def test_steps_have_correct_title_and_description(self):
+        raw = [
+            GeneratedStep(title="My Title", category="notion", description="My Description"),
+        ]
+        result = enrich_steps(raw)
+        assert result[0]["title"] == "My Title"
+        assert result[0]["description"] == "My Description"
+
+    def test_steps_have_correct_category_field(self):
+        raw = [
+            GeneratedStep(title="A", category="gmail", description="B"),
+            GeneratedStep(title="C", category="gaia", description="D"),
+        ]
+        result = enrich_steps(raw)
+        assert result[0]["category"] == "gmail"
+        assert result[1]["category"] == "gaia"
+
+    def test_step_ids_are_sequential(self):
+        raw = [
+            GeneratedStep(title=f"Step {i}", category="gaia", description="desc")
+            for i in range(4)
+        ]
+        result = enrich_steps(raw)
+        assert [s["id"] for s in result] == ["step_0", "step_1", "step_2", "step_3"]
+
+    def test_empty_input_returns_empty_list(self):
+        assert enrich_steps([]) == []
+
+
+# ---------------------------------------------------------------------------
+# WorkflowService — state machine transitions
+#
+# Strategy: mock at the DB / queue boundary, never mock WorkflowService itself.
+# This ensures that if the state-transition logic is broken (e.g., never sets
+# status to "failed"), these tests will catch it.
+# ---------------------------------------------------------------------------
+
+
+def _make_workflow_doc(
+    *,
+    workflow_id: str = WORKFLOW_ID,
+    user_id: str = USER_ID,
+    activated: bool = True,
+    steps: list | None = None,
+    error_message: str | None = None,
+) -> dict:
+    """Build a minimal MongoDB workflow document."""
+    if steps is None:
+        steps = [
+            {"id": "step_0", "title": "Step 1", "category": "gaia", "description": "Do something"}
+        ]
+    return {
+        "_id": workflow_id,
+        "id": workflow_id,
+        "user_id": user_id,
+        "title": "Test Workflow",
+        "description": "A test",
+        "prompt": "Execute test workflow",
+        "steps": steps,
+        "trigger_config": {"type": "manual", "enabled": True},
+        "activated": activated,
+        "current_step_index": 0,
+        "execution_logs": [],
+        "error_message": error_message,
+        "total_executions": 0,
+        "successful_executions": 0,
+        "created_at": datetime.now(timezone.utc),
+        "updated_at": datetime.now(timezone.utc),
+        "scheduled_at": datetime.now(timezone.utc),
+    }
+
+
+@pytest.fixture
+def mock_workflows_collection():
+    """Patch the workflows_collection used by WorkflowService."""
+    with patch(
+        "app.services.workflow.service.workflows_collection"
+    ) as mock_col:
+        yield mock_col
+
+
+@pytest.mark.unit
+class TestWorkflowServiceStateMachine:
+    """Tests that verify state machine transitions inside WorkflowService.
+
+    These tests mock DB writes and the queue but test the real service logic,
+    so a bug in the state transition code will cause failures here.
+    """
+
+    async def test_execute_workflow_transitions_to_running_state(
+        self, mock_workflows_collection
+    ):
+        """When execute_workflow is called, execution is queued (status=running)."""
+        workflow_doc = _make_workflow_doc(activated=True)
+        mock_workflows_collection.find_one = AsyncMock(return_value=workflow_doc)
+        mock_workflows_collection.find_one_and_update = AsyncMock(
+            return_value=workflow_doc
+        )
+
+        mock_job = MagicMock()
+        mock_job.job_id = "job_run_001"
+        with patch(
+            "app.services.workflow.queue_service.RedisPoolManager.get_pool"
+        ) as mock_get_pool:
+            mock_pool = AsyncMock()
+            mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
+            mock_get_pool.return_value = mock_pool
+
+            request = WorkflowExecutionRequest(context=None)
+            response = await WorkflowService.execute_workflow(
+                WORKFLOW_ID, request, USER_ID
+            )
+
+        # The response must carry an execution_id (proving the running transition occurred)
+        assert isinstance(response, WorkflowExecutionResponse)
+        assert response.execution_id.startswith("exec_")
+        assert "started" in response.message.lower()
+
+    async def test_execute_workflow_queues_the_execution_job(
+        self, mock_workflows_collection
+    ):
+        """execute_workflow must enqueue a background job, not run synchronously."""
+        workflow_doc = _make_workflow_doc(activated=True)
+        mock_workflows_collection.find_one = AsyncMock(return_value=workflow_doc)
+        mock_workflows_collection.find_one_and_update = AsyncMock(
+            return_value=workflow_doc
+        )
+
+        mock_job = MagicMock()
+        mock_job.job_id = "job_run_002"
+        with patch(
+            "app.services.workflow.queue_service.RedisPoolManager.get_pool"
+        ) as mock_get_pool:
+            mock_pool = AsyncMock()
+            mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
+            mock_get_pool.return_value = mock_pool
+
+            request = WorkflowExecutionRequest(context={"key": "value"})
+            await WorkflowService.execute_workflow(WORKFLOW_ID, request, USER_ID)
+
+            mock_pool.enqueue_job.assert_awaited_once_with(
+                "execute_workflow_by_id", WORKFLOW_ID, {"key": "value"}
+            )
+
+    async def test_execute_workflow_raises_when_workflow_is_deactivated(
+        self, mock_workflows_collection
+    ):
+        """execute_workflow must raise (never queue) when workflow.activated=False."""
+        workflow_doc = _make_workflow_doc(activated=False)
+        mock_workflows_collection.find_one = AsyncMock(return_value=workflow_doc)
+        mock_workflows_collection.find_one_and_update = AsyncMock(
+            return_value=workflow_doc
+        )
+
+        with patch(
+            "app.services.workflow.queue_service.RedisPoolManager.get_pool"
+        ) as mock_get_pool:
+            mock_pool = AsyncMock()
+            mock_pool.enqueue_job = AsyncMock()
+            mock_get_pool.return_value = mock_pool
+
+            request = WorkflowExecutionRequest(context=None)
+            with pytest.raises(Exception):
+                await WorkflowService.execute_workflow(WORKFLOW_ID, request, USER_ID)
+
+            # Queue must NOT have been called — deactivated workflows must not run
+            mock_pool.enqueue_job.assert_not_called()
+
+    async def test_execute_workflow_raises_when_workflow_not_found(
+        self, mock_workflows_collection
+    ):
+        """execute_workflow must raise ValueError when workflow does not exist."""
+        mock_workflows_collection.find_one = AsyncMock(return_value=None)
+
+        request = WorkflowExecutionRequest(context=None)
+        with pytest.raises(ValueError, match=WORKFLOW_ID):
+            await WorkflowService.execute_workflow(WORKFLOW_ID, request, USER_ID)
+
+    async def test_execution_moves_to_completed_when_all_steps_succeed(self):
+        """complete_execution with status='success' represents the completed transition."""
+        with patch(
+            "app.services.workflow.execution_service.workflow_executions_collection"
+        ) as mock_col:
+            started_at = datetime.now(timezone.utc) - timedelta(seconds=10)
+            mock_col.find_one = AsyncMock(
+                return_value=_make_execution_doc(started_at=started_at)
+            )
+            mock_result = MagicMock()
+            mock_result.modified_count = 1
+            mock_col.update_one = AsyncMock(return_value=mock_result)
+
+            result = await complete_execution(EXECUTION_ID, status="success", summary="All done")
+
+        assert result is True
+        update_set = mock_col.update_one.call_args[0][1]["$set"]
+        # State machine: final status must be 'success'
+        assert update_set["status"] == "success"
+        assert update_set["completed_at"] is not None
+
+    async def test_execution_moves_to_failed_when_a_step_fails(self):
+        """complete_execution with status='failed' represents the failed transition.
+
+        If this test breaks (e.g., status never set to 'failed'), it means the
+        state machine logic is broken and subsequent steps would silently succeed.
+        """
+        with patch(
+            "app.services.workflow.execution_service.workflow_executions_collection"
+        ) as mock_col:
+            mock_col.find_one = AsyncMock(return_value=_make_execution_doc())
+            mock_result = MagicMock()
+            mock_result.modified_count = 1
+            mock_col.update_one = AsyncMock(return_value=mock_result)
+
+            result = await complete_execution(
+                EXECUTION_ID,
+                status="failed",
+                error_message="Step 2 raised ToolException: rate limit exceeded",
+            )
+
+        assert result is True
+        update_set = mock_col.update_one.call_args[0][1]["$set"]
+        # Critical: status MUST be 'failed', not 'success' or left as 'running'
+        assert update_set["status"] == "failed"
+        assert update_set["error_message"] == "Step 2 raised ToolException: rate limit exceeded"
+
+    async def test_error_message_is_stored_on_failed_execution(self):
+        """Error details must be persisted so callers can surface them to the user."""
+        with patch(
+            "app.services.workflow.execution_service.workflow_executions_collection"
+        ) as mock_col:
+            mock_col.find_one = AsyncMock(return_value=_make_execution_doc())
+            mock_result = MagicMock()
+            mock_result.modified_count = 1
+            mock_col.update_one = AsyncMock(return_value=mock_result)
+
+            error_text = "Connection to external API timed out after 30s"
+            await complete_execution(EXECUTION_ID, status="failed", error_message=error_text)
+
+        update_set = mock_col.update_one.call_args[0][1]["$set"]
+        assert "error_message" in update_set
+        assert update_set["error_message"] == error_text
+
+    async def test_failed_execution_does_not_set_success_status(self):
+        """Regression: ensure 'failed' is never silently overwritten with 'success'."""
+        with patch(
+            "app.services.workflow.execution_service.workflow_executions_collection"
+        ) as mock_col:
+            mock_col.find_one = AsyncMock(return_value=_make_execution_doc())
+            mock_result = MagicMock()
+            mock_result.modified_count = 1
+            mock_col.update_one = AsyncMock(return_value=mock_result)
+
+            await complete_execution(EXECUTION_ID, status="failed", error_message="boom")
+
+        update_set = mock_col.update_one.call_args[0][1]["$set"]
+        assert update_set["status"] != "success"
+        assert update_set["status"] != "running"
+
+    async def test_create_workflow_starts_in_pending_then_activates(
+        self, mock_workflows_collection
+    ):
+        """create_workflow uses a saga: workflow starts as pending (activated=False),
+        then is flipped to activated=True after trigger registration succeeds.
+        """
+        from app.models.workflow_models import CreateWorkflowRequest
+
+        inserted_docs: list[dict] = []
+
+        async def capture_insert(doc):
+            inserted_docs.append(doc.copy())
+            return MagicMock(inserted_id="ok")
+
+        mock_workflows_collection.insert_one = AsyncMock(side_effect=capture_insert)
+        # update_one activates the workflow
+        mock_update_result = MagicMock()
+        mock_update_result.matched_count = 1
+        mock_workflows_collection.update_one = AsyncMock(return_value=mock_update_result)
+        # find_one is called by ChromaClient path (non-critical) and get_workflow
+        workflow_doc = _make_workflow_doc(activated=True)
+        mock_workflows_collection.find_one = AsyncMock(return_value=workflow_doc)
+
+        with patch(
+            "app.services.workflow.service.ChromaClient.get_langchain_client",
+            new_callable=AsyncMock,
+        ), patch(
+            "app.services.workflow.service.WorkflowQueueService.queue_workflow_generation",
+            new_callable=AsyncMock,
+            return_value=True,
+        ):
+            request = CreateWorkflowRequest(
+                title="Test Workflow",
+                prompt="Do something useful",
+                trigger_config=TriggerConfig(type=TriggerType.MANUAL),
+            )
+            workflow = await WorkflowService.create_workflow(request, USER_ID)
+
+        # Step 1: the record was initially inserted as activated=False (pending)
+        assert len(inserted_docs) == 1
+        assert inserted_docs[0]["activated"] is False, (
+            "Workflow must start in pending (activated=False) before saga completes"
+        )
+        # Step 2: after saga success the in-memory object is activated
+        assert workflow.activated is True
+
+    async def test_create_workflow_rolls_back_on_trigger_registration_failure(
+        self, mock_workflows_collection
+    ):
+        """If trigger registration fails the workflow document must be deleted (saga compensation)."""
+        from app.models.workflow_models import CreateWorkflowRequest
+
+        mock_workflows_collection.insert_one = AsyncMock(
+            return_value=MagicMock(inserted_id="ok")
+        )
+        mock_workflows_collection.delete_one = AsyncMock()
+
+        with patch(
+            "app.services.workflow.service.ChromaClient.get_langchain_client",
+            new_callable=AsyncMock,
+        ), patch(
+            "app.services.workflow.service.WorkflowService._register_integration_triggers",
+            new_callable=AsyncMock,
+            side_effect=TriggerRegistrationError(
+                "Composio refused", trigger_name="gmail_event"
+            ),
+        ):
+            request = CreateWorkflowRequest(
+                title="Integration Workflow",
+                prompt="Watch gmail",
+                trigger_config=TriggerConfig(
+                    type=TriggerType.INTEGRATION, trigger_name="gmail_event"
+                ),
+            )
+            with pytest.raises(TriggerRegistrationError):
+                await WorkflowService.create_workflow(request, USER_ID)
+
+        # The saga compensation must delete the orphaned workflow
+        mock_workflows_collection.delete_one.assert_awaited_once()
+
+
+# ---------------------------------------------------------------------------
+# WorkflowService.increment_execution_count — state counters
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestWorkflowServiceIncrementExecutionCount:
+    async def test_increments_total_executions_on_any_run(
+        self, mock_workflows_collection
+    ):
+        mock_result = MagicMock()
+        mock_result.matched_count = 1
+        mock_workflows_collection.update_one = AsyncMock(return_value=mock_result)
+
+        result = await WorkflowService.increment_execution_count(
+            WORKFLOW_ID, USER_ID, is_successful=False
+        )
+
+        assert result is True
+        call_args = mock_workflows_collection.update_one.call_args[0]
+        inc_data = call_args[1]["$inc"]
+        assert inc_data["total_executions"] == 1
+        assert "successful_executions" not in inc_data
+
+    async def test_increments_successful_executions_on_success(
+        self, mock_workflows_collection
+    ):
+        mock_result = MagicMock()
+        mock_result.matched_count = 1
+        mock_workflows_collection.update_one = AsyncMock(return_value=mock_result)
+
+        result = await WorkflowService.increment_execution_count(
+            WORKFLOW_ID, USER_ID, is_successful=True
+        )
+
+        assert result is True
+        call_args = mock_workflows_collection.update_one.call_args[0]
+        inc_data = call_args[1]["$inc"]
+        assert inc_data["total_executions"] == 1
+        assert inc_data["successful_executions"] == 1
+
+    async def test_returns_false_when_workflow_not_found(
+        self, mock_workflows_collection
+    ):
+        mock_result = MagicMock()
+        mock_result.matched_count = 0
+        mock_workflows_collection.update_one = AsyncMock(return_value=mock_result)
+
+        result = await WorkflowService.increment_execution_count(
+            "wf_nonexistent", USER_ID
+        )
+
+        assert result is False
+
+    async def test_returns_false_on_db_exception(self, mock_workflows_collection):
+        mock_workflows_collection.update_one = AsyncMock(
+            side_effect=Exception("mongo unreachable")
+        )
+
+        result = await WorkflowService.increment_execution_count(
+            WORKFLOW_ID, USER_ID, is_successful=True
+        )
+
+        assert result is False

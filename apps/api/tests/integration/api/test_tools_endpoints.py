@@ -2,6 +2,12 @@
 
 Tests the /api/v1/tools endpoints with mocked service layer to verify
 routing, auth enforcement, and response structure.
+
+Crucially, the MCP tool merge logic is tested here: when a cache hit occurs
+and the user has connected MCP integrations, get_user_mcp_tools() is called
+and the result is merged into the cached global tools via merge_tools_responses().
+Tests in TestMCPToolMerge verify this path so that removing the merge logic
+causes test failures.
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -361,3 +367,226 @@ class TestToolsEndpoints:
         assert "display_name" in tool
         assert "requires_integration" in tool
         assert tool["requires_integration"] is True
+
+
+# ---------------------------------------------------------------------------
+# MCP merge logic tests
+# These tests verify the merge path in list_available_tools:
+#   cache hit → get_user_mcp_tools() → merge_tools_responses()
+# If the merge logic is removed the assertions on tool counts will fail.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestMCPToolMerge:
+    """Test user MCP tool merge logic in GET /tools.
+
+    The endpoint has two code paths for the cache-hit case:
+      1. User has MCP tools → merge into cached global tools
+      2. User has no MCP tools → return cached global tools unchanged
+
+    Both paths are tested here by mocking at the function level that the
+    endpoint directly calls (get_cache, get_user_mcp_tools).
+    """
+
+    @patch(
+        "app.api.v1.endpoints.tools.get_user_mcp_tools",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.tools.get_cache", new_callable=AsyncMock)
+    async def test_cache_hit_with_mcp_tools_merges_both(
+        self, mock_cache, mock_get_mcp_tools, test_client
+    ):
+        """Cache hit + user MCP tools → response must include both system and MCP tools.
+
+        This test fails if the merge branch (get_user_mcp_tools / merge_tools_responses)
+        is removed from the endpoint, because only the system tools would be returned.
+        """
+        system_tool = _make_tool_info(
+            name="send_email",
+            category="gmail",
+            display_name="Gmail",
+            requires_integration=True,
+        )
+        cached_global = _make_tools_list_response([system_tool])
+        mock_cache.return_value = cached_global
+
+        mcp_tool = ToolInfo(
+            name="my_custom_action",
+            category="my-mcp-server",
+            display_name="My MCP Server",
+            requires_integration=True,
+        )
+        mock_get_mcp_tools.return_value = [mcp_tool]
+
+        response = await test_client.get(_TOOLS_URL)
+
+        assert response.status_code == 200
+        data = response.json()
+        tool_names = {t["name"] for t in data["tools"]}
+
+        # Both the system tool and the MCP tool must be present
+        assert "send_email" in tool_names, (
+            "System tool missing from merged response – merge logic may have been removed"
+        )
+        assert "my_custom_action" in tool_names, (
+            "MCP tool missing from merged response – merge logic may have been removed"
+        )
+        assert data["total_count"] == 2
+
+        # The MCP tool's category must appear in the categories list
+        assert "my-mcp-server" in data["categories"]
+
+        # get_user_mcp_tools must have been called (proves merge path was exercised)
+        mock_get_mcp_tools.assert_awaited_once()
+
+    @patch(
+        "app.api.v1.endpoints.tools.get_user_mcp_tools",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.tools.get_cache", new_callable=AsyncMock)
+    async def test_cache_hit_without_mcp_tools_returns_only_system_tools(
+        self, mock_cache, mock_get_mcp_tools, test_client
+    ):
+        """Cache hit + no user MCP tools → only the cached system tools are returned.
+
+        This test ensures that users without MCP integrations receive the standard
+        global tool list without any extra tools being injected.
+        """
+        system_tools = [
+            _make_tool_info(name="send_email", category="gmail", display_name="Gmail"),
+            _make_tool_info(
+                name="create_event",
+                category="googlecalendar",
+                display_name="Google Calendar",
+            ),
+        ]
+        cached_global = _make_tools_list_response(system_tools)
+        mock_cache.return_value = cached_global
+
+        # No MCP tools for this user
+        mock_get_mcp_tools.return_value = []
+
+        response = await test_client.get(_TOOLS_URL)
+
+        assert response.status_code == 200
+        data = response.json()
+        tool_names = {t["name"] for t in data["tools"]}
+
+        assert "send_email" in tool_names
+        assert "create_event" in tool_names
+        assert data["total_count"] == 2
+
+        # No MCP categories should appear beyond what was in the cache
+        assert "gmail" in data["categories"]
+        assert "googlecalendar" in data["categories"]
+
+    @patch(
+        "app.api.v1.endpoints.tools.get_user_mcp_tools",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.tools.get_cache", new_callable=AsyncMock)
+    async def test_mcp_tool_overrides_system_tool_with_same_name(
+        self, mock_cache, mock_get_mcp_tools, test_client
+    ):
+        """MCP tool with a name matching a system tool takes precedence in merge.
+
+        merge_tools_responses() deduplicates by name and puts custom tools first,
+        so the merged result must not double-count a tool whose name appears in both.
+        """
+        overlapping_name = "shared_tool_name"
+        system_tool = _make_tool_info(
+            name=overlapping_name,
+            category="system_category",
+            display_name="System",
+        )
+        cached_global = _make_tools_list_response([system_tool])
+        mock_cache.return_value = cached_global
+
+        mcp_tool = ToolInfo(
+            name=overlapping_name,
+            category="mcp_category",
+            display_name="MCP Override",
+        )
+        mock_get_mcp_tools.return_value = [mcp_tool]
+
+        response = await test_client.get(_TOOLS_URL)
+
+        assert response.status_code == 200
+        data = response.json()
+
+        # The name must appear exactly once (no duplication)
+        names = [t["name"] for t in data["tools"]]
+        assert names.count(overlapping_name) == 1, (
+            "Duplicate tool name found – merge deduplication logic may be broken"
+        )
+        assert data["total_count"] == 1
+
+    @patch(
+        "app.api.v1.endpoints.tools.get_user_mcp_tools",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.tools.get_available_tools",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.tools.get_cache", new_callable=AsyncMock)
+    async def test_cache_miss_does_not_call_get_user_mcp_tools(
+        self, mock_cache, mock_get_tools, mock_get_mcp_tools, test_client
+    ):
+        """When the cache misses, get_user_mcp_tools is NOT called by the endpoint directly.
+
+        On a cache miss the endpoint delegates entirely to get_available_tools(),
+        which handles its own MCP fetching. The endpoint-level merge path
+        (get_user_mcp_tools + merge_tools_responses) only runs on a cache hit.
+
+        If someone accidentally calls the merge path on cache miss, this test
+        will detect the extra call to get_user_mcp_tools.
+        """
+        mock_cache.return_value = None  # Cache miss
+        mock_get_tools.return_value = _make_tools_list_response()
+
+        response = await test_client.get(_TOOLS_URL)
+
+        assert response.status_code == 200
+        # On cache miss the endpoint must NOT call get_user_mcp_tools at all
+        mock_get_mcp_tools.assert_not_awaited()
+
+    @patch(
+        "app.api.v1.endpoints.tools.get_user_mcp_tools",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.tools.get_cache", new_callable=AsyncMock)
+    async def test_mcp_tools_categories_added_to_response(
+        self, mock_cache, mock_get_mcp_tools, test_client
+    ):
+        """Categories from merged MCP tools must appear in the response categories list."""
+        cached_global = ToolsListResponse(
+            tools=[_make_tool_info(name="web_search", category="general", display_name="General")],
+            total_count=1,
+            categories=["general"],
+        )
+        mock_cache.return_value = cached_global
+
+        mcp_tools = [
+            ToolInfo(
+                name="read_file",
+                category="filesystem-mcp",
+                display_name="Filesystem MCP",
+            ),
+            ToolInfo(
+                name="write_file",
+                category="filesystem-mcp",
+                display_name="Filesystem MCP",
+            ),
+        ]
+        mock_get_mcp_tools.return_value = mcp_tools
+
+        response = await test_client.get(_TOOLS_URL)
+
+        assert response.status_code == 200
+        data = response.json()
+
+        assert "filesystem-mcp" in data["categories"]
+        assert "general" in data["categories"]
+        assert data["total_count"] == 3

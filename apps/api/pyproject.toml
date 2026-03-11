@@ -92,6 +92,7 @@ dev = [
   "respx>=0.22.0",
   "freezegun>=1.5.0",
   "pyyaml>=6.0.3",
+  "fakeredis[aioredis]>=2.0.0",
 ]
 
 backend = [

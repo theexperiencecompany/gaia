@@ -4,6 +4,8 @@ Tests ProviderRegistry and LazyLoader behavior including registration,
 initialization, missing key handling, and async providers.
 """
 
+import asyncio
+
 import pytest
 
 from app.core.lazy_loader import (
@@ -194,3 +196,135 @@ class TestLazyLoader:
         result = loader.get()
         assert result is True
         assert configured["done"] is True
+
+    @pytest.mark.asyncio
+    async def test_concurrent_aget_initializes_once(self):
+        """aget() called concurrently from many tasks must run the loader exactly once.
+
+        This test is the canonical guard for the async double-checked locking
+        in LazyLoader.aget().  If the asyncio.Lock is removed from the hot path
+        this test will fail because init_count will be > 1.
+        """
+        init_count = {"n": 0}
+
+        async def counting_loader():
+            # Yield control so that all tasks are truly concurrent before any
+            # one of them finishes, making the race window as wide as possible.
+            await asyncio.sleep(0)
+            init_count["n"] += 1
+            return object()
+
+        loader = LazyLoader(
+            loader_func=counting_loader,
+            required_keys=["present"],
+            strategy=MissingKeyStrategy.ERROR,
+            provider_name="concurrent_test",
+        )
+
+        results = await asyncio.gather(*[loader.aget() for _ in range(10)])
+
+        assert init_count["n"] == 1, (
+            f"Loader was called {init_count['n']} times; expected exactly 1. "
+            "The async lock is likely missing or broken."
+        )
+        # All callers must receive the same instance.
+        first = results[0]
+        assert all(r is first for r in results), (
+            "Not all concurrent callers received the same instance."
+        )
+
+    @pytest.mark.asyncio
+    async def test_aget_returns_same_instance(self):
+        """Two sequential aget() calls must return the identical object (not just equal)."""
+        sentinel = object()
+
+        async def loader():
+            return sentinel
+
+        lazy = LazyLoader(
+            loader_func=loader,
+            required_keys=["ok"],
+            strategy=MissingKeyStrategy.ERROR,
+            provider_name="identity_test",
+        )
+
+        first = await lazy.aget()
+        second = await lazy.aget()
+
+        assert first is second, (
+            "aget() returned different objects on successive calls; "
+            "the loader must only run once and cache its result."
+        )
+        assert first is sentinel
+
+    @pytest.mark.asyncio
+    async def test_exception_during_init_propagates(self):
+        """An exception raised inside the loader must propagate to the caller.
+
+        Additionally, after a failed initialisation the provider must NOT be
+        marked as initialised — the next call must re-attempt (and fail again),
+        not silently return None.
+        """
+
+        async def failing_loader():
+            raise ValueError("boom")
+
+        loader = LazyLoader(
+            loader_func=failing_loader,
+            required_keys=["present"],
+            strategy=MissingKeyStrategy.ERROR,
+            provider_name="failing_provider",
+        )
+
+        # First call — must propagate the error wrapped in ConfigurationError.
+        with pytest.raises(ConfigurationError):
+            await loader.aget()
+
+        # Provider must not be marked as initialised after a failure.
+        assert not loader.is_initialized(), (
+            "Provider should not be marked as initialized after a failed init."
+        )
+
+        # Second call — must also fail, not return None or a stale value.
+        with pytest.raises(ConfigurationError):
+            await loader.aget()
+
+    @pytest.mark.asyncio
+    async def test_dependency_resolution_order(self):
+        """ProviderRegistry.aget() must initialise dependencies before dependents.
+
+        Provider A declares a dependency on B.  We verify that B's loader runs
+        before A's loader, which mirrors the real-world need to e.g. connect a
+        database before a service that wraps it.
+        """
+        init_order: list[str] = []
+
+        async def load_b():
+            init_order.append("B")
+            return "b-instance"
+
+        async def load_a():
+            init_order.append("A")
+            return "a-instance"
+
+        registry = ProviderRegistry()
+        registry.register(
+            name="B",
+            loader_func=load_b,
+            required_keys=["ok"],
+            strategy=MissingKeyStrategy.ERROR,
+        )
+        registry.register(
+            name="A",
+            loader_func=load_a,
+            required_keys=["ok"],
+            strategy=MissingKeyStrategy.ERROR,
+            dependencies=["B"],
+        )
+
+        result = await registry.aget("A")
+
+        assert result == "a-instance"
+        assert init_order == ["B", "A"], (
+            f"Expected B to be initialized before A, got order: {init_order}"
+        )

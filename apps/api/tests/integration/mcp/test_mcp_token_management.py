@@ -11,7 +11,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from cryptography.fernet import Fernet
 
-from app.models.db_oauth import MCPAuthType, MCPCredentialStatus
+from app.models.db_oauth import MCPAuthType, MCPCredential, MCPCredentialStatus
 from app.services.mcp.mcp_token_store import MCPTokenStore
 
 
@@ -32,6 +32,27 @@ def token_store(fernet_key):
     # Inject cipher directly to bypass settings lookup
     store._cipher = Fernet(fernet_key.encode())
     return store
+
+
+def _make_bearer_credential(token_store: MCPTokenStore, integration_id: str, plaintext: str) -> MCPCredential:
+    """Build an MCPCredential as store_bearer_token would, using the same cipher."""
+    now = datetime.now(timezone.utc).replace(tzinfo=None)
+    return MCPCredential(
+        user_id=token_store.user_id,
+        integration_id=integration_id,
+        auth_type=MCPAuthType.BEARER,
+        access_token=token_store._encrypt(plaintext),
+        status=MCPCredentialStatus.CONNECTED,
+        connected_at=now,
+    )
+
+
+def _make_db_session_context(mock_session: AsyncMock) -> AsyncMock:
+    """Wrap a mock session in an async-context-manager that get_db_session() returns."""
+    context = AsyncMock()
+    context.__aenter__ = AsyncMock(return_value=mock_session)
+    context.__aexit__ = AsyncMock(return_value=False)
+    return context
 
 
 @pytest.mark.integration
@@ -55,22 +76,16 @@ class TestMCPTokenManagement:
 
     @patch("app.services.mcp.mcp_token_store.get_db_session")
     async def test_store_and_get_bearer_token(self, mock_get_session, token_store):
-        """store_bearer_token then get_bearer_token should return the original token."""
-        # Track what gets committed
+        """store_bearer_token writes an encrypted credential that is non-plaintext."""
         mock_session = AsyncMock()
         mock_result = MagicMock()
-        # First call (store): no existing credential
+        # No existing credential on store path
         mock_result.scalar_one_or_none = MagicMock(return_value=None)
         mock_session.execute = AsyncMock(return_value=mock_result)
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
+        mock_get_session.return_value = _make_db_session_context(mock_session)
 
-        context = AsyncMock()
-        context.__aenter__ = AsyncMock(return_value=mock_session)
-        context.__aexit__ = AsyncMock(return_value=False)
-        mock_get_session.return_value = context
-
-        # Store the token
         await token_store.store_bearer_token("integration-1", "bearer-secret-123")
 
         # Verify session.add was called with an MCPCredential
@@ -81,6 +96,92 @@ class TestMCPTokenManagement:
         # The stored token should be encrypted (not plaintext)
         assert added_obj.access_token != "bearer-secret-123"
 
+    # ------------------------------------------------------------------
+    # get_bearer_token retrieval tests — the path the old test never called
+    # ------------------------------------------------------------------
+
+    @patch("app.services.mcp.mcp_token_store.get_db_session")
+    async def test_get_bearer_token_returns_stored_value(
+        self, mock_get_session, token_store
+    ):
+        """get_bearer_token must decrypt and return the same value that was stored.
+
+        This is the retrieval path that the previous test_store_and_get_bearer_token
+        never exercised.  The mock DB returns a CONNECTED BEARER credential whose
+        access_token was encrypted with the same cipher, and the method must
+        return the original plaintext.
+        """
+        plaintext = "bearer-secret-abc"
+        stored_cred = _make_bearer_credential(token_store, "int-get-bearer", plaintext)
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=stored_cred)
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_get_session.return_value = _make_db_session_context(mock_session)
+
+        result = await token_store.get_bearer_token("int-get-bearer")
+
+        assert result == plaintext, (
+            f"get_bearer_token should decrypt to '{plaintext}', got {result!r}"
+        )
+
+    @patch("app.services.mcp.mcp_token_store.get_db_session")
+    async def test_get_bearer_token_returns_none_for_unknown_key(
+        self, mock_get_session, token_store
+    ):
+        """get_bearer_token must return None when no credential exists for the key.
+
+        The production code calls get_credential() → None, then the guard
+        `if cred and cred.access_token and ...` short-circuits to return None.
+        This test ensures that branch is reached and produces None rather than
+        raising an exception.
+        """
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=None)
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_get_session.return_value = _make_db_session_context(mock_session)
+
+        result = await token_store.get_bearer_token("non-existent-integration")
+
+        assert result is None, (
+            "get_bearer_token must return None for an unknown integration_id"
+        )
+
+    @patch("app.services.mcp.mcp_token_store.get_db_session")
+    async def test_token_expiry_bearer_disconnected_returns_none(
+        self, mock_get_session, token_store
+    ):
+        """Bearer tokens whose credential has a non-CONNECTED status are not returned.
+
+        MCPTokenStore.get_bearer_token() checks ``cred.status ==
+        MCPCredentialStatus.CONNECTED``.  A credential with status ERROR
+        (or any other non-CONNECTED value) must be treated as absent so that
+        a stale / revoked token is never forwarded to an MCP server.
+
+        This models the 'expired-by-status' path: the credential exists in the
+        DB but is no longer valid because the connection errored or the token
+        was explicitly invalidated.
+        """
+        plaintext = "stale-bearer-token"
+        stale_cred = _make_bearer_credential(token_store, "int-stale", plaintext)
+        # Simulate a token that has been revoked / connection failed
+        stale_cred.status = MCPCredentialStatus.ERROR
+
+        mock_session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none = MagicMock(return_value=stale_cred)
+        mock_session.execute = AsyncMock(return_value=mock_result)
+        mock_get_session.return_value = _make_db_session_context(mock_session)
+
+        result = await token_store.get_bearer_token("int-stale")
+
+        assert result is None, (
+            "get_bearer_token must return None for a non-CONNECTED credential; "
+            f"got {result!r} instead"
+        )
+
     @patch("app.services.mcp.mcp_token_store.get_db_session")
     async def test_store_oauth_tokens(self, mock_get_session, token_store):
         """store_oauth_tokens should encrypt both access and refresh tokens."""
@@ -90,11 +191,7 @@ class TestMCPTokenManagement:
         mock_session.execute = AsyncMock(return_value=mock_result)
         mock_session.add = MagicMock()
         mock_session.commit = AsyncMock()
-
-        context = AsyncMock()
-        context.__aenter__ = AsyncMock(return_value=mock_session)
-        context.__aexit__ = AsyncMock(return_value=False)
-        mock_get_session.return_value = context
+        mock_get_session.return_value = _make_db_session_context(mock_session)
 
         expires = datetime.now(timezone.utc) + timedelta(hours=1)
         await token_store.store_oauth_tokens(
@@ -129,11 +226,7 @@ class TestMCPTokenManagement:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none = MagicMock(return_value=expired_cred)
         mock_session.execute = AsyncMock(return_value=mock_result)
-
-        context = AsyncMock()
-        context.__aenter__ = AsyncMock(return_value=mock_session)
-        context.__aexit__ = AsyncMock(return_value=False)
-        mock_get_session.return_value = context
+        mock_get_session.return_value = _make_db_session_context(mock_session)
 
         result = await token_store.get_oauth_token("integration-expired")
         assert result is None
@@ -148,11 +241,7 @@ class TestMCPTokenManagement:
         mock_session.execute = AsyncMock(return_value=mock_result)
         mock_session.delete = AsyncMock()
         mock_session.commit = AsyncMock()
-
-        context = AsyncMock()
-        context.__aenter__ = AsyncMock(return_value=mock_session)
-        context.__aexit__ = AsyncMock(return_value=False)
-        mock_get_session.return_value = context
+        mock_get_session.return_value = _make_db_session_context(mock_session)
 
         await token_store.delete_credentials("integration-del")
 

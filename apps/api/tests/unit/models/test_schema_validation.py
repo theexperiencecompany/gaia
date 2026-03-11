@@ -72,8 +72,17 @@ class TestConversationModel:
 
     def test_conversation_source_enum_values(self):
         assert ConversationSource.WEB.value == "web"
+        assert ConversationSource.MOBILE.value == "mobile"
         assert ConversationSource.TELEGRAM.value == "telegram"
         assert ConversationSource.DISCORD.value == "discord"
+        assert ConversationSource.SLACK.value == "slack"
+        assert ConversationSource.WHATSAPP.value == "whatsapp"
+        assert ConversationSource.WORKFLOW_SYSTEM.value == "workflow_system"
+
+    def test_all_conversation_source_values_accepted_in_model(self):
+        for source in ConversationSource:
+            m = ConversationModel(conversation_id="conv_src", source=source)
+            assert m.source == source
 
 
 @pytest.mark.unit
@@ -230,6 +239,79 @@ class TestOnboardingRequest:
     def test_invalid_profession(self):
         with pytest.raises(ValidationError):
             OnboardingRequest(name="Alice", profession="Eng1neer!")
+
+    # --- max_length=100 on name ---
+
+    def test_name_at_max_length_accepted(self):
+        name_100 = "A" * 100
+        r = OnboardingRequest(name=name_100, profession="Engineer")
+        assert r.name == name_100
+
+    def test_name_exceeds_max_length_rejected(self):
+        with pytest.raises(ValidationError):
+            OnboardingRequest(name="A" * 101, profession="Engineer")
+
+    # --- profession max_length=50 ---
+
+    def test_profession_at_max_length_accepted(self):
+        profession_50 = "Engineer" + " " * (50 - len("Engineer"))
+        r = OnboardingRequest(name="Alice", profession=profession_50)
+        # validator strips, so check stripped length is within limit
+        assert len(r.profession) <= 50
+
+    def test_profession_exceeds_max_length_rejected(self):
+        with pytest.raises(ValidationError):
+            OnboardingRequest(name="Alice", profession="E" * 51)
+
+    # --- timezone validator ---
+
+    def test_valid_timezone_accepted(self):
+        r = OnboardingRequest(
+            name="Alice",
+            profession="Engineer",
+            timezone="America/New_York",
+        )
+        assert r.timezone == "America/New_York"
+
+    def test_another_valid_timezone_accepted(self):
+        r = OnboardingRequest(
+            name="Alice",
+            profession="Engineer",
+            timezone="Asia/Kolkata",
+        )
+        assert r.timezone == "Asia/Kolkata"
+
+    def test_utc_timezone_accepted(self):
+        r = OnboardingRequest(
+            name="Alice",
+            profession="Engineer",
+            timezone="UTC",
+        )
+        assert r.timezone == "UTC"
+
+    def test_invalid_timezone_rejected(self):
+        with pytest.raises(ValidationError):
+            OnboardingRequest(
+                name="Alice",
+                profession="Engineer",
+                timezone="not_a_timezone",
+            )
+
+    def test_invalid_timezone_random_string_rejected(self):
+        with pytest.raises(ValidationError):
+            OnboardingRequest(
+                name="Alice",
+                profession="Engineer",
+                timezone="Foo/Bar",
+            )
+
+    def test_none_timezone_accepted(self):
+        r = OnboardingRequest(name="Alice", profession="Engineer", timezone=None)
+        assert r.timezone is None
+
+    def test_timezone_omitted_defaults_to_none(self):
+        r = OnboardingRequest(name="Alice", profession="Engineer")
+        assert r.timezone is None
 
 
 @pytest.mark.unit

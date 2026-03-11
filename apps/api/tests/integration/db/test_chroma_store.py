@@ -14,6 +14,7 @@ Key production modules under test
 - app.db.chroma.chroma_tools_store.delete_tools_by_namespace
 """
 
+import pickle
 from datetime import datetime, timezone
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -680,3 +681,431 @@ class TestDeleteToolsByNamespace:
             deleted_count = await delete_tools_by_namespace("any_ns")
 
         assert deleted_count == 0
+
+
+# ---------------------------------------------------------------------------
+# Error paths – pickle deserialization failure
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestPickleDeserializationFailure:
+    """Verify that corrupted documents are handled gracefully, not propagated."""
+
+    async def test_get_item_with_corrupted_document_returns_none(
+        self, ephemeral_client
+    ):
+        """_get_item must return None when the stored document cannot be unpickled.
+
+        The production code wraps the entire _get_item body in a broad
+        except-and-return-None block, so any pickle error should produce a
+        safe None result rather than leaking an internal exception.
+        """
+        store = ChromaStore(
+            client=ephemeral_client,
+            collection_name="corrupt_test",
+            index=None,
+        )
+        collection = await store._get_collection()
+
+        # Insert a document whose body is not valid pickle bytes.
+        corrupt_bytes = b"\x80\x99CORRUPT_DATA_NOT_VALID_PICKLE\xff"
+        corrupt_doc = corrupt_bytes.decode("latin1")
+        await collection.upsert(
+            ids=["ns::corrupt_key"],
+            documents=[corrupt_doc],
+            metadatas=[{"namespace": "ns"}],
+        )
+
+        # GetOp must not raise; it should silently return None.
+        results = await store.abatch(
+            [GetOp(namespace=("ns",), key="corrupt_key")]
+        )
+
+        assert results[0] is None, (
+            "Expected None for a corrupt document, got a result instead."
+        )
+
+    async def test_search_skips_corrupted_documents(self, ephemeral_client):
+        """_filter_items must skip documents that fail pickle deserialization.
+
+        When a collection contains one valid and one corrupt document, a
+        SearchOp with a filter should only return the valid document and must
+        not raise an exception.
+        """
+        store = ChromaStore(
+            client=ephemeral_client,
+            collection_name="corrupt_search_test",
+            index=None,
+        )
+        collection = await store._get_collection()
+
+        # Insert one valid document and one corrupt document.
+        valid_value = {"category": "tools", "tool_hash": "h_valid"}
+        valid_doc = pickle.dumps(valid_value).decode("latin1")
+        corrupt_doc = b"\x80\x99CORRUPT\xff".decode("latin1")
+
+        await collection.upsert(
+            ids=["ns::valid_doc", "ns::corrupt_doc"],
+            documents=[valid_doc, corrupt_doc],
+            metadatas=[
+                {"namespace": "ns"},
+                {"namespace": "ns"},
+            ],
+        )
+
+        # SearchOp with a filter that matches the valid document.
+        results = await store.abatch(
+            [
+                SearchOp(
+                    namespace_prefix=("ns",),
+                    query=None,
+                    limit=10,
+                    offset=0,
+                    filter={"category": "tools"},
+                )
+            ]
+        )
+
+        items = results[0]
+        assert isinstance(items, list)
+        keys = {item.key for item in items}
+        # The valid document should be returned.
+        assert "valid_doc" in keys
+        # The corrupt document should have been silently skipped.
+        assert "corrupt_doc" not in keys
+
+
+# ---------------------------------------------------------------------------
+# Filter operators: $gt, $lt, $eq – unit-level (_apply_operator / _check_filter)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestFilterOperators:
+    """Verify $gt, $lt, and $eq filter operators in ChromaStore helper methods.
+
+    The _apply_operator and _check_filter methods implement the filter DSL used
+    when a SearchOp carries a filter dict.  These tests exercise each operator
+    at the method level to ensure the comparison logic is correct, and then
+    exercise the full SearchOp path for filters that are supported end-to-end.
+
+    Note on nested numeric operators ($gt/$lt via field sub-dict):
+    _check_filter guards sub-dict filter recursion with
+    ``if not isinstance(item_value, dict): return False``, which means that a
+    filter such as ``{"score": {"$gt": 0.7}}`` is **not** evaluated when
+    ``score`` is a scalar.  The tests below document that known limitation by
+    asserting the current behaviour rather than an idealised one.  The
+    operators *do* work correctly when called directly on _apply_operator.
+    """
+
+    # ------------------------------------------------------------------
+    # _apply_operator – direct unit tests
+    # ------------------------------------------------------------------
+
+    def test_apply_operator_gt_true(self, chroma_store):
+        """_apply_operator should return True when value > threshold."""
+        assert chroma_store._apply_operator(0.9, "$gt", 0.7) is True
+
+    def test_apply_operator_gt_false(self, chroma_store):
+        """_apply_operator should return False when value <= threshold."""
+        assert chroma_store._apply_operator(0.5, "$gt", 0.7) is False
+
+    def test_apply_operator_lt_true(self, chroma_store):
+        """_apply_operator should return True when value < threshold."""
+        assert chroma_store._apply_operator(0.5, "$lt", 0.7) is True
+
+    def test_apply_operator_lt_false(self, chroma_store):
+        """_apply_operator should return False when value >= threshold."""
+        assert chroma_store._apply_operator(0.9, "$lt", 0.7) is False
+
+    def test_apply_operator_gte_boundary(self, chroma_store):
+        """_apply_operator $gte should return True on exact equality."""
+        assert chroma_store._apply_operator(0.7, "$gte", 0.7) is True
+
+    def test_apply_operator_lte_boundary(self, chroma_store):
+        """_apply_operator $lte should return True on exact equality."""
+        assert chroma_store._apply_operator(0.7, "$lte", 0.7) is True
+
+    def test_apply_operator_eq_true(self, chroma_store):
+        """_apply_operator $eq should return True for equal values."""
+        assert chroma_store._apply_operator("fruit", "$eq", "fruit") is True
+
+    def test_apply_operator_eq_false(self, chroma_store):
+        """_apply_operator $eq should return False for unequal values."""
+        assert chroma_store._apply_operator("vegetable", "$eq", "fruit") is False
+
+    def test_apply_operator_ne_true(self, chroma_store):
+        """_apply_operator $ne should return True when values differ."""
+        assert chroma_store._apply_operator("vegetable", "$ne", "fruit") is True
+
+    def test_apply_operator_unsupported_raises(self, chroma_store):
+        """_apply_operator should raise ValueError for an unknown operator."""
+        with pytest.raises(ValueError, match="Unsupported operator"):
+            chroma_store._apply_operator("x", "$unknown", "y")
+
+    # ------------------------------------------------------------------
+    # _check_filter – top-level operator and direct equality
+    # ------------------------------------------------------------------
+
+    def test_check_filter_direct_equality_match(self, chroma_store):
+        """Flat equality filter should match when field value equals filter value."""
+        value = {"category": "fruit"}
+        assert chroma_store._check_filter(value, {"category": "fruit"}) is True
+
+    def test_check_filter_direct_equality_no_match(self, chroma_store):
+        """Flat equality filter should not match when values differ."""
+        value = {"category": "vegetable"}
+        assert chroma_store._check_filter(value, {"category": "fruit"}) is False
+
+    def test_check_filter_top_level_gt_operator(self, chroma_store):
+        """Top-level $gt applied to a numeric value (not nested in a field)."""
+        # When the filter key starts with '$' the operator is applied to `value`
+        # directly via _apply_operator.  A dict value resolves to 0 inside
+        # _apply_operator, so this documents that top-level numeric operators on
+        # dict values always return False.
+        value = {"score": 0.9}
+        assert chroma_store._check_filter(value, {"$gt": 0.7}) is False
+
+    def test_check_filter_nested_operator_on_scalar_returns_false(self, chroma_store):
+        """Field-level operator dict on a scalar field is not evaluated (known limitation).
+
+        _check_filter returns False when it encounters a filter_value that is a
+        dict but the corresponding item_value is not a dict.  This means that
+        ``{"score": {"$gt": 0.7}}`` will never match when ``score`` is a float.
+        """
+        value = {"score": 0.9, "tool_hash": "h"}
+        result = chroma_store._check_filter(value, {"score": {"$gt": 0.7}})
+        # The current implementation returns False here – document that behaviour.
+        assert result is False
+
+    # ------------------------------------------------------------------
+    # SearchOp integration – equality filter ($eq via direct value match)
+    # ------------------------------------------------------------------
+
+    async def test_filter_eq_operator(self, ephemeral_client):
+        """Equality filter in SearchOp should return only the matching document."""
+        store = ChromaStore(
+            client=ephemeral_client,
+            collection_name="category_store",
+            index=None,
+        )
+        ops = [
+            PutOp(
+                namespace=("items",),
+                key="alpha",
+                value={"category": "fruit", "tool_hash": "h_a"},
+            ),
+            PutOp(
+                namespace=("items",),
+                key="beta",
+                value={"category": "vegetable", "tool_hash": "h_b"},
+            ),
+        ]
+        await store.abatch(ops)
+
+        results = await store.abatch(
+            [
+                SearchOp(
+                    namespace_prefix=("items",),
+                    query=None,
+                    limit=10,
+                    offset=0,
+                    filter={"category": "fruit"},
+                )
+            ]
+        )
+
+        items = results[0]
+        keys = {item.key for item in items}
+        assert "alpha" in keys, "Expected 'alpha' (category=fruit) to be returned."
+        assert "beta" not in keys, (
+            "Expected 'beta' (category=vegetable) to be excluded."
+        )
+
+    async def test_filter_gt_lt_via_searchop_documents_current_behaviour(
+        self, ephemeral_client
+    ):
+        """SearchOp with $gt/$lt on a scalar field returns empty (known limitation).
+
+        Because _check_filter returns False for ``{"score": {"$gt": 0.7}}`` when
+        score is a scalar, no documents pass the filter.  This test documents
+        the current (limited) behaviour so a future fix will immediately surface
+        the improvement.
+        """
+        store = ChromaStore(
+            client=ephemeral_client,
+            collection_name="scored_store_doc",
+            index=None,
+        )
+        await store.abatch(
+            [
+                PutOp(
+                    namespace=("metrics",),
+                    key="high_score",
+                    value={"score": 0.9, "tool_hash": "h_high"},
+                ),
+                PutOp(
+                    namespace=("metrics",),
+                    key="low_score",
+                    value={"score": 0.5, "tool_hash": "h_low"},
+                ),
+            ]
+        )
+
+        gt_results = await store.abatch(
+            [
+                SearchOp(
+                    namespace_prefix=("metrics",),
+                    query=None,
+                    limit=10,
+                    offset=0,
+                    filter={"score": {"$gt": 0.7}},
+                )
+            ]
+        )
+        lt_results = await store.abatch(
+            [
+                SearchOp(
+                    namespace_prefix=("metrics",),
+                    query=None,
+                    limit=10,
+                    offset=0,
+                    filter={"score": {"$lt": 0.7}},
+                )
+            ]
+        )
+
+        # Current behaviour: the nested operator dict causes the scalar field
+        # check to short-circuit to False, so no documents match either filter.
+        assert gt_results[0] == [], (
+            "Nested $gt on scalar field currently returns no results (known limitation)."
+        )
+        assert lt_results[0] == [], (
+            "Nested $lt on scalar field currently returns no results (known limitation)."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Edge case: search returns empty list on no match
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestSearchEdgeCases:
+    """Edge cases for SearchOp."""
+
+    async def test_search_returns_empty_on_no_match(self, chroma_store):
+        """SearchOp with a filter that matches nothing should return an empty list."""
+        await chroma_store.abatch(
+            [
+                PutOp(
+                    namespace=("ns",),
+                    key="only_doc",
+                    value={"category": "alpha", "tool_hash": "h1"},
+                )
+            ]
+        )
+
+        results = await chroma_store.abatch(
+            [
+                SearchOp(
+                    namespace_prefix=("ns",),
+                    query=None,
+                    limit=10,
+                    offset=0,
+                    filter={"category": "nonexistent_category"},
+                )
+            ]
+        )
+
+        assert results[0] == [], (
+            "Expected empty list when filter matches no documents."
+        )
+
+    async def test_search_returns_empty_on_empty_namespace(self, chroma_store):
+        """SearchOp on a namespace with no documents should return an empty list."""
+        results = await chroma_store.abatch(
+            [
+                SearchOp(
+                    namespace_prefix=("totally_empty_namespace",),
+                    query=None,
+                    limit=10,
+                    offset=0,
+                )
+            ]
+        )
+
+        assert results[0] == [], (
+            "Expected empty list when namespace has no documents."
+        )
+
+
+# ---------------------------------------------------------------------------
+# Delete removes document
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+class TestDeleteBehavior:
+    """Verify that deleting a document removes it from search results."""
+
+    async def test_delete_removes_document_from_search(self, chroma_store):
+        """After deleting a document, it should not appear in subsequent searches."""
+        ns = ("del_ns",)
+        key = "to_delete"
+
+        # Store the document.
+        await chroma_store.abatch(
+            [
+                PutOp(
+                    namespace=ns,
+                    key=key,
+                    value={"description": "temporary doc", "tool_hash": "h_td"},
+                )
+            ]
+        )
+
+        # Confirm it exists via GetOp.
+        get_result = await chroma_store.abatch([GetOp(namespace=ns, key=key)])
+        assert get_result[0] is not None, "Document should exist before deletion."
+
+        # Delete it via PutOp(value=None).
+        await chroma_store.abatch(
+            [PutOp(namespace=ns, key=key, value=None)]
+        )
+
+        # It must not appear in a subsequent SearchOp.
+        search_results = await chroma_store.abatch(
+            [
+                SearchOp(
+                    namespace_prefix=ns,
+                    query=None,
+                    limit=10,
+                    offset=0,
+                )
+            ]
+        )
+
+        items = search_results[0]
+        keys = {item.key for item in items}
+        assert key not in keys, (
+            "Deleted document should not appear in search results."
+        )
+
+    async def test_delete_nonexistent_document_does_not_raise(self, chroma_store):
+        """Deleting a key that does not exist should not raise an exception."""
+        try:
+            await chroma_store.abatch(
+                [
+                    PutOp(
+                        namespace=("ns",),
+                        key="ghost_key",
+                        value=None,
+                    )
+                ]
+            )
+        except Exception as exc:
+            pytest.fail(
+                f"Deleting a nonexistent document raised an unexpected exception: {exc}"
+            )

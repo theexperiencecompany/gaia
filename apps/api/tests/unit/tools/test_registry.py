@@ -1,10 +1,9 @@
 """Unit tests for the tool registry (DynamicToolDict, ToolCategory, ToolRegistry)."""
 
 from collections.abc import Mapping
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from unittest.mock import MagicMock
-
 from langchain_core.tools import BaseTool
 
 from app.agents.tools.core.registry import (
@@ -305,3 +304,329 @@ class TestToolWrapper:
         tool = Tool(tool=base, name="override", is_core=True)
         assert tool.name == "override"
         assert tool.is_core is True
+
+
+# ---------------------------------------------------------------------------
+# Helpers shared by async tests
+# ---------------------------------------------------------------------------
+
+_CORE_CATEGORY_NAMES = [
+    "search",
+    "documents",
+    "notifications",
+    "todos",
+    "reminders",
+    "goal_tracking",
+    "skills",
+    "workflows",
+    "support",
+    "memory",
+    "filesystem",
+    "integrations",
+    "development",
+    "creative",
+    "weather",
+    "context",
+]
+
+
+def _patch_initialize_categories():
+    """
+    Return a patcher that replaces _initialize_categories with a lightweight
+    stub, avoiding imports of all production tool modules.
+
+    The stub registers exactly the categories listed in _CORE_CATEGORY_NAMES so
+    tests can assert on category presence without pulling in tool dependencies.
+    """
+
+    def _stub_initialize(self: ToolRegistry):
+        for cat_name in _CORE_CATEGORY_NAMES:
+            self._add_category(cat_name, tools=[_make_mock_tool(f"{cat_name}_tool")])
+
+    return patch.object(ToolRegistry, "_initialize_categories", _stub_initialize)
+
+
+def _patch_index_category_tools():
+    """Return a patcher that makes _index_category_tools a no-op coroutine."""
+    return patch.object(
+        ToolRegistry,
+        "_index_category_tools",
+        new_callable=lambda: lambda *_: AsyncMock(return_value=None),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Async tests
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.unit
+class TestToolRegistryAsync:
+    async def test_setup_initializes_all_categories(self):
+        """setup() must populate registry.categories with the expected structure."""
+        registry = ToolRegistry()
+
+        with _patch_initialize_categories():
+            await registry.setup()
+
+        for name in _CORE_CATEGORY_NAMES:
+            cat = registry.get_category(name)
+            assert cat is not None, f"category '{name}' missing after setup()"
+            assert isinstance(cat, ToolCategory)
+            assert len(cat.tools) > 0, f"category '{name}' has no tools after setup()"
+
+    async def test_setup_idempotent(self):
+        """Calling setup() twice must not duplicate tools."""
+        registry = ToolRegistry()
+
+        with _patch_initialize_categories():
+            await registry.setup()
+            counts_after_first = {
+                name: len(registry.get_category(name).tools)
+                for name in _CORE_CATEGORY_NAMES
+            }
+
+            await registry.setup()
+            counts_after_second = {
+                name: len(registry.get_category(name).tools)
+                for name in _CORE_CATEGORY_NAMES
+            }
+
+        # _initialize_categories replaces the dict entry each call, so counts
+        # stay equal — duplicates would manifest as a larger count.
+        assert counts_after_first == counts_after_second
+
+    async def test_register_provider_tools_with_composio(self):
+        """register_provider_tools() must store composio tools in the registry."""
+        fake_tools = [_make_mock_tool("GMAIL_SEND"), _make_mock_tool("GMAIL_READ")]
+        mock_composio_service = MagicMock()
+        mock_composio_service.get_tools = AsyncMock(return_value=fake_tools)
+
+        registry = ToolRegistry()
+
+        with (
+            patch(
+                "app.services.composio.composio_service.get_composio_service",
+                return_value=mock_composio_service,
+            ),
+            patch.object(
+                registry,
+                "_index_category_tools",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            category = await registry.register_provider_tools(
+                toolkit_name="GMAIL",
+                space_name="email",
+            )
+
+        assert category is not None
+        tool_names = [t.name for t in category.tools]
+        assert "GMAIL_SEND" in tool_names
+        assert "GMAIL_READ" in tool_names
+        assert len(category.tools) == 2
+        mock_composio_service.get_tools.assert_awaited_once_with(tool_kit="GMAIL")
+
+    async def test_register_provider_tools_skips_existing_category(self):
+        """register_provider_tools() must not re-register an already-loaded toolkit."""
+        registry = ToolRegistry()
+        existing_tool = _make_mock_tool("EXISTING_TOOL")
+        registry._add_category("GITHUB", tools=[existing_tool])
+
+        mock_composio_service = MagicMock()
+        mock_composio_service.get_tools = AsyncMock(return_value=[])
+
+        # The early-return path fires before any composio import, so no patch needed.
+        result = await registry.register_provider_tools(
+            toolkit_name="GITHUB",
+            space_name="github",
+        )
+
+        # Must return the existing category without calling get_tools
+        assert result is registry.get_category("GITHUB")
+        mock_composio_service.get_tools.assert_not_awaited()
+
+    async def test_load_all_provider_tools_handles_one_failure(self):
+        """
+        If one provider raises an exception, the others still load successfully.
+
+        We construct three fake integrations:
+        - integration_a  -> loads fine (returns two tools)
+        - integration_b  -> composio raises RuntimeError
+        - integration_c  -> loads fine (returns one tool)
+        """
+        from app.models.mcp_config import ComposioConfig, SubAgentConfig
+        from app.models.oauth_models import OAuthIntegration
+
+        def _make_integration(toolkit: str, space: str) -> OAuthIntegration:
+            return OAuthIntegration(
+                id=toolkit.lower(),
+                name=toolkit,
+                description="test",
+                category="productivity",
+                provider="test",
+                scopes=[],
+                managed_by="composio",
+                composio_config=ComposioConfig(
+                    auth_config_id="ac_test",
+                    toolkit=toolkit,
+                ),
+                subagent_config=SubAgentConfig(
+                    has_subagent=True,
+                    agent_name=f"{toolkit}_agent",
+                    tool_space=space,
+                    handoff_tool_name=f"handoff_{toolkit.lower()}",
+                    domain="test",
+                    capabilities="test",
+                    use_cases="test",
+                    system_prompt="test",
+                ),
+            )
+
+        integration_a = _make_integration("TOOLKIT_A", "space_a")
+        integration_b = _make_integration("TOOLKIT_B", "space_b")
+        integration_c = _make_integration("TOOLKIT_C", "space_c")
+        fake_integrations = [integration_a, integration_b, integration_c]
+
+        tools_a = [_make_mock_tool("TOOLKIT_A_ACTION")]
+        tools_c = [_make_mock_tool("TOOLKIT_C_ACTION")]
+
+        mock_composio_service = MagicMock()
+
+        async def _get_tools_side_effect(tool_kit: str):
+            if tool_kit == "TOOLKIT_A":
+                return tools_a
+            if tool_kit == "TOOLKIT_B":
+                raise RuntimeError("Composio unavailable for TOOLKIT_B")
+            return tools_c
+
+        mock_composio_service.get_tools = AsyncMock(
+            side_effect=_get_tools_side_effect
+        )
+
+        registry = ToolRegistry()
+
+        with (
+            patch(
+                "app.config.oauth_config.OAUTH_INTEGRATIONS",
+                fake_integrations,
+            ),
+            patch(
+                "app.services.composio.composio_service.get_composio_service",
+                return_value=mock_composio_service,
+            ),
+            patch.object(
+                registry,
+                "_index_category_tools",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            await registry.load_all_provider_tools()
+
+        # Successful providers must be registered
+        assert registry.get_category("TOOLKIT_A") is not None
+        assert registry.get_category("TOOLKIT_C") is not None
+        # Failed provider must NOT be registered
+        assert registry.get_category("TOOLKIT_B") is None
+
+        a_names = [t.name for t in registry.get_category("TOOLKIT_A").tools]
+        assert "TOOLKIT_A_ACTION" in a_names
+        c_names = [t.name for t in registry.get_category("TOOLKIT_C").tools]
+        assert "TOOLKIT_C_ACTION" in c_names
+
+    async def test_load_user_mcp_tools_registers_tools(self):
+        """
+        load_user_mcp_tools() must register MCP tools under the correct category
+        name and track them under the given user_id.
+        """
+        from app.models.mcp_config import MCPConfig, SubAgentConfig
+        from app.models.oauth_models import OAuthIntegration
+
+        user_id = "user-mcp-42"
+        integration_id = "my_mcp_server"
+        fake_tools = [_make_mock_tool("MCP_ACTION_1"), _make_mock_tool("MCP_ACTION_2")]
+
+        mock_mcp_client = MagicMock()
+        mock_mcp_client.get_all_connected_tools = AsyncMock(
+            return_value={integration_id: fake_tools}
+        )
+
+        # Provide a platform integration with a subagent_config so the registry
+        # uses the configured space name rather than hitting IntegrationResolver.
+        fake_integration = OAuthIntegration(
+            id=integration_id,
+            name="My MCP Server",
+            description="test",
+            category="productivity",
+            provider="mcp",
+            scopes=[],
+            managed_by="mcp",
+            mcp_config=MCPConfig(server_url="https://example.com/mcp"),
+            subagent_config=SubAgentConfig(
+                has_subagent=True,
+                agent_name="my_mcp_agent",
+                tool_space="mcp_space",
+                handoff_tool_name="handoff_mcp",
+                domain="test",
+                capabilities="test",
+                use_cases="test",
+                system_prompt="test",
+            ),
+        )
+
+        registry = ToolRegistry()
+
+        with (
+            patch(
+                "app.services.mcp.mcp_client.get_mcp_client",
+                new=AsyncMock(return_value=mock_mcp_client),
+            ),
+            patch(
+                "app.config.oauth_config.get_integration_by_id",
+                return_value=fake_integration,
+            ),
+            patch.object(
+                registry,
+                "_index_category_tools",
+                new=AsyncMock(return_value=None),
+            ),
+        ):
+            loaded = await registry.load_user_mcp_tools(user_id)
+
+        expected_category = f"mcp_{integration_id}"
+
+        # Returned mapping must include the integration
+        assert integration_id in loaded
+        assert len(loaded[integration_id]) == 2
+
+        # Category must exist with correct name and space
+        cat = registry.get_category(expected_category)
+        assert cat is not None
+        assert cat.space == "mcp_space"
+        assert cat.integration_name == integration_id
+        tool_names = [t.name for t in cat.tools]
+        assert "MCP_ACTION_1" in tool_names
+        assert "MCP_ACTION_2" in tool_names
+
+        # User association must be tracked
+        assert expected_category in registry._user_mcp_categories[user_id]
+
+    async def test_load_user_mcp_tools_skips_empty_tool_list(self):
+        """load_user_mcp_tools() must not register a category when a server returns
+        no tools."""
+        user_id = "user-mcp-empty"
+        mock_mcp_client = MagicMock()
+        mock_mcp_client.get_all_connected_tools = AsyncMock(
+            return_value={"empty_server": []}
+        )
+
+        registry = ToolRegistry()
+
+        with patch(
+            "app.services.mcp.mcp_client.get_mcp_client",
+            new=AsyncMock(return_value=mock_mcp_client),
+        ):
+            loaded = await registry.load_user_mcp_tools(user_id)
+
+        assert loaded == {}
+        assert registry.get_category("mcp_empty_server") is None
