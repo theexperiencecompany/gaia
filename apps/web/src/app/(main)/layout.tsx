@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 
 import HeaderManager from "@/components/layout/headers/HeaderManager";
+import StatusBanner from "@/components/layout/StatusBanner";
 import Sidebar from "@/components/layout/sidebar/MainSidebar";
 import RightSidebar from "@/components/layout/sidebar/RightSidebar";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
@@ -184,16 +185,13 @@ export default function MainLayout({ children }: { children: ReactNode }) {
           onOpenChange={handleOpenChange}
           defaultOpen={defaultOpen}
         >
-          <div
-            className="relative flex min-h-screen w-full dark"
-            style={{ touchAction: "pan-y" }}
-            ref={dragRef}
-          >
+          <div className="relative flex h-screen w-full dark" ref={dragRef}>
             <SidebarLayout>
               <Sidebar />
             </SidebarLayout>
 
             <SidebarInset className="flex h-screen min-w-0 w-auto flex-col bg-primary-bg">
+              <StatusBanner />
               <header
                 className="flex shrink-0 items-center justify-between p-2"
                 onClick={closeOnTouch}

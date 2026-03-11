@@ -150,11 +150,24 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
         config: dict[str, Any] = getattr(runtime, "config", {}) or {}
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id")
-        conversation_id = configurable.get("thread_id")
+        vfs_session_id = configurable.get("vfs_session_id")
+        thread_id = configurable.get("thread_id")
+        conversation_id = vfs_session_id or thread_id
+        subagent_id = configurable.get("subagent_id")
+        metadata_cfg = config.get("metadata", {})
+        agent_name_meta = metadata_cfg.get("agent_name")
 
-        if not user_id or not conversation_id:
-            logger.warning("Cannot archive: missing user_id or conversation_id")
-            return ""
+        if not user_id:
+            raise ValueError("VFS archiving requires 'user_id' in configurable")
+        if not conversation_id:
+            raise ValueError(
+                "VFS archiving requires 'vfs_session_id' or 'thread_id' in configurable"
+            )
+        written_by = subagent_id or agent_name_meta
+        if not written_by:
+            raise ValueError(
+                "VFS archiving requires 'subagent_id' in configurable or 'agent_name' in metadata"
+            )
 
         vfs = await self._get_vfs()
 
@@ -171,7 +184,11 @@ class VFSArchivingSummarizationMiddleware(SummarizationMiddleware):
             user_id=user_id,
             metadata={
                 "type": "pre_summarization_archive",
+                "agent_name": "executor",
+                "written_by": written_by,
+                "agent_thread_id": thread_id,
                 "conversation_id": conversation_id,
+                "vfs_session_id": vfs_session_id,
                 "message_count": len(messages),
                 "archived_at": datetime.now(timezone.utc).isoformat(),
                 "trigger_reason": "summarization_middleware",

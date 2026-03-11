@@ -1,6 +1,10 @@
 import type { EventSourceMessage } from "@microsoft/fetch-event-source";
 import { useRef } from "react";
-import type { ToolDataEntry } from "@/config/registries/toolRegistry";
+import type {
+  MCPAppData,
+  ToolCallEntry,
+  ToolDataEntry,
+} from "@/config/registries/toolRegistry";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { useConversation } from "@/features/chat/hooks/useConversation";
 import { useLoading } from "@/features/chat/hooks/useLoading";
@@ -201,14 +205,20 @@ export const useChatStream = () => {
    */
   const updateToolDataEntry = (
     toolCallId: string,
-    updateFn: (data: Record<string, unknown>) => Record<string, unknown>,
+    updateFn: (
+      data: Record<string, unknown>,
+      toolName: string,
+    ) => Record<string, unknown>,
   ) => {
     const existingToolData = refs.current.botMessage?.tool_data ?? [];
     const updatedToolData = existingToolData.map((entry): ToolDataEntry => {
       // Only update entries that:
-      // 1. Have tool_name === "tool_calls_data"
+      // 1. Have tool_name === "tool_calls_data" or "mcp_app"
       // 2. Have a valid data object with a matching tool_call_id
-      if (entry.tool_name === "tool_calls_data") {
+      if (
+        entry.tool_name === "tool_calls_data" ||
+        entry.tool_name === "mcp_app"
+      ) {
         const data = entry.data as Record<string, unknown>;
         // Validate that the entry has a tool_call_id and it matches
         if (
@@ -219,7 +229,7 @@ export const useChatStream = () => {
         ) {
           return {
             ...entry,
-            data: updateFn(data) as ToolDataEntry["data"],
+            data: updateFn(data, entry.tool_name) as ToolDataEntry["data"],
           };
         }
       }
@@ -243,10 +253,19 @@ export const useChatStream = () => {
     tool_call_id: string;
     output: string;
   }) => {
-    updateToolDataEntry(toolOutput.tool_call_id, (data) => ({
-      ...data,
-      output: toolOutput.output,
-    }));
+    updateToolDataEntry(
+      toolOutput.tool_call_id,
+      (
+        data: Record<string, unknown>,
+        toolName: string,
+      ): Record<string, unknown> => {
+        const fieldName =
+          toolName === "mcp_app"
+            ? ("tool_result" satisfies keyof MCPAppData)
+            : ("output" satisfies keyof ToolCallEntry);
+        return { ...data, [fieldName]: toolOutput.output };
+      },
+    );
   };
 
   const handleTodoProgress = (snapshot: TodoProgressSnapshot) => {

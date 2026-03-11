@@ -3,9 +3,20 @@ Advanced logging configuration for GAIA applications.
 
 This module provides a comprehensive, production-ready logging system featuring:
 - Beautiful console output with color coding and structured formatting
+- Optional file outputs with automatic rotation and compression
 - Thread-safe logging with message queuing
 - Standard library logging interception for unified output
 - Contextual logging with rich metadata support
+- Custom log levels for different operational concerns
+
+File logging is opt-in — call configure_file_logging(log_dir) explicitly from
+apps that need it (e.g. the API). Console logging is always enabled on import.
+
+Environment variables:
+- LOG_LEVEL: Minimum log level (default: INFO)
+- LOG_DIAGNOSE: Show error diagnosis (default: false)
+- LOG_BACKTRACE: Show stack traces (default: true)
+- LOG_COLORIZE: Colored console output (default: true)
 
 Usage:
     from shared.py.logging import get_contextual_logger
@@ -16,10 +27,13 @@ Usage:
 import os
 import sys
 import logging
+from pathlib import Path
+
 from loguru import logger
 
+_LOGURU_CONFIGURED = False
+_FILE_LOGGING_CONFIGURED = False
 
-# Application-wide logging configuration
 LOG_CONFIG = {
     "level": os.getenv("LOG_LEVEL", "INFO"),
     "diagnose": os.getenv("LOG_DIAGNOSE", "false").lower() == "true",
@@ -33,31 +47,34 @@ LOG_CONFIG = {
             "<level>{message}</level> "
             "<dim><cyan>({file.name}:{line})</cyan></dim>"
         ),
+        "file": (
+            "{time:YYYY-MM-DD HH:mm:ss} | "
+            "{level: <4} | "
+            "{extra[logger_name]: <7} | "
+            "{message} | "
+            "{file.name}:{function}:{line}"
+        ),
+        "json": "{time} {level} {extra[logger_name]} {message} {file.name} {function} {line}{extra}",
     },
 }
 
 
 def configure_loguru():
     """
-    Configure production-ready logging with console output.
+    Configure console logging with standard library interception.
 
-    Sets up:
-    - Console: Colored output for development and containers
-    - Standard library interception for unified logging
-
-    Environment variables:
-    - LOG_LEVEL: Minimum level (default: INFO)
-    - LOG_DIAGNOSE: Error diagnosis (default: false)
-    - LOG_BACKTRACE: Stack traces (default: true)
-    - LOG_COLORIZE: Colored output (default: true)
+    Safe to call multiple times — only configures once.
 
     Returns:
         Configured logger instance
     """
-    # Remove default handler
+    global _LOGURU_CONFIGURED
+    if _LOGURU_CONFIGURED:
+        return logger
+    _LOGURU_CONFIGURED = True
+
     logger.remove()
 
-    # Console handler with beautiful formatting
     logger.add(
         sys.stderr,
         format=LOG_CONFIG["format"]["console"],
@@ -65,19 +82,25 @@ def configure_loguru():
         colorize=LOG_CONFIG["colorize"],
         backtrace=LOG_CONFIG["backtrace"],
         diagnose=LOG_CONFIG["diagnose"],
-        enqueue=True,  # Thread-safe logging
-        catch=True,  # Catch exceptions in threads
+        enqueue=True,
+        catch=True,
     )
+
+    # Custom levels
+    logger.level("PERFORMANCE", no=5, color="<magenta>", icon="⚡")
+    logger.level("AUDIT", no=25, color="<blue>", icon="📊")
+    logger.level("SECURITY", no=35, color="<red>", icon="🔒")
 
     # Intercept standard library logging to route through Loguru
     class InterceptHandler(logging.Handler):
-        def emit(self, record):
-            # Only intercept loggers from specific namespaces
+        def emit(self, record: logging.LogRecord) -> None:
             app_namespaces = [
-                "gaia_shared",
+                "app.",
                 "uvicorn",
                 "fastapi",
+                "gunicorn",
                 "livekit",
+                "gaia_shared",
             ]
 
             should_intercept = any(
@@ -104,22 +127,27 @@ def configure_loguru():
                 "uvicorn.error": "UVICORN",
                 "uvicorn": "UVICORN",
                 "fastapi": "FASTAPI",
+                "gunicorn": "GUNICORN",
                 "livekit": "LIVEKIT",
             }
 
-            context_name = logger_name_map.get(record.name, record.name.upper()[:7])
+            if record.name.startswith("app."):
+                context_name = record.name.split(".")[-1].upper()[:7]
+            else:
+                context_name = logger_name_map.get(record.name, record.name.upper()[:7])
 
             logger.bind(logger_name=context_name).opt(
                 depth=depth, exception=record.exc_info
             ).log(level, record.getMessage())
 
-    # Only intercept specific loggers
     intercept_loggers = [
         "uvicorn",
         "uvicorn.access",
         "uvicorn.error",
         "fastapi",
+        "gunicorn",
         "livekit",
+        "app",
     ]
 
     for logger_name in intercept_loggers:
@@ -127,10 +155,100 @@ def configure_loguru():
         specific_logger.handlers = [InterceptHandler()]
         specific_logger.propagate = False
 
+    logging.getLogger("app").setLevel(logging.DEBUG)
+
     return logger
 
 
-def get_contextual_logger(name: str, **context):
+def configure_file_logging(log_dir: str | Path = "./logs") -> None:
+    """
+    Add rotating file log sinks. Call this once from apps that need persistent logs.
+
+    Creates separate files for general, error, structured JSON, critical,
+    and performance logs — all with automatic rotation and compression.
+
+    Safe to call multiple times — only configures once.
+
+    Args:
+        log_dir: Directory to write log files into (default: ./logs)
+    """
+    global _FILE_LOGGING_CONFIGURED
+    if _FILE_LOGGING_CONFIGURED:
+        return
+    _FILE_LOGGING_CONFIGURED = True
+
+    logs_dir = Path(log_dir)
+    logs_dir.mkdir(parents=True, exist_ok=True)
+
+    logger.add(
+        logs_dir / "gaia-{time:YYYY-MM-DD}.log",
+        format=LOG_CONFIG["format"]["file"],
+        level="DEBUG",
+        rotation="00:00",
+        retention="30 days",
+        compression="zip",
+        backtrace=True,
+        diagnose=LOG_CONFIG["diagnose"],
+        enqueue=False,
+        catch=True,
+    )
+
+    logger.add(
+        logs_dir / "errors-{time:YYYY-MM-DD}.log",
+        format=LOG_CONFIG["format"]["file"],
+        level="ERROR",
+        rotation="10 MB",
+        retention="90 days",
+        compression="zip",
+        backtrace=True,
+        diagnose=True,
+        enqueue=False,
+        catch=True,
+    )
+
+    logger.add(
+        logs_dir / "structured-{time:YYYY-MM-DD}.json",
+        format=LOG_CONFIG["format"]["json"],
+        level="INFO",
+        rotation="50 MB",
+        retention="60 days",
+        compression="zip",
+        serialize=True,
+        backtrace=False,
+        diagnose=False,
+        enqueue=False,
+        catch=True,
+    )
+
+    logger.add(
+        logs_dir / "critical-{time:YYYY-MM-DD}.log",
+        format=LOG_CONFIG["format"]["file"],
+        level="CRITICAL",
+        rotation="1 MB",
+        retention="1 year",
+        compression="zip",
+        backtrace=True,
+        diagnose=True,
+        enqueue=False,
+        catch=True,
+    )
+
+    logger.add(
+        logs_dir / "performance-{time:YYYY-MM-DD}.log",
+        format=LOG_CONFIG["format"]["file"],
+        level="TRACE",
+        rotation="20 MB",
+        retention="7 days",
+        compression="zip",
+        filter=lambda record: "performance" in record["extra"],
+        backtrace=False,
+        diagnose=False,
+        enqueue=False,
+        catch=True,
+    )
+
+
+def get_contextual_logger(name: str, **context: object):
     """
     Create a contextual logger with automatic context injection.
 
@@ -149,11 +267,12 @@ def get_contextual_logger(name: str, **context):
     return logger.bind(**context)
 
 
-# Initialize Loguru configuration on import
+# Initialize console logging on import
 configure_loguru()
 
 __all__ = [
     "logger",
     "configure_loguru",
+    "configure_file_logging",
     "get_contextual_logger",
 ]

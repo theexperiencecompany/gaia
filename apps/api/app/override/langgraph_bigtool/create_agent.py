@@ -31,7 +31,7 @@ from typing import Any, Awaitable, Callable
 
 from langchain.agents.middleware import AgentMiddleware
 from langchain_core.language_models import LanguageModelLike
-from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage, ToolCall, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool, StructuredTool
 from langgraph.graph import END, StateGraph
@@ -350,16 +350,63 @@ def create_agent(
     ) -> State:
         return await execute_hooks(end_graph_hooks, state, config, store)
 
+    def _get_bound_tool_names(state: State) -> set[str]:
+        """Return the set of tool names currently bound to the model."""
+        bound: set[str] = set()
+        # retrieve_tools itself is always bound when enabled
+        if retrieve_tools is not None:
+            bound.add(retrieve_tools.name)
+        # Tools selected via retrieve_tools
+        for tool_id in state.get("selected_tool_ids", []):
+            if tool_id in tool_registry:
+                bound.add(tool_registry[tool_id].name)
+        # Always-bound initial tools
+        for tool_id in initial_tool_ids or []:
+            if tool_id in tool_registry:
+                bound.add(tool_registry[tool_id].name)
+        # Middleware tools (e.g. spawn_subagent, plan_tasks)
+        for tool in middleware_tools:
+            if hasattr(tool, "name"):
+                bound.add(tool.name)
+        return bound
+
+    def reject_unbound_tools(tool_calls: list[dict], *, store: BaseStore) -> State:
+        """Return error ToolMessages for tool calls that were not bound."""
+        messages = [
+            ToolMessage(
+                content=(
+                    f"Tool '{call['name']}' is not bound. "
+                    "You must call retrieve_tools(exact_tool_names=['{name}']) "
+                    "to bind it before calling it.".format(name=call["name"])
+                ),
+                tool_call_id=call["id"],
+                name=call["name"],
+            )
+            for call in tool_calls
+        ]
+        return {"messages": messages}  # type: ignore[return-value]
+
+    async def areject_unbound_tools(
+        tool_calls: list[dict], *, store: BaseStore
+    ) -> State:
+        return reject_unbound_tools(tool_calls, store=store)
+
     def should_continue(state: State, *, store: BaseStore):
         messages = state["messages"]
         last_message = messages[-1]
         if not isinstance(last_message, AIMessage) or not last_message.tool_calls:
             return "end_graph_hooks" if end_graph_hooks else END
         else:
+            bound_names = _get_bound_tool_names(state)
             destinations = []
+            unbound_calls: list[ToolCall] = []
+
             for call in last_message.tool_calls:
                 if retrieve_tools is not None and call["name"] == retrieve_tools.name:
                     destinations.append(Send("select_tools", [call]))
+                elif call["name"] not in bound_names:
+                    # Tool was not bound — collect for rejection
+                    unbound_calls.append(call)
                 else:
                     # Wrap each tool call with ToolCallWithContext so that
                     # ToolNode receives the full state dict (including
@@ -374,6 +421,9 @@ def create_agent(
                             ),
                         )
                     )
+
+            if unbound_calls:
+                destinations.append(Send("reject_unbound_tools", unbound_calls))
 
             return destinations
 
@@ -403,8 +453,12 @@ def create_agent(
     if not disable_retrieve_tools:
         builder.add_node("select_tools", select_tools_node)  # type: ignore[possibly-undefined]
     builder.add_node("tools", tool_node)
+    builder.add_node(
+        "reject_unbound_tools",
+        RunnableCallable(reject_unbound_tools, areject_unbound_tools),
+    )
 
-    path_map = ["tools", END]
+    path_map = ["tools", "reject_unbound_tools", END]
     if not disable_retrieve_tools:
         path_map.insert(0, "select_tools")
     if end_graph_hooks:
@@ -424,6 +478,7 @@ def create_agent(
     )
 
     builder.add_edge("tools", "agent")
+    builder.add_edge("reject_unbound_tools", "agent")
     if not disable_retrieve_tools:
         builder.add_edge("select_tools", "agent")
 

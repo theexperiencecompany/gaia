@@ -124,6 +124,8 @@ export interface BaseEvent {
   background_color?: string;
   is_all_day?: boolean;
   recurrence?: RecurrenceData;
+  attendees?: string[];
+  create_meeting_room?: boolean;
 }
 
 export interface TimedEvent extends BaseEvent {
@@ -160,6 +162,8 @@ export interface EventCreatePayload {
   timezone?: string;
   recurrence?: RecurrenceData;
   calendar_id?: string;
+  attendees?: string[];
+  create_meeting_room?: boolean;
 }
 
 // Calendar types for conversation messages
@@ -173,6 +177,8 @@ export type CalendarOptions = {
   background_color?: string;
   is_all_day?: boolean;
   recurrence?: RecurrenceData;
+  attendees?: string[];
+  create_meeting_room?: boolean;
   same_day_events?: SameDayEvent[]; // Context: existing events on the same day
 };
 

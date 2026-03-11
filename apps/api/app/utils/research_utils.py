@@ -53,23 +53,34 @@ async def decompose_research_queries(
         match = re.search(r"\[.*\]", content, re.DOTALL)
         if match:
             queries = json.loads(match.group())
-            valid = [str(q).strip() for q in queries if q and str(q).strip()]
+            if not isinstance(queries, list):
+                raise ValueError(f"Expected JSON array, got {type(queries).__name__}")
+            normalized = [str(q).strip() for q in queries if q and str(q).strip()]
+            valid = list(dict.fromkeys(normalized))[:n_queries]
             if valid:
                 return valid
     except Exception as e:
         logger.warning(f"Query decomposition LLM call failed: {e}")
 
-    # Fallback: heuristic sub-queries
-    base = [query]
+    # Fallback: heuristic sub-queries matching n_queries contract (depth 1→3, 2→6, 3→9)
+    base = [
+        query,
+        f"{query} overview",
+        f"{query} key concepts",
+    ]
     if depth >= 2:
-        base += [f"{query} latest developments", f"{query} technical overview"]
+        base += [
+            f"{query} latest developments",
+            f"{query} technical overview",
+            f"{query} best practices",
+        ]
     if depth >= 3:
         base += [
             f"{query} expert analysis",
             f"{query} case studies",
             f"{query} statistics and data",
         ]
-    return base
+    return base[:n_queries]
 
 
 def rank_and_deduplicate_urls(
@@ -85,10 +96,16 @@ def rank_and_deduplicate_urls(
         if isinstance(result, Exception) or not result:
             continue
         for item in result.get("results", []):
+            if not isinstance(item, dict):
+                continue
             url = item.get("url", "").strip()
             if not url or not url.startswith("http"):
                 continue
-            score = float(item.get("score", 0.5))
+            raw_score = item.get("score", 0.5)
+            try:
+                score = float(raw_score)
+            except (TypeError, ValueError):
+                score = 0.5
             if url in url_map:
                 url_map[url]["score"] += score
                 url_map[url]["appearances"] += 1

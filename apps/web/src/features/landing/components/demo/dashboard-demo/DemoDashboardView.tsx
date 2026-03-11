@@ -10,6 +10,7 @@ import {
   InboxUnreadIcon,
   Mail01Icon,
   MessageMultiple02Icon,
+  StarIcon,
   Target02Icon,
   WorkflowSquare05Icon,
   ZapIcon,
@@ -394,7 +395,11 @@ function DemoConversationsCard() {
                     {conversation.title}
                   </h4>
                   {conversation.starred && (
-                    <span className="flex-shrink-0 text-yellow-500">★</span>
+                    <StarIcon
+                      className="flex-shrink-0 text-yellow-500"
+                      width={14}
+                      height={14}
+                    />
                   )}
                 </div>
                 {conversation.description && (

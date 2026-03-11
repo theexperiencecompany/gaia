@@ -22,6 +22,8 @@ export const buildAddEventPayload = (event: CalendarEvent) => {
     description: event.description,
     is_all_day: true,
     timezone: userTimeZone,
+    attendees: event.attendees,
+    create_meeting_room: event.create_meeting_room,
   };
 };
 

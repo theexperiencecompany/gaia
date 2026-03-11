@@ -37,6 +37,7 @@ from app.core.stream_manager import stream_manager
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import get_cache, set_cache
 from app.models.models_models import ModelConfig
+from app.services.mcp.mcp_resource_fetcher import fetch_mcp_ui_resource
 from app.utils.agent_utils import (
     format_sse_data,
     format_sse_response,
@@ -238,6 +239,7 @@ def build_agent_config(
     selected_tool: Optional[str] = None,
     tool_category: Optional[str] = None,
     subagent_id: Optional[str] = None,
+    vfs_session_id: Optional[str] = None,
 ) -> dict:
     """Build configuration for graph execution with optional authentication tokens.
 
@@ -254,6 +256,10 @@ def build_agent_config(
         selected_tool: Optional tool name selected via slash command
         tool_category: Optional category of the selected tool
         subagent_id: Optional subagent ID for skill learning (e.g., "twitter", "github")
+        vfs_session_id: Shared VFS session ID that stays constant across the executor
+            and all handoff subagents it spawns. All agents in the chain resolve VFS
+            paths relative to the executor workspace using this ID. When provided via
+            base_configurable it is inherited automatically.
 
     Returns:
         Configuration dictionary formatted for LangGraph execution with configurable
@@ -320,6 +326,7 @@ def build_agent_config(
         selected_tool = selected_tool or base_configurable.get("selected_tool")
         tool_category = tool_category or base_configurable.get("tool_category")
         subagent_id = subagent_id or base_configurable.get("subagent_id")
+        vfs_session_id = vfs_session_id or base_configurable.get("vfs_session_id")
 
     configurable = {
         "thread_id": thread_id or conversation_id,
@@ -335,6 +342,7 @@ def build_agent_config(
         "selected_tool": selected_tool,
         "tool_category": tool_category,
         "subagent_id": subagent_id,
+        "vfs_session_id": vfs_session_id,
     }
 
     config = {
@@ -450,7 +458,7 @@ async def execute_graph_silent(
 
                             # TODO(remove): PR492/CodeRabbit - todo tools already stream todo_progress; suppress tool_data noise.
                             # Safe: doesn't affect agent state; only avoids redundant UI events.
-                            if tool_name in {"plan_tasks", "mark_task", "add_task"}:
+                            if tool_name in {"plan_tasks", "update_tasks"}:
                                 continue
 
                             if tool_name == "handoff":
@@ -501,11 +509,10 @@ async def execute_graph_silent(
                 if "tool_data" in new_data:
                     for entry in new_data["tool_data"]:
                         tool_data["tool_data"].append(entry)
-                else:
-                    # For other custom data, merge at top level
-                    for key, value in new_data.items():
-                        if key != "tool_data":
-                            tool_data[key] = value
+                # Always merge non-tool_data keys (follow_up_actions, etc.)
+                for key, value in new_data.items():
+                    if key != "tool_data":
+                        tool_data[key] = value
 
     # Inject accumulated todo_progress as a single tool_data entry
     if todo_progress_accumulated:
@@ -568,6 +575,10 @@ async def execute_graph_streaming(
 
     # Track tool calls to avoid duplicate emissions
     emitted_tool_calls: set[str] = set()
+    # Buffer MCP App UI metadata by tool_call_id for deferred emission
+    # We detect UI metadata in "updates" but emit the mcp_app event in "messages"
+    # when the ToolMessage arrives with the actual result.
+    pending_mcp_apps: dict[str, dict] = {}
 
     async for event in graph.astream(
         initial_state,
@@ -627,6 +638,35 @@ async def execute_graph_streaming(
                             if tool_entry:
                                 yield format_sse_data({"tool_data": tool_entry})
                                 emitted_tool_calls.add(tc_id)
+
+                                # Buffer MCP App UI metadata for deferred emission
+                                # The actual mcp_app event is emitted when the
+                                # ToolMessage arrives with the tool result.
+                                if (
+                                    tool_entry.get("tool_name") == "tool_calls_data"
+                                    and tool_entry.get("mcp_ui")
+                                    and tool_entry["mcp_ui"].get("resource_uri")
+                                ):
+                                    tc_id_for_app = tool_entry["data"].get(
+                                        "tool_call_id", ""
+                                    )
+                                    if tc_id_for_app:
+                                        pending_mcp_apps[tc_id_for_app] = {
+                                            "tool_category": tool_entry.get(
+                                                "tool_category", ""
+                                            ),
+                                            "tool_name": tool_entry["data"].get(
+                                                "tool_name", ""
+                                            ),
+                                            "server_url": tool_entry.get(
+                                                "mcp_server_url", ""
+                                            ),
+                                            "mcp_ui": tool_entry["mcp_ui"],
+                                            "timestamp": tool_entry.get("timestamp"),
+                                            "tool_arguments": tool_entry["data"].get(
+                                                "inputs", {}
+                                            ),
+                                        }
             continue
 
         if stream_mode == "messages":
@@ -647,10 +687,19 @@ async def execute_graph_streaming(
                 # Safe: doesn't affect agent state; only avoids redundant UI events.
                 if getattr(chunk, "name", None) in {
                     "plan_tasks",
-                    "mark_task",
-                    "add_task",
+                    "update_tasks",
                 } or chunk.additional_kwargs.get("todo_tool", False):
                     continue
+                tool_result_payload = chunk.content
+                try:
+                    json.dumps(tool_result_payload)
+                except TypeError:
+                    if hasattr(tool_result_payload, "model_dump"):
+                        tool_result_payload = tool_result_payload.model_dump()
+                    elif hasattr(tool_result_payload, "__dict__"):
+                        tool_result_payload = dict(tool_result_payload.__dict__)
+                    else:
+                        tool_result_payload = str(tool_result_payload)
                 output = (
                     chunk.content[:3000]
                     if isinstance(chunk.content, str)
@@ -664,10 +713,153 @@ async def execute_graph_streaming(
                         }
                     }
                 )
+
+                # Emit deferred mcp_app event now that tool result is available
+                app_meta = pending_mcp_apps.pop(chunk.tool_call_id, None)
+                if app_meta:
+                    try:
+                        ui_resource = await fetch_mcp_ui_resource(
+                            server_url=app_meta["server_url"],
+                            resource_uri=app_meta["mcp_ui"]["resource_uri"],
+                            user_id=user_id or "",
+                        )
+                        html_content = (
+                            ui_resource.get("html")
+                            if isinstance(ui_resource, dict)
+                            else None
+                        )
+                        if html_content:
+                            content_csp = (
+                                ui_resource.get("csp")
+                                if isinstance(ui_resource, dict)
+                                else None
+                            )
+                            content_permissions = (
+                                ui_resource.get("permissions")
+                                if isinstance(ui_resource, dict)
+                                else None
+                            )
+                            yield format_sse_data(
+                                {
+                                    "tool_data": {
+                                        "tool_name": "mcp_app",
+                                        "tool_category": app_meta["tool_category"],
+                                        "data": {
+                                            "tool_call_id": chunk.tool_call_id,
+                                            "tool_name": app_meta["tool_name"],
+                                            "server_url": app_meta["server_url"],
+                                            "resource_uri": app_meta["mcp_ui"][
+                                                "resource_uri"
+                                            ],
+                                            "html_content": html_content,
+                                            "tool_result": tool_result_payload,
+                                            "csp": content_csp
+                                            if content_csp is not None
+                                            else app_meta["mcp_ui"].get("csp"),
+                                            "permissions": content_permissions
+                                            if content_permissions is not None
+                                            else app_meta["mcp_ui"].get(
+                                                "permissions", []
+                                            ),
+                                            "tool_arguments": app_meta.get(
+                                                "tool_arguments", {}
+                                            ),
+                                        },
+                                        "timestamp": app_meta["timestamp"],
+                                    }
+                                }
+                            )
+                    except Exception as _e:
+                        logger.warning("Failed to emit mcp_app event: %s", _e)
             continue
 
         if stream_mode == "custom":
             yield f"data: {json.dumps(payload)}\n\n"
+
+            # Intercept subagent tool_data events for MCP App detection.
+            # Custom MCP tools execute inside subagents and their events
+            # arrive here as "custom" stream events, not "updates"/"messages".
+            if isinstance(payload, dict) and "tool_data" in payload:
+                sub_entry = payload["tool_data"]
+                if (
+                    isinstance(sub_entry, dict)
+                    and sub_entry.get("tool_name") == "tool_calls_data"
+                    and sub_entry.get("mcp_ui")
+                    and sub_entry["mcp_ui"].get("resource_uri")
+                ):
+                    tc_id_for_app = sub_entry.get("data", {}).get("tool_call_id", "")
+                    if tc_id_for_app:
+                        pending_mcp_apps[tc_id_for_app] = {
+                            "tool_category": sub_entry.get("tool_category", ""),
+                            "tool_name": sub_entry.get("data", {}).get("tool_name", ""),
+                            "server_url": sub_entry.get("mcp_server_url", ""),
+                            "mcp_ui": sub_entry["mcp_ui"],
+                            "timestamp": sub_entry.get("timestamp"),
+                            "tool_arguments": sub_entry.get("data", {}).get(
+                                "inputs", {}
+                            ),
+                        }
+
+            # Intercept subagent tool_output events to emit deferred mcp_app
+            if isinstance(payload, dict) and "tool_output" in payload:
+                sub_output = payload["tool_output"]
+                tc_id = sub_output.get("tool_call_id", "")
+                app_meta = pending_mcp_apps.pop(tc_id, None)
+                if app_meta:
+                    try:
+                        ui_resource = await fetch_mcp_ui_resource(
+                            server_url=app_meta["server_url"],
+                            resource_uri=app_meta["mcp_ui"]["resource_uri"],
+                            user_id=user_id or "",
+                        )
+                        html_content = (
+                            ui_resource.get("html")
+                            if isinstance(ui_resource, dict)
+                            else None
+                        )
+                        if html_content:
+                            content_csp = (
+                                ui_resource.get("csp")
+                                if isinstance(ui_resource, dict)
+                                else None
+                            )
+                            content_permissions = (
+                                ui_resource.get("permissions")
+                                if isinstance(ui_resource, dict)
+                                else None
+                            )
+                            yield format_sse_data(
+                                {
+                                    "tool_data": {
+                                        "tool_name": "mcp_app",
+                                        "tool_category": app_meta["tool_category"],
+                                        "data": {
+                                            "tool_call_id": tc_id,
+                                            "tool_name": app_meta["tool_name"],
+                                            "server_url": app_meta["server_url"],
+                                            "resource_uri": app_meta["mcp_ui"][
+                                                "resource_uri"
+                                            ],
+                                            "html_content": html_content,
+                                            "tool_result": sub_output.get("output"),
+                                            "csp": content_csp
+                                            if content_csp is not None
+                                            else app_meta["mcp_ui"].get("csp"),
+                                            "permissions": content_permissions
+                                            if content_permissions is not None
+                                            else app_meta["mcp_ui"].get(
+                                                "permissions", []
+                                            ),
+                                            "tool_arguments": app_meta.get(
+                                                "tool_arguments", {}
+                                            ),
+                                        },
+                                        "timestamp": app_meta["timestamp"],
+                                    }
+                                }
+                            )
+                    except Exception as _e:
+                        logger.warning("Failed to emit mcp_app from subagent: %s", _e)
 
     # Yield complete message for DB storage
     yield f"nostream: {json.dumps({'complete_message': complete_message})}"

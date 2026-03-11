@@ -6,7 +6,7 @@ This service provides methods to store and search GAIA's self-knowledge
 """
 
 from dataclasses import dataclass
-from typing import List, Optional
+from typing import Any, List, Optional
 
 from app.config.loggers import general_logger as logger
 from app.db.chroma.chromadb import ChromaClient
@@ -17,8 +17,8 @@ class KnowledgeItem(BaseModel):
     """Schema for a single knowledge item."""
 
     content: str = Field(..., min_length=1, description="Knowledge content to store")
-    metadata: Optional[dict] = Field(
-        default_factory=dict, description="Optional metadata"
+    metadata: Optional[dict[str, Any]] = Field(
+        default_factory=lambda: {}, description="Optional metadata"
     )
 
     @field_validator("content")
@@ -36,13 +36,13 @@ class KnowledgeResult:
 
     content: str
     relevance_score: float
-    metadata: dict
+    metadata: dict[str, Any]
 
 
 class GaiaKnowledgeService:
     """Service for managing GAIA self-knowledge in ChromaDB"""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.collection_name = "gaia_knowledge"
 
     async def search_knowledge(
@@ -87,7 +87,7 @@ class GaiaKnowledgeService:
             return []
 
     async def add_knowledge(
-        self, content: str, metadata: Optional[dict] = None
+        self, content: str, metadata: Optional[dict[str, Any]] = None
     ) -> bool:
         """
         Add a single knowledge item to the knowledge base.

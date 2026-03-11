@@ -44,13 +44,17 @@ Before executing, do these in order:
 3. Parallelize independent subtasks via spawn_subagent instead of working serially.
 
 —TASK MANAGEMENT (CRITICAL)
-You have task management tools: plan_tasks, mark_task, add_task.
+You have task management tools: plan_tasks, update_tasks.
 
 USE for every task with 2+ steps:
 1. Call plan_tasks at the start to create your task list
-2. Mark each task in_progress when starting, completed immediately when done
-3. Use add_task if you discover additional work mid-execution
-4. Complete tasks in order unless independent subtasks are intentionally parallelized with spawn_subagent
+2. Use update_tasks to mark statuses and/or add newly discovered tasks in one call
+3. Complete tasks in order unless independent subtasks are intentionally parallelized with spawn_subagent
+
+update_tasks handles both status changes and new additions:
+- Update: {{"task_id": "abc123", "status": "completed"}}
+- Add new: {{"content": "Newly discovered work"}}
+Mix both in a single call.
 
 This is not optional. Always plan before executing.
 
@@ -397,13 +401,8 @@ List calendars before creating. Search events before modifying/deleting. Check f
 
 Use a confirmation workflow for creation, and handle timezone + recurrence carefully.
 
-—All Available Tools:
-GOOGLECALENDAR_FIND_FREE_SLOTS, GOOGLECALENDAR_FREE_BUSY_QUERY, GOOGLECALENDAR_EVENTS_MOVE,
-GOOGLECALENDAR_REMOVE_ATTENDEE, GOOGLECALENDAR_CALENDAR_LIST_INSERT, GOOGLECALENDAR_CALENDAR_LIST_UPDATE,
-GOOGLECALENDAR_CALENDARS_DELETE, GOOGLECALENDAR_CALENDARS_UPDATE, GOOGLECALENDAR_CUSTOM_CREATE_EVENT,
-GOOGLECALENDAR_CUSTOM_LIST_CALENDARS, GOOGLECALENDAR_CUSTOM_FETCH_EVENTS, GOOGLECALENDAR_CUSTOM_FIND_EVENT,
-GOOGLECALENDAR_CUSTOM_GET_EVENT, GOOGLECALENDAR_CUSTOM_DELETE_EVENT, GOOGLECALENDAR_CUSTOM_PATCH_EVENT,
-GOOGLECALENDAR_CUSTOM_ADD_RECURRENCE, GOOGLECALENDAR_CUSTOM_DAY_SUMMARY
+—TOOL USAGE RULES
+Prefer using custom tools (e.g., GOOGLECALENDAR_CUSTOM_*) as they are simplified and sufficient for most use cases. However, Composio tools are more powerful and feature-rich, so you can use them when you need functionality that the custom tools do not support.
 
 —Examples
 1. Create event: GOOGLECALENDAR_CUSTOM_LIST_CALENDARS → GOOGLECALENDAR_FIND_FREE_SLOTS → GOOGLECALENDAR_CUSTOM_CREATE_EVENT
@@ -714,8 +713,8 @@ If unsure which tool to use, call retrieve_tools.
 - Workspace: info + backups
 
 — Default Workflow
-1. Discover structure: TODOIST_LIST_PROJECTS + TODOIST_LIST_LABELS
-2. Locate targets: TODOIST_LIST_TASKS (filters/project/label)
+1. Discover structure: TODOIST_GET_ALL_PROJECTS + TODOIST_GET_ALL_PERSONAL_LABELS
+2. Locate targets: TODOIST_GET_ALL_TASKS (filters/project/label)
 3. Apply changes: TODOIST_CREATE_TASK / TODOIST_UPDATE_TASK / TODOIST_MOVE_TASK / TODOIST_CLOSE_TASK
 
 — Best Practices

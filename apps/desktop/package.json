@@ -1,6 +1,6 @@
 {
   "name": "@gaia/desktop",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "GAIA Desktop - Your Personal AI Assistant",
   "main": "./out/main/index.mjs",
   "author": {
@@ -15,10 +15,10 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "pack": "pnpm build && electron-builder --dir",
-    "dist": "pnpm build && electron-builder",
-    "dist:mac": "pnpm build && electron-builder --mac",
-    "dist:win": "pnpm build && electron-builder --win",
-    "dist:linux": "pnpm build && electron-builder --linux",
+    "dist": "pnpm build && electron-builder --publish never",
+    "dist:mac": "pnpm build && electron-builder --mac --publish never",
+    "dist:win": "pnpm build && electron-builder --win --publish never",
+    "dist:linux": "pnpm build && electron-builder --linux --publish never",
     "type-check": "tsc --noEmit",
     "lint": "biome check .",
     "lint:fix": "biome check --write .",
@@ -26,7 +26,6 @@
   },
   "dependencies": {
     "electron-updater": "^6.3.9",
-    "get-port": "^7.1.0",
     "v8-compile-cache": "^2.4.0",
     "wait-on": "^8.0.1"
   },

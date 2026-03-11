@@ -1,25 +1,70 @@
 from typing import Callable, Dict, List
 
-from app.agents.tools.calendar_tool import (
+from app.agents.tools.integrations.calendar_tool import (
     register_calendar_custom_tools,
 )
-from app.agents.tools.google_docs_tool import (
+from app.agents.tools.integrations.google_docs_tool import (
     register_google_docs_custom_tools,
 )
-from app.agents.tools.google_sheets_tool import (
+from app.agents.tools.integrations.google_maps_tool import (
+    register_google_maps_custom_tools,
+)
+from app.agents.tools.integrations.google_meet_tool import (
+    register_google_meet_custom_tools,
+)
+from app.agents.tools.integrations.google_sheets_tool import (
     register_google_sheets_custom_tools,
 )
-from app.agents.tools.linear_tool import (
+from app.agents.tools.integrations.google_tasks_tool import (
+    register_google_tasks_custom_tools,
+)
+from app.agents.tools.integrations.instagram_tool import (
+    register_instagram_custom_tools,
+)
+from app.agents.tools.integrations.linear_tool import (
     register_linear_custom_tools,
 )
-from app.agents.tools.linkedin_tool import (
+from app.agents.tools.integrations.linkedin_tool import (
     register_linkedin_custom_tools,
 )
-from app.agents.tools.notion_tool import (
+from app.agents.tools.integrations.notion_tool import (
     register_notion_custom_tools,
 )
-from app.agents.tools.twitter_tool import (
+from app.agents.tools.integrations.reddit_tool import (
+    register_reddit_custom_tools,
+)
+from app.agents.tools.integrations.twitter_tool import (
     register_twitter_custom_tools,
+)
+from app.agents.tools.integrations.slack_tool import (
+    register_slack_custom_tools,
+)
+from app.agents.tools.integrations.github_tool import (
+    register_github_custom_tools,
+)
+from app.agents.tools.integrations.hubspot_tool import (
+    register_hubspot_custom_tools,
+)
+from app.agents.tools.integrations.airtable_tool import (
+    register_airtable_custom_tools,
+)
+from app.agents.tools.integrations.asana_tool import (
+    register_asana_custom_tools,
+)
+from app.agents.tools.integrations.clickup_tool import (
+    register_clickup_custom_tools,
+)
+from app.agents.tools.integrations.trello_tool import (
+    register_trello_custom_tools,
+)
+from app.agents.tools.integrations.todoist_tool import (
+    register_todoist_custom_tools,
+)
+from app.agents.tools.integrations.microsoft_teams_tool import (
+    register_microsoft_teams_custom_tools,
+)
+from app.agents.tools.integrations.urgency_tool import (
+    register_urgency_custom_tools,
 )
 from app.config.loggers import app_logger as logger
 from app.services.composio.custom_tools.gmail_tools import (
@@ -64,11 +109,26 @@ class CustomToolsRegistry:
         self._register_toolkit("gmail", register_gmail_custom_tools)
         self._register_toolkit("googlecalendar", register_calendar_custom_tools)
         self._register_toolkit("googledocs", register_google_docs_custom_tools)
+        self._register_toolkit("google_maps", register_google_maps_custom_tools)
+        self._register_toolkit("googlemeet", register_google_meet_custom_tools)
         self._register_toolkit("googlesheets", register_google_sheets_custom_tools)
+        self._register_toolkit("googletasks", register_google_tasks_custom_tools)
+        self._register_toolkit("instagram", register_instagram_custom_tools)
         self._register_toolkit("notion", register_notion_custom_tools)
         self._register_toolkit("linkedin", register_linkedin_custom_tools)
         self._register_toolkit("twitter", register_twitter_custom_tools)
         self._register_toolkit("linear", register_linear_custom_tools)
+        self._register_toolkit("reddit", register_reddit_custom_tools)
+        self._register_toolkit("slack", register_slack_custom_tools)
+        self._register_toolkit("github", register_github_custom_tools)
+        self._register_toolkit("hubspot", register_hubspot_custom_tools)
+        self._register_toolkit("airtable", register_airtable_custom_tools)
+        self._register_toolkit("asana", register_asana_custom_tools)
+        self._register_toolkit("clickup", register_clickup_custom_tools)
+        self._register_toolkit("trello", register_trello_custom_tools)
+        self._register_toolkit("todoist", register_todoist_custom_tools)
+        self._register_toolkit("microsoft_teams", register_microsoft_teams_custom_tools)
+        self._register_toolkit("gaia", register_urgency_custom_tools)
 
     def _register_toolkit(
         self,

@@ -11,51 +11,50 @@ User wants inbox zero, wants to clean up, organize, or manage their Gmail inbox.
 
 ## Step 1: Audit Current State
 
-Understand what's in the inbox:
-```
-GMAIL_FETCH_EMAILS(query="is:unread", max_results=50, include_payload=false) → unread count/preview
-GMAIL_FETCH_EMAILS(query="in:inbox", max_results=100, include_payload=false) → total inbox size
-GMAIL_LIST_LABELS() → existing labels/categories
-```
+Use lightweight counting first to avoid large message payloads.
+`GMAIL_LIST_LABELS` and `GMAIL_GET_UNREAD_COUNT` are safe to call directly.
 
-**Assess:**
-- How many unread emails?
-- What categories dominate? (promotions, updates, social, primary)
-- Any emails older than 30 days sitting in inbox?
+```
+GMAIL_LIST_LABELS()
+
+# Per-label unread + total counts
+GMAIL_GET_UNREAD_COUNT(
+  label_ids=["INBOX", "CATEGORY_PROMOTIONS", "CATEGORY_UPDATES", "CATEGORY_SOCIAL"]
+)
+
+# Inbox unread via query estimate
+GMAIL_GET_UNREAD_COUNT(query="is:unread", label_ids=["INBOX"])
+```
 
 ## Step 2: Identify Cleanup Patterns
 
-Search for bulk cleanup opportunities:
-
-**Promotions & newsletters:**
-```
-GMAIL_FETCH_EMAILS(query="category:promotions is:unread", max_results=50)
-```
-
-**Old unread:**
-```
-GMAIL_FETCH_EMAILS(query="is:unread before:2025/01/01", max_results=50)
-```
-
-**Large threads:**
-```
-GMAIL_LIST_THREADS(query="is:unread", max_results=30, verbose=false)
-```
-
-**From common senders:**
-```
-GMAIL_FETCH_EMAILS(query="from:notifications@github.com is:unread", max_results=50)
-```
-
-### Using spawn_subagent for Parallel Search
-
-When searching multiple categories in parallel (Gmail responses can be large):
+Use query-based counting to identify opportunities without fetching full email
+lists:
 
 ```
-spawn_subagent(task="Search unread promotions", context="query: category:promotions is:unread, max_results: 50")
-spawn_subagent(task="Search GitHub notifications", context="query: from:github.com is:unread, max_results: 50")
-spawn_subagent(task="Search old unread emails", context="query: is:unread before:2025/01/01, max_results: 50")
+GMAIL_GET_UNREAD_COUNT(
+  query="category:promotions is:unread",
+  label_ids=["INBOX"]
+)
+
+GMAIL_GET_UNREAD_COUNT(
+  query="from:notifications@github.com is:unread",
+  label_ids=["INBOX"]
+)
+
+GMAIL_GET_UNREAD_COUNT(
+  query="is:unread before:2025/01/01",
+  label_ids=["INBOX"]
+)
+
+GMAIL_GET_UNREAD_COUNT(
+  query="is:unread category:updates",
+  label_ids=["INBOX"]
+)
 ```
+
+If query counting is unavailable in a specific environment, fallback to
+`GMAIL_FETCH_EMAILS(query="...", include_payload=false)` in parent context.
 
 ## Step 3: Present Cleanup Plan
 
@@ -81,6 +80,10 @@ Inbox Audit:
 **Only after user confirms**, batch process:
 
 - **Audit labels first**: Use `GMAIL_LIST_LABELS` to find the correct label IDs (especially for custom labels).
+- **Count first, fetch IDs only for approved actions**: After user confirms,
+  call `GMAIL_FETCH_EMAILS(query="...", include_payload=false)` for each
+  selected cleanup query and paginate with `next_page_token` to collect all
+  `message_id`s.
 - **Prefer batch operations**: Use `GMAIL_BATCH_MODIFY_MESSAGES` whenever you are modifying many emails at once (archive, mark read/unread, apply/remove labels). Chunk large operations (up to 1,000 message IDs per call).
 - **Single-message label changes**: Use `GMAIL_ADD_LABEL_TO_EMAIL` when you only need to adjust one message.
 - **Thread-wide label changes**: Use `GMAIL_MODIFY_THREAD_LABELS` to label/unlabel an entire thread.

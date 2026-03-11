@@ -75,7 +75,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             tool_runtime_config
             if tool_runtime_config
             else ToolRuntimeConfig(
-                initial_tool_names=["vfs_read"],
+                initial_tool_names=["vfs_read", "vfs_cmd"],
                 enable_retrieve_tools=True,
                 include_subagents_in_retrieve=False,
             )
@@ -226,7 +226,8 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
         if self._llm is None:
             raise ValueError("LLM not configured for subagent execution")
 
-        llm: Any = self._llm
+        model_configurations = config.get("configurable", {})
+        llm: Any = self._llm.with_config(configurable=model_configurations)
 
         tools_by_name, dynamic, retrieve_tool = self._build_child_toolset(
             config=config,
@@ -320,16 +321,27 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     )
                 except asyncio.CancelledError:
                     raise
-                except Exception as e:
+                except Exception:
+                    logger.exception(
+                        "Subagent tool invocation failed for tool '{}' (tool_call_id={})",
+                        name,
+                        tc_id,
+                    )
                     return ToolMessage(
-                        content=f"Tool error: {e}",
+                        content="Tool error: internal failure while executing tool.",
                         tool_call_id=tc_id,
                         name=name,
                         status="error",
                     )
 
+            semaphore = asyncio.Semaphore(8)
+
+            async def _invoke_tool_limited(tc: ToolCall) -> ToolMessage:
+                async with semaphore:
+                    return await _invoke_tool(tc)
+
             tool_messages: list[ToolMessage] = await asyncio.gather(
-                *[_invoke_tool(tc) for tc in regular_calls]
+                *[_invoke_tool_limited(tc) for tc in regular_calls]
             )
             messages.extend(tool_messages)
 

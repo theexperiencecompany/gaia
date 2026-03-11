@@ -1,7 +1,7 @@
 {
   "name": "gaia",
   "description": "Frontend Website of GAIA - The personal AI assistant",
-  "version": "0.16.0",
+  "version": "0.17.0",
   "private": true,
   "homepage": "https://github.com/theexperiencecompany/gaia",
   "bugs": {
@@ -62,6 +62,7 @@
     "@internationalized/date": "^3.8.2",
     "@livekit/components-react": "^2.9.14",
     "@lottiefiles/dotlottie-react": "^0.17.1",
+    "@mcp-ui/client": "^6.1.0",
     "@mdx-js/loader": "^3.1.0",
     "@mdx-js/react": "^3.1.0",
     "@microsoft/fetch-event-source": "^2.0.1",

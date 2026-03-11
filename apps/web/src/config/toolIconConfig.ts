@@ -61,6 +61,7 @@ export function normalizeCategoryName(name: string): string {
 /** Alias mapping for backwards compatibility and category-to-integration mapping */
 export const iconAliases: Record<string, string> = {
   calendar: "googlecalendar",
+  planner: "plan_tasks",
 };
 
 /** Tool icon configurations - single source of truth */
@@ -507,6 +508,22 @@ export const toolIconConfigs: Record<string, ToolIconConfig> = {
     iconColor: "text-rose-400",
     bgColorRaw: "rgba(244, 63, 94, 0.2)",
     iconColorRaw: "#fb7185",
+    isImage: false,
+  },
+  context: {
+    icon: "PuzzleIcon",
+    bgColor: "bg-lime-500/20 backdrop-blur",
+    iconColor: "text-lime-400",
+    bgColorRaw: "rgba(132, 204, 22, 0.2)",
+    iconColorRaw: "#a3e635",
+    isImage: false,
+  },
+  plan_tasks: {
+    icon: "TaskDailyIcon",
+    bgColor: "bg-violet-500/20 backdrop-blur",
+    iconColor: "text-violet-400",
+    bgColorRaw: "rgba(139, 92, 246, 0.2)",
+    iconColorRaw: "#a78bfa",
     isImage: false,
   },
   workflows: {

@@ -35,10 +35,10 @@ const IntegrationsBanner: React.FC<IntegrationsBannerProps> = ({
   return (
     // No z-index here — z-auto means DOM order, so indicators rendered after paint on top.
     // pointer-events-none so the pb-10 overlap doesn't block the searchbar below.
-    <div className="absolute -top-9 flex w-full justify-center pointer-events-none">
+    <div className="absolute -top-9 flex w-full justify-center pointer-events-none pb-10">
       <button
         type="button"
-        className="flex w-[90%] items-center justify-between rounded-full bg-zinc-800/40 pr-4 pl-6 py-2 pb-10 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer"
+        className="flex w-[90%] items-center justify-between rounded-full bg-zinc-800/40 pr-4 pl-6 py-2 text-xs text-foreground-300 hover:bg-zinc-800/70 hover:text-zinc-400 transition pointer-events-auto cursor-pointer"
         onClick={onToggleSlashCommand}
       >
         <span className="text-xs">Connect your tools to GAIA</span>

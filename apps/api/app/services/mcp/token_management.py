@@ -85,9 +85,23 @@ async def try_refresh_token(
             )
 
             if response.status_code != 200:
+                error_code = None
+                error_description = None
+                try:
+                    payload = response.json()
+                    if isinstance(payload, dict):
+                        error_code = payload.get("error")
+                        error_description = payload.get("error_description")
+                except ValueError:
+                    pass
+
+                details = (
+                    f" (error={error_code}, description={error_description})"
+                    if error_code or error_description
+                    else ""
+                )
                 logger.warning(
-                    f"Token refresh returned {response.status_code} for "
-                    f"{integration_id}: {response.text[:500]}"
+                    f"Token refresh returned {response.status_code} for {integration_id}{details}"
                 )
                 return False
 

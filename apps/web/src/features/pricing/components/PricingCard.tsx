@@ -10,7 +10,6 @@ import { useUser } from "@/features/auth/hooks/useUser";
 import { ANALYTICS_EVENTS, trackEvent } from "@/lib/analytics";
 import { toast } from "@/lib/toast";
 
-// Removed currency import - using USD only
 import { useDodoPayments } from "../hooks/useDodoPayments";
 
 interface Feature {
@@ -20,16 +19,17 @@ interface Feature {
 
 interface PricingCardProps {
   title: string;
-  price: number; // Price in USD cents (already discounted if applicable)
-  originalPrice?: number; // Original price before discount (for yearly plans)
-  description?: string; // Add description prop for subtitle
+  price: number;
+  originalPrice?: number;
+  description?: string;
   featurestitle?: React.ReactNode;
-  features?: (string | Feature)[]; // Can be array of strings or Feature objects
+  features?: (string | Feature)[];
   durationIsMonth: boolean;
   className?: string;
-  planId?: string; // Add planId prop for backend integration
+  planId?: string;
   isCurrentPlan?: boolean;
   hasActiveSubscription?: boolean;
+  isPro?: boolean;
 }
 
 export function PricingCard({
@@ -44,21 +44,23 @@ export function PricingCard({
   planId,
   isCurrentPlan,
   hasActiveSubscription,
+  isPro = false,
 }: PricingCardProps) {
-  // Always display in USD format - convert from smallest unit (cents)
   const formatUSDPrice = (amountInCents: number) => {
-    if (amountInCents === 0) return { formatted: "$0", currency: "USD" };
-    const dollars = amountInCents / 100;
-    return {
-      formatted: `$${dollars.toFixed(0)}`,
-      currency: "USD",
-    };
+    if (amountInCents === 0) return "$0";
+    return `$${(amountInCents / 100).toFixed(0)}`;
   };
 
-  const finalPriceFormatted = formatUSDPrice(price);
-  const originalPriceFormatted = originalPrice
+  const displayPrice = formatUSDPrice(price);
+  const originalDisplayPrice = originalPrice
     ? formatUSDPrice(originalPrice)
     : null;
+
+  // Yearly Pro: show per-month equivalent, note annual billing
+  const monthlyEquivalent =
+    !durationIsMonth && isPro && price > 0
+      ? formatUSDPrice(Math.round(price / 12))
+      : null;
 
   const {
     createSubscriptionAndRedirect,
@@ -81,7 +83,7 @@ export function PricingCard({
     trackEvent(ANALYTICS_EVENTS.PRICING_PLAN_SELECTED, {
       plan_title: title,
       plan_id: planId,
-      price: price,
+      price,
       is_monthly: durationIsMonth,
       is_current_plan: isCurrentPlan,
       has_active_subscription: hasActiveSubscription,
@@ -89,7 +91,6 @@ export function PricingCard({
     });
 
     if (price === 0) {
-      // Handle free plan - redirect to signup or dashboard
       if (user) router.push("/c");
       else router.push("/signup");
       return;
@@ -118,99 +119,114 @@ export function PricingCard({
       return;
     }
 
-    // Create subscription and redirect to Dodo payment page
     await createSubscriptionAndRedirect(planId);
   };
 
-  // Determine button text based on plan type
   const getButtonText = () => {
     if (isCreatingSubscription) return "Creating subscription...";
     if (isCurrentPlan && hasActiveSubscription) return "Current Plan";
     if (hasActiveSubscription && !isCurrentPlan) return "Switch Plan";
-
-    // New button text format
-    if (price === 0) return "Go Free";
-    return "Go Pro";
+    if (price === 0) return "Start for Free";
+    return "Get GAIA Pro";
   };
+
+  const isFree = price === 0;
 
   return (
     <div
-      className={`relative w-full overflow-hidden rounded-3xl bg-white/10 backdrop-blur-sm ${className}`}
+      className={[
+        "flex h-full w-full flex-col rounded-3xl",
+        "bg-zinc-800/50 backdrop-blur-lg",
+        className,
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
-      {/* Outer Card - Title Section (z-index: 1) */}
-      <div className="relative z-[1] flex flex-col gap-2 border-none! p-6 pb-4">
-        <div className="flex flex-row items-center justify-between">
+      {/* Header: plan name + current plan badge */}
+      <div className="flex flex-col gap-1.5 p-6 pb-4">
+        {/* Reserve the same vertical space on both cards for the label row */}
+        <div className="flex min-h-5 items-center justify-between">
           <div className="flex items-center gap-2">
             <span className="text-2xl font-semibold">{title}</span>
             {isCurrentPlan && hasActiveSubscription && (
-              <Chip
-                className="flex items-center gap-[2px] text-xs"
-                color="success"
-                variant="flat"
-              >
-                <span>Current Plan</span>
+              <Chip className="text-xs" color="success" variant="flat">
+                Current Plan
               </Chip>
             )}
           </div>
+          {isPro && !isCurrentPlan && (
+            <Chip
+              className="text-xs font-medium tracking-wide text-primary"
+              variant="flat"
+              color="primary"
+            >
+              Popular
+            </Chip>
+          )}
         </div>
+
+        {/* Description — always reserve two lines to keep cards aligned */}
+        <p className="line-clamp-2 min-h-10 text-sm font-light leading-relaxed text-zinc-400">
+          {description ?? "\u00A0"}
+        </p>
       </div>
 
-      {/* Inner Nested Card - Price & Button (z-index: -1) */}
-      <div className="relative z-[-1] mx-4 mb-4 flex flex-col gap-4 overflow-hidden rounded-3xl bg-black/70 p-6 shadow-xl backdrop-blur-2xl">
-        {/* Description/Subtitle */}
-        {description && (
-          <p className="font-sm text-sm leading-relaxed text-zinc-200">
-            {description}
+      {/* Price */}
+      <div className="px-6 pb-5">
+        <div className="flex items-baseline gap-2">
+          {originalDisplayPrice && !durationIsMonth && (
+            <span className="text-2xl font-normal text-zinc-500 line-through">
+              {originalDisplayPrice}
+            </span>
+          )}
+          <span className="text-5xl font-semibold tracking-tight">
+            {monthlyEquivalent ?? displayPrice}
+          </span>
+        </div>
+        {/* Always render this line so height stays consistent */}
+        <p className="mt-1 text-sm text-zinc-400 font-normal">
+          {price > 0
+            ? monthlyEquivalent
+              ? `/ mo, billed ${displayPrice} / year`
+              : "/ per month"
+            : "\u00A0"}
+        </p>
+      </div>
+
+      {/* CTA */}
+      <div className="px-6 pb-5">
+        {paymentError && (
+          <div className="mb-3 rounded-xl bg-red-500/10 p-3">
+            <p className="text-sm text-red-400">{paymentError}</p>
+          </div>
+        )}
+        <RaisedButton
+          className={`w-full ${isFree ? "text-zinc-400!" : "text-black!"}`}
+          color={isFree ? "#2a2a2a" : "#00bbff"}
+          onClick={handleGetStarted}
+          disabled={
+            isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
+          }
+        >
+          {getButtonText()}
+        </RaisedButton>
+        <p className="mt-2 text-center text-xs text-zinc-500 font-light">
+          {isFree
+            ? "No credit card required"
+            : "Cancel anytime · Secure payment"}
+        </p>
+      </div>
+
+      {/* Features — flex-1 so both cards fill remaining height equally */}
+      <div className="flex flex-1 flex-col gap-2.5 px-6 py-5">
+        {featurestitle && (
+          <p className="mb-0.5 text-xs uppercase text-zinc-500 font-normal">
+            {featurestitle}
           </p>
         )}
 
-        {/* Price Section */}
-        <div className="relative z-[1] m-0! flex flex-col gap-0 border-none!">
-          <div className="flex items-baseline gap-2 border-none!">
-            {originalPriceFormatted && !durationIsMonth && (
-              <span className="text-3xl font-normal text-red-500 line-through">
-                {originalPriceFormatted.formatted}
-              </span>
-            )}
-            <span className="text-5xl">{finalPriceFormatted.formatted}</span>
-            {finalPriceFormatted.currency && (
-              <span className="text-2xl">{finalPriceFormatted.currency}</span>
-            )}
-          </div>
-
-          <span className="text-opacity-70 min-h-5 text-sm font-normal text-zinc-400">
-            {price > 0 && (durationIsMonth ? "/ per month" : "/ per year")}
-          </span>
-        </div>
-
-        {/* Button Section */}
-        <div className="relative z-[1] space-y-3">
-          {paymentError && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3">
-              <p className="text-sm text-red-600">{paymentError}</p>
-            </div>
-          )}
-
-          <RaisedButton
-            className={`w-full ${price === 0 ? "text-zinc-400!" : "text-black!"} `}
-            color={price === 0 ? "#3b3b3b" : "#00bbff"}
-            onClick={handleGetStarted}
-            disabled={
-              isCreatingSubscription || (isCurrentPlan && hasActiveSubscription)
-            }
-          >
-            {getButtonText()}
-          </RaisedButton>
-        </div>
-      </div>
-
-      {/* Features Section - Back in Outer Card */}
-      <div className="relative z-[1] flex flex-1 flex-col gap-2 px-6 pb-6">
-        {featurestitle}
-
         {!!features &&
           features.map((feature) => {
-            // Handle both string and Feature object formats
             const featureText =
               typeof feature === "string" ? feature : feature.text;
             const FeatureIcon =
@@ -221,14 +237,14 @@ export function PricingCard({
             return (
               <div
                 key={featureText}
-                className="flex items-center gap-3 border-none! text-sm font-light"
+                className="flex items-start gap-3 text-sm font-light"
               >
                 <FeatureIcon
-                  height="16"
-                  width="16"
-                  className="min-h-[20px] min-w-[22px] text-white"
+                  height="15"
+                  width="15"
+                  className={`mt-0.5 shrink-0 ${isPro ? "text-primary" : "text-zinc-500"}`}
                 />
-                {featureText}
+                <span className="text-zinc-300">{featureText}</span>
               </div>
             );
           })}

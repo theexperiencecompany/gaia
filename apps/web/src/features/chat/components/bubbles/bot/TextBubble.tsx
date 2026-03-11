@@ -18,6 +18,7 @@ import React, { useId } from "react";
 // import { PostHogCaptureOnViewed } from "posthog-js/react";
 import {
   GROUPED_TOOLS,
+  type MCPAppData,
   type RateLimitData,
   type ToolCallEntry,
   type ToolDataEntry,
@@ -32,6 +33,7 @@ import IntegrationConnectionPrompt from "@/features/chat/components/bubbles/bot/
 import SearchResultsTabs from "@/features/chat/components/bubbles/bot/SearchResultsTabs";
 import ThinkingBubble from "@/features/chat/components/bubbles/bot/ThinkingBubble";
 import ToolCallsSection from "@/features/chat/components/bubbles/bot/ToolCallsSection";
+import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer";
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
@@ -84,6 +86,7 @@ import type {
 } from "@/types/features/redditTypes";
 import type { SupportTicketData } from "@/types/features/supportTypes";
 import type { TodoProgressData } from "@/types/features/todoProgressTypes";
+import type { ArtifactData } from "@/types/features/toolDataTypes";
 import type {
   TwitterSearchData,
   TwitterUserData,
@@ -97,6 +100,7 @@ import ContactListSection from "./ContactListSection";
 import DocumentSection from "./DocumentSection";
 import EmailComposeSection from "./EmailComposeSection";
 import EmailSentSection from "./EmailSentSection";
+import FileArtifactSection from "./FileArtifactSection";
 import GoogleDocsSection from "./GoogleDocsSection";
 import GoalSection from "./goals/GoalSection";
 import type { GoalAction } from "./goals/types";
@@ -170,26 +174,37 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
       emailThreadData={data as EmailThreadData}
     />
   ),
-  email_fetch_data: (data, index) => (
-    <EmailListCard
-      key={`tool-email-fetch-${index}`}
-      emails={(Array.isArray(data) ? data : [data]) as EmailFetchData[]}
-    />
-  ),
-  email_compose_data: (data, index) => (
-    <EmailComposeSection
-      key={`tool-email-compose-${index}`}
-      email_compose_data={
-        (Array.isArray(data) ? data : [data]) as EmailComposeData[]
-      }
-    />
-  ),
-  email_sent_data: (data, index) => (
-    <EmailSentSection
-      key={`tool-email-sent-${index}`}
-      email_sent_data={(Array.isArray(data) ? data : [data]) as EmailSentData[]}
-    />
-  ),
+  email_fetch_data: (data, index) => {
+    // When grouped, data is EmailFetchData[][] — flatten batches into one list
+    const emails = Array.isArray(data[0])
+      ? (data as unknown as EmailFetchData[][]).flat()
+      : (data as EmailFetchData[]);
+    return <EmailListCard key={`tool-email-fetch-${index}`} emails={emails} />;
+  },
+  email_compose_data: (data, index) => {
+    // When grouped, data is EmailComposeData[][] — flatten batches
+    const items = Array.isArray(data[0])
+      ? (data as unknown as EmailComposeData[][]).flat()
+      : (data as EmailComposeData[]);
+    return (
+      <EmailComposeSection
+        key={`tool-email-compose-${index}`}
+        email_compose_data={items}
+      />
+    );
+  },
+  email_sent_data: (data, index) => {
+    // When grouped, data is EmailSentData[][] — flatten batches
+    const items = Array.isArray(data[0])
+      ? (data as unknown as EmailSentData[][]).flat()
+      : (data as EmailSentData[]);
+    return (
+      <EmailSentSection
+        key={`tool-email-sent-${index}`}
+        email_sent_data={items}
+      />
+    );
+  },
   contacts_data: (data, index) => (
     <ContactListSection
       key={`tool-contacts-${index}`}
@@ -270,6 +285,12 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     <CodeExecutionSection
       key={`tool-code-${index}`}
       code_data={data as CodeData}
+    />
+  ),
+  artifact_data: (data, index) => (
+    <FileArtifactSection
+      key={`tool-artifact-${index}`}
+      artifact_data={data as ArtifactData | ArtifactData[]}
     />
   ),
 
@@ -449,10 +470,10 @@ const TOOL_RENDERERS: Partial<RendererMap> = {
     />
   ),
 
-  todo_progress: (data, index) => (
-    <TodoProgressSection
-      key={`tool-todo-progress-${index}`}
-      todo_progress={data as TodoProgressData}
+  mcp_app: (data, index) => (
+    <MCPAppRenderer
+      key={`tool-mcp-app-${(data as MCPAppData).tool_call_id || index}`}
+      data={data as MCPAppData}
     />
   ),
 
@@ -539,15 +560,41 @@ export default function TextBubble({
 
       {processedTools.map((entry, index) => {
         const toolName = entry.tool_name as ToolName;
+        const keyId = entry.timestamp || index;
+
+        if (toolName === "todo_progress") {
+          const data = getTypedData(entry as ToolDataUnion, "todo_progress");
+          return data ? (
+            <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
+              <TodoProgressSection
+                todo_progress={data as TodoProgressData}
+                isStreaming={loading}
+              />
+            </React.Fragment>
+          ) : null;
+        }
+
         const renderer = TOOL_RENDERERS[toolName];
         if (!renderer) return null;
 
         const typedData = getTypedData(entry as ToolDataUnion, toolName);
         if (!typedData) return null;
 
-        const keyId = entry.timestamp || index;
+        const toolCallId =
+          typeof typedData === "object" &&
+          typedData !== null &&
+          "tool_call_id" in typedData
+            ? String(
+                (typedData as unknown as { tool_call_id?: string })
+                  .tool_call_id ?? "",
+              )
+            : "";
+        const toolKey = toolCallId
+          ? `${baseId}-tool-${toolName}-${toolCallId}`
+          : `${baseId}-tool-${toolName}-${index}`;
+
         return (
-          <React.Fragment key={`${baseId}-tool-${toolName}-${keyId}`}>
+          <React.Fragment key={toolKey}>
             {renderTool(toolName, typedData, index)}
           </React.Fragment>
         );

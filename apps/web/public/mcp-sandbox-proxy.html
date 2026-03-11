@@ -1,0 +1,197 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self' 'wasm-unsafe-eval' 'unsafe-inline' 'unsafe-eval' blob: data: https:; style-src * 'unsafe-inline'; connect-src *; img-src * data: blob:; font-src * data:; media-src * data: blob:; worker-src * blob:; frame-src 'none'; object-src 'none'; base-uri 'self';"
+    />
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 100vw;
+        height: 100vh;
+        background: transparent;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      iframe {
+        width: 100%;
+        height: 100%;
+        background-color: transparent;
+        border: 0;
+        padding: 0;
+        overflow: hidden;
+        flex-grow: 1;
+        color-scheme: inherit;
+      }
+    </style>
+  </head>
+  <body>
+    <script>
+      var RESOURCE_READY_METHOD = "ui/notifications/sandbox-resource-ready";
+      var PROXY_READY_METHOD = "ui/notifications/sandbox-proxy-ready";
+      var SIZE_CHANGED_METHOD = "ui/notifications/size-changed";
+      var JSON_RPC_VERSION = "2.0";
+
+      function normalizeHtmlDocument(html) {
+        if (typeof html !== "string") return "";
+        var trimmed = html.trim();
+        if (!trimmed) return "";
+
+        if (typeof DOMParser !== "function") {
+          return trimmed;
+        }
+
+        try {
+          var parsed = new DOMParser().parseFromString(trimmed, "text/html");
+          if (!parsed || !parsed.documentElement) {
+            return trimmed;
+          }
+          var hasDoctype = /<!doctype/i.test(trimmed);
+          return (
+            (hasDoctype ? "<!doctype html>\n" : "") +
+            parsed.documentElement.outerHTML
+          );
+        } catch (_err) {
+          return trimmed;
+        }
+      }
+
+      var inner = document.createElement("iframe");
+      inner.style.cssText =
+        "width:100%;height:100%;border:0;padding:0;overflow:hidden;background:transparent;";
+      inner.setAttribute(
+        "sandbox",
+        "allow-scripts allow-same-origin allow-forms",
+      );
+      document.body.appendChild(inner);
+
+      var resourceLoaded = false;
+      var expectedParentOrigin = null;
+
+      try {
+        if (document.referrer) {
+          expectedParentOrigin = new URL(document.referrer).origin;
+        } else if (
+          window.location.ancestorOrigins &&
+          window.location.ancestorOrigins.length > 0
+        ) {
+          expectedParentOrigin = window.location.ancestorOrigins[0];
+        }
+      } catch (_err) {}
+
+      function isJsonRpcMessage(message) {
+        return (
+          !!message &&
+          typeof message === "object" &&
+          message.jsonrpc === JSON_RPC_VERSION
+        );
+      }
+
+      function postToParent(message) {
+        window.parent.postMessage(
+          message,
+          expectedParentOrigin || window.location.origin,
+        );
+      }
+
+      function loadInnerHtml(html) {
+        resourceLoaded = true;
+        var normalizedHtml = normalizeHtmlDocument(html);
+        var doc =
+          inner.contentDocument ||
+          (inner.contentWindow && inner.contentWindow.document);
+        if (doc) {
+          doc.open();
+          doc.write(normalizedHtml);
+          doc.close();
+          return;
+        }
+        inner.srcdoc = normalizedHtml;
+      }
+
+      window.addEventListener("message", function (e) {
+        if (
+          expectedParentOrigin &&
+          e.source === window.parent &&
+          e.origin !== expectedParentOrigin
+        ) {
+          return;
+        }
+
+        if (e.source === window.parent) {
+          if (e.data && e.data.method === RESOURCE_READY_METHOD) {
+            var p = e.data.params || {};
+            if (typeof p.sandbox === "string") {
+              inner.setAttribute("sandbox", p.sandbox);
+            }
+            if (typeof p.html === "string") {
+              loadInnerHtml(p.html);
+            }
+            return;
+          }
+
+          // Only protocol messages are forwarded to avoid noise from injected frames.
+          if (isJsonRpcMessage(e.data) && inner.contentWindow) {
+            inner.contentWindow.postMessage(e.data, "*");
+          }
+        } else if (e.source === inner.contentWindow) {
+          // Only protocol messages are forwarded to avoid parser errors upstream.
+          if (!isJsonRpcMessage(e.data)) {
+            return;
+          }
+
+          var outgoing = e.data;
+          if (
+            outgoing &&
+            outgoing.method === SIZE_CHANGED_METHOD &&
+            outgoing.params &&
+            typeof outgoing.params === "object"
+          ) {
+            outgoing = {
+              jsonrpc: outgoing.jsonrpc,
+              method: outgoing.method,
+              params: Object.assign({}, outgoing.params),
+            };
+
+            // Width is host-owned in this app; forward height only.
+            delete outgoing.params.width;
+
+            var height = Number(outgoing.params.height);
+            if (!Number.isFinite(height) || height <= 0) {
+              delete outgoing.params.height;
+            }
+          }
+          postToParent(outgoing);
+        }
+      });
+
+      // notify host proxy is ready; repeat briefly to avoid rare listener races
+      function notifyReady() {
+        postToParent({
+          jsonrpc: JSON_RPC_VERSION,
+          method: PROXY_READY_METHOD,
+          params: {},
+        });
+      }
+
+      notifyReady();
+      var readyRetries = 0;
+      var readyInterval = setInterval(function () {
+        readyRetries += 1;
+        notifyReady();
+        if (readyRetries >= 10 || resourceLoaded) {
+          clearInterval(readyInterval);
+        }
+      }, 250);
+    </script>
+  </body>
+</html>

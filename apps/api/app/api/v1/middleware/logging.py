@@ -13,8 +13,7 @@ from http import HTTPStatus
 from fastapi import Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.config.loggers import request_logger as logger
-from app.config.logging import get_contextual_logger
+from app.config.loggers import get_contextual_logger, request_logger as logger
 
 
 def log_function_call(func):

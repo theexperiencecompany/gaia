@@ -118,3 +118,4 @@ postman/
 /config.json
 
 docs/plans/
+.opencode/plans

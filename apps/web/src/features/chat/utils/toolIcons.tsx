@@ -22,9 +22,11 @@ import {
   InformationCircleIcon,
   NotificationIcon,
   PackageOpenIcon,
+  PuzzleIcon,
   SourceCodeCircleIcon,
   SquareArrowUpRight02Icon,
   Target02Icon,
+  TaskDailyIcon,
   ToolsIcon,
   WorkflowCircle06Icon,
   ZapIcon,
@@ -59,6 +61,7 @@ interface IconConfig {
 const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   CheckListIcon,
   AlarmClockIcon,
+  PuzzleIcon,
   FileEmpty02Icon,
   SourceCodeCircleIcon,
   Brain02Icon,
@@ -74,6 +77,7 @@ const iconComponentMap: Record<string, React.ComponentType<IconProps>> = {
   FolderFileStorageIcon,
   BodyPartMuscleIcon,
   WorkflowCircle06Icon,
+  TaskDailyIcon,
   ZapIcon,
 };
 

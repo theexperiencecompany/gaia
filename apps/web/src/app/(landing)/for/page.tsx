@@ -1,3 +1,4 @@
+import { CircleArrowRight02Icon } from "@icons";
 import type { Metadata } from "next";
 import Link from "next/link";
 
@@ -11,6 +12,15 @@ import {
   generateWebPageSchema,
   siteConfig,
 } from "@/lib/seo";
+
+const FEATURED_SLUGS = new Set([
+  "startup-founders",
+  "software-developers",
+  "sales-professionals",
+  "product-managers",
+  "engineering-managers",
+  "agency-owners",
+]);
 
 export const metadata: Metadata = generatePageMetadata({
   title: "GAIA for Every Role - AI Assistant for Professionals",
@@ -54,6 +64,12 @@ export default function PersonasHubPage() {
     "Article",
   );
 
+  const heroPersona = personas.find((p) => p.slug === "startup-founders");
+  const featuredPersonas = personas.filter(
+    (p) => FEATURED_SLUGS.has(p.slug) && p.slug !== "startup-founders",
+  );
+  const otherPersonas = personas.filter((p) => !FEATURED_SLUGS.has(p.slug));
+
   return (
     <>
       <JsonLd data={[webPageSchema, breadcrumbSchema, itemListSchema]} />
@@ -70,22 +86,84 @@ export default function PersonasHubPage() {
           </p>
         </header>
 
-        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {personas.map((persona) => (
+        {/* Featured Experiences */}
+        <section className="mb-16">
+          <p className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+            Featured Experiences
+          </p>
+
+          {/* Hero card */}
+          {heroPersona && (
             <Link
-              key={persona.slug}
-              href={`/for/${persona.slug}`}
-              className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+              href="/for/startup-founders"
+              className="group mb-4 flex flex-col gap-3 rounded-3xl bg-primary/10 p-6 transition-all hover:bg-primary/15"
             >
-              <h2 className="mb-2 text-xl font-semibold text-white transition-colors group-hover:text-primary">
-                {persona.role}
-              </h2>
-              <p className="text-sm leading-relaxed text-zinc-400">
-                {persona.metaDescription}
+              <div className="flex items-center gap-3">
+                <h2 className="text-2xl font-semibold text-primary">
+                  {heroPersona.role}
+                </h2>
+              </div>
+              <p className="max-w-2xl text-sm leading-relaxed text-zinc-300">
+                {heroPersona.metaDescription}
               </p>
+              <span className="flex items-center gap-1.5 text-sm font-medium text-primary">
+                See the full experience
+                <CircleArrowRight02Icon width={17} height={17} />
+              </span>
             </Link>
-          ))}
-        </div>
+          )}
+
+          {/* Other featured */}
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {featuredPersonas.map((persona) => (
+              <Link
+                key={persona.slug}
+                href={`/for/${persona.slug}`}
+                className="group flex flex-col gap-2 rounded-3xl bg-primary/10 p-5 transition-all hover:bg-primary/15"
+              >
+                <h2 className="text-xl font-semibold text-primary transition-colors">
+                  {persona.role}
+                </h2>
+                <p className="flex-1 text-sm leading-relaxed text-zinc-300">
+                  {persona.metaDescription}
+                </p>
+                <span className="mt-1 flex items-center gap-1.5 text-sm font-medium text-primary">
+                  See the full experience
+                  <CircleArrowRight02Icon width={17} height={17} />
+                </span>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* All other roles */}
+        {otherPersonas.length > 0 && (
+          <section>
+            <p className="mb-4 text-[11px] font-semibold uppercase tracking-widest text-zinc-500">
+              All Roles
+            </p>
+            <div className="grid gap-3 sm:grid-cols-2 md:grid-cols-3">
+              {otherPersonas.map((persona) => (
+                <Link
+                  key={persona.slug}
+                  href={`/for/${persona.slug}`}
+                  className="group flex flex-col gap-2 rounded-3xl bg-zinc-800 p-5 transition-all hover:bg-zinc-700/50"
+                >
+                  <h2 className="text-base font-semibold text-white transition-colors group-hover:text-primary">
+                    {persona.role}
+                  </h2>
+                  <p className="flex-1 text-sm leading-relaxed text-zinc-400">
+                    {persona.metaDescription}
+                  </p>
+                  <span className="mt-1 flex items-center gap-1 text-xs text-zinc-500 transition-colors group-hover:text-zinc-300">
+                    Read more
+                    <CircleArrowRight02Icon width={14} height={14} />
+                  </span>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
       </div>
       <FinalSection />
     </>

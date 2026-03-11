@@ -214,11 +214,25 @@ class VFSCompactionMiddleware(AgentMiddleware):
         config = getattr(runtime, "config", {}) or {}
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id")
-        conversation_id = configurable.get("thread_id")
+        vfs_session_id = configurable.get("vfs_session_id")
+        thread_id = configurable.get("thread_id")
+        conversation_id = vfs_session_id or thread_id
+        subagent_id = configurable.get("subagent_id")
+        metadata_cfg = config.get("metadata", {})
+        agent_name_meta = metadata_cfg.get("agent_name")
 
-        if not user_id or not conversation_id:
-            logger.warning("Skipping VFS compaction due to missing user_id/thread_id")
-            return result
+        if not user_id:
+            raise ValueError("VFS compaction requires 'user_id' in configurable")
+        if not conversation_id:
+            raise ValueError(
+                "VFS compaction requires 'vfs_session_id' or 'thread_id' in configurable"
+            )
+
+        written_by = subagent_id or agent_name_meta
+        if not written_by:
+            raise ValueError(
+                "VFS compaction requires 'subagent_id' in configurable or 'agent_name' in metadata"
+            )
 
         # Generate storage path
         content_hash = hashlib.md5(
@@ -251,7 +265,11 @@ class VFSCompactionMiddleware(AgentMiddleware):
             metadata={
                 "type": "tool_output",
                 "tool_name": tool_name,
+                "agent_name": "executor",
+                "written_by": written_by,
+                "agent_thread_id": thread_id,
                 "conversation_id": conversation_id,
+                "vfs_session_id": vfs_session_id,
                 "compacted": True,
                 "reason": reason,
             },

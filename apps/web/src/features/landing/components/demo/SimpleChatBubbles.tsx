@@ -24,7 +24,7 @@ export function SimpleChatBubbleUser({
   return (
     <div className={`mb-3 flex items-end justify-end gap-3 ${className}`}>
       <div
-        className={`chat_bubble user whitespace-pre-wrap select-none ${className2}`}
+        className={`imessage-bubble imessage-from-me whitespace-pre-wrap select-none ${className2}`}
       >
         {children}
       </div>

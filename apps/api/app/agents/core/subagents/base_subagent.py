@@ -31,7 +31,7 @@ from app.agents.tools.core.tool_runtime_config import (
 )
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
-from app.agents.tools.vfs_tools import vfs_read
+from app.agents.tools.vfs_tools import vfs_cmd, vfs_read
 from app.config.loggers import langchain_logger as logger
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
@@ -97,8 +97,9 @@ class SubAgentFactory:
         # Add search_memory to scoped_tool_dict so subagents can access user memories
         scoped_tool_dict[search_memory.name] = search_memory
 
-        # Add vfs_read so subagents can always read VFS files (e.g. compacted tool outputs)
+        # Add vfs_read and vfs_cmd so subagents can always access the VFS
         scoped_tool_dict[vfs_read.name] = vfs_read
+        scoped_tool_dict[vfs_cmd.name] = vfs_cmd
 
         # Add search tools to scoped_tool_dict so subagents can bind and execute them
         # when retrieved (retrieve_tools may return these from the general namespace).

@@ -98,12 +98,31 @@ Found 5 results for "product roadmap":
 
 ## Using spawn_subagent for Multiple Pages
 
-When you need to read content from multiple Notion pages in parallel:
+When you need to read content from multiple Notion pages, the **parent agent** drives the loop — it spawns one subagent per page (or per batch of pages) to keep the main context clean. Subagents cannot spawn further subagents.
 
 ```
-spawn_subagent(task="Read page Q1 Product Roadmap and extract key points", context="Focus on main goals and timeline")
-spawn_subagent(task="Read page Sprint 23 Notes and extract key points", context="Focus on blockers and decisions")
-spawn_subagent(task="Read page Team Updates and extract key points", context="Focus on recent updates and action items")
+# Parent finds page IDs via search
+results = NOTION_FETCH_DATA(fetch_type="pages", query="product roadmap", page_size=50)
+
+# Parent spawns one subagent per page (in parallel where possible)
+digest_1 = spawn_subagent(
+  task="""
+    Fetch and fully process page <page_id_1>:
+    NOTION_FETCH_PAGE_AS_MARKDOWN(page_id="<page_id_1>")
+    Extract: main goals, timeline, key decisions, action items, open questions.
+    Return a structured digest.
+  """
+)
+digest_2 = spawn_subagent(
+  task="""
+    Fetch and fully process page <page_id_2>:
+    NOTION_FETCH_PAGE_AS_MARKDOWN(page_id="<page_id_2>")
+    Extract: blockers, decisions, recent updates.
+    Return a structured digest.
+  """
+)
+
+# Parent waits for all digests, then synthesizes
 ```
 
-This allows parallel reading of multiple pages and keeps the main context clean.
+This allows parallel reading of multiple pages while keeping the main context clean.
