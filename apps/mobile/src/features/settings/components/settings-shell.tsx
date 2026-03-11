@@ -1,7 +1,17 @@
 import { useRouter } from "expo-router";
+import { useState } from "react";
 import { Pressable, ScrollView, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, ArrowLeft01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { AccountSection } from "@/features/settings/components/sections/account-section";
+import { LinkedAccountsSection } from "@/features/settings/components/sections/linked-accounts-section";
+import { MemorySection } from "@/features/settings/components/sections/memory-section";
+import { NotificationSection } from "@/features/settings/components/sections/notification-section";
+import { PreferencesSection } from "@/features/settings/components/sections/preferences-section";
+import { ProfileSection } from "@/features/settings/components/sections/profile-section";
+import { SubscriptionSection } from "@/features/settings/components/sections/subscription-section";
+import { UsageSection } from "@/features/settings/components/sections/usage-section";
 import { useResponsive } from "@/lib/responsive";
 
 export type SettingsSection =
@@ -25,26 +35,30 @@ const TABS: { key: SettingsSection; label: string }[] = [
   { key: "subscription", label: "Subscription" },
 ];
 
-interface SettingsShellProps {
-  activeSection: SettingsSection;
-  onSectionChange: (section: SettingsSection) => void;
-  children: React.ReactNode;
-}
+const SECTION_COMPONENTS: Record<SettingsSection, React.ComponentType> = {
+  account: AccountSection,
+  profile: ProfileSection,
+  preferences: PreferencesSection,
+  notifications: NotificationSection,
+  "linked-accounts": LinkedAccountsSection,
+  memory: MemorySection,
+  usage: UsageSection,
+  subscription: SubscriptionSection,
+};
 
-export function SettingsShell({
-  activeSection,
-  onSectionChange,
-  children,
-}: SettingsShellProps) {
+export function SettingsShell() {
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { spacing, fontSize } = useResponsive();
+  const [activeSection, setActiveSection] =
+    useState<SettingsSection>("account");
+  const ActiveSectionComponent = SECTION_COMPONENTS[activeSection];
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0b0c0f" }}>
-      {/* Header */}
       <View
         style={{
-          paddingTop: spacing.xl * 2,
+          paddingTop: insets.top + spacing.sm,
           paddingHorizontal: spacing.md,
           paddingBottom: spacing.md,
           borderBottomWidth: 1,
@@ -77,7 +91,6 @@ export function SettingsShell({
           </Text>
         </View>
 
-        {/* Section tabs */}
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -88,7 +101,7 @@ export function SettingsShell({
             return (
               <Pressable
                 key={key}
-                onPress={() => onSectionChange(key)}
+                onPress={() => setActiveSection(key)}
                 style={{
                   borderRadius: 999,
                   paddingHorizontal: spacing.md,
@@ -113,8 +126,9 @@ export function SettingsShell({
         </ScrollView>
       </View>
 
-      {/* Content */}
-      <View style={{ flex: 1 }}>{children}</View>
+      <View style={{ flex: 1 }}>
+        <ActiveSectionComponent />
+      </View>
     </View>
   );
 }

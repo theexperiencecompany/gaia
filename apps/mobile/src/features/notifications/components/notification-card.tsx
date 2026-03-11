@@ -1,13 +1,14 @@
 import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
+import { Button, Card } from "heroui-native";
 import { useCallback, useRef } from "react";
 import { Animated, Pressable, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import {
+  AppIcon,
   Calendar03Icon,
   Cancel01Icon,
   CheckmarkSquare03Icon,
-  AppIcon,
   Mail01Icon,
   Notification01Icon,
   Tick02Icon,
@@ -163,27 +164,35 @@ export function NotificationCard({
             width: 80,
           }}
         >
-          <Pressable
+          <Button
             onPress={handleMarkAsRead}
+            isDisabled={isMarkingAsRead}
+            variant="tertiary"
             style={{
               width: 64,
               height: "100%",
               backgroundColor: "rgba(0,187,255,0.14)",
               borderRadius: moderateScale(16, 0.5),
-              justifyContent: "center",
-              alignItems: "center",
-              gap: 4,
             }}
           >
-            <AppIcon icon={Tick02Icon} size={18} color="#00bbff" />
-            <Text style={{ fontSize: fontSize.xs - 1, color: "#00bbff" }}>
-              Read
-            </Text>
-          </Pressable>
+            <View
+              style={{
+                flex: 1,
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <AppIcon icon={Tick02Icon} size={18} color="#00bbff" />
+              <Text style={{ fontSize: fontSize.xs - 1, color: "#00bbff" }}>
+                Read
+              </Text>
+            </View>
+          </Button>
         </Animated.View>
       );
     },
-    [handleMarkAsRead, moderateScale, fontSize.xs],
+    [handleMarkAsRead, isMarkingAsRead, moderateScale, fontSize.xs],
   );
 
   const renderRightActions = useCallback(
@@ -202,23 +211,30 @@ export function NotificationCard({
             width: 80,
           }}
         >
-          <Pressable
+          <Button
             onPress={handleDismiss}
+            variant="tertiary"
             style={{
               width: 64,
               height: "100%",
               backgroundColor: "rgba(239,68,68,0.12)",
               borderRadius: moderateScale(16, 0.5),
-              justifyContent: "center",
-              alignItems: "center",
-              gap: 4,
             }}
           >
-            <AppIcon icon={Cancel01Icon} size={18} color="#ef4444" />
-            <Text style={{ fontSize: fontSize.xs - 1, color: "#ef4444" }}>
-              Dismiss
-            </Text>
-          </Pressable>
+            <View
+              style={{
+                flex: 1,
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <AppIcon icon={Cancel01Icon} size={18} color="#ef4444" />
+              <Text style={{ fontSize: fontSize.xs - 1, color: "#ef4444" }}>
+                Dismiss
+              </Text>
+            </View>
+          </Button>
         </Animated.View>
       );
     },
@@ -243,173 +259,187 @@ export function NotificationCard({
       }}
     >
       <Pressable onPress={handleTap}>
-        <View
+        <Card
+          variant="secondary"
           style={{
             borderRadius: moderateScale(16, 0.5),
             backgroundColor: isUnread ? "#1c1f26" : "#171920",
-            padding: spacing.md,
-            flexDirection: "row",
-            alignItems: "flex-start",
-            gap: spacing.sm,
+            overflow: "hidden",
           }}
         >
-          {/* Source icon pill */}
-          <View
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 10,
-              backgroundColor: `${accentColor}18`,
-              alignItems: "center",
-              justifyContent: "center",
-              flexShrink: 0,
-              marginTop: 1,
-            }}
-          >
-            <AppIcon icon={iconComponent} size={17} color={accentColor} />
-          </View>
-
-          {/* Main content */}
-          <View style={{ flex: 1, minWidth: 0 }}>
-            {/* Title row */}
+          <Card.Body className="p-0">
             <View
               style={{
+                padding: spacing.md,
                 flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
+                alignItems: "flex-start",
                 gap: spacing.sm,
               }}
             >
+              {/* Source icon pill */}
               <View
                 style={{
-                  flexDirection: "row",
+                  width: 36,
+                  height: 36,
+                  borderRadius: 10,
+                  backgroundColor: `${accentColor}18`,
                   alignItems: "center",
-                  gap: 6,
-                  flex: 1,
-                  minWidth: 0,
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  marginTop: 1,
                 }}
               >
-                <Text
+                <AppIcon icon={iconComponent} size={17} color={accentColor} />
+              </View>
+
+              {/* Main content */}
+              <View style={{ flex: 1, minWidth: 0 }}>
+                {/* Title row */}
+                <View
                   style={{
-                    fontSize: fontSize.sm,
-                    fontWeight: "600",
-                    color: isUnread ? "#e8ebef" : "#8e8e93",
-                    flexShrink: 1,
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: spacing.sm,
                   }}
-                  numberOfLines={2}
                 >
-                  {notification.content.title}
-                </Text>
-                {isUnread && (
                   <View
                     style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: 3.5,
-                      backgroundColor: "#00bbff",
-                      flexShrink: 0,
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 6,
+                      flex: 1,
+                      minWidth: 0,
                     }}
-                  />
-                )}
-              </View>
-
-              {/* Mark as read */}
-              {isUnread && (
-                <Pressable
-                  disabled={isMarkingAsRead}
-                  onPress={handleMarkAsRead}
-                  hitSlop={10}
-                  style={{ opacity: isMarkingAsRead ? 0.4 : 0.6 }}
-                >
-                  <AppIcon icon={Tick02Icon} size={15} color="#8e8e93" />
-                </Pressable>
-              )}
-            </View>
-
-            {/* Body */}
-            {!!notification.content.body && (
-              <Text
-                style={{
-                  fontSize: fontSize.xs + 1,
-                  color: isUnread ? "#c5cad2" : "#636366",
-                  lineHeight: (fontSize.xs + 1) * 1.45,
-                  marginTop: 3,
-                }}
-              >
-                {notification.content.body}
-              </Text>
-            )}
-
-            {/* Actions + timestamp */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "flex-end",
-                justifyContent: "space-between",
-                marginTop: spacing.sm,
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  flexWrap: "wrap",
-                  gap: spacing.xs,
-                  flex: 1,
-                  opacity: isUnread ? 1 : 0.55,
-                }}
-              >
-                {notification.content.actions?.map((action) => {
-                  const actionLoading = isActionLoading?.(action.id) ?? false;
-                  const isExecuted = action.executed ?? false;
-                  const aStyle = getActionStyle(action.style);
-
-                  return (
-                    <Pressable
-                      key={action.id}
-                      disabled={actionLoading || action.disabled || isExecuted}
-                      onPress={() => onActionPress(notification, action)}
+                  >
+                    <Text
                       style={{
-                        borderRadius: 8,
-                        paddingHorizontal: spacing.sm + 4,
-                        paddingVertical: 5,
-                        backgroundColor: aStyle.bg,
-                        opacity:
-                          actionLoading || action.disabled || isExecuted
-                            ? 0.5
-                            : 1,
+                        fontSize: fontSize.sm,
+                        fontWeight: "600",
+                        color: isUnread ? "#e8ebef" : "#8e8e93",
+                        flexShrink: 1,
                       }}
+                      numberOfLines={2}
                     >
-                      <Text
+                      {notification.content.title}
+                    </Text>
+                    {isUnread && (
+                      <View
                         style={{
-                          fontSize: fontSize.xs,
-                          color: aStyle.text,
-                          fontWeight: "500",
+                          width: 7,
+                          height: 7,
+                          borderRadius: 3.5,
+                          backgroundColor: "#00bbff",
+                          flexShrink: 0,
                         }}
-                      >
-                        {actionLoading
-                          ? "Working..."
-                          : isExecuted
-                            ? `${action.label} ✓`
-                            : action.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
-              </View>
+                      />
+                    )}
+                  </View>
 
-              <Text
-                style={{
-                  fontSize: fontSize.xs - 1,
-                  color: "#48484a",
-                  flexShrink: 0,
-                  marginLeft: spacing.sm,
-                }}
-              >
-                {formatDate(notification.created_at)}
-              </Text>
+                  {isUnread && (
+                    <Button
+                      isIconOnly
+                      size="sm"
+                      variant="ghost"
+                      isDisabled={isMarkingAsRead}
+                      onPress={handleMarkAsRead}
+                      className="rounded-full bg-transparent"
+                    >
+                      <AppIcon icon={Tick02Icon} size={15} color="#8e8e93" />
+                    </Button>
+                  )}
+                </View>
+
+                {/* Body */}
+                {!!notification.content.body && (
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs + 1,
+                      color: isUnread ? "#c5cad2" : "#636366",
+                      lineHeight: (fontSize.xs + 1) * 1.45,
+                      marginTop: 3,
+                    }}
+                  >
+                    {notification.content.body}
+                  </Text>
+                )}
+
+                {/* Actions + timestamp */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "flex-end",
+                    justifyContent: "space-between",
+                    marginTop: spacing.sm,
+                  }}
+                >
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      flexWrap: "wrap",
+                      gap: spacing.xs,
+                      flex: 1,
+                      opacity: isUnread ? 1 : 0.55,
+                    }}
+                  >
+                    {notification.content.actions?.map((action) => {
+                      const actionLoading =
+                        isActionLoading?.(action.id) ?? false;
+                      const isExecuted = action.executed ?? false;
+                      const aStyle = getActionStyle(action.style);
+
+                      return (
+                        <Button
+                          key={action.id}
+                          size="sm"
+                          variant="tertiary"
+                          isDisabled={
+                            actionLoading || action.disabled || isExecuted
+                          }
+                          onPress={() => onActionPress(notification, action)}
+                          style={{
+                            borderRadius: 8,
+                            backgroundColor: aStyle.bg,
+                            opacity:
+                              actionLoading || action.disabled || isExecuted
+                                ? 0.5
+                                : 1,
+                          }}
+                          className="px-3"
+                        >
+                          <Button.Label
+                            style={{
+                              fontSize: fontSize.xs,
+                              color: aStyle.text,
+                              fontWeight: "500",
+                            }}
+                          >
+                            {actionLoading
+                              ? "Working..."
+                              : isExecuted
+                                ? `${action.label} ✓`
+                                : action.label}
+                          </Button.Label>
+                        </Button>
+                      );
+                    })}
+                  </View>
+
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs - 1,
+                      color: "#48484a",
+                      flexShrink: 0,
+                      marginLeft: spacing.sm,
+                    }}
+                  >
+                    {formatDate(notification.created_at)}
+                  </Text>
+                </View>
+              </View>
             </View>
-          </View>
-        </View>
+          </Card.Body>
+        </Card>
       </Pressable>
     </Swipeable>
   );

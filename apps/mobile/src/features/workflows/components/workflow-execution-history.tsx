@@ -2,10 +2,10 @@ import { useRouter } from "expo-router";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import {
   AlertCircleIcon,
+  AppIcon,
   ArrowRight01Icon,
   CheckmarkCircle02Icon,
   Clock04Icon,
-  AppIcon,
   Loading03Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -35,9 +35,7 @@ function statusBgColor(status: WorkflowExecution["status"]): string {
 
 function StatusIcon({ status }: { status: WorkflowExecution["status"] }) {
   if (status === "success") {
-    return (
-      <AppIcon icon={CheckmarkCircle02Icon} size={12} color="#22c55e" />
-    );
+    return <AppIcon icon={CheckmarkCircle02Icon} size={12} color="#22c55e" />;
   }
   if (status === "running") {
     return <AppIcon icon={Loading03Icon} size={12} color="#f59e0b" />;

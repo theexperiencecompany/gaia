@@ -3,11 +3,11 @@ import { useCallback, useState } from "react";
 import { Alert, Modal, Pressable, TextInput, View } from "react-native";
 import {
   AiChipIcon,
+  AppIcon,
   ArrowDownIcon,
   BubbleChatAddIcon,
   Delete02Icon,
   FavouriteIcon,
-  AppIcon,
   Menu01Icon,
   PencilEdit02Icon,
 } from "@/components/icons";
@@ -109,11 +109,7 @@ export function ChatHeader({
         {/* Left: hamburger menu */}
         <PressableFeedback onPress={onMenuPress}>
           <View style={iconButtonStyle}>
-            <AppIcon
-              icon={Menu01Icon}
-              size={iconSize.md}
-              color="#ffffff"
-            />
+            <AppIcon icon={Menu01Icon} size={iconSize.md} color="#ffffff" />
           </View>
         </PressableFeedback>
 
@@ -487,11 +483,7 @@ export function ChatHeader({
                 paddingVertical: spacing.sm,
               }}
             >
-              <AppIcon
-                icon={Delete02Icon}
-                size={iconSize.md}
-                color="#ff453a"
-              />
+              <AppIcon icon={Delete02Icon} size={iconSize.md} color="#ff453a" />
               <Text style={{ fontSize: fontSize.sm, color: "#ff453a" }}>
                 Delete
               </Text>

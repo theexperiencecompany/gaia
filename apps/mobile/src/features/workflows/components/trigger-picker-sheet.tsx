@@ -1,12 +1,13 @@
-import BottomSheet, {
+import {
   BottomSheetFlatList,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
-import { forwardRef, useImperativeHandle, useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useState } from "react";
 import { Image, Pressable, View } from "react-native";
 import { AppIcon, Clock01Icon, PlayIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 export interface TriggerOption {
   id: string;
@@ -122,16 +123,16 @@ export const TriggerPickerSheet = forwardRef<
   TriggerPickerSheetRef,
   TriggerPickerSheetProps
 >(({ onSelect }, ref) => {
-  const bottomSheetRef = useRef<BottomSheet>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const { spacing, fontSize } = useResponsive();
 
   useImperativeHandle(ref, () => ({
     open: () => {
       setSearch("");
-      bottomSheetRef.current?.expand();
+      setIsOpen(true);
     },
-    close: () => bottomSheetRef.current?.close(),
+    close: () => setIsOpen(false),
   }));
 
   const filtered = TRIGGER_OPTIONS.filter(
@@ -144,7 +145,7 @@ export const TriggerPickerSheet = forwardRef<
     <Pressable
       onPress={() => {
         onSelect(item);
-        bottomSheetRef.current?.close();
+        setIsOpen(false);
       }}
       style={({ pressed }) => ({
         flexDirection: "row",
@@ -208,42 +209,45 @@ export const TriggerPickerSheet = forwardRef<
   );
 
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={["60%", "90%"]}
-      enablePanDownToClose
-      backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-      handleIndicatorStyle={{ backgroundColor: "#3f3f46" }}
-      keyboardBehavior="interactive"
-    >
-      <View
-        style={{
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.sm,
-        }}
-      >
-        <BottomSheetTextInput
-          value={search}
-          onChangeText={setSearch}
-          placeholder="Search triggers..."
-          placeholderTextColor="#52525b"
-          style={{
-            backgroundColor: "#2c2c2e",
-            borderRadius: 10,
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.sm,
-            color: "#fff",
-            fontSize: fontSize.sm,
-          }}
-        />
-      </View>
-      <BottomSheetFlatList
-        data={filtered}
-        keyExtractor={(i: TriggerOption) => i.id}
-        renderItem={renderItem}
-        contentContainerStyle={{ paddingBottom: spacing.xl }}
-      />
+    <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={["60%", "90%"]}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+          handleIndicatorStyle={{ backgroundColor: "#3f3f46" }}
+          keyboardBehavior="interactive"
+        >
+          <View
+            style={{
+              paddingHorizontal: spacing.md,
+              paddingBottom: spacing.sm,
+            }}
+          >
+            <BottomSheetTextInput
+              value={search}
+              onChangeText={setSearch}
+              placeholder="Search triggers..."
+              placeholderTextColor="#52525b"
+              style={{
+                backgroundColor: "#2c2c2e",
+                borderRadius: 10,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.sm,
+                color: "#fff",
+                fontSize: fontSize.sm,
+              }}
+            />
+          </View>
+          <BottomSheetFlatList
+            data={filtered}
+            keyExtractor={(i: TriggerOption) => i.id}
+            renderItem={renderItem}
+            contentContainerStyle={{ paddingBottom: spacing.xl }}
+          />
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
     </BottomSheet>
   );
 });

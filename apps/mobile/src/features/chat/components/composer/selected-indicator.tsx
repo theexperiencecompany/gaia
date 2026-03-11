@@ -5,9 +5,9 @@ import Animated, {
   LinearTransition,
 } from "react-native-reanimated";
 import {
+  AppIcon,
   Calendar03Icon,
   Cancel01Icon,
-  AppIcon,
   WorkflowSquare10Icon,
   Wrench01Icon,
 } from "@/components/icons";
@@ -85,11 +85,7 @@ export function SelectedIndicator({
           justifyContent: "center",
         }}
       >
-        <AppIcon
-          icon={Cancel01Icon}
-          size={iconSize.sm - 2}
-          color="#a1a1aa"
-        />
+        <AppIcon icon={Cancel01Icon} size={iconSize.sm - 2} color="#a1a1aa" />
       </Pressable>
     </Animated.View>
   );

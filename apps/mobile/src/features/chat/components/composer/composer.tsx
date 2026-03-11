@@ -10,9 +10,9 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import {
+  AppIcon,
   ArrowUp02Icon,
   Cancel01Icon,
-  AppIcon,
   LinkBackwardIcon,
   PlusSignIcon,
 } from "@/components/icons";
@@ -24,15 +24,15 @@ import { cn } from "@/lib/utils";
 import type { AttachmentFile } from "./attachment-preview";
 import { AttachmentPreview } from "./attachment-preview";
 import { AttachmentSheet, type AttachmentSheetRef } from "./attachment-sheet";
+import {
+  ModelPickerSheet,
+  type ModelPickerSheetRef,
+} from "./model-picker-sheet";
 import { SelectedIndicator } from "./selected-indicator";
 import {
   SlashCommandSheet,
   type SlashCommandSheetRef,
 } from "./slash-command-sheet";
-import {
-  ModelPickerSheet,
-  type ModelPickerSheetRef,
-} from "./model-picker-sheet";
 import {
   WorkflowPickerSheet,
   type WorkflowPickerSheetRef,

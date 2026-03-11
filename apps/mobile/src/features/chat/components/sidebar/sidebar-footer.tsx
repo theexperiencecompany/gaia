@@ -111,11 +111,7 @@ export function SidebarFooter() {
               opacity: pressed ? 0.6 : 1,
             })}
           >
-            <AppIcon
-              icon={item.icon}
-              size={iconSize.sm - 2}
-              color="#52525b"
-            />
+            <AppIcon icon={item.icon} size={iconSize.sm - 2} color="#52525b" />
             <Text
               style={{
                 fontSize: fontSize.xs - 1,
@@ -173,11 +169,7 @@ export function SidebarFooter() {
           })}
           hitSlop={8}
         >
-          <AppIcon
-            icon={Logout01Icon}
-            size={iconSize.sm}
-            color="#ef4444"
-          />
+          <AppIcon icon={Logout01Icon} size={iconSize.sm} color="#ef4444" />
         </Pressable>
       </Pressable>
     </View>

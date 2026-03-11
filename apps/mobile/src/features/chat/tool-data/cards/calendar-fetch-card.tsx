@@ -1,7 +1,7 @@
+import { groupEventsByDate } from "@gaia/shared/tool-utils";
 import { Card } from "heroui-native";
 import { View } from "react-native";
 import { Text } from "@/components/ui/text";
-import { groupEventsByDate } from "@gaia/shared/tool-utils";
 
 export interface CalendarFetchItem {
   summary: string;

@@ -55,7 +55,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
     closeSidebar();
     clearActiveMessages();
     setActiveChatId(null);
-    router.replace("/(app)/(tabs)/");
+    router.replace("/");
   }, [closeSidebar, clearActiveMessages, router, setActiveChatId]);
 
   const handleRename = useCallback(
@@ -73,7 +73,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
     void chatApi.deleteConversation(activeChatId);
     clearActiveMessages();
     setActiveChatId(null);
-    router.replace("/(app)/(tabs)/");
+    router.replace("/");
   }, [
     activeChatId,
     removeConversation,

@@ -1,10 +1,11 @@
 import { useRouter } from "expo-router";
+import { Card, Chip } from "heroui-native";
 import { Pressable, View } from "react-native";
 import {
+  AppIcon,
   Cancel01Icon,
   CheckmarkCircle02Icon,
   Clock04Icon,
-  AppIcon,
   PlayIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -38,114 +39,126 @@ export function WorkflowCard({ workflow, onPress }: WorkflowCardProps) {
   return (
     <Pressable
       onPress={handlePress}
-      style={({ pressed }) => ({
-        borderRadius: moderateScale(24, 0.5),
-        backgroundColor: pressed ? "rgba(63,63,70,0.5)" : "rgba(39,39,42,1)",
-        padding: spacing.md,
-        gap: spacing.sm,
-      })}
+      style={{ borderRadius: moderateScale(24, 0.5) }}
     >
-      {/* Top row: step category icons placeholder + activation status */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        {/* Step category icons */}
-        <WorkflowStepIcons steps={workflow.steps} />
-
-        {/* Activation status chip */}
-        <ActivationChip activated={workflow.activated} />
-      </View>
-
-      {/* Title */}
-      <View>
-        <Text
+      {({ pressed }) => (
+        <Card
+          variant="secondary"
           style={{
-            fontSize: fontSize.base,
-            fontWeight: "500",
-            color: "#fff",
+            borderRadius: moderateScale(24, 0.5),
+            backgroundColor: pressed
+              ? "rgba(63,63,70,0.5)"
+              : "rgba(39,39,42,1)",
+            overflow: "hidden",
           }}
-          numberOfLines={2}
         >
-          {workflow.title}
-        </Text>
-        {workflow.description ? (
-          <Text
+          <Card.Body
             style={{
-              fontSize: fontSize.xs,
-              color: "#71717a",
-              marginTop: 4,
-              lineHeight: 16,
+              padding: spacing.md,
+              gap: spacing.sm,
             }}
-            numberOfLines={2}
           >
-            {workflow.description}
-          </Text>
-        ) : null}
-      </View>
-
-      {/* Bottom row: trigger + run count */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginTop: 2,
-        }}
-      >
-        <View style={{ gap: 4 }}>
-          {/* Trigger display */}
-          {triggerLabel !== "Manual" && (
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 4,
+                justifyContent: "space-between",
               }}
             >
-              <AppIcon icon={Clock04Icon} size={14} color="#71717a" />
-              <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-                {triggerLabel}
-              </Text>
+              <WorkflowStepIcons steps={workflow.steps} />
+              <ActivationChip activated={workflow.activated} />
             </View>
-          )}
 
-          {/* Run count */}
-          {runCountText !== "Never run" && (
+            <View>
+              <Card.Title
+                style={{
+                  fontSize: fontSize.base,
+                  fontWeight: "500",
+                  color: "#fff",
+                }}
+                numberOfLines={2}
+              >
+                {workflow.title}
+              </Card.Title>
+              {workflow.description ? (
+                <Card.Description
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: "#71717a",
+                    marginTop: 4,
+                    lineHeight: 16,
+                  }}
+                  numberOfLines={2}
+                >
+                  {workflow.description}
+                </Card.Description>
+              ) : null}
+            </View>
+
             <View
               style={{
                 flexDirection: "row",
                 alignItems: "center",
-                gap: 4,
+                justifyContent: "space-between",
+                marginTop: 2,
               }}
             >
-              <AppIcon icon={PlayIcon} size={14} color="#71717a" />
-              <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-                {runCountText}
-              </Text>
-            </View>
-          )}
-        </View>
+              <View style={{ gap: 4 }}>
+                {triggerLabel !== "Manual" && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <AppIcon icon={Clock04Icon} size={14} color="#71717a" />
+                    <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+                      {triggerLabel}
+                    </Text>
+                  </View>
+                )}
 
-        {/* System workflow badge */}
-        {workflow.is_system_workflow && (
-          <View
-            style={{
-              borderRadius: 6,
-              paddingHorizontal: 8,
-              paddingVertical: 2,
-              backgroundColor: "rgba(0,187,255,0.12)",
-            }}
-          >
-            <Text style={{ fontSize: fontSize.xs - 1, color: "#00bbff" }}>
-              System
-            </Text>
-          </View>
-        )}
-      </View>
+                {runCountText !== "Never run" && (
+                  <View
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <AppIcon icon={PlayIcon} size={14} color="#71717a" />
+                    <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+                      {runCountText}
+                    </Text>
+                  </View>
+                )}
+              </View>
+
+              {workflow.is_system_workflow && (
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  color="accent"
+                  style={{
+                    minHeight: 24,
+                    paddingHorizontal: 8,
+                  }}
+                >
+                  <Chip.Label
+                    style={{
+                      fontSize: fontSize.xs - 1,
+                      color: "#00bbff",
+                    }}
+                  >
+                    System
+                  </Chip.Label>
+                </Chip>
+              )}
+            </View>
+          </Card.Body>
+        </Card>
+      )}
     </Pressable>
   );
 }
@@ -154,33 +167,31 @@ function ActivationChip({ activated }: { activated: boolean }) {
   const { fontSize } = useResponsive();
 
   return (
-    <View
+    <Chip
+      size="sm"
+      variant="soft"
+      color={activated ? "success" : "danger"}
       style={{
-        borderRadius: 6,
+        minHeight: 28,
         paddingHorizontal: 8,
-        paddingVertical: 3,
-        backgroundColor: activated
-          ? "rgba(34,197,94,0.12)"
-          : "rgba(239,68,68,0.12)",
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 4,
       }}
     >
-      <AppIcon
-        icon={activated ? CheckmarkCircle02Icon : Cancel01Icon}
-        size={12}
-        color={activated ? "#22c55e" : "#ef4444"}
-      />
-      <Text
-        style={{
-          fontSize: fontSize.xs - 1,
-          color: activated ? "#22c55e" : "#ef4444",
-        }}
-      >
-        {activated ? "Activated" : "Deactivated"}
-      </Text>
-    </View>
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 4 }}>
+        <AppIcon
+          icon={activated ? CheckmarkCircle02Icon : Cancel01Icon}
+          size={12}
+          color={activated ? "#22c55e" : "#ef4444"}
+        />
+        <Chip.Label
+          style={{
+            fontSize: fontSize.xs - 1,
+            color: activated ? "#22c55e" : "#ef4444",
+          }}
+        >
+          {activated ? "Activated" : "Deactivated"}
+        </Chip.Label>
+      </View>
+    </Chip>
   );
 }
 

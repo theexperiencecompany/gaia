@@ -1,11 +1,7 @@
 import { useFocusEffect, useRouter } from "expo-router";
+import { Button, Card } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
-import {
-  FlatList,
-  Pressable,
-  RefreshControl,
-  View,
-} from "react-native";
+import { FlatList, RefreshControl, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Add01Icon,
@@ -66,56 +62,160 @@ export function WorkflowListScreen() {
   };
 
   const renderCommunityBanner = () => (
-    <View
+    <Card
+      variant="secondary"
       style={{
         borderRadius: moderateScale(20, 0.5),
         backgroundColor: "rgba(0,187,255,0.06)",
         borderWidth: 1,
         borderColor: "rgba(0,187,255,0.15)",
-        padding: spacing.lg,
-        gap: spacing.md,
       }}
     >
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-        <AppIcon icon={UserGroupIcon} size={22} color="#00bbff" />
+      <Card.Body
+        style={{
+          padding: spacing.lg,
+          gap: spacing.md,
+        }}
+      >
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+          <AppIcon icon={UserGroupIcon} size={22} color="#00bbff" />
+          <Text
+            style={{
+              fontSize: fontSize.base,
+              fontWeight: "600",
+              color: "#fff",
+            }}
+          >
+            Explore the Community
+          </Text>
+        </View>
         <Text
+          style={{ fontSize: fontSize.xs, color: "#8e8e93", lineHeight: 18 }}
+        >
+          Discover community workflows or publish your own for others to use.
+        </Text>
+        <Button
+          size="sm"
+          onPress={() => setShowCreate(true)}
           style={{
-            fontSize: fontSize.base,
-            fontWeight: "600",
-            color: "#fff",
+            alignSelf: "flex-start",
+            backgroundColor: "#00bbff",
+            borderRadius: moderateScale(12, 0.5),
           }}
         >
-          Explore the Community
-        </Text>
-      </View>
-      <Text style={{ fontSize: fontSize.xs, color: "#8e8e93", lineHeight: 18 }}>
-        Discover community workflows or publish your own for others to use.
-      </Text>
-      <Pressable
-        onPress={() => setShowCreate(true)}
-        style={({ pressed }) => ({
-          borderRadius: moderateScale(12, 0.5),
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+            <AppIcon icon={ZapIcon} size={14} color="#000" />
+            <Button.Label
+              style={{
+                fontSize: fontSize.sm,
+                fontWeight: "600",
+                color: "#000",
+              }}
+            >
+              Create New Workflow
+            </Button.Label>
+          </View>
+        </Button>
+      </Card.Body>
+    </Card>
+  );
+
+  const renderErrorState = () => (
+    <Card
+      variant="secondary"
+      style={{
+        borderRadius: moderateScale(24, 0.5),
+        backgroundColor: "rgba(39,39,42,0.7)",
+      }}
+    >
+      <Card.Body
+        style={{
+          paddingVertical: spacing.xl,
           paddingHorizontal: spacing.lg,
-          paddingVertical: spacing.sm + 2,
-          backgroundColor: pressed ? "#009ed9" : "#00bbff",
-          alignSelf: "flex-start",
-          flexDirection: "row",
           alignItems: "center",
-          gap: 6,
-        })}
+          gap: spacing.md,
+        }}
       >
-        <AppIcon icon={ZapIcon} size={14} color="#000" />
         <Text
           style={{
             fontSize: fontSize.sm,
-            fontWeight: "600",
-            color: "#000",
+            color: "#ef4444",
+            textAlign: "center",
           }}
         >
-          Create New Workflow
+          {error}
         </Text>
-      </Pressable>
-    </View>
+        <Button size="sm" variant="secondary" onPress={() => void refetch()}>
+          <Button.Label style={{ fontSize: fontSize.sm, color: "#00bbff" }}>
+            Try again
+          </Button.Label>
+        </Button>
+      </Card.Body>
+    </Card>
+  );
+
+  const renderEmptyState = () => (
+    <Card
+      variant="secondary"
+      style={{
+        borderRadius: moderateScale(24, 0.5),
+        borderWidth: 2,
+        borderStyle: "dashed",
+        borderColor: "rgba(39,39,42,1)",
+        backgroundColor: "rgba(39,39,42,0.3)",
+      }}
+    >
+      <Card.Body
+        style={{
+          paddingVertical: spacing.xl * 2,
+          paddingHorizontal: spacing.lg,
+          alignItems: "center",
+          gap: spacing.md,
+        }}
+      >
+        <AppIcon icon={FlowCircleIcon} size={48} color="#333" />
+        <View style={{ alignItems: "center", gap: 4 }}>
+          <Text
+            style={{
+              fontSize: fontSize.base,
+              fontWeight: "500",
+              color: "#d4d4d8",
+              textAlign: "center",
+            }}
+          >
+            No workflows yet
+          </Text>
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              color: "#71717a",
+              textAlign: "center",
+              maxWidth: 260,
+            }}
+          >
+            Create your first workflow to get started
+          </Text>
+        </View>
+        <Button
+          onPress={() => setShowCreate(true)}
+          style={{
+            marginTop: spacing.sm,
+            backgroundColor: "#00bbff",
+            borderRadius: moderateScale(12, 0.5),
+          }}
+        >
+          <Button.Label
+            style={{
+              fontSize: fontSize.sm,
+              fontWeight: "600",
+              color: "#000",
+            }}
+          >
+            Create your first workflow
+          </Button.Label>
+        </Button>
+      </Card.Body>
+    </Card>
   );
 
   const renderMyWorkflows = () => {
@@ -125,91 +225,11 @@ export function WorkflowListScreen() {
       }
 
       if (error) {
-        return (
-          <View
-            style={{
-              paddingVertical: spacing.xl,
-              alignItems: "center",
-              gap: spacing.md,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                color: "#ef4444",
-                textAlign: "center",
-              }}
-            >
-              {error}
-            </Text>
-            <Pressable onPress={() => void refetch()}>
-              <Text style={{ fontSize: fontSize.sm, color: "#00bbff" }}>
-                Try again
-              </Text>
-            </Pressable>
-          </View>
-        );
+        return renderErrorState();
       }
 
       if (workflows.length === 0) {
-        return (
-          <View
-            style={{
-              paddingVertical: spacing.xl * 2,
-              alignItems: "center",
-              gap: spacing.md,
-              borderRadius: moderateScale(24, 0.5),
-              borderWidth: 2,
-              borderStyle: "dashed",
-              borderColor: "rgba(39,39,42,1)",
-              backgroundColor: "rgba(39,39,42,0.3)",
-            }}
-          >
-            <AppIcon icon={FlowCircleIcon} size={48} color="#333" />
-            <View style={{ alignItems: "center", gap: 4 }}>
-              <Text
-                style={{
-                  fontSize: fontSize.base,
-                  fontWeight: "500",
-                  color: "#d4d4d8",
-                  textAlign: "center",
-                }}
-              >
-                No workflows yet
-              </Text>
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  color: "#71717a",
-                  textAlign: "center",
-                  maxWidth: 260,
-                }}
-              >
-                Create your first workflow to get started
-              </Text>
-            </View>
-            <Pressable
-              onPress={() => setShowCreate(true)}
-              style={({ pressed }) => ({
-                borderRadius: moderateScale(12, 0.5),
-                paddingHorizontal: spacing.lg,
-                paddingVertical: spacing.md,
-                backgroundColor: pressed ? "#009ed9" : "#00bbff",
-                marginTop: spacing.sm,
-              })}
-            >
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  fontWeight: "600",
-                  color: "#000",
-                }}
-              >
-                Create your first workflow
-              </Text>
-            </Pressable>
-          </View>
-        );
+        return renderEmptyState();
       }
 
       return (
@@ -285,7 +305,6 @@ export function WorkflowListScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: "#131416" }}>
-      {/* Header bar */}
       <View
         style={{
           paddingTop: insets.top + spacing.sm,
@@ -308,21 +327,20 @@ export function WorkflowListScreen() {
           Workflows
         </Text>
 
-        <Pressable
+        <Button
+          variant="secondary"
+          size="sm"
+          isIconOnly
           onPress={() => setShowCreate(true)}
-          style={({ pressed }) => ({
+          style={{
             width: 36,
             height: 36,
             borderRadius: 999,
-            alignItems: "center",
-            justifyContent: "center",
-            backgroundColor: pressed
-              ? "rgba(0,187,255,0.25)"
-              : "rgba(0,187,255,0.15)",
-          })}
+            backgroundColor: "rgba(0,187,255,0.15)",
+          }}
         >
           <AppIcon icon={Add01Icon} size={18} color="#00bbff" />
-        </Pressable>
+        </Button>
       </View>
 
       <FlatList

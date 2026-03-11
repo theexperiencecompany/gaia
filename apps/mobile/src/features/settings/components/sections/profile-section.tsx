@@ -1,14 +1,7 @@
 import * as ImagePicker from "expo-image-picker";
+import { Avatar, Button, Card, Spinner, TextField } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  Pressable,
-  ScrollView,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type { UserProfile } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
@@ -155,13 +148,10 @@ export function ProfileSection() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={C.primary} />
+        <Spinner />
       </View>
     );
   }
-
-  const avatarUri = profile?.picture;
-  const initials = getInitials(profile?.name);
 
   return (
     <ScrollView
@@ -173,172 +163,75 @@ export function ProfileSection() {
         paddingBottom: 40,
       }}
     >
-      {/* Avatar */}
-      <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
-        <Pressable
-          onPress={() => {
-            void handlePickAvatar();
-          }}
-          style={{ position: "relative" }}
-        >
-          <View
-            style={{
-              width: 80,
-              height: 80,
-              borderRadius: 40,
-              backgroundColor: C.primaryBg,
-              alignItems: "center",
-              justifyContent: "center",
-              overflow: "hidden",
-            }}
-          >
-            {avatarUri ? (
-              <Image
-                source={{ uri: avatarUri }}
-                style={{ width: 80, height: 80, borderRadius: 40 }}
-                resizeMode="cover"
-              />
+      <Card variant="secondary" className="rounded-3xl bg-surface">
+        <Card.Body className="items-center gap-4 px-5 py-6">
+          <Avatar alt={profile?.name ?? "User"} size="lg" color="accent">
+            {profile?.picture ? (
+              <Avatar.Image source={{ uri: profile.picture }} />
             ) : (
-              <Text
-                style={{
-                  fontSize: 28,
-                  fontWeight: "700",
-                  color: C.primary,
-                }}
-              >
-                {initials}
-              </Text>
+              <Avatar.Fallback>{getInitials(profile?.name)}</Avatar.Fallback>
             )}
-          </View>
-
-          {/* Camera badge */}
-          <View
-            style={{
-              position: "absolute",
-              bottom: 0,
-              right: 0,
-              width: 24,
-              height: 24,
-              borderRadius: 12,
-              backgroundColor: C.primary,
-              alignItems: "center",
-              justifyContent: "center",
-              borderWidth: 2,
-              borderColor: "#0b0c0f",
+          </Avatar>
+          <Button
+            variant="tertiary"
+            onPress={() => {
+              void handlePickAvatar();
             }}
+            isDisabled={isSaving}
+            className="bg-primary/10"
           >
-            <Text style={{ fontSize: 11, color: "#000" }}>+</Text>
-          </View>
-        </Pressable>
+            <Button.Label className="text-primary">
+              {isSaving ? "Updating…" : "Change Photo"}
+            </Button.Label>
+          </Button>
+          <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+            Tap to change photo
+          </Text>
+        </Card.Body>
+      </Card>
 
-        <Text
-          style={{
-            marginTop: spacing.sm,
-            fontSize: fontSize.xs,
-            color: C.textMuted,
-          }}
-        >
-          Tap to change photo
-        </Text>
-      </View>
+      <Card variant="secondary" className="rounded-3xl bg-surface">
+        <Card.Body className="gap-4 px-5 py-5">
+          <TextField>
+            <TextField.Label>Display Name</TextField.Label>
+            <TextField.Input
+              value={displayName}
+              onChangeText={setDisplayName}
+              onBlur={() => {
+                void handleSaveDisplayName();
+              }}
+              placeholder="Your name"
+              autoCapitalize="words"
+              returnKeyType="done"
+            />
+          </TextField>
 
-      {/* Display name */}
-      <View style={{ gap: spacing.xs }}>
-        <Text
-          style={{
-            fontSize: fontSize.xs,
-            color: C.textMuted,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-          }}
-        >
-          Display Name
-        </Text>
-        <TextInput
-          value={displayName}
-          onChangeText={setDisplayName}
-          onBlur={() => {
-            void handleSaveDisplayName();
-          }}
-          style={{
-            backgroundColor: C.bg,
-            borderRadius: 12,
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.md,
-            fontSize: fontSize.base,
-            color: C.text,
-          }}
-          placeholderTextColor={C.textSubtle}
-          placeholder="Your name"
-          autoCapitalize="words"
-          returnKeyType="done"
-        />
-      </View>
+          <TextField>
+            <TextField.Label>Bio</TextField.Label>
+            <TextField.Input
+              value={bio}
+              onChangeText={setBio}
+              onBlur={() => {
+                void handleSaveBio();
+              }}
+              multiline
+              numberOfLines={4}
+              placeholder="Tell GAIA about yourself…"
+              style={{ minHeight: 100 }}
+            />
+          </TextField>
+        </Card.Body>
+      </Card>
 
-      {/* Bio */}
-      <View style={{ gap: spacing.xs }}>
-        <Text
-          style={{
-            fontSize: fontSize.xs,
-            color: C.textMuted,
-            textTransform: "uppercase",
-            letterSpacing: 1,
-          }}
-        >
-          Bio
-        </Text>
-        <TextInput
-          value={bio}
-          onChangeText={setBio}
-          onBlur={() => {
-            void handleSaveBio();
-          }}
-          multiline
-          numberOfLines={4}
-          style={{
-            backgroundColor: C.bg,
-            borderRadius: 12,
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.md,
-            fontSize: fontSize.sm,
-            color: C.text,
-            minHeight: 100,
-            textAlignVertical: "top",
-          }}
-          placeholderTextColor={C.textSubtle}
-          placeholder="Tell GAIA about yourself…"
-        />
-      </View>
-
-      {/* Save button */}
-      <Pressable
+      <Button
         onPress={() => {
           void handleSaveAll();
         }}
-        disabled={isSaving}
-        style={{
-          backgroundColor: C.primary,
-          borderRadius: 12,
-          paddingVertical: spacing.md,
-          alignItems: "center",
-          opacity: isSaving ? 0.6 : 1,
-          marginTop: spacing.sm,
-        }}
+        isDisabled={isSaving}
+        className="bg-primary"
       >
-        {isSaving ? (
-          <ActivityIndicator color="#000" />
-        ) : (
-          <Text
-            style={{
-              color: "#000",
-              fontWeight: "600",
-              fontSize: fontSize.base,
-            }}
-          >
-            Save Profile
-          </Text>
-        )}
-      </Pressable>
+        {isSaving ? <Spinner /> : <Button.Label>Save Profile</Button.Label>}
+      </Button>
     </ScrollView>
   );
 }

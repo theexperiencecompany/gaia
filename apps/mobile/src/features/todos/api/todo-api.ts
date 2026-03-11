@@ -1,5 +1,5 @@
-import { apiService } from "@/lib/api";
 import { buildQueryString, normalizeListResponse } from "@gaia/shared/api";
+import { apiService } from "@/lib/api";
 import type {
   Project,
   Todo,

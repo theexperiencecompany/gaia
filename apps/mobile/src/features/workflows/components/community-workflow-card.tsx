@@ -1,3 +1,4 @@
+import { Card } from "heroui-native";
 import { Pressable, View } from "react-native";
 import { AppIcon, PlayIcon, UserCircle02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -21,78 +22,90 @@ export function CommunityWorkflowCard({
   return (
     <Pressable
       onPress={() => onPress?.(workflow)}
-      style={({ pressed }) => ({
-        borderRadius: moderateScale(24, 0.5),
-        backgroundColor: pressed ? "rgba(63,63,70,0.5)" : "rgba(39,39,42,1)",
-        padding: spacing.md,
-        gap: spacing.sm,
-      })}
+      style={{ borderRadius: moderateScale(24, 0.5) }}
     >
-      {/* Step category icons */}
-      <CommunityStepIcons steps={workflow.steps} />
-
-      {/* Title + description */}
-      <View>
-        <Text
+      {({ pressed }) => (
+        <Card
+          variant="secondary"
           style={{
-            fontSize: fontSize.base,
-            fontWeight: "500",
-            color: "#fff",
+            borderRadius: moderateScale(24, 0.5),
+            backgroundColor: pressed
+              ? "rgba(63,63,70,0.5)"
+              : "rgba(39,39,42,1)",
+            overflow: "hidden",
           }}
-          numberOfLines={2}
         >
-          {workflow.title}
-        </Text>
-        {workflow.description ? (
-          <Text
+          <Card.Body
             style={{
-              fontSize: fontSize.xs,
-              color: "#71717a",
-              marginTop: 4,
-              lineHeight: 16,
-            }}
-            numberOfLines={2}
-          >
-            {workflow.description}
-          </Text>
-        ) : null}
-      </View>
-
-      {/* Bottom row: run count + creator */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          marginTop: 2,
-        }}
-      >
-        {/* Run count */}
-        {runCountText !== "Never run" && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
+              padding: spacing.md,
+              gap: spacing.sm,
             }}
           >
-            <AppIcon icon={PlayIcon} size={14} color="#71717a" />
-            <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-              {runCountText}
-            </Text>
-          </View>
-        )}
+            <CommunityStepIcons steps={workflow.steps} />
 
-        {/* Creator avatar */}
-        {workflow.creator && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <AppIcon icon={UserCircle02Icon} size={20} color="#71717a" />
-            <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
-              {workflow.creator.name}
-            </Text>
-          </View>
-        )}
-      </View>
+            <View>
+              <Card.Title
+                style={{
+                  fontSize: fontSize.base,
+                  fontWeight: "500",
+                  color: "#fff",
+                }}
+                numberOfLines={2}
+              >
+                {workflow.title}
+              </Card.Title>
+              {workflow.description ? (
+                <Card.Description
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: "#71717a",
+                    marginTop: 4,
+                    lineHeight: 16,
+                  }}
+                  numberOfLines={2}
+                >
+                  {workflow.description}
+                </Card.Description>
+              ) : null}
+            </View>
+
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginTop: 2,
+              }}
+            >
+              {runCountText !== "Never run" && (
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <AppIcon icon={PlayIcon} size={14} color="#71717a" />
+                  <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+                    {runCountText}
+                  </Text>
+                </View>
+              )}
+
+              {workflow.creator && (
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                >
+                  <AppIcon icon={UserCircle02Icon} size={20} color="#71717a" />
+                  <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
+                    {workflow.creator.name}
+                  </Text>
+                </View>
+              )}
+            </View>
+          </Card.Body>
+        </Card>
+      )}
     </Pressable>
   );
 }

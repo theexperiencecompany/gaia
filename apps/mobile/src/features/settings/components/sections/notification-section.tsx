@@ -1,5 +1,6 @@
+import { Card, Spinner, Switch } from "heroui-native";
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Switch, View } from "react-native";
+import { Alert, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type { ChannelPreferences } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
@@ -20,35 +21,27 @@ function ChannelRow({
   onToggle,
   disabled = false,
 }: ChannelRowProps) {
-  const { spacing, fontSize } = useResponsive();
+  const { fontSize } = useResponsive();
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#1c1c1e",
-        borderRadius: 12,
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.md,
-        gap: spacing.md,
-      }}
-    >
-      <View style={{ flex: 1 }}>
-        <Text style={{ fontSize: fontSize.base, fontWeight: "500" }}>
-          {label}
-        </Text>
-        <Text style={{ fontSize: fontSize.xs, color: "#8e8e93", marginTop: 2 }}>
-          {description}
-        </Text>
-      </View>
-      <Switch
-        value={value}
-        onValueChange={onToggle}
-        disabled={disabled}
-        trackColor={{ false: "#3a3a3c", true: "rgba(22,193,255,0.6)" }}
-        thumbColor={value ? "#16c1ff" : "#8e8e93"}
-      />
-    </View>
+    <Card variant="secondary" className="rounded-3xl bg-surface">
+      <Card.Body className="flex-row items-center gap-4 px-4 py-4">
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: fontSize.base, fontWeight: "500" }}>
+            {label}
+          </Text>
+          <Text
+            style={{ fontSize: fontSize.xs, color: "#8e8e93", marginTop: 2 }}
+          >
+            {description}
+          </Text>
+        </View>
+        <Switch
+          isSelected={value}
+          onSelectedChange={onToggle}
+          isDisabled={disabled}
+        />
+      </Card.Body>
+    </Card>
   );
 }
 
@@ -103,7 +96,7 @@ export function NotificationSection() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color="#16c1ff" />
+        <Spinner />
       </View>
     );
   }

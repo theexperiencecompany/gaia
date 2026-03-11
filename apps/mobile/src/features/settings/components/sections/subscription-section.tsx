@@ -1,12 +1,6 @@
+import { Button, Card, Spinner } from "heroui-native";
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Linking,
-  Pressable,
-  ScrollView,
-  View,
-} from "react-native";
+import { Alert, Linking, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type { UsageSummary } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
@@ -95,7 +89,7 @@ export function SubscriptionSection() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color={C.primary} />
+        <Spinner />
       </View>
     );
   }
@@ -148,105 +142,88 @@ export function SubscriptionSection() {
       }}
     >
       {/* Plan card */}
-      <View
-        style={{
-          backgroundColor: C.bg,
-          borderRadius: 14,
-          padding: 20,
-          gap: spacing.sm,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
-        >
-          <Text
-            style={{ fontSize: fontSize.lg, fontWeight: "700", color: C.text }}
-          >
-            {planLabel} Plan
-          </Text>
+      <Card variant="secondary" className="rounded-3xl bg-surface">
+        <Card.Body className="gap-3 px-5 py-5">
           <View
             style={{
-              borderRadius: 999,
-              paddingHorizontal: 10,
-              paddingVertical: 4,
-              backgroundColor: isPro
-                ? "rgba(0,187,255,0.2)"
-                : "rgba(255,255,255,0.08)",
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
             }}
           >
             <Text
               style={{
-                fontSize: fontSize.xs,
+                fontSize: fontSize.lg,
                 fontWeight: "700",
-                color: isPro ? C.primary : C.textMuted,
+                color: C.text,
               }}
             >
-              {isPro ? "ACTIVE" : "FREE TIER"}
+              {planLabel} Plan
             </Text>
+            <View
+              style={{
+                borderRadius: 999,
+                paddingHorizontal: 10,
+                paddingVertical: 4,
+                backgroundColor: isPro
+                  ? "rgba(0,187,255,0.2)"
+                  : "rgba(255,255,255,0.08)",
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: fontSize.xs,
+                  fontWeight: "700",
+                  color: isPro ? C.primary : C.textMuted,
+                }}
+              >
+                {isPro ? "ACTIVE" : "FREE TIER"}
+              </Text>
+            </View>
           </View>
-        </View>
 
-        <Text style={{ fontSize: fontSize.sm, color: C.textMuted }}>
-          {isPro
-            ? "Full access to all GAIA features"
-            : "Limited usage — upgrade for higher limits"}
-        </Text>
-      </View>
+          <Text style={{ fontSize: fontSize.sm, color: C.textMuted }}>
+            {isPro
+              ? "Full access to all GAIA features"
+              : "Limited usage — upgrade for higher limits"}
+          </Text>
+        </Card.Body>
+      </Card>
 
       {/* Usage meter */}
       {dayPeriod ? (
-        <View
-          style={{
-            backgroundColor: C.bg,
-            borderRadius: 14,
-            padding: 20,
-            gap: spacing.md,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: C.textMuted,
-              textTransform: "uppercase",
-              letterSpacing: 1,
-            }}
-          >
-            Daily Usage
-          </Text>
-          <UsageBar
-            label="Messages used"
-            used={dayPeriod.used}
-            limit={dayPeriod.limit}
-          />
-        </View>
+        <Card variant="secondary" className="rounded-3xl bg-surface">
+          <Card.Body className="gap-4 px-5 py-5">
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: C.textMuted,
+                textTransform: "uppercase",
+                letterSpacing: 1,
+              }}
+            >
+              Daily Usage
+            </Text>
+            <UsageBar
+              label="Messages used"
+              used={dayPeriod.used}
+              limit={dayPeriod.limit}
+            />
+          </Card.Body>
+        </Card>
       ) : null}
 
-      {/* CTA button */}
-      <Pressable
+      <Button
         onPress={() => {
           void handleCta();
         }}
-        style={{
-          borderRadius: 12,
-          paddingVertical: spacing.md,
-          alignItems: "center",
-          backgroundColor: isPro ? C.trackBg : C.primary,
-        }}
+        variant={isPro ? "tertiary" : "primary"}
+        className={isPro ? "bg-white/10" : "bg-primary"}
       >
-        <Text
-          style={{
-            fontWeight: "600",
-            fontSize: fontSize.base,
-            color: isPro ? C.text : "#000",
-          }}
-        >
+        <Button.Label>
           {isPro ? "Manage Subscription" : "Upgrade to Pro"}
-        </Text>
-      </Pressable>
+        </Button.Label>
+      </Button>
     </ScrollView>
   );
 }

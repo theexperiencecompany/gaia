@@ -1,14 +1,15 @@
-import type { Priority, SubTask } from "@gaia/shared/types";
+import type { SubTask } from "@gaia/shared/types";
+import { Priority } from "@gaia/shared/types";
 
+export { Priority };
 export type {
-  Priority,
+  PaginationMeta,
+  Project,
   SubTask,
   Todo,
-  TodoUpdate,
   TodoFilters,
-  Project,
-  PaginationMeta,
   TodoListResponse,
+  TodoUpdate,
 } from "@gaia/shared/types";
 
 export interface Subtask {

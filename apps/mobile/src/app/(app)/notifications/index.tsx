@@ -1,7 +1,8 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
+import { Button, Chip } from "heroui-native";
 import { useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   AppIcon,
@@ -88,35 +89,28 @@ export default function NotificationsScreen() {
           style={{
             flexDirection: "row",
             alignItems: "center",
+            gap: spacing.sm,
           }}
         >
-          <Pressable
+          <Button
+            variant="tertiary"
+            isIconOnly
+            size="sm"
             onPress={() => router.back()}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.05)",
-            }}
+            className="rounded-full bg-white/5"
           >
             <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-          </Pressable>
+          </Button>
 
           <View
             style={{
               flexDirection: "row",
               alignItems: "center",
               gap: 8,
-              marginLeft: spacing.sm + 4,
+              flex: 1,
             }}
           >
-            <AppIcon
-              icon={Notification01Icon}
-              size={18}
-              color="#8e8e93"
-            />
+            <AppIcon icon={Notification01Icon} size={18} color="#8e8e93" />
             <Text
               style={{
                 fontSize: fontSize.base,
@@ -128,37 +122,27 @@ export default function NotificationsScreen() {
             </Text>
           </View>
 
-          <View style={{ flex: 1 }} />
-
           {unreadNotifications.length > 0 && (
-            <Pressable
-              disabled={isMarkingAllAsRead}
+            <Button
+              size="sm"
+              variant="tertiary"
+              isDisabled={isMarkingAllAsRead}
               onPress={() => {
                 void handleMarkAllAsRead();
               }}
-              style={{
-                opacity: isMarkingAllAsRead ? 0.5 : 1,
-                backgroundColor: "rgba(0,187,255,0.1)",
-                borderRadius: 8,
-                paddingHorizontal: spacing.md,
-                paddingVertical: 6,
-              }}
+              className="bg-primary/15 px-4"
             >
-              <Text
-                style={{
-                  color: "#00bbff",
-                  fontSize: fontSize.xs,
-                  fontWeight: "500",
-                }}
-              >
+              <Button.Label className="text-primary text-xs">
                 {isMarkingAllAsRead ? "Marking..." : "Mark all read"}
-              </Text>
-            </Pressable>
+              </Button.Label>
+            </Button>
           )}
         </View>
 
         {/* Tab picker */}
-        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+        <View
+          style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}
+        >
           {TABS.map(({ key, label }) => {
             const isActive = activeTab === key;
             const count =
@@ -167,56 +151,23 @@ export default function NotificationsScreen() {
                 : allNotifications.length;
 
             return (
-              <Pressable
+              <Chip
                 key={key}
+                variant={isActive ? "primary" : "secondary"}
+                color={isActive ? "accent" : "default"}
                 onPress={() => setActiveTab(key)}
-                style={{
-                  borderRadius: 999,
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.xs,
-                  backgroundColor: isActive
-                    ? "rgba(0,187,255,0.18)"
-                    : "rgba(255,255,255,0.06)",
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: 6,
-                }}
+                className={isActive ? "" : "bg-white/10"}
               >
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: isActive ? "#9fe6ff" : "#c5cad2",
-                    fontWeight: isActive ? "600" : "400",
-                  }}
+                <Chip.Label
+                  className={
+                    isActive ? "text-accent text-xs" : "text-[#c5cad2] text-xs"
+                  }
                 >
-                  {label}
-                </Text>
-                {count > 0 && (
-                  <View
-                    style={{
-                      backgroundColor: isActive
-                        ? "rgba(0,187,255,0.28)"
-                        : "rgba(255,255,255,0.09)",
-                      borderRadius: 999,
-                      minWidth: 18,
-                      height: 18,
-                      alignItems: "center",
-                      justifyContent: "center",
-                      paddingHorizontal: 4,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: fontSize.xs - 2,
-                        color: isActive ? "#9fe6ff" : "#8e8e93",
-                        fontWeight: "600",
-                      }}
-                    >
-                      {count > 99 ? "99+" : count}
-                    </Text>
-                  </View>
-                )}
-              </Pressable>
+                  {count > 0
+                    ? `${label} (${count > 99 ? "99+" : count})`
+                    : label}
+                </Chip.Label>
+              </Chip>
             );
           })}
         </View>

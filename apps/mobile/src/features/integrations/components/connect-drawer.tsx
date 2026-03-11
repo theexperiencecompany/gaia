@@ -1,9 +1,4 @@
-import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetFlatList,
-  BottomSheetModal,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
 import { Image } from "expo-image";
 import { Button, Chip } from "heroui-native";
 import {
@@ -23,12 +18,13 @@ import {
   View,
 } from "react-native";
 import {
-  Cancel01Icon,
   AppIcon,
+  Cancel01Icon,
   Search01Icon,
   Wrench01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import {
   connectIntegration,
   disconnectIntegration,
@@ -96,7 +92,7 @@ interface ConnectDrawerProps {
 
 export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
   ({ onOpen }, ref) => {
-    const bottomSheetRef = useRef<BottomSheetModal>(null);
+    const [isOpen, setIsOpen] = useState(false);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedFilter, setSelectedFilter] = useState("all");
     const [integrations, setIntegrations] = useState<Integration[]>([]);
@@ -104,16 +100,14 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
     const [hasLoaded, setHasLoaded] = useState(false);
     const [connectingId, setConnectingId] = useState<string | null>(null);
 
-    const snapPoints = useMemo(() => ["75%"], []);
-
     useImperativeHandle(ref, () => ({
       open: () => {
         onOpen?.();
-        bottomSheetRef.current?.present();
+        setIsOpen(true);
         loadIntegrations();
       },
       close: () => {
-        bottomSheetRef.current?.dismiss();
+        setIsOpen(false);
       },
     }));
 
@@ -193,18 +187,6 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
         setConnectingId(null);
       }
     };
-
-    const renderBackdrop = useCallback(
-      (props: BottomSheetBackdropProps) => (
-        <BottomSheetBackdrop
-          {...props}
-          disappearsOnIndex={-1}
-          appearsOnIndex={0}
-          opacity={0.5}
-        />
-      ),
-      [],
-    );
 
     const renderItem = useCallback(
       ({ item: integration }: { item: Integration }) => {
@@ -319,70 +301,74 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
     );
 
     return (
-      <BottomSheetModal
-        ref={bottomSheetRef}
-        snapPoints={snapPoints}
-        enableDynamicSizing={false}
-        enablePanDownToClose
-        backdropComponent={renderBackdrop}
-        backgroundStyle={{ backgroundColor: "#0b0c0f" }}
-        handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
-      >
-        {/* Header */}
-        <View className="flex-row items-center justify-between px-4 pb-3">
-          <Text className="text-lg font-semibold">Integrations</Text>
-          <Pressable
-            onPress={() => bottomSheetRef.current?.dismiss()}
-            className="w-8 h-8 rounded-full bg-white/5 items-center justify-center active:opacity-60"
+      <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+        <BottomSheet.Portal>
+          <BottomSheet.Overlay />
+          <BottomSheet.Content
+            snapPoints={["75%"]}
+            enablePanDownToClose
+            backgroundStyle={{ backgroundColor: "#0b0c0f" }}
+            handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
           >
-            <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
-          </Pressable>
-        </View>
+            {/* Header */}
+            <View className="flex-row items-center justify-between px-4 pb-3">
+              <Text className="text-lg font-semibold">Integrations</Text>
+              <Pressable
+                onPress={() => setIsOpen(false)}
+                className="w-8 h-8 rounded-full bg-white/5 items-center justify-center active:opacity-60"
+              >
+                <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
+              </Pressable>
+            </View>
 
-        {/* Search */}
-        <View className="px-4 pb-2">
-          <View className="flex-row items-center rounded-xl px-3 py-2.5 bg-white/5">
-            <AppIcon icon={Search01Icon} size={16} color="#6f737c" />
-            <TextInput
-              className="flex-1 ml-2 text-white text-sm"
-              placeholder="Search integrations..."
-              placeholderTextColor="#6f737c"
-              value={searchQuery}
-              onChangeText={setSearchQuery}
-            />
-          </View>
-        </View>
+            {/* Search */}
+            <View className="px-4 pb-2">
+              <View className="flex-row items-center rounded-xl px-3 py-2.5 bg-white/5">
+                <AppIcon icon={Search01Icon} size={16} color="#6f737c" />
+                <TextInput
+                  className="flex-1 ml-2 text-white text-sm"
+                  placeholder="Search integrations..."
+                  placeholderTextColor="#6f737c"
+                  value={searchQuery}
+                  onChangeText={setSearchQuery}
+                />
+              </View>
+            </View>
 
-        {/* Category Filter Chips */}
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          className="px-4 py-3"
-          contentContainerStyle={{ gap: 8 }}
-        >
-          {availableCategories.map((category) => (
-            <Chip
-              key={category}
-              variant={selectedFilter === category ? "primary" : "secondary"}
-              color={selectedFilter === category ? "accent" : "default"}
-              onPress={() => setSelectedFilter(category)}
+            {/* Category Filter Chips */}
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              className="px-4 py-3"
+              contentContainerStyle={{ gap: 8 }}
             >
-              <Chip.Label>{getCategoryLabel(category)}</Chip.Label>
-            </Chip>
-          ))}
-        </ScrollView>
+              {availableCategories.map((category) => (
+                <Chip
+                  key={category}
+                  variant={
+                    selectedFilter === category ? "primary" : "secondary"
+                  }
+                  color={selectedFilter === category ? "accent" : "default"}
+                  onPress={() => setSelectedFilter(category)}
+                >
+                  <Chip.Label>{getCategoryLabel(category)}</Chip.Label>
+                </Chip>
+              ))}
+            </ScrollView>
 
-        {/* Integration List */}
-        <BottomSheetFlatList
-          data={filteredIntegrations}
-          keyExtractor={(item: Integration) => item.id}
-          renderItem={renderItem}
-          ListHeaderComponent={ListHeader}
-          ListEmptyComponent={ListEmpty}
-          contentContainerStyle={{ paddingBottom: 24 }}
-          showsVerticalScrollIndicator={false}
-        />
-      </BottomSheetModal>
+            {/* Integration List */}
+            <BottomSheetFlatList
+              data={filteredIntegrations}
+              keyExtractor={(item: Integration) => item.id}
+              renderItem={renderItem}
+              ListHeaderComponent={ListHeader}
+              ListEmptyComponent={ListEmpty}
+              contentContainerStyle={{ paddingBottom: 24 }}
+              showsVerticalScrollIndicator={false}
+            />
+          </BottomSheet.Content>
+        </BottomSheet.Portal>
+      </BottomSheet>
     );
   },
 );

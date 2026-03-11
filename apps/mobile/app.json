@@ -6,7 +6,7 @@
     "orientation": "portrait",
     "icon": "./assets/icons/gaialogo.png",
     "scheme": "gaiamobile",
-    "userInterfaceStyle": "automatic",
+    "userInterfaceStyle": "dark",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "io.heygaia.gaiamobile",
@@ -36,16 +36,9 @@
               "pathPrefix": "/callback"
             }
           ],
-          "category": [
-            "BROWSABLE",
-            "DEFAULT"
-          ]
+          "category": ["BROWSABLE", "DEFAULT"]
         }
       ]
-    },
-    "web": {
-      "output": "static",
-      "favicon": "./assets/icons/gaialogo.png"
     },
     "plugins": [
       "expo-router",
@@ -69,9 +62,7 @@
         {
           "icon": "./assets/icons/gaialogo.png",
           "color": "#ffffff",
-          "sounds": [
-            "./assets/sound/uwu.mp3"
-          ],
+          "sounds": ["./assets/sound/uwu.mp3"],
           "defaultChannel": "gaia_channel"
         }
       ]

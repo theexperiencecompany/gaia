@@ -89,7 +89,11 @@ export function WorkflowStepSkeleton() {
   const { spacing } = useResponsive();
   return (
     <View
-      style={{ flexDirection: "row", gap: spacing.sm, alignItems: "flex-start" }}
+      style={{
+        flexDirection: "row",
+        gap: spacing.sm,
+        alignItems: "flex-start",
+      }}
     >
       <SkeletonBox width={32} height={32} borderRadius={16} />
       <View style={{ flex: 1, gap: 6 }}>
@@ -125,9 +129,10 @@ export function WorkflowListSkeleton() {
   const { spacing } = useResponsive();
   return (
     <View style={{ gap: spacing.sm }}>
-      {Array.from({ length: 4 }).map((_, i) => (
-        <WorkflowCardSkeleton key={i} />
-      ))}
+      <WorkflowCardSkeleton />
+      <WorkflowCardSkeleton />
+      <WorkflowCardSkeleton />
+      <WorkflowCardSkeleton />
     </View>
   );
 }

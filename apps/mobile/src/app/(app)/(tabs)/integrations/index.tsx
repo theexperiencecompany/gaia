@@ -1,7 +1,13 @@
 import { Image } from "expo-image";
 import { Button, Card } from "heroui-native";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from "react-native";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  TextInput,
+  View,
+} from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -179,7 +185,9 @@ export default function IntegrationsPage() {
                         size="sm"
                         variant="tertiary"
                         className={
-                          integration.connected ? "bg-success/15" : "bg-white/10"
+                          integration.connected
+                            ? "bg-success/15"
+                            : "bg-white/10"
                         }
                         isDisabled={isBusy}
                         onPress={() => {
@@ -188,7 +196,9 @@ export default function IntegrationsPage() {
                       >
                         <Button.Label
                           className={
-                            integration.connected ? "text-success" : "text-muted"
+                            integration.connected
+                              ? "text-success"
+                              : "text-muted"
                           }
                         >
                           {isBusy

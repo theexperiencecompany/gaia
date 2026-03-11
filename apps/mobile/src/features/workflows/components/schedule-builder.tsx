@@ -112,7 +112,9 @@ function TimePickerRow({ hour, minute, onChange }: TimePickerRowProps) {
   };
 
   return (
-    <View style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}>
+    <View
+      style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+    >
       <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>Time:</Text>
       <Pressable onPress={() => cycleHour(-1)} hitSlop={8}>
         <Text style={{ color: "#00bbff", fontSize: fontSize.md }}>‹</Text>
@@ -230,8 +232,7 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps) {
                 <Text
                   style={{
                     fontSize: fontSize.xs,
-                    color:
-                      (value.dayOfWeek ?? 1) === i ? "#00bbff" : "#a1a1aa",
+                    color: (value.dayOfWeek ?? 1) === i ? "#00bbff" : "#a1a1aa",
                   }}
                 >
                   {day.slice(0, 3)}
@@ -245,7 +246,11 @@ export function ScheduleBuilder({ value, onChange }: ScheduleBuilderProps) {
       {/* Day of month for monthly */}
       {value.preset === "monthly" && (
         <View
-          style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+          }}
         >
           <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
             Day of month:

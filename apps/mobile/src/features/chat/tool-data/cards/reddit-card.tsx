@@ -373,11 +373,7 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
             {/* Author & meta */}
             <View className="flex-row items-center justify-between mb-2">
               <View className="flex-row items-center gap-1.5">
-                <AppIcon
-                  icon={UserCircle02Icon}
-                  size={14}
-                  color="#8e8e93"
-                />
+                <AppIcon icon={UserCircle02Icon} size={14} color="#8e8e93" />
                 <Text
                   className="text-xs font-medium"
                   style={{
@@ -509,11 +505,7 @@ function CreatedView({
             >
               View on Reddit
             </Text>
-            <AppIcon
-              icon={LinkSquare02Icon}
-              size={12}
-              color={REDDIT_ORANGE}
-            />
+            <AppIcon icon={LinkSquare02Icon} size={12} color={REDDIT_ORANGE} />
           </Pressable>
         )}
         <View className="rounded-md bg-green-900/30 px-2 py-0.5 ml-auto">

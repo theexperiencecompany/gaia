@@ -5,8 +5,8 @@ import type * as React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, Pressable, View } from "react-native";
 import {
-  Copy01Icon,
   AppIcon,
+  Copy01Icon,
   Message01Icon,
   Pin02Icon,
   ThumbsDownIcon,
@@ -297,11 +297,7 @@ function MessageBubble({
                 />
               </Pressable>
               <Pressable style={{ padding: spacing.xs }}>
-                <AppIcon
-                  icon={Pin02Icon}
-                  size={iconSize.sm}
-                  color="#8e8e93"
-                />
+                <AppIcon icon={Pin02Icon} size={iconSize.sm} color="#8e8e93" />
               </Pressable>
               <Pressable style={{ padding: spacing.xs }}>
                 <AppIcon

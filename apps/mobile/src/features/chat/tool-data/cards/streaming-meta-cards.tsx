@@ -3,6 +3,7 @@ import { useMemo, useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import {
   Alert01Icon,
+  AppIcon,
   ArrowDown01Icon,
   Calendar03Icon,
   CheckmarkCircle02Icon,
@@ -13,7 +14,6 @@ import {
   FavouriteIcon,
   FlashIcon,
   FlowIcon,
-  AppIcon,
   MessageMultiple01Icon,
   RepeatIcon,
   Settings01Icon,
@@ -921,12 +921,7 @@ export function MCPAppCard({ data }: { data: unknown }) {
         {/* Header */}
         <View className="flex-row items-center gap-2 mb-3">
           <View className="w-5 h-5 rounded-md bg-primary/15 items-center justify-center">
-            <AppIcon
-              icon={CpuIcon}
-              size={12}
-              color="#00bbff"
-              strokeWidth={2}
-            />
+            <AppIcon icon={CpuIcon} size={12} color="#00bbff" strokeWidth={2} />
           </View>
           <Text className="text-xs font-medium text-[#8e8e93]">
             Interactive app

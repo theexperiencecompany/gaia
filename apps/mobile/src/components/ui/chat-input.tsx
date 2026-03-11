@@ -1,7 +1,7 @@
 import { Button } from "heroui-native";
 import { useRef, useState } from "react";
 import { Keyboard, Pressable, TextInput, View } from "react-native";
-import { ArrowUp02Icon, AppIcon, PlusSignIcon } from "@/components/icons";
+import { AppIcon, ArrowUp02Icon, PlusSignIcon } from "@/components/icons";
 import { ConnectDrawerTrigger } from "@/features/integrations";
 import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";

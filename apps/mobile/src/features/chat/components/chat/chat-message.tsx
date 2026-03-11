@@ -1,3 +1,7 @@
+import {
+  parseThinkingFromText,
+  splitMessageByBreaks,
+} from "@gaia/shared/utils";
 import * as Haptics from "expo-haptics";
 import { Avatar } from "heroui-native";
 import { useCallback, useMemo, useRef } from "react";
@@ -10,10 +14,6 @@ import { useResponsive } from "@/lib/responsive";
 import { ToolDataRenderer } from "../../tool-data";
 import type { Message } from "../../types";
 import {
-  splitMessageByBreaks,
-  parseThinkingFromText,
-} from "@gaia/shared/utils";
-import {
   MemoryBottomSheet,
   type MemoryBottomSheetRef,
 } from "../memory/memory-bottom-sheet";
@@ -23,8 +23,7 @@ import type { MessageActionConfig } from "./message-action-sheet";
 import { MessageReplyQuote } from "./message-reply-quote";
 import { ThinkingBubble } from "./thinking-bubble";
 
-const EMOJI_ONLY_REGEX =
-  /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FEFF}\s]+$/u;
+const EMOJI_ONLY_REGEX = /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\s]+$/u;
 
 function getEmojiInfo(text: string): { isEmojiOnly: boolean; count: number } {
   const trimmed = text.trim();

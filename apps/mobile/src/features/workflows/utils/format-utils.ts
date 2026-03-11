@@ -1,7 +1,7 @@
 export {
   formatCompactNumber,
-  formatRunCount,
   formatDuration,
   formatRelativeDate,
+  formatRunCount,
   getTriggerLabel,
 } from "@gaia/shared/utils";

@@ -1,19 +1,18 @@
-export {
-  NotificationStatus as InAppNotificationStatus,
-  NotificationActionType as InAppNotificationActionType,
-  NotificationActionStyle as InAppNotificationActionStyle,
-} from "@gaia/shared/types";
-
 export type {
-  NotificationStatus,
-  NotificationActionType,
-  NotificationActionStyle,
-  NotificationActionConfig as InAppNotificationActionConfig,
-  NotificationAction as InAppNotificationAction,
-  InAppNotificationContent,
   InAppNotification,
+  InAppNotificationContent,
+  NotificationAction as InAppNotificationAction,
+  NotificationActionConfig as InAppNotificationActionConfig,
+  NotificationActionStyle,
+  NotificationActionType,
+  NotificationStatus,
   PlatformLink,
   PlatformLinksResponse,
+} from "@gaia/shared/types";
+export {
+  NotificationActionStyle as InAppNotificationActionStyle,
+  NotificationActionType as InAppNotificationActionType,
+  NotificationStatus as InAppNotificationStatus,
 } from "@gaia/shared/types";
 
 export interface InAppNotificationsListResponse {

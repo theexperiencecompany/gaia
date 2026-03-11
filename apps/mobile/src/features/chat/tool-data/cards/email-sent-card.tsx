@@ -48,11 +48,7 @@ export function EmailSentCard({ data }: { data: EmailSentData }) {
         <View className="flex-row items-center justify-between mb-3">
           <View className="flex-row items-center gap-2">
             <AppIcon icon={Mail01Icon} size={16} color="#8e8e93" />
-            <AppIcon
-              icon={CheckmarkCircle02Icon}
-              size={16}
-              color="#4ade80"
-            />
+            <AppIcon icon={CheckmarkCircle02Icon} size={16} color="#4ade80" />
             <Text className="text-sm font-medium text-green-400">
               Email Sent
             </Text>

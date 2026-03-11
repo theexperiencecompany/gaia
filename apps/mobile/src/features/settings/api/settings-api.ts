@@ -1,17 +1,11 @@
+import type { UsageSummary } from "@gaia/shared/types";
 import { apiService } from "@/lib/api";
-import type {
-  UsagePeriod,
-  FeatureUsage,
-  TokenUsagePeriod,
-  TokenUsage,
-  UsageSummary,
-} from "@gaia/shared/types";
 
 export type {
-  UsagePeriod,
   FeatureUsage,
-  TokenUsagePeriod,
   TokenUsage,
+  TokenUsagePeriod,
+  UsagePeriod,
   UsageSummary,
 } from "@gaia/shared/types";
 

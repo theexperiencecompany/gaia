@@ -21,7 +21,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Cancel01Icon, AppIcon, Share01Icon } from "@/components/icons";
+import { AppIcon, Cancel01Icon, Share01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 

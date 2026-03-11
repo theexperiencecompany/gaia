@@ -1,11 +1,6 @@
+import { Button, Card, Chip, Spinner } from "heroui-native";
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  Pressable,
-  ScrollView,
-  View,
-} from "react-native";
+import { Alert, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import type {
   UsagePeriod,
@@ -94,7 +89,7 @@ export function UsageSection() {
   if (isLoading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator color="#16c1ff" />
+        <Spinner />
       </View>
     );
   }
@@ -129,111 +124,72 @@ export function UsageSection() {
       }}
     >
       {/* Plan badge */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          backgroundColor: "#1c1c1e",
-          borderRadius: 12,
-          padding: spacing.md,
-        }}
-      >
-        <View>
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#8e8e93",
-              textTransform: "uppercase",
-              letterSpacing: 1,
-            }}
-          >
-            Plan
-          </Text>
-          <Text
-            style={{ fontSize: fontSize.base, fontWeight: "600", marginTop: 2 }}
-          >
-            {isPro ? "Pro" : "Free"}
-          </Text>
-        </View>
-        {!isPro && (
-          <Pressable
-            style={{
-              backgroundColor: "#16c1ff",
-              borderRadius: 8,
-              paddingHorizontal: spacing.md,
-              paddingVertical: spacing.xs,
-            }}
-          >
+      <Card variant="secondary" className="rounded-3xl bg-surface">
+        <Card.Body className="flex-row items-center justify-between px-5 py-5">
+          <View>
             <Text
               style={{
-                color: "#000",
-                fontWeight: "600",
                 fontSize: fontSize.xs,
+                color: "#8e8e93",
+                textTransform: "uppercase",
+                letterSpacing: 1,
               }}
             >
-              Upgrade
+              Plan
             </Text>
-          </Pressable>
-        )}
-      </View>
+            <Text
+              style={{
+                fontSize: fontSize.base,
+                fontWeight: "600",
+                marginTop: 2,
+              }}
+            >
+              {isPro ? "Pro" : "Free"}
+            </Text>
+          </View>
+          {!isPro ? (
+            <Button className="bg-primary">
+              <Button.Label>Upgrade</Button.Label>
+            </Button>
+          ) : null}
+        </Card.Body>
+      </Card>
 
-      {/* Period toggle */}
       <View style={{ flexDirection: "row", gap: spacing.sm }}>
         {(["day", "month"] as PeriodKey[]).map((key) => {
           const isActive = periodKey === key;
           return (
-            <Pressable
+            <Chip
               key={key}
               onPress={() => setPeriodKey(key)}
-              style={{
-                borderRadius: 999,
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.xs,
-                backgroundColor: isActive
-                  ? "rgba(22,193,255,0.2)"
-                  : "rgba(255,255,255,0.07)",
-              }}
+              variant={isActive ? "primary" : "secondary"}
+              color={isActive ? "accent" : "default"}
+              className={isActive ? "" : "bg-white/10"}
             >
-              <Text
-                style={{
-                  fontSize: fontSize.xs,
-                  color: isActive ? "#9fe6ff" : "#c5cad2",
-                  fontWeight: isActive ? "600" : "400",
-                }}
-              >
-                {key === "day" ? "Daily" : "Monthly"}
-              </Text>
-            </Pressable>
+              {key === "day" ? "Daily" : "Monthly"}
+            </Chip>
           );
         })}
       </View>
 
-      {/* Feature usage bars */}
-      <View
-        style={{
-          backgroundColor: "#1c1c1e",
-          borderRadius: 12,
-          padding: spacing.md,
-          gap: spacing.lg,
-        }}
-      >
-        {featureEntries.length === 0 ? (
-          <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
-            No feature usage data.
-          </Text>
-        ) : (
-          featureEntries.map(([key, feature]) => (
-            <UsageBar
-              key={key}
-              title={feature.title}
-              period={feature.periods[periodKey]}
-            />
-          ))
-        )}
-      </View>
+      <Card variant="secondary" className="rounded-3xl bg-surface">
+        <Card.Body className="gap-5 px-5 py-5">
+          {featureEntries.length === 0 ? (
+            <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
+              No feature usage data.
+            </Text>
+          ) : (
+            featureEntries.map(([key, feature]) => (
+              <UsageBar
+                key={key}
+                title={feature.title}
+                period={feature.periods[periodKey]}
+              />
+            ))
+          )}
+        </Card.Body>
+      </Card>
 
-      {/* Token usage */}
       {Object.entries(summary.token_usage).length > 0 && (
         <View style={{ gap: spacing.sm }}>
           <Text
@@ -246,58 +202,53 @@ export function UsageSection() {
           >
             Token Usage
           </Text>
-          <View
-            style={{
-              backgroundColor: "#1c1c1e",
-              borderRadius: 12,
-              padding: spacing.md,
-              gap: spacing.md,
-            }}
-          >
-            {Object.entries(summary.token_usage).map(([key, tok]) => {
-              const period = tok.periods[periodKey];
-              if (!period) return null;
-              const pct = Math.min(period.percentage, 100);
-              return (
-                <View key={key} style={{ gap: spacing.xs }}>
-                  <View
-                    style={{
-                      flexDirection: "row",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    <Text style={{ fontSize: fontSize.sm }}>{tok.title}</Text>
-                    <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
-                      {period.total_tokens.toLocaleString()} /{" "}
-                      {period.limit.toLocaleString()}
-                    </Text>
-                  </View>
-                  <View
-                    style={{
-                      height: 6,
-                      borderRadius: 3,
-                      backgroundColor: "rgba(255,255,255,0.1)",
-                      overflow: "hidden",
-                    }}
-                  >
+          <Card variant="secondary" className="rounded-3xl bg-surface">
+            <Card.Body className="gap-4 px-5 py-5">
+              {Object.entries(summary.token_usage).map(([key, tok]) => {
+                const period = tok.periods[periodKey];
+                if (!period) return null;
+                const pct = Math.min(period.percentage, 100);
+                return (
+                  <View key={key} style={{ gap: spacing.xs }}>
                     <View
                       style={{
-                        height: "100%",
-                        width: `${pct}%`,
-                        borderRadius: 3,
-                        backgroundColor:
-                          pct >= 90
-                            ? "#ef4444"
-                            : pct >= 70
-                              ? "#f59e0b"
-                              : "#16c1ff",
+                        flexDirection: "row",
+                        justifyContent: "space-between",
                       }}
-                    />
+                    >
+                      <Text style={{ fontSize: fontSize.sm }}>{tok.title}</Text>
+                      <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
+                        {period.total_tokens.toLocaleString()} /{" "}
+                        {period.limit.toLocaleString()}
+                      </Text>
+                    </View>
+                    <View
+                      style={{
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: "rgba(255,255,255,0.1)",
+                        overflow: "hidden",
+                      }}
+                    >
+                      <View
+                        style={{
+                          height: "100%",
+                          width: `${pct}%`,
+                          borderRadius: 3,
+                          backgroundColor:
+                            pct >= 90
+                              ? "#ef4444"
+                              : pct >= 70
+                                ? "#f59e0b"
+                                : "#16c1ff",
+                        }}
+                      />
+                    </View>
                   </View>
-                </View>
-              );
-            })}
-          </View>
+                );
+              })}
+            </Card.Body>
+          </Card>
         </View>
       )}
     </ScrollView>

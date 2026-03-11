@@ -1,26 +1,12 @@
-import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetFlatList,
-  BottomSheetModal,
-} from "@gorhom/bottom-sheet";
-import {
-  forwardRef,
-  useCallback,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-} from "react";
+import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
+import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import { Image, Pressable, View } from "react-native";
-import {
-  Cancel01Icon,
-  Tick02Icon,
-  AppIcon,
-} from "@/components/icons";
+import { AppIcon, Cancel01Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { AI_MODELS } from "@/features/chat/data/models";
 import type { AIModel } from "@/features/chat/types";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 export interface ModelPickerSheetRef {
   open: () => void;
@@ -36,38 +22,20 @@ export const ModelPickerSheet = forwardRef<
   ModelPickerSheetRef,
   ModelPickerSheetProps
 >(({ currentModelId, onSelectModel }, ref) => {
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const { spacing, fontSize, iconSize } = useResponsive();
 
-  const snapPoints = useMemo(() => ["45%", "70%"], []);
-
   useImperativeHandle(ref, () => ({
-    open: () => {
-      bottomSheetRef.current?.present();
-    },
-    close: () => {
-      bottomSheetRef.current?.dismiss();
-    },
+    open: () => setIsOpen(true),
+    close: () => setIsOpen(false),
   }));
 
   const handleSelect = useCallback(
     (model: AIModel) => {
       onSelectModel(model.id);
-      bottomSheetRef.current?.dismiss();
+      setIsOpen(false);
     },
     [onSelectModel],
-  );
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.5}
-      />
-    ),
-    [],
   );
 
   const renderModelItem = useCallback(
@@ -141,58 +109,64 @@ export const ModelPickerSheet = forwardRef<
   );
 
   return (
-    <BottomSheetModal
-      ref={bottomSheetRef}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#141414" }}
-      handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
-    >
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: spacing.md,
-          paddingBottom: spacing.sm,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: fontSize.lg,
-            fontWeight: "600",
-            color: "#ffffff",
-          }}
+    <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={["45%", "70%"]}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#141414" }}
+          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
         >
-          Select Model
-        </Text>
-        <Pressable
-          onPress={() => bottomSheetRef.current?.dismiss()}
-          style={{
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            backgroundColor: "rgba(142,142,147,0.1)",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
-        >
-          <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
-        </Pressable>
-      </View>
+          {/* Header */}
+          <View
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "space-between",
+              paddingHorizontal: spacing.md,
+              paddingBottom: spacing.sm,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: fontSize.lg,
+                fontWeight: "600",
+                color: "#ffffff",
+              }}
+            >
+              Select Model
+            </Text>
+            <Pressable
+              onPress={() => setIsOpen(false)}
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 16,
+                backgroundColor: "rgba(142,142,147,0.1)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
+            </Pressable>
+          </View>
 
-      {/* Model list */}
-      <BottomSheetFlatList
-        data={AI_MODELS}
-        keyExtractor={(item: AIModel) => item.id}
-        renderItem={renderModelItem}
-        contentContainerStyle={{ paddingBottom: 24, paddingTop: spacing.xs }}
-        showsVerticalScrollIndicator={false}
-      />
-    </BottomSheetModal>
+          {/* Model list */}
+          <BottomSheetFlatList
+            data={AI_MODELS}
+            keyExtractor={(item: AIModel) => item.id}
+            renderItem={renderModelItem}
+            contentContainerStyle={{
+              paddingBottom: 24,
+              paddingTop: spacing.xs,
+            }}
+            showsVerticalScrollIndicator={false}
+          />
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
+    </BottomSheet>
   );
 });
 

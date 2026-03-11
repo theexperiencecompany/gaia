@@ -1,12 +1,12 @@
+import {
+  getRandomThinkingMessage,
+  getRelevantThinkingMessage,
+} from "@gaia/shared/utils";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Animated, LayoutAnimation, Pressable, View } from "react-native";
 import { AppIcon, ArrowDown02Icon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-import {
-  getRandomThinkingMessage,
-  getRelevantThinkingMessage,
-} from "@gaia/shared/utils";
 
 interface ThinkingBubbleProps {
   thinkingContent: string;

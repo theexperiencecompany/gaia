@@ -1,13 +1,6 @@
+import { Button, Card, Spinner, TextField } from "heroui-native";
 import { useEffect, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Modal,
-  Pressable,
-  TextInput,
-  View,
-} from "react-native";
+import { Alert, FlatList, Modal, Pressable, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import {
   Add01Icon,
@@ -108,26 +101,17 @@ export function MemorySection() {
   return (
     <View style={{ flex: 1, gap: spacing.md, padding: spacing.md }}>
       {/* Search bar */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          backgroundColor: "#1c1c1e",
-          borderRadius: 12,
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm,
-          gap: spacing.sm,
-        }}
-      >
-        <AppIcon icon={Search01Icon} size={16} color="#71717a" />
-        <TextInput
+      <TextField>
+        <TextField.Input
           value={search}
           onChangeText={setSearch}
           placeholder="Search memories..."
-          placeholderTextColor="#52525b"
-          style={{ flex: 1, color: "#fff", fontSize: fontSize.sm }}
-        />
-      </View>
+        >
+          <TextField.InputStartContent>
+            <AppIcon icon={Search01Icon} size={16} color="#71717a" />
+          </TextField.InputStartContent>
+        </TextField.Input>
+      </TextField>
 
       {isLoading ? (
         <View
@@ -136,19 +120,16 @@ export function MemorySection() {
             paddingVertical: spacing.xl * 2,
           }}
         >
-          <ActivityIndicator color="#00bbff" />
+          <Spinner />
         </View>
       ) : filteredMemories.length === 0 ? (
-        <View
-          style={{
-            alignItems: "center",
-            paddingVertical: spacing.xl * 2,
-          }}
-        >
-          <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
-            {search ? `No memories matching "${search}"` : "No memories yet"}
-          </Text>
-        </View>
+        <Card variant="secondary" className="rounded-3xl bg-surface">
+          <Card.Body className="items-center px-5 py-10">
+            <Text style={{ color: "#71717a", fontSize: fontSize.sm }}>
+              {search ? `No memories matching "${search}"` : "No memories yet"}
+            </Text>
+          </Card.Body>
+        </Card>
       ) : (
         <FlatList
           data={filteredMemories}
@@ -162,65 +143,42 @@ export function MemorySection() {
               renderRightActions={() => renderRightActions(item.id)}
               overshootRight={false}
             >
-              <View
-                style={{
-                  backgroundColor: "#1c1c1e",
-                  borderRadius: 12,
-                  padding: spacing.md,
-                  marginBottom: spacing.sm,
-                }}
-              >
-                <Text
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: "#e4e4e7",
-                    lineHeight: 20,
-                  }}
-                >
-                  {item.content}
-                </Text>
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: "#71717a",
-                    marginTop: spacing.xs,
-                  }}
-                >
-                  {new Date(item.created_at).toLocaleDateString()}
-                </Text>
-              </View>
+              <Card variant="secondary" className="mb-2 rounded-3xl bg-surface">
+                <Card.Body className="px-4 py-4">
+                  <Text
+                    style={{
+                      fontSize: fontSize.sm,
+                      color: "#e4e4e7",
+                      lineHeight: 20,
+                    }}
+                  >
+                    {item.content}
+                  </Text>
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs,
+                      color: "#71717a",
+                      marginTop: spacing.xs,
+                    }}
+                  >
+                    {new Date(item.created_at).toLocaleDateString()}
+                  </Text>
+                </Card.Body>
+              </Card>
             </Swipeable>
           )}
         />
       )}
 
       {/* Add button */}
-      <Pressable
+      <Button
         onPress={() => setShowAddModal(true)}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: spacing.sm,
-          padding: spacing.md,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderStyle: "dashed",
-          borderColor: "rgba(0,187,255,0.3)",
-          backgroundColor: "rgba(0,187,255,0.05)",
-        }}
+        variant="tertiary"
+        className="bg-primary/10"
       >
         <AppIcon icon={Add01Icon} size={16} color="#00bbff" />
-        <Text
-          style={{
-            color: "#00bbff",
-            fontSize: fontSize.sm,
-            fontWeight: "500",
-          }}
-        >
-          Add Memory
-        </Text>
-      </Pressable>
+        <Button.Label className="text-primary">Add Memory</Button.Label>
+      </Button>
 
       {/* Add memory modal */}
       <Modal
@@ -239,91 +197,55 @@ export function MemorySection() {
             padding: spacing.lg,
           }}
         >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: "#1c1c1e",
-              borderRadius: 16,
-              padding: spacing.lg,
-              width: "100%",
-              gap: spacing.md,
-            }}
+          <Card
+            variant="secondary"
+            className="w-full rounded-3xl bg-surface"
+            onTouchEnd={(e) => e.stopPropagation()}
           >
-            <Text
-              style={{
-                fontSize: fontSize.base,
-                fontWeight: "600",
-                color: "#fff",
-              }}
-            >
-              Add Memory
-            </Text>
-
-            <TextInput
-              value={newMemoryText}
-              onChangeText={setNewMemoryText}
-              placeholder="What should GAIA remember?"
-              placeholderTextColor="#52525b"
-              multiline
-              numberOfLines={4}
-              autoFocus
-              style={{
-                backgroundColor: "#2c2c2e",
-                borderRadius: 10,
-                padding: spacing.md,
-                color: "#fff",
-                fontSize: fontSize.sm,
-                minHeight: 100,
-                textAlignVertical: "top",
-              }}
-            />
-
-            <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              <Pressable
-                onPress={() => {
-                  setShowAddModal(false);
-                  setNewMemoryText("");
-                }}
+            <Card.Body className="gap-4 px-5 py-5">
+              <Text
                 style={{
-                  flex: 1,
-                  padding: spacing.md,
-                  borderRadius: 10,
-                  backgroundColor: "rgba(255,255,255,0.06)",
-                  alignItems: "center",
+                  fontSize: fontSize.base,
+                  fontWeight: "600",
+                  color: "#fff",
                 }}
               >
-                <Text style={{ color: "#8e8e93", fontSize: fontSize.sm }}>
-                  Cancel
-                </Text>
-              </Pressable>
-              <Pressable
-                onPress={() => void handleAdd()}
-                disabled={isSaving || !newMemoryText.trim()}
-                style={{
-                  flex: 1,
-                  padding: spacing.md,
-                  borderRadius: 10,
-                  backgroundColor: "#00bbff",
-                  alignItems: "center",
-                  opacity: isSaving || !newMemoryText.trim() ? 0.5 : 1,
-                }}
-              >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color="#000" />
-                ) : (
-                  <Text
-                    style={{
-                      color: "#000",
-                      fontSize: fontSize.sm,
-                      fontWeight: "600",
-                    }}
-                  >
-                    Save
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-          </Pressable>
+                Add Memory
+              </Text>
+
+              <TextField>
+                <TextField.Input
+                  value={newMemoryText}
+                  onChangeText={setNewMemoryText}
+                  placeholder="What should GAIA remember?"
+                  multiline
+                  numberOfLines={4}
+                  autoFocus
+                  style={{ minHeight: 100 }}
+                />
+              </TextField>
+
+              <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                <Button
+                  onPress={() => {
+                    setShowAddModal(false);
+                    setNewMemoryText("");
+                  }}
+                  variant="tertiary"
+                  className="flex-1 bg-white/10"
+                >
+                  <Button.Label className="text-muted">Cancel</Button.Label>
+                </Button>
+                <Button
+                  onPress={() => void handleAdd()}
+                  isDisabled={isSaving || !newMemoryText.trim()}
+                  className="flex-1 bg-primary"
+                >
+                  {isSaving ? <Spinner /> : <Button.Label>Save</Button.Label>}
+                </Button>
+              </View>
+            </Card.Body>
+          </Card>
         </Pressable>
       </Modal>
     </View>

@@ -1,4 +1,4 @@
-import type { BottomSheetModal } from "@gorhom/bottom-sheet";
+import { getRelevantThinkingMessage } from "@gaia/shared/utils";
 import type { FlashListRef } from "@shopify/flash-list";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
@@ -22,13 +22,15 @@ import { deleteMessage, pinMessage } from "../../api/chat-api";
 import { useChat } from "../../hooks/use-chat";
 import { useChatContext } from "../../hooks/use-chat-context";
 import type { ReplyToMessageData } from "../../types";
-import { getRelevantThinkingMessage } from "@gaia/shared/utils";
 import type { AttachmentFile } from "../composer/attachment-preview";
 import { Composer } from "../composer/composer";
 import { ChatMessage } from "./chat-message";
 import { DateSeparator } from "./date-separator";
 import { EmptyChatState } from "./empty-chat-state";
-import type { MessageActionConfig } from "./message-action-sheet";
+import type {
+  MessageActionConfig,
+  MessageActionSheetRef,
+} from "./message-action-sheet";
 import { MessageActionSheet } from "./message-action-sheet";
 import { ScrollToBottomButton } from "./scroll-to-bottom";
 
@@ -173,7 +175,7 @@ export function ChatScreenContent({
 
   const [replyingTo, setReplyingTo] = useState<ReplyToMessageData | null>(null);
 
-  const actionSheetRef = useRef<BottomSheetModal>(null);
+  const actionSheetRef = useRef<MessageActionSheetRef>(null);
   const [actionConfig, setActionConfig] = useState<MessageActionConfig | null>(
     null,
   );
@@ -255,7 +257,7 @@ export function ChatScreenContent({
         conversationId: config.conversationId || activeChatId || "",
       };
       setActionConfig(resolved);
-      actionSheetRef.current?.present();
+      actionSheetRef.current?.open();
     },
     [activeChatId],
   );
@@ -334,7 +336,7 @@ export function ChatScreenContent({
         setActiveChatId(null);
         setInputValue("");
         setLastUserMessage("");
-        router.replace("/(app)/(tabs)/");
+        router.replace("/");
         return true;
       }
 

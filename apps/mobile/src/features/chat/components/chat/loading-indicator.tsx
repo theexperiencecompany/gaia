@@ -53,27 +53,41 @@ function WaveSpinnerSquare() {
     backgroundColor: "#00bbff",
   };
 
-  const rows = [
-    scales.slice(0, 3),
-    scales.slice(3, 6),
-    scales.slice(6, 9),
-  ];
-
   return (
     <View style={{ flexDirection: "column", gap }}>
-      {rows.map((row, rowIndex) => (
-        <View
-          key={rowIndex}
-          style={{ flexDirection: "row", gap }}
-        >
-          {row.map((scale, colIndex) => (
-            <Animated.View
-              key={colIndex}
-              style={[dotStyle, { transform: [{ scale }] }]}
-            />
-          ))}
-        </View>
-      ))}
+      <View style={{ flexDirection: "row", gap }}>
+        <Animated.View
+          style={[dotStyle, { transform: [{ scale: scales[0] }] }]}
+        />
+        <Animated.View
+          style={[dotStyle, { transform: [{ scale: scales[1] }] }]}
+        />
+        <Animated.View
+          style={[dotStyle, { transform: [{ scale: scales[2] }] }]}
+        />
+      </View>
+      <View style={{ flexDirection: "row", gap }}>
+        <Animated.View
+          style={[dotStyle, { transform: [{ scale: scales[3] }] }]}
+        />
+        <Animated.View
+          style={[dotStyle, { transform: [{ scale: scales[4] }] }]}
+        />
+        <Animated.View
+          style={[dotStyle, { transform: [{ scale: scales[5] }] }]}
+        />
+      </View>
+      <View style={{ flexDirection: "row", gap }}>
+        <Animated.View
+          style={[dotStyle, { transform: [{ scale: scales[6] }] }]}
+        />
+        <Animated.View
+          style={[dotStyle, { transform: [{ scale: scales[7] }] }]}
+        />
+        <Animated.View
+          style={[dotStyle, { transform: [{ scale: scales[8] }] }]}
+        />
+      </View>
     </View>
   );
 }
@@ -145,9 +159,7 @@ export function LoadingIndicator({
         paddingVertical: spacing.sm,
       }}
     >
-      <Animated.View
-        style={{ transform: [{ rotate: spinInterpolate }] }}
-      >
+      <Animated.View style={{ transform: [{ rotate: spinInterpolate }] }}>
         <Avatar
           alt="Gaia"
           size="sm"

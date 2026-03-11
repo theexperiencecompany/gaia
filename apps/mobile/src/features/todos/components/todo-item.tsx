@@ -2,13 +2,13 @@ import * as Haptics from "expo-haptics";
 import { useCallback } from "react";
 import { Alert, Pressable, View } from "react-native";
 import {
+  AppIcon,
   ArrowRight01Icon,
   Calendar03Icon,
   CheckmarkCircle02Icon,
   Delete02Icon,
   Flag02Icon,
   Folder02Icon,
-  AppIcon,
   Tag01Icon,
   Tick02Icon,
 } from "@/components/icons";
@@ -148,7 +148,15 @@ export function TodoItem({
   return (
     <Pressable
       onPress={handlePress}
-      onLongPress={selectionMode ? undefined : (onLongPress ? handleLongPress : onDelete ? handleDeletePress : undefined)}
+      onLongPress={
+        selectionMode
+          ? undefined
+          : onLongPress
+            ? handleLongPress
+            : onDelete
+              ? handleDeletePress
+              : undefined
+      }
       style={{
         flexDirection: "row",
         alignItems: "flex-start",
@@ -157,9 +165,7 @@ export function TodoItem({
         borderBottomWidth: 1,
         borderBottomColor: "rgba(255,255,255,0.04)",
         opacity: todo.completed ? 0.4 : 1,
-        backgroundColor: isSelected
-          ? "rgba(22,193,255,0.08)"
-          : "transparent",
+        backgroundColor: isSelected ? "rgba(22,193,255,0.08)" : "transparent",
       }}
     >
       {/* Selection checkbox (shown in selection mode) */}
@@ -181,9 +187,7 @@ export function TodoItem({
             flexShrink: 0,
           }}
         >
-          {isSelected && (
-            <AppIcon icon={Tick02Icon} size={13} color="#000" />
-          )}
+          {isSelected && <AppIcon icon={Tick02Icon} size={13} color="#000" />}
         </Pressable>
       )}
 
@@ -393,11 +397,7 @@ export function TodoItem({
                   gap: 4,
                 }}
               >
-                <AppIcon
-                  icon={Flag02Icon}
-                  size={12}
-                  color={priorityColor}
-                />
+                <AppIcon icon={Flag02Icon} size={12} color={priorityColor} />
                 <Text
                   style={{
                     fontSize: fontSize.xs,

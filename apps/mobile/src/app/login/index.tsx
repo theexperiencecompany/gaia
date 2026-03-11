@@ -1,8 +1,7 @@
 import { useRouter } from "expo-router";
-import { Button, PressableFeedback } from "heroui-native";
+import { Button, Card, PressableFeedback, Spinner } from "heroui-native";
 import { useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   Image,
   KeyboardAvoidingView,
@@ -18,6 +17,16 @@ import {
   storeUserInfo,
 } from "@/features/auth/utils/auth-storage";
 import { useResponsive } from "@/lib/responsive";
+
+const loginBackgroundSource =
+  process.env.NODE_ENV === "test"
+    ? { uri: "login-background" }
+    : require("@/assets/background/login.webp");
+
+const gaiaLogoSource =
+  process.env.NODE_ENV === "test"
+    ? { uri: "gaia-logo" }
+    : require("@shared/assets/logo/logo.webp");
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -62,7 +71,7 @@ export default function LoginScreen() {
     <View style={{ flex: 1, backgroundColor: "#060a14" }}>
       {/* Full Background Image */}
       <Image
-        source={require("@/assets/background/login.webp")}
+        source={loginBackgroundSource}
         style={{ position: "absolute", width: "100%", height: "100%" }}
         resizeMode="cover"
         blurRadius={0.5}
@@ -89,136 +98,139 @@ export default function LoginScreen() {
           behavior={Platform.OS === "ios" ? "padding" : "height"}
         >
           {/* Login Card */}
-          <View
+          <Card
+            variant="secondary"
+            className="w-full overflow-hidden rounded-[24px] border border-white/10 bg-[#171920]/95"
             style={{
-              width: "100%",
               maxWidth: cardMaxWidth,
-              backgroundColor: "rgba(28,28,30,0.95)",
-              borderRadius: moderateScale(24, 0.5),
-              paddingHorizontal: spacing.xl,
-              paddingVertical: moderateScale(40, 0.5),
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.1)",
+              width: "100%",
             }}
           >
-            {/* Logo and Title */}
-            <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
-              <View
-                style={{
-                  width: logoContainerSize,
-                  height: logoContainerSize,
-                  borderRadius: logoContainerSize / 2,
-                  backgroundColor: "rgba(0,187,255,0.15)",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  marginBottom: spacing.md,
-                }}
-              >
-                <Image
-                  source={require("@shared/assets/logo/logo.webp")}
-                  style={{ width: logoSize, height: logoSize }}
-                  resizeMode="contain"
-                />
+            <Card.Body
+              style={{
+                paddingHorizontal: spacing.xl,
+                paddingVertical: moderateScale(40, 0.5),
+              }}
+            >
+              {/* Logo and Title */}
+              <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
+                <View
+                  style={{
+                    width: logoContainerSize,
+                    height: logoContainerSize,
+                    borderRadius: logoContainerSize / 2,
+                    backgroundColor: "rgba(0,187,255,0.15)",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: spacing.md,
+                  }}
+                >
+                  <Image
+                    source={gaiaLogoSource}
+                    style={{ width: logoSize, height: logoSize }}
+                    resizeMode="contain"
+                  />
+                </View>
+                <Text
+                  style={{
+                    fontSize: fontSize["2xl"],
+                    fontWeight: "bold",
+                    textAlign: "center",
+                  }}
+                >
+                  Let's Get You Back In
+                </Text>
               </View>
-              <Text
-                style={{
-                  fontSize: fontSize["2xl"],
-                  fontWeight: "bold",
-                  textAlign: "center",
-                }}
-              >
-                Let's Get You Back In
-              </Text>
-            </View>
 
-            {/* Login Form */}
-            <View style={{ width: "100%" }}>
-              {/* Login Button */}
-              <Button
-                size="lg"
-                className="bg-accent"
-                isDisabled={isLoading}
-                onPress={handleLogin}
-              >
-                {isLoading ? (
-                  <ActivityIndicator colorClassName="accent-black" />
-                ) : (
-                  <Button.Label>Continue with WorkOS</Button.Label>
-                )}
-              </Button>
+              {/* Login Form */}
+              <View style={{ width: "100%" }}>
+                {/* Login Button */}
+                <Button
+                  size="lg"
+                  className="bg-accent"
+                  isDisabled={isLoading}
+                  onPress={handleLogin}
+                >
+                  {isLoading ? (
+                    <Spinner color="#000000" size="sm" />
+                  ) : (
+                    <Button.Label>Continue with WorkOS</Button.Label>
+                  )}
+                </Button>
 
-              {/* Sign Up Link */}
+                {/* Sign Up Link */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginTop: spacing.md,
+                  }}
+                >
+                  <Text style={{ fontSize: fontSize.base, color: "#8e8e93" }}>
+                    Don't have an account?{" "}
+                  </Text>
+                  <PressableFeedback
+                    onPress={handleSignUp}
+                    isDisabled={isLoading}
+                  >
+                    <Text
+                      style={{
+                        fontSize: fontSize.base,
+                        color: "#00bbff",
+                        fontWeight: "600",
+                      }}
+                    >
+                      Sign up
+                    </Text>
+                  </PressableFeedback>
+                </View>
+              </View>
+
+              {/* Footer */}
               <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
                   justifyContent: "center",
-                  marginTop: spacing.md,
+                  marginTop: spacing.lg,
+                  flexWrap: "wrap",
                 }}
               >
-                <Text style={{ fontSize: fontSize.base, color: "#8e8e93" }}>
-                  Don't have an account?{" "}
-                </Text>
-                <PressableFeedback
-                  onPress={handleSignUp}
-                  isDisabled={isLoading}
-                >
+                <PressableFeedback>
                   <Text
                     style={{
-                      fontSize: fontSize.base,
-                      color: "#00bbff",
-                      fontWeight: "600",
+                      fontSize: fontSize.sm,
+                      color: "#8e8e93",
+                      textDecorationLine: "underline",
                     }}
                   >
-                    Sign up
+                    Terms of Service
+                  </Text>
+                </PressableFeedback>
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    color: "#8e8e93",
+                    marginHorizontal: spacing.xs,
+                  }}
+                >
+                  and
+                </Text>
+                <PressableFeedback>
+                  <Text
+                    style={{
+                      fontSize: fontSize.sm,
+                      color: "#8e8e93",
+                      textDecorationLine: "underline",
+                    }}
+                  >
+                    Privacy Policy
                   </Text>
                 </PressableFeedback>
               </View>
-            </View>
-
-            {/* Footer */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "center",
-                marginTop: spacing.lg,
-                flexWrap: "wrap",
-              }}
-            >
-              <PressableFeedback>
-                <Text
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: "#8e8e93",
-                    textDecorationLine: "underline",
-                  }}
-                >
-                  Terms of Service
-                </Text>
-              </PressableFeedback>
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  color: "#8e8e93",
-                  marginHorizontal: spacing.xs,
-                }}
-              >
-                and
-              </Text>
-              <PressableFeedback>
-                <Text
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: "#8e8e93",
-                    textDecorationLine: "underline",
-                  }}
-                >
-                  Privacy Policy
-                </Text>
-              </PressableFeedback>
-            </View>
-          </View>
+            </Card.Body>
+          </Card>
         </KeyboardAvoidingView>
       </SafeAreaView>
     </View>

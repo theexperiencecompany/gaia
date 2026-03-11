@@ -9,12 +9,12 @@ import {
   View,
 } from "react-native";
 import {
+  AppIcon,
   Calendar03Icon,
   Cancel01Icon,
   Flag02Icon,
   Folder02Icon,
   Tag01Icon,
-  AppIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -478,7 +478,8 @@ export function CreateTodoModal({
                   <Text
                     style={{
                       fontSize: fontSize.xs,
-                      fontWeight: selectedProjectId === undefined ? "600" : "400",
+                      fontWeight:
+                        selectedProjectId === undefined ? "600" : "400",
                       color:
                         selectedProjectId === undefined ? "#16c1ff" : "#71717a",
                     }}

@@ -27,27 +27,36 @@ EXPO_PUBLIC_API_URL = "http://localhost:8000/api/v1"
 
 [tasks.dev]
 description = "Start Expo dev server (hot reload, tunnel mode)"
-run = "expo start"
+run = "pnpm exec expo start"
 
 [tasks."dev:local"]
 description = "Start dev server with .env.local overrides"
-run = "dotenv -e .env.local expo start"
+run = "dotenv -e .env.local pnpm exec expo start"
 
 [tasks."dev:staging"]
 description = "Start dev server pointing at staging API"
-run = "dotenv -e .env.staging expo start"
+run = "dotenv -e .env.staging pnpm exec expo start"
 
 [tasks."dev:clear"]
 description = "Start dev server with cleared Metro cache"
-run = "expo start --clear"
+run = "pnpm exec expo start --clear"
 
 [tasks.android]
 description = "Build & run debug APK on connected Android device / emulator"
-run = "expo run:android"
+run = """
+# Resolve Android SDK path generically
+ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+if [ ! -d "$ANDROID_SDK" ]; then
+  echo "Error: Android SDK not found. Set ANDROID_HOME or install Android Studio." >&2
+  exit 1
+fi
+echo "sdk.dir=$ANDROID_SDK" > android/local.properties
+pnpm exec expo run:android
+"""
 
 [tasks.ios]
 description = "Build & run on iOS simulator (macOS only)"
-run = "expo run:ios"
+run = "pnpm exec expo run:ios"
 
 # ---------------------------------------------------------------------------
 # EAS Cloud Builds  (requires: eas login)
@@ -107,11 +116,11 @@ run = "eas submit --profile production --platform ios"
 
 [tasks.prebuild]
 description = "Generate /android and /ios native folders (after adding native deps)"
-run = "expo prebuild"
+run = "pnpm exec expo prebuild"
 
 [tasks."prebuild:clean"]
 description = "Clean-regenerate native folders from scratch"
-run = "expo prebuild --clean"
+run = "pnpm exec expo prebuild --clean"
 
 # ---------------------------------------------------------------------------
 # Quality
@@ -138,10 +147,17 @@ description = "Install all dependencies"
 run = "pnpm install"
 
 [tasks.setup]
-description = "First-time setup: install deps and copy env template"
+description = "First-time setup: install deps, copy env template, and configure Android SDK"
 run = """
 pnpm install
 [ -f .env.local ] || cp .env.example .env.local 2>/dev/null || echo "No .env.example found — create .env.local manually"
+ANDROID_SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Library/Android/sdk}}"
+if [ -d "$ANDROID_SDK" ]; then
+  echo "sdk.dir=$ANDROID_SDK" > android/local.properties
+  echo "Android SDK configured: $ANDROID_SDK"
+else
+  echo "Warning: Android SDK not found. Set ANDROID_HOME before running 'mise run android'."
+fi
 echo "Setup complete. Run 'mise run dev' to start."
 """
 

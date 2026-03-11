@@ -1,6 +1,7 @@
 import * as Linking from "expo-linking";
+import { Button, Card } from "heroui-native";
 import { useState } from "react";
-import { Image, Pressable, ScrollView, View } from "react-native";
+import { Image, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -74,68 +75,48 @@ export function LinkedAccountsSection() {
       {PLATFORMS.map((platform) => {
         const isLinked = linkedPlatforms[platform.id] ?? false;
         return (
-          <View
+          <Card
             key={platform.id}
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.md,
-              backgroundColor: "#1c1c1e",
-              borderRadius: 14,
-              padding: spacing.md,
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.06)",
-            }}
+            variant="secondary"
+            className="rounded-3xl bg-surface"
           >
-            <Image
-              source={{ uri: platform.icon }}
-              style={{ width: 36, height: 36 }}
-              resizeMode="contain"
-            />
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: fontSize.sm,
-                  fontWeight: "600",
-                  color: "#fff",
-                }}
+            <Card.Body className="flex-row items-center gap-4 px-4 py-4">
+              <Image
+                source={{ uri: platform.icon }}
+                style={{ width: 36, height: 36 }}
+                resizeMode="contain"
+              />
+              <View style={{ flex: 1 }}>
+                <Text
+                  style={{
+                    fontSize: fontSize.sm,
+                    fontWeight: "600",
+                    color: "#fff",
+                  }}
+                >
+                  {platform.name}
+                </Text>
+                <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+                  {platform.description}
+                </Text>
+              </View>
+              <Button
+                onPress={() =>
+                  isLinked
+                    ? handleDisconnect(platform.id)
+                    : void handleConnect(platform)
+                }
+                variant="tertiary"
+                className={isLinked ? "bg-danger/10" : "bg-primary/10"}
               >
-                {platform.name}
-              </Text>
-              <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-                {platform.description}
-              </Text>
-            </View>
-            <Pressable
-              onPress={() =>
-                isLinked
-                  ? handleDisconnect(platform.id)
-                  : void handleConnect(platform)
-              }
-              style={{
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.xs + 2,
-                borderRadius: 10,
-                backgroundColor: isLinked
-                  ? "rgba(239,68,68,0.1)"
-                  : "rgba(0,187,255,0.1)",
-                borderWidth: 1,
-                borderColor: isLinked
-                  ? "rgba(239,68,68,0.3)"
-                  : "rgba(0,187,255,0.3)",
-              }}
-            >
-              <Text
-                style={{
-                  fontSize: fontSize.xs,
-                  fontWeight: "600",
-                  color: isLinked ? "#ef4444" : "#00bbff",
-                }}
-              >
-                {isLinked ? "Disconnect" : "Connect"}
-              </Text>
-            </Pressable>
-          </View>
+                <Button.Label
+                  className={isLinked ? "text-danger" : "text-primary"}
+                >
+                  {isLinked ? "Disconnect" : "Connect"}
+                </Button.Label>
+              </Button>
+            </Card.Body>
+          </Card>
         );
       })}
     </ScrollView>

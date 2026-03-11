@@ -12,7 +12,7 @@
  */
 
 import iconPathData from "@shared/ts/src/icons/icon-paths.generated.json";
-import React from "react";
+import type React from "react";
 import Svg, { Path } from "react-native-svg";
 
 export interface IconProps {

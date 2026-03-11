@@ -1,28 +1,18 @@
-import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetModal,
-  BottomSheetView,
-} from "@gorhom/bottom-sheet";
+import { BottomSheetView } from "@gorhom/bottom-sheet";
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import {
-  forwardRef,
-  useCallback,
-  useImperativeHandle,
-  useMemo,
-  useRef,
-} from "react";
+import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import { Pressable, View } from "react-native";
 import {
+  AppIcon,
   Camera01Icon,
   File01Icon,
-  AppIcon,
   Image01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type { AttachmentFile } from "./attachment-preview";
 
 export interface AttachmentSheetRef {
@@ -42,23 +32,17 @@ export const AttachmentSheet = forwardRef<
   AttachmentSheetRef,
   AttachmentSheetProps
 >(({ onAttachmentsSelected }, ref) => {
-  const bottomSheetRef = useRef<BottomSheetModal>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const { spacing, fontSize } = useResponsive();
 
-  const snapPoints = useMemo(() => ["28%"], []);
-
   useImperativeHandle(ref, () => ({
-    open: () => bottomSheetRef.current?.present(),
-    close: () => bottomSheetRef.current?.dismiss(),
+    open: () => setIsOpen(true),
+    close: () => setIsOpen(false),
   }));
-
-  const dismiss = useCallback(() => {
-    bottomSheetRef.current?.dismiss();
-  }, []);
 
   const handlePhotoLibrary = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    dismiss();
+    setIsOpen(false);
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
       allowsMultipleSelection: true,
@@ -78,11 +62,11 @@ export const AttachmentSheet = forwardRef<
     }));
 
     onAttachmentsSelected(attachments);
-  }, [dismiss, onAttachmentsSelected]);
+  }, [onAttachmentsSelected]);
 
   const handleCamera = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    dismiss();
+    setIsOpen(false);
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) return;
 
@@ -106,11 +90,11 @@ export const AttachmentSheet = forwardRef<
     };
 
     onAttachmentsSelected([attachment]);
-  }, [dismiss, onAttachmentsSelected]);
+  }, [onAttachmentsSelected]);
 
   const handleFile = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    dismiss();
+    setIsOpen(false);
     const result = await DocumentPicker.getDocumentAsync({
       multiple: true,
       type: "*/*",
@@ -129,19 +113,7 @@ export const AttachmentSheet = forwardRef<
     }));
 
     onAttachmentsSelected(attachments);
-  }, [dismiss, onAttachmentsSelected]);
-
-  const renderBackdrop = useCallback(
-    (props: BottomSheetBackdropProps) => (
-      <BottomSheetBackdrop
-        {...props}
-        disappearsOnIndex={-1}
-        appearsOnIndex={0}
-        opacity={0.4}
-      />
-    ),
-    [],
-  );
+  }, [onAttachmentsSelected]);
 
   const options = [
     {
@@ -162,69 +134,68 @@ export const AttachmentSheet = forwardRef<
   ];
 
   return (
-    <BottomSheetModal
-      ref={bottomSheetRef}
-      snapPoints={snapPoints}
-      enableDynamicSizing={false}
-      enablePanDownToClose
-      backdropComponent={renderBackdrop}
-      backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-      handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
-    >
-      <BottomSheetView
-        style={{
-          paddingHorizontal: spacing.md,
-          paddingTop: spacing.sm,
-          paddingBottom: spacing.xl,
-        }}
-      >
-        <Text
-          style={{
-            fontSize: fontSize.base,
-            fontWeight: "600",
-            color: "#ffffff",
-            marginBottom: spacing.md,
-          }}
+    <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={["28%"]}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+          handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
         >
-          Add Attachment
-        </Text>
-
-        <View style={{ gap: spacing.xs }}>
-          {options.map((option) => (
-            <Pressable
-              key={option.label}
-              onPress={option.onPress}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 12,
-                padding: 14,
-                borderRadius: 12,
-                backgroundColor: pressed
-                  ? "rgba(255,255,255,0.06)"
-                  : "transparent",
-              })}
-              android_ripple={{ color: "rgba(255,255,255,0.08)" }}
+          <BottomSheetView
+            style={{
+              paddingHorizontal: spacing.md,
+              paddingTop: spacing.sm,
+              paddingBottom: spacing.xl,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: fontSize.base,
+                fontWeight: "600",
+                color: "#ffffff",
+                marginBottom: spacing.md,
+              }}
             >
-              <AppIcon
-                icon={option.icon}
-                size={20}
-                color="#e4e4e7"
-              />
-              <Text
-                style={{
-                  fontSize: 16,
-                  color: "#e4e4e7",
-                  fontWeight: "400",
-                }}
-              >
-                {option.label}
-              </Text>
-            </Pressable>
-          ))}
-        </View>
-      </BottomSheetView>
-    </BottomSheetModal>
+              Add Attachment
+            </Text>
+
+            <View style={{ gap: spacing.xs }}>
+              {options.map((option) => (
+                <Pressable
+                  key={option.label}
+                  onPress={option.onPress}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 12,
+                    padding: 14,
+                    borderRadius: 12,
+                    backgroundColor: pressed
+                      ? "rgba(255,255,255,0.06)"
+                      : "transparent",
+                  })}
+                  android_ripple={{ color: "rgba(255,255,255,0.08)" }}
+                >
+                  <AppIcon icon={option.icon} size={20} color="#e4e4e7" />
+                  <Text
+                    style={{
+                      fontSize: 16,
+                      color: "#e4e4e7",
+                      fontWeight: "400",
+                    }}
+                  >
+                    {option.label}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+          </BottomSheetView>
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
+    </BottomSheet>
   );
 });
 

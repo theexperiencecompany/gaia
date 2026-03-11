@@ -1,34 +1,31 @@
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
+import { Button, Spinner } from "heroui-native";
 import { useCallback, useMemo, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
-  Pressable,
   RefreshControl,
   ScrollView,
-  TextInput,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  AppIcon,
-  ArrowLeft01Icon,
-  CheckmarkCircle02Icon,
-  ConnectIcon,
-  Search01Icon,
-} from "@/components/icons";
+import { AppIcon, ArrowLeft01Icon, ConnectIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import {
+  AppEmptyStateCard,
+  AppFilterChipGroup,
+  AppSearchInput,
+  AppSectionCard,
+  AppStatusChip,
+} from "@/shared/components/ui";
 import {
   connectIntegration,
   disconnectIntegration,
   fetchIntegrations,
 } from "../api";
 import type { Integration } from "../types";
-
-// ─── Constants ──────────────────────────────────────────────────────────────
 
 const CATEGORY_LABELS: Record<string, string> = {
   all: "All",
@@ -48,7 +45,7 @@ function getCategoryLabel(categoryId: string): string {
   if (CATEGORY_LABELS[categoryId]) return CATEGORY_LABELS[categoryId];
   return categoryId
     .split("_")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 }
 
@@ -105,12 +102,10 @@ function getLogoUri(integration: Integration): string {
   );
 }
 
-// ─── Integration Row ─────────────────────────────────────────────────────────
-
 interface IntegrationRowProps {
   integration: Integration;
   connectingId: string | null;
-  onPress: (integration: Integration) => void;
+  onPress: (integration: Integration) => Promise<void>;
 }
 
 function IntegrationRow({
@@ -118,186 +113,112 @@ function IntegrationRow({
   connectingId,
   onPress,
 }: IntegrationRowProps) {
-  const { fontSize, spacing, moderateScale } = useResponsive();
+  const { fontSize, spacing } = useResponsive();
   const isConnected = integration.status === "connected";
   const isPending = integration.status === "created";
   const isConnecting = connectingId === integration.id;
   const isAvailable =
     integration.source === "custom" || integration.available !== false;
 
+  const statusChip = isConnected ? (
+    <AppStatusChip status="connected" />
+  ) : isPending ? (
+    <AppStatusChip status="pending" />
+  ) : !isAvailable ? (
+    <AppStatusChip label="Unavailable" tone="default" variant="secondary" />
+  ) : null;
+
+  const actionLabel = isConnected
+    ? "Disconnect"
+    : isPending
+      ? "Continue"
+      : "Connect";
+  const actionClassName = isConnected
+    ? "bg-danger/15"
+    : isPending
+      ? "bg-warning/15"
+      : "bg-primary/15";
+  const actionLabelClassName = isConnected
+    ? "text-danger"
+    : isPending
+      ? "text-warning"
+      : "text-primary";
+
   return (
-    <Pressable
-      onPress={() => onPress(integration)}
-      disabled={isConnecting}
-      style={({ pressed }) => ({
-        flexDirection: "row",
-        alignItems: "center",
-        paddingHorizontal: spacing.md,
-        paddingVertical: spacing.sm + 4,
-        backgroundColor: pressed
-          ? "rgba(255,255,255,0.04)"
-          : "rgba(23,25,32,1)",
-        borderRadius: moderateScale(16, 0.5),
-        opacity: isConnecting ? 0.6 : 1,
-      })}
+    <AppSectionCard
+      className="rounded-2xl bg-[#17191f]"
+      bodyClassName="px-4 py-4"
     >
-      {/* Logo */}
       <View
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: moderateScale(12, 0.5),
-          backgroundColor: "rgba(255,255,255,0.06)",
-          alignItems: "center",
-          justifyContent: "center",
-          marginRight: spacing.md,
-          flexShrink: 0,
-        }}
+        style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}
       >
-        <Image
-          source={{ uri: getLogoUri(integration) }}
-          style={{ width: 28, height: 28 }}
-          contentFit="contain"
-        />
-      </View>
-
-      {/* Name + description */}
-      <View style={{ flex: 1, minWidth: 0, marginRight: spacing.sm }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-          <Text
-            style={{
-              fontSize: fontSize.sm,
-              fontWeight: "500",
-              color: "#f4f4f5",
-              flexShrink: 1,
-            }}
-            numberOfLines={1}
-          >
-            {integration.name}
-          </Text>
-          {isPending && (
-            <View
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: "#f59e0b",
-              }}
-            />
-          )}
-        </View>
-        <Text
-          style={{
-            fontSize: fontSize.xs,
-            color: "#8e8e93",
-            marginTop: 2,
-          }}
-          numberOfLines={1}
-        >
-          {integration.description}
-        </Text>
-      </View>
-
-      {/* Status / action */}
-      {isConnecting ? (
-        <ActivityIndicator size="small" color="#8e8e93" />
-      ) : isConnected ? (
         <View
           style={{
-            flexDirection: "row",
+            width: 44,
+            height: 44,
+            borderRadius: 14,
+            backgroundColor: "rgba(255,255,255,0.06)",
             alignItems: "center",
-            gap: 5,
-            backgroundColor: "rgba(52,199,89,0.12)",
-            borderRadius: moderateScale(20, 0.5),
-            paddingHorizontal: spacing.sm + 2,
-            paddingVertical: 5,
+            justifyContent: "center",
+            flexShrink: 0,
           }}
         >
-          <AppIcon icon={CheckmarkCircle02Icon} size={12} color="#34c759" />
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#34c759",
-              fontWeight: "500",
-            }}
-          >
-            Connected
-          </Text>
+          <Image
+            source={{ uri: getLogoUri(integration) }}
+            style={{ width: 28, height: 28 }}
+            contentFit="contain"
+          />
         </View>
-      ) : isAvailable ? (
-        <View
-          style={{
-            backgroundColor: "rgba(0,187,255,0.12)",
-            borderRadius: moderateScale(20, 0.5),
-            paddingHorizontal: spacing.sm + 2,
-            paddingVertical: 5,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#00bbff",
-              fontWeight: "500",
-            }}
-          >
-            Connect
-          </Text>
-        </View>
-      ) : null}
-    </Pressable>
-  );
-}
 
-// ─── Category Chips ───────────────────────────────────────────────────────────
-
-interface CategoryChipsProps {
-  categories: string[];
-  selected: string;
-  onSelect: (cat: string) => void;
-}
-
-function CategoryChips({ categories, selected, onSelect }: CategoryChipsProps) {
-  const { fontSize, spacing, moderateScale } = useResponsive();
-  const allCategories = ["all", ...categories];
-
-  return (
-    <ScrollView
-      horizontal
-      showsHorizontalScrollIndicator={false}
-      contentContainerStyle={{ gap: 8, paddingHorizontal: spacing.md }}
-    >
-      {allCategories.map((cat) => {
-        const isActive = selected === cat;
-        return (
-          <Pressable
-            key={cat}
-            onPress={() => onSelect(cat)}
-            style={{
-              borderRadius: moderateScale(20, 0.5),
-              paddingHorizontal: spacing.md,
-              paddingVertical: 6,
-              backgroundColor: isActive
-                ? "rgba(0,187,255,0.18)"
-                : "rgba(255,255,255,0.07)",
-            }}
-          >
+        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
             <Text
               style={{
-                fontSize: fontSize.xs,
-                fontWeight: isActive ? "600" : "400",
-                color: isActive ? "#00bbff" : "#8e8e93",
+                flexShrink: 1,
+                fontSize: fontSize.sm,
+                fontWeight: "600",
+                color: "#f4f4f5",
               }}
+              numberOfLines={1}
             >
-              {getCategoryLabel(cat)}
+              {integration.name}
             </Text>
-          </Pressable>
-        );
-      })}
-    </ScrollView>
+            {statusChip}
+          </View>
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              color: "#8e8e93",
+            }}
+            numberOfLines={2}
+          >
+            {integration.description}
+          </Text>
+        </View>
+
+        {isAvailable ? (
+          <Button
+            size="sm"
+            variant="tertiary"
+            className={actionClassName}
+            isDisabled={isConnecting}
+            onPress={() => {
+              void onPress(integration);
+            }}
+          >
+            {isConnecting ? (
+              <Spinner size="sm" />
+            ) : (
+              <Button.Label className={actionLabelClassName}>
+                {actionLabel}
+              </Button.Label>
+            )}
+          </Button>
+        ) : null}
+      </View>
+    </AppSectionCard>
   );
 }
-
-// ─── Section Header ───────────────────────────────────────────────────────────
 
 interface SectionHeaderProps {
   title: string;
@@ -306,6 +227,7 @@ interface SectionHeaderProps {
 
 function SectionHeader({ title, count }: SectionHeaderProps) {
   const { fontSize, spacing } = useResponsive();
+
   return (
     <View
       style={{
@@ -326,70 +248,37 @@ function SectionHeader({ title, count }: SectionHeaderProps) {
       >
         {title}
       </Text>
-      <View
+      <Text
         style={{
-          backgroundColor: "rgba(255,255,255,0.08)",
-          borderRadius: 999,
-          minWidth: 22,
-          height: 20,
-          alignItems: "center",
-          justifyContent: "center",
-          paddingHorizontal: 6,
+          fontSize: fontSize.xs,
+          color: "#8e8e93",
         }}
       >
-        <Text
-          style={{
-            fontSize: fontSize.xs - 1,
-            fontWeight: "500",
-            color: "#8e8e93",
-          }}
-        >
-          {count}
-        </Text>
-      </View>
+        {count}
+      </Text>
     </View>
   );
 }
-
-// ─── Empty State ──────────────────────────────────────────────────────────────
 
 function EmptyState({ query }: { query: string }) {
-  const { fontSize, spacing } = useResponsive();
+  const { spacing } = useResponsive();
+
   return (
     <View
-      style={{
-        flex: 1,
-        alignItems: "center",
-        justifyContent: "center",
-        paddingVertical: spacing.xl * 3,
-        gap: spacing.sm,
-      }}
+      style={{ paddingHorizontal: spacing.md, paddingVertical: spacing.xl * 2 }}
     >
-      <AppIcon icon={ConnectIcon} size={48} color="#3a3a3c" />
-      <Text
-        style={{
-          fontSize: fontSize.base,
-          fontWeight: "500",
-          color: "#d4d4d8",
-          textAlign: "center",
-        }}
-      >
-        {query ? `No results for "${query}"` : "No integrations found"}
-      </Text>
-      <Text
-        style={{
-          fontSize: fontSize.sm,
-          color: "#8e8e93",
-          textAlign: "center",
-        }}
-      >
-        {query ? "Try a different search term" : "Check back later"}
-      </Text>
+      <AppEmptyStateCard
+        title={query ? `No results for "${query}"` : "No integrations found"}
+        description={
+          query ? "Try a different search term." : "Check back later."
+        }
+        icon={<AppIcon icon={ConnectIcon} size={40} color="#3a3a3c" />}
+        className="rounded-2xl bg-[#17191f]"
+        bodyClassName="px-6 py-10"
+      />
     </View>
   );
 }
-
-// ─── Main Screen ──────────────────────────────────────────────────────────────
 
 type ListItem =
   | { type: "section-header"; category: string; count: number }
@@ -398,7 +287,7 @@ type ListItem =
 export function IntegrationsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { spacing, fontSize, moderateScale } = useResponsive();
+  const { spacing, fontSize } = useResponsive();
 
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -413,11 +302,12 @@ export function IntegrationsScreen() {
     } else {
       setIsLoading(true);
     }
+
     try {
       const data = await fetchIntegrations();
       setIntegrations(data);
     } catch {
-      // Silent fail - already handled in API layer
+      // Silent fail - already handled in API layer.
     } finally {
       setIsLoading(false);
       setIsRefreshing(false);
@@ -430,10 +320,11 @@ export function IntegrationsScreen() {
     }, [load]),
   );
 
-  // Derive categories from data
   const availableCategories = useMemo(() => {
-    const cats = new Set(integrations.map((i) => i.category));
-    const CATEGORY_ORDER: Record<string, number> = {
+    const categories = new Set(
+      integrations.map((integration) => integration.category),
+    );
+    const categoryOrder: Record<string, number> = {
       productivity: 0,
       developer: 1,
       communication: 2,
@@ -445,73 +336,97 @@ export function IntegrationsScreen() {
       capabilities: 8,
       other: 99,
     };
-    return Array.from(cats).sort(
-      (a, b) => (CATEGORY_ORDER[a] ?? 50) - (CATEGORY_ORDER[b] ?? 50),
+
+    return Array.from(categories).sort(
+      (left, right) =>
+        (categoryOrder[left] ?? 50) - (categoryOrder[right] ?? 50),
     );
   }, [integrations]);
 
-  // Filter by search query + category
+  const categoryOptions = useMemo(
+    () => [
+      { key: "all", label: "All" },
+      ...availableCategories.map((category) => ({
+        key: category,
+        label: getCategoryLabel(category),
+      })),
+    ],
+    [availableCategories],
+  );
+
   const filteredIntegrations = useMemo(() => {
     let results = integrations;
 
     if (selectedCategory !== "all") {
-      results = results.filter((i) => i.category === selectedCategory);
+      results = results.filter(
+        (integration) => integration.category === selectedCategory,
+      );
     }
 
-    const q = searchQuery.trim().toLowerCase();
-    if (q) {
+    const normalizedQuery = searchQuery.trim().toLowerCase();
+    if (normalizedQuery) {
       results = results.filter(
-        (i) =>
-          i.name.toLowerCase().includes(q) ||
-          i.description.toLowerCase().includes(q),
+        (integration) =>
+          integration.name.toLowerCase().includes(normalizedQuery) ||
+          integration.description.toLowerCase().includes(normalizedQuery),
       );
     }
 
     return results;
-  }, [integrations, selectedCategory, searchQuery]);
+  }, [integrations, searchQuery, selectedCategory]);
 
   const connectedCount = useMemo(
-    () => integrations.filter((i) => i.status === "connected").length,
+    () =>
+      integrations.filter((integration) => integration.status === "connected")
+        .length,
     [integrations],
   );
 
-  // Build flat list items: section headers + rows
   const listItems = useMemo<ListItem[]>(() => {
     if (selectedCategory !== "all") {
-      // Single category view - no section headers
       return filteredIntegrations.map((integration) => ({
         type: "integration" as const,
         integration,
       }));
     }
 
-    // Group by category and inject headers
     const grouped: Record<string, Integration[]> = {};
     for (const integration of filteredIntegrations) {
-      const cat = integration.category;
-      if (!grouped[cat]) grouped[cat] = [];
-      grouped[cat].push(integration);
+      if (!grouped[integration.category]) {
+        grouped[integration.category] = [];
+      }
+      grouped[integration.category].push(integration);
     }
 
     const items: ListItem[] = [];
-    const orderedCats = availableCategories.filter(
-      (cat) => grouped[cat]?.length,
+    const orderedCategories = availableCategories.filter(
+      (category) => grouped[category]?.length,
     );
 
-    for (const cat of orderedCats) {
-      const catIntegrations = grouped[cat];
+    for (const category of orderedCategories) {
       items.push({
         type: "section-header",
-        category: cat,
-        count: catIntegrations.length,
+        category,
+        count: grouped[category].length,
       });
-      for (const integration of catIntegrations) {
+
+      for (const integration of grouped[category]) {
         items.push({ type: "integration", integration });
       }
     }
 
     return items;
-  }, [filteredIntegrations, selectedCategory, availableCategories]);
+  }, [availableCategories, filteredIntegrations, selectedCategory]);
+
+  const handleSearchChange = useCallback(
+    (text: string) => {
+      setSearchQuery(text);
+      if (text && selectedCategory !== "all") {
+        setSelectedCategory("all");
+      }
+    },
+    [selectedCategory],
+  );
 
   const handleIntegrationPress = useCallback(
     async (integration: Integration) => {
@@ -539,19 +454,25 @@ export function IntegrationsScreen() {
             },
           ],
         );
-      } else {
-        setConnectingId(integration.id);
-        const result = await connectIntegration(integration.id);
-        if (result.success) {
-          await load();
-        } else if (!result.cancelled) {
-          Alert.alert("Error", result.error ?? "Failed to connect integration");
-        }
-        setConnectingId(null);
+        return;
       }
+
+      setConnectingId(integration.id);
+      const result = await connectIntegration(integration.id);
+      if (result.success) {
+        await load();
+      } else if (!result.cancelled) {
+        Alert.alert("Error", result.error ?? "Failed to connect integration");
+      }
+      setConnectingId(null);
     },
     [connectingId, load],
   );
+
+  const keyExtractor = useCallback((item: ListItem) => {
+    if (item.type === "section-header") return `header-${item.category}`;
+    return `integration-${item.integration.id}`;
+  }, []);
 
   const renderItem = useCallback(
     ({ item }: { item: ListItem }) => {
@@ -563,8 +484,11 @@ export function IntegrationsScreen() {
           />
         );
       }
+
       return (
-        <View style={{ paddingHorizontal: spacing.md, marginBottom: 8 }}>
+        <View
+          style={{ paddingHorizontal: spacing.md, marginBottom: spacing.sm }}
+        >
           <IntegrationRow
             integration={item.integration}
             connectingId={connectingId}
@@ -573,51 +497,58 @@ export function IntegrationsScreen() {
         </View>
       );
     },
-    [connectingId, handleIntegrationPress, spacing.md],
+    [connectingId, handleIntegrationPress, spacing.md, spacing.sm],
   );
-
-  const keyExtractor = useCallback((item: ListItem) => {
-    if (item.type === "section-header") return `header-${item.category}`;
-    return `integration-${item.integration.id}`;
-  }, []);
 
   const ListHeader = useCallback(
     () => (
-      <View style={{ gap: spacing.sm, paddingBottom: spacing.sm }}>
-        {/* Stats bar */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-            paddingHorizontal: spacing.md,
-          }}
-        >
-          <Text style={{ fontSize: fontSize.xs, color: "#8e8e93" }}>
-            {connectedCount} of {integrations.length} connected
-          </Text>
+      <View style={{ gap: spacing.md, paddingBottom: spacing.md }}>
+        <View style={{ paddingHorizontal: spacing.md }}>
+          <AppSectionCard
+            className="rounded-2xl bg-[#17191f]"
+            bodyClassName="flex-row items-center justify-between px-4 py-3"
+          >
+            <Text style={{ fontSize: fontSize.xs, color: "#d4d4d8" }}>
+              {connectedCount} of {integrations.length} connected
+            </Text>
+            {selectedCategory !== "all" ? (
+              <AppStatusChip
+                label={getCategoryLabel(selectedCategory)}
+                tone="accent"
+              />
+            ) : null}
+          </AppSectionCard>
         </View>
 
-        {/* Category chips */}
-        {availableCategories.length > 1 && (
-          <CategoryChips
-            categories={availableCategories}
-            selected={selectedCategory}
-            onSelect={(cat) => {
-              setSelectedCategory(cat);
-            }}
-          />
-        )}
+        {availableCategories.length > 0 ? (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ paddingHorizontal: spacing.md }}
+          >
+            <AppFilterChipGroup
+              options={categoryOptions}
+              selectedKey={selectedCategory}
+              onSelect={(category) => {
+                setSelectedCategory(category ?? "all");
+              }}
+              className="flex-nowrap gap-2"
+              selectedVariant="primary"
+              unselectedVariant="tertiary"
+              chipClassName="bg-white/10"
+            />
+          </ScrollView>
+        ) : null}
       </View>
     ),
     [
+      availableCategories.length,
+      categoryOptions,
       connectedCount,
+      fontSize.xs,
       integrations.length,
-      availableCategories,
       selectedCategory,
       spacing.md,
-      spacing.sm,
-      fontSize.xs,
     ],
   );
 
@@ -626,99 +557,88 @@ export function IntegrationsScreen() {
       isLoading ? (
         <View
           style={{
-            paddingVertical: spacing.xl * 3,
-            alignItems: "center",
-            gap: spacing.md,
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.xl * 2,
           }}
         >
-          <ActivityIndicator size="large" color="#00bbff" />
-          <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
-            Loading integrations...
-          </Text>
+          <AppSectionCard
+            className="rounded-2xl bg-[#17191f]"
+            bodyClassName="items-center px-6 py-10"
+          >
+            <Spinner />
+            <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
+              Loading integrations...
+            </Text>
+          </AppSectionCard>
         </View>
       ) : (
         <EmptyState query={searchQuery} />
       ),
-    [isLoading, searchQuery, spacing.xl, spacing.md, fontSize.sm],
+    [fontSize.sm, isLoading, searchQuery, spacing.md, spacing.xl],
   );
 
   return (
     <View style={{ flex: 1, backgroundColor: "#131416" }}>
-      {/* ─── Header ─────────────────────────────────────────────────────── */}
       <View
         style={{
           paddingTop: insets.top + spacing.sm,
-          paddingHorizontal: spacing.md,
           paddingBottom: spacing.md,
           borderBottomWidth: 1,
           borderBottomColor: "rgba(255,255,255,0.08)",
           gap: spacing.md,
         }}
       >
-        <View style={{ flexDirection: "row", alignItems: "center" }}>
-          <Pressable
-            onPress={() => router.back()}
+        <View style={{ paddingHorizontal: spacing.md }}>
+          <View
             style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
+              flexDirection: "row",
               alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.05)",
+              gap: spacing.sm,
             }}
           >
-            <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-          </Pressable>
+            <Button
+              isIconOnly
+              variant="secondary"
+              size="sm"
+              onPress={() => router.back()}
+            >
+              <AppIcon icon={ArrowLeft01Icon} size={18} color="#ffffff" />
+            </Button>
 
-          <Text
-            style={{
-              marginLeft: spacing.md,
-              fontSize: fontSize.base,
-              fontWeight: "600",
-              color: "#fff",
-              flex: 1,
-            }}
-          >
-            Integrations
-          </Text>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: fontSize.base,
+                  fontWeight: "600",
+                  color: "#ffffff",
+                }}
+              >
+                Integrations
+              </Text>
+              <Text
+                style={{
+                  fontSize: fontSize.xs,
+                  color: "#8e8e93",
+                  marginTop: 2,
+                }}
+              >
+                Connect the tools your workflows can use.
+              </Text>
+            </View>
+          </View>
         </View>
 
-        {/* Search bar */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            backgroundColor: "rgba(255,255,255,0.06)",
-            borderRadius: moderateScale(14, 0.5),
-            paddingHorizontal: spacing.sm + 4,
-            paddingVertical: spacing.sm,
-            gap: spacing.sm,
-          }}
-        >
-          <AppIcon icon={Search01Icon} size={16} color="#6f737c" />
-          <TextInput
+        <View style={{ paddingHorizontal: spacing.md }}>
+          <AppSearchInput
             value={searchQuery}
-            onChangeText={(text) => {
-              setSearchQuery(text);
-              if (text && selectedCategory !== "all") {
-                setSelectedCategory("all");
-              }
-            }}
-            placeholder="Search integrations..."
-            placeholderTextColor="#6f737c"
-            style={{
-              flex: 1,
-              color: "#fff",
-              fontSize: fontSize.sm,
-              padding: 0,
-            }}
-            returnKeyType="search"
-            clearButtonMode="while-editing"
+            onChangeText={handleSearchChange}
+            placeholder="Search integrations"
+            className="gap-0"
+            inputClassName="bg-white/5"
           />
         </View>
       </View>
 
-      {/* ─── List ────────────────────────────────────────────────────────── */}
       <FlatList
         data={listItems}
         keyExtractor={keyExtractor}

@@ -9,7 +9,7 @@ import {
   View,
 } from "react-native";
 import { WebView } from "react-native-webview";
-import { Copy01Icon, AppIcon, Tick02Icon } from "@/components/icons";
+import { AppIcon, Copy01Icon, Tick02Icon } from "@/components/icons";
 import { THEME } from "@/features/chat/components/code-block/syntax-theme";
 import { tokenizeLine } from "@/features/chat/components/code-block/tokenizer";
 

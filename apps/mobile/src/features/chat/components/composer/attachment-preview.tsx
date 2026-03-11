@@ -5,9 +5,9 @@ import Animated, {
   LinearTransition,
 } from "react-native-reanimated";
 import {
+  AppIcon,
   Cancel01Icon,
   File01Icon,
-  AppIcon,
   Image01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -115,11 +115,7 @@ function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
           justifyContent: "center",
         }}
       >
-        <AppIcon
-          icon={Cancel01Icon}
-          size={iconSize.sm - 2}
-          color="#a1a1aa"
-        />
+        <AppIcon icon={Cancel01Icon} size={iconSize.sm - 2} color="#a1a1aa" />
       </Pressable>
     </Animated.View>
   );

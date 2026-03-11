@@ -93,11 +93,7 @@ export function SidebarHeader({
             }}
             pointerEvents="none"
           >
-            <AppIcon
-              icon={Search01Icon}
-              size={iconSize.sm}
-              color="#6b6b6e"
-            />
+            <AppIcon icon={Search01Icon} size={iconSize.sm} color="#6b6b6e" />
           </View>
           {searchQuery.length > 0 && (
             <Pressable
@@ -121,11 +117,7 @@ export function SidebarHeader({
         </View>
 
         <Button variant="secondary" size="sm" isIconOnly onPress={onNewChat}>
-          <AppIcon
-            icon={PencilEdit02Icon}
-            size={iconSize.sm}
-            color="#ffffff"
-          />
+          <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#ffffff" />
         </Button>
       </View>
     </View>

@@ -236,11 +236,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
         <View className="rounded-xl bg-white/5 border border-white/10 p-3 mb-3">
           <View className="flex-row items-center justify-between">
             <View className="items-center justify-center w-16 h-16">
-              <AppIcon
-                icon={mainIconName}
-                size={52}
-                color={accentColor}
-              />
+              <AppIcon icon={mainIconName} size={52} color={accentColor} />
             </View>
 
             <View className="items-end flex-1">
@@ -287,11 +283,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
           )}
           {windSpeed !== undefined && (
             <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 items-center gap-1">
-              <AppIcon
-                icon={FastWindIcon}
-                size={18}
-                color={accentColor}
-              />
+              <AppIcon icon={FastWindIcon} size={18} color={accentColor} />
               <Text className="text-[10px] text-muted">Wind</Text>
               <Text className="text-sm font-semibold text-foreground">
                 {windSpeed} m/s
@@ -314,11 +306,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
           <View className="flex-row gap-2 mb-2">
             {sunriseStr && (
               <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 flex-row items-center gap-2">
-                <AppIcon
-                  icon={SunriseIcon}
-                  size={16}
-                  color={accentColor}
-                />
+                <AppIcon icon={SunriseIcon} size={16} color={accentColor} />
                 <View>
                   <Text className="text-[10px] text-muted">Sunrise</Text>
                   <Text className="text-xs font-semibold text-foreground">
@@ -329,11 +317,7 @@ export function WeatherCard({ data }: { data: WeatherData }) {
             )}
             {sunsetStr && (
               <View className="flex-1 rounded-xl bg-white/5 border border-white/10 p-2.5 flex-row items-center gap-2">
-                <AppIcon
-                  icon={SunsetIcon}
-                  size={16}
-                  color={accentColor}
-                />
+                <AppIcon icon={SunsetIcon} size={16} color={accentColor} />
                 <View>
                   <Text className="text-[10px] text-muted">Sunset</Text>
                   <Text className="text-xs font-semibold text-foreground">
@@ -379,21 +363,13 @@ export function WeatherCard({ data }: { data: WeatherData }) {
                   </Text>
                   <View className="flex-row items-center gap-3">
                     <View className="flex-row items-center gap-1">
-                      <AppIcon
-                        icon={Sun03Icon}
-                        size={14}
-                        color="#FCD34D"
-                      />
+                      <AppIcon icon={Sun03Icon} size={14} color="#FCD34D" />
                       <Text className="text-xs font-medium text-foreground">
                         {dayTemp}°
                       </Text>
                     </View>
                     <View className="flex-row items-center gap-1">
-                      <AppIcon
-                        icon={CloudIcon}
-                        size={14}
-                        color="#93C5FD"
-                      />
+                      <AppIcon icon={CloudIcon} size={14} color="#93C5FD" />
                       <Text className="text-xs text-foreground/70">
                         {nightTemp}°
                       </Text>

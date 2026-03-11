@@ -1,3 +1,4 @@
+import { formatDueDate } from "@gaia/shared/tool-utils";
 import { Card } from "heroui-native";
 import { View } from "react-native";
 import {
@@ -9,7 +10,6 @@ import {
   LayoutGridIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import { formatDueDate } from "@gaia/shared/tool-utils";
 
 export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
 

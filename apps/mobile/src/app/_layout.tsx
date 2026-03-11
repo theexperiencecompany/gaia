@@ -13,7 +13,6 @@ import {
   RobotoMono_400Regular,
   RobotoMono_500Medium,
 } from "@expo-google-fonts/roboto-mono";
-import { BottomSheetModalProvider } from "@gorhom/bottom-sheet";
 import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
@@ -58,20 +57,18 @@ export default function RootLayout() {
             style={{ flex: 1, backgroundColor: "#060a14" }}
           >
             <HeroUINativeProvider>
-              <BottomSheetModalProvider>
-                <Stack screenOptions={{ headerShown: false }}>
-                  <Stack.Screen name="(app)" options={{ headerShown: false }} />
-                  <Stack.Screen
-                    name="login/index"
-                    options={{ headerShown: false }}
-                  />
-                  <Stack.Screen
-                    name="signup/index"
-                    options={{ headerShown: false }}
-                  />
-                </Stack>
-                <StatusBar style="light" />
-              </BottomSheetModalProvider>
+              <Stack screenOptions={{ headerShown: false }}>
+                <Stack.Screen name="(app)" options={{ headerShown: false }} />
+                <Stack.Screen
+                  name="login/index"
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="signup/index"
+                  options={{ headerShown: false }}
+                />
+              </Stack>
+              <StatusBar style="light" />
             </HeroUINativeProvider>
           </GestureHandlerRootView>
         </ChatProvider>

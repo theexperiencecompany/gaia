@@ -1,21 +1,16 @@
-import type {
-  TriggerConfig,
-  ExecutionConfig,
-  WorkflowMetadata,
-  WorkflowStep,
-} from "@gaia/shared/types";
+import type { TriggerConfig, WorkflowStep } from "@gaia/shared/types";
 
 export type {
-  TriggerConfig,
-  ExecutionConfig,
-  WorkflowMetadata,
-  ContentCreator,
-  WorkflowStep,
-  Workflow,
   CommunityWorkflow,
-  WorkflowListResponse,
-  WorkflowResponse,
+  ContentCreator,
   CreateWorkflowPayload,
+  ExecutionConfig,
+  TriggerConfig,
+  Workflow,
+  WorkflowListResponse,
+  WorkflowMetadata,
+  WorkflowResponse,
+  WorkflowStep,
 } from "@gaia/shared/types";
 
 export interface WorkflowExecution {

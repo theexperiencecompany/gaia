@@ -1,8 +1,8 @@
+import { getUserTimezone } from "@gaia/shared/api";
 import {
   clearAuthData,
   getAuthToken,
 } from "@/features/auth/utils/auth-storage";
-import { getUserTimezone } from "@gaia/shared/api";
 import { API_BASE_URL } from "./constants";
 
 // Callback invoked when any request returns 401 Unauthorized.
