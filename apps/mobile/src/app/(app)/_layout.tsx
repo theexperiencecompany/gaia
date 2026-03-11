@@ -37,6 +37,7 @@ export default function AppLayout() {
             <Stack.Screen name="c/[id]" options={{ animation: "none" }} />
             <Stack.Screen name="workflows/[id]" />
             <Stack.Screen name="settings/index" />
+            <Stack.Screen name="calendar/index" />
             <Stack.Screen name="test/index" />
           </Stack>
         </View>

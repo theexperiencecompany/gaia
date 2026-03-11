@@ -9,14 +9,17 @@ import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
 import { ToolDataRenderer } from "../../tool-data";
 import type { Message } from "../../types";
-import { splitMessageByBreaks } from "../../utils/messageBreakUtils";
-import { parseThinkingFromText } from "../../utils/thinkingParser";
+import {
+  splitMessageByBreaks,
+  parseThinkingFromText,
+} from "@gaia/shared/utils";
 import {
   MemoryBottomSheet,
   type MemoryBottomSheetRef,
 } from "../memory/memory-bottom-sheet";
 import { ImageBubble } from "./image-bubble";
 import { LoadingIndicator } from "./loading-indicator";
+import type { MessageActionConfig } from "./message-action-sheet";
 import { MessageReplyQuote } from "./message-reply-quote";
 import { ThinkingBubble } from "./thinking-bubble";
 
@@ -211,6 +214,7 @@ interface ChatMessageProps {
   message: Message;
   onFollowUpAction?: (action: string) => void;
   onReply?: (message: Message) => void;
+  onLongPress?: (config: MessageActionConfig) => void;
   isLoading?: boolean;
   loadingMessage?: string;
 }
@@ -219,6 +223,7 @@ export function ChatMessage({
   message,
   onFollowUpAction,
   onReply,
+  onLongPress,
   isLoading = false,
   loadingMessage = "Thinking...",
 }: ChatMessageProps) {
@@ -251,8 +256,18 @@ export function ChatMessage({
 
   const handleLongPress = useCallback(() => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onReply?.(message);
-  }, [onReply, message]);
+    if (onLongPress) {
+      onLongPress({
+        messageId: message.id,
+        conversationId: (message.metadata?.conversation_id as string) ?? "",
+        content: message.text ?? "",
+        isUser: message.isUser,
+        isPinned: message.metadata?.is_pinned as boolean | undefined,
+      });
+    } else {
+      onReply?.(message);
+    }
+  }, [onLongPress, onReply, message]);
 
   // ---- User message --------------------------------------------------------
   if (isUser) {
@@ -401,14 +416,10 @@ export function ChatMessage({
       {message.memoryData ? (
         <Pressable
           onPress={() =>
-            memorySheetRef.current?.open(
-              message.memoryData as MemoryDataShape,
-            )
+            memorySheetRef.current?.open(message.memoryData as MemoryDataShape)
           }
         >
-          <MemoryIndicator
-            memoryData={message.memoryData as MemoryDataShape}
-          />
+          <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
         </Pressable>
       ) : null}
 

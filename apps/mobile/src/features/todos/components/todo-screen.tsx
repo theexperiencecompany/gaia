@@ -1,14 +1,21 @@
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useState } from "react";
-import { Alert, Pressable, View } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Alert, Pressable, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Add01Icon, ArrowLeft01Icon, AppIcon } from "@/components/icons";
+import {
+  Add01Icon,
+  AppIcon,
+  ArrowLeft01Icon,
+  Search01Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { todoApi } from "../api/todo-api";
 import { useTodos } from "../hooks/use-todos";
-import type { Todo, TodoCreate } from "../types/todo-types";
+import type { Todo, TodoCreate, TodoUpdate } from "../types/todo-types";
 import { CreateTodoModal } from "./create-todo-modal";
+import type { TodoDetailSheetRef } from "./todo-detail-sheet";
+import { TodoDetailSheet } from "./todo-detail-sheet";
 import { TodoFilters } from "./todo-filters";
 import { TodoList } from "./todo-list";
 
@@ -19,6 +26,21 @@ export function TodoScreen() {
   const [showCreate, setShowCreate] = useState(false);
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const detailSheetRef = useRef<TodoDetailSheetRef>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [activePriority, setActivePriority] = useState<string | null>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      setDebouncedSearch(searchQuery);
+    }, 300);
+    return () => {
+      if (debounceTimer.current) clearTimeout(debounceTimer.current);
+    };
+  }, [searchQuery]);
 
   const {
     todos,
@@ -31,9 +53,13 @@ export function TodoScreen() {
     setActiveFilter,
     refetch,
     createTodo,
+    updateTodo,
     toggleComplete,
     deleteTodo,
-  } = useTodos();
+  } = useTodos({
+    search: debouncedSearch || undefined,
+    priority: activePriority || undefined,
+  });
 
   useFocusEffect(
     useCallback(() => {
@@ -109,6 +135,41 @@ export function TodoScreen() {
     );
   }, [selectedIds, refetch]);
 
+  const handleTodoPress = useCallback((todo: Todo) => {
+    detailSheetRef.current?.open(todo);
+  }, []);
+
+  const handleUpdate = useCallback(
+    async (todoId: string, updates: TodoUpdate) => {
+      await updateTodo(todoId, updates);
+    },
+    [updateTodo],
+  );
+
+  const handleAddSubtask = useCallback(
+    async (todoId: string, title: string) => {
+      await todoApi.addSubtask(todoId, title);
+      void refetch();
+    },
+    [refetch],
+  );
+
+  const handleToggleSubtask = useCallback(
+    async (todoId: string, subtaskId: string, completed: boolean) => {
+      await todoApi.toggleSubtask(todoId, subtaskId, completed);
+      void refetch();
+    },
+    [refetch],
+  );
+
+  const handleDeleteSubtask = useCallback(
+    async (todoId: string, subtaskId: string) => {
+      await todoApi.deleteSubtask(todoId, subtaskId);
+      void refetch();
+    },
+    [refetch],
+  );
+
   return (
     <View style={{ flex: 1, backgroundColor: "#131416" }}>
       {/* Header */}
@@ -164,11 +225,41 @@ export function TodoScreen() {
         </Pressable>
       </View>
 
+      {/* Search bar */}
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 10,
+          marginHorizontal: 16,
+          marginTop: 12,
+          marginBottom: 4,
+          backgroundColor: "#18181b",
+          borderRadius: 10,
+          paddingHorizontal: 12,
+          paddingVertical: 10,
+          borderWidth: 1,
+          borderColor: "#27272a",
+        }}
+      >
+        <AppIcon icon={Search01Icon} size={16} color="#52525b" />
+        <TextInput
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search todos..."
+          placeholderTextColor="#52525b"
+          style={{ flex: 1, fontSize: 15, color: "#f4f4f5" }}
+          clearButtonMode="while-editing"
+        />
+      </View>
+
       {/* Filter tabs */}
       <TodoFilters
         activeFilter={activeFilter}
         onFilterChange={setActiveFilter}
         counts={counts}
+        activePriority={activePriority}
+        onPriorityFilter={setActivePriority}
       />
 
       {/* Error state */}
@@ -217,6 +308,7 @@ export function TodoScreen() {
             void refetch();
           }}
           onToggleComplete={toggleComplete}
+          onTodoPress={selectionMode ? undefined : handleTodoPress}
           onDeleteTodo={
             selectionMode
               ? undefined
@@ -321,6 +413,15 @@ export function TodoScreen() {
         onClose={() => setShowCreate(false)}
         onCreated={handleCreated}
         projects={projects}
+      />
+
+      <TodoDetailSheet
+        ref={detailSheetRef}
+        projects={projects}
+        onUpdate={handleUpdate}
+        onAddSubtask={handleAddSubtask}
+        onToggleSubtask={handleToggleSubtask}
+        onDeleteSubtask={handleDeleteSubtask}
       />
     </View>
   );

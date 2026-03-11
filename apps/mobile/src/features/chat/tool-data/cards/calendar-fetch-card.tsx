@@ -1,6 +1,7 @@
 import { Card } from "heroui-native";
 import { View } from "react-native";
 import { Text } from "@/components/ui/text";
+import { groupEventsByDate } from "@gaia/shared/tool-utils";
 
 export interface CalendarFetchItem {
   summary: string;
@@ -36,13 +37,7 @@ function formatDateRelative(dateStr: string): string {
 }
 
 export function CalendarFetchCard({ data }: { data: CalendarFetchItem[] }) {
-  const eventsByDate: Record<string, CalendarFetchItem[]> = {};
-  data.forEach((event) => {
-    const dateStr = event.start_time || new Date().toISOString();
-    const date = new Date(dateStr).toISOString().slice(0, 10);
-    if (!eventsByDate[date]) eventsByDate[date] = [];
-    eventsByDate[date].push(event);
-  });
+  const eventsByDate = groupEventsByDate(data);
 
   return (
     <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">

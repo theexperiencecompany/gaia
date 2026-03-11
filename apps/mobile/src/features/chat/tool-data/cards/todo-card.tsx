@@ -9,6 +9,7 @@ import {
   LayoutGridIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { formatDueDate } from "@gaia/shared/tool-utils";
 
 export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
 
@@ -129,24 +130,6 @@ function getTodoStatus(todo: TodoItem): TodoStatus {
 function isTodoDone(todo: TodoItem): boolean {
   const s = getTodoStatus(todo);
   return s === "completed" || s === "cancelled";
-}
-
-function formatDueDate(date: string): string {
-  const dueDate = new Date(date);
-  const now = new Date();
-  const daysDiff = Math.floor(
-    (dueDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24),
-  );
-  if (daysDiff === 0) return "Today";
-  if (daysDiff === 1) return "Tomorrow";
-  if (daysDiff === -1) return "Yesterday";
-  if (daysDiff > 0 && daysDiff < 7) {
-    return dueDate.toLocaleDateString("en-US", { weekday: "long" });
-  }
-  return dueDate.toLocaleDateString("en-US", {
-    month: "short",
-    day: "numeric",
-  });
 }
 
 function isOverdue(date: string): boolean {

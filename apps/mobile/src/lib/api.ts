@@ -2,15 +2,8 @@ import {
   clearAuthData,
   getAuthToken,
 } from "@/features/auth/utils/auth-storage";
+import { getUserTimezone } from "@gaia/shared/api";
 import { API_BASE_URL } from "./constants";
-
-function getUserTimezone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "UTC";
-  }
-}
 
 // Callback invoked when any request returns 401 Unauthorized.
 // Wired up by AuthProvider via setOnUnauthorized() so that the auth layer

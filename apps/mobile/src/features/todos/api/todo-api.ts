@@ -1,4 +1,5 @@
 import { apiService } from "@/lib/api";
+import { buildQueryString, normalizeListResponse } from "@gaia/shared/api";
 import type {
   Project,
   Todo,
@@ -9,45 +10,12 @@ import type {
   TodoUpdate,
 } from "../types/todo-types";
 
-function buildQueryString(filters?: TodoFilters): string {
-  if (!filters) return "";
-  const params = new URLSearchParams();
-
-  for (const [key, value] of Object.entries(filters)) {
-    if (value == null || value === "") continue;
-
-    if (key === "skip" && filters.limit) {
-      const page = Math.floor(Number(value) / filters.limit) + 1;
-      params.append("page", String(page));
-    } else if (key === "limit") {
-      params.append("per_page", String(value));
-    } else if (key !== "skip") {
-      params.append(key, String(value));
-    }
-  }
-
-  const qs = params.toString();
-  return qs ? `?${qs}` : "";
-}
-
-function extractTodos(response: TodoListResponse | Todo[]): Todo[] {
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "data" in response &&
-    Array.isArray(response.data)
-  ) {
-    return response.data;
-  }
-  return response as Todo[];
-}
-
 export const todoApi = {
   getAllTodos: async (filters?: TodoFilters): Promise<Todo[]> => {
     const response = await apiService.get<TodoListResponse | Todo[]>(
-      `/todos${buildQueryString(filters)}`,
+      `/todos${buildQueryString(filters as Record<string, string | number | boolean | null | undefined>)}`,
     );
-    return extractTodos(response);
+    return normalizeListResponse(response);
   },
 
   getTodo: async (todoId: string): Promise<Todo> => {
@@ -88,5 +56,23 @@ export const todoApi = {
 
   bulkDelete: async (todoIds: string[]): Promise<void> => {
     await apiService.delete("/todos/bulk", { todo_ids: todoIds });
+  },
+
+  addSubtask: async (todoId: string, title: string): Promise<void> => {
+    await apiService.post(`/todos/${todoId}/subtasks`, { title });
+  },
+
+  toggleSubtask: async (
+    todoId: string,
+    subtaskId: string,
+    completed: boolean,
+  ): Promise<void> => {
+    await apiService.patch(`/todos/${todoId}/subtasks/${subtaskId}`, {
+      completed,
+    });
+  },
+
+  deleteSubtask: async (todoId: string, subtaskId: string): Promise<void> => {
+    await apiService.delete(`/todos/${todoId}/subtasks/${subtaskId}`);
   },
 };

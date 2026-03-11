@@ -1,5 +1,4 @@
 import * as Linking from "expo-linking";
-import * as WebBrowser from "expo-web-browser";
 import { useState } from "react";
 import { Image, Pressable, ScrollView, View } from "react-native";
 import { Text } from "@/components/ui/text";

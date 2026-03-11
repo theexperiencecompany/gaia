@@ -6,7 +6,7 @@ import { useResponsive } from "@/lib/responsive";
 import {
   getRandomThinkingMessage,
   getRelevantThinkingMessage,
-} from "../../utils/playfulThinking";
+} from "@gaia/shared/utils";
 
 interface ThinkingBubbleProps {
   thinkingContent: string;

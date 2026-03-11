@@ -5,6 +5,7 @@ import {
   BottomSheetView,
 } from "@gorhom/bottom-sheet";
 import * as DocumentPicker from "expo-document-picker";
+import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
 import {
   forwardRef,
@@ -42,7 +43,7 @@ export const AttachmentSheet = forwardRef<
   AttachmentSheetProps
 >(({ onAttachmentsSelected }, ref) => {
   const bottomSheetRef = useRef<BottomSheetModal>(null);
-  const { spacing, fontSize, iconSize } = useResponsive();
+  const { spacing, fontSize } = useResponsive();
 
   const snapPoints = useMemo(() => ["28%"], []);
 
@@ -56,6 +57,7 @@ export const AttachmentSheet = forwardRef<
   }, []);
 
   const handlePhotoLibrary = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     dismiss();
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: "images",
@@ -79,6 +81,7 @@ export const AttachmentSheet = forwardRef<
   }, [dismiss, onAttachmentsSelected]);
 
   const handleCamera = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     dismiss();
     const permission = await ImagePicker.requestCameraPermissionsAsync();
     if (!permission.granted) return;
@@ -106,16 +109,12 @@ export const AttachmentSheet = forwardRef<
   }, [dismiss, onAttachmentsSelected]);
 
   const handleFile = useCallback(async () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     dismiss();
     const result = await DocumentPicker.getDocumentAsync({
       multiple: true,
-      type: [
-        "application/pdf",
-        "text/plain",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "image/*",
-      ],
+      type: "*/*",
+      copyToCacheDirectory: true,
     });
 
     if (result.canceled || result.assets.length === 0) return;
@@ -170,7 +169,7 @@ export const AttachmentSheet = forwardRef<
       enablePanDownToClose
       backdropComponent={renderBackdrop}
       backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-      handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
+      handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
     >
       <BottomSheetView
         style={{
@@ -198,9 +197,8 @@ export const AttachmentSheet = forwardRef<
               style={({ pressed }) => ({
                 flexDirection: "row",
                 alignItems: "center",
-                gap: spacing.md,
-                paddingVertical: spacing.sm + 2,
-                paddingHorizontal: spacing.sm,
+                gap: 12,
+                padding: 14,
                 borderRadius: 12,
                 backgroundColor: pressed
                   ? "rgba(255,255,255,0.06)"
@@ -208,25 +206,14 @@ export const AttachmentSheet = forwardRef<
               })}
               android_ripple={{ color: "rgba(255,255,255,0.08)" }}
             >
-              <View
-                style={{
-                  width: 36,
-                  height: 36,
-                  borderRadius: 10,
-                  backgroundColor: "#27272a",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <AppIcon
-                  icon={option.icon}
-                  size={iconSize.md - 2}
-                  color="#a1a1aa"
-                />
-              </View>
+              <AppIcon
+                icon={option.icon}
+                size={20}
+                color="#e4e4e7"
+              />
               <Text
                 style={{
-                  fontSize: fontSize.base,
+                  fontSize: 16,
                   color: "#e4e4e7",
                   fontWeight: "400",
                 }}

@@ -3,6 +3,7 @@ import { Avatar } from "heroui-native";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import {
   AppIcon,
+  Calendar03Icon,
   Flowchart01Icon,
   Logout01Icon,
   Notification01Icon,
@@ -47,6 +48,11 @@ export function SidebarFooter() {
       icon: Notification01Icon,
       label: "Notifications",
       onPress: () => router.push("/(app)/(tabs)/notifications"),
+    },
+    {
+      icon: Calendar03Icon,
+      label: "Calendar",
+      onPress: () => router.push("/(app)/calendar"),
     },
   ];
 

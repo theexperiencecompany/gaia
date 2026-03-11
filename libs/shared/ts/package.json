@@ -11,7 +11,11 @@
     "./bots": "./src/bots/index.ts",
     "./chat": "./src/chat/index.ts",
     "./cli": "./src/cli/index.ts",
-    "./icons": "./src/icons/index.ts"
+    "./icons": "./src/icons/index.ts",
+    "./tool-utils": "./src/tool-utils/index.ts",
+    "./utils": "./src/utils/index.ts",
+    "./types": "./src/types/index.ts",
+    "./api": "./src/api/index.ts"
   },
   "scripts": {
     "build": "tsc",
@@ -22,10 +26,12 @@
   "dependencies": {
     "@infisical/sdk": "^4.0.0",
     "axios": "^1.7.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "string-similarity": "^4.0.4"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "@types/string-similarity": "^4.0.2",
     "typescript": "^5.7.0"
   }
 }

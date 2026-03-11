@@ -1,3 +1,4 @@
+import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import type { FlashListRef } from "@shopify/flash-list";
 import { FlashList } from "@shopify/flash-list";
 import { useRouter } from "expo-router";
@@ -17,15 +18,18 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/lib/responsive";
 import type { Message } from "../../api/chat-api";
+import { deleteMessage, pinMessage } from "../../api/chat-api";
 import { useChat } from "../../hooks/use-chat";
 import { useChatContext } from "../../hooks/use-chat-context";
 import type { ReplyToMessageData } from "../../types";
-import { getRelevantThinkingMessage } from "../../utils/playfulThinking";
+import { getRelevantThinkingMessage } from "@gaia/shared/utils";
 import type { AttachmentFile } from "../composer/attachment-preview";
 import { Composer } from "../composer/composer";
 import { ChatMessage } from "./chat-message";
 import { DateSeparator } from "./date-separator";
 import { EmptyChatState } from "./empty-chat-state";
+import type { MessageActionConfig } from "./message-action-sheet";
+import { MessageActionSheet } from "./message-action-sheet";
 import { ScrollToBottomButton } from "./scroll-to-bottom";
 
 // ---------------------------------------------------------------------------
@@ -169,6 +173,11 @@ export function ChatScreenContent({
 
   const [replyingTo, setReplyingTo] = useState<ReplyToMessageData | null>(null);
 
+  const actionSheetRef = useRef<BottomSheetModal>(null);
+  const [actionConfig, setActionConfig] = useState<MessageActionConfig | null>(
+    null,
+  );
+
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isAtBottomRef = useRef(true);
@@ -238,6 +247,49 @@ export function ChatScreenContent({
       role: message.isUser ? "user" : "assistant",
     });
   }, []);
+
+  const handleLongPressMessage = useCallback(
+    (config: MessageActionConfig) => {
+      const resolved: MessageActionConfig = {
+        ...config,
+        conversationId: config.conversationId || activeChatId || "",
+      };
+      setActionConfig(resolved);
+      actionSheetRef.current?.present();
+    },
+    [activeChatId],
+  );
+
+  const handleActionDelete = useCallback(
+    async (messageId: string, conversationId: string) => {
+      await deleteMessage(conversationId, messageId);
+      await refetch();
+    },
+    [refetch],
+  );
+
+  const handleActionPin = useCallback(
+    async (messageId: string, conversationId: string) => {
+      await pinMessage(conversationId, messageId);
+    },
+    [],
+  );
+
+  const handleActionRetry = useCallback(
+    (messageId: string, _conversationId: string) => {
+      const msg = messages.find((m) => m.id === messageId);
+      if (msg) {
+        void sendMessage(msg.text, {
+          replyToMessage: null,
+          selectedWorkflow: null,
+          selectedTool: null,
+          toolCategory: null,
+          attachments: [],
+        });
+      }
+    },
+    [messages, sendMessage],
+  );
 
   const handleSend = useCallback(
     (text: string, attachments: AttachmentFile[]) => {
@@ -362,12 +414,20 @@ export function ChatScreenContent({
           message={message}
           onFollowUpAction={handleFollowUpAction}
           onReply={handleReply}
+          onLongPress={handleLongPressMessage}
           isLoading={showLoading}
           loadingMessage={showLoading ? displayMessage : undefined}
         />
       );
     },
-    [displayMessage, handleFollowUpAction, handleReply, isTyping, messages],
+    [
+      displayMessage,
+      handleFollowUpAction,
+      handleLongPressMessage,
+      handleReply,
+      isTyping,
+      messages,
+    ],
   );
 
   const keyExtractor = useCallback((item: ListItem) => {
@@ -463,6 +523,18 @@ export function ChatScreenContent({
           />
         </View>
       </View>
+
+      <MessageActionSheet
+        ref={actionSheetRef}
+        config={actionConfig}
+        onDelete={(messageId, conversationId) => {
+          void handleActionDelete(messageId, conversationId);
+        }}
+        onPin={(messageId, conversationId) => {
+          void handleActionPin(messageId, conversationId);
+        }}
+        onRetry={handleActionRetry}
+      />
     </KeyboardAvoidingView>
   );
 }

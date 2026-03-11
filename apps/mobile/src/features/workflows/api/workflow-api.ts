@@ -1,4 +1,5 @@
 import { apiService } from "@/lib/api";
+import { buildQueryString } from "@gaia/shared/api";
 import type {
   CommunityWorkflowsResponse,
   CreateWorkflowPayload,
@@ -31,26 +32,12 @@ interface ListCommunityParams
   offset?: number;
 }
 
-function toQueryString(
-  params?: Record<string, string | number | boolean | undefined>,
-): string {
-  if (!params) return "";
-  const searchParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined) {
-      searchParams.set(key, String(value));
-    }
-  }
-  const query = searchParams.toString();
-  return query ? `?${query}` : "";
-}
-
 export const workflowApi = {
   listWorkflows: async (
     params?: ListWorkflowsParams,
   ): Promise<WorkflowListResponse> => {
     return apiService.get<WorkflowListResponse>(
-      `/workflows${toQueryString(params)}`,
+      `/workflows${buildQueryString(params)}`,
     );
   },
 
@@ -94,7 +81,7 @@ export const workflowApi = {
     params?: ListExecutionsParams,
   ): Promise<WorkflowExecutionsListResponse> => {
     return apiService.get<WorkflowExecutionsListResponse>(
-      `/workflows/${id}/executions${toQueryString(params)}`,
+      `/workflows/${id}/executions${buildQueryString(params)}`,
     );
   },
 
@@ -102,7 +89,7 @@ export const workflowApi = {
     params?: ListCommunityParams,
   ): Promise<CommunityWorkflowsResponse> => {
     return apiService.get<CommunityWorkflowsResponse>(
-      `/workflows/explore${toQueryString(params)}`,
+      `/workflows/explore${buildQueryString(params)}`,
     );
   },
 
@@ -110,7 +97,7 @@ export const workflowApi = {
     params?: ListCommunityParams,
   ): Promise<CommunityWorkflowsResponse> => {
     return apiService.get<CommunityWorkflowsResponse>(
-      `/workflows/community${toQueryString(params)}`,
+      `/workflows/community${buildQueryString(params)}`,
     );
   },
 

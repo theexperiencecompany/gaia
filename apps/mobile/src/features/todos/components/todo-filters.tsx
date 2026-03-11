@@ -8,7 +8,15 @@ interface TodoFiltersProps {
   activeFilter: FilterTab;
   onFilterChange: (filter: FilterTab) => void;
   counts: TodoCounts | null;
+  activePriority?: string | null;
+  onPriorityFilter: (priority: string | null) => void;
 }
+
+const PRIORITY_OPTIONS = [
+  { key: "high", label: "High", color: "#ef4444" },
+  { key: "medium", label: "Medium", color: "#f97316" },
+  { key: "low", label: "Low", color: "#eab308" },
+] as const;
 
 const FILTERS: {
   key: FilterTab;
@@ -25,6 +33,8 @@ export function TodoFilters({
   activeFilter,
   onFilterChange,
   counts,
+  activePriority,
+  onPriorityFilter,
 }: TodoFiltersProps) {
   const { spacing, fontSize } = useResponsive();
   const scrollRef = useRef<ScrollView>(null);
@@ -103,6 +113,54 @@ export function TodoFilters({
                   </Text>
                 </View>
               )}
+            </Pressable>
+          );
+        })}
+      </ScrollView>
+
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          gap: 8,
+          paddingVertical: 4,
+        }}
+      >
+        {PRIORITY_OPTIONS.map((opt) => {
+          const isActive = activePriority === opt.key;
+          return (
+            <Pressable
+              key={opt.key}
+              onPress={() => onPriorityFilter(isActive ? null : opt.key)}
+              style={{
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 20,
+                backgroundColor: isActive ? `${opt.color}20` : "#18181b",
+                borderWidth: 1,
+                borderColor: isActive ? opt.color : "#27272a",
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <View
+                style={{
+                  width: 8,
+                  height: 8,
+                  borderRadius: 4,
+                  backgroundColor: opt.color,
+                }}
+              />
+              <Text
+                style={{
+                  fontSize: 13,
+                  color: isActive ? opt.color : "#a1a1aa",
+                }}
+              >
+                {opt.label}
+              </Text>
             </Pressable>
           );
         })}

@@ -7,7 +7,6 @@
     "icon": "./assets/icons/gaialogo.png",
     "scheme": "gaiamobile",
     "userInterfaceStyle": "automatic",
-    "newArchEnabled": true,
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "io.heygaia.gaiamobile",
@@ -26,7 +25,6 @@
         "backgroundColor": "#121212",
         "foregroundImage": "./assets/icons/adaptive-icon.png"
       },
-      "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "intentFilters": [
         {

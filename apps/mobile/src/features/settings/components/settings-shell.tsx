@@ -6,19 +6,23 @@ import { useResponsive } from "@/lib/responsive";
 
 export type SettingsSection =
   | "account"
+  | "profile"
   | "preferences"
   | "notifications"
   | "linked-accounts"
   | "memory"
-  | "usage";
+  | "usage"
+  | "subscription";
 
 const TABS: { key: SettingsSection; label: string }[] = [
   { key: "account", label: "Account" },
+  { key: "profile", label: "Profile" },
   { key: "preferences", label: "Preferences" },
   { key: "notifications", label: "Notifications" },
   { key: "linked-accounts", label: "Linked Accounts" },
   { key: "memory", label: "Memory" },
   { key: "usage", label: "Usage" },
+  { key: "subscription", label: "Subscription" },
 ];
 
 interface SettingsShellProps {

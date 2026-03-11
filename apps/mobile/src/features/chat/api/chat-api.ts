@@ -199,6 +199,35 @@ export async function toggleStarConversation(
   }
 }
 
+export async function deleteMessage(
+  conversationId: string,
+  messageId: string,
+): Promise<boolean> {
+  try {
+    await apiService.delete(`/chat/${conversationId}/messages/${messageId}`);
+    return true;
+  } catch (error) {
+    console.error("Error deleting message:", error);
+    return false;
+  }
+}
+
+export async function pinMessage(
+  conversationId: string,
+  messageId: string,
+): Promise<boolean> {
+  try {
+    await apiService.post(
+      `/chat/${conversationId}/messages/${messageId}/pin`,
+      {},
+    );
+    return true;
+  } catch (error) {
+    console.error("Error pinning message:", error);
+    return false;
+  }
+}
+
 export async function cancelStream(streamId: string): Promise<boolean> {
   try {
     await apiService.post(`/cancel-stream/${streamId}`, {});
@@ -255,6 +284,8 @@ export const chatApi = {
   deleteConversation,
   renameConversation,
   toggleStarConversation,
+  deleteMessage,
+  pinMessage,
   cancelStream,
   uploadFile,
 };

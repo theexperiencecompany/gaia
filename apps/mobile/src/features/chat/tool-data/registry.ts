@@ -102,6 +102,7 @@ export interface ToolDataMap {
 
 export interface ToolDataEntry {
   tool_name: string;
+  tool_category?: string;
   data: ToolDataMap[ToolName] | unknown;
   timestamp?: string | null;
 }

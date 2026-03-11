@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { todoApi } from "../api/todo-api";
 import type {
   FilterTab,
+  Priority,
   Project,
   Todo,
   TodoCounts,
@@ -9,6 +10,11 @@ import type {
   TodoFilters,
   TodoUpdate,
 } from "../types/todo-types";
+
+interface UseTodosOptions {
+  search?: string;
+  priority?: string;
+}
 
 interface UseTodosState {
   todos: Todo[];
@@ -42,7 +48,9 @@ function getFiltersForTab(tab: FilterTab): TodoFilters {
   }
 }
 
-export function useTodos(): UseTodosReturn {
+export function useTodos(options: UseTodosOptions = {}): UseTodosReturn {
+  const { search, priority } = options;
+
   const [state, setState] = useState<UseTodosState>({
     todos: [],
     projects: [],
@@ -63,7 +71,12 @@ export function useTodos(): UseTodosReturn {
       }));
 
       try {
-        const filters = getFiltersForTab(filter);
+        const baseFilters = getFiltersForTab(filter);
+        const filters: TodoFilters = {
+          ...baseFilters,
+          ...(search ? { search } : {}),
+          ...(priority ? { priority: priority as Priority } : {}),
+        };
         const [todos, projects, counts] = await Promise.all([
           todoApi.getAllTodos(filters),
           todoApi.getAllProjects(),
@@ -87,12 +100,12 @@ export function useTodos(): UseTodosReturn {
         }));
       }
     },
-    [],
+    [search, priority],
   );
 
   useEffect(() => {
     void fetchData(state.activeFilter);
-  }, [state.activeFilter, fetchData]);
+  }, [state.activeFilter, fetchData, search, priority]);
 
   const setActiveFilter = useCallback((filter: FilterTab) => {
     setState((prev) => ({ ...prev, activeFilter: filter }));
