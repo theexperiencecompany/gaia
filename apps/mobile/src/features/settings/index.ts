@@ -10,3 +10,5 @@ export * from "@/features/settings/components/sections/subscription-section";
 export * from "@/features/settings/components/sections/usage-section";
 // Components
 export * from "@/features/settings/components/settings-shell";
+export * from "@/features/settings/components/ProfileCardScreen";
+export { default as UsageScreen } from "@/features/settings/components/UsageScreen";

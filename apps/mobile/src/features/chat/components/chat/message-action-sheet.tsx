@@ -2,18 +2,21 @@ import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
   BottomSheetModal,
-  BottomSheetView,
+  BottomSheetScrollView,
 } from "@gorhom/bottom-sheet";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { forwardRef, useCallback, useMemo } from "react";
-import { Pressable } from "react-native";
+import { forwardRef, useCallback, useMemo, useState } from "react";
+import { Alert, Pressable, Share, View } from "react-native";
 import {
   AppIcon,
   Copy01Icon,
   Delete02Icon,
-  Pin02Icon,
+  LinkBackwardIcon,
   RepeatIcon,
+  Share01Icon,
+  ThumbsDownIcon,
+  ThumbsUpIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
@@ -25,36 +28,96 @@ export interface MessageActionConfig {
   isPinned?: boolean;
 }
 
+type ReactionType = "thumbsUp" | "thumbsDown";
+
 interface MessageActionSheetProps {
   config: MessageActionConfig | null;
   onDelete: (messageId: string, conversationId: string) => void;
   onPin: (messageId: string, conversationId: string) => void;
   onRetry: (messageId: string, conversationId: string) => void;
+  onReply: (messageId: string, conversationId: string) => void;
+  onRegenerate?: (messageId: string, conversationId: string) => void;
+}
+
+interface ActionRowProps {
+  icon: React.ReactNode;
+  label: string;
+  onPress: () => void;
+  destructive?: boolean;
+}
+
+function ActionRow({ icon, label, onPress, destructive = false }: ActionRowProps) {
+  return (
+    <Pressable
+      onPress={onPress}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        gap: 12,
+        padding: 14,
+        borderRadius: 10,
+        backgroundColor: pressed ? "rgba(255,255,255,0.05)" : "transparent",
+      })}
+    >
+      {icon}
+      <Text style={{ fontSize: 16, color: destructive ? "#ef4444" : "#e4e4e7" }}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+function SectionDivider() {
+  return (
+    <View
+      style={{
+        height: 1,
+        backgroundColor: "rgba(255,255,255,0.08)",
+        marginVertical: 4,
+        marginHorizontal: 14,
+      }}
+    />
+  );
 }
 
 export const MessageActionSheet = forwardRef<
   BottomSheetModal,
   MessageActionSheetProps
->(({ config, onDelete, onPin, onRetry }, ref) => {
-  const snapPoints = useMemo(() => ["25%"], []);
+>(({ config, onDelete, onPin, onRetry, onReply, onRegenerate }, ref) => {
+  const snapPoints = useMemo(() => ["50%"], []);
+  const [selectedReaction, setSelectedReaction] = useState<ReactionType | null>(null);
 
   const dismiss = useCallback(() => {
     (ref as React.RefObject<BottomSheetModal>)?.current?.dismiss();
   }, [ref]);
 
-  const handleCopy = useCallback(async () => {
+  const handleCopyText = useCallback(async () => {
     if (!config) return;
     await Clipboard.setStringAsync(config.content);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     dismiss();
   }, [config, dismiss]);
 
-  const handlePin = useCallback(() => {
+  const handleCopyMarkdown = useCallback(async () => {
+    if (!config) return;
+    await Clipboard.setStringAsync(config.content);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    dismiss();
+  }, [config, dismiss]);
+
+  const handleShare = useCallback(async () => {
     if (!config) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    onPin(config.messageId, config.conversationId);
     dismiss();
-  }, [config, onPin, dismiss]);
+    await Share.share({ message: config.content });
+  }, [config, dismiss]);
+
+  const handleReply = useCallback(() => {
+    if (!config) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onReply(config.messageId, config.conversationId);
+    dismiss();
+  }, [config, onReply, dismiss]);
 
   const handleRetry = useCallback(() => {
     if (!config) return;
@@ -63,12 +126,40 @@ export const MessageActionSheet = forwardRef<
     dismiss();
   }, [config, onRetry, dismiss]);
 
+  const handleRegenerate = useCallback(() => {
+    if (!config) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onRegenerate?.(config.messageId, config.conversationId);
+    dismiss();
+  }, [config, onRegenerate, dismiss]);
+
   const handleDelete = useCallback(() => {
     if (!config) return;
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onDelete(config.messageId, config.conversationId);
     dismiss();
+    Alert.alert(
+      "Delete Message",
+      "Are you sure you want to delete this message? This action cannot be undone.",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: () => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            onDelete(config.messageId, config.conversationId);
+          },
+        },
+      ],
+    );
   }, [config, onDelete, dismiss]);
+
+  const handleReaction = useCallback(
+    (reaction: ReactionType) => {
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      setSelectedReaction((prev) => (prev === reaction ? null : reaction));
+    },
+    [],
+  );
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -82,6 +173,12 @@ export const MessageActionSheet = forwardRef<
     [],
   );
 
+  const handleSheetChange = useCallback((index: number) => {
+    if (index === -1) {
+      setSelectedReaction(null);
+    }
+  }, []);
+
   return (
     <BottomSheetModal
       ref={ref}
@@ -91,76 +188,143 @@ export const MessageActionSheet = forwardRef<
       backdropComponent={renderBackdrop}
       backgroundStyle={{ backgroundColor: "#1c1c1e" }}
       handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
+      onChange={handleSheetChange}
     >
-      <BottomSheetView
-        style={{ paddingHorizontal: 16, paddingTop: 8, paddingBottom: 24 }}
+      <BottomSheetScrollView
+        contentContainerStyle={{
+          paddingHorizontal: 16,
+          paddingTop: 8,
+          paddingBottom: 28,
+        }}
       >
-        <Pressable
-          onPress={() => void handleCopy()}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-            padding: 14,
-            borderRadius: 10,
-            backgroundColor: pressed ? "rgba(255,255,255,0.05)" : "transparent",
-          })}
-        >
-          <AppIcon icon={Copy01Icon} size={20} color="#a1a1aa" />
-          <Text style={{ fontSize: 16, color: "#e4e4e7" }}>Copy</Text>
-        </Pressable>
+        {/* Reaction bar — AI messages only */}
+        {config && !config.isUser ? (
+          <>
+            <View
+              style={{
+                flexDirection: "row",
+                justifyContent: "center",
+                gap: 16,
+                paddingVertical: 12,
+                marginBottom: 4,
+              }}
+            >
+              <Pressable
+                onPress={() => handleReaction("thumbsUp")}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 52,
+                  height: 52,
+                  borderRadius: 26,
+                  backgroundColor:
+                    selectedReaction === "thumbsUp"
+                      ? "rgba(34, 197, 94, 0.2)"
+                      : pressed
+                        ? "rgba(255,255,255,0.08)"
+                        : "rgba(255,255,255,0.05)",
+                  borderWidth: 1,
+                  borderColor:
+                    selectedReaction === "thumbsUp"
+                      ? "rgba(34, 197, 94, 0.5)"
+                      : "rgba(255,255,255,0.1)",
+                })}
+              >
+                <AppIcon
+                  icon={ThumbsUpIcon}
+                  size={22}
+                  color={
+                    selectedReaction === "thumbsUp" ? "#22c55e" : "#a1a1aa"
+                  }
+                />
+              </Pressable>
 
-        <Pressable
-          onPress={handlePin}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-            padding: 14,
-            borderRadius: 10,
-            backgroundColor: pressed ? "rgba(255,255,255,0.05)" : "transparent",
-          })}
-        >
-          <AppIcon icon={Pin02Icon} size={20} color="#a1a1aa" />
-          <Text style={{ fontSize: 16, color: "#e4e4e7" }}>
-            {config?.isPinned ? "Unpin" : "Pin"}
-          </Text>
-        </Pressable>
-
-        {config?.isUser ? (
-          <Pressable
-            onPress={handleRetry}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 12,
-              padding: 14,
-              borderRadius: 10,
-              backgroundColor: pressed
-                ? "rgba(255,255,255,0.05)"
-                : "transparent",
-            })}
-          >
-            <AppIcon icon={RepeatIcon} size={20} color="#a1a1aa" />
-            <Text style={{ fontSize: 16, color: "#e4e4e7" }}>Retry</Text>
-          </Pressable>
+              <Pressable
+                onPress={() => handleReaction("thumbsDown")}
+                style={({ pressed }) => ({
+                  alignItems: "center",
+                  justifyContent: "center",
+                  width: 52,
+                  height: 52,
+                  borderRadius: 26,
+                  backgroundColor:
+                    selectedReaction === "thumbsDown"
+                      ? "rgba(239, 68, 68, 0.2)"
+                      : pressed
+                        ? "rgba(255,255,255,0.08)"
+                        : "rgba(255,255,255,0.05)",
+                  borderWidth: 1,
+                  borderColor:
+                    selectedReaction === "thumbsDown"
+                      ? "rgba(239, 68, 68, 0.5)"
+                      : "rgba(255,255,255,0.1)",
+                })}
+              >
+                <AppIcon
+                  icon={ThumbsDownIcon}
+                  size={22}
+                  color={
+                    selectedReaction === "thumbsDown" ? "#ef4444" : "#a1a1aa"
+                  }
+                />
+              </Pressable>
+            </View>
+            <SectionDivider />
+          </>
         ) : null}
 
-        <Pressable
-          onPress={handleDelete}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 12,
-            padding: 14,
-            borderRadius: 10,
-            backgroundColor: pressed ? "rgba(255,255,255,0.05)" : "transparent",
-          })}
-        >
-          <AppIcon icon={Delete02Icon} size={20} color="#ef4444" />
-          <Text style={{ fontSize: 16, color: "#ef4444" }}>Delete</Text>
-        </Pressable>
-      </BottomSheetView>
+        {/* Section 1 — Message operations */}
+        <ActionRow
+          icon={<AppIcon icon={Copy01Icon} size={20} color="#a1a1aa" />}
+          label="Copy Text"
+          onPress={() => void handleCopyText()}
+        />
+        <ActionRow
+          icon={<AppIcon icon={Copy01Icon} size={20} color="#a1a1aa" />}
+          label="Copy as Markdown"
+          onPress={() => void handleCopyMarkdown()}
+        />
+        <ActionRow
+          icon={<AppIcon icon={Share01Icon} size={20} color="#a1a1aa" />}
+          label="Share"
+          onPress={() => void handleShare()}
+        />
+
+        <SectionDivider />
+
+        {/* Section 2 — Chat operations */}
+        <ActionRow
+          icon={<AppIcon icon={LinkBackwardIcon} size={20} color="#a1a1aa" />}
+          label="Reply"
+          onPress={handleReply}
+        />
+
+        {config?.isUser ? (
+          <ActionRow
+            icon={<AppIcon icon={RepeatIcon} size={20} color="#a1a1aa" />}
+            label="Retry"
+            onPress={handleRetry}
+          />
+        ) : (
+          <ActionRow
+            icon={<AppIcon icon={RepeatIcon} size={20} color="#a1a1aa" />}
+            label="Regenerate"
+            onPress={handleRegenerate}
+          />
+        )}
+
+        <SectionDivider />
+
+        {/* Section 3 — Management (user messages only) */}
+        {config?.isUser ? (
+          <ActionRow
+            icon={<AppIcon icon={Delete02Icon} size={20} color="#ef4444" />}
+            label="Delete"
+            onPress={handleDelete}
+            destructive
+          />
+        ) : null}
+      </BottomSheetScrollView>
     </BottomSheetModal>
   );
 });

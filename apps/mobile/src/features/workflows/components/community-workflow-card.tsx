@@ -1,5 +1,11 @@
 import { Pressable, View } from "react-native";
-import { AppIcon, PlayIcon, UserCircle02Icon } from "@/components/icons";
+import {
+  AppIcon,
+  Copy01Icon,
+  PlayIcon,
+  Tag01Icon,
+  UserCircle02Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { useResponsive } from "@/lib/responsive";
@@ -58,35 +64,84 @@ export function CommunityWorkflowCard({
         ) : null}
       </View>
 
-      {/* Bottom row: run count + creator */}
+      {/* Category chips */}
+      {workflow.categories && workflow.categories.length > 0 && (
+        <View
+          style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+        >
+          {workflow.categories.slice(0, 3).map((cat) => (
+            <View
+              key={cat}
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 3,
+                paddingHorizontal: 7,
+                paddingVertical: 2,
+                borderRadius: 6,
+                backgroundColor: "rgba(255,255,255,0.06)",
+              }}
+            >
+              <AppIcon icon={Tag01Icon} size={10} color="#71717a" />
+              <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
+                {cat}
+              </Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Bottom row: run count + clone count + creator */}
       <View
         style={{
           flexDirection: "row",
           alignItems: "center",
           justifyContent: "space-between",
           marginTop: 2,
+          flexWrap: "wrap",
+          gap: 6,
         }}
       >
-        {/* Run count */}
-        {runCountText !== "Never run" && (
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: 4,
-            }}
-          >
-            <AppIcon icon={PlayIcon} size={14} color="#71717a" />
-            <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
-              {runCountText}
-            </Text>
-          </View>
-        )}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+          {/* Run count */}
+          {runCountText !== "Never run" && (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <AppIcon icon={PlayIcon} size={13} color="#71717a" />
+              <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+                {runCountText}
+              </Text>
+            </View>
+          )}
 
-        {/* Creator avatar */}
+          {/* Clone count using total_executions as proxy when > 0 */}
+          {(workflow.total_executions ?? 0) > 0 && (
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <AppIcon icon={Copy01Icon} size={13} color="#71717a" />
+              <Text style={{ fontSize: fontSize.xs, color: "#71717a" }}>
+                {formatRunCount(workflow.total_executions ?? 0)} clones
+              </Text>
+            </View>
+          )}
+        </View>
+
+        {/* Creator info */}
         {workflow.creator && (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
-            <AppIcon icon={UserCircle02Icon} size={20} color="#71717a" />
+          <View
+            style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
+          >
+            <AppIcon icon={UserCircle02Icon} size={18} color="#71717a" />
             <Text style={{ fontSize: fontSize.xs - 1, color: "#71717a" }}>
               {workflow.creator.name}
             </Text>
@@ -97,7 +152,11 @@ export function CommunityWorkflowCard({
   );
 }
 
-function CommunityStepIcons({ steps }: { steps: Array<{ category: string }> }) {
+function CommunityStepIcons({
+  steps,
+}: {
+  steps: Array<{ category: string }>;
+}) {
   const categories = [...new Set(steps.map((s) => s.category))];
   const display = categories.slice(0, 3);
 

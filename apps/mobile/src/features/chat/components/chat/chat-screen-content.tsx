@@ -291,6 +291,37 @@ export function ChatScreenContent({
     [messages, sendMessage],
   );
 
+  const handleActionReply = useCallback(
+    (messageId: string, _conversationId: string) => {
+      const msg = messages.find((m) => m.id === messageId);
+      if (msg) {
+        handleReply(msg);
+      }
+    },
+    [messages, handleReply],
+  );
+
+  const handleActionRegenerate = useCallback(
+    (messageId: string, _conversationId: string) => {
+      const msgIndex = messages.findIndex((m) => m.id === messageId);
+      if (msgIndex === -1) return;
+      for (let i = msgIndex - 1; i >= 0; i--) {
+        const candidate = messages[i];
+        if (candidate.isUser) {
+          void sendMessage(candidate.text, {
+            replyToMessage: null,
+            selectedWorkflow: null,
+            selectedTool: null,
+            toolCategory: null,
+            attachments: [],
+          });
+          return;
+        }
+      }
+    },
+    [messages, sendMessage],
+  );
+
   const handleSend = useCallback(
     (text: string, attachments: AttachmentFile[]) => {
       setLastUserMessage(text);
@@ -534,6 +565,8 @@ export function ChatScreenContent({
           void handleActionPin(messageId, conversationId);
         }}
         onRetry={handleActionRetry}
+        onReply={handleActionReply}
+        onRegenerate={handleActionRegenerate}
       />
     </KeyboardAvoidingView>
   );

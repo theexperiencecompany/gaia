@@ -15,6 +15,7 @@
     "analyze": "expo export --platform ios --source-maps && npx source-map-explorer dist/_expo/static/js/ios/*.js"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.1.2",
     "@react-native-community/datetimepicker": "^8.3.0",
     "@dev-plugins/react-query": "^0.4.0",
     "@expo-google-fonts/inter": "^0.4.2",

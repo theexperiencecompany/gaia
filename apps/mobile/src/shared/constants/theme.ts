@@ -1,70 +1,58 @@
 import { DarkTheme, DefaultTheme, type Theme } from "@react-navigation/native";
+import { colors } from "@/lib/design-tokens";
 
-/**
- * Theme tokens for the mobile app.
- *
- * Dark mode uses a custom palette optimized for mobile (iOS system colors):
- *   background:       #131416  (main bg)
- *   surface:          #171920  (card / sheet bg)
- *   foreground:       #ffffff
- *   muted:            #2d2d2d  (separator / subtle bg)
- *   muted-foreground: #8e8e93  (secondary text, iOS system gray)
- *   primary:          #00bbff  (brand)
- *   success:          #34c759  (iOS green)
- *   warning:          #ff9500  (iOS orange)
- *   danger/error:     #ff3b30  (iOS red)
- *   border:           rgba(255,255,255,0.1)
- */
 export const THEME = {
   light: {
-    background: "#ffffff",
-    foreground: "#111827",
-    card: "#ffffff",
-    cardForeground: "#111827",
-    popover: "#ffffff",
-    popoverForeground: "#111827",
-    primary: "#00bbff",
-    primaryForeground: "#000000",
-    secondary: "#f3f4f6",
-    secondaryForeground: "#111827",
-    muted: "#f3f4f6",
-    mutedForeground: "#6b7280",
-    accent: "#00bbff",
-    accentForeground: "#000000",
-    destructive: "#ff3b30",
-    border: "rgba(0,0,0,0.1)",
-    input: "#e5e7eb",
-    ring: "#00bbff",
-    success: "#34c759",
-    successForeground: "#000000",
-    warning: "#ff9500",
-    warningForeground: "#000000",
-    radius: "0.5rem",
+    background: "hsl(0 0% 100%)",
+    foreground: "hsl(0 0% 3.9%)",
+    card: "hsl(0 0% 100%)",
+    cardForeground: "hsl(0 0% 3.9%)",
+    popover: "hsl(0 0% 100%)",
+    popoverForeground: "hsl(0 0% 3.9%)",
+    primary: "hsl(0 0% 9%)",
+    primaryForeground: "hsl(0 0% 98%)",
+    secondary: "hsl(0 0% 96.1%)",
+    secondaryForeground: "hsl(0 0% 9%)",
+    muted: "hsl(0 0% 96.1%)",
+    mutedForeground: "hsl(0 0% 45.1%)",
+    accent: "hsl(0 0% 96.1%)",
+    accentForeground: "hsl(0 0% 9%)",
+    destructive: "hsl(0 84.2% 60.2%)",
+    border: "hsl(0 0% 89.8%)",
+    input: "hsl(0 0% 89.8%)",
+    ring: "hsl(0 0% 63%)",
+    radius: "0.625rem",
+    chart1: "hsl(12 76% 61%)",
+    chart2: "hsl(173 58% 39%)",
+    chart3: "hsl(197 37% 24%)",
+    chart4: "hsl(43 74% 66%)",
+    chart5: "hsl(27 87% 67%)",
   },
   dark: {
-    background: "#131416",
-    foreground: "#ffffff",
-    card: "#171920",
-    cardForeground: "#ffffff",
-    popover: "#171920",
-    popoverForeground: "#ffffff",
-    primary: "#00bbff",
-    primaryForeground: "#000000",
-    secondary: "#1c1c1e",
-    secondaryForeground: "#ffffff",
-    muted: "#2d2d2d",
-    mutedForeground: "#8e8e93",
-    accent: "#00bbff",
-    accentForeground: "#000000",
-    destructive: "#ff3b30",
-    border: "rgba(255,255,255,0.1)",
-    input: "#2d2d2d",
-    ring: "#00bbff",
-    success: "#34c759",
-    successForeground: "#000000",
-    warning: "#ff9500",
-    warningForeground: "#000000",
+    background: colors.background,
+    foreground: colors.foreground,
+    card: colors.card,
+    cardForeground: colors.cardForeground,
+    popover: colors.background,
+    popoverForeground: colors.foreground,
+    primary: colors.brand,
+    primaryForeground: colors.brandForeground,
+    secondary: colors.secondary,
+    secondaryForeground: colors.secondaryForeground,
+    muted: colors.muted,
+    mutedForeground: colors.mutedForeground,
+    accent: colors.accent,
+    accentForeground: colors.accentForeground,
+    destructive: colors.destructive,
+    border: colors.border,
+    input: colors.input,
+    ring: colors.ring,
     radius: "0.5rem",
+    chart1: "hsl(220 70% 50%)",
+    chart2: "hsl(160 60% 45%)",
+    chart3: "hsl(30 80% 55%)",
+    chart4: "hsl(280 65% 60%)",
+    chart5: "hsl(340 75% 55%)",
   },
 };
 

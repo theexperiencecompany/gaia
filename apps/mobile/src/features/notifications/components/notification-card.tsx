@@ -4,16 +4,20 @@ import { useCallback, useRef } from "react";
 import { Animated, Pressable, View } from "react-native";
 import { Swipeable } from "react-native-gesture-handler";
 import {
-  Calendar03Icon,
-  Cancel01Icon,
-  CheckmarkSquare03Icon,
+  AlarmClockIcon,
   AppIcon,
-  Mail01Icon,
-  Notification01Icon,
+  Cancel01Icon,
+  CheckmarkCircle02Icon,
+  CheckmarkSquare03Icon,
+  ConnectIcon,
+  FlashIcon,
+  FolderIcon,
+  InformationCircleIcon,
   Tick02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import type { AnyIcon } from "@/components/icons";
 import type {
   InAppNotification,
   InAppNotificationAction,
@@ -23,12 +27,17 @@ interface NotificationCardProps {
   notification: InAppNotification;
   onMarkAsRead: (notificationId: string) => void;
   onDismiss?: (notificationId: string) => void;
+  onArchive?: (notificationId: string) => void;
   onActionPress: (
     notification: InAppNotification,
     action: InAppNotificationAction,
   ) => void;
   isMarkingAsRead?: boolean;
   isActionLoading?: (actionId: string) => boolean;
+  isSelectMode?: boolean;
+  isSelected?: boolean;
+  onLongPress?: (notificationId: string) => void;
+  onSelectToggle?: (notificationId: string) => void;
 }
 
 function formatDate(value: string): string {
@@ -69,54 +78,71 @@ function getActionStyle(style?: string): {
   }
 }
 
-type NotificationIconType =
-  | typeof Notification01Icon
-  | typeof Mail01Icon
-  | typeof Calendar03Icon
-  | typeof CheckmarkSquare03Icon;
+type NotificationIconConfig = {
+  icon: AnyIcon;
+  color: string;
+};
 
-function getNotificationIcon(
+function getNotificationIconConfig(
   source?: string,
   type?: string,
-): NotificationIconType {
+): NotificationIconConfig {
   const key = (source ?? type ?? "").toLowerCase();
 
-  if (key.includes("email") || key.includes("mail")) return Mail01Icon;
-  if (key.includes("calendar") || key.includes("event")) return Calendar03Icon;
-  if (key.includes("todo") || key.includes("task"))
-    return CheckmarkSquare03Icon;
+  if (key.includes("workflow") || key.includes("automation")) {
+    return { icon: FlashIcon, color: "#a78bfa" };
+  }
+  if (
+    key.includes("reminder") ||
+    key.includes("alarm") ||
+    key.includes("schedule")
+  ) {
+    return { icon: AlarmClockIcon, color: "#fbbf24" };
+  }
+  if (
+    key.includes("integration") ||
+    key.includes("connect") ||
+    key.includes("plugin")
+  ) {
+    return { icon: ConnectIcon, color: "#34d399" };
+  }
+  if (
+    key.includes("system") ||
+    key.includes("info") ||
+    key.includes("notice")
+  ) {
+    return { icon: InformationCircleIcon, color: "#60a5fa" };
+  }
+  if (key.includes("email") || key.includes("mail")) {
+    return { icon: CheckmarkSquare03Icon, color: "#60a5fa" };
+  }
+  if (key.includes("todo") || key.includes("task")) {
+    return { icon: CheckmarkSquare03Icon, color: "#4ade80" };
+  }
 
-  return Notification01Icon;
-}
-
-function getIconAccentColor(source?: string, type?: string): string {
-  const key = (source ?? type ?? "").toLowerCase();
-
-  if (key.includes("email") || key.includes("mail")) return "#60a5fa";
-  if (key.includes("calendar") || key.includes("event")) return "#a78bfa";
-  if (key.includes("todo") || key.includes("task")) return "#4ade80";
-
-  return "#00bbff";
+  // Default: system info icon
+  return { icon: InformationCircleIcon, color: "#00bbff" };
 }
 
 export function NotificationCard({
   notification,
   onMarkAsRead,
   onDismiss,
+  onArchive,
   onActionPress,
   isMarkingAsRead = false,
   isActionLoading,
+  isSelectMode = false,
+  isSelected = false,
+  onLongPress,
+  onSelectToggle,
 }: NotificationCardProps) {
   const { spacing, fontSize, moderateScale } = useResponsive();
   const router = useRouter();
   const swipeableRef = useRef<Swipeable>(null);
   const isUnread = notification.status !== "read";
 
-  const iconComponent = getNotificationIcon(
-    notification.source,
-    notification.type,
-  );
-  const accentColor = getIconAccentColor(
+  const iconConfig = getNotificationIconConfig(
     notification.source,
     notification.type,
   );
@@ -132,7 +158,18 @@ export function NotificationCard({
     onDismiss?.(notification.id);
   }, [onDismiss, notification.id]);
 
+  const handleArchive = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    swipeableRef.current?.close();
+    onArchive?.(notification.id);
+  }, [onArchive, notification.id]);
+
   const handleTap = useCallback(() => {
+    if (isSelectMode) {
+      onSelectToggle?.(notification.id);
+      return;
+    }
+
     const redirectAction = notification.content.actions?.find(
       (a) => a.type === "redirect" && a.config.redirect?.url,
     );
@@ -145,8 +182,14 @@ export function NotificationCard({
     if (isUnread) {
       onMarkAsRead(notification.id);
     }
-  }, [notification, isUnread, onMarkAsRead, router]);
+  }, [notification, isUnread, onMarkAsRead, router, isSelectMode, onSelectToggle]);
 
+  const handleLongPress = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    onLongPress?.(notification.id);
+  }, [onLongPress, notification.id]);
+
+  // Swipe right → mark as read (green)
   const renderLeftActions = useCallback(
     (progress: Animated.AnimatedInterpolation<number>) => {
       const translateX = progress.interpolate({
@@ -168,15 +211,15 @@ export function NotificationCard({
             style={{
               width: 64,
               height: "100%",
-              backgroundColor: "rgba(0,187,255,0.14)",
+              backgroundColor: "rgba(52,199,89,0.18)",
               borderRadius: moderateScale(16, 0.5),
               justifyContent: "center",
               alignItems: "center",
               gap: 4,
             }}
           >
-            <AppIcon icon={Tick02Icon} size={18} color="#00bbff" />
-            <Text style={{ fontSize: fontSize.xs - 1, color: "#00bbff" }}>
+            <AppIcon icon={Tick02Icon} size={18} color="#34c759" />
+            <Text style={{ fontSize: fontSize.xs - 1, color: "#34c759" }}>
               Read
             </Text>
           </Pressable>
@@ -186,6 +229,7 @@ export function NotificationCard({
     [handleMarkAsRead, moderateScale, fontSize.xs],
   );
 
+  // Swipe left → archive (blue)
   const renderRightActions = useCallback(
     (progress: Animated.AnimatedInterpolation<number>) => {
       const translateX = progress.interpolate({
@@ -203,46 +247,73 @@ export function NotificationCard({
           }}
         >
           <Pressable
-            onPress={handleDismiss}
+            onPress={onArchive ? handleArchive : handleDismiss}
             style={{
               width: 64,
               height: "100%",
-              backgroundColor: "rgba(239,68,68,0.12)",
+              backgroundColor: onArchive
+                ? "rgba(59,130,246,0.18)"
+                : "rgba(239,68,68,0.12)",
               borderRadius: moderateScale(16, 0.5),
               justifyContent: "center",
               alignItems: "center",
               gap: 4,
             }}
           >
-            <AppIcon icon={Cancel01Icon} size={18} color="#ef4444" />
-            <Text style={{ fontSize: fontSize.xs - 1, color: "#ef4444" }}>
-              Dismiss
-            </Text>
+            {onArchive ? (
+              <>
+                <AppIcon icon={FolderIcon} size={18} color="#3b82f6" />
+                <Text
+                  style={{ fontSize: fontSize.xs - 1, color: "#3b82f6" }}
+                >
+                  Archive
+                </Text>
+              </>
+            ) : (
+              <>
+                <AppIcon icon={Cancel01Icon} size={18} color="#ef4444" />
+                <Text
+                  style={{ fontSize: fontSize.xs - 1, color: "#ef4444" }}
+                >
+                  Dismiss
+                </Text>
+              </>
+            )}
           </Pressable>
         </Animated.View>
       );
     },
-    [handleDismiss, moderateScale, fontSize.xs],
+    [handleArchive, handleDismiss, onArchive, moderateScale, fontSize.xs],
   );
+
+  const hasActions =
+    notification.content.actions && notification.content.actions.length > 0;
 
   return (
     <Swipeable
       ref={swipeableRef}
+      enabled={!isSelectMode}
       friction={2}
       leftThreshold={60}
       rightThreshold={60}
       renderLeftActions={isUnread ? renderLeftActions : undefined}
-      renderRightActions={onDismiss ? renderRightActions : undefined}
+      renderRightActions={
+        onArchive || onDismiss ? renderRightActions : undefined
+      }
       onSwipeableOpen={(direction) => {
         if (direction === "left" && isUnread) {
           void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           handleMarkAsRead();
         } else if (direction === "right") {
-          handleDismiss();
+          if (onArchive) {
+            handleArchive();
+          } else {
+            handleDismiss();
+          }
         }
       }}
     >
-      <Pressable onPress={handleTap}>
+      <Pressable onPress={handleTap} onLongPress={handleLongPress}>
         <View
           style={{
             borderRadius: moderateScale(16, 0.5),
@@ -251,22 +322,59 @@ export function NotificationCard({
             flexDirection: "row",
             alignItems: "flex-start",
             gap: spacing.sm,
+            borderWidth: isSelected ? 1.5 : 0,
+            borderColor: isSelected ? "#00bbff" : "transparent",
+            // Left accent border for unread notifications
+            borderLeftWidth: isUnread && !isSelected ? 3 : isSelected ? 1.5 : 0,
+            borderLeftColor: isUnread && !isSelected
+              ? iconConfig.color
+              : isSelected
+                ? "#00bbff"
+                : "transparent",
           }}
         >
-          {/* Source icon pill */}
+          {/* Selection checkbox */}
+          {isSelectMode && (
+            <View
+              style={{
+                width: 22,
+                height: 22,
+                borderRadius: 11,
+                borderWidth: 2,
+                borderColor: isSelected ? "#00bbff" : "#48484a",
+                backgroundColor: isSelected
+                  ? "rgba(0,187,255,0.2)"
+                  : "transparent",
+                alignItems: "center",
+                justifyContent: "center",
+                flexShrink: 0,
+                marginTop: 7,
+              }}
+            >
+              {isSelected && (
+                <AppIcon
+                  icon={CheckmarkCircle02Icon}
+                  size={14}
+                  color="#00bbff"
+                />
+              )}
+            </View>
+          )}
+
+          {/* Type icon pill */}
           <View
             style={{
               width: 36,
               height: 36,
               borderRadius: 10,
-              backgroundColor: `${accentColor}18`,
+              backgroundColor: `${iconConfig.color}18`,
               alignItems: "center",
               justifyContent: "center",
               flexShrink: 0,
               marginTop: 1,
             }}
           >
-            <AppIcon icon={iconComponent} size={17} color={accentColor} />
+            <AppIcon icon={iconConfig.icon} size={17} color={iconConfig.color} />
           </View>
 
           {/* Main content */}
@@ -289,10 +397,22 @@ export function NotificationCard({
                   minWidth: 0,
                 }}
               >
+                {/* Unread dot indicator */}
+                {isUnread && (
+                  <View
+                    style={{
+                      width: 7,
+                      height: 7,
+                      borderRadius: 3.5,
+                      backgroundColor: iconConfig.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                )}
                 <Text
                   style={{
                     fontSize: fontSize.sm,
-                    fontWeight: "600",
+                    fontWeight: isUnread ? "600" : "400",
                     color: isUnread ? "#e8ebef" : "#8e8e93",
                     flexShrink: 1,
                   }}
@@ -300,21 +420,10 @@ export function NotificationCard({
                 >
                   {notification.content.title}
                 </Text>
-                {isUnread && (
-                  <View
-                    style={{
-                      width: 7,
-                      height: 7,
-                      borderRadius: 3.5,
-                      backgroundColor: "#00bbff",
-                      flexShrink: 0,
-                    }}
-                  />
-                )}
               </View>
 
-              {/* Mark as read */}
-              {isUnread && (
+              {/* Mark as read button */}
+              {isUnread && !isSelectMode && (
                 <Pressable
                   disabled={isMarkingAsRead}
                   onPress={handleMarkAsRead}
@@ -326,7 +435,7 @@ export function NotificationCard({
               )}
             </View>
 
-            {/* Body */}
+            {/* Body — max 2 lines */}
             {!!notification.content.body && (
               <Text
                 style={{
@@ -335,79 +444,75 @@ export function NotificationCard({
                   lineHeight: (fontSize.xs + 1) * 1.45,
                   marginTop: 3,
                 }}
+                numberOfLines={2}
               >
                 {notification.content.body}
               </Text>
             )}
 
-            {/* Actions + timestamp */}
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "flex-end",
-                justifyContent: "space-between",
-                marginTop: spacing.sm,
-              }}
-            >
+            {/* Actions row */}
+            {hasActions && (
               <View
                 style={{
                   flexDirection: "row",
                   flexWrap: "wrap",
                   gap: spacing.xs,
-                  flex: 1,
+                  marginTop: spacing.sm,
                   opacity: isUnread ? 1 : 0.55,
                 }}
               >
-                {notification.content.actions?.map((action) => {
-                  const actionLoading = isActionLoading?.(action.id) ?? false;
-                  const isExecuted = action.executed ?? false;
-                  const aStyle = getActionStyle(action.style);
+                {!isSelectMode &&
+                  notification.content.actions?.map((action) => {
+                    const actionLoading = isActionLoading?.(action.id) ?? false;
+                    const isExecuted = action.executed ?? false;
+                    const aStyle = getActionStyle(action.style);
 
-                  return (
-                    <Pressable
-                      key={action.id}
-                      disabled={actionLoading || action.disabled || isExecuted}
-                      onPress={() => onActionPress(notification, action)}
-                      style={{
-                        borderRadius: 8,
-                        paddingHorizontal: spacing.sm + 4,
-                        paddingVertical: 5,
-                        backgroundColor: aStyle.bg,
-                        opacity:
-                          actionLoading || action.disabled || isExecuted
-                            ? 0.5
-                            : 1,
-                      }}
-                    >
-                      <Text
+                    return (
+                      <Pressable
+                        key={action.id}
+                        disabled={actionLoading || action.disabled || isExecuted}
+                        onPress={() => onActionPress(notification, action)}
                         style={{
-                          fontSize: fontSize.xs,
-                          color: aStyle.text,
-                          fontWeight: "500",
+                          borderRadius: 8,
+                          paddingHorizontal: spacing.sm + 4,
+                          paddingVertical: 5,
+                          backgroundColor: aStyle.bg,
+                          opacity:
+                            actionLoading || action.disabled || isExecuted
+                              ? 0.5
+                              : 1,
                         }}
                       >
-                        {actionLoading
-                          ? "Working..."
-                          : isExecuted
-                            ? `${action.label} ✓`
-                            : action.label}
-                      </Text>
-                    </Pressable>
-                  );
-                })}
+                        <Text
+                          style={{
+                            fontSize: fontSize.xs,
+                            color: aStyle.text,
+                            fontWeight: "500",
+                          }}
+                        >
+                          {actionLoading
+                            ? "Working..."
+                            : isExecuted
+                              ? `${action.label} ✓`
+                              : action.label}
+                        </Text>
+                      </Pressable>
+                    );
+                  })}
               </View>
+            )}
 
-              <Text
-                style={{
-                  fontSize: fontSize.xs - 1,
-                  color: "#48484a",
-                  flexShrink: 0,
-                  marginLeft: spacing.sm,
-                }}
-              >
-                {formatDate(notification.created_at)}
-              </Text>
-            </View>
+            {/* Timestamp */}
+            <Text
+              style={{
+                fontSize: fontSize.xs - 1,
+                color: "#48484a",
+                marginTop: hasActions ? 4 : spacing.sm,
+                alignSelf: "flex-end",
+              }}
+            >
+              {formatDate(notification.created_at)}
+            </Text>
           </View>
         </View>
       </Pressable>

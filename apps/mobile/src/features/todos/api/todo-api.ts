@@ -50,6 +50,25 @@ export const todoApi = {
     return apiService.get<Project[]>("/projects");
   },
 
+  createProject: async (data: {
+    name: string;
+    color?: string;
+    description?: string;
+  }): Promise<Project> => {
+    return apiService.post<Project>("/projects", data);
+  },
+
+  updateProject: async (
+    projectId: string,
+    data: { name?: string; color?: string; description?: string },
+  ): Promise<Project> => {
+    return apiService.put<Project>(`/projects/${projectId}`, data);
+  },
+
+  deleteProject: async (projectId: string): Promise<void> => {
+    return apiService.delete(`/projects/${projectId}`);
+  },
+
   bulkComplete: async (todoIds: string[]): Promise<void> => {
     await apiService.post("/todos/bulk/complete", { todo_ids: todoIds });
   },

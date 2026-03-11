@@ -25,6 +25,7 @@ interface CreateTodoModalProps {
   onClose: () => void;
   onCreated: (data: TodoCreate) => void;
   projects?: Project[];
+  defaultProjectId?: string;
 }
 
 const PRIORITY_OPTIONS: {
@@ -78,6 +79,7 @@ export function CreateTodoModal({
   onClose,
   onCreated,
   projects = [],
+  defaultProjectId,
 }: CreateTodoModalProps) {
   const { spacing, fontSize } = useResponsive();
   const [title, setTitle] = useState("");
@@ -86,7 +88,7 @@ export function CreateTodoModal({
   const [dueDate, setDueDate] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<
     string | undefined
-  >(undefined);
+  >(defaultProjectId);
   const [labelsText, setLabelsText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -112,7 +114,7 @@ export function CreateTodoModal({
       setDescription("");
       setPriority(Priority.NONE);
       setDueDate(undefined);
-      setSelectedProjectId(undefined);
+      setSelectedProjectId(defaultProjectId);
       setLabelsText("");
     } finally {
       setIsSubmitting(false);
@@ -124,7 +126,7 @@ export function CreateTodoModal({
     setDescription("");
     setPriority(Priority.NONE);
     setDueDate(undefined);
-    setSelectedProjectId(undefined);
+    setSelectedProjectId(defaultProjectId);
     setLabelsText("");
     onClose();
   };

@@ -1,6 +1,6 @@
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -17,6 +17,8 @@ import {
   ArrowLeft01Icon,
   CheckmarkCircle02Icon,
   ConnectIcon,
+  InformationCircleIcon,
+  PlusSignIcon,
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -27,6 +29,14 @@ import {
   fetchIntegrations,
 } from "../api";
 import type { Integration } from "../types";
+import {
+  BearerTokenSheet,
+  type BearerTokenSheetRef,
+} from "./BearerTokenSheet";
+import {
+  CreateMCPIntegrationSheet,
+  type CreateMCPIntegrationSheetRef,
+} from "./CreateMCPIntegrationSheet";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -97,12 +107,9 @@ const INTEGRATION_LOGOS: Record<string, string> = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/7/75/ClickUp_Logo.svg/512px-ClickUp_Logo.svg.png",
 };
 
-function getLogoUri(integration: Integration): string {
+function getLogoUri(integration: Integration): string | null {
   if (integration.iconUrl) return integration.iconUrl;
-  return (
-    INTEGRATION_LOGOS[integration.id] ??
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/512px-No_image_available.svg.png"
-  );
+  return INTEGRATION_LOGOS[integration.id] ?? null;
 }
 
 // ─── Integration Row ─────────────────────────────────────────────────────────
@@ -113,6 +120,193 @@ interface IntegrationRowProps {
   onPress: (integration: Integration) => void;
 }
 
+function LogoCircle({
+  integration,
+  size,
+  borderRadius,
+}: {
+  integration: Integration;
+  size: number;
+  borderRadius: number;
+}) {
+  const initial = integration.name.charAt(0).toUpperCase();
+  const logoUri = getLogoUri(integration);
+
+  // Generate a deterministic hue from the integration id for fallback circles
+  const hue =
+    integration.id
+      .split("")
+      .reduce((acc, ch) => acc + ch.charCodeAt(0), 0) % 360;
+  const fallbackBg = `hsla(${hue},55%,38%,0.3)`;
+  const fallbackBorder = `hsla(${hue},55%,55%,0.2)`;
+
+  if (logoUri) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius,
+          backgroundColor: "rgba(255,255,255,0.05)",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          flexShrink: 0,
+        }}
+      >
+        <Image
+          source={{ uri: logoUri }}
+          style={{ width: size - 12, height: size - 12 }}
+          contentFit="contain"
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius,
+        backgroundColor: fallbackBg,
+        borderWidth: 1,
+        borderColor: fallbackBorder,
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: size * 0.38,
+          fontWeight: "700",
+          color: `hsl(${hue},70%,80%)`,
+        }}
+      >
+        {initial}
+      </Text>
+    </View>
+  );
+}
+
+function AuthTypeBadge({ authType }: { authType?: "oauth" | "bearer" | "none" }) {
+  const { fontSize } = useResponsive();
+  if (!authType || authType === "none") return null;
+
+  const label = authType === "oauth" ? "OAuth" : authType === "bearer" ? "Bearer" : "MCP";
+  return (
+    <View
+      style={{
+        backgroundColor: "rgba(255,255,255,0.06)",
+        borderRadius: 4,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+      }}
+    >
+      <Text style={{ fontSize: fontSize.xs - 2, color: "#636369", fontWeight: "500" }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function ManagedByBadge({ managedBy }: { managedBy?: "self" | "composio" | "mcp" | "internal" }) {
+  const { fontSize } = useResponsive();
+  if (!managedBy || managedBy === "self" || managedBy === "internal") return null;
+
+  const label = managedBy === "composio" ? "Composio" : "MCP";
+  return (
+    <View
+      style={{
+        backgroundColor: "rgba(167,139,250,0.1)",
+        borderRadius: 4,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+      }}
+    >
+      <Text style={{ fontSize: fontSize.xs - 2, color: "#a78bfa", fontWeight: "500" }}>
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function StatusPill({
+  status,
+  isConnecting,
+  moderateScale,
+  spacing,
+  fontSize,
+}: {
+  status: Integration["status"];
+  isConnecting: boolean;
+  moderateScale: (size: number, factor?: number) => number;
+  spacing: Record<string, number>;
+  fontSize: Record<string, number>;
+}) {
+  if (isConnecting) {
+    return <ActivityIndicator size="small" color="#8e8e93" />;
+  }
+
+  if (status === "connected") {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          backgroundColor: "rgba(52,199,89,0.12)",
+          borderRadius: moderateScale(20, 0.5),
+          paddingHorizontal: spacing.sm + 2,
+          paddingVertical: 5,
+        }}
+      >
+        <AppIcon icon={CheckmarkCircle02Icon} size={11} color="#34c759" />
+        <Text style={{ fontSize: fontSize.xs, color: "#34c759", fontWeight: "500" }}>
+          Connected
+        </Text>
+      </View>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          backgroundColor: "rgba(239,68,68,0.12)",
+          borderRadius: moderateScale(20, 0.5),
+          paddingHorizontal: spacing.sm + 2,
+          paddingVertical: 5,
+        }}
+      >
+        <AppIcon icon={InformationCircleIcon} size={11} color="#ef4444" />
+        <Text style={{ fontSize: fontSize.xs, color: "#ef4444", fontWeight: "500" }}>
+          Error
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        backgroundColor: "rgba(255,255,255,0.06)",
+        borderRadius: moderateScale(20, 0.5),
+        paddingHorizontal: spacing.sm + 2,
+        paddingVertical: 5,
+      }}
+    >
+      <Text style={{ fontSize: fontSize.xs, color: "#636369", fontWeight: "500" }}>
+        Not Connected
+      </Text>
+    </View>
+  );
+}
+
 function IntegrationRow({
   integration,
   connectingId,
@@ -120,10 +314,10 @@ function IntegrationRow({
 }: IntegrationRowProps) {
   const { fontSize, spacing, moderateScale } = useResponsive();
   const isConnected = integration.status === "connected";
-  const isPending = integration.status === "created";
   const isConnecting = connectingId === integration.id;
   const isAvailable =
     integration.source === "custom" || integration.available !== false;
+  const toolCount = integration.tools?.length ?? 0;
 
   return (
     <Pressable
@@ -141,33 +335,19 @@ function IntegrationRow({
         opacity: isConnecting ? 0.6 : 1,
       })}
     >
-      {/* Logo */}
-      <View
-        style={{
-          width: 44,
-          height: 44,
-          borderRadius: moderateScale(12, 0.5),
-          backgroundColor: "rgba(255,255,255,0.06)",
-          alignItems: "center",
-          justifyContent: "center",
-          marginRight: spacing.md,
-          flexShrink: 0,
-        }}
-      >
-        <Image
-          source={{ uri: getLogoUri(integration) }}
-          style={{ width: 28, height: 28 }}
-          contentFit="contain"
-        />
+      {/* Circular logo with fallback initial */}
+      <View style={{ marginRight: spacing.sm + 4 }}>
+        <LogoCircle integration={integration} size={40} borderRadius={20} />
       </View>
 
-      {/* Name + description */}
+      {/* Name + badges + status pill */}
       <View style={{ flex: 1, minWidth: 0, marginRight: spacing.sm }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        {/* Row 1: name + category badge */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           <Text
             style={{
               fontSize: fontSize.sm,
-              fontWeight: "500",
+              fontWeight: "700",
               color: "#f4f4f5",
               flexShrink: 1,
             }}
@@ -175,75 +355,79 @@ function IntegrationRow({
           >
             {integration.name}
           </Text>
-          {isPending && (
-            <View
-              style={{
-                width: 6,
-                height: 6,
-                borderRadius: 3,
-                backgroundColor: "#f59e0b",
-              }}
-            />
+          <View
+            style={{
+              backgroundColor: "rgba(0,187,255,0.1)",
+              borderRadius: 4,
+              paddingHorizontal: 5,
+              paddingVertical: 2,
+            }}
+          >
+            <Text style={{ fontSize: fontSize.xs - 2, color: "#00bbff", fontWeight: "500" }}>
+              {getCategoryLabel(integration.category)}
+            </Text>
+          </View>
+        </View>
+
+        {/* Row 2: auth type + managed by */}
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 4, marginTop: 3 }}>
+          <AuthTypeBadge authType={integration.authType} />
+          <ManagedByBadge managedBy={integration.managedBy} />
+          {isConnected && toolCount > 0 && (
+            <Text style={{ fontSize: fontSize.xs - 2, color: "#636369" }}>
+              {toolCount} {toolCount === 1 ? "tool" : "tools"}
+            </Text>
           )}
         </View>
-        <Text
-          style={{
-            fontSize: fontSize.xs,
-            color: "#8e8e93",
-            marginTop: 2,
-          }}
-          numberOfLines={1}
-        >
-          {integration.description}
-        </Text>
       </View>
 
-      {/* Status / action */}
-      {isConnecting ? (
-        <ActivityIndicator size="small" color="#8e8e93" />
-      ) : isConnected ? (
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: 5,
-            backgroundColor: "rgba(52,199,89,0.12)",
-            borderRadius: moderateScale(20, 0.5),
-            paddingHorizontal: spacing.sm + 2,
-            paddingVertical: 5,
-          }}
-        >
-          <AppIcon icon={CheckmarkCircle02Icon} size={12} color="#34c759" />
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#34c759",
-              fontWeight: "500",
-            }}
+      {/* Right side: status + action button */}
+      <View style={{ alignItems: "flex-end", gap: 6 }}>
+        <StatusPill
+          status={integration.status}
+          isConnecting={isConnecting}
+          moderateScale={moderateScale}
+          spacing={spacing}
+          fontSize={fontSize}
+        />
+        {!isConnecting && isConnected ? (
+          <Pressable
+            onPress={() => onPress(integration)}
+            style={({ pressed }) => ({
+              borderRadius: moderateScale(12, 0.5),
+              paddingHorizontal: spacing.sm + 2,
+              paddingVertical: 4,
+              borderWidth: 1,
+              borderColor: "rgba(239,68,68,0.4)",
+              backgroundColor: pressed
+                ? "rgba(239,68,68,0.12)"
+                : "transparent",
+            })}
           >
-            Connected
-          </Text>
-        </View>
-      ) : isAvailable ? (
-        <View
-          style={{
-            backgroundColor: "rgba(0,187,255,0.12)",
-            borderRadius: moderateScale(20, 0.5),
-            paddingHorizontal: spacing.sm + 2,
-            paddingVertical: 5,
-          }}
-        >
-          <Text
-            style={{
-              fontSize: fontSize.xs,
-              color: "#00bbff",
-              fontWeight: "500",
-            }}
+            <Text style={{ fontSize: fontSize.xs - 1, color: "#ef4444", fontWeight: "500" }}>
+              Disconnect
+            </Text>
+          </Pressable>
+        ) : !isConnecting && isAvailable && integration.status !== "created" ? (
+          <Pressable
+            onPress={() => onPress(integration)}
+            style={({ pressed }) => ({
+              borderRadius: moderateScale(12, 0.5),
+              paddingHorizontal: spacing.sm + 2,
+              paddingVertical: 4,
+              borderWidth: 1,
+              borderColor: "rgba(0,187,255,0.4)",
+              backgroundColor: pressed
+                ? "rgba(0,187,255,0.12)"
+                : "transparent",
+            })}
           >
-            Connect
-          </Text>
-        </View>
-      ) : null}
+            <Text style={{ fontSize: fontSize.xs - 1, color: "#00bbff", fontWeight: "500" }}>
+              Connect
+            </Text>
+          </Pressable>
+        ) : null}
+      </View>
     </Pressable>
   );
 }
@@ -400,6 +584,9 @@ export function IntegrationsScreen() {
   const insets = useSafeAreaInsets();
   const { spacing, fontSize, moderateScale } = useResponsive();
 
+  const createSheetRef = useRef<CreateMCPIntegrationSheetRef>(null);
+  const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
+
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -539,7 +726,31 @@ export function IntegrationsScreen() {
             },
           ],
         );
+        return;
+      }
+
+      // Route by auth_type
+      const authType = integration.authType ?? "oauth";
+
+      if (authType === "bearer") {
+        // Bearer token flow: open token input sheet
+        bearerSheetRef.current?.open({
+          integrationId: integration.id,
+          integrationName: integration.name,
+          iconUrl: integration.iconUrl,
+        });
+      } else if (authType === "none") {
+        // Direct connect (no auth required)
+        setConnectingId(integration.id);
+        const result = await connectIntegration(integration.id);
+        if (result.success) {
+          await load();
+        } else if (!result.cancelled) {
+          Alert.alert("Error", result.error ?? "Failed to connect integration");
+        }
+        setConnectingId(null);
       } else {
+        // OAuth flow (default)
         setConnectingId(integration.id);
         const result = await connectIntegration(integration.id);
         if (result.success) {
@@ -681,6 +892,33 @@ export function IntegrationsScreen() {
           >
             Integrations
           </Text>
+
+          {/* Add custom integration button */}
+          <Pressable
+            onPress={() => createSheetRef.current?.open()}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 5,
+              paddingHorizontal: spacing.sm + 4,
+              paddingVertical: 7,
+              borderRadius: moderateScale(20, 0.5),
+              backgroundColor: pressed
+                ? "rgba(0,170,230,0.9)"
+                : "rgba(0,187,255,0.85)",
+            })}
+          >
+            <AppIcon icon={PlusSignIcon} size={14} color="#fff" />
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                fontWeight: "600",
+                color: "#fff",
+              }}
+            >
+              Add MCP
+            </Text>
+          </Pressable>
         </View>
 
         {/* Search bar */}
@@ -740,6 +978,18 @@ export function IntegrationsScreen() {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
+      />
+
+      {/* ─── Create MCP Integration Sheet ────────────────────────────────── */}
+      <CreateMCPIntegrationSheet
+        ref={createSheetRef}
+        onIntegrationCreated={() => void load()}
+      />
+
+      {/* ─── Bearer Token Sheet ───────────────────────────────────────────── */}
+      <BearerTokenSheet
+        ref={bearerSheetRef}
+        onSuccess={() => void load()}
       />
     </View>
   );

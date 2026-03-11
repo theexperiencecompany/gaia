@@ -1,4 +1,5 @@
 import * as ImagePicker from "expo-image-picker";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -10,17 +11,24 @@ import {
   View,
 } from "react-native";
 import { Text } from "@/components/ui/text";
-import type { UserProfile } from "@/features/settings/api/settings-api";
+import {
+  AppIcon,
+  ArrowRight01Icon,
+  UserCircle02Icon,
+} from "@/components/icons";
+import type { UserProfile, UserStats } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
 import { useResponsive } from "@/lib/responsive";
 
 const C = {
   bg: "#1c1c1e",
+  surface: "#1a1c21",
   primary: "#00bbff",
   primaryBg: "rgba(0,187,255,0.15)",
   text: "#ffffff",
   textMuted: "#8e8e93",
   textSubtle: "#5a5a5e",
+  divider: "rgba(255,255,255,0.06)",
 };
 
 function getInitials(name?: string): string {
@@ -33,8 +41,10 @@ function getInitials(name?: string): string {
 }
 
 export function ProfileSection() {
+  const router = useRouter();
   const { spacing, fontSize } = useResponsive();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -44,13 +54,13 @@ export function ProfileSection() {
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
-    settingsApi
-      .getProfile()
-      .then((data) => {
+    Promise.all([settingsApi.getProfile(), settingsApi.getUserStats()])
+      .then(([profileData, statsData]) => {
         if (cancelled) return;
-        setProfile(data);
-        setDisplayName(data.name ?? "");
-        setBio(data.onboarding?.preferences?.custom_instructions ?? "");
+        setProfile(profileData);
+        setStats(statsData);
+        setDisplayName(profileData.name ?? "");
+        setBio(profileData.onboarding?.preferences?.custom_instructions ?? "");
       })
       .catch(() => {
         if (!cancelled) Alert.alert("Error", "Failed to load profile.");
@@ -173,7 +183,7 @@ export function ProfileSection() {
         paddingBottom: 40,
       }}
     >
-      {/* Avatar */}
+      {/* Avatar + name hero */}
       <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
         <Pressable
           onPress={() => {
@@ -234,15 +244,138 @@ export function ProfileSection() {
         <Text
           style={{
             marginTop: spacing.sm,
-            fontSize: fontSize.xs,
+            fontSize: fontSize.lg,
+            fontWeight: "700",
+            color: C.text,
+          }}
+        >
+          {profile?.name ?? ""}
+        </Text>
+        <Text
+          style={{
+            marginTop: 2,
+            fontSize: fontSize.sm,
             color: C.textMuted,
           }}
         >
-          Tap to change photo
+          {profile?.email ?? ""}
+        </Text>
+        <Text
+          style={{
+            marginTop: spacing.xs,
+            fontSize: fontSize.xs,
+            color: C.textSubtle,
+          }}
+        >
+          Tap photo to change
         </Text>
       </View>
 
-      {/* Display name */}
+      {/* Stats row */}
+      {stats ? (
+        <View
+          style={{
+            backgroundColor: C.surface,
+            borderRadius: 16,
+            padding: spacing.md,
+            flexDirection: "row",
+            justifyContent: "space-around",
+            borderWidth: 1,
+            borderColor: C.divider,
+          }}
+        >
+          <View style={{ alignItems: "center" }}>
+            <Text
+              style={{
+                fontSize: fontSize["2xl"],
+                fontWeight: "700",
+                color: C.primary,
+              }}
+            >
+              {stats.conversation_count}
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+              Conversations
+            </Text>
+          </View>
+          <View style={{ width: 1, backgroundColor: C.divider }} />
+          <View style={{ alignItems: "center" }}>
+            <Text
+              style={{
+                fontSize: fontSize["2xl"],
+                fontWeight: "700",
+                color: C.primary,
+              }}
+            >
+              {stats.workflow_count}
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+              Workflows
+            </Text>
+          </View>
+          <View style={{ width: 1, backgroundColor: C.divider }} />
+          <View style={{ alignItems: "center" }}>
+            <Text
+              style={{
+                fontSize: fontSize["2xl"],
+                fontWeight: "700",
+                color: C.primary,
+              }}
+            >
+              {stats.integration_count}
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+              Integrations
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* View Profile Card CTA */}
+      <Pressable
+        onPress={() => router.push("/profile-card")}
+        style={{
+          backgroundColor: C.surface,
+          borderRadius: 14,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.md,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm,
+          borderWidth: 1,
+          borderColor: `rgba(0,187,255,0.2)`,
+        }}
+      >
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 9,
+            backgroundColor: C.primaryBg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <AppIcon icon={UserCircle02Icon} size={18} color={C.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              fontSize: fontSize.sm + 1,
+              color: C.text,
+              fontWeight: "500",
+            }}
+          >
+            View Profile Card
+          </Text>
+          <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+            Customize and share your GAIA card
+          </Text>
+        </View>
+        <AppIcon icon={ArrowRight01Icon} size={16} color={C.textMuted} />
+      </Pressable>
+
+      {/* Edit Profile button */}
       <View style={{ gap: spacing.xs }}>
         <Text
           style={{
