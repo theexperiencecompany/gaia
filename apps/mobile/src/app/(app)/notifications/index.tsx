@@ -23,6 +23,10 @@ import {
   useRealtimeNotifications,
 } from "@/features/notifications";
 import { NotificationPreferencesSheet } from "@/features/notifications/components/NotificationPreferencesSheet";
+import type { NotificationSnoozeSheetRef } from "@/features/notifications/components/NotificationSnoozeSheet";
+import { NotificationSnoozeSheet } from "@/features/notifications/components/NotificationSnoozeSheet";
+import type { InAppNotification, InAppNotificationAction } from "@/features/notifications/types/inapp-notification-types";
+import { getNotificationRoute } from "@/features/notifications/utils/notification-routes";
 import { useResponsive } from "@/lib/responsive";
 
 type NotificationsTab = "unread" | "all" | "archived";
@@ -42,6 +46,7 @@ export default function NotificationsScreen() {
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const prefsSheetRef = useRef<BottomSheetModal>(null);
+  const snoozeSheetRef = useRef<NotificationSnoozeSheetRef>(null);
 
   const {
     unreadNotifications,
@@ -132,6 +137,25 @@ export default function NotificationsScreen() {
     const ids = Array.from(selectedIds);
     await bulkDelete(ids);
     handleCancelSelect();
+  };
+
+  const handleSnooze = (notificationId: string) => {
+    snoozeSheetRef.current?.open(notificationId);
+  };
+
+  const handleActionPress = (
+    notification: InAppNotification,
+    action: InAppNotificationAction,
+  ) => {
+    void executeNotificationAction(notification, action);
+
+    // For non-redirect actions, navigate to the inferred route if available.
+    if (action.type !== "redirect") {
+      const route = getNotificationRoute(notification);
+      if (route) {
+        router.push(route as never);
+      }
+    }
   };
 
   const tabCounts: Record<NotificationsTab, number> = {
@@ -387,9 +411,8 @@ export default function NotificationsScreen() {
                 }
               : undefined
           }
-          onActionPress={(notification, action) => {
-            void executeNotificationAction(notification, action);
-          }}
+          onSnooze={activeTab !== "archived" ? handleSnooze : undefined}
+          onActionPress={handleActionPress}
           isMarkingAsRead={isMarkingAsRead}
           isActionLoading={isActionLoading}
           isSelectMode={isSelectMode}
@@ -503,6 +526,7 @@ export default function NotificationsScreen() {
       )}
 
       <NotificationPreferencesSheet ref={prefsSheetRef} />
+      <NotificationSnoozeSheet ref={snoozeSheetRef} />
     </View>
   );
 }

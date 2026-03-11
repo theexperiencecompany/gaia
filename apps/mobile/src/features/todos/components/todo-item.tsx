@@ -185,6 +185,9 @@ export function TodoItem({
         <Pressable
           onPress={() => onSelect?.(todo.id)}
           hitSlop={12}
+          accessibilityRole="checkbox"
+          accessibilityLabel={`Select ${todo.title}`}
+          accessibilityState={{ checked: isSelected }}
           style={{
             width: 22,
             height: 22,
@@ -210,6 +213,11 @@ export function TodoItem({
         <Pressable
           onPress={handleToggle}
           hitSlop={12}
+          accessibilityRole="checkbox"
+          accessibilityLabel={
+            todo.completed ? `Mark ${todo.title} as incomplete` : `Mark ${todo.title} as complete`
+          }
+          accessibilityState={{ checked: todo.completed }}
           style={{
             width: 22,
             height: 22,
@@ -437,6 +445,8 @@ export function TodoItem({
             <Pressable
               onPress={handleDeletePress}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete ${todo.title}`}
               style={{
                 width: 28,
                 height: 28,
