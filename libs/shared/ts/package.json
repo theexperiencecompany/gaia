@@ -26,7 +26,10 @@
     "./types/chat": "./src/types/chat.ts",
     "./api": "./src/api/index.ts",
     "./api/workflows": "./src/api/workflowsApi.ts",
-    "./api/todos": "./src/api/todosApi.ts"
+    "./api/todos": "./src/api/todosApi.ts",
+    "./api/integrations": "./src/api/integrationsApi.ts",
+    "./api/notifications": "./src/api/notificationsApi.ts",
+    "./api/conversations": "./src/api/conversationsApi.ts"
   },
   "scripts": {
     "build": "tsc",
