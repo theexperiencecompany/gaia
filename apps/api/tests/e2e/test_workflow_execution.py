@@ -292,6 +292,9 @@ class TestWorkflowExecution:
             responses=[AIMessage(content="Comms agent response.")]
         )
 
+        async def _noop_follow_up(state, config, store):
+            return state
+
         # Patch at the build_graph module namespace (where names are imported)
         with (
             patch(
@@ -307,6 +310,10 @@ class TestWorkflowExecution:
                 "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
                 new_callable=AsyncMock,
                 return_value=MagicMock(),
+            ),
+            patch(
+                "app.agents.core.graph_builder.build_graph.follow_up_actions_node",
+                new=_noop_follow_up,
             ),
         ):
             async with build_comms_graph(
@@ -344,8 +351,11 @@ class TestWorkflowExecution:
 
         If build_graph.py is deleted, this test fails immediately on import.
         """
+        import ast
+        import inspect
 
         from app.agents.core.graph_builder.build_graph import build_executor_graph
+        from app.agents.tools.todo_tools import TODO_TOOL_NAMES
 
         fake_llm = BindableToolsFakeModel(
             responses=[AIMessage(content="Executor agent response.")]
@@ -353,21 +363,31 @@ class TestWorkflowExecution:
 
         from langchain_core.tools import tool as lc_tool
 
-        @lc_tool
-        def _stub_vfs_read(path: str) -> str:
-            """Read a file from VFS."""
-            return ""
+        def _make_stub(name: str):
+            async def _stub(input: str = "") -> str:  # noqa: A002
+                return f"stub:{name}"
 
-        @lc_tool
-        def _stub_deep_research(query: str) -> str:
-            """Perform deep research."""
-            return ""
+            _stub.__name__ = name
+            _stub.__doc__ = f"Stub for {name}."
+            return lc_tool(_stub)
+
+        # Dynamically read initial_tool_ids from the real source so the mock
+        # registry always provides stubs for every tool the graph expects.
+        src = inspect.getsource(build_executor_graph)
+        injected_by_graph = {"handoff"} | TODO_TOOL_NAMES
+        idx = src.find("initial_tool_ids=")
+        if idx != -1:
+            bracket_start = src.index("[", idx)
+            bracket_end = src.index("]", bracket_start) + 1
+            raw_ids: list[str] = ast.literal_eval(src[bracket_start:bracket_end])
+        else:
+            raw_ids = []
+        tool_dict = {
+            tid: _make_stub(tid) for tid in raw_ids if tid not in injected_by_graph
+        }
 
         mock_registry = MagicMock()
-        mock_registry.get_tool_dict.return_value = {
-            "vfs_read": _stub_vfs_read,
-            "deep_research": _stub_deep_research,
-        }
+        mock_registry.get_tool_dict.return_value = tool_dict
 
         async def _fake_retrieve_tools(
             store, config, query=None, exact_tool_names=None

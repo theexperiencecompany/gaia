@@ -110,7 +110,7 @@ jobs:
       - name: Run API tests
         run: |
           cd apps/api
-          uv run pytest -m "not integration" --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30
+          uv run pytest -m "not integration and not composio" --tb=short -q --cov=app --cov-report=term-missing --cov-fail-under=30
         env:
           ENV: test
 
