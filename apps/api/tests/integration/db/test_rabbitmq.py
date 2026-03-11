@@ -12,7 +12,7 @@ Design invariants (tests are written to enforce these):
 - Removing `delivery_mode=PERSISTENT`              → test_publish_message_is_persistent FAILS
 """
 
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, call, patch
 
 import aio_pika
 import pytest
@@ -59,7 +59,9 @@ def mock_connection(mock_channel: AsyncMock) -> AsyncMock:
 @pytest.fixture
 def publisher() -> RabbitMQPublisher:
     """Fresh RabbitMQPublisher — not yet connected."""
-    return RabbitMQPublisher(amqp_url="amqp://guest:guest@localhost/")
+    return RabbitMQPublisher(
+        amqp_url="amqp://guest:guest@localhost/"  # pragma: allowlist secret
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -138,9 +140,7 @@ class TestDeclareQueue:
             await publisher.connect()
             await publisher.declare_queue("test_queue")
 
-        mock_channel.declare_queue.assert_called_once_with(
-            "test_queue", durable=True
-        )
+        mock_channel.declare_queue.assert_called_once_with("test_queue", durable=True)
 
     async def test_declare_queue_is_idempotent(
         self,

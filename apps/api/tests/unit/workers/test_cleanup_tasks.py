@@ -2,7 +2,7 @@
 
 import pytest
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, MagicMock, call, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from app.workers.tasks.cleanup_tasks import cleanup_stuck_personalization
 
@@ -49,12 +49,8 @@ class TestCleanupStuckPersonalization:
         mock_cursor.to_list = AsyncMock(return_value=[])
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             await cleanup_stuck_personalization(ctx)
@@ -77,12 +73,8 @@ class TestCleanupStuckPersonalization:
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             mock_redis_mgr.get_pool = AsyncMock(return_value=mock_pool)
@@ -105,9 +97,7 @@ class TestCleanupStuckPersonalization:
         mock_cursor = MagicMock()
         mock_cursor.to_list = AsyncMock(return_value=[])
 
-        with patch(
-            "app.workers.tasks.cleanup_tasks.users_collection"
-        ) as mock_col:
+        with patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col:
             mock_col.find = MagicMock(return_value=mock_cursor)
             await cleanup_stuck_personalization(ctx)
 
@@ -128,12 +118,8 @@ class TestCleanupStuckPersonalization:
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             mock_redis_mgr.get_pool = AsyncMock(return_value=mock_pool)
@@ -161,12 +147,8 @@ class TestCleanupStuckPersonalization:
         mock_pool.enqueue_job = AsyncMock(return_value=mock_job)
 
         with (
-            patch(
-                "app.workers.tasks.cleanup_tasks.users_collection"
-            ) as mock_col,
-            patch(
-                "app.workers.tasks.cleanup_tasks.RedisPoolManager"
-            ) as mock_redis_mgr,
+            patch("app.workers.tasks.cleanup_tasks.users_collection") as mock_col,
+            patch("app.workers.tasks.cleanup_tasks.RedisPoolManager") as mock_redis_mgr,
         ):
             mock_col.find = MagicMock(return_value=mock_cursor)
             mock_redis_mgr.get_pool = AsyncMock(return_value=mock_pool)
@@ -212,9 +194,7 @@ class TestCleanupStuckPersonalization:
 
         # Verify WHICH users were actually enqueued — this is what the
         # string-only assertion misses.
-        enqueued_ids = [
-            c.args[1] for c in mock_pool.enqueue_job.await_args_list
-        ]
+        enqueued_ids = [c.args[1] for c in mock_pool.enqueue_job.await_args_list]
         assert "id_1" in enqueued_ids
         assert "id_2" in enqueued_ids
         assert mock_pool.enqueue_job.await_count == 2
@@ -328,9 +308,7 @@ class TestCleanupStuckPersonalization:
         assert "2 stuck users" in result
 
         # The succeeded user must have been enqueued; the failed one attempted
-        enqueued_ids = [
-            c.args[1] for c in mock_pool.enqueue_job.await_args_list
-        ]
+        enqueued_ids = [c.args[1] for c in mock_pool.enqueue_job.await_args_list]
         assert "id_ok" in enqueued_ids
         assert "id_fail" in enqueued_ids
 
@@ -417,7 +395,5 @@ class TestCleanupStuckPersonalization:
         assert "3 users re-queued" in result
 
         # Verify all three IDs were actually enqueued
-        enqueued_ids = [
-            c.args[1] for c in mock_pool.enqueue_job.await_args_list
-        ]
+        enqueued_ids = [c.args[1] for c in mock_pool.enqueue_job.await_args_list]
         assert set(enqueued_ids) == {"id_1", "id_2", "id_3"}

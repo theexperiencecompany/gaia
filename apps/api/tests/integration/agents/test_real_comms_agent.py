@@ -13,11 +13,14 @@ If `build_comms_graph` (or the callee chain it pulls in) is removed or
 renamed these tests will fail immediately — which is the desired behaviour.
 """
 
+import asyncio
+import contextlib
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from langchain_community.chat_models import FakeMessagesListChatModel
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 # ---------------------------------------------------------------------------
@@ -130,6 +133,52 @@ def _follow_up_node_io_patches(
     ]
 
 
+@contextlib.contextmanager
+def _apply_all_patches(
+    store_mock: MagicMock,
+    io_patches: list,
+    extra_patches: list | None = None,
+):
+    """Apply store, checkpointer, io, executor, memory patches via ExitStack.
+
+    This avoids ``*io_patches`` unpacking inside ``with()`` which Python
+    does not support (it produces a tuple, not individual context managers).
+    """
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "app.agents.tools.core.store.providers.aget",
+                new_callable=AsyncMock,
+                return_value=store_mock,
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
+                new_callable=AsyncMock,
+                return_value=None,
+            )
+        )
+        for p in io_patches:
+            stack.enter_context(p)
+        stack.enter_context(
+            patch(
+                "app.agents.tools.executor_tool.prepare_executor_execution",
+                new_callable=AsyncMock,
+                return_value=(None, "executor not available in tests"),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "app.agents.tools.memory_tools.memory_service",
+                new_callable=MagicMock,
+            )
+        )
+        for p in extra_patches or []:
+            stack.enter_context(p)
+        yield
+
+
 @pytest.fixture()
 async def comms_graph_simple():
     """
@@ -145,28 +194,7 @@ async def comms_graph_simple():
 
     io_patches = _follow_up_node_io_patches()
 
-    with (
-        patch(
-            "app.agents.tools.core.store.providers.aget",
-            new_callable=AsyncMock,
-            return_value=store_mock,
-        ),
-        patch(
-            "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
-            new_callable=AsyncMock,
-            return_value=None,  # None → use InMemorySaver branch
-        ),
-        *io_patches,
-        patch(
-            "app.agents.tools.executor_tool.prepare_executor_execution",
-            new_callable=AsyncMock,
-            return_value=(None, "executor not available in tests"),
-        ),
-        patch(
-            "app.agents.tools.memory_tools.memory_service",
-            new_callable=MagicMock,
-        ),
-    ):
+    with _apply_all_patches(store_mock, io_patches):
         async with build_comms_graph(
             chat_llm=fake_llm, in_memory_checkpointer=True
         ) as graph:
@@ -195,29 +223,7 @@ async def comms_graph_with_tool_call():
 
     io_patches = _follow_up_node_io_patches()
 
-    with (
-        patch(
-            "app.agents.tools.core.store.providers.aget",
-            new_callable=AsyncMock,
-            return_value=store_mock,
-        ),
-        patch(
-            "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
-            new_callable=AsyncMock,
-            return_value=None,
-        ),
-        *io_patches,
-        # Make the executor tool return immediately with a fixed string
-        patch(
-            "app.agents.tools.executor_tool.prepare_executor_execution",
-            new_callable=AsyncMock,
-            return_value=(None, "executor not available in tests"),
-        ),
-        patch(
-            "app.agents.tools.memory_tools.memory_service",
-            new_callable=MagicMock,
-        ),
-    ):
+    with _apply_all_patches(store_mock, io_patches):
         async with build_comms_graph(
             chat_llm=fake_llm, in_memory_checkpointer=True
         ) as graph:
@@ -601,34 +607,11 @@ class TestRealCommsAgent:
         io_patches = _follow_up_node_io_patches(
             writer_fn=capturing_writer,
             # Return valid JSON so that PydanticOutputParser.parse() runs for real
-            llm_response=(
-                '{"actions": ["Do A", "Do B", "Do C", "Do D"]}'
-            ),
+            llm_response=('{"actions": ["Do A", "Do B", "Do C", "Do D"]}'),
             capabilities={"tool_names": ["call_executor"]},
         )
 
-        with (
-            patch(
-                "app.agents.tools.core.store.providers.aget",
-                new_callable=AsyncMock,
-                return_value=store_mock,
-            ),
-            patch(
-                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            *io_patches,
-            patch(
-                "app.agents.tools.executor_tool.prepare_executor_execution",
-                new_callable=AsyncMock,
-                return_value=(None, "executor not available in tests"),
-            ),
-            patch(
-                "app.agents.tools.memory_tools.memory_service",
-                new_callable=MagicMock,
-            ),
-        ):
+        with _apply_all_patches(store_mock, io_patches):
             async with build_comms_graph(
                 chat_llm=fake_llm, in_memory_checkpointer=True
             ) as graph:
@@ -683,28 +666,7 @@ class TestRealCommsAgent:
             llm_response=_VALID_FOLLOW_UP_JSON,
         )
 
-        with (
-            patch(
-                "app.agents.tools.core.store.providers.aget",
-                new_callable=AsyncMock,
-                return_value=store_mock,
-            ),
-            patch(
-                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            *io_patches,
-            patch(
-                "app.agents.tools.executor_tool.prepare_executor_execution",
-                new_callable=AsyncMock,
-                return_value=(None, "executor not available in tests"),
-            ),
-            patch(
-                "app.agents.tools.memory_tools.memory_service",
-                new_callable=MagicMock,
-            ),
-        ):
+        with _apply_all_patches(store_mock, io_patches):
             async with build_comms_graph(
                 chat_llm=fake_llm, in_memory_checkpointer=True
             ) as graph:
@@ -759,32 +721,15 @@ class TestRealCommsAgent:
 
         io_patches = _follow_up_node_io_patches()
 
-        with (
-            patch(
-                "app.agents.tools.core.store.providers.aget",
-                new_callable=AsyncMock,
-                return_value=store_mock,
-            ),
-            patch(
-                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            *io_patches,
-            patch(
-                "app.agents.tools.executor_tool.prepare_executor_execution",
-                new_callable=AsyncMock,
-                return_value=(None, "executor not available in tests"),
-            ),
-            patch(
-                "app.agents.tools.memory_tools.memory_service",
-                new_callable=MagicMock,
-            ),
-            # Replace filter_messages_node in the hooks module used by create_agent
-            patch(
-                "app.override.langgraph_bigtool.hooks.execute_hooks",
-                side_effect=sentinel,
-            ),
+        with _apply_all_patches(
+            store_mock,
+            io_patches,
+            extra_patches=[
+                patch(
+                    "app.override.langgraph_bigtool.hooks.execute_hooks",
+                    side_effect=sentinel,
+                ),
+            ],
         ):
             async with build_comms_graph(
                 chat_llm=fake_llm, in_memory_checkpointer=True
@@ -819,28 +764,7 @@ class TestRealCommsAgent:
 
         io_patches = _follow_up_node_io_patches()
 
-        with (
-            patch(
-                "app.agents.tools.core.store.providers.aget",
-                new_callable=AsyncMock,
-                return_value=store_mock,
-            ),
-            patch(
-                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            *io_patches,
-            patch(
-                "app.agents.tools.executor_tool.prepare_executor_execution",
-                new_callable=AsyncMock,
-                return_value=(None, "executor not available in tests"),
-            ),
-            patch(
-                "app.agents.tools.memory_tools.memory_service",
-                new_callable=MagicMock,
-            ),
-        ):
+        with _apply_all_patches(store_mock, io_patches):
             async with build_comms_graph(
                 chat_llm=fake_llm, in_memory_checkpointer=True
             ) as graph:
@@ -888,28 +812,7 @@ class TestRealCommsAgent:
 
         io_patches = _follow_up_node_io_patches()
 
-        with (
-            patch(
-                "app.agents.tools.core.store.providers.aget",
-                new_callable=AsyncMock,
-                return_value=store_mock,
-            ),
-            patch(
-                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            *io_patches,
-            patch(
-                "app.agents.tools.executor_tool.prepare_executor_execution",
-                new_callable=AsyncMock,
-                return_value=(None, "executor not available in tests"),
-            ),
-            patch(
-                "app.agents.tools.memory_tools.memory_service",
-                new_callable=MagicMock,
-            ),
-        ):
+        with _apply_all_patches(store_mock, io_patches):
             async with build_comms_graph(
                 chat_llm=fake_llm, in_memory_checkpointer=True
             ) as graph:
@@ -963,28 +866,7 @@ class TestRealCommsAgent:
 
         io_patches = _follow_up_node_io_patches()
 
-        with (
-            patch(
-                "app.agents.tools.core.store.providers.aget",
-                new_callable=AsyncMock,
-                return_value=store_mock,
-            ),
-            patch(
-                "app.agents.core.graph_builder.build_graph.get_checkpointer_manager",
-                new_callable=AsyncMock,
-                return_value=None,
-            ),
-            *io_patches,
-            patch(
-                "app.agents.tools.executor_tool.prepare_executor_execution",
-                new_callable=AsyncMock,
-                return_value=(None, "executor not available in tests"),
-            ),
-            patch(
-                "app.agents.tools.memory_tools.memory_service",
-                new_callable=MagicMock,
-            ),
-        ):
+        with _apply_all_patches(store_mock, io_patches):
             async with build_comms_graph(
                 chat_llm=fake_llm, in_memory_checkpointer=True
             ) as graph:

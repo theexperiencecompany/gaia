@@ -29,9 +29,8 @@ from app.api.v1.endpoints.vfs import (
     router,
 )
 from app.models.chat_models import tool_fields
-from app.models.vfs_models import VFSListResponse, VFSNodeResponse, VFSNodeType
+from app.models.vfs_models import VFSNodeType
 from app.services.chat_service import extract_tool_data
-from app.services.vfs import VFSAccessError
 
 
 # ---------------------------------------------------------------------------
@@ -140,12 +139,11 @@ async def test_read_vfs_file_returns_content_for_viewer() -> None:
     """
     col = _make_collection_mock(find_one_return=_FILE_NODE)
 
-    with patch(
-        "app.services.vfs.mongo_vfs.vfs_nodes_collection", col
-    ), patch(
-        "app.api.v1.endpoints.vfs.get_vfs",
-        new=AsyncMock(
-            return_value=_make_real_vfs_with_col(col)
+    with (
+        patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
+        patch(
+            "app.api.v1.endpoints.vfs.get_vfs",
+            new=AsyncMock(return_value=_make_real_vfs_with_col(col)),
         ),
     ):
         response = await read_vfs_file(
@@ -171,13 +169,13 @@ async def test_read_vfs_file_returns_403_on_access_error() -> None:
     col = _make_collection_mock(find_one_return=None)
 
     # Patch validate_user_access to deny all access, simulating cross-user read
-    with patch(
-        "app.services.vfs.mongo_vfs.validate_user_access", return_value=False
-    ), patch(
-        "app.services.vfs.mongo_vfs.vfs_nodes_collection", col
-    ), patch(
-        "app.api.v1.endpoints.vfs.get_vfs",
-        new=AsyncMock(return_value=_make_real_vfs()),
+    with (
+        patch("app.services.vfs.mongo_vfs.validate_user_access", return_value=False),
+        patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
+        patch(
+            "app.api.v1.endpoints.vfs.get_vfs",
+            new=AsyncMock(return_value=_make_real_vfs()),
+        ),
     ):
         with pytest.raises(HTTPException) as exc_info:
             await read_vfs_file(
@@ -211,11 +209,12 @@ async def test_get_vfs_info_returns_node_metadata() -> None:
     }
     col = _make_collection_mock(find_one_return=data_node)
 
-    with patch(
-        "app.services.vfs.mongo_vfs.vfs_nodes_collection", col
-    ), patch(
-        "app.api.v1.endpoints.vfs.get_vfs",
-        new=AsyncMock(return_value=_make_real_vfs_with_col(col)),
+    with (
+        patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
+        patch(
+            "app.api.v1.endpoints.vfs.get_vfs",
+            new=AsyncMock(return_value=_make_real_vfs_with_col(col)),
+        ),
     ):
         response = await get_vfs_info(
             path="/users/u1/global/executor/files/data.json",
@@ -236,11 +235,12 @@ async def test_list_vfs_dir_honors_recursive_flag() -> None:
     """
     col = _make_collection_mock(find_one_return=None)
 
-    with patch(
-        "app.services.vfs.mongo_vfs.vfs_nodes_collection", col
-    ), patch(
-        "app.api.v1.endpoints.vfs.get_vfs",
-        new=AsyncMock(return_value=_make_real_vfs_with_col(col)),
+    with (
+        patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
+        patch(
+            "app.api.v1.endpoints.vfs.get_vfs",
+            new=AsyncMock(return_value=_make_real_vfs_with_col(col)),
+        ),
     ):
         response = await list_vfs_dir(
             path="/users/u1/global/executor/files",
@@ -375,8 +375,11 @@ async def test_vfs_user_cannot_read_other_users_file() -> None:
     real_vfs = MongoVFS()
 
     async with await _make_http_client(user=user_b) as client:
-        with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col), patch(
-            "app.api.v1.endpoints.vfs.get_vfs", new=AsyncMock(return_value=real_vfs)
+        with (
+            patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
+            patch(
+                "app.api.v1.endpoints.vfs.get_vfs", new=AsyncMock(return_value=real_vfs)
+            ),
         ):
             response = await client.get(
                 "/api/v1/vfs/read", params={"path": user_a_path}
@@ -411,11 +414,12 @@ async def test_vfs_path_traversal_blocked() -> None:
 
     async with await _make_http_client(user=user) as client:
         for traversal_path in traversal_paths:
-            with patch(
-                "app.services.vfs.mongo_vfs.vfs_nodes_collection", col
-            ), patch(
-                "app.api.v1.endpoints.vfs.get_vfs",
-                new=AsyncMock(return_value=real_vfs),
+            with (
+                patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
+                patch(
+                    "app.api.v1.endpoints.vfs.get_vfs",
+                    new=AsyncMock(return_value=real_vfs),
+                ),
             ):
                 response = await client.get(
                     "/api/v1/vfs/read", params={"path": traversal_path}
@@ -519,17 +523,16 @@ async def test_vfs_delete_removes_file() -> None:
     vfs = MongoVFS()
 
     async with await _make_http_client(user=user) as client:
-        with patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col), patch(
-            "app.api.v1.endpoints.vfs.get_vfs", new=AsyncMock(return_value=vfs)
+        with (
+            patch("app.services.vfs.mongo_vfs.vfs_nodes_collection", col),
+            patch("app.api.v1.endpoints.vfs.get_vfs", new=AsyncMock(return_value=vfs)),
         ):
             # Delete the file via the service directly
             deleted = await vfs.delete(file_path, user_id="u1")
             assert deleted is True, "delete() should return True for an existing file"
 
             # Now read through the HTTP endpoint — MongoDB returns None → 404
-            response = await client.get(
-                "/api/v1/vfs/read", params={"path": file_path}
-            )
+            response = await client.get("/api/v1/vfs/read", params={"path": file_path})
 
     assert response.status_code == 404, (
         f"Expected 404 after delete, got {response.status_code}"

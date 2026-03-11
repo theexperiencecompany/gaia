@@ -1143,7 +1143,6 @@ class TestHandoffFunctionDirectly:
         string and must route state through execute_subagent_stream."""
         from app.agents.core.subagents.handoff_tools import (
             handoff,
-            _resolve_subagent,
         )
 
         user_id = str(uuid4())
@@ -1172,13 +1171,13 @@ class TestHandoffFunctionDirectly:
         with (
             patch(
                 "app.agents.core.subagents.handoff_tools._resolve_subagent",
-                new=AsyncMock(
-                    return_value=(fake_graph, "gmail_agent", "gmail", False)
-                ),
+                new=AsyncMock(return_value=(fake_graph, "gmail_agent", "gmail", False)),
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.create_subagent_system_message",
-                new=AsyncMock(return_value=SystemMessage(content="You are Gmail agent.")),
+                new=AsyncMock(
+                    return_value=SystemMessage(content="You are Gmail agent.")
+                ),
             ),
             patch(
                 "app.agents.core.subagents.handoff_tools.build_initial_messages",
@@ -1217,9 +1216,9 @@ class TestHandoffFunctionDirectly:
         mock_execute.assert_awaited_once()
         # Verify the execution context passed to execute_subagent_stream has
         # correct agent_name and integration_id
-        ctx_arg = mock_execute.call_args.kwargs.get(
-            "ctx"
-        ) or mock_execute.call_args.args[0]
+        ctx_arg = (
+            mock_execute.call_args.kwargs.get("ctx") or mock_execute.call_args.args[0]
+        )
         assert ctx_arg.agent_name == "gmail_agent"
         assert ctx_arg.integration_id == "gmail"
 
@@ -1434,9 +1433,9 @@ class TestCustomMCPPath:
         mock_create.assert_awaited_once_with(custom_id, user_id)
         assert result == "custom mcp result"
         # Verify the execution context has is_custom reflected in agent_name
-        ctx_arg = mock_execute.call_args.kwargs.get(
-            "ctx"
-        ) or mock_execute.call_args.args[0]
+        ctx_arg = (
+            mock_execute.call_args.kwargs.get("ctx") or mock_execute.call_args.args[0]
+        )
         assert ctx_arg.agent_name == f"custom_mcp_{custom_id}"
         assert ctx_arg.integration_id == custom_id
 
@@ -1476,7 +1475,10 @@ class TestCustomMCPPath:
         assert graph is None
         assert agent_name is None
         assert error_or_id is not None
-        assert "requires authentication" in error_or_id.lower() or "sign in" in error_or_id.lower()
+        assert (
+            "requires authentication" in error_or_id.lower()
+            or "sign in" in error_or_id.lower()
+        )
 
     async def test_custom_mcp_path_returns_error_when_create_fails(self):
         """If create_subagent_for_user returns None, _resolve_subagent must
@@ -1642,7 +1644,12 @@ class TestHandoffThreadIsolation:
             patch(
                 "app.agents.core.subagents.handoff_tools._resolve_subagent",
                 new=AsyncMock(
-                    return_value=(MagicMock(), "calendar_agent", "googlecalendar", False)
+                    return_value=(
+                        MagicMock(),
+                        "calendar_agent",
+                        "googlecalendar",
+                        False,
+                    )
                 ),
             ),
             patch(
