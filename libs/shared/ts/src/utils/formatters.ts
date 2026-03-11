@@ -103,3 +103,59 @@ export function getTriggerLabel(triggerType: string): string {
         .join(" ");
   }
 }
+
+/**
+ * Format a file size in bytes to a human-readable string.
+ * Examples: 1024 -> "1 KB", 1048576 -> "1 MB"
+ */
+export function formatFileSize(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const index = Math.min(
+    Math.floor(Math.log(bytes) / Math.log(1024)),
+    units.length - 1,
+  );
+  const value = bytes / 1024 ** index;
+  const formatted =
+    value % 1 === 0 ? value.toFixed(0) : value.toFixed(1);
+  return `${formatted} ${units[index]}`;
+}
+
+/**
+ * Truncate text to a maximum length, appending an ellipsis if truncated.
+ */
+export function truncateText(text: string, maxLength: number): string {
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength)}…`;
+}
+
+/**
+ * Format a number with K/M/B suffixes for compact display.
+ * Alias for formatCompactNumber with a name matching the task spec.
+ */
+export function formatNumber(num: number): string {
+  return formatCompactNumber(num);
+}
+
+const URL_REGEX =
+  /https?:\/\/(?:[-\w]+\.)+[a-z]{2,}(?:\/[-\w%_.~+]*)*(?:\?[-\w%_.~+=&]*)?(?:#[-\w]*)?/gi;
+
+/**
+ * Extract all HTTP/HTTPS URLs found in the given text.
+ */
+export function extractUrls(text: string): string[] {
+  return text.match(URL_REGEX) ?? [];
+}
+
+/**
+ * Format a monetary amount as a locale currency string.
+ * Defaults to USD.
+ */
+export function formatCurrency(amount: number, currency = "USD"): string {
+  return new Intl.NumberFormat(undefined, {
+    style: "currency",
+    currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(amount);
+}

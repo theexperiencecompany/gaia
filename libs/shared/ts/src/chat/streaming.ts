@@ -9,6 +9,7 @@ export enum SSEEventType {
   Image = "image",
   Memory = "memory",
   Metadata = "metadata",
+  Thinking = "thinking",
 }
 
 export interface ContentEvent {
@@ -66,6 +67,11 @@ export interface MetadataEvent {
   data: Record<string, unknown>;
 }
 
+export interface ThinkingEvent {
+  type: "thinking";
+  content: string;
+}
+
 export type SSEEvent =
   | ContentEvent
   | ToolStartEvent
@@ -75,7 +81,8 @@ export type SSEEvent =
   | DoneEvent
   | ImageEvent
   | MemoryEvent
-  | MetadataEvent;
+  | MetadataEvent
+  | ThinkingEvent;
 
 export type StreamingEventHandler = (event: SSEEvent) => void;
 
@@ -178,6 +185,10 @@ export function parseSSELine(line: string): SSEEvent | null {
     !Array.isArray(p.data)
   ) {
     return { type: "metadata", data: p.data as Record<string, unknown> };
+  }
+
+  if (p.type === "thinking" && typeof p.content === "string") {
+    return { type: "thinking", content: p.content };
   }
 
   return null;
