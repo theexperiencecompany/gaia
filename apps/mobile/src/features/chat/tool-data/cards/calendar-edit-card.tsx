@@ -1,4 +1,4 @@
-import { Button, Card, Chip, Separator } from "heroui-native";
+import { Button, Card, Chip } from "heroui-native";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import {
@@ -179,9 +179,8 @@ function EventRow({ event, status, onEdit }: EventRowProps) {
             ) : null}
             {event.calendar_name ? (
               <Chip
-                size="xs"
+                size="sm"
                 variant="soft"
-                color="default"
                 className="mt-1.5 self-start"
                 animation="disable-all"
               >
@@ -194,9 +193,7 @@ function EventRow({ event, status, onEdit }: EventRowProps) {
           <Button
             size="sm"
             variant={isCompleted ? "secondary" : "primary"}
-            color={isCompleted ? "default" : "default"}
-            isDisabled={isCompleted}
-            isLoading={isLoading}
+            isDisabled={isCompleted || isLoading}
             onPress={onEdit}
             className="flex-shrink-0 rounded-xl"
           >
@@ -296,7 +293,13 @@ export function CalendarEditCard({
       </Card.Header>
 
       <Card.Body className="p-0">
-        <Separator className="bg-white/8 mt-3" />
+        <View
+          style={{
+            height: 1,
+            backgroundColor: "rgba(255,255,255,0.07)",
+            marginTop: 12,
+          }}
+        />
 
         {data.length === 0 ? (
           <View className="px-4 py-3">
@@ -326,7 +329,13 @@ export function CalendarEditCard({
                   return (
                     <View key={key}>
                       {localIdx > 0 && (
-                        <Separator className="mx-4 bg-white/8" />
+                        <View
+                          style={{
+                            height: 1,
+                            backgroundColor: "rgba(255,255,255,0.07)",
+                            marginHorizontal: 16,
+                          }}
+                        />
                       )}
                       <EventRow
                         event={event}
@@ -344,13 +353,13 @@ export function CalendarEditCard({
         {/* Bulk update footer */}
         {data.length > 1 && onEditAll ? (
           <>
-            <Separator className="bg-white/8" />
+            <View
+              style={{ height: 1, backgroundColor: "rgba(255,255,255,0.07)" }}
+            />
             <View className="px-4 py-3">
               <Button
                 variant={allCompleted ? "secondary" : "primary"}
-                color={allCompleted ? "default" : "default"}
-                isDisabled={allCompleted}
-                isLoading={isUpdatingAll}
+                isDisabled={allCompleted || isUpdatingAll}
                 onPress={() => void handleEditAll()}
                 className="w-full rounded-xl"
               >

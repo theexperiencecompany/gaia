@@ -28,7 +28,7 @@ export function parseDeepLink(url: string): ParsedDeepLink {
   const parsed = Linking.parse(url);
   // For gaia://chat/123, expo-linking gives: host="chat", path="123"
   // For gaia://todos,    expo-linking gives: host="todos", path=null
-  const host = parsed.hostname ?? parsed.host ?? "";
+  const host = parsed.hostname ?? "";
   const path = parsed.path ?? "";
 
   if (host === "chat") {

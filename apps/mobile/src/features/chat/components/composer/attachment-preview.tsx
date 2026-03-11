@@ -1,5 +1,5 @@
-import { CloseButton, Skeleton, Surface } from "heroui-native";
-import { ActivityIndicator, ScrollView, View } from "react-native";
+import { Skeleton, Surface } from "heroui-native";
+import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -111,11 +111,9 @@ function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
           )}
         </View>
 
-        <CloseButton
-          onPress={() => onRemove(attachment.localId)}
-          size="sm"
-          hitSlop={8}
-        />
+        <Pressable onPress={() => onRemove(attachment.localId)} hitSlop={8}>
+          <AppIcon icon={File01Icon} size={12} color="#a1a1aa" />
+        </Pressable>
       </Surface>
     </Animated.View>
   );

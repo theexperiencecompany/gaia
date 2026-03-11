@@ -1,4 +1,4 @@
-import { Card, Chip, PressableFeedback, Separator } from "heroui-native";
+import { Card, Chip, PressableFeedback } from "heroui-native";
 import { ScrollView, View } from "react-native";
 import { AppIcon, Calendar03Icon, Clock01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -91,9 +91,8 @@ function EventRow({ event, onPress }: EventRowProps) {
           </Text>
           {calendarLabel ? (
             <Chip
-              size="xs"
+              size="sm"
               variant="soft"
-              color="accent"
               className="flex-shrink-0"
               animation="disable-all"
             >
@@ -174,7 +173,13 @@ export function CalendarFetchCard({
       </Card.Header>
 
       <Card.Body className="p-0">
-        <Separator className="bg-white/8 mt-3" />
+        <View
+          style={{
+            height: 1,
+            backgroundColor: "rgba(255,255,255,0.07)",
+            marginTop: 12,
+          }}
+        />
 
         {data.length === 0 ? (
           <View className="px-4 py-3">
@@ -190,7 +195,15 @@ export function CalendarFetchCard({
               const key = `${event.summary ?? event.title ?? "event"}-${index}`;
               return (
                 <View key={key}>
-                  {index > 0 && <Separator className="mx-4 bg-white/8" />}
+                  {index > 0 && (
+                    <View
+                      style={{
+                        height: 1,
+                        backgroundColor: "rgba(255,255,255,0.07)",
+                        marginHorizontal: 16,
+                      }}
+                    />
+                  )}
                   <EventRow
                     event={event}
                     onPress={
@@ -205,7 +218,12 @@ export function CalendarFetchCard({
 
             {overflow > 0 ? (
               <>
-                <Separator className="bg-white/8" />
+                <View
+                  style={{
+                    height: 1,
+                    backgroundColor: "rgba(255,255,255,0.07)",
+                  }}
+                />
                 <View className="px-4 py-2.5 items-center">
                   <Text className="text-muted text-xs">
                     +{overflow} more event{overflow !== 1 ? "s" : ""}

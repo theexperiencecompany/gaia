@@ -1,4 +1,4 @@
-import { Button, Card, Chip, Separator } from "heroui-native";
+import { Button, Card, Chip } from "heroui-native";
 import { useState } from "react";
 import { ScrollView, View } from "react-native";
 import {
@@ -131,9 +131,8 @@ function EventRow({ event, status, onDelete }: EventRowProps) {
         {timeStr ? <Text className="text-muted text-xs">{timeStr}</Text> : null}
         {event.calendar_name ? (
           <Chip
-            size="xs"
+            size="sm"
             variant="soft"
-            color="default"
             className="mt-1 self-start"
             animation="disable-all"
           >
@@ -145,10 +144,8 @@ function EventRow({ event, status, onDelete }: EventRowProps) {
       {/* Action button */}
       <Button
         size="sm"
-        variant={isCompleted ? "secondary" : "primary"}
-        color={isCompleted ? "default" : "danger"}
-        isDisabled={isCompleted}
-        isLoading={isLoading}
+        variant={isCompleted ? "secondary" : "danger"}
+        isDisabled={isCompleted || isLoading}
         onPress={onDelete}
         className="flex-shrink-0 rounded-xl"
       >
@@ -246,7 +243,13 @@ export function CalendarDeleteCard({
       </Card.Header>
 
       <Card.Body className="p-0">
-        <Separator className="bg-white/8 mt-3" />
+        <View
+          style={{
+            height: 1,
+            backgroundColor: "rgba(255,255,255,0.07)",
+            marginTop: 12,
+          }}
+        />
 
         {data.length === 0 ? (
           <View className="px-4 py-3">
@@ -276,7 +279,13 @@ export function CalendarDeleteCard({
                   return (
                     <View key={key}>
                       {localIdx > 0 && (
-                        <Separator className="mx-4 bg-white/8" />
+                        <View
+                          style={{
+                            height: 1,
+                            backgroundColor: "rgba(255,255,255,0.07)",
+                            marginHorizontal: 16,
+                          }}
+                        />
                       )}
                       <EventRow
                         event={event}
@@ -294,13 +303,13 @@ export function CalendarDeleteCard({
         {/* Bulk delete footer */}
         {data.length > 1 && onDeleteAll ? (
           <>
-            <Separator className="bg-white/8" />
+            <View
+              style={{ height: 1, backgroundColor: "rgba(255,255,255,0.07)" }}
+            />
             <View className="px-4 py-3">
               <Button
-                variant={allCompleted ? "secondary" : "primary"}
-                color={allCompleted ? "default" : "danger"}
-                isDisabled={allCompleted}
-                isLoading={isDeletingAll}
+                variant={allCompleted ? "secondary" : "danger"}
+                isDisabled={allCompleted || isDeletingAll}
                 onPress={() => void handleDeleteAll()}
                 className="w-full rounded-xl"
               >

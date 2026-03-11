@@ -1,4 +1,5 @@
-import { Chip, CloseButton } from "heroui-native";
+import { Chip } from "heroui-native";
+import { Pressable } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -65,7 +66,7 @@ export function SelectedIndicator({
       >
         <AppIcon icon={icon} size={iconSize.sm} color="#a1a1aa" />
         <Chip.Label>{displayLabel}</Chip.Label>
-        <CloseButton onPress={onRemove} size="sm" hitSlop={8} />
+        <Pressable onPress={onRemove} hitSlop={8} />
       </Chip>
     </Animated.View>
   );

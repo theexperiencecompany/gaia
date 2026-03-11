@@ -18,6 +18,10 @@ import {
 } from "@/features/notifications";
 import type { NotificationPreferencesSheetRef } from "@/features/notifications/components/NotificationPreferencesSheet";
 import { NotificationPreferencesSheet } from "@/features/notifications/components/NotificationPreferencesSheet";
+import type {
+  InAppNotification,
+  InAppNotificationAction,
+} from "@/features/notifications/types/inapp-notification-types";
 import { useResponsive } from "@/lib/responsive";
 
 type NotificationsTab = "unread" | "all" | "archived";
@@ -309,17 +313,20 @@ export default function NotificationsScreen() {
           onRefresh={() => {
             void refetch();
           }}
-          onMarkAsRead={(notificationId) => {
+          onMarkAsRead={(notificationId: string) => {
             void markAsRead(notificationId);
           }}
           onArchive={
             activeTab !== "archived"
-              ? (notificationId) => {
+              ? (notificationId: string) => {
                   void archiveNotification(notificationId);
                 }
               : undefined
           }
-          onActionPress={(notification, action) => {
+          onActionPress={(
+            notification: InAppNotification,
+            action: InAppNotificationAction,
+          ) => {
             void executeNotificationAction(notification, action);
           }}
           isMarkingAsRead={isMarkingAsRead}

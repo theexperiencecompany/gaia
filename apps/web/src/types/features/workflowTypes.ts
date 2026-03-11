@@ -10,16 +10,13 @@
  * DO NOT create duplicate type definitions elsewhere!
  */
 
+import type { ExecutionConfig, WorkflowMetadata } from "@shared/types";
 import type {
   TriggerConfig,
   TriggerFieldSchema,
   TriggerSchema,
 } from "@/features/workflows/triggers/types";
 import type { ContentCreator } from "@/types/shared/contentTypes";
-import type {
-  ExecutionConfig,
-  WorkflowMetadata,
-} from "@shared/types";
 
 // ============================================================================
 // WORKFLOW STEP TYPES

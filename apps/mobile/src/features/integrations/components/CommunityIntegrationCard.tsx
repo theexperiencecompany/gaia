@@ -1,7 +1,7 @@
-import { Avatar, Button, Card, Chip } from "heroui-native";
+import { Avatar, Button, Card, Chip, PressableFeedback } from "heroui-native";
 import { useState } from "react";
 import { ActivityIndicator } from "react-native";
-import { HugeiconsIcon, UserIcon, Wrench01Icon } from "@/components/icons";
+import { UserIcon, Wrench01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useAddPublicIntegration } from "../hooks/useCommunityIntegrations";
 import type { CommunityIntegration } from "../types";
@@ -33,9 +33,7 @@ export function CommunityIntegrationCard({
   };
 
   return (
-    <Card
-      variant="ghost"
-      animation="press"
+    <PressableFeedback
       onPress={() => onPress?.(integration)}
       className="flex-row items-center px-4 py-3"
     >
@@ -58,7 +56,7 @@ export function CommunityIntegrationCard({
         </Avatar>
 
         <Card
-          variant="ghost"
+          variant="transparent"
           animation="disable-all"
           className="flex-1 mr-3 p-0"
         >
@@ -81,11 +79,11 @@ export function CommunityIntegrationCard({
             </Card.Description>
 
             <Card.Footer className="p-0 flex-row items-center gap-3 mt-1.5">
-              <HugeiconsIcon icon={Wrench01Icon} size={11} color="#6b6b6b" />
+              <Wrench01Icon size={11} color="#6b6b6b" />
               <Text className="text-muted text-[11px]">
                 {integration.toolCount} tools
               </Text>
-              <HugeiconsIcon icon={UserIcon} size={11} color="#6b6b6b" />
+              <UserIcon size={11} color="#6b6b6b" />
               <Text className="text-muted text-[11px]">
                 {integration.cloneCount} added
               </Text>
@@ -118,6 +116,6 @@ export function CommunityIntegrationCard({
           )}
         </Button>
       </Card.Body>
-    </Card>
+    </PressableFeedback>
   );
 }

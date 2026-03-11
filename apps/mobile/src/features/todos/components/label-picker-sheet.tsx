@@ -2,12 +2,12 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
-import { BottomSheet } from "heroui-native";
 import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import { Pressable, View } from "react-native";
 import { Add01Icon, AppIcon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { LabelChip } from "./label-chip";
 
 export interface LabelPickerSheetRef {

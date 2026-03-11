@@ -119,7 +119,7 @@ export function NotificationCard({ data }: { data: NotificationData }) {
           <Text className="text-xs text-[#8e8e93]">Notifications</Text>
           <View className="flex-row items-center gap-1.5 ml-auto">
             <Chip
-              size="xs"
+              size="sm"
               variant="secondary"
               color="default"
               animation="disable-all"
@@ -128,7 +128,7 @@ export function NotificationCard({ data }: { data: NotificationData }) {
             </Chip>
             {unreadCount > 0 && (
               <Chip
-                size="xs"
+                size="sm"
                 variant="primary"
                 color="accent"
                 animation="disable-all"

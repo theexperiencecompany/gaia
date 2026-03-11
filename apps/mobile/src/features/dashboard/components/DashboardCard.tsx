@@ -30,7 +30,7 @@ export function DashboardCard({
   return (
     <PressableFeedback
       onPress={onPress}
-      disabled={!onPress}
+      isDisabled={!onPress}
       style={{ marginBottom: spacing.md }}
     >
       <Card

@@ -1,6 +1,5 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
-import { BottomSheet } from "heroui-native";
 import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import { Alert, Pressable, View } from "react-native";
 import {
@@ -11,6 +10,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type { Project } from "../types/todo-types";
 import { CreateProjectModal } from "./create-project-modal";
 

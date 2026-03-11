@@ -1,6 +1,5 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import * as Clipboard from "expo-clipboard";
-import { BottomSheet } from "heroui-native";
 import { forwardRef, useImperativeHandle, useMemo, useState } from "react";
 import { ActivityIndicator, Alert, Pressable, View } from "react-native";
 import {
@@ -12,6 +11,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { workflowApi } from "../api/workflow-api";
 import type { Workflow } from "../types/workflow-types";
 

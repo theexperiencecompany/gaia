@@ -2,7 +2,7 @@ import { Image } from "expo-image";
 import { Button, Card, PressableFeedback, Skeleton } from "heroui-native";
 import { useCallback, useState } from "react";
 import { Platform, Share, View } from "react-native";
-import { HugeiconsIcon, Share01Icon } from "@/components/icons";
+import { Share01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import type { ImageData } from "../../api/chat-api";
@@ -138,11 +138,7 @@ export function ImageGenerationCard({
                   animation="disable-all"
                   className="rounded-xl bg-white/[0.06] border border-white/[0.08] px-3 py-1.5"
                 >
-                  <HugeiconsIcon
-                    icon={Share01Icon}
-                    size={moderateScale(13, 0.5)}
-                    color="#a1a1aa"
-                  />
+                  <Share01Icon size={moderateScale(13, 0.5)} color="#a1a1aa" />
                   <Button.Label
                     style={{ fontSize: fontSize.xs, color: "#a1a1aa" }}
                   >

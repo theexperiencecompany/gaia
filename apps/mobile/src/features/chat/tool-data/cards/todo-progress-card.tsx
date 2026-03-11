@@ -27,7 +27,7 @@ function toTitleCase(str: string): string {
     .replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1));
 }
 
-function getProgressBarWidth(pct: number): string {
+function getProgressBarWidth(pct: number): `${number}%` {
   const clamped = Math.min(100, Math.max(0, pct));
   return `${clamped}%`;
 }

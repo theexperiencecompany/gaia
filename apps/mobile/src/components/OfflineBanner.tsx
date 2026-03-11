@@ -1,8 +1,8 @@
-import { Alert, CloseButton } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Animated } from "react-native";
+import { Animated, Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, Cancel01Icon, GlobeIcon } from "@/components/icons";
+import { Text } from "@/components/ui/text";
 import { useNetwork } from "@/hooks/use-network";
 
 export function OfflineBanner() {
@@ -49,6 +49,7 @@ export function OfflineBanner() {
   if (isDismissed) return null;
 
   const isBackOnline = isOnline && wasOffline;
+  const bgColor = isBackOnline ? "#16a34a" : "#dc2626";
 
   return (
     <Animated.View
@@ -60,26 +61,39 @@ export function OfflineBanner() {
         zIndex: 9999,
         transform: [{ translateY }],
         paddingTop: insets.top,
+        backgroundColor: bgColor,
       }}
     >
-      <Alert
-        variant={isBackOnline ? "success" : "danger"}
-        className="rounded-none px-4 py-2.5"
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          paddingHorizontal: 16,
+          paddingVertical: 10,
+          gap: 8,
+        }}
       >
         <AppIcon icon={GlobeIcon} size={16} color="#ffffff" />
-        <Alert.Title className="flex-1 text-[13px] font-semibold">
+        <Text
+          style={{
+            flex: 1,
+            fontSize: 13,
+            fontWeight: "600",
+            color: "#ffffff",
+          }}
+        >
           {isBackOnline ? "Back online" : "No internet connection"}
-        </Alert.Title>
+        </Text>
         {!isBackOnline && (
-          <CloseButton onPress={handleDismiss} size="sm">
+          <Pressable onPress={handleDismiss} hitSlop={8}>
             <AppIcon
               icon={Cancel01Icon}
               size={16}
               color="rgba(255,255,255,0.7)"
             />
-          </CloseButton>
+          </Pressable>
         )}
-      </Alert>
+      </View>
     </Animated.View>
   );
 }

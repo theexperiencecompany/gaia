@@ -10,11 +10,7 @@ import {
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import {
-  Cancel01Icon,
-  CheckmarkCircle02Icon,
-  HugeiconsIcon,
-} from "@/components/icons";
+import { Cancel01Icon, CheckmarkCircle02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { impactHaptic, notificationHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
@@ -187,7 +183,7 @@ function TimePickerRow({
 interface CreateReminderSheetProps {
   visible: boolean;
   onClose: () => void;
-  onCreated: (data: ReminderCreate) => Promise<void>;
+  onCreated: (data: ReminderCreate) => Promise<unknown>;
   isSubmitting?: boolean;
 }
 
@@ -350,7 +346,7 @@ export function CreateReminderSheet({
                   backgroundColor: "rgba(255,255,255,0.06)",
                 }}
               >
-                <HugeiconsIcon icon={Cancel01Icon} size={16} color="#71717a" />
+                <Cancel01Icon size={16} color="#71717a" />
               </Pressable>
             </View>
 
@@ -655,8 +651,7 @@ export function CreateReminderSheet({
                 opacity: canSubmit ? 1 : 0.5,
               }}
             >
-              <HugeiconsIcon
-                icon={CheckmarkCircle02Icon}
+              <CheckmarkCircle02Icon
                 size={18}
                 color={canSubmit ? "#000" : "#52525b"}
               />

@@ -380,12 +380,12 @@ export default function NotificationsScreen() {
           onRefresh={() => {
             void refetch();
           }}
-          onMarkAsRead={(notificationId) => {
+          onMarkAsRead={(notificationId: string) => {
             void markAsRead(notificationId);
           }}
           onArchive={
             activeTab !== "archived"
-              ? (notificationId) => {
+              ? (notificationId: string) => {
                   void archiveNotification(notificationId);
                 }
               : undefined

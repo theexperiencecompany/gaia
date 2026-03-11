@@ -11,8 +11,9 @@ export function useAppTheme(): "light" | "dark" {
   const systemScheme = useColorScheme();
 
   if (mode === "system") {
-    return systemScheme ?? "dark";
+    const resolved = systemScheme ?? "dark";
+    return resolved as "light" | "dark";
   }
 
-  return mode;
+  return mode as "light" | "dark";
 }

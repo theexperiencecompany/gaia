@@ -1,4 +1,4 @@
-import type { UsageSummary } from "@gaia/shared/types";
+import type { FeatureUsage, UsageSummary } from "@gaia/shared/types";
 import { apiService } from "@/lib/api";
 
 export type {

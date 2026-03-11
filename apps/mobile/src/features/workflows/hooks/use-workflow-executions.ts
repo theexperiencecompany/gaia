@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { wsManager } from "@/lib/websocket-client";
 import { WS_EVENTS } from "@/lib/websocket-events";
 import { workflowApi } from "../api/workflow-api";
-import type { WorkflowExecution } from "../types";
+import type { WorkflowExecution } from "../types/workflow-types";
 
 interface UseWorkflowExecutionsResult {
   executions: WorkflowExecution[];
@@ -34,11 +34,10 @@ export function useWorkflowExecutions(
 
       try {
         const currentOffset = reset ? 0 : offset;
-        const response = await workflowApi.getWorkflowExecutions(
-          workflowId,
+        const response = await workflowApi.getWorkflowExecutions(workflowId, {
           limit,
-          currentOffset,
-        );
+          offset: currentOffset,
+        });
 
         if (reset) {
           setExecutions(response.executions);

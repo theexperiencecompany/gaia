@@ -1,8 +1,8 @@
-import { BottomSheet } from "heroui-native";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { Pressable, View } from "react-native";
 import { Text } from "@/components/ui/text";
-import { SORT_OPTIONS, type SortOption } from "../types";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
+import { SORT_OPTIONS, type SortOption } from "../types/todo-types";
 
 interface SortPickerSheetProps {
   activeSort: SortOption | null;
@@ -63,7 +63,7 @@ export const SortPickerSheet = forwardRef<
               )}
             </View>
 
-            {SORT_OPTIONS.map((option) => {
+            {SORT_OPTIONS.map((option: SortOption) => {
               const active = isActive(option);
               return (
                 <Pressable

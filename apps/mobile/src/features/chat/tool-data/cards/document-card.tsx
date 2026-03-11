@@ -1,4 +1,4 @@
-import { Button, Card, Chip, Separator } from "heroui-native";
+import { Button, Card, Chip } from "heroui-native";
 import { Linking, View } from "react-native";
 import { AppIcon, Download02Icon, File01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -19,7 +19,7 @@ function getFileExtension(filename: string): string {
 }
 
 type ExtColors = {
-  variant: "primary" | "secondary" | "success" | "warning" | "danger";
+  variant: "primary" | "secondary" | "tertiary" | "soft";
   color: "accent" | "default" | "success" | "warning" | "danger";
 };
 
@@ -75,7 +75,7 @@ export function DocumentCard({ data }: { data: DocumentData }) {
               </Text>
               {!!ext && (
                 <Chip
-                  size="xs"
+                  size="sm"
                   variant={chipProps.variant}
                   color={chipProps.color}
                   animation="disable-all"
@@ -103,11 +103,16 @@ export function DocumentCard({ data }: { data: DocumentData }) {
           {/* Download button */}
           {!!data.url && (
             <>
-              <Separator orientation="vertical" className="h-8 mx-1" />
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: "rgba(255,255,255,0.07)",
+                  marginVertical: 4,
+                }}
+              />
               <Button
                 size="sm"
                 variant="secondary"
-                color="accent"
                 onPress={handleDownload}
                 className="flex-shrink-0 rounded-xl"
               >

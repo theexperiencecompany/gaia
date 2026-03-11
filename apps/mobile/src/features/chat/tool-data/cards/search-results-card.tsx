@@ -1,10 +1,4 @@
-import {
-  Card,
-  Chip,
-  ListGroup,
-  PressableFeedback,
-  Separator,
-} from "heroui-native";
+import { Card, Chip, PressableFeedback } from "heroui-native";
 import { useEffect, useState } from "react";
 import { Image, Linking, View } from "react-native";
 import Animated, {
@@ -99,18 +93,28 @@ function WebResultItem({ result }: { result: WebResult }) {
     <PressableFeedback
       onPress={() => result.url && Linking.openURL(result.url)}
     >
-      <ListGroup.Item>
-        <ListGroup.ItemIcon>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          padding: 12,
+          gap: 10,
+        }}
+      >
+        <View style={{ marginTop: 2 }}>
           <FaviconImage url={result.url} />
-        </ListGroup.ItemIcon>
+        </View>
         <View className="flex-1 gap-0.5">
-          <ListGroup.ItemText numberOfLines={2}>
+          <Text
+            style={{ fontSize: 13, color: "#e4e4e7", fontWeight: "500" }}
+            numberOfLines={2}
+          >
             {result.title || hostname || "Untitled"}
-          </ListGroup.ItemText>
+          </Text>
           {!!description && (
-            <ListGroup.ItemDescription numberOfLines={2}>
+            <Text style={{ fontSize: 12, color: "#8e8e93" }} numberOfLines={2}>
               {description}
-            </ListGroup.ItemDescription>
+            </Text>
           )}
           {!!hostname && (
             <Text
@@ -121,7 +125,7 @@ function WebResultItem({ result }: { result: WebResult }) {
             </Text>
           )}
         </View>
-      </ListGroup.Item>
+      </View>
     </PressableFeedback>
   );
 }
@@ -134,18 +138,28 @@ function NewsResultItem({ article }: { article: NewsResult }) {
     <PressableFeedback
       onPress={() => article.url && Linking.openURL(article.url)}
     >
-      <ListGroup.Item>
-        <ListGroup.ItemIcon>
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "flex-start",
+          padding: 12,
+          gap: 10,
+        }}
+      >
+        <View style={{ marginTop: 2 }}>
           <FaviconImage url={article.url} />
-        </ListGroup.ItemIcon>
+        </View>
         <View className="flex-1 gap-0.5">
-          <ListGroup.ItemText numberOfLines={2}>
+          <Text
+            style={{ fontSize: 13, color: "#e4e4e7", fontWeight: "500" }}
+            numberOfLines={2}
+          >
             {article.title || "Untitled"}
-          </ListGroup.ItemText>
+          </Text>
           {!!description && (
-            <ListGroup.ItemDescription numberOfLines={2}>
+            <Text style={{ fontSize: 12, color: "#8e8e93" }} numberOfLines={2}>
               {description}
-            </ListGroup.ItemDescription>
+            </Text>
           )}
           {!!hostname && (
             <Text
@@ -156,7 +170,7 @@ function NewsResultItem({ article }: { article: NewsResult }) {
             </Text>
           )}
         </View>
-      </ListGroup.Item>
+      </View>
     </PressableFeedback>
   );
 }
@@ -290,30 +304,46 @@ function SearchCompleteCard({ data }: { data: SearchResults }) {
 
         {/* Web results */}
         {visibleWebResults.length > 0 && (
-          <ListGroup className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
+          <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
             {visibleWebResults.map((result, index) => (
               <View key={result.url || result.title || String(index)}>
-                {index > 0 && <Separator />}
+                {index > 0 && (
+                  <View
+                    style={{
+                      height: 1,
+                      backgroundColor: "rgba(255,255,255,0.07)",
+                      marginVertical: 4,
+                    }}
+                  />
+                )}
                 <WebResultItem result={result} />
               </View>
             ))}
-          </ListGroup>
+          </View>
         )}
 
         {/* News results (only when expanded) */}
         {expanded && newsResults.length > 0 && (
-          <ListGroup className="rounded-xl bg-white/5 border border-white/8 overflow-hidden mt-2">
+          <View className="rounded-xl bg-white/5 border border-white/8 overflow-hidden mt-2">
             <View className="flex-row items-center gap-1.5 py-2 px-3 border-b border-white/8">
               <AppIcon icon={News01Icon} size={12} color="#8e8e93" />
               <Text className="text-[11px] text-muted font-medium">News</Text>
             </View>
             {newsResults.map((article, index) => (
               <View key={article.url || article.title || String(index)}>
-                {index > 0 && <Separator />}
+                {index > 0 && (
+                  <View
+                    style={{
+                      height: 1,
+                      backgroundColor: "rgba(255,255,255,0.07)",
+                      marginVertical: 4,
+                    }}
+                  />
+                )}
                 <NewsResultItem article={article} />
               </View>
             ))}
-          </ListGroup>
+          </View>
         )}
 
         {/* Expand / collapse */}

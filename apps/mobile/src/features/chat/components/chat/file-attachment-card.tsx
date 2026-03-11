@@ -79,7 +79,7 @@ const FILE_TYPE_CONFIGS: Record<FileType, FileTypeConfig> = {
     label: "PDF",
   },
   doc: {
-    chipColor: "primary",
+    chipColor: "accent",
     iconColor: "#3b82f6",
     bgColor: "rgba(59,130,246,0.12)",
     label: "DOC",
@@ -109,7 +109,7 @@ const FILE_TYPE_CONFIGS: Record<FileType, FileTypeConfig> = {
     label: "ZIP",
   },
   image: {
-    chipColor: "secondary",
+    chipColor: "default",
     iconColor: "#8b5cf6",
     bgColor: "rgba(139,92,246,0.12)",
     label: "IMG",

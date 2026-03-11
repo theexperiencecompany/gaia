@@ -8,9 +8,23 @@ React Native / Expo app for the GAIA personal AI assistant.
 |---|---|---|
 | Node | 22+ | via `mise` or `nvm` |
 | pnpm | 10+ | `npm i -g pnpm` |
-| Android Studio | latest | Local Android builds only |
+| Java JDK | 17 | Required for Android — `brew install --cask temurin@17` |
+| Android Studio | latest | Local Android builds + emulator |
 | Xcode | 15+ | Local iOS builds — macOS only |
 | EAS CLI | 16+ | Cloud builds — `npm i -g eas-cli` |
+| Watchman | latest | Recommended — `brew install watchman` |
+
+### JDK setup (Android)
+
+After installing JDK 17 via Homebrew, add to `~/.zshrc`:
+
+```bash
+export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+export ANDROID_HOME=$HOME/Library/Android/sdk
+export PATH=$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools
+```
+
+Then run `source ~/.zshrc`.
 
 ---
 
