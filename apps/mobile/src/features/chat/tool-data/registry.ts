@@ -22,6 +22,7 @@ export type ToolName =
   | "goal_data"
   | "integration_connection_required"
   | "integration_list_data"
+  | "connection_status_data"
   | "reddit_data"
   | "tool_calls_data"
   | "twitter_search_data"
@@ -86,6 +87,7 @@ export interface ToolDataMap {
   goal_data: GenericToolData;
   integration_connection_required: GenericToolData;
   integration_list_data: GenericToolData;
+  connection_status_data: GenericToolData;
   reddit_data: GenericToolData;
   tool_calls_data: GenericToolData[];
   twitter_search_data: GenericToolData;
@@ -132,6 +134,7 @@ export function isKnownTool(name: string): name is ToolName {
     "goal_data",
     "integration_connection_required",
     "integration_list_data",
+    "connection_status_data",
     "reddit_data",
     "tool_calls_data",
     "twitter_search_data",

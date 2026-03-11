@@ -8,116 +8,66 @@
   --radius: 0.5rem;
   --opacity-disabled: 0.5;
 
-  /* Font Family - match web exactly */
-  --font-sans: "Inter_400Regular", system-ui, sans-serif;
-  --font-mono: "RobotoMono_400Regular", ui-monospace, monospace;
+  /* Brand color — matches web --color-primary */
+  --color-brand: #00bbff;
+  --color-brand-foreground: #000000;
 
-  /* Brand / primary color - matches web --color-primary */
+  /* Semantic dark-mode tokens — matches web globals.css .dark */
+  --color-background: #030711;
+  --color-foreground: #e1e7ef;
+
+  --color-card: #030711;
+  --color-card-foreground: #e1e7ef;
+
+  --color-muted: #0f1629;
+  --color-muted-foreground: #7f8ea3;
+
+  --color-accent: #1d283a;
+  --color-accent-foreground: #f8fafc;
+
   --color-primary: #00bbff;
   --color-primary-foreground: #000000;
 
-  /* Background shorthands matching web globals */
-  --color-primary-bg: #131416;
-  --color-secondary-bg: #171920;
+  --color-secondary: #0f172a;
+  --color-secondary-foreground: #f8fafc;
 
-  /* Surface level tokens (used in mobile chat UI) */
-  --color-surface-2: #1c1c1e;
-  --color-surface-3: #2d2d2d;
+  --color-border: #1d283a;
+  --color-input: #1d283a;
+  --color-ring: #1d283a;
+
+  --color-destructive: #811d1d;
+  --color-destructive-foreground: #f8fafc;
+
+  /* Status colors */
+  --color-success: #22c55e;
+  --color-success-foreground: #000000;
+  --color-warning: #eab308;
+  --color-warning-foreground: #000000;
+  --color-error: #ef4444;
+  --color-error-foreground: #ffffff;
+  --color-info: #3b82f6;
+  --color-info-foreground: #ffffff;
+
+  /* Priority colors */
+  --color-priority-high: #ef4444;
+  --color-priority-medium: #eab308;
+  --color-priority-low: #3b82f6;
+  --color-priority-none: #71717a;
+
+  /* App-specific surface colors — matches web --color-primary-bg / --color-secondary-bg */
+  --color-primary-bg: #111111;
+  --color-secondary-bg: #1a1a1a;
 }
 
 @layer theme {
   :root {
     @variant light {
-      /* Accent / brand */
       --accent: #00bbff;
       --accent-foreground: #000000;
-
-      /* Base colors - match web light theme */
-      --background: hsl(0 0% 100%);
-      --foreground: hsl(222.2 47.4% 11.2%);
-
-      /* Surface */
-      --surface: #ffffff;
-      --surface-foreground: hsl(222.2 47.4% 11.2%);
-
-      /* Semantic colors matching web */
-      --muted: hsl(210 40% 96.1%);
-      --muted-foreground: hsl(215.4 16.3% 46.9%);
-
-      --popover: hsl(0 0% 100%);
-      --popover-foreground: hsl(222.2 47.4% 11.2%);
-
-      --border: hsl(214.3 31.8% 91.4%);
-      --input: hsl(214.3 31.8% 91.4%);
-
-      --card: hsl(0 0% 100%);
-      --card-foreground: hsl(222.2 47.4% 11.2%);
-
-      --secondary: hsl(210 40% 96.1%);
-      --secondary-foreground: hsl(222.2 47.4% 11.2%);
-
-      --destructive: hsl(0 100% 50%);
-      --destructive-foreground: hsl(210 40% 98%);
-
-      --ring: hsl(215 20.2% 65.1%);
     }
-
     @variant dark {
-      /* Accent / brand */
       --accent: #00bbff;
       --accent-foreground: #000000;
-
-      /* Base colors */
-      --background: #131416;
-      --foreground: #ffffff;
-
-      /* Surface - elevated card/sheet layer */
-      --surface: #171920;
-      --surface-foreground: #ffffff;
-
-      /* Overlay */
-      --overlay: #1c1c1e;
-      --overlay-foreground: #ffffff;
-
-      /* Semantic colors */
-      --muted: #2d2d2d;
-      --muted-foreground: #8e8e93;
-
-      --popover: #171920;
-      --popover-foreground: #ffffff;
-
-      --border: rgba(255, 255, 255, 0.1);
-      --input: #2d2d2d;
-
-      --card: #171920;
-      --card-foreground: #ffffff;
-
-      --secondary: #1c1c1e;
-      --secondary-foreground: #ffffff;
-
-      --destructive: #ff3b30;
-      --destructive-foreground: #ffffff;
-
-      --ring: #00bbff;
-
-      /* Default (used by heroui-native for default variant components) */
-      --default: #2d2d2d;
-      --default-foreground: #ffffff;
-
-      /* Status colors - iOS system palette */
-      --success: #34c759;
-      --success-foreground: #000000;
-      --warning: #ff9500;
-      --warning-foreground: #000000;
-      --danger: #ff3b30;
-      --danger-foreground: #ffffff;
-
-      /* Divider */
-      --divider: rgba(255, 255, 255, 0.1);
-
-      /* Focus / link */
-      --focus: #00bbff;
-      --link: #00bbff;
     }
   }
 }

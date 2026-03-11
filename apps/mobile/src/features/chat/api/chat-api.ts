@@ -186,6 +186,18 @@ export async function renameConversation(
   }
 }
 
+export async function markConversationAsUnread(
+  conversationId: string,
+): Promise<boolean> {
+  try {
+    await apiService.patch(`/conversations/${conversationId}/unread`, {});
+    return true;
+  } catch (error) {
+    console.error("Error marking conversation as unread:", error);
+    return false;
+  }
+}
+
 export async function toggleStarConversation(
   conversationId: string,
   starred: boolean,
@@ -281,6 +293,7 @@ export const chatApi = {
   fetchConversation,
   fetchMessages,
   markConversationAsRead,
+  markConversationAsUnread,
   deleteConversation,
   renameConversation,
   toggleStarConversation,

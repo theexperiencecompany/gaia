@@ -11,6 +11,7 @@ import type {
   WorkflowResponse,
   WorkflowStatusResponse,
 } from "../types/workflow-types";
+import type { TriggerSchema } from "../types/trigger-types";
 
 interface ListWorkflowsParams
   extends Record<string, string | number | boolean | undefined> {
@@ -135,5 +136,20 @@ export const workflowApi = {
 
   getWorkflowStatus: async (id: string): Promise<WorkflowStatusResponse> => {
     return apiService.get<WorkflowStatusResponse>(`/workflows/${id}/status`);
+  },
+
+  getTriggerSchemas: async (): Promise<TriggerSchema[]> => {
+    return apiService.get<TriggerSchema[]>("/triggers/schema");
+  },
+
+  generatePrompt: async (params: {
+    title?: string;
+    description?: string;
+    existing_prompt?: string;
+  }): Promise<{ prompt: string }> => {
+    return apiService.post<{ prompt: string }>(
+      "/workflows/generate-prompt",
+      params,
+    );
   },
 };

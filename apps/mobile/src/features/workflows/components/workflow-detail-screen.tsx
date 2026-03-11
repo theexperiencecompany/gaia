@@ -1,7 +1,9 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import {
+  ActionSheetIOS,
   ActivityIndicator,
   Alert,
+  Platform,
   Pressable,
   ScrollView,
   View,
@@ -12,7 +14,11 @@ import {
   Edit02Icon,
   FlowCircleIcon,
   AppIcon,
+  GlobeIcon,
+  MagicWand01Icon,
+  Menu01Icon,
   PlayIcon,
+  RepeatIcon,
   ToggleOffIcon,
   ToggleOnIcon,
 } from "@/components/icons";
@@ -22,6 +28,18 @@ import { useResponsive } from "@/lib/responsive";
 import { useWorkflowActions } from "../hooks/use-workflow-actions";
 import type { Workflow, WorkflowExecution } from "../types/workflow-types";
 import { EditWorkflowModal } from "./edit-workflow-modal";
+import {
+  GeneratePromptSheet,
+  type GeneratePromptSheetRef,
+} from "./generate-prompt-sheet";
+import {
+  PublishWorkflowModal,
+  type PublishWorkflowModalRef,
+} from "./publish-workflow-modal";
+import {
+  RegenerateStepsSheet,
+  type RegenerateStepsSheetRef,
+} from "./regenerate-steps-sheet";
 import { WorkflowExecutionHistory } from "./workflow-execution-history";
 
 interface WorkflowDetailScreenProps {
@@ -67,40 +85,121 @@ export function WorkflowDetailScreen({
   const [showEdit, setShowEdit] = useState(false);
   const [executeStatus, setExecuteStatus] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"steps" | "history">("steps");
+  const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(
+    workflow,
+  );
+
+  const regenerateSheetRef = useRef<RegenerateStepsSheetRef>(null);
+  const generatePromptSheetRef = useRef<GeneratePromptSheetRef>(null);
+  const publishModalRef = useRef<PublishWorkflowModalRef>(null);
+
+  // Keep local workflow state in sync with prop
+  const activeWorkflow = currentWorkflow ?? workflow;
 
   const handleToggle = useCallback(async () => {
-    if (!workflow) return;
-    const updated = await toggleActivation(workflow);
-    if (updated) onActivationToggled(updated);
-  }, [workflow, toggleActivation, onActivationToggled]);
+    if (!activeWorkflow) return;
+    const updated = await toggleActivation(activeWorkflow);
+    if (updated) {
+      setCurrentWorkflow(updated);
+      onActivationToggled(updated);
+    }
+  }, [activeWorkflow, toggleActivation, onActivationToggled]);
 
   const handleExecute = useCallback(async () => {
-    if (!workflow) return;
-    const result = await executeWorkflow(workflow.id);
+    if (!activeWorkflow) return;
+    const result = await executeWorkflow(activeWorkflow.id);
     if (result) {
       setExecuteStatus("Execution started");
       setTimeout(() => setExecuteStatus(null), 3000);
     }
-  }, [workflow, executeWorkflow]);
+  }, [activeWorkflow, executeWorkflow]);
 
   const handleDelete = useCallback(() => {
-    if (!workflow) return;
+    if (!activeWorkflow) return;
     Alert.alert(
       "Delete Workflow",
-      `Are you sure you want to delete "${workflow.title}"?`,
+      `Are you sure you want to delete "${activeWorkflow.title}"?`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            const ok = await deleteWorkflow(workflow.id);
+            const ok = await deleteWorkflow(activeWorkflow.id);
             if (ok) onDeleted();
           },
         },
       ],
     );
-  }, [workflow, deleteWorkflow, onDeleted]);
+  }, [activeWorkflow, deleteWorkflow, onDeleted]);
+
+  const handleMoreOptions = useCallback(() => {
+    if (!activeWorkflow) return;
+
+    const isPublished = activeWorkflow.is_public ?? false;
+    const publishLabel = isPublished ? "Unpublish" : "Publish Workflow";
+
+    const options = [
+      "Regenerate Steps",
+      "Generate Prompt",
+      publishLabel,
+      "Edit",
+      "Delete",
+      "Cancel",
+    ];
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          cancelButtonIndex: options.length - 1,
+          destructiveButtonIndex: options.indexOf("Delete"),
+        },
+        (buttonIndex) => {
+          switch (buttonIndex) {
+            case 0:
+              regenerateSheetRef.current?.open(activeWorkflow);
+              break;
+            case 1:
+              generatePromptSheetRef.current?.open(activeWorkflow);
+              break;
+            case 2:
+              publishModalRef.current?.open(activeWorkflow);
+              break;
+            case 3:
+              setShowEdit(true);
+              break;
+            case 4:
+              handleDelete();
+              break;
+          }
+        },
+      );
+    } else {
+      Alert.alert("Workflow Options", undefined, [
+        {
+          text: "Regenerate Steps",
+          onPress: () => regenerateSheetRef.current?.open(activeWorkflow),
+        },
+        {
+          text: "Generate Prompt",
+          onPress: () =>
+            generatePromptSheetRef.current?.open(activeWorkflow),
+        },
+        {
+          text: publishLabel,
+          onPress: () => publishModalRef.current?.open(activeWorkflow),
+        },
+        { text: "Edit", onPress: () => setShowEdit(true) },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: handleDelete,
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  }, [activeWorkflow, handleDelete]);
 
   // Shared back button header
   const renderHeaderBar = (title?: string) => (
@@ -146,41 +245,25 @@ export function WorkflowDetailScreen({
         <View style={{ flex: 1 }} />
       )}
 
-      {workflow && (
-        <>
-          <Pressable
-            onPress={() => setShowEdit(true)}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <AppIcon icon={Edit02Icon} size={16} color="#aaa" />
-          </Pressable>
-
-          <Pressable
-            onPress={handleDelete}
-            disabled={isDeleting}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(239,68,68,0.12)",
-            }}
-          >
-            {isDeleting ? (
-              <ActivityIndicator size="small" color="#ef4444" />
-            ) : (
-              <AppIcon icon={Delete01Icon} size={16} color="#ef4444" />
-            )}
-          </Pressable>
-        </>
+      {activeWorkflow && (
+        <Pressable
+          onPress={handleMoreOptions}
+          disabled={isDeleting}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(255,255,255,0.05)",
+          }}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color="#aaa" />
+          ) : (
+            <AppIcon icon={Menu01Icon} size={18} color="#aaa" />
+          )}
+        </Pressable>
       )}
     </View>
   );
@@ -198,7 +281,7 @@ export function WorkflowDetailScreen({
     );
   }
 
-  if (error || !workflow) {
+  if (error || !activeWorkflow) {
     return (
       <View style={{ flex: 1, backgroundColor: "#131416" }}>
         {renderHeaderBar()}
@@ -226,7 +309,7 @@ export function WorkflowDetailScreen({
 
   return (
     <View style={{ flex: 1, backgroundColor: "#131416" }}>
-      {renderHeaderBar(workflow.title)}
+      {renderHeaderBar(activeWorkflow.title)}
 
       <ScrollView
         contentContainerStyle={{
@@ -273,9 +356,9 @@ export function WorkflowDetailScreen({
                   color: "#e8ebef",
                 }}
               >
-                {workflow.title}
+                {activeWorkflow.title}
               </Text>
-              {workflow.description ? (
+              {activeWorkflow.description ? (
                 <Text
                   style={{
                     fontSize: fontSize.xs,
@@ -284,7 +367,7 @@ export function WorkflowDetailScreen({
                     lineHeight: 16,
                   }}
                 >
-                  {workflow.description}
+                  {activeWorkflow.description}
                 </Text>
               ) : null}
             </View>
@@ -299,7 +382,7 @@ export function WorkflowDetailScreen({
                 borderRadius: 999,
                 paddingHorizontal: spacing.sm,
                 paddingVertical: 4,
-                backgroundColor: workflow.activated
+                backgroundColor: activeWorkflow.activated
                   ? "rgba(0,187,255,0.15)"
                   : "rgba(255,255,255,0.07)",
                 flexDirection: "row",
@@ -312,16 +395,16 @@ export function WorkflowDetailScreen({
                   width: 6,
                   height: 6,
                   borderRadius: 999,
-                  backgroundColor: workflow.activated ? "#00bbff" : "#555",
+                  backgroundColor: activeWorkflow.activated ? "#00bbff" : "#555",
                 }}
               />
               <Text
                 style={{
                   fontSize: fontSize.xs - 1,
-                  color: workflow.activated ? "#7de4ff" : "#666",
+                  color: activeWorkflow.activated ? "#7de4ff" : "#666",
                 }}
               >
-                {workflow.activated ? "Active" : "Inactive"}
+                {activeWorkflow.activated ? "Active" : "Inactive"}
               </Text>
             </View>
             <View
@@ -333,10 +416,30 @@ export function WorkflowDetailScreen({
               }}
             >
               <Text style={{ fontSize: fontSize.xs - 1, color: "#8e8e93" }}>
-                {workflow.trigger_config?.type ?? "manual"}
+                {activeWorkflow.trigger_config?.type ?? "manual"}
               </Text>
             </View>
-            {workflow.is_system_workflow && (
+            {activeWorkflow.is_public && (
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: spacing.sm,
+                  paddingVertical: 4,
+                  backgroundColor: "rgba(34,197,94,0.12)",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <AppIcon icon={GlobeIcon} size={10} color="#22c55e" />
+                <Text
+                  style={{ fontSize: fontSize.xs - 1, color: "#22c55e" }}
+                >
+                  Public
+                </Text>
+              </View>
+            )}
+            {activeWorkflow.is_system_workflow && (
               <View
                 style={{
                   borderRadius: 999,
@@ -351,6 +454,76 @@ export function WorkflowDetailScreen({
               </View>
             )}
           </View>
+        </View>
+
+        {/* Quick action chips row */}
+        <View style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}>
+          <Pressable
+            onPress={() => regenerateSheetRef.current?.open(activeWorkflow)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              paddingHorizontal: spacing.md,
+              paddingVertical: 8,
+              backgroundColor: "rgba(0,187,255,0.1)",
+            }}
+          >
+            <AppIcon icon={RepeatIcon} size={13} color="#00bbff" />
+            <Text style={{ fontSize: fontSize.xs, color: "#00bbff" }}>
+              Regenerate Steps
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() =>
+              generatePromptSheetRef.current?.open(activeWorkflow)
+            }
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              paddingHorizontal: spacing.md,
+              paddingVertical: 8,
+              backgroundColor: "rgba(167,139,250,0.1)",
+            }}
+          >
+            <AppIcon icon={MagicWand01Icon} size={13} color="#a78bfa" />
+            <Text style={{ fontSize: fontSize.xs, color: "#a78bfa" }}>
+              Generate Prompt
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => publishModalRef.current?.open(activeWorkflow)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              paddingHorizontal: spacing.md,
+              paddingVertical: 8,
+              backgroundColor: activeWorkflow.is_public
+                ? "rgba(34,197,94,0.1)"
+                : "rgba(255,255,255,0.07)",
+            }}
+          >
+            <AppIcon
+              icon={GlobeIcon}
+              size={13}
+              color={activeWorkflow.is_public ? "#22c55e" : "#8e8e93"}
+            />
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: activeWorkflow.is_public ? "#22c55e" : "#8e8e93",
+              }}
+            >
+              {activeWorkflow.is_public ? "Published" : "Publish"}
+            </Text>
+          </Pressable>
         </View>
 
         {/* Action buttons */}
@@ -368,7 +541,7 @@ export function WorkflowDetailScreen({
               justifyContent: "center",
               flexDirection: "row",
               gap: spacing.xs,
-              backgroundColor: workflow.activated
+              backgroundColor: activeWorkflow.activated
                 ? "rgba(0,187,255,0.15)"
                 : "rgba(255,255,255,0.07)",
             }}
@@ -376,22 +549,22 @@ export function WorkflowDetailScreen({
             {isActivating ? (
               <ActivityIndicator
                 size="small"
-                color={workflow.activated ? "#00bbff" : "#aaa"}
+                color={activeWorkflow.activated ? "#00bbff" : "#aaa"}
               />
             ) : (
               <>
                 <AppIcon
-                  icon={workflow.activated ? ToggleOnIcon : ToggleOffIcon}
+                  icon={activeWorkflow.activated ? ToggleOnIcon : ToggleOffIcon}
                   size={16}
-                  color={workflow.activated ? "#00bbff" : "#aaa"}
+                  color={activeWorkflow.activated ? "#00bbff" : "#aaa"}
                 />
                 <Text
                   style={{
                     fontSize: fontSize.sm,
-                    color: workflow.activated ? "#7de4ff" : "#aaa",
+                    color: activeWorkflow.activated ? "#7de4ff" : "#aaa",
                   }}
                 >
-                  {workflow.activated ? "Deactivate" : "Activate"}
+                  {activeWorkflow.activated ? "Deactivate" : "Activate"}
                 </Text>
               </>
             )}
@@ -424,6 +597,39 @@ export function WorkflowDetailScreen({
               </>
             )}
           </Pressable>
+
+          <Pressable
+            onPress={() => setShowEdit(true)}
+            style={{
+              width: 44,
+              borderRadius: moderateScale(12, 0.5),
+              paddingVertical: spacing.md,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(255,255,255,0.07)",
+            }}
+          >
+            <AppIcon icon={Edit02Icon} size={16} color="#aaa" />
+          </Pressable>
+
+          <Pressable
+            onPress={handleDelete}
+            disabled={isDeleting}
+            style={{
+              width: 44,
+              borderRadius: moderateScale(12, 0.5),
+              paddingVertical: spacing.md,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(239,68,68,0.12)",
+            }}
+          >
+            {isDeleting ? (
+              <ActivityIndicator size="small" color="#ef4444" />
+            ) : (
+              <AppIcon icon={Delete01Icon} size={16} color="#ef4444" />
+            )}
+          </Pressable>
         </View>
 
         {(executeStatus ?? actionError) ? (
@@ -439,7 +645,7 @@ export function WorkflowDetailScreen({
         ) : null}
 
         {/* Prompt / Instructions */}
-        {workflow.prompt ? (
+        {activeWorkflow.prompt ? (
           <View style={{ gap: spacing.sm }}>
             <Text
               style={{
@@ -467,7 +673,7 @@ export function WorkflowDetailScreen({
                   lineHeight: 20,
                 }}
               >
-                {workflow.prompt}
+                {activeWorkflow.prompt}
               </Text>
             </View>
           </View>
@@ -510,7 +716,7 @@ export function WorkflowDetailScreen({
                   >
                     {tab === "steps" ? "Steps" : "History"}
                   </Text>
-                  {tab === "steps" && workflow.steps.length > 0 && (
+                  {tab === "steps" && activeWorkflow.steps.length > 0 && (
                     <View
                       style={{
                         borderRadius: 999,
@@ -525,10 +731,11 @@ export function WorkflowDetailScreen({
                       <Text
                         style={{
                           fontSize: fontSize.xs - 1,
-                          color: activeTab === "steps" ? "#00bbff" : "#8e8e93",
+                          color:
+                            activeTab === "steps" ? "#00bbff" : "#8e8e93",
                         }}
                       >
-                        {workflow.steps.length}
+                        {activeWorkflow.steps.length}
                       </Text>
                     </View>
                   )}
@@ -539,7 +746,7 @@ export function WorkflowDetailScreen({
 
           {/* Tab content */}
           {activeTab === "steps" ? (
-            <WorkflowStepsList steps={workflow.steps} />
+            <WorkflowStepsList steps={activeWorkflow.steps} />
           ) : (
             <WorkflowExecutionHistory
               executions={executions}
@@ -554,10 +761,41 @@ export function WorkflowDetailScreen({
 
       <EditWorkflowModal
         visible={showEdit}
-        workflow={workflow}
+        workflow={activeWorkflow}
         onClose={() => setShowEdit(false)}
         onUpdated={(updated) => {
           setShowEdit(false);
+          setCurrentWorkflow(updated);
+          onUpdated(updated);
+        }}
+      />
+
+      <RegenerateStepsSheet
+        ref={regenerateSheetRef}
+        onRegenerated={(updated) => {
+          setCurrentWorkflow(updated);
+          onUpdated(updated);
+        }}
+      />
+
+      <GeneratePromptSheet
+        ref={generatePromptSheetRef}
+        onPromptSelected={(prompt) => {
+          if (!activeWorkflow) return;
+          const updated: Workflow = { ...activeWorkflow, prompt };
+          setCurrentWorkflow(updated);
+          onUpdated(updated);
+        }}
+      />
+
+      <PublishWorkflowModal
+        ref={publishModalRef}
+        onPublished={(updated) => {
+          setCurrentWorkflow(updated);
+          onUpdated(updated);
+        }}
+        onUnpublished={(updated) => {
+          setCurrentWorkflow(updated);
           onUpdated(updated);
         }}
       />

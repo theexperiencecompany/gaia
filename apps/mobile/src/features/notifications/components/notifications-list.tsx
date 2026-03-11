@@ -20,12 +20,17 @@ interface NotificationsListProps {
   onRefresh: () => void;
   onMarkAsRead: (notificationId: string) => void;
   onDismiss?: (notificationId: string) => void;
+  onArchive?: (notificationId: string) => void;
   onActionPress: (
     notification: InAppNotification,
     action: InAppNotificationAction,
   ) => void;
   isMarkingAsRead?: boolean;
   isActionLoading?: (notificationId: string, actionId: string) => boolean;
+  isSelectMode?: boolean;
+  selectedIds?: Set<string>;
+  onLongPress?: (notificationId: string) => void;
+  onSelectToggle?: (notificationId: string) => void;
 }
 
 function getTimeGroup(dateString: string): string {
@@ -127,9 +132,14 @@ export function NotificationsList({
   onRefresh,
   onMarkAsRead,
   onDismiss,
+  onArchive,
   onActionPress,
   isMarkingAsRead = false,
   isActionLoading,
+  isSelectMode = false,
+  selectedIds,
+  onLongPress,
+  onSelectToggle,
 }: NotificationsListProps) {
   const { spacing, fontSize, moderateScale } = useResponsive();
   const insets = useSafeAreaInsets();
@@ -284,11 +294,16 @@ export function NotificationsList({
               notification={item.notification}
               onMarkAsRead={onMarkAsRead}
               onDismiss={onDismiss}
+              onArchive={onArchive}
               onActionPress={onActionPress}
               isMarkingAsRead={isMarkingAsRead}
               isActionLoading={(actionId) =>
                 !!isActionLoading?.(item.notification.id, actionId)
               }
+              isSelectMode={isSelectMode}
+              isSelected={selectedIds?.has(item.notification.id) ?? false}
+              onLongPress={onLongPress}
+              onSelectToggle={onSelectToggle}
             />
           </View>
         );

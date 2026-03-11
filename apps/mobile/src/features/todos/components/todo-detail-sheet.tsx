@@ -25,6 +25,11 @@ import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import type { Project, SubTask, Todo, TodoUpdate } from "../types/todo-types";
 import { Priority } from "../types/todo-types";
+import { LabelChip } from "./label-chip";
+import {
+  LabelPickerSheet,
+  type LabelPickerSheetRef,
+} from "./label-picker-sheet";
 
 export interface TodoDetailSheetRef {
   open: (todo: Todo) => void;
@@ -69,12 +74,15 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
     ref,
   ) => {
     const bottomSheetRef = useRef<BottomSheet>(null);
+    const labelPickerRef = useRef<LabelPickerSheetRef>(null);
     const [todo, setTodo] = useState<Todo | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [priority, setPriority] = useState<Priority>(Priority.NONE);
     const [dueDate, setDueDate] = useState<Date | null>(null);
     const [projectId, setProjectId] = useState<string | null>(null);
+    const [labels, setLabels] = useState<string[]>([]);
+    const [allLabels, setAllLabels] = useState<string[]>([]);
     const [newSubtaskText, setNewSubtaskText] = useState("");
     const [showPriorityPicker, setShowPriorityPicker] = useState(false);
     const [showProjectPicker, setShowProjectPicker] = useState(false);
@@ -100,6 +108,8 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
         setPriority(t.priority);
         setDueDate(t.due_date ? new Date(t.due_date) : null);
         setProjectId(t.project_id ?? null);
+        setLabels(t.labels ?? []);
+        setAllLabels(t.labels ?? []);
         setNewSubtaskText("");
         setShowPriorityPicker(false);
         setShowProjectPicker(false);
@@ -115,18 +125,41 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
       setNewSubtaskText("");
     }, [todo, newSubtaskText, onAddSubtask]);
 
+    const handleLabelsChange = useCallback(
+      (newLabels: string[]) => {
+        setLabels(newLabels);
+        setAllLabels((prev) => {
+          const merged = new Set([...prev, ...newLabels]);
+          return Array.from(merged);
+        });
+        if (!todo) return;
+        void onUpdate(todo.id, { labels: newLabels });
+      },
+      [todo, onUpdate],
+    );
+
+    const handleOpenLabelPicker = useCallback(() => {
+      setShowPriorityPicker(false);
+      setShowProjectPicker(false);
+      setShowDatePicker(false);
+      labelPickerRef.current?.open(labels, allLabels);
+    }, [labels, allLabels]);
+
     if (!todo) {
       return (
-        <BottomSheet
-          ref={bottomSheetRef}
-          index={-1}
-          snapPoints={["70%", "95%"]}
-          enablePanDownToClose
-          backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-          handleIndicatorStyle={{ backgroundColor: "#3f3f46" }}
-        >
-          <View />
-        </BottomSheet>
+        <>
+          <BottomSheet
+            ref={bottomSheetRef}
+            index={-1}
+            snapPoints={["70%", "95%"]}
+            enablePanDownToClose
+            backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+            handleIndicatorStyle={{ backgroundColor: "#3f3f46" }}
+          >
+            <View />
+          </BottomSheet>
+          <LabelPickerSheet ref={labelPickerRef} onDone={handleLabelsChange} />
+        </>
       );
     }
 
@@ -146,6 +179,7 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
     };
 
     return (
+      <>
       <BottomSheet
         ref={bottomSheetRef}
         index={-1}
@@ -282,6 +316,24 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
                 }}
               >
                 {activeProject ? activeProject.name : "Project"}
+              </Text>
+            </Pressable>
+
+            {/* Labels chip */}
+            <Pressable style={chipStyle} onPress={handleOpenLabelPicker}>
+              <AppIcon
+                icon={Tag01Icon}
+                size={14}
+                color={labels.length > 0 ? "#a78bfa" : "#71717a"}
+              />
+              <Text
+                style={{
+                  fontSize: fontSize.xs,
+                  color: labels.length > 0 ? "#a78bfa" : "#71717a",
+                  fontWeight: "500",
+                }}
+              >
+                {labels.length > 0 ? `${labels.length} label${labels.length === 1 ? "" : "s"}` : "Labels"}
               </Text>
             </Pressable>
           </View>
@@ -449,31 +501,16 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
             />
           )}
 
-          {/* Labels (read-only) */}
-          {todo.labels && todo.labels.length > 0 && (
-            <View style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}>
-              {todo.labels.map((label) => (
-                <View
-                  key={label}
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: 5,
-                    paddingHorizontal: 8,
-                    paddingVertical: 4,
-                    borderRadius: 6,
-                    backgroundColor: "rgba(255,255,255,0.05)",
-                    borderWidth: 1,
-                    borderColor: "rgba(255,255,255,0.08)",
-                  }}
-                >
-                  <AppIcon icon={Tag01Icon} size={11} color="#71717a" />
-                  <Text style={{ fontSize: 11, color: "#a1a1aa" }}>
-                    {label}
-                  </Text>
-                </View>
+          {/* Labels */}
+          {labels.length > 0 && (
+            <Pressable
+              onPress={handleOpenLabelPicker}
+              style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+            >
+              {labels.map((lbl) => (
+                <LabelChip key={lbl} label={lbl} size="sm" />
               ))}
-            </View>
+            </Pressable>
           )}
 
           {/* Subtasks header */}
@@ -605,6 +642,9 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
           </View>
         </BottomSheetScrollView>
       </BottomSheet>
+
+      <LabelPickerSheet ref={labelPickerRef} onDone={handleLabelsChange} />
+      </>
     );
   },
 );

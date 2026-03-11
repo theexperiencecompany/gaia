@@ -1,4 +1,5 @@
 import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useCallback } from "react";
 import { Alert, Pressable, View } from "react-native";
 import {
@@ -9,12 +10,12 @@ import {
   Flag02Icon,
   Folder02Icon,
   AppIcon,
-  Tag01Icon,
   Tick02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { Priority, type Project, type Todo } from "../types/todo-types";
+import { LabelChip } from "./label-chip";
 
 interface TodoItemProps {
   todo: Todo;
@@ -81,6 +82,7 @@ export function TodoItem({
   onLongPress,
 }: TodoItemProps) {
   const { spacing, fontSize } = useResponsive();
+  const router = useRouter();
 
   const isOverdue =
     !!todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed;
@@ -355,29 +357,20 @@ export function TodoItem({
 
             {/* Label chips */}
             {todo.labels.map((label) => (
-              <View
+              <LabelChip
                 key={label}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  backgroundColor: "rgba(255,255,255,0.06)",
-                  borderRadius: 6,
-                  paddingHorizontal: 7,
-                  paddingVertical: 3,
-                  gap: 4,
-                }}
-              >
-                <AppIcon icon={Tag01Icon} size={12} color="#71717a" />
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: "#a1a1aa",
-                    fontWeight: "500",
-                  }}
-                >
-                  {label.charAt(0).toUpperCase() + label.slice(1)}
-                </Text>
-              </View>
+                label={label}
+                size="sm"
+                onPress={
+                  selectionMode
+                    ? undefined
+                    : (lbl) => {
+                        router.push(
+                          `/(app)/(tabs)/todos/label/${encodeURIComponent(lbl)}`,
+                        );
+                      }
+                }
+              />
             ))}
 
             {/* Priority chip */}

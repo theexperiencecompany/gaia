@@ -1,3 +1,10 @@
+// Connection Status Card
+export {
+  ConnectionStatusCard,
+  type ConnectionStatus,
+  type ConnectionStatusData,
+} from "./connection-status-card";
+
 // Email Cards
 
 export {
@@ -32,7 +39,11 @@ export {
 export { DocumentCard, type DocumentData } from "./document-card";
 export { EmailFetchCard, type EmailFetchItem } from "./email-fetch-card";
 export { EmailSentCard, type EmailSentData } from "./email-sent-card";
-export { EmailThreadCard, type EmailThreadData } from "./email-thread-card";
+export {
+  EmailThreadCard,
+  type EmailThreadData,
+  type EmailThreadMessage,
+} from "./email-thread-card";
 export { GoalCard, type GoalData } from "./goal-card";
 export { GoogleDocsCard, type GoogleDocsData } from "./google-docs-card";
 // Integration Card
@@ -73,6 +84,7 @@ export {
   type TodoProgressData,
   type TodoProgressItem,
   type TodoProgressSnapshot,
+  type TodoProgressStatus,
 } from "./todo-progress-card";
 // Weather Card
 export { WeatherCard, type WeatherData } from "./weather-card";

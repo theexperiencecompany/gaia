@@ -1,13 +1,54 @@
 import { Redirect, Stack } from "expo-router";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, View } from "react-native";
 import { useAuth } from "@/features/auth";
+import { getOnboardingStatus } from "@/features/onboarding/api/onboarding-api";
 import { SidebarProvider } from "@/features/chat";
 import { NotificationProvider } from "@/features/notifications/components/notification-provider";
+import { wsManager } from "@/lib/websocket-client";
 
 export default function AppLayout() {
   const { isAuthenticated, isLoading } = useAuth();
+  const [onboardingChecked, setOnboardingChecked] = useState(false);
+  const [onboardingCompleted, setOnboardingCompleted] = useState(true);
 
-  if (isLoading) {
+  useEffect(() => {
+    if (!isAuthenticated) {
+      wsManager.disconnect();
+      wsManager.unregisterAppStateHandler();
+      return;
+    }
+
+    wsManager.connect();
+    wsManager.registerAppStateHandler();
+
+    return () => {
+      wsManager.unregisterAppStateHandler();
+      wsManager.disconnect();
+    };
+  }, [isAuthenticated]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      setOnboardingChecked(true);
+      return;
+    }
+
+    getOnboardingStatus()
+      .then((status) => {
+        setOnboardingCompleted(status.completed);
+      })
+      .catch(() => {
+        // If the check fails (e.g. endpoint not yet deployed), default to completed
+        // so existing users are not blocked.
+        setOnboardingCompleted(true);
+      })
+      .finally(() => {
+        setOnboardingChecked(true);
+      });
+  }, [isAuthenticated]);
+
+  if (isLoading || !onboardingChecked) {
     return (
       <View className="flex-1 justify-center items-center bg-background">
         <ActivityIndicator size="large" color="#00bbff" />
@@ -17,6 +58,10 @@ export default function AppLayout() {
 
   if (!isAuthenticated) {
     return <Redirect href="/login" />;
+  }
+
+  if (!onboardingCompleted) {
+    return <Redirect href="/(app)/onboarding" />;
   }
 
   return (
@@ -36,9 +81,21 @@ export default function AppLayout() {
             />
             <Stack.Screen name="c/[id]" options={{ animation: "none" }} />
             <Stack.Screen name="workflows/[id]" />
+            <Stack.Screen name="todos/project/[projectId]" />
             <Stack.Screen name="settings/index" />
+            <Stack.Screen name="settings/usage" />
+            <Stack.Screen name="skills/index" />
+            <Stack.Screen name="tools/index" />
             <Stack.Screen name="calendar/index" />
+            <Stack.Screen name="memory/index" />
             <Stack.Screen name="test/index" />
+            <Stack.Screen name="search/index" />
+            <Stack.Screen name="notes/index" />
+            <Stack.Screen name="profile-card/index" />
+            <Stack.Screen
+              name="onboarding/index"
+              options={{ animation: "fade" }}
+            />
           </Stack>
         </View>
       </SidebarProvider>

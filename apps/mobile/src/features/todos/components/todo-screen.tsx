@@ -6,14 +6,18 @@ import {
   Add01Icon,
   AppIcon,
   ArrowLeft01Icon,
+  Folder02Icon,
   Search01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { todoApi } from "../api/todo-api";
+import { useProjects } from "../hooks/use-projects";
 import { useTodos } from "../hooks/use-todos";
 import type { Todo, TodoCreate, TodoUpdate } from "../types/todo-types";
 import { CreateTodoModal } from "./create-todo-modal";
+import type { ProjectListSheetRef } from "./project-list-sheet";
+import { ProjectListSheet } from "./project-list-sheet";
 import type { TodoDetailSheetRef } from "./todo-detail-sheet";
 import { TodoDetailSheet } from "./todo-detail-sheet";
 import { TodoFilters } from "./todo-filters";
@@ -27,6 +31,7 @@ export function TodoScreen() {
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const detailSheetRef = useRef<TodoDetailSheetRef>(null);
+  const projectListSheetRef = useRef<ProjectListSheetRef>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [activePriority, setActivePriority] = useState<string | null>(null);
@@ -60,6 +65,19 @@ export function TodoScreen() {
     search: debouncedSearch || undefined,
     priority: activePriority || undefined,
   });
+
+  const {
+    projects: managedProjects,
+    createProject,
+    deleteProject,
+    refetch: refetchProjects,
+  } = useProjects();
+
+  useFocusEffect(
+    useCallback(() => {
+      void refetchProjects();
+    }, [refetchProjects]),
+  );
 
   useFocusEffect(
     useCallback(() => {
@@ -209,6 +227,21 @@ export function TodoScreen() {
         >
           Todos
         </Text>
+
+        <Pressable
+          onPress={() => projectListSheetRef.current?.open()}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(255,255,255,0.06)",
+            marginRight: spacing.sm,
+          }}
+        >
+          <AppIcon icon={Folder02Icon} size={18} color="#a1a1aa" />
+        </Pressable>
 
         <Pressable
           onPress={() => setShowCreate(true)}
@@ -422,6 +455,17 @@ export function TodoScreen() {
         onAddSubtask={handleAddSubtask}
         onToggleSubtask={handleToggleSubtask}
         onDeleteSubtask={handleDeleteSubtask}
+      />
+
+      <ProjectListSheet
+        ref={projectListSheetRef}
+        projects={managedProjects}
+        onCreateProject={async (data) => {
+          await createProject(data);
+        }}
+        onDeleteProject={async (id) => {
+          await deleteProject(id);
+        }}
       />
     </View>
   );

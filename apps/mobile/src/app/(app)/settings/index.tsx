@@ -1,3 +1,4 @@
+import Constants from "expo-constants";
 import { useRouter } from "expo-router";
 import { Avatar } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -6,7 +7,6 @@ import {
   Alert,
   Image,
   Linking,
-  Modal,
   Pressable,
   ScrollView,
   Switch,
@@ -15,24 +15,25 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
-  Add01Icon,
   AppIcon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
   BrainIcon,
   ChartLineData02Icon,
   CreditCardIcon,
-  Delete02Icon,
+  CustomerSupportIcon,
   DiscordIcon,
   DocumentAttachmentIcon,
+  FlashIcon,
   GlobeIcon,
   InformationCircleIcon,
   Logout01Icon,
   Mail01Icon,
   Notification01Icon,
-  Search01Icon,
+  Settings02Icon,
   ShieldUserIcon,
   TelegramIcon,
+  ToolsIcon,
   TranslationIcon,
   UserCircle02Icon,
 } from "@/components/icons";
@@ -44,9 +45,9 @@ import type {
   UsageSummary,
 } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
-import { apiService } from "@/lib/api";
+import type { ThemeMode } from "@/lib/theme-store";
+import { useThemeStore } from "@/lib/theme-store";
 import { useResponsive } from "@/lib/responsive";
-import { Swipeable } from "react-native-gesture-handler";
 
 // ─── Color tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -918,6 +919,7 @@ function NotificationsSection() {
 // ─── Usage section ────────────────────────────────────────────────────────────
 
 function UsageSection() {
+  const router = useRouter();
   const { spacing, fontSize } = useResponsive();
   const [summary, setSummary] = useState<UsageSummary | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -1035,6 +1037,20 @@ function UsageSection() {
             />
           </>
         ) : null}
+
+        <RowDivider />
+
+        {/* Usage & Billing deep-link */}
+        <SettingsRow
+          label="Usage & Billing"
+          description="Detailed token usage and API call history"
+          icon={
+            <AppIcon icon={ChartLineData02Icon} size={18} color="#fb923c" />
+          }
+          iconBgColor="rgba(251,146,60,0.15)"
+          showChevron
+          onPress={() => router.push("/settings/usage")}
+        />
       </SettingsSection>
 
       {/* Usage section with period selector */}
@@ -1185,10 +1201,10 @@ function UsageSection() {
 
 // ─── About section ────────────────────────────────────────────────────────────
 
-const APP_VERSION = "1.0.0";
-
 function AboutSection() {
   const { fontSize } = useResponsive();
+  const appVersion =
+    (Constants.expoConfig?.version ?? Constants.manifest?.version) ?? "1.0.0";
 
   const handleLink = useCallback(async (url: string) => {
     try {
@@ -1209,9 +1225,25 @@ function AboutSection() {
         iconBgColor={C.iconBg}
       >
         <Text style={{ fontSize: fontSize.sm, color: C.textMuted }}>
-          {APP_VERSION}
+          {appVersion}
         </Text>
       </SettingsRow>
+
+      <RowDivider />
+
+      {/* Contact Support */}
+      <SettingsRow
+        label="Contact Support"
+        description="Get help from the GAIA team"
+        icon={
+          <AppIcon icon={CustomerSupportIcon} size={18} color="#34d399" />
+        }
+        iconBgColor="rgba(52,211,153,0.15)"
+        showChevron
+        onPress={() => {
+          void handleLink("mailto:support@heygaia.io");
+        }}
+      />
 
       <RowDivider />
 
@@ -1239,6 +1271,31 @@ function AboutSection() {
         onPress={() => {
           void handleLink("https://heygaia.io/terms");
         }}
+      />
+    </SettingsSection>
+  );
+}
+
+// ─── Capabilities section ─────────────────────────────────────────────────────
+
+function CapabilitiesSection() {
+  const router = useRouter();
+  return (
+    <SettingsSection title="Capabilities">
+      <SettingsRow
+        label="Skills"
+        icon={<AppIcon icon={FlashIcon} size={18} color="#00bbff" />}
+        iconBgColor="rgba(0,187,255,0.15)"
+        showChevron
+        onPress={() => router.push("/skills")}
+      />
+      <RowDivider />
+      <SettingsRow
+        label="Tools"
+        icon={<AppIcon icon={ToolsIcon} size={18} color="#af52de" />}
+        iconBgColor="rgba(175,82,222,0.15)"
+        showChevron
+        onPress={() => router.push("/tools")}
       />
     </SettingsSection>
   );
@@ -1366,323 +1423,73 @@ function LinkedAccountsSection() {
 
 // ─── Memory section ───────────────────────────────────────────────────────────
 
-interface Memory {
-  id: string;
-  content: string;
-  created_at: string;
-}
-
-interface MemoriesResponse {
-  memories: Memory[];
-}
-
 function MemorySection() {
+  const router = useRouter();
+  return (
+    <SettingsSection title="Memory">
+      <SettingsRow
+        label="Memory"
+        description="View and manage what GAIA remembers"
+        icon={<AppIcon icon={BrainIcon} size={18} color="#00bbff" />}
+        iconBgColor="rgba(0,187,255,0.15)"
+        showChevron
+        onPress={() => router.push("/memory")}
+      />
+    </SettingsSection>
+  );
+}
+
+
+// ─── Appearance section ───────────────────────────────────────────────────────
+
+const THEME_OPTIONS: { value: ThemeMode; label: string }[] = [
+  { value: "light", label: "Light" },
+  { value: "system", label: "System" },
+  { value: "dark", label: "Dark" },
+];
+
+function AppearanceSection() {
   const { spacing, fontSize } = useResponsive();
-  const [memories, setMemories] = useState<Memory[]>([]);
-  const [search, setSearch] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [newMemoryText, setNewMemoryText] = useState("");
-  const [isSaving, setIsSaving] = useState(false);
-  const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
-
-  const loadMemories = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const response =
-        await apiService.get<MemoriesResponse>("/memories");
-      setMemories(response.memories ?? []);
-    } catch {
-      // silently fail — memories may not be available in all environments
-    } finally {
-      setIsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadMemories();
-  }, [loadMemories]);
-
-  const filteredMemories = memories.filter((m) =>
-    m.content.toLowerCase().includes(search.toLowerCase()),
-  );
-
-  const handleDelete = useCallback(
-    async (id: string) => {
-      setMemories((prev) => prev.filter((m) => m.id !== id));
-      try {
-        await apiService.delete(`/memories/${id}`);
-      } catch {
-        void loadMemories();
-      }
-    },
-    [loadMemories],
-  );
-
-  const handleAdd = useCallback(async () => {
-    const trimmed = newMemoryText.trim();
-    if (!trimmed) return;
-    setIsSaving(true);
-    try {
-      await apiService.post("/memories", { content: trimmed });
-      setNewMemoryText("");
-      setShowAddModal(false);
-      await loadMemories();
-    } catch {
-      Alert.alert("Error", "Failed to save memory. Please try again.");
-    } finally {
-      setIsSaving(false);
-    }
-  }, [newMemoryText, loadMemories]);
-
-  const renderRightActions = useCallback(
-    (memoryId: string) => (
-      <Pressable
-        onPress={() => {
-          swipeableRefs.current.get(memoryId)?.close();
-          void handleDelete(memoryId);
-        }}
-        style={{
-          backgroundColor: C.danger,
-          justifyContent: "center",
-          alignItems: "center",
-          paddingHorizontal: spacing.lg,
-          borderRadius: 12,
-          marginLeft: spacing.xs,
-          marginBottom: spacing.sm,
-        }}
-      >
-        <AppIcon icon={Delete02Icon} size={20} color="#fff" />
-      </Pressable>
-    ),
-    [handleDelete, spacing],
-  );
+  const mode = useThemeStore((s) => s.mode);
+  const setMode = useThemeStore((s) => s.setMode);
 
   return (
-    <>
-      <SettingsSection title="Memory">
-        {/* Search bar */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.sm,
-            gap: spacing.sm,
-            borderBottomWidth: 1,
-            borderBottomColor: C.divider,
-          }}
-        >
-          <AppIcon icon={Search01Icon} size={15} color={C.textMuted} />
-          <TextInput
-            value={search}
-            onChangeText={setSearch}
-            placeholder="Search memories..."
-            placeholderTextColor="#52525b"
-            style={{ flex: 1, color: C.text, fontSize: fontSize.sm }}
-          />
-        </View>
-
-        {isLoading ? (
-          <View
-            style={{ alignItems: "center", paddingVertical: spacing.lg }}
-          >
-            <ActivityIndicator color={C.primary} />
-          </View>
-        ) : filteredMemories.length === 0 ? (
-          <View
-            style={{
-              alignItems: "center",
-              paddingVertical: spacing.lg,
-              gap: spacing.sm,
-            }}
-          >
-            <AppIcon icon={BrainIcon} size={28} color={C.textSubtle} />
-            <Text style={{ color: C.textMuted, fontSize: fontSize.sm }}>
-              {search
-                ? `No memories matching "${search}"`
-                : "No memories yet"}
-            </Text>
-          </View>
-        ) : (
-          <View style={{ paddingHorizontal: spacing.sm, paddingTop: spacing.xs }}>
-            {filteredMemories.map((item, index) => (
-              <View key={item.id}>
-                {index > 0 && <RowDivider />}
-                <Swipeable
-                  ref={(r) => {
-                    swipeableRefs.current.set(item.id, r);
-                  }}
-                  renderRightActions={() => renderRightActions(item.id)}
-                  overshootRight={false}
-                >
-                  <View
-                    style={{
-                      paddingHorizontal: spacing.sm,
-                      paddingVertical: spacing.sm + 2,
-                    }}
-                  >
-                    <Text
-                      style={{
-                        fontSize: fontSize.sm,
-                        color: C.text,
-                        lineHeight: 20,
-                      }}
-                    >
-                      {item.content}
-                    </Text>
-                    <Text
-                      style={{
-                        fontSize: fontSize.xs,
-                        color: C.textMuted,
-                        marginTop: 3,
-                      }}
-                    >
-                      {new Date(item.created_at).toLocaleDateString()}
-                    </Text>
-                  </View>
-                </Swipeable>
-              </View>
-            ))}
-          </View>
-        )}
-      </SettingsSection>
-
-      {/* Add button */}
-      <Pressable
-        onPress={() => setShowAddModal(true)}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: spacing.sm,
-          padding: spacing.md,
-          borderRadius: 12,
-          borderWidth: 1,
-          borderStyle: "dashed",
-          borderColor: C.primaryBorder,
-          backgroundColor: "rgba(0,187,255,0.04)",
-        }}
-      >
-        <AppIcon icon={Add01Icon} size={16} color={C.primary} />
-        <Text
-          style={{
-            color: C.primary,
-            fontSize: fontSize.sm,
-            fontWeight: "500",
-          }}
-        >
-          Add Memory
-        </Text>
-      </Pressable>
-
-      {/* Add memory modal */}
-      <Modal
-        visible={showAddModal}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowAddModal(false)}
-      >
-        <Pressable
-          onPress={() => setShowAddModal(false)}
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            justifyContent: "center",
-            alignItems: "center",
-            padding: spacing.lg,
-          }}
-        >
-          <Pressable
-            onPress={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: "#1c1c1e",
-              borderRadius: 16,
-              padding: spacing.lg,
-              width: "100%",
-              gap: spacing.md,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: fontSize.base,
-                fontWeight: "600",
-                color: C.text,
-              }}
-            >
-              Add Memory
-            </Text>
-
-            <TextInput
-              value={newMemoryText}
-              onChangeText={setNewMemoryText}
-              placeholder="What should GAIA remember?"
-              placeholderTextColor="#52525b"
-              multiline
-              numberOfLines={4}
-              autoFocus
-              style={{
-                backgroundColor: "#2c2c2e",
-                borderRadius: 10,
-                padding: spacing.md,
-                color: C.text,
-                fontSize: fontSize.sm,
-                minHeight: 100,
-                textAlignVertical: "top",
-              }}
-            />
-
-            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+    <SettingsSection title="Appearance">
+      <SettingsRow label="Theme" stacked>
+        <View style={{ flexDirection: "row", gap: spacing.xs }}>
+          {THEME_OPTIONS.map(({ value, label }) => {
+            const isActive = mode === value;
+            return (
               <Pressable
-                onPress={() => {
-                  setShowAddModal(false);
-                  setNewMemoryText("");
-                }}
+                key={value}
+                onPress={() => setMode(value)}
                 style={{
                   flex: 1,
-                  padding: spacing.md,
-                  borderRadius: 10,
-                  backgroundColor: "rgba(255,255,255,0.06)",
+                  paddingVertical: spacing.sm,
                   alignItems: "center",
+                  borderRadius: 10,
+                  backgroundColor: isActive
+                    ? C.primaryBg
+                    : "rgba(255,255,255,0.05)",
+                  borderWidth: 1,
+                  borderColor: isActive ? C.primaryBorder : "transparent",
                 }}
               >
                 <Text
-                  style={{ color: C.textMuted, fontSize: fontSize.sm }}
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: isActive ? C.primary : C.textMuted,
+                    fontWeight: isActive ? "600" : "400",
+                  }}
                 >
-                  Cancel
+                  {label}
                 </Text>
               </Pressable>
-              <Pressable
-                onPress={() => void handleAdd()}
-                disabled={isSaving || !newMemoryText.trim()}
-                style={{
-                  flex: 1,
-                  padding: spacing.md,
-                  borderRadius: 10,
-                  backgroundColor: C.primary,
-                  alignItems: "center",
-                  opacity: isSaving || !newMemoryText.trim() ? 0.5 : 1,
-                }}
-              >
-                {isSaving ? (
-                  <ActivityIndicator size="small" color="#000" />
-                ) : (
-                  <Text
-                    style={{
-                      color: "#000",
-                      fontSize: fontSize.sm,
-                      fontWeight: "600",
-                    }}
-                  >
-                    Save
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
-    </>
+            );
+          })}
+        </View>
+      </SettingsRow>
+    </SettingsSection>
   );
 }
 
@@ -1773,6 +1580,9 @@ export default function SettingsScreen() {
             isSigningOut={isSigningOut}
           />
 
+          {/* Appearance — light/dark/system theme toggle */}
+          <AppearanceSection />
+
           {/* Preferences — timezone, language, identity, conversation */}
           <PreferencesSection />
 
@@ -1781,6 +1591,9 @@ export default function SettingsScreen() {
 
           {/* Linked Accounts — telegram, discord, slack */}
           <LinkedAccountsSection />
+
+          {/* Capabilities — skills and tools */}
+          <CapabilitiesSection />
 
           {/* Memory — view, search, add and delete memories */}
           <MemorySection />

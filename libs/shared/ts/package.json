@@ -15,7 +15,18 @@
     "./tool-utils": "./src/tool-utils/index.ts",
     "./utils": "./src/utils/index.ts",
     "./types": "./src/types/index.ts",
-    "./api": "./src/api/index.ts"
+    "./types/files": "./src/types/files.ts",
+    "./types/integrations": "./src/types/integrations.ts",
+    "./types/search": "./src/types/search.ts",
+    "./types/reminders": "./src/types/reminders.ts",
+    "./types/skills": "./src/types/skills.ts",
+    "./types/tools": "./src/types/tools.ts",
+    "./types/notes": "./src/types/notes.ts",
+    "./types/memory": "./src/types/memory.ts",
+    "./types/chat": "./src/types/chat.ts",
+    "./api": "./src/api/index.ts",
+    "./api/workflows": "./src/api/workflowsApi.ts",
+    "./api/todos": "./src/api/todosApi.ts"
   },
   "scripts": {
     "build": "tsc",

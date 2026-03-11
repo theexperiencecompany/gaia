@@ -1,3 +1,188 @@
+// SSE event types for structured streaming
+export enum SSEEventType {
+  Content = "content",
+  ToolStart = "tool_start",
+  ToolProgress = "tool_progress",
+  ToolEnd = "tool_end",
+  Error = "error",
+  Done = "done",
+  Image = "image",
+  Memory = "memory",
+  Metadata = "metadata",
+}
+
+export interface ContentEvent {
+  type: "content";
+  content: string;
+}
+
+export interface ToolStartEvent {
+  type: "tool_start";
+  toolName: string;
+  toolCallId: string;
+  input?: unknown;
+}
+
+export interface ToolProgressEvent {
+  type: "tool_progress";
+  toolCallId: string;
+  message: string;
+  subStep?: string;
+}
+
+export interface ToolEndEvent {
+  type: "tool_end";
+  toolCallId: string;
+  output: unknown;
+  status: "success" | "error";
+}
+
+export interface SSEErrorEvent {
+  type: "error";
+  error: string;
+  code?: string;
+}
+
+export interface DoneEvent {
+  type: "done";
+  messageId?: string;
+}
+
+export interface ImageEvent {
+  type: "image";
+  url: string;
+  prompt?: string;
+  width?: number;
+  height?: number;
+}
+
+export interface MemoryEvent {
+  type: "memory";
+  data: unknown;
+}
+
+export interface MetadataEvent {
+  type: "metadata";
+  data: Record<string, unknown>;
+}
+
+export type SSEEvent =
+  | ContentEvent
+  | ToolStartEvent
+  | ToolProgressEvent
+  | ToolEndEvent
+  | SSEErrorEvent
+  | DoneEvent
+  | ImageEvent
+  | MemoryEvent
+  | MetadataEvent;
+
+export type StreamingEventHandler = (event: SSEEvent) => void;
+
+/**
+ * Parse a raw SSE data line (the value after "data: ") into an SSEEvent.
+ * Returns null if the line cannot be parsed or does not match a known event shape.
+ */
+export function parseSSELine(line: string): SSEEvent | null {
+  if (!line || line === "[DONE]") {
+    return { type: "done" };
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(line);
+  } catch {
+    return null;
+  }
+
+  if (typeof payload !== "object" || payload === null) {
+    return null;
+  }
+
+  const p = payload as Record<string, unknown>;
+
+  if (p.type === "content" && typeof p.content === "string") {
+    return { type: "content", content: p.content };
+  }
+
+  if (
+    p.type === "tool_start" &&
+    typeof p.toolName === "string" &&
+    typeof p.toolCallId === "string"
+  ) {
+    return {
+      type: "tool_start",
+      toolName: p.toolName,
+      toolCallId: p.toolCallId,
+      input: p.input,
+    };
+  }
+
+  if (
+    p.type === "tool_progress" &&
+    typeof p.toolCallId === "string" &&
+    typeof p.message === "string"
+  ) {
+    return {
+      type: "tool_progress",
+      toolCallId: p.toolCallId,
+      message: p.message,
+      subStep: typeof p.subStep === "string" ? p.subStep : undefined,
+    };
+  }
+
+  if (p.type === "tool_end" && typeof p.toolCallId === "string") {
+    const status =
+      p.status === "success" || p.status === "error" ? p.status : "success";
+    return {
+      type: "tool_end",
+      toolCallId: p.toolCallId,
+      output: p.output,
+      status,
+    };
+  }
+
+  if (p.type === "error" && typeof p.error === "string") {
+    return {
+      type: "error",
+      error: p.error,
+      code: typeof p.code === "string" ? p.code : undefined,
+    };
+  }
+
+  if (p.type === "done") {
+    return {
+      type: "done",
+      messageId: typeof p.messageId === "string" ? p.messageId : undefined,
+    };
+  }
+
+  if (p.type === "image" && typeof p.url === "string") {
+    return {
+      type: "image",
+      url: p.url,
+      prompt: typeof p.prompt === "string" ? p.prompt : undefined,
+      width: typeof p.width === "number" ? p.width : undefined,
+      height: typeof p.height === "number" ? p.height : undefined,
+    };
+  }
+
+  if (p.type === "memory") {
+    return { type: "memory", data: p.data };
+  }
+
+  if (
+    p.type === "metadata" &&
+    typeof p.data === "object" &&
+    p.data !== null &&
+    !Array.isArray(p.data)
+  ) {
+    return { type: "metadata", data: p.data as Record<string, unknown> };
+  }
+
+  return null;
+}
+
 export interface StreamToolDataEntry {
   tool_name: string;
   data: unknown;
