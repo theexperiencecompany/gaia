@@ -5,7 +5,6 @@ import { type TextInput, View } from "react-native";
 import {
   BubbleChatAddIcon,
   Cancel01Icon,
-  HugeiconsIcon,
   Menu01Icon,
   MoreVerticalIcon,
   Search01Icon,
@@ -137,21 +136,13 @@ export function ChatHeader({
       {isEditing ? (
         <PressableFeedback onPress={cancelEditing}>
           <View style={{ padding: moderateScale(4, 0.5) }}>
-            <HugeiconsIcon
-              icon={Cancel01Icon}
-              size={iconSize.lg}
-              color="#8e8e93"
-            />
+            <Cancel01Icon size={iconSize.lg} color="#8e8e93" />
           </View>
         </PressableFeedback>
       ) : (
         <PressableFeedback onPress={onMenuPress}>
           <View style={{ padding: moderateScale(4, 0.5) }}>
-            <HugeiconsIcon
-              icon={Menu01Icon}
-              size={iconSize.lg}
-              color="#ffffff"
-            />
+            <Menu01Icon size={iconSize.lg} color="#ffffff" />
           </View>
         </PressableFeedback>
       )}
@@ -202,11 +193,7 @@ export function ChatHeader({
         {isEditing ? (
           <PressableFeedback onPress={commitRename}>
             <View style={{ padding: moderateScale(4, 0.5) }}>
-              <HugeiconsIcon
-                icon={Tick01Icon}
-                size={iconSize.md - 2}
-                color="#16c1ff"
-              />
+              <Tick01Icon size={iconSize.md - 2} color="#16c1ff" />
             </View>
           </PressableFeedback>
         ) : (
@@ -214,11 +201,7 @@ export function ChatHeader({
             {onSearchPress && (
               <PressableFeedback onPress={onSearchPress}>
                 <View style={{ padding: moderateScale(4, 0.5) }}>
-                  <HugeiconsIcon
-                    icon={Search01Icon}
-                    size={iconSize.md - 2}
-                    color="#bbbbbb"
-                  />
+                  <Search01Icon size={iconSize.md - 2} color="#bbbbbb" />
                 </View>
               </PressableFeedback>
             )}
@@ -226,11 +209,7 @@ export function ChatHeader({
               <Popover isOpen={isMenuOpen} onOpenChange={setIsMenuOpen}>
                 <Popover.Trigger>
                   <View style={{ padding: moderateScale(4, 0.5) }}>
-                    <HugeiconsIcon
-                      icon={MoreVerticalIcon}
-                      size={iconSize.md - 2}
-                      color="#bbbbbb"
-                    />
+                    <MoreVerticalIcon size={iconSize.md - 2} color="#bbbbbb" />
                   </View>
                 </Popover.Trigger>
                 <Popover.Portal>
@@ -259,11 +238,7 @@ export function ChatHeader({
             )}
             <PressableFeedback onPress={onNewChatPress}>
               <View style={{ padding: moderateScale(4, 0.5) }}>
-                <HugeiconsIcon
-                  icon={BubbleChatAddIcon}
-                  size={iconSize.md - 2}
-                  color="#bbbbbb"
-                />
+                <BubbleChatAddIcon size={iconSize.md - 2} color="#bbbbbb" />
               </View>
             </PressableFeedback>
           </>

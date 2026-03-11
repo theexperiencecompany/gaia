@@ -4,9 +4,9 @@ import {
   Button,
   Card,
   Chip,
+  PressableFeedback,
   Skeleton,
   SkeletonGroup,
-  Surface,
 } from "heroui-native";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
@@ -201,7 +201,7 @@ function AuthTypeBadge({
   const label =
     authType === "oauth" ? "OAuth" : authType === "bearer" ? "Bearer" : "MCP";
   return (
-    <Chip size="sm" variant="flat" color="default" animation="disable-all">
+    <Chip size="sm" variant="soft" color="default" animation="disable-all">
       <Chip.Label>{label}</Chip.Label>
     </Chip>
   );
@@ -253,7 +253,7 @@ function StatusPill({
   }
 
   return (
-    <Chip size="sm" variant="flat" color="default" animation="disable-all">
+    <Chip size="sm" variant="soft" color="default" animation="disable-all">
       <Chip.Label>Not Connected</Chip.Label>
     </Chip>
   );
@@ -272,7 +272,7 @@ function IntegrationRow({
   const toolCount = integration.tools?.length ?? 0;
 
   return (
-    <Surface
+    <PressableFeedback
       onPress={() => void onPress(integration)}
       className="rounded-2xl border border-white/[0.06]"
       style={{
@@ -309,7 +309,7 @@ function IntegrationRow({
           >
             {integration.name}
           </Text>
-          <Chip size="sm" variant="flat" color="accent" animation="disable-all">
+          <Chip size="sm" variant="soft" color="accent" animation="disable-all">
             <Chip.Label>{getCategoryLabel(integration.category)}</Chip.Label>
           </Chip>
         </View>
@@ -339,8 +339,7 @@ function IntegrationRow({
         {!isConnecting && isConnected ? (
           <Button
             size="sm"
-            variant="flat"
-            color="danger"
+            variant="danger-soft"
             onPress={() => void onPress(integration)}
             style={{ borderRadius: moderateScale(12, 0.5) }}
           >
@@ -349,8 +348,7 @@ function IntegrationRow({
         ) : !isConnecting && isAvailable && integration.status !== "created" ? (
           <Button
             size="sm"
-            variant="flat"
-            color="accent"
+            variant="tertiary"
             onPress={() => void onPress(integration)}
             style={{ borderRadius: moderateScale(12, 0.5) }}
           >
@@ -358,7 +356,7 @@ function IntegrationRow({
           </Button>
         ) : null}
       </View>
-    </Surface>
+    </PressableFeedback>
   );
 }
 
@@ -800,7 +798,6 @@ export function IntegrationsScreen() {
             <Button
               size="sm"
               variant="primary"
-              color="accent"
               onPress={() => createSheetRef.current?.open()}
             >
               <AppIcon icon={PlusSignIcon} size={14} color="#fff" />

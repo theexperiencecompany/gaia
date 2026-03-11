@@ -1,46 +1,20 @@
 import { useRouter } from "expo-router";
-import { Button, Card, PressableFeedback, Spinner } from "heroui-native";
 import { useState } from "react";
-import {
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Linking,
-  Platform,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
-import { Text } from "@/components/ui/text";
+import { Alert } from "react-native";
 import { fetchUserInfo, startOAuthFlow } from "@/features/auth";
+import { AuthScreen } from "@/features/auth/components/auth-screen";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import {
   storeAuthToken,
   storeUserInfo,
 } from "@/features/auth/utils/auth-storage";
-import { useResponsive } from "@/lib/responsive";
-
-const signupBackgroundSource =
-  process.env.NODE_ENV === "test"
-    ? { uri: "signup-background" }
-    : require("@/assets/background/signup.webp");
-
-const gaiaLogoSource =
-  process.env.NODE_ENV === "test"
-    ? { uri: "gaia-logo" }
-    : require("@shared/assets/logo/logo.webp");
-
-const googleLogoSource =
-  process.env.NODE_ENV === "test"
-    ? { uri: "google-logo" }
-    : require("@/assets/icons/google-logo.png");
 
 export default function SignUpScreen() {
   const router = useRouter();
   const { refreshAuth } = useAuth();
-  const { spacing, fontSize, moderateScale, width } = useResponsive();
   const [isLoading, setIsLoading] = useState(false);
 
-  const handleGoogleSignUp = async () => {
+  const handleSignUp = async () => {
     setIsLoading(true);
     try {
       const token = await startOAuthFlow();
@@ -63,206 +37,15 @@ export default function SignUpScreen() {
     }
   };
 
-  const handleSignIn = () => {
-    router.push("/login");
-  };
-
-  // Card max width adapts to screen size
-  const cardMaxWidth = Math.min(width * 0.9, 400);
-  const logoSize = moderateScale(48, 0.5);
-  const logoContainerSize = moderateScale(72, 0.5);
-
   return (
-    <View style={{ flex: 1, backgroundColor: "#0a0a0a" }}>
-      {/* Full Background Image */}
-      <Image
-        source={signupBackgroundSource}
-        style={{ position: "absolute", width: "100%", height: "100%" }}
-        resizeMode="cover"
-        blurRadius={0.5}
-      />
-
-      {/* Dark Overlay */}
-      <View
-        style={{
-          position: "absolute",
-          width: "100%",
-          height: "100%",
-          backgroundColor: "rgba(0,0,0,0.5)",
-        }}
-      />
-
-      <SafeAreaView style={{ flex: 1 }}>
-        <KeyboardAvoidingView
-          style={{
-            flex: 1,
-            justifyContent: "center",
-            alignItems: "center",
-            paddingHorizontal: spacing.lg,
-          }}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-        >
-          {/* Sign Up Card */}
-          <Card
-            variant="secondary"
-            className="w-full overflow-hidden rounded-[24px] border border-white/10 bg-[#171920]/95"
-            style={{
-              maxWidth: cardMaxWidth,
-              width: "100%",
-            }}
-          >
-            <Card.Body
-              style={{
-                paddingHorizontal: spacing.xl,
-                paddingVertical: moderateScale(40, 0.5),
-              }}
-            >
-              {/* Logo and Title */}
-              <View style={{ alignItems: "center", marginBottom: spacing.xl }}>
-                <View
-                  style={{
-                    width: logoContainerSize,
-                    height: logoContainerSize,
-                    borderRadius: logoContainerSize / 2,
-                    backgroundColor: "rgba(0,187,255,0.15)",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: spacing.md,
-                  }}
-                >
-                  <Image
-                    source={gaiaLogoSource}
-                    style={{ width: logoSize, height: logoSize }}
-                    resizeMode="contain"
-                  />
-                </View>
-                <Text
-                  style={{
-                    fontSize: fontSize["2xl"],
-                    fontWeight: "bold",
-                    textAlign: "center",
-                  }}
-                >
-                  Time to Supercharge You.
-                </Text>
-              </View>
-
-              {/* Sign Up Form */}
-              <View style={{ width: "100%" }}>
-                {/* Google Button */}
-                <Button
-                  size="lg"
-                  variant="ghost"
-                  isDisabled={isLoading}
-                  onPress={() => {
-                    void handleGoogleSignUp();
-                  }}
-                >
-                  {isLoading ? (
-                    <Spinner size="sm" />
-                  ) : (
-                    <>
-                      <Image
-                        source={googleLogoSource}
-                        style={{
-                          width: moderateScale(20, 0.5),
-                          height: moderateScale(20, 0.5),
-                          marginRight: spacing.sm,
-                        }}
-                        resizeMode="contain"
-                      />
-                      <Button.Label>Continue with Google</Button.Label>
-                    </>
-                  )}
-                </Button>
-
-                {/* Sign In Link */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginTop: spacing.md,
-                  }}
-                >
-                  <Text style={{ fontSize: fontSize.base, color: "#8e8e93" }}>
-                    Already have an account?{" "}
-                  </Text>
-                  <PressableFeedback onPress={handleSignIn}>
-                    <Text
-                      style={{
-                        fontSize: fontSize.base,
-                        color: "#00bbff",
-                        fontWeight: "600",
-                      }}
-                    >
-                      Sign in
-                    </Text>
-                  </PressableFeedback>
-                </View>
-              </View>
-
-              {/* Footer */}
-              <View style={{ alignItems: "center", marginTop: spacing.lg }}>
-                <Text
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: "#8e8e93",
-                    textAlign: "center",
-                  }}
-                >
-                  By creating an account, you agree to the
-                </Text>
-                <View
-                  style={{
-                    flexDirection: "row",
-                    flexWrap: "wrap",
-                    justifyContent: "center",
-                  }}
-                >
-                  <PressableFeedback
-                    onPress={() => Linking.openURL("https://heygaia.io/terms")}
-                  >
-                    <Text
-                      style={{
-                        fontSize: fontSize.sm,
-                        color: "#8e8e93",
-                        textDecorationLine: "underline",
-                      }}
-                    >
-                      Terms of Service
-                    </Text>
-                  </PressableFeedback>
-                  <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      color: "#8e8e93",
-                      marginHorizontal: spacing.xs,
-                    }}
-                  >
-                    and
-                  </Text>
-                  <PressableFeedback
-                    onPress={() =>
-                      Linking.openURL("https://heygaia.io/privacy")
-                    }
-                  >
-                    <Text
-                      style={{
-                        fontSize: fontSize.sm,
-                        color: "#8e8e93",
-                        textDecorationLine: "underline",
-                      }}
-                    >
-                      Privacy Policy
-                    </Text>
-                  </PressableFeedback>
-                </View>
-              </View>
-            </Card.Body>
-          </Card>
-        </KeyboardAvoidingView>
-      </SafeAreaView>
-    </View>
+    <AuthScreen
+      title="Time to Supercharge You."
+      buttonLabel="Sign up with Google"
+      footerQuestion="Already have an account?"
+      footerLinkLabel="Sign in"
+      isLoading={isLoading}
+      onSubmit={() => void handleSignUp()}
+      onFooterLinkPress={() => router.push("/login")}
+    />
   );
 }

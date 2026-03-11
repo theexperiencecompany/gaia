@@ -1,7 +1,6 @@
 import * as DocumentPicker from "expo-document-picker";
 import * as Haptics from "expo-haptics";
 import * as ImagePicker from "expo-image-picker";
-import { BottomSheet } from "heroui-native";
 import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import { Pressable, View } from "react-native";
 import {
@@ -12,6 +11,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type { AttachmentFile } from "./attachment-preview";
 
 export interface AttachmentSheetRef {

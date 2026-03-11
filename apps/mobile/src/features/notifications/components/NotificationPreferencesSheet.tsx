@@ -1,5 +1,4 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -17,13 +16,14 @@ import {
 import { AppIcon, Settings01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { inAppNotificationsApi } from "../api/inapp-notifications-api";
 import type {
   NotificationCategoryPreferences,
   NotificationPreferences,
 } from "../types/inapp-notification-types";
 
-const SNAP_POINTS = ["75%"] as const;
+const SNAP_POINTS: Array<string | number> = ["75%"];
 
 const CATEGORY_LABELS: Record<string, string> = {
   global: "All Notifications",

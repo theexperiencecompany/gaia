@@ -376,7 +376,7 @@ export function ToolsScreen() {
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
           keyboardDismissMode="on-drag"
-          stickySectionHeaders
+          stickySectionHeadersEnabled
         />
       )}
     </View>

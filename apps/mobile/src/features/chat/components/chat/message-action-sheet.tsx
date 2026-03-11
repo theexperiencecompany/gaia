@@ -1,7 +1,6 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
-import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -22,6 +21,7 @@ import {
   ThumbsUpIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { chatApi } from "../../api/chat-api";
 
 export interface MessageActionConfig {

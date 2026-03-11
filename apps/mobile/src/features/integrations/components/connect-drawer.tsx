@@ -1,5 +1,5 @@
 import { BottomSheetFlatList } from "@gorhom/bottom-sheet";
-import { Avatar, BottomSheet, Button, Chip } from "heroui-native";
+import { Avatar, Button, Chip } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -16,14 +16,10 @@ import {
   TextInput,
   View,
 } from "react-native";
-import {
-  Cancel01Icon,
-  HugeiconsIcon,
-  Search01Icon,
-  Wrench01Icon,
-} from "@/components/icons";
+import { Cancel01Icon, Search01Icon, Wrench01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { haptics } from "@/lib/haptics";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import {
   connectIntegration,
   connectIntegrationWithToken,
@@ -105,7 +101,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
 
       let matchesFilter = true;
       if (selectedFilter === "Featured") {
-        matchesFilter = integration.isFeatured;
+        matchesFilter = !!integration.isFeatured;
       } else if (selectedFilter !== "All") {
         matchesFilter =
           integration.category.toLowerCase() === selectedFilter.toLowerCase();
@@ -290,21 +286,13 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
                   onPress={() => setIsOpen(false)}
                   className="w-8 h-8 rounded-full bg-muted/10 items-center justify-center active:opacity-60"
                 >
-                  <HugeiconsIcon
-                    icon={Cancel01Icon}
-                    size={18}
-                    color="#8e8e93"
-                  />
+                  <Cancel01Icon size={18} color="#8e8e93" />
                 </Pressable>
               </View>
 
               <View className="px-4 pb-2">
                 <View className="flex-row items-center rounded-xl px-3 py-2 bg-muted/10">
-                  <HugeiconsIcon
-                    icon={Search01Icon}
-                    size={18}
-                    color="#8e8e93"
-                  />
+                  <Search01Icon size={18} color="#8e8e93" />
                   <TextInput
                     className="flex-1 ml-2 text-foreground text-sm"
                     placeholder="Search tools..."
@@ -376,7 +364,7 @@ export function ConnectDrawerTrigger({ onOpen }: ConnectDrawerTriggerProps) {
         className="rounded-full"
         onPress={handleOpen}
       >
-        <HugeiconsIcon icon={Wrench01Icon} size={18} color="#8e8e93" />
+        <Wrench01Icon size={18} color="#8e8e93" />
       </Button>
 
       <ConnectDrawer ref={drawerRef} onOpen={onOpen} />

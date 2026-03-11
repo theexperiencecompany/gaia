@@ -1,4 +1,4 @@
-import { Alert, Card } from "heroui-native";
+import { Card } from "heroui-native";
 import { ActivityIndicator, View } from "react-native";
 import {
   Alert01Icon,
@@ -14,6 +14,39 @@ interface TestConnectionResultProps {
   isLoading: boolean;
   result: TestConnectionResponse | null;
   error: string | null;
+}
+
+interface AlertBannerProps {
+  variant: "danger" | "success" | "warning";
+  children: React.ReactNode;
+}
+
+function AlertBanner({ variant, children }: AlertBannerProps) {
+  const bgColors = {
+    danger: "rgba(255,59,48,0.12)",
+    success: "rgba(52,199,89,0.12)",
+    warning: "rgba(255,159,10,0.12)",
+  };
+  const borderColors = {
+    danger: "rgba(255,59,48,0.25)",
+    success: "rgba(52,199,89,0.25)",
+    warning: "rgba(255,159,10,0.25)",
+  };
+
+  return (
+    <View
+      style={{
+        backgroundColor: bgColors[variant],
+        borderWidth: 1,
+        borderColor: borderColors[variant],
+        borderRadius: 12,
+        padding: 12,
+        gap: 4,
+      }}
+    >
+      {children}
+    </View>
+  );
 }
 
 export function TestConnectionResult({
@@ -38,15 +71,21 @@ export function TestConnectionResult({
 
   if (error) {
     return (
-      <Alert variant="danger" className="rounded-xl">
-        <AppIcon icon={Alert01Icon} size={16} color="#ff3b30" />
-        <Alert.Title
-          style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#ff3b30" }}
-        >
-          Connection Failed
-        </Alert.Title>
+      <AlertBanner variant="danger">
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <AppIcon icon={Alert01Icon} size={16} color="#ff3b30" />
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              fontWeight: "600",
+              color: "#ff3b30",
+            }}
+          >
+            Connection Failed
+          </Text>
+        </View>
         <Text style={{ fontSize: fontSize.xs, color: "#ff6b6b" }}>{error}</Text>
-      </Alert>
+      </AlertBanner>
     );
   }
 
@@ -56,13 +95,19 @@ export function TestConnectionResult({
     const toolCount = result.tools_count ?? 0;
 
     return (
-      <Alert variant="success" className="rounded-xl">
-        <AppIcon icon={CheckmarkCircle02Icon} size={16} color="#34c759" />
-        <Alert.Title
-          style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#34c759" }}
-        >
-          Connected Successfully
-        </Alert.Title>
+      <AlertBanner variant="success">
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <AppIcon icon={CheckmarkCircle02Icon} size={16} color="#34c759" />
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              fontWeight: "600",
+              color: "#34c759",
+            }}
+          >
+            Connected Successfully
+          </Text>
+        </View>
         <View
           style={{
             flexDirection: "row",
@@ -77,41 +122,49 @@ export function TestConnectionResult({
               : `${toolCount} tool${toolCount !== 1 ? "s" : ""} discovered`}
           </Text>
         </View>
-      </Alert>
+      </AlertBanner>
     );
   }
 
   if (result.status === "requires_oauth") {
     return (
-      <Alert variant="warning" className="rounded-xl">
-        <AppIcon icon={Alert01Icon} size={16} color="#ff9f0a" />
-        <Alert.Title
-          style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#ff9f0a" }}
-        >
-          OAuth Required
-        </Alert.Title>
+      <AlertBanner variant="warning">
+        <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+          <AppIcon icon={Alert01Icon} size={16} color="#ff9f0a" />
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              fontWeight: "600",
+              color: "#ff9f0a",
+            }}
+          >
+            OAuth Required
+          </Text>
+        </View>
         <Text style={{ fontSize: fontSize.xs, color: "#c9934a" }}>
           This integration requires OAuth authorization. Save it first, then
           connect from the integrations list.
         </Text>
-      </Alert>
+      </AlertBanner>
     );
   }
 
   // status === "failed"
   return (
-    <Alert variant="danger" className="rounded-xl">
-      <AppIcon icon={Alert01Icon} size={16} color="#ff3b30" />
-      <Alert.Title
-        style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#ff3b30" }}
-      >
-        Connection Failed
-      </Alert.Title>
+    <AlertBanner variant="danger">
+      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+        <AppIcon icon={Alert01Icon} size={16} color="#ff3b30" />
+        <Text
+          style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#ff3b30" }}
+        >
+          Connection Failed
+        </Text>
+      </View>
       {result.error ? (
         <Text style={{ fontSize: fontSize.xs, color: "#ff6b6b" }}>
           {result.error}
         </Text>
       ) : null}
-    </Alert>
+    </AlertBanner>
   );
 }

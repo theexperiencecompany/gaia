@@ -3,7 +3,6 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
-import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -15,6 +14,7 @@ import { ActivityIndicator, Image, Pressable, View } from "react-native";
 import { AppIcon, Clock01Icon, PlayIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { workflowApi } from "../api/workflow-api";
 import type {
   TriggerConfig,

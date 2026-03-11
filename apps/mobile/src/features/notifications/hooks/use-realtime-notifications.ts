@@ -1,14 +1,7 @@
 import * as Notifications from "expo-notifications";
-import { useCallback, useEffect, useState } from "react";
-import { type UseWebSocketOptions, useWebSocket } from "@/hooks/use-websocket";
-import {
-  isNotificationDelivered,
-  isNotificationRead,
-  isNotificationUpdated,
-  type NotificationDeliveredMessage,
-  type NotificationMessage,
-  type WebSocketState,
-} from "@/lib/websocket-client";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { wsManager } from "@/lib/websocket-client";
+import { WS_EVENTS } from "@/lib/websocket-events";
 
 export interface RealtimeNotification {
   id: string;
@@ -30,13 +23,9 @@ export interface UseRealtimeNotificationsOptions {
     notificationId: string,
     updates: Record<string, unknown>,
   ) => void;
-  /** WebSocket configuration options */
-  websocketConfig?: Omit<UseWebSocketOptions, "onNotification" | "onMessage">;
 }
 
 export interface UseRealtimeNotificationsReturn {
-  /** WebSocket connection state */
-  connectionState: WebSocketState;
   /** Whether connected to real-time notifications */
   isConnected: boolean;
   /** Count of unread notifications (only from current session) */
@@ -55,32 +44,6 @@ export interface UseRealtimeNotificationsReturn {
 
 /**
  * Hook for receiving real-time notifications via WebSocket.
- *
- * This hook listens for notification broadcasts from the backend and optionally
- * shows them as local push notifications. It integrates with the existing
- * push notification system.
- *
- * @example
- * ```tsx
- * function App() {
- *   const {
- *     isConnected,
- *     unreadCount,
- *     recentNotifications
- *   } = useRealtimeNotifications({
- *     onNotificationReceived: (notification) => {
- *       console.log('New notification:', notification.title);
- *     },
- *   });
- *
- *   return (
- *     <View>
- *       <Text>Real-time: {isConnected ? '🟢' : '🔴'}</Text>
- *       <Text>Unread: {unreadCount}</Text>
- *     </View>
- *   );
- * }
- * ```
  */
 export function useRealtimeNotifications(
   options: UseRealtimeNotificationsOptions = {},
@@ -90,7 +53,6 @@ export function useRealtimeNotifications(
     onNotificationReceived,
     onNotificationRead,
     onNotificationUpdated,
-    websocketConfig = {},
   } = options;
 
   const [recentNotifications, setRecentNotifications] = useState<
@@ -99,90 +61,132 @@ export function useRealtimeNotifications(
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(
     new Set(),
   );
+  const [isConnected, setIsConnected] = useState(wsManager.isConnected);
 
-  const handleNotification = useCallback(
-    async (message: NotificationMessage) => {
-      if (isNotificationDelivered(message)) {
-        const { notification } = message as NotificationDeliveredMessage;
+  // Keep stable refs for callbacks
+  const onReceivedRef = useRef(onNotificationReceived);
+  const onReadRef = useRef(onNotificationRead);
+  const onUpdatedRef = useRef(onNotificationUpdated);
+  useEffect(() => {
+    onReceivedRef.current = onNotificationReceived;
+    onReadRef.current = onNotificationRead;
+    onUpdatedRef.current = onNotificationUpdated;
+  }, [onNotificationReceived, onNotificationRead, onNotificationUpdated]);
+
+  const showLocalRef = useRef(showLocalNotification);
+  useEffect(() => {
+    showLocalRef.current = showLocalNotification;
+  }, [showLocalNotification]);
+
+  useEffect(() => {
+    const handleConnect = () => setIsConnected(true);
+    const handleDisconnect = () => setIsConnected(false);
+
+    wsManager.onConnect(handleConnect);
+    wsManager.onDisconnect(handleDisconnect);
+
+    const unsubDelivered = wsManager.subscribe(
+      WS_EVENTS.NOTIFICATION_DELIVERED,
+      (message: unknown) => {
+        const msg = message as Record<string, unknown>;
+        const notification = msg.notification as
+          | Record<string, unknown>
+          | undefined;
+        if (!notification) return;
 
         const realtimeNotification: RealtimeNotification = {
-          id: notification.id,
-          title: notification.title || "New Notification",
-          body: notification.body || "",
+          id:
+            typeof notification.id === "string"
+              ? notification.id
+              : String(notification.id ?? ""),
+          title:
+            typeof notification.title === "string"
+              ? notification.title
+              : "New Notification",
+          body: typeof notification.body === "string" ? notification.body : "",
           data: notification as Record<string, unknown>,
           receivedAt: new Date(),
         };
 
-        // Add to recent notifications
         setRecentNotifications((prev) =>
           [realtimeNotification, ...prev].slice(0, 50),
         );
 
-        // Optionally show local push notification
-        if (showLocalNotification) {
-          try {
-            await Notifications.scheduleNotificationAsync({
-              content: {
-                title: realtimeNotification.title,
-                body: realtimeNotification.body,
-                data: {
-                  notificationId: notification.id,
-                  ...realtimeNotification.data,
-                },
+        if (showLocalRef.current) {
+          Notifications.scheduleNotificationAsync({
+            content: {
+              title: realtimeNotification.title,
+              body: realtimeNotification.body,
+              data: {
+                notificationId: realtimeNotification.id,
+                ...realtimeNotification.data,
               },
-              trigger: null, // Show immediately
-            });
-          } catch (error) {
+            },
+            trigger: null,
+          }).catch((error: unknown) => {
             console.error(
               "[RealtimeNotifications] Failed to show local notification:",
               error,
             );
-          }
+          });
         }
 
-        // Call user callback
-        onNotificationReceived?.(realtimeNotification);
-      } else if (isNotificationRead(message)) {
-        const { notification_id } = message;
+        onReceivedRef.current?.(realtimeNotification);
+      },
+    );
 
-        // Track as read
-        setReadNotificationIds((prev) => new Set(prev).add(notification_id));
+    const unsubRead = wsManager.subscribe(
+      WS_EVENTS.NOTIFICATION_READ,
+      (message: unknown) => {
+        const msg = message as Record<string, unknown>;
+        const notificationId =
+          typeof msg.notification_id === "string" ? msg.notification_id : null;
+        if (!notificationId) return;
 
-        // Call user callback
-        onNotificationRead?.(notification_id);
-      } else if (isNotificationUpdated(message)) {
-        const { notification_id, updates } = message;
+        setReadNotificationIds((prev) => new Set(prev).add(notificationId));
+        onReadRef.current?.(notificationId);
+      },
+    );
 
-        // Update the notification in our recent list
+    const unsubUpdated = wsManager.subscribe(
+      WS_EVENTS.NOTIFICATION_UPDATED,
+      (message: unknown) => {
+        const msg = message as Record<string, unknown>;
+        const notificationId =
+          typeof msg.notification_id === "string" ? msg.notification_id : null;
+        const updates =
+          msg.updates && typeof msg.updates === "object"
+            ? (msg.updates as Record<string, unknown>)
+            : {};
+        if (!notificationId) return;
+
         setRecentNotifications((prev) =>
           prev.map((n) =>
-            n.id === notification_id
+            n.id === notificationId
               ? { ...n, data: { ...n.data, ...updates } }
               : n,
           ),
         );
+        onUpdatedRef.current?.(notificationId, updates);
+      },
+    );
 
-        // Call user callback
-        onNotificationUpdated?.(notification_id, updates);
-      }
-    },
-    [
-      showLocalNotification,
-      onNotificationReceived,
-      onNotificationRead,
-      onNotificationUpdated,
-    ],
-  );
+    return () => {
+      wsManager.offConnect(handleConnect);
+      wsManager.offDisconnect(handleDisconnect);
+      unsubDelivered();
+      unsubRead();
+      unsubUpdated();
+    };
+  }, []);
 
-  const {
-    state: connectionState,
-    isConnected,
-    connect,
-    disconnect,
-  } = useWebSocket({
-    ...websocketConfig,
-    onNotification: handleNotification,
-  });
+  const connect = useCallback(async () => {
+    await wsManager.connect();
+  }, []);
+
+  const disconnect = useCallback(() => {
+    wsManager.disconnect();
+  }, []);
 
   const clearRecent = useCallback(() => {
     setRecentNotifications([]);
@@ -193,22 +197,11 @@ export function useRealtimeNotifications(
     setReadNotificationIds((prev) => new Set(prev).add(notificationId));
   }, []);
 
-  // Calculate unread count
   const unreadCount = recentNotifications.filter(
     (n) => !readNotificationIds.has(n.id),
   ).length;
 
-  // Clear notifications on disconnect
-  useEffect(() => {
-    if (!isConnected) {
-      // Optionally clear recent notifications when disconnected
-      // Uncomment if you want this behavior:
-      // setRecentNotifications([]);
-    }
-  }, [isConnected]);
-
   return {
-    connectionState,
     isConnected,
     unreadCount,
     recentNotifications,

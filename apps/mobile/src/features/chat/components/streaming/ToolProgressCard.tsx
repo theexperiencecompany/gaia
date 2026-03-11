@@ -9,15 +9,14 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import {
-  AiBrain01Icon,
+  Brain02Icon,
   Calendar03Icon,
-  CheckmarkBadge01Icon,
-  Database01Icon,
-  HugeiconsIcon,
+  CheckmarkCircle01Icon,
+  CpuIcon,
   Mail01Icon,
   Search01Icon,
   Settings01Icon,
-  TaskDaily01Icon,
+  TaskDailyIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -29,7 +28,7 @@ type IconComponent = React.ComponentType<{
 }>;
 
 function getToolIcon(toolName: string | null): IconComponent {
-  if (!toolName) return AiBrain01Icon;
+  if (!toolName) return Brain02Icon;
   const lower = toolName.toLowerCase();
   if (lower.includes("search") || lower.includes("web")) return Search01Icon;
   if (lower.includes("email") || lower.includes("mail")) return Mail01Icon;
@@ -39,13 +38,13 @@ function getToolIcon(toolName: string | null): IconComponent {
     lower.includes("schedule")
   )
     return Calendar03Icon;
-  if (lower.includes("todo") || lower.includes("task")) return TaskDaily01Icon;
+  if (lower.includes("todo") || lower.includes("task")) return TaskDailyIcon;
   if (
     lower.includes("memory") ||
     lower.includes("remember") ||
     lower.includes("recall")
   )
-    return Database01Icon;
+    return CpuIcon;
   if (lower.includes("setting") || lower.includes("config"))
     return Settings01Icon;
   if (
@@ -53,8 +52,8 @@ function getToolIcon(toolName: string | null): IconComponent {
     lower.includes("complete") ||
     lower.includes("finish")
   )
-    return CheckmarkBadge01Icon;
-  return AiBrain01Icon;
+    return CheckmarkCircle01Icon;
+  return Brain02Icon;
 }
 
 function formatToolName(toolName: string | null): string {
@@ -130,12 +129,7 @@ export function ToolProgressCard({
       }}
     >
       <Animated.View style={pulseStyle}>
-        <HugeiconsIcon
-          icon={ToolIcon}
-          size={iconSize.md}
-          color="#00bbff"
-          strokeWidth={1.5}
-        />
+        <ToolIcon size={iconSize.md} color="#00bbff" strokeWidth={1.5} />
       </Animated.View>
 
       <View style={{ flex: 1 }}>

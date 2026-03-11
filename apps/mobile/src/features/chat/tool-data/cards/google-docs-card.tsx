@@ -117,7 +117,7 @@ export function GoogleDocsCard({ data }: { data: GoogleDocsData }) {
               )}
               {!!actionLabel && (
                 <Chip
-                  size="xs"
+                  size="sm"
                   variant="primary"
                   color="accent"
                   animation="disable-all"
@@ -133,7 +133,6 @@ export function GoogleDocsCard({ data }: { data: GoogleDocsData }) {
             <Button
               size="sm"
               variant="secondary"
-              color="accent"
               onPress={handleOpen}
               className="flex-shrink-0 rounded-xl"
             >

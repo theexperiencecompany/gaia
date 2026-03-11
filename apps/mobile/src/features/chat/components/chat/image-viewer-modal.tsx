@@ -21,7 +21,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { HugeiconsIcon, Share01Icon } from "@/components/icons";
+import { Share01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -220,11 +220,7 @@ export function ImageViewerModal({
                     backgroundColor: "rgba(255,255,255,0.1)",
                   }}
                 >
-                  <HugeiconsIcon
-                    icon={Share01Icon}
-                    size={moderateScale(20, 0.5)}
-                    color="#ffffff"
-                  />
+                  <Share01Icon size={moderateScale(20, 0.5)} color="#ffffff" />
                 </Pressable>
               </View>
 

@@ -126,13 +126,6 @@ export interface CreateCustomIntegrationRequest {
   bearer_token?: string;
 }
 
-export interface CreateCustomIntegrationResponse {
-  status: string;
-  message: string;
-  integrationId: string;
-  name: string;
-}
-
 export interface CommunityIntegrationCreator {
   name: string | null;
   picture: string | null;

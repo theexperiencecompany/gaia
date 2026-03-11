@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icons/gaialogo.png",
-    "scheme": ["gaiamobile", "gaia"],
+    "scheme": "gaia",
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
@@ -31,7 +31,7 @@
           "action": "VIEW",
           "data": [
             {
-              "scheme": "gaiamobile",
+              "scheme": "gaia",
               "host": "auth",
               "pathPrefix": "/callback"
             }

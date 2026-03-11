@@ -3,7 +3,6 @@ import {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -32,6 +31,7 @@ import {
 } from "@/features/chat/hooks/use-models";
 import { selectionHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 const MODEL_STORAGE_KEY = "gaia:selected_model_id";
 

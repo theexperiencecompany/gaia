@@ -4,7 +4,6 @@ import {
 } from "@gorhom/bottom-sheet";
 import { Image } from "expo-image";
 import * as Linking from "expo-linking";
-import { BottomSheet } from "heroui-native";
 import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
 import {
@@ -15,6 +14,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { connectIntegrationWithToken } from "../api/integrations-api";
 
 const INTEGRATION_LOGOS: Record<string, string> = {

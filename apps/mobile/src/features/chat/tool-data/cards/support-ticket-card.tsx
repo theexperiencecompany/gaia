@@ -70,7 +70,7 @@ export function SupportTicketCard({ data }: { data: SupportTicketData }) {
 
           {/* Status badge */}
           <Chip
-            size="xs"
+            size="sm"
             variant={statusInfo.variant}
             color={statusInfo.color}
             animation="disable-all"
@@ -88,7 +88,7 @@ export function SupportTicketCard({ data }: { data: SupportTicketData }) {
         {/* Priority badge */}
         {priorityInfo && (
           <Chip
-            size="xs"
+            size="sm"
             variant={priorityInfo.variant}
             color={priorityInfo.color}
             animation="disable-all"

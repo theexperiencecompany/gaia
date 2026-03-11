@@ -109,7 +109,7 @@ function TodoItemRow({
   return (
     <PressableFeedback
       onPress={onPress}
-      disabled={!onPress}
+      isDisabled={!onPress}
       className="rounded-xl bg-zinc-900 p-3 mb-2"
     >
       <View className="flex-row items-start gap-2">

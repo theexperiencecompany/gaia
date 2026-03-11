@@ -68,7 +68,7 @@ function formatRelativeTime(date: Date): string {
   return `${Math.floor(diffSecs / 86400)}d ago`;
 }
 
-export function NotificationsList() {
+export function RealtimeNotificationsList() {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
 

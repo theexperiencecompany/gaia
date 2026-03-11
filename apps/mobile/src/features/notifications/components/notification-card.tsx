@@ -453,7 +453,7 @@ export function NotificationCard({
                   width: 36,
                   height: 36,
                   borderRadius: 10,
-                  backgroundColor: `${accentColor}18`,
+                  backgroundColor: `${iconConfig.color}18`,
                   alignItems: "center",
                   justifyContent: "center",
                   flexShrink: 0,

@@ -5,10 +5,9 @@ import { Swipeable } from "react-native-gesture-handler";
 import {
   Clock01Icon,
   Delete02Icon,
-  HugeiconsIcon,
   Notification02Icon,
-  PauseIcon,
   PlayIcon,
+  ToggleOffIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
@@ -191,7 +190,7 @@ export function ReminderCard({
             borderRadius: 14,
           }}
         >
-          <HugeiconsIcon icon={Delete02Icon} size={20} color="#fff" />
+          <Delete02Icon size={20} color="#fff" />
         </Pressable>
       );
     },
@@ -295,11 +294,7 @@ export function ReminderCard({
               flex: 1,
             }}
           >
-            <HugeiconsIcon
-              icon={Notification02Icon}
-              size={13}
-              color="#52525b"
-            />
+            <Notification02Icon size={13} color="#52525b" />
             <Text
               style={{
                 fontSize: fontSize.sm,
@@ -319,7 +314,7 @@ export function ReminderCard({
                 gap: 4,
               }}
             >
-              <HugeiconsIcon icon={Clock01Icon} size={12} color="#16c1ff" />
+              <Clock01Icon size={12} color="#16c1ff" />
               <Text
                 style={{
                   fontSize: fontSize.xs,
@@ -350,11 +345,11 @@ export function ReminderCard({
             opacity: isActionLoading ? 0.5 : 1,
           }}
         >
-          <HugeiconsIcon
-            icon={isActive ? PauseIcon : PlayIcon}
-            size={14}
-            color={isActive ? "#a1a1aa" : "#16c1ff"}
-          />
+          {isActive ? (
+            <ToggleOffIcon size={14} color="#a1a1aa" />
+          ) : (
+            <PlayIcon size={14} color="#16c1ff" />
+          )}
           <Text
             style={{
               fontSize: fontSize.sm,

@@ -8,13 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
-import {
-  AppIcon,
-  Call02Icon,
-  HugeiconsIcon,
-  PlusSignIcon,
-  SentIcon,
-} from "@/components/icons";
+import { Call02Icon, PlusSignIcon, SentIcon } from "@/components/icons";
 import { haptics } from "@/lib/haptics";
 import {
   RecordingWaveform,
@@ -112,7 +106,7 @@ export function ChatInput({
       {!state.isRecording && (
         <PressableFeedback onPress={() => {}}>
           <View className="h-10 w-10 items-center justify-center rounded-full">
-            <HugeiconsIcon icon={PlusSignIcon} size={20} color="#8e8e93" />
+            <PlusSignIcon size={20} color="#8e8e93" />
           </View>
         </PressableFeedback>
       )}
@@ -182,7 +176,7 @@ export function ChatInput({
           }}
           {...panResponder.panHandlers}
         >
-          <AppIcon icon={Call02Icon} size={18} color="#8e8e93" />
+          <Call02Icon size={18} color="#8e8e93" />
         </View>
       ) : !state.isRecording ? (
         <Animated.View
@@ -198,11 +192,7 @@ export function ChatInput({
                 canSubmit ? "bg-accent" : "bg-surface-3"
               }`}
             >
-              <HugeiconsIcon
-                icon={SentIcon}
-                size={18}
-                color={canSubmit ? "#000000" : "#666666"}
-              />
+              <SentIcon size={18} color={canSubmit ? "#000000" : "#666666"} />
             </View>
           </PressableFeedback>
         </Animated.View>

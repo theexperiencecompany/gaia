@@ -12,7 +12,6 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
   Add01Icon,
   ArrowLeft01Icon,
-  HugeiconsIcon,
   Notification01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -45,7 +44,7 @@ function EmptyState() {
           marginBottom: spacing.sm,
         }}
       >
-        <HugeiconsIcon icon={Notification01Icon} size={28} color="#16c1ff" />
+        <Notification01Icon size={28} color="#16c1ff" />
       </View>
       <Text
         style={{
@@ -151,7 +150,7 @@ export function RemindersScreen() {
             backgroundColor: "rgba(255,255,255,0.05)",
           }}
         >
-          <HugeiconsIcon icon={ArrowLeft01Icon} size={18} color="#e8ebef" />
+          <ArrowLeft01Icon size={18} color="#e8ebef" />
         </Pressable>
 
         <Text
@@ -177,7 +176,7 @@ export function RemindersScreen() {
             backgroundColor: "rgba(22,193,255,0.15)",
           }}
         >
-          <HugeiconsIcon icon={Add01Icon} size={18} color="#16c1ff" />
+          <Add01Icon size={18} color="#16c1ff" />
         </Pressable>
       </View>
 
@@ -366,7 +365,7 @@ export function RemindersScreen() {
             elevation: 8,
           }}
         >
-          <HugeiconsIcon icon={Add01Icon} size={24} color="#000" />
+          <Add01Icon size={24} color="#000" />
         </Pressable>
       )}
 

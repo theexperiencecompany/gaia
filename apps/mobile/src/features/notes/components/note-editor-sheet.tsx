@@ -2,13 +2,13 @@ import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
-import { BottomSheet } from "heroui-native";
 import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import { Pressable, View } from "react-native";
 import { AppIcon, Cancel01Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { impactHaptic, notificationHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type { Note, NoteCreate, NoteUpdate } from "../api/notes-api";
 
 export interface NoteEditorSheetRef {

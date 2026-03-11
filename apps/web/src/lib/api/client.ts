@@ -1,5 +1,5 @@
-import axios, { type InternalAxiosRequestConfig } from "axios";
 import { getUserTimezone } from "@shared/api";
+import axios, { type InternalAxiosRequestConfig } from "axios";
 
 /**
  * API Client Configuration

@@ -1,5 +1,5 @@
-import { CloseButton, Surface } from "heroui-native";
-import { View } from "react-native";
+import { Surface } from "heroui-native";
+import { Pressable, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { AppIcon, Cancel01Icon, LinkBackwardIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -66,13 +66,13 @@ export function ReplyPreviewBar({ replyTo, onDismiss }: ReplyPreviewBarProps) {
           </Text>
         </View>
 
-        <CloseButton
+        <Pressable
           onPress={onDismiss}
-          size="sm"
+          hitSlop={8}
           style={{ marginLeft: spacing.sm }}
         >
           <AppIcon icon={Cancel01Icon} size={iconSize.sm - 2} color="#8e8e93" />
-        </CloseButton>
+        </Pressable>
       </Surface>
     </Animated.View>
   );

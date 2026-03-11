@@ -35,7 +35,7 @@ export function EventItem({ event }: EventItemProps) {
             <Chip
               size="sm"
               variant="soft"
-              color="primary"
+              color="accent"
               animation="disable-all"
             >
               <Chip.Label numberOfLines={1}>{event.calendar_name}</Chip.Label>

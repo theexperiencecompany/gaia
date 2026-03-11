@@ -1,10 +1,4 @@
-import {
-  Button,
-  Card,
-  Chip,
-  PressableFeedback,
-  Separator,
-} from "heroui-native";
+import { Button, Card, Chip, PressableFeedback } from "heroui-native";
 import { useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import {
@@ -139,7 +133,7 @@ function PostMeta({
     <View className="flex-row items-center gap-1.5 flex-wrap mb-1">
       {subreddit && (
         <Chip
-          size="xs"
+          size="sm"
           variant="secondary"
           color="default"
           animation="disable-all"
@@ -213,7 +207,7 @@ function SearchView({ posts }: { posts: RedditSearchData[] }) {
     <>
       <View className="flex-row items-center justify-between mb-2">
         <Chip
-          size="xs"
+          size="sm"
           variant="secondary"
           color="default"
           animation="disable-all"
@@ -250,7 +244,15 @@ function SearchView({ posts }: { posts: RedditSearchData[] }) {
                 <PostStats score={post.score} numComments={post.num_comments} />
               </View>
             </PressableFeedback>
-            {index < preview.length - 1 && <Separator className="mx-3" />}
+            {index < preview.length - 1 && (
+              <View
+                style={{
+                  height: 1,
+                  backgroundColor: "rgba(255,255,255,0.07)",
+                  marginVertical: 4,
+                }}
+              />
+            )}
           </View>
         ))}
       </View>
@@ -297,7 +299,7 @@ function PostView({ post }: { post: RedditPostData }) {
         </Pressable>
         {hasFlair && (
           <Chip
-            size="xs"
+            size="sm"
             variant="secondary"
             color="default"
             animation="disable-all"
@@ -344,7 +346,13 @@ function PostView({ post }: { post: RedditPostData }) {
         </Pressable>
       )}
 
-      <Separator className="mt-2 mb-1" />
+      <View
+        style={{
+          height: 1,
+          backgroundColor: "rgba(255,255,255,0.07)",
+          marginVertical: 4,
+        }}
+      />
 
       <View className="flex-row items-center justify-between mt-1">
         <PostStats
@@ -353,9 +361,8 @@ function PostView({ post }: { post: RedditPostData }) {
           numComments={post.num_comments}
         />
         <Button
-          size="xs"
+          size="sm"
           variant="ghost"
-          color="default"
           onPress={() => openRedditLink(post.permalink, post.url)}
         >
           <Button.Label className="text-muted">View on Reddit →</Button.Label>
@@ -376,7 +383,7 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
     <>
       <View className="flex-row items-center justify-between mb-2">
         <Chip
-          size="xs"
+          size="sm"
           variant="secondary"
           color="default"
           animation="disable-all"
@@ -407,7 +414,7 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
                 </Text>
                 {comment.is_submitter && (
                   <Chip
-                    size="xs"
+                    size="sm"
                     variant="secondary"
                     color="default"
                     animation="disable-all"
@@ -449,7 +456,13 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
             {/* Link */}
             {comment.permalink && (
               <>
-                <Separator className="mt-2 mb-2" />
+                <View
+                  style={{
+                    height: 1,
+                    backgroundColor: "rgba(255,255,255,0.07)",
+                    marginVertical: 4,
+                  }}
+                />
                 <Pressable
                   onPress={() =>
                     comment.permalink &&
@@ -522,7 +535,13 @@ function CreatedView({
         </Text>
       )}
 
-      <Separator className="mb-2" />
+      <View
+        style={{
+          height: 1,
+          backgroundColor: "rgba(255,255,255,0.07)",
+          marginVertical: 4,
+        }}
+      />
 
       <View className="flex-row items-center justify-between">
         {(permalink || url) && (
@@ -540,7 +559,7 @@ function CreatedView({
           </Pressable>
         )}
         <Chip
-          size="xs"
+          size="sm"
           variant="secondary"
           color="success"
           animation="disable-all"

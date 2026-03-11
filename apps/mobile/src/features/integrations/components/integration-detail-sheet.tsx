@@ -1,6 +1,5 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Image } from "expo-image";
-import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -16,7 +15,7 @@ import {
   View,
 } from "react-native";
 import {
-  Alert02Icon,
+  Alert01Icon,
   AppIcon,
   CheckmarkCircle02Icon,
   Delete02Icon,
@@ -26,6 +25,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type { TestConnectionResponse } from "../api/integrations-api";
 import {
   connectIntegration,
@@ -42,7 +42,11 @@ export interface IntegrationDetailSheetRef {
 }
 
 interface IntegrationDetailSheetProps {
-  onConnect?: (integrationId: string) => void;
+  onConnect?: (
+    integrationId: string,
+    authType?: string,
+    token?: string,
+  ) => void;
   onDisconnect?: (integrationId: string) => void;
   onDelete?: (integrationId: string) => void;
   onEdit?: (integration: Integration) => void;
@@ -326,7 +330,7 @@ function TestResultBanner({ isLoading, result, error }: TestResultBannerProps) {
             gap: spacing.sm,
           }}
         >
-          <AppIcon icon={Alert02Icon} size={15} color="#ef4444" />
+          <AppIcon icon={Alert01Icon} size={15} color="#ef4444" />
           <Text
             style={{
               fontSize: fontSize.sm,
@@ -394,7 +398,7 @@ function TestResultBanner({ isLoading, result, error }: TestResultBannerProps) {
       <View
         style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
       >
-        <AppIcon icon={Alert02Icon} size={15} color="#ef4444" />
+        <AppIcon icon={Alert01Icon} size={15} color="#ef4444" />
         <Text
           style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#ef4444" }}
         >

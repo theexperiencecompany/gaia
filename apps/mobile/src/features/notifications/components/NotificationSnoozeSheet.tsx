@@ -2,7 +2,6 @@ import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import * as Haptics from "expo-haptics";
-import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -14,6 +13,7 @@ import { Platform, Pressable, View } from "react-native";
 import { AlarmClockIcon, AppIcon, Cancel01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import { inAppNotificationsApi } from "../api/inapp-notifications-api";
 
 export interface NotificationSnoozeSheetRef {

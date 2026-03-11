@@ -1,10 +1,10 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
-import { BottomSheet } from "heroui-native";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { View } from "react-native";
 import { AppIcon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 type MemoryDataShape = {
   type?: string;

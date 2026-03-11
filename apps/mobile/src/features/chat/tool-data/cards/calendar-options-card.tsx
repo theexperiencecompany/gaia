@@ -1,10 +1,4 @@
-import {
-  Button,
-  Card,
-  Chip,
-  PressableFeedback,
-  Separator,
-} from "heroui-native";
+import { Button, Card, Chip, PressableFeedback } from "heroui-native";
 import { View } from "react-native";
 import {
   AppIcon,
@@ -136,9 +130,8 @@ function OptionRow({ event, index, isSelected, onSelect }: OptionRowProps) {
 
             {event.calendar_name ? (
               <Chip
-                size="xs"
+                size="sm"
                 variant="soft"
-                color="default"
                 className="self-start mb-1"
                 animation="disable-all"
               >
@@ -152,7 +145,6 @@ function OptionRow({ event, index, isSelected, onSelect }: OptionRowProps) {
             <Chip
               size="sm"
               variant="soft"
-              color="success"
               className="flex-shrink-0"
               animation="disable-all"
             >
@@ -165,7 +157,7 @@ function OptionRow({ event, index, isSelected, onSelect }: OptionRowProps) {
         {!isSelected ? (
           <View className="mt-2 ml-12">
             <Button
-              variant="bordered"
+              variant="secondary"
               size="sm"
               className="self-start rounded-xl"
               onPress={handlePress}
@@ -217,7 +209,13 @@ export function CalendarOptionsCard({
       </Card.Header>
 
       <Card.Body className="p-0">
-        <Separator className="bg-white/8 mt-3" />
+        <View
+          style={{
+            height: 1,
+            backgroundColor: "rgba(255,255,255,0.07)",
+            marginTop: 12,
+          }}
+        />
 
         {data.length === 0 ? (
           <View className="px-4 py-3">
@@ -229,7 +227,15 @@ export function CalendarOptionsCard({
             const isSelected = selectedIndex === index;
             return (
               <View key={key}>
-                {index > 0 && <Separator className="mx-4 bg-white/8" />}
+                {index > 0 && (
+                  <View
+                    style={{
+                      height: 1,
+                      backgroundColor: "rgba(255,255,255,0.07)",
+                      marginHorizontal: 16,
+                    }}
+                  />
+                )}
                 <OptionRow
                   event={event}
                   index={index}

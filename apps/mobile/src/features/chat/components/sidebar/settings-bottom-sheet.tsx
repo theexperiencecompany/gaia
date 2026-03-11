@@ -1,6 +1,6 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { useRouter } from "expo-router";
-import { Avatar, BottomSheet } from "heroui-native";
+import { Avatar } from "heroui-native";
 import { forwardRef, useImperativeHandle, useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import {
@@ -25,6 +25,7 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import type { UserInfo } from "@/features/auth";
+import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 interface SettingsBottomSheetProps {
   user: UserInfo | null;
