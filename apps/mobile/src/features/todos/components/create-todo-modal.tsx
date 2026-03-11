@@ -12,16 +12,19 @@ import {
   Calendar03Icon,
   Cancel01Icon,
   Flag02Icon,
+  Folder02Icon,
+  Tag01Icon,
   AppIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-import { Priority, type TodoCreate } from "../types/todo-types";
+import { Priority, type Project, type TodoCreate } from "../types/todo-types";
 
 interface CreateTodoModalProps {
   visible: boolean;
   onClose: () => void;
   onCreated: (data: TodoCreate) => void;
+  projects?: Project[];
 }
 
 const PRIORITY_OPTIONS: {
@@ -74,16 +77,26 @@ export function CreateTodoModal({
   visible,
   onClose,
   onCreated,
+  projects = [],
 }: CreateTodoModalProps) {
   const { spacing, fontSize } = useResponsive();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [priority, setPriority] = useState<Priority>(Priority.NONE);
   const [dueDate, setDueDate] = useState<string | undefined>(undefined);
+  const [selectedProjectId, setSelectedProjectId] = useState<
+    string | undefined
+  >(undefined);
+  const [labelsText, setLabelsText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async () => {
     if (!title.trim() || isSubmitting) return;
+
+    const labels = labelsText
+      .split(",")
+      .map((l) => l.trim())
+      .filter(Boolean);
 
     setIsSubmitting(true);
     try {
@@ -92,12 +105,15 @@ export function CreateTodoModal({
         description: description.trim() || undefined,
         priority,
         due_date: dueDate,
-        labels: [],
+        labels,
+        project_id: selectedProjectId,
       });
       setTitle("");
       setDescription("");
       setPriority(Priority.NONE);
       setDueDate(undefined);
+      setSelectedProjectId(undefined);
+      setLabelsText("");
     } finally {
       setIsSubmitting(false);
     }
@@ -108,6 +124,8 @@ export function CreateTodoModal({
     setDescription("");
     setPriority(Priority.NONE);
     setDueDate(undefined);
+    setSelectedProjectId(undefined);
+    setLabelsText("");
     onClose();
   };
 
@@ -414,6 +432,146 @@ export function CreateTodoModal({
                 );
               })}
             </View>
+          </View>
+
+          {/* Project picker */}
+          {projects.length > 0 && (
+            <View style={{ gap: spacing.sm }}>
+              <View
+                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+              >
+                <AppIcon icon={Folder02Icon} size={14} color="#52525b" />
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: "#52525b",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.8,
+                    fontWeight: "500",
+                  }}
+                >
+                  Project
+                </Text>
+              </View>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: spacing.sm }}
+              >
+                <Pressable
+                  onPress={() => setSelectedProjectId(undefined)}
+                  style={{
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.sm,
+                    borderRadius: 8,
+                    backgroundColor:
+                      selectedProjectId === undefined
+                        ? "rgba(22,193,255,0.12)"
+                        : "rgba(255,255,255,0.05)",
+                    borderWidth: 1,
+                    borderColor:
+                      selectedProjectId === undefined
+                        ? "rgba(22,193,255,0.25)"
+                        : "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <Text
+                    style={{
+                      fontSize: fontSize.xs,
+                      fontWeight: selectedProjectId === undefined ? "600" : "400",
+                      color:
+                        selectedProjectId === undefined ? "#16c1ff" : "#71717a",
+                    }}
+                  >
+                    None
+                  </Text>
+                </Pressable>
+                {projects.map((project) => {
+                  const isSelected = selectedProjectId === project.id;
+                  const chipColor = project.color ?? "#71717a";
+                  return (
+                    <Pressable
+                      key={project.id}
+                      onPress={() => setSelectedProjectId(project.id)}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        gap: 5,
+                        paddingHorizontal: spacing.md,
+                        paddingVertical: spacing.sm,
+                        borderRadius: 8,
+                        backgroundColor: isSelected
+                          ? `${chipColor}20`
+                          : "rgba(255,255,255,0.05)",
+                        borderWidth: 1,
+                        borderColor: isSelected
+                          ? `${chipColor}40`
+                          : "rgba(255,255,255,0.06)",
+                      }}
+                    >
+                      <AppIcon
+                        icon={Folder02Icon}
+                        size={12}
+                        color={isSelected ? chipColor : "#52525b"}
+                      />
+                      <Text
+                        style={{
+                          fontSize: fontSize.xs,
+                          fontWeight: isSelected ? "600" : "400",
+                          color: isSelected ? chipColor : "#71717a",
+                        }}
+                      >
+                        {project.name}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          )}
+
+          {/* Labels input */}
+          <View style={{ gap: spacing.xs }}>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <AppIcon icon={Tag01Icon} size={14} color="#52525b" />
+              <Text
+                style={{
+                  fontSize: fontSize.xs,
+                  color: "#52525b",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  fontWeight: "500",
+                }}
+              >
+                Labels
+              </Text>
+            </View>
+            <TextInput
+              value={labelsText}
+              onChangeText={setLabelsText}
+              placeholder="work, personal, urgent..."
+              placeholderTextColor="#3f3f46"
+              style={{
+                fontSize: fontSize.sm,
+                color: "#f4f4f5",
+                backgroundColor: "rgba(255,255,255,0.04)",
+                borderRadius: 12,
+                paddingHorizontal: spacing.md,
+                paddingVertical: spacing.md,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.07)",
+              }}
+            />
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: "#3f3f46",
+              }}
+            >
+              Separate multiple labels with commas
+            </Text>
           </View>
         </ScrollView>
       </KeyboardAvoidingView>

@@ -3,6 +3,7 @@ export * from "@/features/integrations/api";
 
 // Components
 export * from "@/features/integrations/components/connect-drawer";
+export * from "@/features/integrations/components/integration-detail-sheet";
 export * from "@/features/integrations/components/integrations-screen";
 
 // Types

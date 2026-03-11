@@ -8,12 +8,16 @@ export type SettingsSection =
   | "account"
   | "preferences"
   | "notifications"
+  | "linked-accounts"
+  | "memory"
   | "usage";
 
 const TABS: { key: SettingsSection; label: string }[] = [
   { key: "account", label: "Account" },
   { key: "preferences", label: "Preferences" },
   { key: "notifications", label: "Notifications" },
+  { key: "linked-accounts", label: "Linked Accounts" },
+  { key: "memory", label: "Memory" },
   { key: "usage", label: "Usage" },
 ];
 

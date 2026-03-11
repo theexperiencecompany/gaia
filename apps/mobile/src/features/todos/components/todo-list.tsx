@@ -16,6 +16,10 @@ interface TodoListProps {
   onToggleComplete: (todo: Todo) => void;
   onTodoPress?: (todo: Todo) => void;
   onDeleteTodo?: (todoId: string) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
+  onEnterSelectionMode?: (todo: Todo) => void;
+  onSelectTodo?: (id: string) => void;
 }
 
 function TodoSkeleton() {
@@ -93,9 +97,22 @@ export function TodoList({
   onToggleComplete,
   onTodoPress,
   onDeleteTodo,
+  selectionMode = false,
+  selectedIds,
+  onEnterSelectionMode,
+  onSelectTodo,
 }: TodoListProps) {
   const { spacing, fontSize } = useResponsive();
   const insets = useSafeAreaInsets();
+
+  const handleLongPress = useCallback(
+    (todo: Todo) => {
+      if (!selectionMode) {
+        onEnterSelectionMode?.(todo);
+      }
+    },
+    [selectionMode, onEnterSelectionMode],
+  );
 
   const renderItem = useCallback(
     ({ item }: { item: Todo }) => (
@@ -103,11 +120,24 @@ export function TodoList({
         todo={item}
         projects={projects}
         onToggleComplete={onToggleComplete}
-        onPress={onTodoPress}
-        onDelete={onDeleteTodo}
+        onPress={selectionMode ? undefined : onTodoPress}
+        onDelete={selectionMode ? undefined : onDeleteTodo}
+        selectionMode={selectionMode}
+        isSelected={selectedIds?.has(item.id) ?? false}
+        onSelect={onSelectTodo}
+        onLongPress={handleLongPress}
       />
     ),
-    [projects, onToggleComplete, onTodoPress, onDeleteTodo],
+    [
+      projects,
+      onToggleComplete,
+      onTodoPress,
+      onDeleteTodo,
+      selectionMode,
+      selectedIds,
+      onSelectTodo,
+      handleLongPress,
+    ],
   );
 
   const keyExtractor = useCallback((item: Todo) => item.id, []);
@@ -123,7 +153,9 @@ export function TodoList({
       renderItem={renderItem}
       contentContainerStyle={{
         flexGrow: 1,
-        paddingBottom: insets.bottom + spacing.lg,
+        paddingBottom: selectionMode
+          ? insets.bottom + 96
+          : insets.bottom + spacing.lg,
       }}
       refreshControl={
         <RefreshControl

@@ -2,54 +2,49 @@ import { Avatar } from "heroui-native";
 import { useEffect, useRef } from "react";
 import { Animated, View } from "react-native";
 import { Text } from "@/components/ui/text";
+import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { useResponsive } from "@/lib/responsive";
 
 const GaiaLogo = require("@shared/assets/logo/gaia.png");
 
 interface LoadingIndicatorProps {
   progress?: string;
+  toolCategory?: string;
+  toolIconUrl?: string | null;
 }
 
-function AnimatedDots() {
+function WaveSpinnerSquare() {
   const { moderateScale } = useResponsive();
-  const dotSize = moderateScale(6, 0.5);
+  const dotSize = moderateScale(5, 0.5);
+  const gap = moderateScale(3, 0.5);
 
-  const dot1 = useRef(new Animated.Value(0.3)).current;
-  const dot2 = useRef(new Animated.Value(0.3)).current;
-  const dot3 = useRef(new Animated.Value(0.3)).current;
+  const delays = [0, 120, 240, 120, 240, 360, 240, 360, 480];
+  const scales = useRef(delays.map(() => new Animated.Value(0.6))).current;
 
   useEffect(() => {
-    const makeDotAnim = (dot: Animated.Value, delay: number) =>
+    const animations = scales.map((scale, i) =>
       Animated.loop(
         Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(dot, {
+          Animated.delay(delays[i]),
+          Animated.timing(scale, {
             toValue: 1,
-            duration: 400,
+            duration: 300,
             useNativeDriver: true,
           }),
-          Animated.timing(dot, {
-            toValue: 0.3,
+          Animated.timing(scale, {
+            toValue: 0.5,
             duration: 400,
             useNativeDriver: true,
           }),
         ]),
-      );
+      ),
+    );
 
-    const a1 = makeDotAnim(dot1, 0);
-    const a2 = makeDotAnim(dot2, 150);
-    const a3 = makeDotAnim(dot3, 300);
-
-    a1.start();
-    a2.start();
-    a3.start();
-
+    animations.forEach((a) => a.start());
     return () => {
-      dot1.stopAnimation();
-      dot2.stopAnimation();
-      dot3.stopAnimation();
+      scales.forEach((s) => s.stopAnimation());
     };
-  }, [dot1, dot2, dot3]);
+  }, [scales]);
 
   const dotStyle = {
     width: dotSize,
@@ -58,24 +53,87 @@ function AnimatedDots() {
     backgroundColor: "#00bbff",
   };
 
+  const rows = [
+    scales.slice(0, 3),
+    scales.slice(3, 6),
+    scales.slice(6, 9),
+  ];
+
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: moderateScale(4, 0.5),
-      }}
-    >
-      <Animated.View style={[dotStyle, { opacity: dot1 }]} />
-      <Animated.View style={[dotStyle, { opacity: dot2 }]} />
-      <Animated.View style={[dotStyle, { opacity: dot3 }]} />
+    <View style={{ flexDirection: "column", gap }}>
+      {rows.map((row, rowIndex) => (
+        <View
+          key={rowIndex}
+          style={{ flexDirection: "row", gap }}
+        >
+          {row.map((scale, colIndex) => (
+            <Animated.View
+              key={colIndex}
+              style={[dotStyle, { transform: [{ scale }] }]}
+            />
+          ))}
+        </View>
+      ))}
     </View>
   );
 }
 
-export function LoadingIndicator({ progress }: LoadingIndicatorProps) {
+export function LoadingIndicator({
+  progress,
+  toolCategory,
+  toolIconUrl,
+}: LoadingIndicatorProps) {
   const { spacing, fontSize, moderateScale } = useResponsive();
   const avatarSize = moderateScale(24, 0.5);
+
+  // Spinning GAIA logo animation
+  const spinAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const spin = Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 2000,
+        useNativeDriver: true,
+      }),
+    );
+    spin.start();
+    return () => spin.stop();
+  }, [spinAnim]);
+
+  const spinInterpolate = spinAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["0deg", "360deg"],
+  });
+
+  // Slide-up text animation
+  const textTranslateY = useRef(new Animated.Value(8)).current;
+  const textOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    textTranslateY.setValue(8);
+    textOpacity.setValue(0);
+    Animated.parallel([
+      Animated.timing(textTranslateY, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(textOpacity, {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [progress]);
+
+  const toolIconElement = toolCategory
+    ? getToolCategoryIcon(
+        toolCategory,
+        { size: moderateScale(16, 0.5), showBackground: true, pulsating: true },
+        toolIconUrl,
+      )
+    : null;
 
   return (
     <View
@@ -87,15 +145,19 @@ export function LoadingIndicator({ progress }: LoadingIndicatorProps) {
         paddingVertical: spacing.sm,
       }}
     >
-      <Avatar
-        alt="Gaia"
-        size="sm"
-        color="default"
-        style={{ width: avatarSize, height: avatarSize }}
+      <Animated.View
+        style={{ transform: [{ rotate: spinInterpolate }] }}
       >
-        <Avatar.Image source={GaiaLogo} />
-        <Avatar.Fallback>G</Avatar.Fallback>
-      </Avatar>
+        <Avatar
+          alt="Gaia"
+          size="sm"
+          color="default"
+          style={{ width: avatarSize, height: avatarSize }}
+        >
+          <Avatar.Image source={GaiaLogo} />
+          <Avatar.Fallback>G</Avatar.Fallback>
+        </Avatar>
+      </Animated.View>
 
       <View
         style={{
@@ -105,18 +167,26 @@ export function LoadingIndicator({ progress }: LoadingIndicatorProps) {
         }}
       >
         {progress ? (
-          <Text
+          <Animated.View
             style={{
-              fontSize: fontSize.xs,
-              color: "#71717a",
-              fontWeight: "500",
+              transform: [{ translateY: textTranslateY }],
+              opacity: textOpacity,
             }}
-            numberOfLines={1}
           >
-            {progress}
-          </Text>
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: "#71717a",
+                fontWeight: "500",
+              }}
+              numberOfLines={1}
+            >
+              {progress}
+            </Text>
+          </Animated.View>
         ) : null}
-        <AnimatedDots />
+
+        {toolIconElement ? toolIconElement : <WaveSpinnerSquare />}
       </View>
     </View>
   );

@@ -81,4 +81,12 @@ export const todoApi = {
   getAllProjects: async (): Promise<Project[]> => {
     return apiService.get<Project[]>("/projects");
   },
+
+  bulkComplete: async (todoIds: string[]): Promise<void> => {
+    await apiService.post("/todos/bulk/complete", { todo_ids: todoIds });
+  },
+
+  bulkDelete: async (todoIds: string[]): Promise<void> => {
+    await apiService.delete("/todos/bulk", { todo_ids: todoIds });
+  },
 };

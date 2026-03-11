@@ -1,7 +1,6 @@
 import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   FlatList,
   Pressable,
   RefreshControl,
@@ -24,6 +23,7 @@ import type { CommunityWorkflow, Workflow } from "../types/workflow-types";
 import { CommunityWorkflowCard } from "./community-workflow-card";
 import { CreateWorkflowModal } from "./create-workflow-modal";
 import { WorkflowCard } from "./workflow-card";
+import { WorkflowListSkeleton } from "./workflow-skeletons";
 
 export function WorkflowListScreen() {
   const router = useRouter();
@@ -121,16 +121,7 @@ export function WorkflowListScreen() {
   const renderMyWorkflows = () => {
     const content = (() => {
       if (isLoading) {
-        return (
-          <View
-            style={{
-              paddingVertical: spacing.xl * 2,
-              alignItems: "center",
-            }}
-          >
-            <ActivityIndicator size="large" color="#00bbff" />
-          </View>
-        );
+        return <WorkflowListSkeleton />;
       }
 
       if (error) {
@@ -265,11 +256,7 @@ export function WorkflowListScreen() {
 
   const renderCommunitySection = () => {
     if (isLoadingCommunity) {
-      return (
-        <View style={{ paddingVertical: spacing.lg, alignItems: "center" }}>
-          <ActivityIndicator size="small" color="#00bbff" />
-        </View>
-      );
+      return <WorkflowListSkeleton />;
     }
 
     if (communityWorkflows.length === 0) return null;

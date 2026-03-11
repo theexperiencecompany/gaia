@@ -19,11 +19,13 @@ import {
   Cancel01Icon,
   AppIcon,
   Search01Icon,
+  ShieldUserIcon,
   Wrench01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { apiService } from "@/lib/api";
 import { useResponsive } from "@/lib/responsive";
+import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 
 interface ToolInfo {
   name: string;
@@ -155,72 +157,97 @@ export const SlashCommandSheet = forwardRef<
   );
 
   const renderToolItem = useCallback(
-    ({ item }: { item: ToolInfo }) => (
-      <Pressable
-        onPress={() => handleSelect(item)}
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          paddingHorizontal: spacing.md,
-          paddingVertical: spacing.sm + 2,
-          marginHorizontal: spacing.sm,
-          borderRadius: 12,
-        }}
-        android_ripple={{ color: "rgba(255,255,255,0.08)" }}
-      >
-        <View
+    ({ item }: { item: ToolInfo }) => {
+      const categoryIcon = getToolCategoryIcon(
+        item.category,
+        { size: 16, showBackground: true, pulsating: false },
+        item.icon_url,
+      );
+      const isLocked = !!item.requires_integration;
+
+      return (
+        <Pressable
+          onPress={() => handleSelect(item)}
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            backgroundColor: "#27272a",
+            flexDirection: "row",
             alignItems: "center",
-            justifyContent: "center",
-            marginRight: spacing.sm,
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm + 2,
+            marginHorizontal: spacing.sm,
+            borderRadius: 12,
           }}
+          android_ripple={{ color: "rgba(255,255,255,0.08)" }}
         >
-          <AppIcon
-            icon={Wrench01Icon}
-            size={iconSize.sm}
-            color="#a1a1aa"
-          />
-        </View>
+          <View style={{ position: "relative", marginRight: spacing.sm }}>
+            <View
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                backgroundColor: "#27272a",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              {categoryIcon ?? (
+                <AppIcon icon={Wrench01Icon} size={iconSize.sm} color="#a1a1aa" />
+              )}
+            </View>
+            {isLocked && (
+              <View
+                style={{
+                  position: "absolute",
+                  bottom: -2,
+                  right: -2,
+                  width: 12,
+                  height: 12,
+                  borderRadius: 6,
+                  backgroundColor: "#1c1c1e",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                <AppIcon icon={ShieldUserIcon} size={8} color="#71717a" />
+              </View>
+            )}
+          </View>
 
-        <View style={{ flex: 1, marginRight: spacing.sm }}>
-          <Text
-            style={{
-              fontSize: fontSize.sm,
-              color: "#e4e4e7",
-              fontWeight: "400",
-            }}
-            numberOfLines={1}
-          >
-            {formatToolName(item.name)}
-          </Text>
-        </View>
+          <View style={{ flex: 1, marginRight: spacing.sm }}>
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                color: "#e4e4e7",
+                fontWeight: "400",
+              }}
+              numberOfLines={1}
+            >
+              {formatToolName(item.name)}
+            </Text>
+          </View>
 
-        <View
-          style={{
-            backgroundColor: "#27272a",
-            paddingHorizontal: spacing.sm,
-            paddingVertical: 2,
-            borderRadius: 10,
-            borderWidth: 1,
-            borderColor: "rgba(255,255,255,0.06)",
-          }}
-        >
-          <Text
+          <View
             style={{
-              fontSize: fontSize.xs,
-              color: "#71717a",
+              backgroundColor: "#27272a",
+              paddingHorizontal: spacing.sm,
+              paddingVertical: 2,
+              borderRadius: 10,
+              borderWidth: 1,
+              borderColor: "rgba(255,255,255,0.06)",
             }}
-            numberOfLines={1}
           >
-            {formatCategoryName(item.display_name || item.category)}
-          </Text>
-        </View>
-      </Pressable>
-    ),
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: "#71717a",
+              }}
+              numberOfLines={1}
+            >
+              {formatCategoryName(item.display_name || item.category)}
+            </Text>
+          </View>
+        </Pressable>
+      );
+    },
     [handleSelect, spacing, fontSize, iconSize],
   );
 

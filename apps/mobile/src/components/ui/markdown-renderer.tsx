@@ -8,6 +8,7 @@ import {
   ScrollView,
   View,
 } from "react-native";
+import { WebView } from "react-native-webview";
 import { Copy01Icon, AppIcon, Tick02Icon } from "@/components/icons";
 import { THEME } from "@/features/chat/components/code-block/syntax-theme";
 import { tokenizeLine } from "@/features/chat/components/code-block/tokenizer";
@@ -46,7 +47,8 @@ type InlineSegment =
   | { type: "boldItalic"; text: string }
   | { type: "code"; text: string }
   | { type: "link"; text: string; url: string }
-  | { type: "strikethrough"; text: string };
+  | { type: "strikethrough"; text: string }
+  | { type: "mathInline"; text: string };
 
 type Block =
   | { type: "paragraph"; segments: InlineSegment[] }
@@ -55,15 +57,16 @@ type Block =
   | { type: "blockquote"; segments: InlineSegment[] }
   | { type: "unorderedList"; items: InlineSegment[][] }
   | { type: "orderedList"; items: InlineSegment[][] }
-  | { type: "hr" };
+  | { type: "hr" }
+  | { type: "mathBlock"; code: string };
 
 // -- Parsing ------------------------------------------------------------------
 
 function parseInline(text: string): InlineSegment[] {
   const segments: InlineSegment[] = [];
-  // Order matters: bold-italic before bold before italic
+  // Order matters: bold-italic before bold before italic; $...$ before backtick
   const inlineRegex =
-    /(\[([^\]]+)\]\(([^)]+)\)|\*\*\*(.+?)\*\*\*|___(.+?)___|\*\*(.+?)\*\*|__(.+?)__|_(.+?)_|\*(.+?)\*|~~(.+?)~~|`([^`]+)`)/g;
+    /(\[([^\]]+)\]\(([^)]+)\)|\*\*\*(.+?)\*\*\*|___(.+?)___|\*\*(.+?)\*\*|__(.+?)__|_(.+?)_|\*(.+?)\*|~~(.+?)~~|\$(.+?)\$|`([^`]+)`)/g;
 
   let lastIndex = 0;
   let match = inlineRegex.exec(text);
@@ -85,7 +88,9 @@ function parseInline(text: string): InlineSegment[] {
     } else if (match[10]) {
       segments.push({ type: "strikethrough", text: match[10] });
     } else if (match[11]) {
-      segments.push({ type: "code", text: match[11] });
+      segments.push({ type: "mathInline", text: match[11] });
+    } else if (match[12]) {
+      segments.push({ type: "code", text: match[12] });
     }
 
     lastIndex = match.index + match[0].length;
@@ -110,6 +115,19 @@ function parseMarkdown(raw: string): Block[] {
 
   while (i < lines.length) {
     const line = lines[i];
+
+    // Display math block $$...$$
+    if (line.trim() === "$$") {
+      const mathLines: string[] = [];
+      i++;
+      while (i < lines.length && lines[i].trim() !== "$$") {
+        mathLines.push(lines[i]);
+        i++;
+      }
+      i++; // skip closing $$
+      blocks.push({ type: "mathBlock", code: mathLines.join("\n") });
+      continue;
+    }
 
     // Code block
     if (line.trimStart().startsWith("```")) {
@@ -191,6 +209,7 @@ function parseMarkdown(raw: string): Block[] {
     while (
       i < lines.length &&
       lines[i].trim() !== "" &&
+      lines[i].trim() !== "$$" &&
       !lines[i].trimStart().startsWith("```") &&
       !lines[i].trimStart().startsWith("> ") &&
       !/^#{1,6}\s+/.test(lines[i]) &&
@@ -295,6 +314,8 @@ function InlineContent({ segments }: { segments: InlineSegment[] }) {
                 {seg.text}
               </RNText>
             );
+          case "mathInline":
+            return <MathBlock key={key} code={seg.text} inline />;
           default:
             return null;
         }
@@ -603,6 +624,120 @@ function HorizontalRule() {
   );
 }
 
+// -- Mermaid and Math components ----------------------------------------------
+
+function MermaidBlock({ code }: { code: string }) {
+  const [height, setHeight] = useState(200);
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body { background: #1e1e2e; margin: 0; padding: 12px; font-family: sans-serif; }
+    .mermaid { background: transparent; }
+    svg { max-width: 100%; }
+  </style>
+</head>
+<body>
+  <div class="mermaid">${code.replace(/`/g, "\\`").replace(/<\/script>/g, "<\\/script>")}</div>
+  <script>
+    mermaid.initialize({
+      theme: 'dark',
+      startOnLoad: true,
+      themeVariables: { background: '#1e1e2e', primaryColor: '#00bbff' }
+    });
+    setTimeout(() => {
+      const h = document.body.scrollHeight;
+      window.ReactNativeWebView.postMessage(JSON.stringify({ height: h }));
+    }, 500);
+  </script>
+</body>
+</html>`;
+
+  return (
+    <View
+      style={{
+        marginVertical: 8,
+        borderRadius: 8,
+        overflow: "hidden",
+        backgroundColor: "#1e1e2e",
+      }}
+    >
+      <WebView
+        source={{ html }}
+        style={{ height, backgroundColor: "#1e1e2e" }}
+        scrollEnabled={false}
+        onMessage={(event) => {
+          try {
+            const data = JSON.parse(event.nativeEvent.data);
+            if (data.height) setHeight(Math.max(data.height, 100));
+          } catch {}
+        }}
+        originWhitelist={["*"]}
+        javaScriptEnabled
+      />
+    </View>
+  );
+}
+
+function MathBlock({ code, inline }: { code: string; inline?: boolean }) {
+  const [height, setHeight] = useState(inline ? 24 : 60);
+
+  const html = `<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16/dist/katex.min.js"></script>
+  <style>
+    body { background: transparent; margin: 0; padding: ${inline ? 0 : 8}px; font-size: 15px; color: #e4e4e7; }
+    .katex { color: #e4e4e7; }
+  </style>
+</head>
+<body>
+  <div id="math"></div>
+  <script defer>
+    document.addEventListener("DOMContentLoaded", function() {
+      try {
+        katex.render(${JSON.stringify(code)}, document.getElementById("math"), {
+          displayMode: ${!inline},
+          throwOnError: false,
+        });
+        setTimeout(() => {
+          window.ReactNativeWebView.postMessage(JSON.stringify({ height: document.body.scrollHeight }));
+        }, 100);
+      } catch(e) {
+        document.getElementById("math").innerText = ${JSON.stringify(code)};
+        window.ReactNativeWebView.postMessage(JSON.stringify({ height: document.body.scrollHeight }));
+      }
+    });
+  </script>
+</body>
+</html>`;
+
+  return (
+    <WebView
+      source={{ html }}
+      style={{
+        height,
+        backgroundColor: "transparent",
+        marginVertical: inline ? 0 : 4,
+      }}
+      scrollEnabled={false}
+      onMessage={(event) => {
+        try {
+          const data = JSON.parse(event.nativeEvent.data);
+          if (data.height) setHeight(Math.max(data.height, inline ? 20 : 40));
+        } catch {}
+      }}
+      originWhitelist={["*"]}
+      javaScriptEnabled
+    />
+  );
+}
+
 // -- Main component -----------------------------------------------------------
 
 function MarkdownRendererInner({ content }: MarkdownRendererProps) {
@@ -636,6 +771,9 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
               />
             );
           case "codeBlock":
+            if (block.language === "mermaid") {
+              return <MermaidBlock key={key} code={block.code} />;
+            }
             return (
               <CodeBlock
                 key={key}
@@ -651,6 +789,8 @@ function MarkdownRendererInner({ content }: MarkdownRendererProps) {
             return <ListBlock key={key} ordered={true} items={block.items} />;
           case "hr":
             return <HorizontalRule key={key} />;
+          case "mathBlock":
+            return <MathBlock key={key} code={block.code} />;
           default:
             return null;
         }

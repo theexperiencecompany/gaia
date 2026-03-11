@@ -17,6 +17,7 @@ import {
   PlusSignIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { AI_MODELS } from "@/features/chat/data/models";
 import { ConnectDrawerTrigger } from "@/features/integrations";
 import { useResponsive } from "@/lib/responsive";
 import { cn } from "@/lib/utils";
@@ -28,6 +29,10 @@ import {
   SlashCommandSheet,
   type SlashCommandSheetRef,
 } from "./slash-command-sheet";
+import {
+  ModelPickerSheet,
+  type ModelPickerSheetRef,
+} from "./model-picker-sheet";
 import {
   WorkflowPickerSheet,
   type WorkflowPickerSheetRef,
@@ -47,6 +52,11 @@ interface SelectedToolData {
 }
 
 interface SelectedWorkflowData {
+  id: string;
+  title: string;
+}
+
+interface SelectedCalendarEventData {
   id: string;
   title: string;
 }
@@ -73,6 +83,10 @@ interface ComposerProps {
   onWorkflowSelected?: (workflow: { id: string; title: string }) => void;
   replyTo?: ReplyToData | null;
   onRemoveReply?: () => void;
+  selectedCalendarEvent?: SelectedCalendarEventData | null;
+  onRemoveCalendarEvent?: () => void;
+  currentModelId?: string;
+  onModelChange?: (modelId: string) => void;
 }
 
 function truncateContent(content: string, maxLength = 60): string {
@@ -96,20 +110,34 @@ export function Composer({
   onWorkflowSelected,
   replyTo,
   onRemoveReply,
+  selectedCalendarEvent,
+  onRemoveCalendarEvent,
+  currentModelId,
+  onModelChange,
 }: ComposerProps) {
   const [internalMessage, setInternalMessage] = useState("");
   const [attachments, setAttachments] = useState<AttachmentFile[]>([]);
   const inputRef = useRef<TextInput>(null);
   const slashCommandRef = useRef<SlashCommandSheetRef>(null);
   const workflowPickerRef = useRef<WorkflowPickerSheetRef>(null);
+  const modelPickerRef = useRef<ModelPickerSheetRef>(null);
   const attachmentSheetRef = useRef<AttachmentSheetRef>(null);
+
+  const currentModelName = currentModelId
+    ? (AI_MODELS.find((m) => m.id === currentModelId)?.name ??
+      currentModelId.slice(0, 8))
+    : (AI_MODELS.find((m) => m.isDefault)?.name ?? "GPT-4o");
   const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
 
   const message = value ?? internalMessage;
   const setMessage = onChangeText ?? setInternalMessage;
   const trimmed = message.trim();
   const hasContent =
-    !!trimmed || !!selectedTool || !!selectedWorkflow || attachments.length > 0;
+    !!trimmed ||
+    !!selectedTool ||
+    !!selectedWorkflow ||
+    !!selectedCalendarEvent ||
+    attachments.length > 0;
 
   // Slash command detection for built-in commands
   const isCommandMode = trimmed.startsWith("/");
@@ -251,7 +279,11 @@ export function Composer({
   }, []);
 
   const hasIndicators =
-    !!selectedTool || !!selectedWorkflow || !!replyTo || attachments.length > 0;
+    !!selectedTool ||
+    !!selectedWorkflow ||
+    !!selectedCalendarEvent ||
+    !!replyTo ||
+    attachments.length > 0;
 
   return (
     <View style={{ width: "100%" }}>
@@ -376,8 +408,8 @@ export function Composer({
           </Animated.View>
         )}
 
-        {/* Selected tool / workflow indicators */}
-        {(selectedTool || selectedWorkflow) && (
+        {/* Selected tool / workflow / calendar indicators */}
+        {(selectedTool || selectedWorkflow || selectedCalendarEvent) && (
           <View
             style={{
               paddingHorizontal: spacing.sm + 2,
@@ -396,6 +428,13 @@ export function Composer({
                 label={selectedWorkflow.title}
                 variant="workflow"
                 onRemove={onRemoveWorkflow}
+              />
+            )}
+            {selectedCalendarEvent && onRemoveCalendarEvent && (
+              <SelectedIndicator
+                label={selectedCalendarEvent.title}
+                variant="calendar"
+                onRemove={onRemoveCalendarEvent}
               />
             )}
           </View>
@@ -465,6 +504,26 @@ export function Composer({
             </Button>
 
             <ConnectDrawerTrigger onOpen={dismissKeyboard} />
+
+            <Pressable
+              onPress={() => modelPickerRef.current?.open()}
+              style={{
+                paddingHorizontal: spacing.sm,
+                paddingVertical: 4,
+                borderRadius: 8,
+                backgroundColor: "rgba(63,63,70,0.5)",
+                maxWidth: 80,
+              }}
+            >
+              <Text
+                style={{ fontSize: fontSize.xs, color: "#a1a1aa" }}
+                numberOfLines={1}
+              >
+                {currentModelName.length > 8
+                  ? `${currentModelName.slice(0, 8)}…`
+                  : currentModelName}
+              </Text>
+            </Pressable>
           </View>
 
           {/* Right side: send / stop button */}
@@ -513,6 +572,13 @@ export function Composer({
       <WorkflowPickerSheet
         ref={workflowPickerRef}
         onSelectWorkflow={handleWorkflowSelected}
+      />
+
+      {/* Model picker bottom sheet */}
+      <ModelPickerSheet
+        ref={modelPickerRef}
+        currentModelId={currentModelId}
+        onSelectModel={onModelChange ?? (() => {})}
       />
 
       {/* Attachment picker bottom sheet */}

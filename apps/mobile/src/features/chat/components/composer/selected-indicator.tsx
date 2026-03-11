@@ -5,6 +5,7 @@ import Animated, {
   LinearTransition,
 } from "react-native-reanimated";
 import {
+  Calendar03Icon,
   Cancel01Icon,
   AppIcon,
   WorkflowSquare10Icon,
@@ -25,7 +26,7 @@ function formatToolName(name: string): string {
 
 interface SelectedIndicatorProps {
   label: string;
-  variant: "tool" | "workflow";
+  variant: "tool" | "workflow" | "calendar";
   onRemove: () => void;
 }
 
@@ -36,7 +37,12 @@ export function SelectedIndicator({
 }: SelectedIndicatorProps) {
   const { spacing, fontSize, iconSize } = useResponsive();
 
-  const icon = variant === "workflow" ? WorkflowSquare10Icon : Wrench01Icon;
+  const icon =
+    variant === "workflow"
+      ? WorkflowSquare10Icon
+      : variant === "calendar"
+        ? Calendar03Icon
+        : Wrench01Icon;
   const displayLabel = variant === "tool" ? formatToolName(label) : label;
 
   return (

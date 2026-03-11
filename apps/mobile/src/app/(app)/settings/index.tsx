@@ -4,7 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  Image,
   Linking,
+  Modal,
   Pressable,
   ScrollView,
   Switch,
@@ -13,11 +15,14 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import {
+  Add01Icon,
   AppIcon,
   ArrowLeft01Icon,
   ArrowRight01Icon,
+  BrainIcon,
   ChartLineData02Icon,
   CreditCardIcon,
+  Delete02Icon,
   DiscordIcon,
   DocumentAttachmentIcon,
   GlobeIcon,
@@ -25,6 +30,7 @@ import {
   Logout01Icon,
   Mail01Icon,
   Notification01Icon,
+  Search01Icon,
   ShieldUserIcon,
   TelegramIcon,
   TranslationIcon,
@@ -38,7 +44,9 @@ import type {
   UsageSummary,
 } from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
+import { apiService } from "@/lib/api";
 import { useResponsive } from "@/lib/responsive";
+import { Swipeable } from "react-native-gesture-handler";
 
 // ─── Color tokens ─────────────────────────────────────────────────────────────
 const C = {
@@ -1236,6 +1244,448 @@ function AboutSection() {
   );
 }
 
+// ─── Linked Accounts section ──────────────────────────────────────────────────
+
+interface LinkedPlatform {
+  id: string;
+  name: string;
+  description: string;
+  icon: string;
+  authType: "bot_link" | "oauth";
+  botUrl?: string;
+}
+
+const LINKED_PLATFORMS: LinkedPlatform[] = [
+  {
+    id: "telegram",
+    name: "Telegram",
+    description: "Receive notifications via Telegram bot",
+    icon: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/83/Telegram_2019_Logo.svg/120px-Telegram_2019_Logo.svg.png",
+    authType: "bot_link",
+    botUrl: "https://t.me/gaia_assistant_bot",
+  },
+  {
+    id: "discord",
+    name: "Discord",
+    description: "Receive notifications via Discord bot",
+    icon: "https://assets-global.slack.com/marketing-api/assets/img/icons/icon_app_home.png",
+    authType: "oauth",
+  },
+  {
+    id: "slack",
+    name: "Slack",
+    description: "Receive notifications via Slack",
+    icon: "https://a.slack-edge.com/80588/marketing/img/meta/slack_hash_128.png",
+    authType: "oauth",
+  },
+];
+
+function LinkedAccountsSection() {
+  const { spacing, fontSize } = useResponsive();
+  const [linkedPlatforms, setLinkedPlatforms] = useState<
+    Record<string, boolean>
+  >({});
+
+  const handleConnect = useCallback(async (platform: LinkedPlatform) => {
+    if (platform.authType === "bot_link" && platform.botUrl) {
+      try {
+        await Linking.openURL(platform.botUrl);
+      } catch {
+        Alert.alert("Error", "Could not open link.");
+      }
+      return;
+    }
+    // OAuth flow — placeholder for future implementation
+    Alert.alert(
+      "Connect",
+      `OAuth connection for ${platform.name} will be available soon.`,
+    );
+  }, []);
+
+  const handleDisconnect = useCallback((platformId: string) => {
+    setLinkedPlatforms((prev) => ({ ...prev, [platformId]: false }));
+  }, []);
+
+  return (
+    <SettingsSection
+      title="Linked Accounts"
+      description="Connect your accounts to receive notifications and enable automations."
+    >
+      {LINKED_PLATFORMS.map((platform, index) => {
+        const isLinked = linkedPlatforms[platform.id] ?? false;
+        return (
+          <View key={platform.id}>
+            {index > 0 && <RowDivider />}
+            <SettingsRow
+              label={platform.name}
+              description={platform.description}
+              icon={
+                <Image
+                  source={{ uri: platform.icon }}
+                  style={{ width: 20, height: 20 }}
+                  resizeMode="contain"
+                />
+              }
+            >
+              <Pressable
+                onPress={() =>
+                  isLinked
+                    ? handleDisconnect(platform.id)
+                    : void handleConnect(platform)
+                }
+                style={{
+                  paddingHorizontal: 12,
+                  paddingVertical: 5,
+                  borderRadius: 8,
+                  backgroundColor: isLinked
+                    ? C.dangerBg
+                    : C.primaryBg,
+                  borderWidth: 1,
+                  borderColor: isLinked
+                    ? "rgba(239,68,68,0.3)"
+                    : C.primaryBorder,
+                }}
+              >
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    fontWeight: "600",
+                    color: isLinked ? C.danger : C.primary,
+                  }}
+                >
+                  {isLinked ? "Disconnect" : "Connect"}
+                </Text>
+              </Pressable>
+            </SettingsRow>
+          </View>
+        );
+      })}
+    </SettingsSection>
+  );
+}
+
+// ─── Memory section ───────────────────────────────────────────────────────────
+
+interface Memory {
+  id: string;
+  content: string;
+  created_at: string;
+}
+
+interface MemoriesResponse {
+  memories: Memory[];
+}
+
+function MemorySection() {
+  const { spacing, fontSize } = useResponsive();
+  const [memories, setMemories] = useState<Memory[]>([]);
+  const [search, setSearch] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newMemoryText, setNewMemoryText] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const swipeableRefs = useRef<Map<string, Swipeable | null>>(new Map());
+
+  const loadMemories = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const response =
+        await apiService.get<MemoriesResponse>("/memories");
+      setMemories(response.memories ?? []);
+    } catch {
+      // silently fail — memories may not be available in all environments
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadMemories();
+  }, [loadMemories]);
+
+  const filteredMemories = memories.filter((m) =>
+    m.content.toLowerCase().includes(search.toLowerCase()),
+  );
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      setMemories((prev) => prev.filter((m) => m.id !== id));
+      try {
+        await apiService.delete(`/memories/${id}`);
+      } catch {
+        void loadMemories();
+      }
+    },
+    [loadMemories],
+  );
+
+  const handleAdd = useCallback(async () => {
+    const trimmed = newMemoryText.trim();
+    if (!trimmed) return;
+    setIsSaving(true);
+    try {
+      await apiService.post("/memories", { content: trimmed });
+      setNewMemoryText("");
+      setShowAddModal(false);
+      await loadMemories();
+    } catch {
+      Alert.alert("Error", "Failed to save memory. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [newMemoryText, loadMemories]);
+
+  const renderRightActions = useCallback(
+    (memoryId: string) => (
+      <Pressable
+        onPress={() => {
+          swipeableRefs.current.get(memoryId)?.close();
+          void handleDelete(memoryId);
+        }}
+        style={{
+          backgroundColor: C.danger,
+          justifyContent: "center",
+          alignItems: "center",
+          paddingHorizontal: spacing.lg,
+          borderRadius: 12,
+          marginLeft: spacing.xs,
+          marginBottom: spacing.sm,
+        }}
+      >
+        <AppIcon icon={Delete02Icon} size={20} color="#fff" />
+      </Pressable>
+    ),
+    [handleDelete, spacing],
+  );
+
+  return (
+    <>
+      <SettingsSection title="Memory">
+        {/* Search bar */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+            gap: spacing.sm,
+            borderBottomWidth: 1,
+            borderBottomColor: C.divider,
+          }}
+        >
+          <AppIcon icon={Search01Icon} size={15} color={C.textMuted} />
+          <TextInput
+            value={search}
+            onChangeText={setSearch}
+            placeholder="Search memories..."
+            placeholderTextColor="#52525b"
+            style={{ flex: 1, color: C.text, fontSize: fontSize.sm }}
+          />
+        </View>
+
+        {isLoading ? (
+          <View
+            style={{ alignItems: "center", paddingVertical: spacing.lg }}
+          >
+            <ActivityIndicator color={C.primary} />
+          </View>
+        ) : filteredMemories.length === 0 ? (
+          <View
+            style={{
+              alignItems: "center",
+              paddingVertical: spacing.lg,
+              gap: spacing.sm,
+            }}
+          >
+            <AppIcon icon={BrainIcon} size={28} color={C.textSubtle} />
+            <Text style={{ color: C.textMuted, fontSize: fontSize.sm }}>
+              {search
+                ? `No memories matching "${search}"`
+                : "No memories yet"}
+            </Text>
+          </View>
+        ) : (
+          <View style={{ paddingHorizontal: spacing.sm, paddingTop: spacing.xs }}>
+            {filteredMemories.map((item, index) => (
+              <View key={item.id}>
+                {index > 0 && <RowDivider />}
+                <Swipeable
+                  ref={(r) => {
+                    swipeableRefs.current.set(item.id, r);
+                  }}
+                  renderRightActions={() => renderRightActions(item.id)}
+                  overshootRight={false}
+                >
+                  <View
+                    style={{
+                      paddingHorizontal: spacing.sm,
+                      paddingVertical: spacing.sm + 2,
+                    }}
+                  >
+                    <Text
+                      style={{
+                        fontSize: fontSize.sm,
+                        color: C.text,
+                        lineHeight: 20,
+                      }}
+                    >
+                      {item.content}
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: fontSize.xs,
+                        color: C.textMuted,
+                        marginTop: 3,
+                      }}
+                    >
+                      {new Date(item.created_at).toLocaleDateString()}
+                    </Text>
+                  </View>
+                </Swipeable>
+              </View>
+            ))}
+          </View>
+        )}
+      </SettingsSection>
+
+      {/* Add button */}
+      <Pressable
+        onPress={() => setShowAddModal(true)}
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: spacing.sm,
+          padding: spacing.md,
+          borderRadius: 12,
+          borderWidth: 1,
+          borderStyle: "dashed",
+          borderColor: C.primaryBorder,
+          backgroundColor: "rgba(0,187,255,0.04)",
+        }}
+      >
+        <AppIcon icon={Add01Icon} size={16} color={C.primary} />
+        <Text
+          style={{
+            color: C.primary,
+            fontSize: fontSize.sm,
+            fontWeight: "500",
+          }}
+        >
+          Add Memory
+        </Text>
+      </Pressable>
+
+      {/* Add memory modal */}
+      <Modal
+        visible={showAddModal}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setShowAddModal(false)}
+      >
+        <Pressable
+          onPress={() => setShowAddModal(false)}
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: spacing.lg,
+          }}
+        >
+          <Pressable
+            onPress={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: "#1c1c1e",
+              borderRadius: 16,
+              padding: spacing.lg,
+              width: "100%",
+              gap: spacing.md,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: fontSize.base,
+                fontWeight: "600",
+                color: C.text,
+              }}
+            >
+              Add Memory
+            </Text>
+
+            <TextInput
+              value={newMemoryText}
+              onChangeText={setNewMemoryText}
+              placeholder="What should GAIA remember?"
+              placeholderTextColor="#52525b"
+              multiline
+              numberOfLines={4}
+              autoFocus
+              style={{
+                backgroundColor: "#2c2c2e",
+                borderRadius: 10,
+                padding: spacing.md,
+                color: C.text,
+                fontSize: fontSize.sm,
+                minHeight: 100,
+                textAlignVertical: "top",
+              }}
+            />
+
+            <View style={{ flexDirection: "row", gap: spacing.sm }}>
+              <Pressable
+                onPress={() => {
+                  setShowAddModal(false);
+                  setNewMemoryText("");
+                }}
+                style={{
+                  flex: 1,
+                  padding: spacing.md,
+                  borderRadius: 10,
+                  backgroundColor: "rgba(255,255,255,0.06)",
+                  alignItems: "center",
+                }}
+              >
+                <Text
+                  style={{ color: C.textMuted, fontSize: fontSize.sm }}
+                >
+                  Cancel
+                </Text>
+              </Pressable>
+              <Pressable
+                onPress={() => void handleAdd()}
+                disabled={isSaving || !newMemoryText.trim()}
+                style={{
+                  flex: 1,
+                  padding: spacing.md,
+                  borderRadius: 10,
+                  backgroundColor: C.primary,
+                  alignItems: "center",
+                  opacity: isSaving || !newMemoryText.trim() ? 0.5 : 1,
+                }}
+              >
+                {isSaving ? (
+                  <ActivityIndicator size="small" color="#000" />
+                ) : (
+                  <Text
+                    style={{
+                      color: "#000",
+                      fontSize: fontSize.sm,
+                      fontWeight: "600",
+                    }}
+                  >
+                    Save
+                  </Text>
+                )}
+              </Pressable>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+    </>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function SettingsScreen() {
@@ -1328,6 +1778,12 @@ export default function SettingsScreen() {
 
           {/* Notifications — push, telegram, discord */}
           <NotificationsSection />
+
+          {/* Linked Accounts — telegram, discord, slack */}
+          <LinkedAccountsSection />
+
+          {/* Memory — view, search, add and delete memories */}
+          <MemorySection />
 
           {/* Usage — subscription info + API usage stats */}
           <UsageSection />

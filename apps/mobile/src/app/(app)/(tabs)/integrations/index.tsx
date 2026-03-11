@@ -1,7 +1,7 @@
 import { Image } from "expo-image";
 import { Button, Card } from "heroui-native";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, TextInput, View } from "react-native";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, ScrollView, TextInput, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppIcon, Search01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -11,6 +11,10 @@ import {
   disconnectIntegration,
   fetchIntegrationsConfig,
 } from "@/features/integrations";
+import {
+  IntegrationDetailSheet,
+  type IntegrationDetailSheetRef,
+} from "@/features/integrations/components/integration-detail-sheet";
 import { useResponsive } from "@/lib/responsive";
 
 export default function IntegrationsPage() {
@@ -20,6 +24,7 @@ export default function IntegrationsPage() {
   const [integrations, setIntegrations] = useState<IntegrationWithStatus[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const detailSheetRef = useRef<IntegrationDetailSheetRef>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -47,18 +52,42 @@ export default function IntegrationsPage() {
     [filtered],
   );
 
-  const handleToggle = async (integration: IntegrationWithStatus) => {
-    if (busyId) return;
+  const handleToggle = useCallback(
+    async (integration: IntegrationWithStatus) => {
+      if (busyId) return;
+      setBusyId(integration.id);
+      if (integration.connected) {
+        await disconnectIntegration(integration.id);
+      } else {
+        await connectIntegration(integration.id);
+      }
+      await load();
+      setBusyId(null);
+    },
+    [busyId, load],
+  );
 
-    setBusyId(integration.id);
-    if (integration.connected) {
-      await disconnectIntegration(integration.id);
-    } else {
-      await connectIntegration(integration.id);
-    }
-    await load();
-    setBusyId(null);
-  };
+  const handleDetailConnect = useCallback(
+    async (integrationId: string, _authType?: string, _token?: string) => {
+      if (busyId) return;
+      setBusyId(integrationId);
+      await connectIntegration(integrationId);
+      await load();
+      setBusyId(null);
+    },
+    [busyId, load],
+  );
+
+  const handleDetailDisconnect = useCallback(
+    async (integrationId: string) => {
+      if (busyId) return;
+      setBusyId(integrationId);
+      await disconnectIntegration(integrationId);
+      await load();
+      setBusyId(null);
+    },
+    [busyId, load],
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: "#0b0c0f" }}>
@@ -125,52 +154,68 @@ export default function IntegrationsPage() {
           {filtered.map((integration) => {
             const isBusy = integration.id === busyId;
             return (
-              <Card key={integration.id} className="rounded-xl bg-[#17191f]">
-                <Card.Body className="px-3 py-3">
-                  <View className="flex-row items-center gap-3">
-                    <Image
-                      source={{ uri: integration.logo }}
-                      style={{ width: 30, height: 30 }}
-                      contentFit="contain"
-                    />
-                    <View className="flex-1">
-                      <Text className="text-sm font-medium">
-                        {integration.name}
-                      </Text>
-                      <Text className="text-xs text-muted" numberOfLines={2}>
-                        {integration.description}
-                      </Text>
-                    </View>
-                    <Button
-                      size="sm"
-                      variant="tertiary"
-                      className={
-                        integration.connected ? "bg-success/15" : "bg-white/10"
-                      }
-                      isDisabled={isBusy}
-                      onPress={() => {
-                        void handleToggle(integration);
-                      }}
-                    >
-                      <Button.Label
+              <Pressable
+                key={integration.id}
+                onPress={() => detailSheetRef.current?.open(integration)}
+                style={{ opacity: isBusy ? 0.7 : 1 }}
+              >
+                <Card className="rounded-xl bg-[#17191f]">
+                  <Card.Body className="px-3 py-3">
+                    <View className="flex-row items-center gap-3">
+                      <Image
+                        source={{ uri: integration.logo }}
+                        style={{ width: 30, height: 30 }}
+                        contentFit="contain"
+                      />
+                      <View className="flex-1">
+                        <Text className="text-sm font-medium">
+                          {integration.name}
+                        </Text>
+                        <Text className="text-xs text-muted" numberOfLines={2}>
+                          {integration.description}
+                        </Text>
+                      </View>
+                      <Button
+                        size="sm"
+                        variant="tertiary"
                         className={
-                          integration.connected ? "text-success" : "text-muted"
+                          integration.connected ? "bg-success/15" : "bg-white/10"
                         }
+                        isDisabled={isBusy}
+                        onPress={() => {
+                          void handleToggle(integration);
+                        }}
                       >
-                        {isBusy
-                          ? "Working..."
-                          : integration.connected
-                            ? "Connected"
-                            : "Connect"}
-                      </Button.Label>
-                    </Button>
-                  </View>
-                </Card.Body>
-              </Card>
+                        <Button.Label
+                          className={
+                            integration.connected ? "text-success" : "text-muted"
+                          }
+                        >
+                          {isBusy
+                            ? "Working..."
+                            : integration.connected
+                              ? "Connected"
+                              : "Connect"}
+                        </Button.Label>
+                      </Button>
+                    </View>
+                  </Card.Body>
+                </Card>
+              </Pressable>
             );
           })}
         </ScrollView>
       )}
+
+      <IntegrationDetailSheet
+        ref={detailSheetRef}
+        onConnect={(id, authType, token) => {
+          void handleDetailConnect(id, authType, token);
+        }}
+        onDisconnect={(id) => {
+          void handleDetailDisconnect(id);
+        }}
+      />
     </View>
   );
 }

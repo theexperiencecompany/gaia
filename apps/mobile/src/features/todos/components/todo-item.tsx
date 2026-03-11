@@ -22,6 +22,10 @@ interface TodoItemProps {
   onToggleComplete: (todo: Todo) => void;
   onPress?: (todo: Todo) => void;
   onDelete?: (todoId: string) => void;
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onSelect?: (id: string) => void;
+  onLongPress?: (todo: Todo) => void;
 }
 
 const PRIORITY_COLORS: Record<Priority, string> = {
@@ -71,6 +75,10 @@ export function TodoItem({
   onToggleComplete,
   onPress,
   onDelete,
+  selectionMode = false,
+  isSelected = false,
+  onSelect,
+  onLongPress,
 }: TodoItemProps) {
   const { spacing, fontSize } = useResponsive();
 
@@ -103,8 +111,17 @@ export function TodoItem({
   }, [onToggleComplete, todo]);
 
   const handlePress = useCallback(() => {
-    onPress?.(todo);
-  }, [onPress, todo]);
+    if (selectionMode) {
+      onSelect?.(todo.id);
+    } else {
+      onPress?.(todo);
+    }
+  }, [selectionMode, onSelect, onPress, todo]);
+
+  const handleLongPress = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    onLongPress?.(todo);
+  }, [onLongPress, todo]);
 
   const handleDeletePress = useCallback(() => {
     Alert.alert(
@@ -131,7 +148,7 @@ export function TodoItem({
   return (
     <Pressable
       onPress={handlePress}
-      onLongPress={onDelete ? handleDeletePress : undefined}
+      onLongPress={selectionMode ? undefined : (onLongPress ? handleLongPress : onDelete ? handleDeletePress : undefined)}
       style={{
         flexDirection: "row",
         alignItems: "flex-start",
@@ -140,33 +157,63 @@ export function TodoItem({
         borderBottomWidth: 1,
         borderBottomColor: "rgba(255,255,255,0.04)",
         opacity: todo.completed ? 0.4 : 1,
+        backgroundColor: isSelected
+          ? "rgba(22,193,255,0.08)"
+          : "transparent",
       }}
     >
-      {/* Checkbox */}
-      <Pressable
-        onPress={handleToggle}
-        hitSlop={12}
-        style={{
-          width: 22,
-          height: 22,
-          borderRadius: 11,
-          borderWidth: todo.completed ? 0 : 1.5,
-          borderColor: priorityColor,
-          borderStyle: todo.completed ? "solid" : "dashed",
-          backgroundColor: todo.completed
-            ? "rgba(63,63,70,0.8)"
-            : "transparent",
-          alignItems: "center",
-          justifyContent: "center",
-          marginTop: 2,
-          marginRight: spacing.sm + 4,
-          flexShrink: 0,
-        }}
-      >
-        {todo.completed && (
-          <AppIcon icon={Tick02Icon} size={13} color="#71717a" />
-        )}
-      </Pressable>
+      {/* Selection checkbox (shown in selection mode) */}
+      {selectionMode && (
+        <Pressable
+          onPress={() => onSelect?.(todo.id)}
+          hitSlop={12}
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            borderWidth: 2,
+            borderColor: isSelected ? "#16c1ff" : "#52525b",
+            backgroundColor: isSelected ? "#16c1ff" : "transparent",
+            alignItems: "center",
+            justifyContent: "center",
+            marginTop: 2,
+            marginRight: spacing.sm + 4,
+            flexShrink: 0,
+          }}
+        >
+          {isSelected && (
+            <AppIcon icon={Tick02Icon} size={13} color="#000" />
+          )}
+        </Pressable>
+      )}
+
+      {/* Completion checkbox (hidden in selection mode) */}
+      {!selectionMode && (
+        <Pressable
+          onPress={handleToggle}
+          hitSlop={12}
+          style={{
+            width: 22,
+            height: 22,
+            borderRadius: 11,
+            borderWidth: todo.completed ? 0 : 1.5,
+            borderColor: priorityColor,
+            borderStyle: todo.completed ? "solid" : "dashed",
+            backgroundColor: todo.completed
+              ? "rgba(63,63,70,0.8)"
+              : "transparent",
+            alignItems: "center",
+            justifyContent: "center",
+            marginTop: 2,
+            marginRight: spacing.sm + 4,
+            flexShrink: 0,
+          }}
+        >
+          {todo.completed && (
+            <AppIcon icon={Tick02Icon} size={13} color="#71717a" />
+          )}
+        </Pressable>
+      )}
 
       {/* Content */}
       <View style={{ flex: 1, minWidth: 0 }}>
@@ -367,37 +414,39 @@ export function TodoItem({
       </View>
 
       {/* Trailing area */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.sm,
-          marginLeft: spacing.sm,
-          alignSelf: "center",
-        }}
-      >
-        {onDelete && (
-          <Pressable
-            onPress={handleDeletePress}
-            hitSlop={8}
-            style={{
-              width: 28,
-              height: 28,
-              borderRadius: 8,
-              alignItems: "center",
-              justifyContent: "center",
-              backgroundColor: "rgba(239,68,68,0.08)",
-            }}
-          >
-            <AppIcon icon={Delete02Icon} size={14} color="#ef4444" />
-          </Pressable>
-        )}
-        <AppIcon
-          icon={ArrowRight01Icon}
-          size={16}
-          color="rgba(255,255,255,0.18)"
-        />
-      </View>
+      {!selectionMode && (
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: spacing.sm,
+            marginLeft: spacing.sm,
+            alignSelf: "center",
+          }}
+        >
+          {onDelete && (
+            <Pressable
+              onPress={handleDeletePress}
+              hitSlop={8}
+              style={{
+                width: 28,
+                height: 28,
+                borderRadius: 8,
+                alignItems: "center",
+                justifyContent: "center",
+                backgroundColor: "rgba(239,68,68,0.08)",
+              }}
+            >
+              <AppIcon icon={Delete02Icon} size={14} color="#ef4444" />
+            </Pressable>
+          )}
+          <AppIcon
+            icon={ArrowRight01Icon}
+            size={16}
+            color="rgba(255,255,255,0.18)"
+          />
+        </View>
+      )}
     </Pressable>
   );
 }

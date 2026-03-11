@@ -5,11 +5,23 @@ export enum Priority {
   NONE = "none",
 }
 
+export interface Subtask {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
 export interface SubTask {
   id: string;
   title: string;
   completed: boolean;
   created_at: string;
+}
+
+export interface TodoProject {
+  id: string;
+  name: string;
+  color?: string;
 }
 
 export interface Todo {

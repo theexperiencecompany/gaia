@@ -1,6 +1,6 @@
 import * as Haptics from "expo-haptics";
 import { Avatar } from "heroui-native";
-import { useCallback, useMemo } from "react";
+import { useCallback, useMemo, useRef } from "react";
 import { Pressable, ScrollView, View } from "react-native";
 import { AppIcon, Brain02Icon } from "@/components/icons";
 import { MessageBubble } from "@/components/ui/message-bubble";
@@ -11,10 +11,24 @@ import { ToolDataRenderer } from "../../tool-data";
 import type { Message } from "../../types";
 import { splitMessageByBreaks } from "../../utils/messageBreakUtils";
 import { parseThinkingFromText } from "../../utils/thinkingParser";
+import {
+  MemoryBottomSheet,
+  type MemoryBottomSheetRef,
+} from "../memory/memory-bottom-sheet";
 import { ImageBubble } from "./image-bubble";
 import { LoadingIndicator } from "./loading-indicator";
 import { MessageReplyQuote } from "./message-reply-quote";
 import { ThinkingBubble } from "./thinking-bubble";
+
+const EMOJI_ONLY_REGEX =
+  /^[\u{1F000}-\u{1FFFF}\u{2600}-\u{27BF}\u{2300}-\u{23FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FEFF}\s]+$/u;
+
+function getEmojiInfo(text: string): { isEmojiOnly: boolean; count: number } {
+  const trimmed = text.trim();
+  if (!EMOJI_ONLY_REGEX.test(trimmed)) return { isEmojiOnly: false, count: 0 };
+  const chars = [...trimmed.replace(/\s/g, "")];
+  return { isEmojiOnly: true, count: chars.length };
+}
 
 // -- Follow-up actions --------------------------------------------------------
 
@@ -211,6 +225,7 @@ export function ChatMessage({
   const isUser = message.isUser;
   const { spacing, width, moderateScale } = useResponsive();
   const { user } = useAuth();
+  const memorySheetRef = useRef<MemoryBottomSheetRef>(null);
 
   const avatarSize = moderateScale(24, 0.5);
 
@@ -267,23 +282,43 @@ export function ChatMessage({
               isUserMessage={true}
             />
           )}
-          {messageParts.map((part, index) => (
-            <MessageBubble
-              key={`${message.id}-${index}`}
-              message={part}
-              variant="sent"
-              showAvatar={false}
-              grouped={
-                messageParts.length === 1
-                  ? "none"
-                  : index === 0
-                    ? "first"
-                    : index === messageParts.length - 1
-                      ? "last"
-                      : "middle"
+          {messageParts.map((part, index) => {
+            const { isEmojiOnly, count } = getEmojiInfo(part);
+            if (isEmojiOnly && messageParts.length === 1) {
+              const emojiSize =
+                count === 1 ? 52 : count === 2 ? 40 : count === 3 ? 32 : null;
+              if (emojiSize) {
+                return (
+                  <Text
+                    key={`${message.id}-${index}`}
+                    style={{
+                      fontSize: emojiSize,
+                      lineHeight: emojiSize + 8,
+                    }}
+                  >
+                    {part}
+                  </Text>
+                );
               }
-            />
-          ))}
+            }
+            return (
+              <MessageBubble
+                key={`${message.id}-${index}`}
+                message={part}
+                variant="sent"
+                showAvatar={false}
+                grouped={
+                  messageParts.length === 1
+                    ? "none"
+                    : index === 0
+                      ? "first"
+                      : index === messageParts.length - 1
+                        ? "last"
+                        : "middle"
+                }
+              />
+            );
+          })}
         </View>
 
         <UserAvatar
@@ -364,7 +399,17 @@ export function ChatMessage({
 
       {/* Memory indicator pill – shown below the AI message when memory was updated */}
       {message.memoryData ? (
-        <MemoryIndicator memoryData={message.memoryData as MemoryDataShape} />
+        <Pressable
+          onPress={() =>
+            memorySheetRef.current?.open(
+              message.memoryData as MemoryDataShape,
+            )
+          }
+        >
+          <MemoryIndicator
+            memoryData={message.memoryData as MemoryDataShape}
+          />
+        </Pressable>
       ) : null}
 
       {/* Follow-up action chips */}
@@ -374,6 +419,8 @@ export function ChatMessage({
           onActionPress={onFollowUpAction}
         />
       ) : null}
+
+      <MemoryBottomSheet ref={memorySheetRef} />
     </Pressable>
   );
 }
