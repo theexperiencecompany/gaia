@@ -21,7 +21,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppIcon, Cancel01Icon, Share01Icon } from "@/components/icons";
+import { Cancel01Icon, HugeiconsIcon, Share01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -98,11 +98,22 @@ export function ImageViewerModal({
       if (savedScale.value > 1) {
         translateX.value = savedTranslateX.value + e.translationX;
         translateY.value = savedTranslateY.value + e.translationY;
+      } else {
+        // Pan to dismiss when not zoomed
+        translateY.value = e.translationY;
       }
     })
-    .onEnd(() => {
-      savedTranslateX.value = translateX.value;
-      savedTranslateY.value = translateY.value;
+    .onEnd((e) => {
+      if (savedScale.value <= 1) {
+        if (Math.abs(e.translationY) > 100) {
+          runOnJS(onClose)();
+        } else {
+          translateY.value = withTiming(0, { duration: 200 });
+        }
+      } else {
+        savedTranslateX.value = translateX.value;
+        savedTranslateY.value = translateY.value;
+      }
     });
 
   const doubleTapGesture = Gesture.Tap()
@@ -164,12 +175,7 @@ export function ImageViewerModal({
       onRequestClose={handleClose}
     >
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View
-          style={{
-            flex: 1,
-            backgroundColor: "rgba(0, 0, 0, 0.95)",
-          }}
-        >
+        <View style={{ flex: 1, backgroundColor: "rgba(0, 0, 0, 0.95)" }}>
           {/* Header */}
           <View
             style={{
@@ -191,7 +197,7 @@ export function ImageViewerModal({
                 backgroundColor: "rgba(255,255,255,0.1)",
               }}
             >
-              <AppIcon
+              <HugeiconsIcon
                 icon={Cancel01Icon}
                 size={moderateScale(20, 0.5)}
                 color="#ffffff"
@@ -207,7 +213,7 @@ export function ImageViewerModal({
                 backgroundColor: "rgba(255,255,255,0.1)",
               }}
             >
-              <AppIcon
+              <HugeiconsIcon
                 icon={Share01Icon}
                 size={moderateScale(20, 0.5)}
                 color="#ffffff"
@@ -217,11 +223,7 @@ export function ImageViewerModal({
 
           {/* Image area */}
           <View
-            style={{
-              flex: 1,
-              justifyContent: "center",
-              alignItems: "center",
-            }}
+            style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
           >
             <GestureDetector gesture={composedGesture}>
               <Animated.View style={animatedStyle}>
@@ -249,9 +251,7 @@ export function ImageViewerModal({
                 paddingHorizontal: spacing.md,
                 paddingBottom: insets.bottom + spacing.md,
               }}
-              contentContainerStyle={{
-                paddingBottom: spacing.md,
-              }}
+              contentContainerStyle={{ paddingBottom: spacing.md }}
               showsVerticalScrollIndicator={false}
             >
               {prompt ? (

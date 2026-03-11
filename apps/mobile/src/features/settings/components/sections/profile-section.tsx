@@ -1,19 +1,37 @@
+import { Image } from "expo-image";
 import * as ImagePicker from "expo-image-picker";
-import { Avatar, Button, Card, Spinner, TextField } from "heroui-native";
+import { useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
-import { Alert, ScrollView, View } from "react-native";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  ScrollView,
+  TextInput,
+  View,
+} from "react-native";
+import {
+  AppIcon,
+  ArrowRight01Icon,
+  UserCircle02Icon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
-import type { UserProfile } from "@/features/settings/api/settings-api";
+import type {
+  UserProfile,
+  UserStats,
+} from "@/features/settings/api/settings-api";
 import { settingsApi } from "@/features/settings/api/settings-api";
 import { useResponsive } from "@/lib/responsive";
 
 const C = {
   bg: "#1c1c1e",
+  surface: "#1a1c21",
   primary: "#00bbff",
   primaryBg: "rgba(0,187,255,0.15)",
   text: "#ffffff",
   textMuted: "#8e8e93",
   textSubtle: "#5a5a5e",
+  divider: "rgba(255,255,255,0.06)",
 };
 
 function getInitials(name?: string): string {
@@ -26,8 +44,10 @@ function getInitials(name?: string): string {
 }
 
 export function ProfileSection() {
+  const router = useRouter();
   const { spacing, fontSize } = useResponsive();
   const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [stats, setStats] = useState<UserStats | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
 
@@ -37,13 +57,13 @@ export function ProfileSection() {
   useEffect(() => {
     let cancelled = false;
     setIsLoading(true);
-    settingsApi
-      .getProfile()
-      .then((data) => {
+    Promise.all([settingsApi.getProfile(), settingsApi.getUserStats()])
+      .then(([profileData, statsData]) => {
         if (cancelled) return;
-        setProfile(data);
-        setDisplayName(data.name ?? "");
-        setBio(data.onboarding?.preferences?.custom_instructions ?? "");
+        setProfile(profileData);
+        setStats(statsData);
+        setDisplayName(profileData.name ?? "");
+        setBio(profileData.onboarding?.preferences?.custom_instructions ?? "");
       })
       .catch(() => {
         if (!cancelled) Alert.alert("Error", "Failed to load profile.");
@@ -110,7 +130,7 @@ export function ProfileSection() {
     }
   }, [displayName, profile?.name]);
 
-  const handleSaveBio = useCallback(async () => {
+  const _handleSaveBio = useCallback(async () => {
     const trimmed = bio.trim();
     const original =
       profile?.onboarding?.preferences?.custom_instructions ?? "";
@@ -145,10 +165,12 @@ export function ProfileSection() {
     }
   }, [displayName, bio, profile?.name]);
 
+  const avatarUri = profile?.picture ?? null;
+
   if (isLoading) {
     return (
       <View style={{ flex: 1, alignItems: "center", justifyContent: "center" }}>
-        <Spinner />
+        <ActivityIndicator color="#00bbff" />
       </View>
     );
   }
@@ -163,75 +185,236 @@ export function ProfileSection() {
         paddingBottom: 40,
       }}
     >
-      <Card variant="secondary" className="rounded-3xl bg-surface">
-        <Card.Body className="items-center gap-4 px-5 py-6">
-          <Avatar alt={profile?.name ?? "User"} size="lg" color="accent">
-            {profile?.picture ? (
-              <Avatar.Image source={{ uri: profile.picture }} />
-            ) : (
-              <Avatar.Fallback>{getInitials(profile?.name)}</Avatar.Fallback>
-            )}
-          </Avatar>
-          <Button
-            variant="tertiary"
-            onPress={() => {
-              void handlePickAvatar();
+      {/* Avatar + name hero */}
+      <View style={{ alignItems: "center", paddingVertical: spacing.md }}>
+        <Pressable
+          onPress={() => {
+            void handlePickAvatar();
+          }}
+          style={{ position: "relative" }}
+        >
+          <View
+            style={{
+              width: 80,
+              height: 80,
+              borderRadius: 40,
+              backgroundColor: C.primaryBg,
+              alignItems: "center",
+              justifyContent: "center",
+              overflow: "hidden",
             }}
-            isDisabled={isSaving}
-            className="bg-primary/10"
           >
-            <Button.Label className="text-primary">
-              {isSaving ? "Updating…" : "Change Photo"}
-            </Button.Label>
-          </Button>
-          <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
-            Tap to change photo
+            {avatarUri ? (
+              <Image
+                source={{ uri: avatarUri }}
+                style={{ width: 80, height: 80, borderRadius: 40 }}
+                contentFit="cover"
+              />
+            ) : (
+              <Text
+                style={{
+                  fontSize: fontSize["2xl"],
+                  fontWeight: "700",
+                  color: C.primary,
+                }}
+              >
+                {getInitials(profile?.name)}
+              </Text>
+            )}
+          </View>
+        </Pressable>
+
+        <Text
+          style={{
+            marginTop: spacing.sm,
+            fontSize: fontSize.lg,
+            fontWeight: "700",
+            color: C.text,
+          }}
+        >
+          {profile?.name ?? ""}
+        </Text>
+        <Text
+          style={{
+            marginTop: 2,
+            fontSize: fontSize.sm,
+            color: C.textMuted,
+          }}
+        >
+          {profile?.email ?? ""}
+        </Text>
+        <Text
+          style={{
+            marginTop: spacing.xs,
+            fontSize: fontSize.xs,
+            color: C.textSubtle,
+          }}
+        >
+          Tap photo to change
+        </Text>
+      </View>
+
+      {/* Stats row */}
+      {stats ? (
+        <View
+          style={{
+            backgroundColor: C.surface,
+            borderRadius: 16,
+            padding: spacing.md,
+            flexDirection: "row",
+            justifyContent: "space-around",
+            borderWidth: 1,
+            borderColor: C.divider,
+          }}
+        >
+          <View style={{ alignItems: "center" }}>
+            <Text
+              style={{
+                fontSize: fontSize["2xl"],
+                fontWeight: "700",
+                color: C.primary,
+              }}
+            >
+              {stats.conversation_count}
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+              Conversations
+            </Text>
+          </View>
+          <View style={{ width: 1, backgroundColor: C.divider }} />
+          <View style={{ alignItems: "center" }}>
+            <Text
+              style={{
+                fontSize: fontSize["2xl"],
+                fontWeight: "700",
+                color: C.primary,
+              }}
+            >
+              {stats.workflow_count}
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+              Workflows
+            </Text>
+          </View>
+          <View style={{ width: 1, backgroundColor: C.divider }} />
+          <View style={{ alignItems: "center" }}>
+            <Text
+              style={{
+                fontSize: fontSize["2xl"],
+                fontWeight: "700",
+                color: C.primary,
+              }}
+            >
+              {stats.integration_count}
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+              Integrations
+            </Text>
+          </View>
+        </View>
+      ) : null}
+
+      {/* View profile card CTA */}
+      <Pressable
+        onPress={() => router.push("/profile-card")}
+        style={{
+          backgroundColor: C.surface,
+          borderRadius: 14,
+          paddingHorizontal: spacing.md,
+          paddingVertical: spacing.md,
+          flexDirection: "row",
+          alignItems: "center",
+          gap: spacing.sm,
+          borderWidth: 1,
+          borderColor: "rgba(0,187,255,0.2)",
+        }}
+      >
+        <View
+          style={{
+            width: 34,
+            height: 34,
+            borderRadius: 9,
+            backgroundColor: C.primaryBg,
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <AppIcon icon={UserCircle02Icon} size={18} color={C.primary} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text
+            style={{
+              fontSize: fontSize.sm + 1,
+              color: C.text,
+              fontWeight: "500",
+            }}
+          >
+            View Profile Card
           </Text>
-        </Card.Body>
-      </Card>
+          <Text style={{ fontSize: fontSize.xs, color: C.textMuted }}>
+            Customize and share your GAIA card
+          </Text>
+        </View>
+        <AppIcon icon={ArrowRight01Icon} size={16} color={C.textMuted} />
+      </Pressable>
 
-      <Card variant="secondary" className="rounded-3xl bg-surface">
-        <Card.Body className="gap-4 px-5 py-5">
-          <TextField>
-            <TextField.Label>Display Name</TextField.Label>
-            <TextField.Input
-              value={displayName}
-              onChangeText={setDisplayName}
-              onBlur={() => {
-                void handleSaveDisplayName();
-              }}
-              placeholder="Your name"
-              autoCapitalize="words"
-              returnKeyType="done"
-            />
-          </TextField>
+      {/* Display name field */}
+      <View style={{ gap: spacing.xs }}>
+        <Text
+          style={{
+            fontSize: fontSize.xs,
+            color: C.textMuted,
+            textTransform: "uppercase",
+            letterSpacing: 1,
+          }}
+        >
+          Display Name
+        </Text>
+        <TextInput
+          value={displayName}
+          onChangeText={setDisplayName}
+          onBlur={() => {
+            void handleSaveDisplayName();
+          }}
+          style={{
+            backgroundColor: C.bg,
+            borderRadius: 12,
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.md,
+            fontSize: fontSize.base,
+            color: C.text,
+          }}
+          placeholderTextColor={C.textSubtle}
+          placeholder="Your name"
+          autoCapitalize="words"
+          returnKeyType="done"
+        />
+      </View>
 
-          <TextField>
-            <TextField.Label>Bio</TextField.Label>
-            <TextField.Input
-              value={bio}
-              onChangeText={setBio}
-              onBlur={() => {
-                void handleSaveBio();
-              }}
-              multiline
-              numberOfLines={4}
-              placeholder="Tell GAIA about yourself…"
-              style={{ minHeight: 100 }}
-            />
-          </TextField>
-        </Card.Body>
-      </Card>
-
-      <Button
+      {/* Save button */}
+      <Pressable
         onPress={() => {
           void handleSaveAll();
         }}
-        isDisabled={isSaving}
-        className="bg-primary"
+        disabled={isSaving}
+        style={{
+          backgroundColor: C.primary,
+          borderRadius: 14,
+          paddingVertical: spacing.md,
+          alignItems: "center",
+          justifyContent: "center",
+          flexDirection: "row",
+          gap: spacing.xs,
+          opacity: isSaving ? 0.7 : 1,
+        }}
       >
-        {isSaving ? <Spinner /> : <Button.Label>Save Profile</Button.Label>}
-      </Button>
+        {isSaving ? <ActivityIndicator size="small" color="#000" /> : null}
+        <Text
+          style={{ color: "#000", fontWeight: "700", fontSize: fontSize.sm }}
+        >
+          {isSaving ? "Saving..." : "Save Profile"}
+        </Text>
+      </Pressable>
     </ScrollView>
   );
 }

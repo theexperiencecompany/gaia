@@ -3,6 +3,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useEffect,
   useMemo,
 } from "react";
 import { useChatStore } from "@/stores/chat-store";
@@ -22,6 +23,10 @@ interface ChatProviderProps {
 
 export function ChatProvider({ children }: ChatProviderProps) {
   const activeChatId = useChatStore((state) => state.activeChatId);
+
+  useEffect(() => {
+    useChatStore.getState().hydrate();
+  }, []);
 
   const setActiveChatId = useCallback((chatId: string | null) => {
     const normalizedChatId = chatId?.trim() || null;

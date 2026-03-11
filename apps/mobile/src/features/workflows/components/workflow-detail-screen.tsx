@@ -1,13 +1,24 @@
-import { Button, Card, Chip, Tabs } from "heroui-native";
-import { useCallback, useState } from "react";
-import { ActivityIndicator, Alert, ScrollView, View } from "react-native";
+import { useCallback, useRef, useState } from "react";
+import {
+  ActionSheetIOS,
+  ActivityIndicator,
+  Alert,
+  Platform,
+  Pressable,
+  ScrollView,
+  View,
+} from "react-native";
 import {
   AppIcon,
   ArrowLeft01Icon,
   Delete01Icon,
   Edit02Icon,
   FlowCircleIcon,
+  GlobeIcon,
+  MagicWand01Icon,
+  Menu01Icon,
   PlayIcon,
+  RepeatIcon,
   ToggleOffIcon,
   ToggleOnIcon,
 } from "@/components/icons";
@@ -17,6 +28,18 @@ import { useResponsive } from "@/lib/responsive";
 import { useWorkflowActions } from "../hooks/use-workflow-actions";
 import type { Workflow, WorkflowExecution } from "../types/workflow-types";
 import { EditWorkflowModal } from "./edit-workflow-modal";
+import {
+  GeneratePromptSheet,
+  type GeneratePromptSheetRef,
+} from "./generate-prompt-sheet";
+import {
+  PublishWorkflowModal,
+  type PublishWorkflowModalRef,
+} from "./publish-workflow-modal";
+import {
+  RegenerateStepsSheet,
+  type RegenerateStepsSheetRef,
+} from "./regenerate-steps-sheet";
 import { WorkflowExecutionHistory } from "./workflow-execution-history";
 
 interface WorkflowDetailScreenProps {
@@ -62,41 +85,122 @@ export function WorkflowDetailScreen({
   const [showEdit, setShowEdit] = useState(false);
   const [executeStatus, setExecuteStatus] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"steps" | "history">("steps");
+  const [currentWorkflow, setCurrentWorkflow] = useState<Workflow | null>(
+    workflow,
+  );
+
+  const regenerateSheetRef = useRef<RegenerateStepsSheetRef>(null);
+  const generatePromptSheetRef = useRef<GeneratePromptSheetRef>(null);
+  const publishModalRef = useRef<PublishWorkflowModalRef>(null);
+
+  // Keep local workflow state in sync with prop
+  const activeWorkflow = currentWorkflow ?? workflow;
 
   const handleToggle = useCallback(async () => {
-    if (!workflow) return;
-    const updated = await toggleActivation(workflow);
-    if (updated) onActivationToggled(updated);
-  }, [workflow, toggleActivation, onActivationToggled]);
+    if (!activeWorkflow) return;
+    const updated = await toggleActivation(activeWorkflow);
+    if (updated) {
+      setCurrentWorkflow(updated);
+      onActivationToggled(updated);
+    }
+  }, [activeWorkflow, toggleActivation, onActivationToggled]);
 
   const handleExecute = useCallback(async () => {
-    if (!workflow) return;
-    const result = await executeWorkflow(workflow.id);
+    if (!activeWorkflow) return;
+    const result = await executeWorkflow(activeWorkflow.id);
     if (result) {
       setExecuteStatus("Execution started");
       setTimeout(() => setExecuteStatus(null), 3000);
     }
-  }, [workflow, executeWorkflow]);
+  }, [activeWorkflow, executeWorkflow]);
 
   const handleDelete = useCallback(() => {
-    if (!workflow) return;
+    if (!activeWorkflow) return;
     Alert.alert(
       "Delete Workflow",
-      `Are you sure you want to delete "${workflow.title}"?`,
+      `Are you sure you want to delete "${activeWorkflow.title}"?`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Delete",
           style: "destructive",
           onPress: async () => {
-            const ok = await deleteWorkflow(workflow.id);
+            const ok = await deleteWorkflow(activeWorkflow.id);
             if (ok) onDeleted();
           },
         },
       ],
     );
-  }, [workflow, deleteWorkflow, onDeleted]);
+  }, [activeWorkflow, deleteWorkflow, onDeleted]);
 
+  const handleMoreOptions = useCallback(() => {
+    if (!activeWorkflow) return;
+
+    const isPublished = activeWorkflow.is_public ?? false;
+    const publishLabel = isPublished ? "Unpublish" : "Publish Workflow";
+
+    const options = [
+      "Regenerate Steps",
+      "Generate Prompt",
+      publishLabel,
+      "Edit",
+      "Delete",
+      "Cancel",
+    ];
+
+    if (Platform.OS === "ios") {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          cancelButtonIndex: options.length - 1,
+          destructiveButtonIndex: options.indexOf("Delete"),
+        },
+        (buttonIndex) => {
+          switch (buttonIndex) {
+            case 0:
+              regenerateSheetRef.current?.open(activeWorkflow);
+              break;
+            case 1:
+              generatePromptSheetRef.current?.open(activeWorkflow);
+              break;
+            case 2:
+              publishModalRef.current?.open(activeWorkflow);
+              break;
+            case 3:
+              setShowEdit(true);
+              break;
+            case 4:
+              handleDelete();
+              break;
+          }
+        },
+      );
+    } else {
+      Alert.alert("Workflow Options", undefined, [
+        {
+          text: "Regenerate Steps",
+          onPress: () => regenerateSheetRef.current?.open(activeWorkflow),
+        },
+        {
+          text: "Generate Prompt",
+          onPress: () => generatePromptSheetRef.current?.open(activeWorkflow),
+        },
+        {
+          text: publishLabel,
+          onPress: () => publishModalRef.current?.open(activeWorkflow),
+        },
+        { text: "Edit", onPress: () => setShowEdit(true) },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: handleDelete,
+        },
+        { text: "Cancel", style: "cancel" },
+      ]);
+    }
+  }, [activeWorkflow, handleDelete]);
+
+  // Shared back button header
   const renderHeaderBar = (title?: string) => (
     <View
       style={{
@@ -110,20 +214,19 @@ export function WorkflowDetailScreen({
         gap: spacing.sm,
       }}
     >
-      <Button
-        variant="secondary"
-        size="sm"
-        isIconOnly
+      <Pressable
         onPress={onBack}
         style={{
           width: 36,
           height: 36,
           borderRadius: 999,
+          alignItems: "center",
+          justifyContent: "center",
           backgroundColor: "rgba(255,255,255,0.05)",
         }}
       >
         <AppIcon icon={ArrowLeft01Icon} size={18} color="#fff" />
-      </Button>
+      </Pressable>
 
       {title ? (
         <Text
@@ -141,43 +244,25 @@ export function WorkflowDetailScreen({
         <View style={{ flex: 1 }} />
       )}
 
-      {workflow && (
-        <>
-          <Button
-            variant="secondary"
-            size="sm"
-            isIconOnly
-            onPress={() => setShowEdit(true)}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              backgroundColor: "rgba(255,255,255,0.05)",
-            }}
-          >
-            <AppIcon icon={Edit02Icon} size={16} color="#aaa" />
-          </Button>
-
-          <Button
-            variant="danger-soft"
-            size="sm"
-            isIconOnly
-            onPress={handleDelete}
-            isDisabled={isDeleting}
-            style={{
-              width: 36,
-              height: 36,
-              borderRadius: 999,
-              backgroundColor: "rgba(239,68,68,0.12)",
-            }}
-          >
-            {isDeleting ? (
-              <ActivityIndicator size="small" color="#ef4444" />
-            ) : (
-              <AppIcon icon={Delete01Icon} size={16} color="#ef4444" />
-            )}
-          </Button>
-        </>
+      {activeWorkflow && (
+        <Pressable
+          onPress={handleMoreOptions}
+          disabled={isDeleting}
+          style={{
+            width: 36,
+            height: 36,
+            borderRadius: 999,
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(255,255,255,0.05)",
+          }}
+        >
+          {isDeleting ? (
+            <ActivityIndicator size="small" color="#aaa" />
+          ) : (
+            <AppIcon icon={Menu01Icon} size={18} color="#aaa" />
+          )}
+        </Pressable>
       )}
     </View>
   );
@@ -195,7 +280,7 @@ export function WorkflowDetailScreen({
     );
   }
 
-  if (error || !workflow) {
+  if (error || !activeWorkflow) {
     return (
       <View style={{ flex: 1, backgroundColor: "#131416" }}>
         {renderHeaderBar()}
@@ -223,7 +308,7 @@ export function WorkflowDetailScreen({
 
   return (
     <View style={{ flex: 1, backgroundColor: "#131416" }}>
-      {renderHeaderBar(workflow.title)}
+      {renderHeaderBar(activeWorkflow.title)}
 
       <ScrollView
         contentContainerStyle={{
@@ -232,148 +317,230 @@ export function WorkflowDetailScreen({
           paddingBottom: 40,
         }}
       >
-        <Card
-          variant="secondary"
+        {/* Identity card */}
+        <View
           style={{
             borderRadius: moderateScale(16, 0.5),
             borderWidth: 1,
             borderColor: "rgba(255,255,255,0.08)",
             backgroundColor: "#171920",
+            padding: spacing.md,
+            gap: spacing.md,
           }}
         >
-          <Card.Body
+          <View
             style={{
-              padding: spacing.md,
-              gap: spacing.md,
+              flexDirection: "row",
+              alignItems: "center",
+              gap: spacing.sm,
             }}
           >
             <View
               style={{
+                width: 44,
+                height: 44,
+                borderRadius: 12,
+                backgroundColor: "rgba(0,187,255,0.12)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <AppIcon icon={FlowCircleIcon} size={24} color="#00bbff" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text
+                style={{
+                  fontSize: fontSize.base,
+                  fontWeight: "600",
+                  color: "#e8ebef",
+                }}
+              >
+                {activeWorkflow.title}
+              </Text>
+              {activeWorkflow.description ? (
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: "#8e8e93",
+                    marginTop: 2,
+                    lineHeight: 16,
+                  }}
+                >
+                  {activeWorkflow.description}
+                </Text>
+              ) : null}
+            </View>
+          </View>
+
+          {/* Status chips */}
+          <View
+            style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}
+          >
+            <View
+              style={{
+                borderRadius: 999,
+                paddingHorizontal: spacing.sm,
+                paddingVertical: 4,
+                backgroundColor: activeWorkflow.activated
+                  ? "rgba(0,187,255,0.15)"
+                  : "rgba(255,255,255,0.07)",
                 flexDirection: "row",
                 alignItems: "center",
-                gap: spacing.sm,
+                gap: 5,
               }}
             >
               <View
                 style={{
-                  width: 44,
-                  height: 44,
-                  borderRadius: 12,
-                  backgroundColor: "rgba(0,187,255,0.12)",
-                  alignItems: "center",
-                  justifyContent: "center",
+                  width: 6,
+                  height: 6,
+                  borderRadius: 999,
+                  backgroundColor: activeWorkflow.activated
+                    ? "#00bbff"
+                    : "#555",
+                }}
+              />
+              <Text
+                style={{
+                  fontSize: fontSize.xs - 1,
+                  color: activeWorkflow.activated ? "#7de4ff" : "#666",
                 }}
               >
-                <AppIcon icon={FlowCircleIcon} size={24} color="#00bbff" />
-              </View>
-              <View style={{ flex: 1 }}>
-                <Card.Title
-                  style={{
-                    fontSize: fontSize.base,
-                    fontWeight: "600",
-                    color: "#e8ebef",
-                  }}
-                >
-                  {workflow.title}
-                </Card.Title>
-                {workflow.description ? (
-                  <Card.Description
-                    style={{
-                      fontSize: fontSize.xs,
-                      color: "#8e8e93",
-                      marginTop: 2,
-                      lineHeight: 16,
-                    }}
-                  >
-                    {workflow.description}
-                  </Card.Description>
-                ) : null}
-              </View>
+                {activeWorkflow.activated ? "Active" : "Inactive"}
+              </Text>
             </View>
-
             <View
               style={{
-                flexDirection: "row",
-                gap: spacing.sm,
-                flexWrap: "wrap",
+                borderRadius: 999,
+                paddingHorizontal: spacing.sm,
+                paddingVertical: 4,
+                backgroundColor: "rgba(255,255,255,0.07)",
               }}
             >
-              <Chip
-                size="sm"
-                variant="soft"
-                color={workflow.activated ? "accent" : "default"}
-                style={{ minHeight: 28, paddingHorizontal: spacing.sm }}
-              >
-                <View
-                  style={{ flexDirection: "row", alignItems: "center", gap: 5 }}
-                >
-                  <View
-                    style={{
-                      width: 6,
-                      height: 6,
-                      borderRadius: 999,
-                      backgroundColor: workflow.activated ? "#00bbff" : "#555",
-                    }}
-                  />
-                  <Chip.Label
-                    style={{
-                      fontSize: fontSize.xs - 1,
-                      color: workflow.activated ? "#7de4ff" : "#666",
-                    }}
-                  >
-                    {workflow.activated ? "Active" : "Inactive"}
-                  </Chip.Label>
-                </View>
-              </Chip>
-
-              <Chip
-                size="sm"
-                variant="soft"
-                color="default"
-                style={{ minHeight: 28, paddingHorizontal: spacing.sm }}
-              >
-                <Chip.Label
-                  style={{
-                    fontSize: fontSize.xs - 1,
-                    color: "#8e8e93",
-                  }}
-                >
-                  {workflow.trigger_config?.type ?? "manual"}
-                </Chip.Label>
-              </Chip>
-
-              {workflow.is_system_workflow && (
-                <Chip
-                  size="sm"
-                  variant="soft"
-                  color="accent"
-                  style={{ minHeight: 28, paddingHorizontal: spacing.sm }}
-                >
-                  <Chip.Label
-                    style={{
-                      fontSize: fontSize.xs - 1,
-                      color: "#00bbff",
-                    }}
-                  >
-                    System
-                  </Chip.Label>
-                </Chip>
-              )}
+              <Text style={{ fontSize: fontSize.xs - 1, color: "#8e8e93" }}>
+                {activeWorkflow.trigger_config?.type ?? "manual"}
+              </Text>
             </View>
-          </Card.Body>
-        </Card>
+            {activeWorkflow.is_public && (
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: spacing.sm,
+                  paddingVertical: 4,
+                  backgroundColor: "rgba(34,197,94,0.12)",
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: 4,
+                }}
+              >
+                <AppIcon icon={GlobeIcon} size={10} color="#22c55e" />
+                <Text style={{ fontSize: fontSize.xs - 1, color: "#22c55e" }}>
+                  Public
+                </Text>
+              </View>
+            )}
+            {activeWorkflow.is_system_workflow && (
+              <View
+                style={{
+                  borderRadius: 999,
+                  paddingHorizontal: spacing.sm,
+                  paddingVertical: 4,
+                  backgroundColor: "rgba(0,187,255,0.12)",
+                }}
+              >
+                <Text style={{ fontSize: fontSize.xs - 1, color: "#00bbff" }}>
+                  System
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
 
+        {/* Quick action chips row */}
+        <View
+          style={{ flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" }}
+        >
+          <Pressable
+            onPress={() => regenerateSheetRef.current?.open(activeWorkflow)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              paddingHorizontal: spacing.md,
+              paddingVertical: 8,
+              backgroundColor: "rgba(0,187,255,0.1)",
+            }}
+          >
+            <AppIcon icon={RepeatIcon} size={13} color="#00bbff" />
+            <Text style={{ fontSize: fontSize.xs, color: "#00bbff" }}>
+              Regenerate Steps
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => generatePromptSheetRef.current?.open(activeWorkflow)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              paddingHorizontal: spacing.md,
+              paddingVertical: 8,
+              backgroundColor: "rgba(167,139,250,0.1)",
+            }}
+          >
+            <AppIcon icon={MagicWand01Icon} size={13} color="#a78bfa" />
+            <Text style={{ fontSize: fontSize.xs, color: "#a78bfa" }}>
+              Generate Prompt
+            </Text>
+          </Pressable>
+
+          <Pressable
+            onPress={() => publishModalRef.current?.open(activeWorkflow)}
+            style={{
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              borderRadius: 999,
+              paddingHorizontal: spacing.md,
+              paddingVertical: 8,
+              backgroundColor: activeWorkflow.is_public
+                ? "rgba(34,197,94,0.1)"
+                : "rgba(255,255,255,0.07)",
+            }}
+          >
+            <AppIcon
+              icon={GlobeIcon}
+              size={13}
+              color={activeWorkflow.is_public ? "#22c55e" : "#8e8e93"}
+            />
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: activeWorkflow.is_public ? "#22c55e" : "#8e8e93",
+              }}
+            >
+              {activeWorkflow.is_public ? "Published" : "Publish"}
+            </Text>
+          </Pressable>
+        </View>
+
+        {/* Action buttons */}
         <View style={{ flexDirection: "row", gap: spacing.sm }}>
-          <Button
-            variant="secondary"
+          <Pressable
             onPress={() => {
               void handleToggle();
             }}
-            isDisabled={isActivating}
+            disabled={isActivating}
             style={{
               flex: 1,
               borderRadius: moderateScale(12, 0.5),
-              backgroundColor: workflow.activated
+              paddingVertical: spacing.md,
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: spacing.xs,
+              backgroundColor: activeWorkflow.activated
                 ? "rgba(0,187,255,0.15)"
                 : "rgba(255,255,255,0.07)",
             }}
@@ -381,59 +548,87 @@ export function WorkflowDetailScreen({
             {isActivating ? (
               <ActivityIndicator
                 size="small"
-                color={workflow.activated ? "#00bbff" : "#aaa"}
+                color={activeWorkflow.activated ? "#00bbff" : "#aaa"}
               />
             ) : (
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-              >
+              <>
                 <AppIcon
-                  icon={workflow.activated ? ToggleOnIcon : ToggleOffIcon}
+                  icon={activeWorkflow.activated ? ToggleOnIcon : ToggleOffIcon}
                   size={16}
-                  color={workflow.activated ? "#00bbff" : "#aaa"}
+                  color={activeWorkflow.activated ? "#00bbff" : "#aaa"}
                 />
-                <Button.Label
+                <Text
                   style={{
                     fontSize: fontSize.sm,
-                    color: workflow.activated ? "#7de4ff" : "#aaa",
+                    color: activeWorkflow.activated ? "#7de4ff" : "#aaa",
                   }}
                 >
-                  {workflow.activated ? "Deactivate" : "Activate"}
-                </Button.Label>
-              </View>
+                  {activeWorkflow.activated ? "Deactivate" : "Activate"}
+                </Text>
+              </>
             )}
-          </Button>
+          </Pressable>
 
-          <Button
-            variant="secondary"
+          <Pressable
             onPress={() => {
               void handleExecute();
             }}
-            isDisabled={isExecuting}
+            disabled={isExecuting}
             style={{
               flex: 1,
               borderRadius: moderateScale(12, 0.5),
+              paddingVertical: spacing.md,
+              alignItems: "center",
+              justifyContent: "center",
+              flexDirection: "row",
+              gap: spacing.xs,
               backgroundColor: "rgba(34,197,94,0.15)",
             }}
           >
             {isExecuting ? (
               <ActivityIndicator size="small" color="#22c55e" />
             ) : (
-              <View
-                style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-              >
+              <>
                 <AppIcon icon={PlayIcon} size={14} color="#22c55e" />
-                <Button.Label
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: "#22c55e",
-                  }}
-                >
+                <Text style={{ fontSize: fontSize.sm, color: "#22c55e" }}>
                   Run Now
-                </Button.Label>
-              </View>
+                </Text>
+              </>
             )}
-          </Button>
+          </Pressable>
+
+          <Pressable
+            onPress={() => setShowEdit(true)}
+            style={{
+              width: 44,
+              borderRadius: moderateScale(12, 0.5),
+              paddingVertical: spacing.md,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(255,255,255,0.07)",
+            }}
+          >
+            <AppIcon icon={Edit02Icon} size={16} color="#aaa" />
+          </Pressable>
+
+          <Pressable
+            onPress={handleDelete}
+            disabled={isDeleting}
+            style={{
+              width: 44,
+              borderRadius: moderateScale(12, 0.5),
+              paddingVertical: spacing.md,
+              alignItems: "center",
+              justifyContent: "center",
+              backgroundColor: "rgba(239,68,68,0.12)",
+            }}
+          >
+            {isDeleting ? (
+              <ActivityIndicator size="small" color="#ef4444" />
+            ) : (
+              <AppIcon icon={Delete01Icon} size={16} color="#ef4444" />
+            )}
+          </Pressable>
         </View>
 
         {(executeStatus ?? actionError) ? (
@@ -448,32 +643,28 @@ export function WorkflowDetailScreen({
           </Text>
         ) : null}
 
-        {workflow.prompt ? (
-          <Card
-            variant="secondary"
-            style={{
-              borderRadius: moderateScale(12, 0.5),
-              backgroundColor: "#171920",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.06)",
-            }}
-          >
-            <Card.Body
+        {/* Prompt / Instructions */}
+        {activeWorkflow.prompt ? (
+          <View style={{ gap: spacing.sm }}>
+            <Text
               style={{
-                padding: spacing.md,
-                gap: spacing.sm,
+                fontSize: fontSize.xs,
+                color: "#8e8e93",
+                textTransform: "uppercase",
+                letterSpacing: 1.2,
               }}
             >
-              <Text
-                style={{
-                  fontSize: fontSize.xs,
-                  color: "#8e8e93",
-                  textTransform: "uppercase",
-                  letterSpacing: 1.2,
-                }}
-              >
-                Instructions
-              </Text>
+              Instructions
+            </Text>
+            <View
+              style={{
+                borderRadius: moderateScale(12, 0.5),
+                backgroundColor: "#171920",
+                padding: spacing.md,
+                borderWidth: 1,
+                borderColor: "rgba(255,255,255,0.06)",
+              }}
+            >
               <Text
                 style={{
                   fontSize: fontSize.sm,
@@ -481,125 +672,128 @@ export function WorkflowDetailScreen({
                   lineHeight: 20,
                 }}
               >
-                {workflow.prompt}
+                {activeWorkflow.prompt}
               </Text>
-            </Card.Body>
-          </Card>
+            </View>
+          </View>
         ) : null}
 
-        <Tabs
-          value={activeTab}
-          onValueChange={(value) => setActiveTab(value as "steps" | "history")}
-          variant="pill"
-        >
-          <Tabs.List
+        {/* Steps & History tabs */}
+        <View style={{ gap: spacing.md }}>
+          {/* Tab bar */}
+          <View
             style={{
+              flexDirection: "row",
+              gap: spacing.xs,
               backgroundColor: "rgba(255,255,255,0.04)",
               borderRadius: moderateScale(12, 0.5),
               padding: 4,
             }}
           >
             {(["steps", "history"] as const).map((tab) => (
-              <Tabs.Trigger
+              <Pressable
                 key={tab}
-                value={tab}
+                onPress={() => setActiveTab(tab)}
                 style={{
                   flex: 1,
+                  paddingVertical: 8,
                   borderRadius: moderateScale(10, 0.5),
+                  alignItems: "center",
+                  backgroundColor:
+                    activeTab === tab ? "#171920" : "transparent",
                 }}
               >
-                {({ isSelected }) => (
-                  <View
+                <View
+                  style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+                >
+                  <Text
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 6,
+                      fontSize: fontSize.sm,
+                      fontWeight: activeTab === tab ? "600" : "400",
+                      color: activeTab === tab ? "#fff" : "#8e8e93",
                     }}
                   >
-                    <Tabs.Label
+                    {tab === "steps" ? "Steps" : "History"}
+                  </Text>
+                  {tab === "steps" && activeWorkflow.steps.length > 0 && (
+                    <View
                       style={{
-                        fontSize: fontSize.sm,
-                        fontWeight: isSelected ? "600" : "400",
-                        color: isSelected ? "#fff" : "#8e8e93",
+                        borderRadius: 999,
+                        backgroundColor:
+                          activeTab === "steps"
+                            ? "rgba(0,187,255,0.2)"
+                            : "rgba(255,255,255,0.1)",
+                        paddingHorizontal: 6,
+                        paddingVertical: 1,
                       }}
                     >
-                      {tab === "steps" ? "Steps" : "History"}
-                    </Tabs.Label>
-                    {tab === "steps" && workflow.steps.length > 0 && (
-                      <Chip
-                        size="sm"
-                        variant="soft"
-                        color={isSelected ? "accent" : "default"}
-                        style={{ minHeight: 20, paddingHorizontal: 6 }}
+                      <Text
+                        style={{
+                          fontSize: fontSize.xs - 1,
+                          color: activeTab === "steps" ? "#00bbff" : "#8e8e93",
+                        }}
                       >
-                        <Chip.Label
-                          style={{
-                            fontSize: fontSize.xs - 1,
-                            color: isSelected ? "#00bbff" : "#8e8e93",
-                          }}
-                        >
-                          {workflow.steps.length}
-                        </Chip.Label>
-                      </Chip>
-                    )}
-                  </View>
-                )}
-              </Tabs.Trigger>
+                        {activeWorkflow.steps.length}
+                      </Text>
+                    </View>
+                  )}
+                </View>
+              </Pressable>
             ))}
-            <Tabs.Indicator
-              style={{
-                backgroundColor: "#171920",
-                borderRadius: moderateScale(10, 0.5),
-              }}
+          </View>
+
+          {/* Tab content */}
+          {activeTab === "steps" ? (
+            <WorkflowStepsList steps={activeWorkflow.steps} />
+          ) : (
+            <WorkflowExecutionHistory
+              executions={executions}
+              isLoading={isLoadingExecutions}
+              hasMore={hasMoreExecutions}
+              total={executionsTotal}
+              onLoadMore={onLoadMoreExecutions}
             />
-          </Tabs.List>
-
-          <Tabs.Content value="steps" style={{ paddingTop: spacing.md }}>
-            <Card
-              variant="secondary"
-              style={{
-                borderRadius: moderateScale(16, 0.5),
-                backgroundColor: "#171920",
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.06)",
-              }}
-            >
-              <Card.Body style={{ padding: spacing.md }}>
-                <WorkflowStepsList steps={workflow.steps} />
-              </Card.Body>
-            </Card>
-          </Tabs.Content>
-
-          <Tabs.Content value="history" style={{ paddingTop: spacing.md }}>
-            <Card
-              variant="secondary"
-              style={{
-                borderRadius: moderateScale(16, 0.5),
-                backgroundColor: "#171920",
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.06)",
-              }}
-            >
-              <Card.Body style={{ padding: spacing.sm }}>
-                <WorkflowExecutionHistory
-                  executions={executions}
-                  isLoading={isLoadingExecutions}
-                  hasMore={hasMoreExecutions}
-                  total={executionsTotal}
-                  onLoadMore={onLoadMoreExecutions}
-                />
-              </Card.Body>
-            </Card>
-          </Tabs.Content>
-        </Tabs>
+          )}
+        </View>
       </ScrollView>
 
       <EditWorkflowModal
         visible={showEdit}
-        workflow={workflow}
+        workflow={activeWorkflow}
         onClose={() => setShowEdit(false)}
         onUpdated={(updated) => {
           setShowEdit(false);
+          setCurrentWorkflow(updated);
+          onUpdated(updated);
+        }}
+      />
+
+      <RegenerateStepsSheet
+        ref={regenerateSheetRef}
+        onRegenerated={(updated) => {
+          setCurrentWorkflow(updated);
+          onUpdated(updated);
+        }}
+      />
+
+      <GeneratePromptSheet
+        ref={generatePromptSheetRef}
+        onPromptSelected={(prompt) => {
+          if (!activeWorkflow) return;
+          const updated: Workflow = { ...activeWorkflow, prompt };
+          setCurrentWorkflow(updated);
+          onUpdated(updated);
+        }}
+      />
+
+      <PublishWorkflowModal
+        ref={publishModalRef}
+        onPublished={(updated) => {
+          setCurrentWorkflow(updated);
+          onUpdated(updated);
+        }}
+        onUnpublished={(updated) => {
+          setCurrentWorkflow(updated);
           onUpdated(updated);
         }}
       />
@@ -628,6 +822,7 @@ function WorkflowStepsList({ steps }: { steps: Workflow["steps"] }) {
 
   return (
     <View style={{ position: "relative", paddingBottom: spacing.lg }}>
+      {/* Timeline line */}
       <View
         style={{
           position: "absolute",
@@ -661,6 +856,7 @@ function WorkflowStepsList({ steps }: { steps: Workflow["steps"] }) {
                 gap: spacing.md,
               }}
             >
+              {/* Step number dot */}
               <View
                 style={{
                   width: 28,
@@ -686,31 +882,31 @@ function WorkflowStepsList({ steps }: { steps: Workflow["steps"] }) {
                 </Text>
               </View>
 
+              {/* Step content */}
               <View style={{ flex: 1, gap: spacing.xs, paddingTop: 4 }}>
-                <Chip
-                  size="sm"
-                  variant="soft"
-                  color="default"
-                  style={{ alignSelf: "flex-start", paddingHorizontal: 8 }}
+                {/* Category chip */}
+                <View
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    gap: 5,
+                    alignSelf: "flex-start",
+                    borderRadius: 8,
+                    paddingHorizontal: 8,
+                    paddingVertical: 4,
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                  }}
                 >
-                  <View
+                  {iconElement}
+                  <Text
                     style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: 5,
+                      fontSize: fontSize.xs - 1,
+                      color: "#8e8e93",
                     }}
                   >
-                    {iconElement}
-                    <Chip.Label
-                      style={{
-                        fontSize: fontSize.xs - 1,
-                        color: "#8e8e93",
-                      }}
-                    >
-                      {categoryLabel}
-                    </Chip.Label>
-                  </View>
-                </Chip>
+                    {categoryLabel}
+                  </Text>
+                </View>
 
                 <Text
                   style={{

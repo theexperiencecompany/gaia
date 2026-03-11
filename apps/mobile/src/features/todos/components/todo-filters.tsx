@@ -1,5 +1,7 @@
+import { useRouter } from "expo-router";
 import { useRef } from "react";
 import { Pressable, ScrollView, View } from "react-native";
+import { AppIcon, ArrowRight01Icon, Flag02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import type { FilterTab, TodoCounts } from "../types/todo-types";
@@ -16,6 +18,12 @@ const PRIORITY_OPTIONS = [
   { key: "high", label: "High", color: "#ef4444" },
   { key: "medium", label: "Medium", color: "#f97316" },
   { key: "low", label: "Low", color: "#eab308" },
+] as const;
+
+const PRIORITY_NAV_OPTIONS = [
+  { key: "high", label: "Urgent / High", emoji: "🔴", color: "#ef4444" },
+  { key: "medium", label: "Medium", emoji: "🟠", color: "#f97316" },
+  { key: "low", label: "Low", emoji: "🟡", color: "#eab308" },
 ] as const;
 
 const FILTERS: {
@@ -38,6 +46,7 @@ export function TodoFilters({
 }: TodoFiltersProps) {
   const { spacing, fontSize } = useResponsive();
   const scrollRef = useRef<ScrollView>(null);
+  const router = useRouter();
 
   return (
     <View
@@ -47,6 +56,7 @@ export function TodoFilters({
         borderBottomColor: "rgba(255,255,255,0.06)",
       }}
     >
+      {/* Tab filters row */}
       <ScrollView
         ref={scrollRef}
         horizontal
@@ -118,6 +128,7 @@ export function TodoFilters({
         })}
       </ScrollView>
 
+      {/* Inline priority filter chips */}
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -165,6 +176,72 @@ export function TodoFilters({
           );
         })}
       </ScrollView>
+
+      {/* Priority navigation section — tapping opens dedicated priority view */}
+      <View
+        style={{
+          paddingHorizontal: spacing.md,
+          paddingTop: spacing.xs,
+          gap: 2,
+        }}
+      >
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 6,
+            paddingVertical: spacing.xs,
+          }}
+        >
+          <AppIcon icon={Flag02Icon} size={12} color="#8e8e93" />
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              fontWeight: "600",
+              letterSpacing: 0.7,
+              textTransform: "uppercase",
+              color: "#636366",
+            }}
+          >
+            Priority Views
+          </Text>
+        </View>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ gap: 6, paddingBottom: spacing.xs }}
+        >
+          {PRIORITY_NAV_OPTIONS.map((opt) => (
+            <Pressable
+              key={opt.key}
+              onPress={() =>
+                router.push(`/(app)/(tabs)/todos/priority/${opt.key}` as never)
+              }
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 6,
+                paddingHorizontal: 12,
+                paddingVertical: 6,
+                borderRadius: 10,
+                backgroundColor: "#18181b",
+                borderWidth: 1,
+                borderColor: "#27272a",
+              }}
+            >
+              <Text style={{ fontSize: 13 }}>{opt.emoji}</Text>
+              <Text style={{ fontSize: fontSize.xs, color: "#c5cad2" }}>
+                {opt.label}
+              </Text>
+              <AppIcon
+                icon={ArrowRight01Icon}
+                size={12}
+                color="rgba(255,255,255,0.2)"
+              />
+            </Pressable>
+          ))}
+        </ScrollView>
+      </View>
     </View>
   );
 }

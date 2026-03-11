@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { Message } from "@/features/chat/api/chat-api";
-import type { Conversation } from "@/features/chat/types";
+import type { Conversation } from "@/features/chat/types/index";
+import { chatDb } from "@/lib/db/chatDb";
 
 interface StreamingState {
   isTyping: boolean;
@@ -15,7 +16,9 @@ interface ChatState {
   conversations: Conversation[];
   activeChatId: string | null;
   streamingState: StreamingState;
+  isHydrated: boolean;
 
+  hydrate: () => Promise<void>;
   setActiveChatId: (id: string | null) => void;
   setMessages: (conversationId: string, messages: Message[]) => void;
   clearMessages: (conversationId: string) => void;
@@ -46,6 +49,12 @@ export const useChatStore = create<ChatState>((set, _get) => ({
     conversationId: null,
     progress: null,
     progressToolName: null,
+  },
+  isHydrated: false,
+
+  hydrate: async () => {
+    const conversations = await chatDb.getConversations();
+    set({ conversations, isHydrated: true });
   },
 
   setActiveChatId: (id) => set({ activeChatId: id }),
@@ -132,32 +141,46 @@ export const useChatStore = create<ChatState>((set, _get) => ({
       streamingState: { ...state.streamingState, ...newState },
     })),
 
-  setConversations: (conversations) => set({ conversations }),
+  setConversations: (conversations) => {
+    set({ conversations });
+    chatDb.saveConversations(conversations);
+  },
 
   addConversation: (conversation) =>
     set((state) => {
       if (state.conversations.some((c) => c.id === conversation.id)) {
         return state;
       }
-      return { conversations: [conversation, ...state.conversations] };
+      const updated = [conversation, ...state.conversations];
+      chatDb.saveConversations(updated);
+      return { conversations: updated };
     }),
 
   updateConversationTitle: (conversationId, title) =>
-    set((state) => ({
-      conversations: state.conversations.map((c) =>
+    set((state) => {
+      const updated = state.conversations.map((c) =>
         c.id === conversationId ? { ...c, title } : c,
-      ),
-    })),
+      );
+      chatDb.saveConversations(updated);
+      return { conversations: updated };
+    }),
 
   removeConversation: (conversationId) =>
-    set((state) => ({
-      conversations: state.conversations.filter((c) => c.id !== conversationId),
-    })),
+    set((state) => {
+      const updated = state.conversations.filter(
+        (c) => c.id !== conversationId,
+      );
+      chatDb.saveConversations(updated);
+      chatDb.deleteConversation(conversationId);
+      return { conversations: updated };
+    }),
 
   updateConversationStarred: (conversationId, starred) =>
-    set((state) => ({
-      conversations: state.conversations.map((c) =>
+    set((state) => {
+      const updated = state.conversations.map((c) =>
         c.id === conversationId ? { ...c, is_starred: starred } : c,
-      ),
-    })),
+      );
+      chatDb.saveConversations(updated);
+      return { conversations: updated };
+    }),
 }));

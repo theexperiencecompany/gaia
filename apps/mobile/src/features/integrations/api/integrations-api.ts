@@ -3,11 +3,14 @@ import * as WebBrowser from "expo-web-browser";
 import { apiService } from "@/lib/api";
 import { API_ORIGIN } from "@/lib/constants";
 import type {
+  CommunityIntegrationsResponse,
+  CommunitySearchParams,
   Integration,
   IntegrationCategoryValue,
   IntegrationsConfigResponse,
   IntegrationsStatusResponse,
   IntegrationWithStatus,
+  PublicIntegrationResponse,
   UserIntegrationsResponse,
 } from "../types";
 
@@ -201,8 +204,7 @@ export interface ConnectIntegrationResult {
 }
 
 /**
- * Connect an integration. Uses OAuth browser flow for OAuth integrations,
- * or direct connect endpoint for others.
+ * Connect an integration via OAuth browser flow.
  */
 export async function connectIntegration(
   integrationId: string,
@@ -229,6 +231,28 @@ export async function connectIntegration(
 }
 
 /**
+ * Connect an integration using a bearer token (API key).
+ * POSTs the token to the backend which persists it and marks the integration connected.
+ */
+export async function connectIntegrationWithToken(
+  integrationId: string,
+  bearerToken: string,
+): Promise<ConnectIntegrationResult> {
+  try {
+    await apiService.post(`/integrations/${integrationId}/token`, {
+      bearer_token: bearerToken,
+    });
+    return { success: true, status: "connected" };
+  } catch (error) {
+    console.error("Error connecting integration with token:", error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : "Connection failed",
+    };
+  }
+}
+
+/**
  * Disconnect an integration using DELETE (matching web behavior)
  */
 export async function disconnectIntegration(
@@ -243,10 +267,166 @@ export async function disconnectIntegration(
   }
 }
 
+export interface CreateCustomIntegrationParams {
+  name: string;
+  description?: string;
+  server_url: string;
+  requires_auth?: boolean;
+  auth_type?: "none" | "oauth" | "bearer";
+  is_public?: boolean;
+  bearer_token?: string;
+}
+
+export interface ConnectionTestResult {
+  status: "connected" | "requires_oauth" | "failed" | "created";
+  toolsCount?: number;
+  oauthUrl?: string;
+  error?: string;
+}
+
+export interface CreateCustomIntegrationResponse {
+  status: string;
+  message: string;
+  integrationId: string;
+  name: string;
+  connection?: ConnectionTestResult;
+}
+
+export interface TestConnectionResponse {
+  status: "connected" | "requires_oauth" | "failed";
+  tools_count?: number;
+  oauth_url?: string;
+  error?: string;
+}
+
+export async function createCustomIntegration(
+  data: CreateCustomIntegrationParams,
+): Promise<CreateCustomIntegrationResponse> {
+  const response = await apiService.post<CreateCustomIntegrationResponse>(
+    "/integrations/custom",
+    data,
+  );
+  return response;
+}
+
+export async function testIntegrationConnection(
+  integrationId: string,
+): Promise<TestConnectionResponse> {
+  const response = await apiService.post<TestConnectionResponse>(
+    `/mcp/test/${integrationId}`,
+    {},
+  );
+  return response;
+}
+
+export async function updateCustomIntegration(
+  id: string,
+  data: Partial<CreateCustomIntegrationParams>,
+): Promise<CreateCustomIntegrationResponse> {
+  const response = await apiService.put<CreateCustomIntegrationResponse>(
+    `/integrations/custom/${id}`,
+    data,
+  );
+  return response;
+}
+
+export async function deleteCustomIntegration(id: string): Promise<void> {
+  await apiService.delete(`/integrations/custom/${id}`);
+}
+
+export async function getCommunityIntegrations(
+  params?: CommunitySearchParams,
+): Promise<CommunityIntegrationsResponse> {
+  const searchParams = new URLSearchParams();
+  if (params?.search) searchParams.set("search", params.search);
+  if (params?.category) searchParams.set("category", params.category);
+  if (params?.sort) searchParams.set("sort", params.sort);
+  if (params?.limit != null) searchParams.set("limit", params.limit.toString());
+  if (params?.offset != null)
+    searchParams.set("offset", params.offset.toString());
+
+  const query = searchParams.toString();
+  return apiService.get<CommunityIntegrationsResponse>(
+    `/integrations/community${query ? `?${query}` : ""}`,
+  );
+}
+
+export async function getPublicIntegration(
+  slug: string,
+): Promise<PublicIntegrationResponse> {
+  return apiService.get<PublicIntegrationResponse>(
+    `/integrations/public/${slug}`,
+  );
+}
+
+export async function addPublicIntegration(
+  slug: string,
+  bearerToken?: string,
+): Promise<{
+  status: string;
+  integrationId: string;
+  name: string;
+  message: string;
+  toolsCount?: number;
+}> {
+  return apiService.post<{
+    status: string;
+    integrationId: string;
+    name: string;
+    message: string;
+    toolsCount?: number;
+  }>(`/integrations/public/${slug}/add`, {
+    bearer_token: bearerToken,
+  });
+}
+
+export async function searchIntegrations(query: string): Promise<{
+  integrations: PublicIntegrationResponse[];
+  query: string;
+}> {
+  return apiService.get<{
+    integrations: PublicIntegrationResponse[];
+    query: string;
+  }>(`/integrations/search?q=${encodeURIComponent(query)}`);
+}
+
+export async function publishIntegration(integrationId: string): Promise<{
+  message: string;
+  integrationId: string;
+  publicUrl: string;
+}> {
+  return apiService.post<{
+    message: string;
+    integrationId: string;
+    publicUrl: string;
+  }>(`/integrations/custom/${integrationId}/publish`, {});
+}
+
+export async function unpublishIntegration(integrationId: string): Promise<{
+  message: string;
+  integrationId: string;
+}> {
+  return apiService.post<{
+    message: string;
+    integrationId: string;
+  }>(`/integrations/custom/${integrationId}/unpublish`, {});
+}
+
 export const integrationsApi = {
   fetchIntegrations,
   fetchIntegrationsConfig,
   fetchIntegrationsStatus,
   connectIntegration,
+  connectIntegrationWithToken,
   disconnectIntegration,
+  createCustomIntegration,
+  testIntegrationConnection,
+  updateCustomIntegration,
+  deleteCustomIntegration,
+  getCommunityIntegrations,
+  getPublicIntegration,
+  addPublicIntegration,
+  searchIntegrations,
+  publishIntegration,
+  unpublishIntegration,
 };

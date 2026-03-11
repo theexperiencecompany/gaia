@@ -1,10 +1,3 @@
-import {
-  parseChatStreamEvent,
-  type StreamToolDataEntry,
-  type StreamToolOutput,
-  type TodoProgressSnapshot,
-} from "@gaia/shared/chat";
-
 import { createSSEConnection, type SSEEvent } from "@/lib/sse-client";
 import type { ApiFileData, ImageData, Message } from "./chat-api";
 
@@ -17,35 +10,10 @@ export interface StreamCallbacks {
     description?: string | null,
   ) => void;
   onProgress?: (message: string, toolName?: string) => void;
-  onToolData?: (entry: StreamToolDataEntry) => void;
-  onToolOutput?: (output: StreamToolOutput) => void;
-  onTodoProgress?: (snapshot: TodoProgressSnapshot) => void;
-  onStreamId?: (streamId: string) => void;
   onFollowUpActions?: (actions: string[]) => void;
-  onMainResponseComplete?: () => void;
-  onConversationDescription?: (description: string) => void;
   onImageData?: (data: ImageData) => void;
-  onMemoryData?: (data: unknown) => void;
   onDone: () => void;
   onError?: (error: Error) => void;
-}
-
-export interface SelectedWorkflow {
-  id: string;
-  name: string;
-  [key: string]: unknown;
-}
-
-export interface SelectedCalendarEvent {
-  id: string;
-  summary: string;
-  [key: string]: unknown;
-}
-
-export interface ReplyToMessage {
-  id: string;
-  content: string;
-  role: "user" | "assistant";
 }
 
 export interface ChatStreamRequest {
@@ -56,9 +24,46 @@ export interface ChatStreamRequest {
   fileData?: ApiFileData[];
   selectedTool?: string | null;
   toolCategory?: string | null;
-  selectedWorkflow?: SelectedWorkflow | null;
-  selectedCalendarEvent?: SelectedCalendarEvent | null;
-  replyToMessage?: ReplyToMessage | null;
+  workflowId?: string | null;
+  replyToMessageId?: string | null;
+}
+
+interface StreamEventData {
+  type?: string;
+  content?: string;
+  conversation_id?: string;
+  conversation_description?: string | null;
+  message_id?: string;
+  response?: string;
+  error?: string;
+  bot_message_id?: string;
+  user_message_id?: string;
+  main_response_complete?: boolean;
+  follow_up_actions?: string[];
+  status?: string;
+  prompt?: string;
+  image_data?: {
+    url: string;
+    prompt: string;
+    improvedPrompt?: string;
+  };
+  progress?: {
+    message: string;
+    tool_name?: string;
+    tool_category?: string;
+  };
+}
+
+function parseEventData(data: string): StreamEventData | null {
+  if (data === "[DONE]") {
+    return { type: "done" };
+  }
+
+  try {
+    return JSON.parse(data);
+  } catch {
+    return { type: "content", content: data };
+  }
 }
 
 export async function fetchChatStream(
@@ -73,9 +78,8 @@ export async function fetchChatStream(
     fileData = [],
     selectedTool = null,
     toolCategory = null,
-    selectedWorkflow = null,
-    selectedCalendarEvent = null,
-    replyToMessage = null,
+    workflowId = null,
+    replyToMessageId = null,
   } = request;
 
   const formattedMessages = messages
@@ -93,127 +97,74 @@ export async function fetchChatStream(
     fileData,
     selectedTool,
     toolCategory,
-    selectedWorkflow,
-    selectedCalendarEvent,
-    replyToMessage,
+    workflow_id: workflowId || null,
+    reply_to_message_id: replyToMessageId || null,
     messages: formattedMessages,
-  };
-
-  let streamFinished = false;
-  const finishOnce = () => {
-    if (streamFinished) return;
-    streamFinished = true;
-    callbacks.onDone();
   };
 
   return createSSEConnection(
     "/chat-stream",
     {
       onMessage: (event: SSEEvent) => {
-        const parsedEvents = parseChatStreamEvent(event.data);
+        const parsed = parseEventData(event.data);
 
-        for (const parsed of parsedEvents) {
-          if (parsed.type === "done") {
-            finishOnce();
-            return;
-          }
+        if (!parsed) return;
 
-          if (parsed.type === "error") {
-            callbacks.onError?.(new Error(parsed.error));
-            return;
-          }
+        if (parsed.type === "done" || event.data === "[DONE]") {
+          callbacks.onDone();
+          return;
+        }
 
-          if (parsed.type === "conversation_initialized") {
-            if (parsed.stream_id) {
-              callbacks.onStreamId?.(parsed.stream_id);
-            }
+        if (parsed.error) {
+          callbacks.onError?.(new Error(parsed.error));
+          return;
+        }
 
-            if (
-              parsed.conversation_id &&
-              parsed.bot_message_id &&
-              parsed.user_message_id
-            ) {
-              callbacks.onConversationCreated?.(
-                parsed.conversation_id,
-                parsed.user_message_id,
-                parsed.bot_message_id,
-                parsed.conversation_description,
-              );
-            }
-            continue;
-          }
+        if (
+          parsed.conversation_id &&
+          parsed.bot_message_id &&
+          parsed.user_message_id
+        ) {
+          callbacks.onConversationCreated?.(
+            parsed.conversation_id,
+            parsed.user_message_id,
+            parsed.bot_message_id,
+            parsed.conversation_description,
+          );
+        }
 
-          if (parsed.type === "progress") {
-            callbacks.onProgress?.(parsed.message, parsed.tool_name);
-            continue;
-          }
+        if (parsed.progress) {
+          callbacks.onProgress?.(
+            parsed.progress.message,
+            parsed.progress.tool_name,
+          );
+        }
 
-          if (parsed.type === "tool_data") {
-            callbacks.onToolData?.(parsed.entry);
-            continue;
-          }
+        if (parsed.response) {
+          callbacks.onChunk(parsed.response);
+        }
 
-          if (parsed.type === "tool_output") {
-            callbacks.onToolOutput?.(parsed.output);
-            continue;
-          }
+        if (parsed.follow_up_actions && parsed.follow_up_actions.length > 0) {
+          callbacks.onFollowUpActions?.(parsed.follow_up_actions);
+        }
 
-          if (parsed.type === "todo_progress") {
-            callbacks.onTodoProgress?.(parsed.snapshot);
-            continue;
-          }
+        if (parsed.image_data?.url) {
+          callbacks.onImageData?.(parsed.image_data);
+        }
 
-          if (parsed.type === "response") {
-            callbacks.onChunk(parsed.chunk);
-            continue;
-          }
-
-          if (parsed.type === "main_response_complete") {
-            callbacks.onMainResponseComplete?.();
-            continue;
-          }
-
-          if (parsed.type === "conversation_description") {
-            callbacks.onConversationDescription?.(parsed.description);
-            continue;
-          }
-
-          if (
-            parsed.type === "follow_up_actions" &&
-            parsed.actions.length > 0
-          ) {
-            callbacks.onFollowUpActions?.(parsed.actions);
-            continue;
-          }
-
-          if (parsed.type === "unknown") {
-            const payload = parsed.payload;
-
-            if (payload.image_data && typeof payload.image_data === "object") {
-              callbacks.onImageData?.(payload.image_data as ImageData);
-              continue;
-            }
-
-            if (payload.status === "generating_image") {
-              callbacks.onProgress?.("Generating image...");
-              callbacks.onImageData?.({
-                url: "",
-                prompt: (payload.prompt as string) || "",
-              });
-              continue;
-            }
-
-            if (payload.memory_data) {
-              callbacks.onMemoryData?.(payload.memory_data);
-            }
-          }
+        if (parsed.status === "generating_image") {
+          callbacks.onProgress?.("Generating image...");
+          callbacks.onImageData?.({
+            url: "",
+            prompt: parsed.prompt ?? "",
+          });
         }
       },
       onError: (error) => {
         callbacks.onError?.(error);
       },
       onClose: () => {
-        finishOnce();
+        callbacks.onDone();
       },
     },
     { body },

@@ -30,3 +30,14 @@ export interface NotificationActionResponse {
     [key: string]: unknown;
   };
 }
+
+export interface NotificationCategoryPreferences {
+  push: boolean;
+  email: boolean;
+  in_app: boolean;
+}
+
+export interface NotificationPreferences {
+  global: NotificationCategoryPreferences;
+  categories: Record<string, NotificationCategoryPreferences>;
+}

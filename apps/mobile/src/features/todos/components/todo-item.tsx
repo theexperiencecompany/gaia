@@ -1,4 +1,4 @@
-import * as Haptics from "expo-haptics";
+import { useRouter } from "expo-router";
 import { useCallback } from "react";
 import { Alert, Pressable, View } from "react-native";
 import {
@@ -9,12 +9,17 @@ import {
   Delete02Icon,
   Flag02Icon,
   Folder02Icon,
-  Tag01Icon,
   Tick02Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import {
+  impactHaptic,
+  longPressHaptic,
+  notificationHaptic,
+} from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
 import { Priority, type Project, type Todo } from "../types/todo-types";
+import { LabelChip } from "./label-chip";
 
 interface TodoItemProps {
   todo: Todo;
@@ -81,6 +86,7 @@ export function TodoItem({
   onLongPress,
 }: TodoItemProps) {
   const { spacing, fontSize } = useResponsive();
+  const router = useRouter();
 
   const isOverdue =
     !!todo.due_date && new Date(todo.due_date) < new Date() && !todo.completed;
@@ -106,7 +112,11 @@ export function TodoItem({
   const totalSubtasks = todo.subtasks?.length ?? 0;
 
   const handleToggle = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (todo.completed) {
+      impactHaptic("medium");
+    } else {
+      notificationHaptic("success");
+    }
     onToggleComplete(todo);
   }, [onToggleComplete, todo]);
 
@@ -119,11 +129,12 @@ export function TodoItem({
   }, [selectionMode, onSelect, onPress, todo]);
 
   const handleLongPress = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    longPressHaptic();
     onLongPress?.(todo);
   }, [onLongPress, todo]);
 
   const handleDeletePress = useCallback(() => {
+    notificationHaptic("warning");
     Alert.alert(
       "Delete Task",
       `Are you sure you want to delete "${todo.title}"?`,
@@ -157,6 +168,17 @@ export function TodoItem({
               ? handleDeletePress
               : undefined
       }
+      accessible={true}
+      accessibilityRole="button"
+      accessibilityLabel={todo.title}
+      accessibilityHint={
+        selectionMode
+          ? isSelected
+            ? "Double tap to deselect"
+            : "Double tap to select"
+          : "Double tap to open task details"
+      }
+      accessibilityState={{ selected: isSelected }}
       style={{
         flexDirection: "row",
         alignItems: "flex-start",
@@ -173,6 +195,9 @@ export function TodoItem({
         <Pressable
           onPress={() => onSelect?.(todo.id)}
           hitSlop={12}
+          accessibilityRole="checkbox"
+          accessibilityLabel={`Select ${todo.title}`}
+          accessibilityState={{ checked: isSelected }}
           style={{
             width: 22,
             height: 22,
@@ -196,6 +221,13 @@ export function TodoItem({
         <Pressable
           onPress={handleToggle}
           hitSlop={12}
+          accessibilityRole="checkbox"
+          accessibilityLabel={
+            todo.completed
+              ? `Mark ${todo.title} as incomplete`
+              : `Mark ${todo.title} as complete`
+          }
+          accessibilityState={{ checked: todo.completed }}
           style={{
             width: 22,
             height: 22,
@@ -359,29 +391,20 @@ export function TodoItem({
 
             {/* Label chips */}
             {todo.labels.map((label) => (
-              <View
+              <LabelChip
                 key={label}
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  backgroundColor: "rgba(255,255,255,0.06)",
-                  borderRadius: 6,
-                  paddingHorizontal: 7,
-                  paddingVertical: 3,
-                  gap: 4,
-                }}
-              >
-                <AppIcon icon={Tag01Icon} size={12} color="#71717a" />
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: "#a1a1aa",
-                    fontWeight: "500",
-                  }}
-                >
-                  {label.charAt(0).toUpperCase() + label.slice(1)}
-                </Text>
-              </View>
+                label={label}
+                size="sm"
+                onPress={
+                  selectionMode
+                    ? undefined
+                    : (lbl) => {
+                        router.push(
+                          `/(app)/(tabs)/todos/label/${encodeURIComponent(lbl)}`,
+                        );
+                      }
+                }
+              />
             ))}
 
             {/* Priority chip */}
@@ -428,6 +451,8 @@ export function TodoItem({
             <Pressable
               onPress={handleDeletePress}
               hitSlop={8}
+              accessibilityRole="button"
+              accessibilityLabel={`Delete ${todo.title}`}
               style={{
                 width: 28,
                 height: 28,

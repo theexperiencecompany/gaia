@@ -1,16 +1,24 @@
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
-import { Button, Spinner } from "heroui-native";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
+  Pressable,
   RefreshControl,
   ScrollView,
   View,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { AppIcon, ArrowLeft01Icon, ConnectIcon } from "@/components/icons";
+import {
+  AppIcon,
+  ArrowLeft01Icon,
+  CheckmarkCircle02Icon,
+  ConnectIcon,
+  InformationCircleIcon,
+  PlusSignIcon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import {
@@ -26,6 +34,11 @@ import {
   fetchIntegrations,
 } from "../api";
 import type { Integration } from "../types";
+import { BearerTokenSheet, type BearerTokenSheetRef } from "./BearerTokenSheet";
+import {
+  CreateMCPIntegrationSheet,
+  type CreateMCPIntegrationSheetRef,
+} from "./CreateMCPIntegrationSheet";
 
 const CATEGORY_LABELS: Record<string, string> = {
   all: "All",
@@ -94,12 +107,9 @@ const INTEGRATION_LOGOS: Record<string, string> = {
     "https://upload.wikimedia.org/wikipedia/commons/thumb/7/75/ClickUp_Logo.svg/512px-ClickUp_Logo.svg.png",
 };
 
-function getLogoUri(integration: Integration): string {
+function getLogoUri(integration: Integration): string | null {
   if (integration.iconUrl) return integration.iconUrl;
-  return (
-    INTEGRATION_LOGOS[integration.id] ??
-    "https://upload.wikimedia.org/wikipedia/commons/thumb/a/ac/No_image_available.svg/512px-No_image_available.svg.png"
-  );
+  return INTEGRATION_LOGOS[integration.id] ?? null;
 }
 
 interface IntegrationRowProps {
@@ -108,115 +118,370 @@ interface IntegrationRowProps {
   onPress: (integration: Integration) => Promise<void>;
 }
 
+function LogoCircle({
+  integration,
+  size,
+  borderRadius,
+}: {
+  integration: Integration;
+  size: number;
+  borderRadius: number;
+}) {
+  const initial = integration.name.charAt(0).toUpperCase();
+  const logoUri = getLogoUri(integration);
+
+  // Generate a deterministic hue from the integration id for fallback circles
+  const hue =
+    integration.id.split("").reduce((acc, ch) => acc + ch.charCodeAt(0), 0) %
+    360;
+  const fallbackBg = `hsla(${hue},55%,38%,0.3)`;
+  const fallbackBorder = `hsla(${hue},55%,55%,0.2)`;
+
+  if (logoUri) {
+    return (
+      <View
+        style={{
+          width: size,
+          height: size,
+          borderRadius,
+          backgroundColor: "rgba(255,255,255,0.05)",
+          alignItems: "center",
+          justifyContent: "center",
+          overflow: "hidden",
+          flexShrink: 0,
+        }}
+      >
+        <Image
+          source={{ uri: logoUri }}
+          style={{ width: size - 12, height: size - 12 }}
+          contentFit="contain"
+        />
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        width: size,
+        height: size,
+        borderRadius,
+        backgroundColor: fallbackBg,
+        borderWidth: 1,
+        borderColor: fallbackBorder,
+        alignItems: "center",
+        justifyContent: "center",
+        flexShrink: 0,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: size * 0.38,
+          fontWeight: "700",
+          color: `hsl(${hue},70%,80%)`,
+        }}
+      >
+        {initial}
+      </Text>
+    </View>
+  );
+}
+
+function AuthTypeBadge({
+  authType,
+}: {
+  authType?: "oauth" | "bearer" | "none";
+}) {
+  const { fontSize } = useResponsive();
+  if (!authType || authType === "none") return null;
+
+  const label =
+    authType === "oauth" ? "OAuth" : authType === "bearer" ? "Bearer" : "MCP";
+  return (
+    <View
+      style={{
+        backgroundColor: "rgba(255,255,255,0.06)",
+        borderRadius: 4,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: fontSize.xs - 2,
+          color: "#636369",
+          fontWeight: "500",
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function ManagedByBadge({
+  managedBy,
+}: {
+  managedBy?: "self" | "composio" | "mcp" | "internal";
+}) {
+  const { fontSize } = useResponsive();
+  if (!managedBy || managedBy === "self" || managedBy === "internal")
+    return null;
+
+  const label = managedBy === "composio" ? "Composio" : "MCP";
+  return (
+    <View
+      style={{
+        backgroundColor: "rgba(167,139,250,0.1)",
+        borderRadius: 4,
+        paddingHorizontal: 5,
+        paddingVertical: 2,
+      }}
+    >
+      <Text
+        style={{
+          fontSize: fontSize.xs - 2,
+          color: "#a78bfa",
+          fontWeight: "500",
+        }}
+      >
+        {label}
+      </Text>
+    </View>
+  );
+}
+
+function StatusPill({
+  status,
+  isConnecting,
+  moderateScale,
+  spacing,
+  fontSize,
+}: {
+  status: Integration["status"];
+  isConnecting: boolean;
+  moderateScale: (size: number, factor?: number) => number;
+  spacing: Record<string, number>;
+  fontSize: Record<string, number>;
+}) {
+  if (isConnecting) {
+    return <ActivityIndicator size="small" color="#8e8e93" />;
+  }
+
+  if (status === "connected") {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          backgroundColor: "rgba(52,199,89,0.12)",
+          borderRadius: moderateScale(20, 0.5),
+          paddingHorizontal: spacing.sm + 2,
+          paddingVertical: 5,
+        }}
+      >
+        <AppIcon icon={CheckmarkCircle02Icon} size={11} color="#34c759" />
+        <Text
+          style={{ fontSize: fontSize.xs, color: "#34c759", fontWeight: "500" }}
+        >
+          Connected
+        </Text>
+      </View>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <View
+        style={{
+          flexDirection: "row",
+          alignItems: "center",
+          gap: 4,
+          backgroundColor: "rgba(239,68,68,0.12)",
+          borderRadius: moderateScale(20, 0.5),
+          paddingHorizontal: spacing.sm + 2,
+          paddingVertical: 5,
+        }}
+      >
+        <AppIcon icon={InformationCircleIcon} size={11} color="#ef4444" />
+        <Text
+          style={{ fontSize: fontSize.xs, color: "#ef4444", fontWeight: "500" }}
+        >
+          Error
+        </Text>
+      </View>
+    );
+  }
+
+  return (
+    <View
+      style={{
+        backgroundColor: "rgba(255,255,255,0.06)",
+        borderRadius: moderateScale(20, 0.5),
+        paddingHorizontal: spacing.sm + 2,
+        paddingVertical: 5,
+      }}
+    >
+      <Text
+        style={{ fontSize: fontSize.xs, color: "#636369", fontWeight: "500" }}
+      >
+        Not Connected
+      </Text>
+    </View>
+  );
+}
+
 function IntegrationRow({
   integration,
   connectingId,
   onPress,
 }: IntegrationRowProps) {
-  const { fontSize, spacing } = useResponsive();
+  const { fontSize, spacing, moderateScale } = useResponsive();
   const isConnected = integration.status === "connected";
-  const isPending = integration.status === "created";
   const isConnecting = connectingId === integration.id;
   const isAvailable =
     integration.source === "custom" || integration.available !== false;
-
-  const statusChip = isConnected ? (
-    <AppStatusChip status="connected" />
-  ) : isPending ? (
-    <AppStatusChip status="pending" />
-  ) : !isAvailable ? (
-    <AppStatusChip label="Unavailable" tone="default" variant="secondary" />
-  ) : null;
-
-  const actionLabel = isConnected
-    ? "Disconnect"
-    : isPending
-      ? "Continue"
-      : "Connect";
-  const actionClassName = isConnected
-    ? "bg-danger/15"
-    : isPending
-      ? "bg-warning/15"
-      : "bg-primary/15";
-  const actionLabelClassName = isConnected
-    ? "text-danger"
-    : isPending
-      ? "text-warning"
-      : "text-primary";
+  const toolCount = integration.tools?.length ?? 0;
 
   return (
-    <AppSectionCard
-      className="rounded-2xl bg-[#17191f]"
-      bodyClassName="px-4 py-4"
+    <Pressable
+      onPress={() => onPress(integration)}
+      style={({ pressed }) => ({
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: spacing.md,
+        paddingVertical: spacing.sm + 2,
+        backgroundColor: pressed
+          ? "rgba(255,255,255,0.04)"
+          : "rgba(255,255,255,0.02)",
+        borderRadius: moderateScale(14, 0.5),
+        borderWidth: 1,
+        borderColor: "rgba(255,255,255,0.06)",
+      })}
     >
-      <View
-        style={{ flexDirection: "row", alignItems: "center", gap: spacing.md }}
-      >
+      {/* Circular logo with fallback initial */}
+      <View style={{ marginRight: spacing.sm + 4 }}>
+        <LogoCircle integration={integration} size={40} borderRadius={20} />
+      </View>
+
+      {/* Name + badges + status pill */}
+      <View style={{ flex: 1, minWidth: 0, marginRight: spacing.sm }}>
+        {/* Row 1: name + category badge */}
         <View
           style={{
-            width: 44,
-            height: 44,
-            borderRadius: 14,
-            backgroundColor: "rgba(255,255,255,0.06)",
+            flexDirection: "row",
             alignItems: "center",
-            justifyContent: "center",
-            flexShrink: 0,
+            gap: 6,
+            flexWrap: "wrap",
           }}
         >
-          <Image
-            source={{ uri: getLogoUri(integration) }}
-            style={{ width: 28, height: 28 }}
-            contentFit="contain"
-          />
-        </View>
-
-        <View style={{ flex: 1, minWidth: 0, gap: 4 }}>
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-            <Text
-              style={{
-                flexShrink: 1,
-                fontSize: fontSize.sm,
-                fontWeight: "600",
-                color: "#f4f4f5",
-              }}
-              numberOfLines={1}
-            >
-              {integration.name}
-            </Text>
-            {statusChip}
-          </View>
           <Text
             style={{
-              fontSize: fontSize.xs,
-              color: "#8e8e93",
+              fontSize: fontSize.sm,
+              fontWeight: "700",
+              color: "#f4f4f5",
+              flexShrink: 1,
             }}
-            numberOfLines={2}
+            numberOfLines={1}
           >
-            {integration.description}
+            {integration.name}
           </Text>
+          <View
+            style={{
+              backgroundColor: "rgba(0,187,255,0.1)",
+              borderRadius: 4,
+              paddingHorizontal: 5,
+              paddingVertical: 2,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: fontSize.xs - 2,
+                color: "#00bbff",
+                fontWeight: "500",
+              }}
+            >
+              {getCategoryLabel(integration.category)}
+            </Text>
+          </View>
         </View>
 
-        {isAvailable ? (
-          <Button
-            size="sm"
-            variant="tertiary"
-            className={actionClassName}
-            isDisabled={isConnecting}
-            onPress={() => {
-              void onPress(integration);
-            }}
+        {/* Row 2: auth type + managed by */}
+        <View
+          style={{
+            flexDirection: "row",
+            alignItems: "center",
+            gap: 4,
+            marginTop: 3,
+          }}
+        >
+          <AuthTypeBadge authType={integration.authType} />
+          <ManagedByBadge managedBy={integration.managedBy} />
+          {isConnected && toolCount > 0 && (
+            <Text style={{ fontSize: fontSize.xs - 2, color: "#636369" }}>
+              {toolCount} {toolCount === 1 ? "tool" : "tools"}
+            </Text>
+          )}
+        </View>
+      </View>
+
+      {/* Right side: status + action button */}
+      <View style={{ alignItems: "flex-end", gap: 6 }}>
+        <StatusPill
+          status={integration.status}
+          isConnecting={isConnecting}
+          moderateScale={moderateScale}
+          spacing={spacing}
+          fontSize={fontSize}
+        />
+        {!isConnecting && isConnected ? (
+          <Pressable
+            onPress={() => onPress(integration)}
+            style={({ pressed }) => ({
+              borderRadius: moderateScale(12, 0.5),
+              paddingHorizontal: spacing.sm + 2,
+              paddingVertical: 4,
+              borderWidth: 1,
+              borderColor: "rgba(239,68,68,0.4)",
+              backgroundColor: pressed ? "rgba(239,68,68,0.12)" : "transparent",
+            })}
           >
-            {isConnecting ? (
-              <Spinner size="sm" />
-            ) : (
-              <Button.Label className={actionLabelClassName}>
-                {actionLabel}
-              </Button.Label>
-            )}
-          </Button>
+            <Text
+              style={{
+                fontSize: fontSize.xs - 1,
+                color: "#ef4444",
+                fontWeight: "500",
+              }}
+            >
+              Disconnect
+            </Text>
+          </Pressable>
+        ) : !isConnecting && isAvailable && integration.status !== "created" ? (
+          <Pressable
+            onPress={() => onPress(integration)}
+            style={({ pressed }) => ({
+              borderRadius: moderateScale(12, 0.5),
+              paddingHorizontal: spacing.sm + 2,
+              paddingVertical: 4,
+              borderWidth: 1,
+              borderColor: "rgba(0,187,255,0.4)",
+              backgroundColor: pressed ? "rgba(0,187,255,0.12)" : "transparent",
+            })}
+          >
+            <Text
+              style={{
+                fontSize: fontSize.xs - 1,
+                color: "#00bbff",
+                fontWeight: "500",
+              }}
+            >
+              Connect
+            </Text>
+          </Pressable>
         ) : null}
       </View>
-    </AppSectionCard>
+    </Pressable>
   );
 }
 
@@ -288,6 +553,9 @@ export function IntegrationsScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { spacing, fontSize } = useResponsive();
+
+  const createSheetRef = useRef<CreateMCPIntegrationSheetRef>(null);
+  const bearerSheetRef = useRef<BearerTokenSheetRef>(null);
 
   const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -457,6 +725,38 @@ export function IntegrationsScreen() {
         return;
       }
 
+      // Route by auth_type
+      const authType = integration.authType ?? "oauth";
+
+      if (authType === "bearer") {
+        // Bearer token flow: open token input sheet
+        bearerSheetRef.current?.open({
+          integrationId: integration.id,
+          integrationName: integration.name,
+          iconUrl: integration.iconUrl,
+        });
+      } else if (authType === "none") {
+        // Direct connect (no auth required)
+        setConnectingId(integration.id);
+        const result = await connectIntegration(integration.id);
+        if (result.success) {
+          await load();
+        } else if (!result.cancelled) {
+          Alert.alert("Error", result.error ?? "Failed to connect integration");
+        }
+        setConnectingId(null);
+      } else {
+        // OAuth flow (default)
+        setConnectingId(integration.id);
+        const result = await connectIntegration(integration.id);
+        if (result.success) {
+          await load();
+        } else if (!result.cancelled) {
+          Alert.alert("Error", result.error ?? "Failed to connect integration");
+        }
+        setConnectingId(null);
+      }
+
       setConnectingId(integration.id);
       const result = await connectIntegration(integration.id);
       if (result.success) {
@@ -565,7 +865,7 @@ export function IntegrationsScreen() {
             className="rounded-2xl bg-[#17191f]"
             bodyClassName="items-center px-6 py-10"
           >
-            <Spinner />
+            <ActivityIndicator color="#00bbff" />
             <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
               Loading integrations...
             </Text>
@@ -596,35 +896,58 @@ export function IntegrationsScreen() {
               gap: spacing.sm,
             }}
           >
-            <Button
-              isIconOnly
-              variant="secondary"
-              size="sm"
+            <Pressable
               onPress={() => router.back()}
+              style={{
+                width: 36,
+                height: 36,
+                borderRadius: 18,
+                backgroundColor: "rgba(255,255,255,0.06)",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
             >
               <AppIcon icon={ArrowLeft01Icon} size={18} color="#ffffff" />
-            </Button>
+            </Pressable>
 
-            <View style={{ flex: 1 }}>
-              <Text
-                style={{
-                  fontSize: fontSize.base,
-                  fontWeight: "600",
-                  color: "#ffffff",
-                }}
-              >
-                Integrations
-              </Text>
+            <Text
+              style={{
+                marginLeft: spacing.md,
+                fontSize: fontSize.base,
+                fontWeight: "600",
+                color: "#fff",
+                flex: 1,
+              }}
+            >
+              Integrations
+            </Text>
+
+            {/* Add custom integration button */}
+            <Pressable
+              onPress={() => createSheetRef.current?.open()}
+              style={({ pressed }) => ({
+                flexDirection: "row",
+                alignItems: "center",
+                gap: 5,
+                paddingHorizontal: spacing.sm + 4,
+                paddingVertical: 7,
+                borderRadius: moderateScale(20, 0.5),
+                backgroundColor: pressed
+                  ? "rgba(0,170,230,0.9)"
+                  : "rgba(0,187,255,0.85)",
+              })}
+            >
+              <AppIcon icon={PlusSignIcon} size={14} color="#fff" />
               <Text
                 style={{
                   fontSize: fontSize.xs,
-                  color: "#8e8e93",
-                  marginTop: 2,
+                  fontWeight: "600",
+                  color: "#fff",
                 }}
               >
-                Connect the tools your workflows can use.
+                Add MCP
               </Text>
-            </View>
+            </Pressable>
           </View>
         </View>
 
@@ -661,6 +984,15 @@ export function IntegrationsScreen() {
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
       />
+
+      {/* ─── Create MCP Integration Sheet ────────────────────────────────── */}
+      <CreateMCPIntegrationSheet
+        ref={createSheetRef}
+        onIntegrationCreated={() => void load()}
+      />
+
+      {/* ─── Bearer Token Sheet ───────────────────────────────────────────── */}
+      <BearerTokenSheet ref={bearerSheetRef} onSuccess={() => void load()} />
     </View>
   );
 }

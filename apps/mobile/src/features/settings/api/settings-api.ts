@@ -9,6 +9,12 @@ export type {
   UsageSummary,
 } from "@gaia/shared/types";
 
+export interface UsageHistoryEntry {
+  date: string;
+  plan_type: string;
+  features: Record<string, Pick<FeatureUsage, "title" | "periods">>;
+}
+
 export interface OnboardingPreferences {
   profession?: string;
   response_style?: string;
@@ -26,12 +32,25 @@ export interface UserProfile {
   email: string;
   picture: string;
   timezone?: string;
+  created_at?: string;
   onboarding?: {
     completed: boolean;
     completed_at?: string;
     preferences?: OnboardingPreferences;
   };
   selected_model?: string;
+}
+
+export interface HoloCardColors {
+  accent: string;
+  gradient_from: string;
+  gradient_to: string;
+}
+
+export interface UserStats {
+  conversation_count: number;
+  workflow_count: number;
+  integration_count: number;
 }
 
 export interface ChannelPreferences {
@@ -67,6 +86,14 @@ export const settingsApi = {
     return apiService.get<UsageSummary>("/usage/summary");
   },
 
+  getUsageHistory(days = 7, featureKey?: string): Promise<UsageHistoryEntry[]> {
+    const params = new URLSearchParams({ days: days.toString() });
+    if (featureKey) {
+      params.append("feature_key", featureKey);
+    }
+    return apiService.get<UsageHistoryEntry[]>(`/usage/history?${params}`);
+  },
+
   getChannelPreferences(): Promise<ChannelPreferences> {
     return apiService.get<ChannelPreferences>(
       "/notifications/preferences/channels",
@@ -81,5 +108,13 @@ export const settingsApi = {
       "/notifications/preferences/channels",
       { [platform]: enabled },
     );
+  },
+
+  updateHoloCardColors(colors: HoloCardColors): Promise<UserProfile> {
+    return apiService.patch<UserProfile>("/user/holo-card/colors", colors);
+  },
+
+  getUserStats(): Promise<UserStats> {
+    return apiService.get<UserStats>("/user/stats");
   },
 };

@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
+import { wsManager } from "@/lib/websocket-client";
+import { WS_EVENTS } from "@/lib/websocket-events";
 import { workflowApi } from "../api/workflow-api";
 import type { Workflow } from "../types/workflow-types";
 
@@ -48,6 +50,31 @@ export function useWorkflows(): UseWorkflowsReturn {
 
   useEffect(() => {
     void fetchWorkflows();
+  }, [fetchWorkflows]);
+
+  useEffect(() => {
+    const handleWorkflowEvent = () => {
+      void fetchWorkflows(true);
+    };
+
+    const unsubStarted = wsManager.subscribe(
+      WS_EVENTS.WORKFLOW_RUN_STARTED,
+      handleWorkflowEvent,
+    );
+    const unsubCompleted = wsManager.subscribe(
+      WS_EVENTS.WORKFLOW_RUN_COMPLETED,
+      handleWorkflowEvent,
+    );
+    const unsubFailed = wsManager.subscribe(
+      WS_EVENTS.WORKFLOW_RUN_FAILED,
+      handleWorkflowEvent,
+    );
+
+    return () => {
+      unsubStarted();
+      unsubCompleted();
+      unsubFailed();
+    };
   }, [fetchWorkflows]);
 
   return {

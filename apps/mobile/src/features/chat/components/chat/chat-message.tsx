@@ -11,13 +11,16 @@ import { MessageBubble } from "@/components/ui/message-bubble";
 import { Text } from "@/components/ui/text";
 import { useAuth } from "@/features/auth/hooks/use-auth";
 import { useResponsive } from "@/lib/responsive";
+import { extractUrls, useLinkPreview } from "../../hooks/use-link-preview";
 import { ToolDataRenderer } from "../../tool-data";
 import type { Message } from "../../types";
 import {
   MemoryBottomSheet,
   type MemoryBottomSheetRef,
 } from "../memory/memory-bottom-sheet";
+import { ThinkingCard, ToolProgressCard } from "../streaming";
 import { ImageBubble } from "./image-bubble";
+import { LinkPreviewCard } from "./link-preview-card";
 import { LoadingIndicator } from "./loading-indicator";
 import type { MessageActionConfig } from "./message-action-sheet";
 import { MessageReplyQuote } from "./message-reply-quote";
@@ -216,6 +219,8 @@ interface ChatMessageProps {
   onLongPress?: (config: MessageActionConfig) => void;
   isLoading?: boolean;
   loadingMessage?: string;
+  progressToolName?: string | null;
+  progressMessage?: string | null;
 }
 
 export function ChatMessage({
@@ -225,6 +230,8 @@ export function ChatMessage({
   onLongPress,
   isLoading = false,
   loadingMessage = "Thinking...",
+  progressToolName = null,
+  progressMessage = null,
 }: ChatMessageProps) {
   const isUser = message.isUser;
   const { spacing, width, moderateScale } = useResponsive();
@@ -245,10 +252,18 @@ export function ChatMessage({
 
   const _hasContent = messageParts.length > 0;
   const showLoadingState = !isUser && isLoading && !_hasContent;
+  const showToolProgress = showLoadingState && progressMessage !== null;
+  const showThinkingCard = showLoadingState && !showToolProgress;
 
   // Determine if the image is still being generated (imageData present but url is empty)
   const isGeneratingImage =
     !isUser && message.imageData != null && !message.imageData.url;
+
+  const rawText = message.text ?? "";
+  const linkPreviewUrls = !isUser ? extractUrls(rawText) : [];
+  const { data: linkPreviewData } = useLinkPreview(
+    !isUser && !isLoading && rawText.length > 0 ? rawText : "",
+  );
 
   // Message max width adapts to screen size (80% of screen width, min 280, max 400)
   const messageMaxWidth = Math.min(Math.max(width * 0.8, 280), 400);
@@ -384,6 +399,13 @@ export function ChatMessage({
               messageParts.length > 0 ? messageParts.join(" ") : undefined
             }
           />
+        ) : showToolProgress ? (
+          <ToolProgressCard
+            toolName={progressToolName}
+            progressMessage={progressMessage}
+          />
+        ) : showThinkingCard ? (
+          <ThinkingCard />
         ) : showLoadingState ? (
           <LoadingIndicator
             progress={
@@ -409,6 +431,21 @@ export function ChatMessage({
             />
           ))
         )}
+
+        {/* Link preview – shown below message content for AI messages */}
+        {!isUser &&
+        !isLoading &&
+        linkPreviewUrls.length > 0 &&
+        linkPreviewData?.length ? (
+          <LinkPreviewCard
+            url={linkPreviewData[0].url}
+            title={linkPreviewData[0].title}
+            description={linkPreviewData[0].description}
+            imageUrl={linkPreviewData[0].imageUrl}
+            favicon={linkPreviewData[0].favicon}
+            domain={linkPreviewData[0].domain}
+          />
+        ) : null}
       </View>
 
       {/* Memory indicator pill – shown below the AI message when memory was updated */}

@@ -5,8 +5,8 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icons/gaialogo.png",
-    "scheme": "gaiamobile",
-    "userInterfaceStyle": "dark",
+    "scheme": ["gaiamobile", "gaia"],
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "io.heygaia.gaiamobile",
@@ -35,6 +35,17 @@
               "host": "auth",
               "pathPrefix": "/callback"
             }
+          ],
+          "category": ["BROWSABLE", "DEFAULT"]
+        },
+        {
+          "action": "VIEW",
+          "data": [
+            { "scheme": "gaia", "host": "chat" },
+            { "scheme": "gaia", "host": "todos" },
+            { "scheme": "gaia", "host": "notifications" },
+            { "scheme": "gaia", "host": "settings" },
+            { "scheme": "gaia", "host": "integrations" }
           ],
           "category": ["BROWSABLE", "DEFAULT"]
         }
