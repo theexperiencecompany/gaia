@@ -10,11 +10,35 @@ Tests in TestMCPToolMerge verify this path so that removing the merge logic
 causes test failures.
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 from app.models.tools_models import ToolInfo, ToolsCategoryResponse, ToolsListResponse
+
+# ---------------------------------------------------------------------------
+# Cache isolation
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(autouse=True)
+def clear_cacheable_redis_cache():
+    """Prevent @Cacheable(smart_hash=True) on list_tool_categories from leaking
+    cached Redis values across tests.
+
+    The Cacheable decorator delegates entirely to get_cache / set_cache (Redis),
+    so we patch both at the decorator's import site to no-ops for every test.
+    This ensures the @Cacheable wrapper on list_tool_categories never reads a
+    stale cached value left by a previous test in the same session.
+    """
+    with (
+        patch(
+            "app.decorators.caching.get_cache", new_callable=AsyncMock
+        ) as mock_dec_get,
+        patch("app.decorators.caching.set_cache", new_callable=AsyncMock),
+    ):
+        mock_dec_get.return_value = None  # always a cache miss inside @Cacheable
+        yield
 
 
 # ---------------------------------------------------------------------------
@@ -145,20 +169,86 @@ class TestToolsEndpoints:
         assert data["total_count"] == 0
         assert data["categories"] == []
 
+    @patch(
+        "app.api.v1.endpoints.tools.get_user_mcp_tools",
+        new_callable=AsyncMock,
+    )
+    @patch(
+        "app.api.v1.endpoints.tools.get_available_tools",
+        new_callable=AsyncMock,
+    )
     @patch("app.api.v1.endpoints.tools.get_cache", new_callable=AsyncMock)
-    async def test_list_tools_uses_cache_on_hit(self, mock_cache, test_client):
-        """GET /tools should return cached response when cache is available."""
+    async def test_list_tools_uses_cache_on_hit(
+        self, mock_cache, mock_get_tools, mock_get_user_mcp_tools, test_client
+    ):
+        """GET /tools should return cached response when cache is available.
+
+        On a cache hit the endpoint skips get_available_tools entirely and
+        overlays user MCP tools via get_user_mcp_tools.  Both must be mocked
+        to keep the test hermetic (no real DB/Redis access).
+        """
         cached = _make_tools_list_response(
-            [_make_tool_info(name="cached_tool", category="general", display_name="General")]
+            [
+                _make_tool_info(
+                    name="cached_tool", category="general", display_name="General"
+                )
+            ]
         )
         mock_cache.return_value = cached
+        # No user-specific MCP tools — response should come straight from cache.
+        mock_get_user_mcp_tools.return_value = []
 
         response = await test_client.get(_TOOLS_URL)
 
         assert response.status_code == 200
         data = response.json()
-        # Should use cached data (no get_available_tools call needed)
+        # Cached data is returned as-is when there are no user MCP tools.
         assert data["total_count"] == 1
+        assert data["tools"][0]["name"] == "cached_tool"
+        # get_available_tools must NOT have been called on a cache hit.
+        mock_get_tools.assert_not_called()
+        # get_cache IS called to check the global cache key.
+        mock_cache.assert_called_once()
+
+    @patch(
+        "app.api.v1.endpoints.tools.get_user_mcp_tools",
+        new_callable=AsyncMock,
+    )
+    @patch("app.api.v1.endpoints.tools.get_cache", new_callable=AsyncMock)
+    async def test_list_tools_merges_cache_and_mcp_tools(
+        self, mock_cache, mock_get_user_mcp_tools, test_client
+    ):
+        """GET /tools should merge cached global tools with user MCP tools.
+
+        When the global cache holds tool set A and get_user_mcp_tools returns
+        tool set B, merge_tools_responses must combine them so both appear in
+        the response (user MCP tools take precedence and are listed first).
+        """
+        cached_tool = _make_tool_info(
+            name="cached_tool", category="general", display_name="General"
+        )
+        cached = _make_tools_list_response([cached_tool])
+        mock_cache.return_value = cached
+
+        mcp_tool = _make_tool_info(
+            name="mcp_tool",
+            category="my_mcp_server",
+            display_name="My MCP Server",
+            requires_integration=True,
+        )
+        mock_get_user_mcp_tools.return_value = [mcp_tool]
+
+        response = await test_client.get(_TOOLS_URL)
+
+        assert response.status_code == 200
+        data = response.json()
+        tool_names = {t["name"] for t in data["tools"]}
+        # Both the cached global tool and the user's MCP tool must be present.
+        assert "cached_tool" in tool_names
+        assert "mcp_tool" in tool_names
+        assert data["total_count"] == 2
+        # User MCP tools are prepended by merge_tools_responses.
+        assert data["tools"][0]["name"] == "mcp_tool"
 
     @patch("app.api.v1.endpoints.tools.get_cache", new_callable=AsyncMock)
     @patch(
@@ -190,9 +280,7 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tool_categories",
         new_callable=AsyncMock,
     )
-    async def test_list_categories_returns_200(
-        self, mock_categories, test_client
-    ):
+    async def test_list_categories_returns_200(self, mock_categories, test_client):
         """GET /tools/categories should return 200 with category map."""
         mock_categories.return_value = {
             "gmail": 12,
@@ -251,13 +339,15 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tools_by_category",
         new_callable=AsyncMock,
     )
-    async def test_get_tools_in_category_returns_200(
-        self, mock_by_cat, test_client
-    ):
+    async def test_get_tools_in_category_returns_200(self, mock_by_cat, test_client):
         """GET /tools/category/{name} should return 200 with tools in category."""
         mock_by_cat.return_value = ToolsCategoryResponse(
             category="gmail",
-            tools=[_make_tool_info(name="send_email", category="gmail", display_name="Gmail")],
+            tools=[
+                _make_tool_info(
+                    name="send_email", category="gmail", display_name="Gmail"
+                )
+            ],
             count=1,
         )
 
@@ -304,9 +394,7 @@ class TestToolsEndpoints:
         assert response.status_code == 500
         assert "Failed to retrieve tools for category" in response.json()["detail"]
 
-    async def test_get_tools_in_category_requires_auth(
-        self, unauthenticated_client
-    ):
+    async def test_get_tools_in_category_requires_auth(self, unauthenticated_client):
         """GET /tools/category/{name} without auth should return 401."""
         response = await unauthenticated_client.get(f"{_CATEGORY_URL}/gmail")
         assert response.status_code == 401
@@ -315,14 +403,14 @@ class TestToolsEndpoints:
         "app.api.v1.endpoints.tools.get_tools_by_category",
         new_callable=AsyncMock,
     )
-    async def test_get_tools_in_category_multiple_tools(
-        self, mock_by_cat, test_client
-    ):
+    async def test_get_tools_in_category_multiple_tools(self, mock_by_cat, test_client):
         """GET /tools/category/{name} should return all tools in the category."""
         tools = [
             _make_tool_info(name="send_email", category="gmail", display_name="Gmail"),
             _make_tool_info(name="read_email", category="gmail", display_name="Gmail"),
-            _make_tool_info(name="delete_email", category="gmail", display_name="Gmail"),
+            _make_tool_info(
+                name="delete_email", category="gmail", display_name="Gmail"
+            ),
         ]
         mock_by_cat.return_value = ToolsCategoryResponse(
             category="gmail",

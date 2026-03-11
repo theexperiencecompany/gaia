@@ -31,7 +31,10 @@ class TestStoreMemoriesBatch:
         return [
             {
                 "content": "Your subscription to GitHub Pro has been renewed.",
-                "metadata": {"subject": "GitHub Pro Renewal", "sender": "billing@github.com"},
+                "metadata": {
+                    "subject": "GitHub Pro Renewal",
+                    "sender": "billing@github.com",
+                },
             },
             {
                 "content": "Welcome to the team! You start Monday at Acme Corp.",
@@ -39,7 +42,10 @@ class TestStoreMemoriesBatch:
             },
             {
                 "content": "Your flight to San Francisco is confirmed.",
-                "metadata": {"subject": "Flight Confirmation", "sender": "noreply@airline.com"},
+                "metadata": {
+                    "subject": "Flight Confirmation",
+                    "sender": "noreply@airline.com",
+                },
             },
         ]
 
@@ -49,9 +55,7 @@ class TestStoreMemoriesBatch:
         assert "user_abc" in result
 
     async def test_single_email_stored_successfully(self, ctx, single_email):
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
 
             result = await store_memories_batch(
@@ -74,9 +78,7 @@ class TestStoreMemoriesBatch:
         assert "Python conference" in stored_messages[0]["content"]
 
     async def test_batch_stored_successfully(self, ctx, multi_email_batch):
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
 
             result = await store_memories_batch(
@@ -102,9 +104,7 @@ class TestStoreMemoriesBatch:
     async def test_mem0_filters_all_returns_non_memorable_message(
         self, ctx, single_email
     ):
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=False)
 
             result = await store_memories_batch(ctx, "user_abc", single_email)
@@ -138,9 +138,7 @@ class TestStoreMemoriesBatch:
             captured_messages.extend(kwargs.get("messages", []))
             return True
 
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(side_effect=capture_call)
             await store_memories_batch(ctx, "user_abc", emails)
 
@@ -153,9 +151,7 @@ class TestStoreMemoriesBatch:
     async def test_user_context_included_in_custom_instructions_with_name_and_email(
         self, ctx, single_email
     ):
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
 
             await store_memories_batch(
@@ -172,9 +168,7 @@ class TestStoreMemoriesBatch:
         assert "bob@example.com" in instructions
 
     async def test_user_context_empty_when_no_name(self, ctx, single_email):
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
 
             await store_memories_batch(ctx, "user_abc", single_email)
@@ -185,14 +179,10 @@ class TestStoreMemoriesBatch:
         assert "The user's name is" not in instructions
 
     async def test_metadata_passed_to_service_contains_source(self, ctx, single_email):
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
 
-            await store_memories_batch(
-                ctx, "user_abc", single_email, user_name="Alice"
-            )
+            await store_memories_batch(ctx, "user_abc", single_email, user_name="Alice")
 
         call_kwargs = mock_svc.store_memory_batch.call_args.kwargs
         assert call_kwargs["metadata"]["source"] == "gmail_background_batch"
@@ -201,9 +191,7 @@ class TestStoreMemoriesBatch:
 
     async def test_async_mode_is_false(self, ctx, single_email):
         """store_memory_batch must be called with async_mode=False."""
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
 
             await store_memories_batch(ctx, "user_abc", single_email)
@@ -212,9 +200,7 @@ class TestStoreMemoriesBatch:
         assert call_kwargs["async_mode"] is False
 
     async def test_exception_in_service_returns_error_string(self, ctx, single_email):
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(
                 side_effect=RuntimeError("Mem0 is unavailable")
             )
@@ -234,9 +220,7 @@ class TestStoreMemoriesBatch:
             {"content": "", "metadata": {"subject": "S2", "sender": "c@d.com"}},
             {"content": "   ", "metadata": {"subject": "S3", "sender": "e@f.com"}},
         ]
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
 
             result = await store_memories_batch(ctx, "user_abc", emails)
@@ -248,9 +232,7 @@ class TestStoreMemoriesBatch:
 
     async def test_missing_metadata_uses_defaults(self, ctx):
         emails = [{"content": "An email with no metadata dict at all"}]
-        with patch(
-            "app.workers.tasks.memory_tasks.memory_service"
-        ) as mock_svc:
+        with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
             mock_svc.store_memory_batch = AsyncMock(return_value=True)
             await store_memories_batch(ctx, "user_abc", emails)
 
@@ -267,9 +249,7 @@ class TestStoreMemoriesBatch:
             {"job_id": "abc123", "score": 99},
         ]
         for ctx in ctx_variants:
-            with patch(
-                "app.workers.tasks.memory_tasks.memory_service"
-            ) as mock_svc:
+            with patch("app.workers.tasks.memory_tasks.memory_service") as mock_svc:
                 mock_svc.store_memory_batch = AsyncMock(return_value=True)
                 result = await store_memories_batch(ctx, "user_abc", single_email)
             assert "Stored 1 emails" in result

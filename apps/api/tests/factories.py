@@ -47,9 +47,7 @@ def make_state(**overrides) -> State:
     return State(**defaults)
 
 
-def make_tool_call(
-    name: str, args: dict | None = None, id: str | None = None
-) -> dict:
+def make_tool_call(name: str, args: dict | None = None, id: str | None = None) -> dict:
     return {
         "name": name,
         "args": args or {},
@@ -78,7 +76,7 @@ def make_config(
 def make_mcp_config(**overrides) -> dict:
     defaults = {
         "server_name": "test-mcp-server",
-        "server_url": "http://localhost:8080",
+        "server_url": "http://localhost:8080",  # NOSONAR
         "transport": "sse",
         "enabled": True,
         "tools": [],

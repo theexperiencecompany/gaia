@@ -60,6 +60,7 @@
               "developers/development-setup",
               "developers/monorepo",
               "developers/commands",
+              "developers/testing",
               "developers/contributing"
             ]
           },

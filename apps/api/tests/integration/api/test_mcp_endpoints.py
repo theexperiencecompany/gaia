@@ -21,7 +21,7 @@ import pytest
 
 
 def _make_resolved_integration(
-    server_url: str = "http://mcp-server.test",
+    server_url: str = "http://mcp-server.test",  # NOSONAR
     requires_auth: bool = False,
     auth_type: str = "oauth",
 ):
@@ -309,7 +309,7 @@ class TestMCPOAuthCallbackEndpoint:
     )
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
-        return_value="http://frontend.test",
+        return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_success_redirects(
         self,
@@ -351,7 +351,7 @@ class TestMCPOAuthCallbackEndpoint:
 
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
-        return_value="http://frontend.test",
+        return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_error_from_provider_redirects_with_error(
         self,
@@ -377,7 +377,7 @@ class TestMCPOAuthCallbackEndpoint:
 
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
-        return_value="http://frontend.test",
+        return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_invalid_state_format_redirects_with_error(
         self,
@@ -398,7 +398,7 @@ class TestMCPOAuthCallbackEndpoint:
 
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
-        return_value="http://frontend.test",
+        return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_missing_code_redirects_with_error(
         self,
@@ -444,7 +444,7 @@ class TestMCPOAuthCallbackEndpoint:
     )
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
-        return_value="http://frontend.test",
+        return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_handle_failure_redirects_with_error(
         self,
@@ -498,7 +498,7 @@ class TestMCPOAuthCallbackEndpoint:
     )
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
-        return_value="http://frontend.test",
+        return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_uses_default_redirect_path(
         self,
@@ -536,7 +536,7 @@ class TestMCPOAuthCallbackEndpoint:
 
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
-        return_value="http://frontend.test",
+        return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_server_error_mapped_to_oauth_server_error(
         self,
@@ -561,7 +561,7 @@ class TestMCPOAuthCallbackEndpoint:
 
     @patch(
         "app.api.v1.endpoints.mcp.get_frontend_url",
-        return_value="http://frontend.test",
+        return_value="http://frontend.test",  # NOSONAR
     )
     async def test_mcp_oauth_callback_unknown_error_uses_generic_code(
         self,

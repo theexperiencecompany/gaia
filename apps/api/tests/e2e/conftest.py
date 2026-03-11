@@ -7,7 +7,7 @@ Uses REAL GAIA production nodes and graph builder infrastructure:
 - State: from app.override.langgraph_bigtool.utils (the real agent state schema)
 
 Mocks only:
-- LLM: BindableToolsFakeModel (wraps FakeMessagesListChatModel with bind_tools support)
+- LLM: BindableToolsFakeModel (no real LLM calls; supports bind_tools())
 - Store: langgraph.store.memory.InMemoryStore (no ChromaDB)
 - Checkpointer: MemorySaver (no PostgreSQL)
 
@@ -20,7 +20,6 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from langchain_core.messages import AIMessage
 from langchain_core.tools import BaseTool
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
@@ -29,7 +28,6 @@ from app.agents.core.nodes.filter_messages import filter_messages_node
 from app.agents.core.nodes.manage_system_prompts import manage_system_prompts_node
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
-from app.override.langgraph_bigtool.utils import State
 from tests.helpers import BindableToolsFakeModel
 
 
@@ -47,13 +45,7 @@ def build_gaia_test_graph(
     - filter_messages_node
     - manage_system_prompts_node
 
-    The LLM must be a ``BindableToolsFakeModel`` because ``create_agent``
-    calls ``llm.bind_tools(tools)`` before every model invocation.
-    ``FakeMessagesListChatModel`` raises ``NotImplementedError`` for
-    ``bind_tools``; ``BindableToolsFakeModel`` returns ``self`` so the
-    pre-programmed responses are preserved.
-
-    The checkpointer and store are replaced with in-memory test doubles
+    The LLM, checkpointer, and store are replaced with in-memory test doubles
     so no external services are required.
 
     If ``app.agents.core.nodes.filter_messages.filter_messages_node`` or

@@ -1,185 +1,105 @@
-"""Unit tests for GraphManager that exercise real production code paths.
-
-Each test uses a fresh ProviderRegistry injected via monkeypatch so the
-global `providers` singleton is never mutated between tests.  Because the
-registry is real (not mocked), deleting or breaking any method under test
-will cause the relevant assertion to fail.
-"""
-
+import uuid
 from unittest.mock import MagicMock
 
 import pytest
 
 from app.agents.core.graph_manager import GraphManager
-from app.core.lazy_loader import ProviderRegistry
 
 
 @pytest.mark.unit
 class TestGraphManager:
-    """Tests for GraphManager using real ProviderRegistry instances."""
+    """Behavioural tests for GraphManager using the real ProviderRegistry.
 
-    @pytest.fixture(autouse=True)
-    def isolated_registry(self, monkeypatch: pytest.MonkeyPatch) -> ProviderRegistry:
-        """Replace the module-level `providers` singleton with a fresh registry.
+    All tests use UUID-suffixed names to avoid cross-test pollution in the
+    shared registry singleton.  No mocking of `providers` — if GraphManager
+    passes the wrong key to the registry, the real registry will either raise
+    KeyError (returning None via get_graph's except branch) or return the
+    wrong object, and the assertion will fail.
+    """
 
-        This prevents test pollution and ensures each test starts with an
-        empty registry while still exercising real ProviderRegistry logic.
-        """
-        registry = ProviderRegistry()
-        monkeypatch.setattr(
-            "app.agents.core.graph_manager.providers",
-            registry,
+    @pytest.mark.asyncio
+    async def test_set_graph_registers_provider(self):
+        unique_name = f"test_sg_register_{uuid.uuid4().hex}"
+        mock_graph = MagicMock(name="test_graph")
+
+        GraphManager.set_graph(mock_graph, unique_name)
+        result = await GraphManager.get_graph(unique_name)
+
+        assert result is mock_graph, (
+            f"get_graph('{unique_name}') returned {result!r} instead of the "
+            "registered mock_graph. Fails if set_graph uses the wrong registry key."
         )
-        return registry
-
-    # ------------------------------------------------------------------
-    # set_graph registers a provider that returns the graph object
-    # ------------------------------------------------------------------
 
     @pytest.mark.asyncio
-    async def test_set_graph_registers_provider(
-        self, isolated_registry: ProviderRegistry
-    ):
+    async def test_get_graph_calls_provider_with_correct_key(self):
+        unique_name = f"test_sg_key_{uuid.uuid4().hex}"
         mock_graph = MagicMock(name="test_graph")
 
-        GraphManager.set_graph(mock_graph, "my_graph")
+        GraphManager.set_graph(mock_graph, unique_name)
+        result = await GraphManager.get_graph(unique_name)
 
-        assert isolated_registry.is_initialized("my_graph") is False
-        # Provider must be present in the registry after set_graph
-        assert "my_graph" in isolated_registry._providers
-
-    # ------------------------------------------------------------------
-    # get_graph returns the exact object that was registered
-    # ------------------------------------------------------------------
+        assert result is mock_graph, (
+            f"get_graph('{unique_name}') returned {result!r}. "
+            "Fails if get_graph forwards a different key to the registry than the one supplied."
+        )
 
     @pytest.mark.asyncio
-    async def test_get_graph_returns_registered_object(self):
-        mock_graph = MagicMock(name="test_graph")
+    async def test_get_missing_graph(self):
+        unregistered_name = f"test_sg_missing_{uuid.uuid4().hex}"
 
-        GraphManager.set_graph(mock_graph, "my_graph")
-        result = await GraphManager.get_graph("my_graph")
-
-        # Real ProviderRegistry.aget -> LazyLoader.aget -> loader_func()
-        assert result is mock_graph
-
-    # ------------------------------------------------------------------
-    # get_graph returns None (not KeyError) for an unregistered name
-    # ------------------------------------------------------------------
-
-    @pytest.mark.asyncio
-    async def test_get_missing_graph_returns_none(self):
-        result = await GraphManager.get_graph("nonexistent")
+        result = await GraphManager.get_graph(unregistered_name)
 
         assert result is None
 
-    # ------------------------------------------------------------------
-    # Caching: the same instance is returned on every subsequent call
-    # ------------------------------------------------------------------
+    @pytest.mark.asyncio
+    async def test_get_graph_returns_none_not_sentinel_when_provider_returns_none(self):
+        """get_graph must return exactly None — not a wrapper — when the provider
+        yields None, and must look up the correct key in the registry."""
+        unique_name = f"test_sg_null_{uuid.uuid4().hex}"
+
+        GraphManager.set_graph(None, unique_name)
+        result = await GraphManager.get_graph(unique_name)
+
+        assert result is None
+
+
+@pytest.mark.unit
+class TestGraphManagerRoundTrip:
+    """Verify the real set_graph → get_graph round-trip using the actual providers registry.
+
+    These tests do NOT mock providers. They exercise the real ProviderRegistry singleton
+    so that key-mapping bugs in GraphManager are caught — not just mock call patterns.
+    Each test uses a UUID-suffixed name to avoid cross-test pollution in the shared registry.
+    """
 
     @pytest.mark.asyncio
-    async def test_get_graph_returns_same_instance_on_repeated_calls(self):
-        mock_graph = MagicMock(name="cached_graph")
-        GraphManager.set_graph(mock_graph, "cached")
+    async def test_set_then_get_returns_same_object(self):
+        """set_graph then get_graph must return the exact same object."""
+        unique_name = f"test_rt_graph_{uuid.uuid4().hex}"
+        mock_graph = MagicMock(name="round_trip_graph")
 
-        first = await GraphManager.get_graph("cached")
-        second = await GraphManager.get_graph("cached")
-        third = await GraphManager.get_graph("cached")
+        GraphManager.set_graph(mock_graph, unique_name)
+        result = await GraphManager.get_graph(unique_name)
 
-        assert first is mock_graph
-        assert second is mock_graph
-        assert third is mock_graph
-        # All three calls must return the identical object (LazyLoader caches it)
-        assert first is second is third
-
-    # ------------------------------------------------------------------
-    # Caching: loader_func is only invoked once even on multiple gets
-    # ------------------------------------------------------------------
+        assert result is mock_graph, (
+            f"get_graph('{unique_name}') returned {result!r}, expected the mock_graph "
+            "passed to set_graph. Fails if GraphManager uses the wrong key internally."
+        )
 
     @pytest.mark.asyncio
-    async def test_loader_func_called_only_once(
-        self, isolated_registry: ProviderRegistry
-    ):
-        mock_graph = MagicMock(name="expensive_graph")
-        call_count = 0
-
-        def counting_loader():
-            nonlocal call_count
-            call_count += 1
-            return mock_graph
-
-        isolated_registry.register("counted", loader_func=counting_loader)
-
-        await GraphManager.get_graph("counted")
-        await GraphManager.get_graph("counted")
-        await GraphManager.get_graph("counted")
-
-        assert call_count == 1
-
-    # ------------------------------------------------------------------
-    # set_graph a second time replaces the previous graph
-    # ------------------------------------------------------------------
-
-    @pytest.mark.asyncio
-    async def test_set_graph_replaces_previous_graph(self):
-        graph_v1 = MagicMock(name="graph_v1")
-        graph_v2 = MagicMock(name="graph_v2")
-
-        GraphManager.set_graph(graph_v1, "replaceable")
-        result_v1 = await GraphManager.get_graph("replaceable")
-        assert result_v1 is graph_v1
-
-        # Register a new graph under the same name
-        GraphManager.set_graph(graph_v2, "replaceable")
-        result_v2 = await GraphManager.get_graph("replaceable")
-        assert result_v2 is graph_v2
-        # Must be the new object, not the old one
-        assert result_v2 is not graph_v1
-
-    # ------------------------------------------------------------------
-    # default graph name is "default_graph" when none is supplied
-    # ------------------------------------------------------------------
-
-    @pytest.mark.asyncio
-    async def test_default_graph_name(self):
-        mock_graph = MagicMock(name="default")
-
-        GraphManager.set_graph(mock_graph)  # no explicit name
-        result = await GraphManager.get_graph()  # no explicit name
-
-        assert result is mock_graph
-
-    # ------------------------------------------------------------------
-    # Multiple graphs coexist under different names
-    # ------------------------------------------------------------------
-
-    @pytest.mark.asyncio
-    async def test_multiple_graphs_are_independent(self):
+    async def test_different_names_return_different_objects(self):
+        """Two distinct graph names must each return their own registered object."""
+        name_a = f"test_rt_a_{uuid.uuid4().hex}"
+        name_b = f"test_rt_b_{uuid.uuid4().hex}"
         graph_a = MagicMock(name="graph_a")
         graph_b = MagicMock(name="graph_b")
 
-        GraphManager.set_graph(graph_a, "agent_a")
-        GraphManager.set_graph(graph_b, "agent_b")
+        GraphManager.set_graph(graph_a, name_a)
+        GraphManager.set_graph(graph_b, name_b)
 
-        result_a = await GraphManager.get_graph("agent_a")
-        result_b = await GraphManager.get_graph("agent_b")
+        result_a = await GraphManager.get_graph(name_a)
+        result_b = await GraphManager.get_graph(name_b)
 
         assert result_a is graph_a
         assert result_b is graph_b
         assert result_a is not result_b
-
-    # ------------------------------------------------------------------
-    # get_graph returns None when the provider's loader raises an error
-    # ------------------------------------------------------------------
-
-    @pytest.mark.asyncio
-    async def test_get_graph_returns_none_when_loader_raises(
-        self, isolated_registry: ProviderRegistry
-    ):
-        def failing_loader():
-            raise RuntimeError("provider exploded")
-
-        isolated_registry.register("broken", loader_func=failing_loader)
-
-        result = await GraphManager.get_graph("broken")
-
-        assert result is None

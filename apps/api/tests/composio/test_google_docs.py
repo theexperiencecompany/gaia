@@ -107,8 +107,7 @@ class TestCustomShareDoc:
         if emails is None:
             emails = ["alice@example.com"]
         recipients = [
-            ShareRecipient(email=e, role=role, send_notification=True)
-            for e in emails
+            ShareRecipient(email=e, role=role, send_notification=True) for e in emails
         ]
         return ShareDocInput(document_id=doc_id, recipients=recipients)
 
@@ -258,7 +257,9 @@ class TestCustomShareDoc:
         fns = _register_and_extract(composio)
         fn = fns["CUSTOM_SHARE_DOC"]
 
-        recipients = [ShareRecipient(email="x@y.com", role="reader", send_notification=False)]
+        recipients = [
+            ShareRecipient(email="x@y.com", role="reader", send_notification=False)
+        ]
         request = ShareDocInput(document_id=DOC_ID, recipients=recipients)
 
         with patch(
@@ -298,18 +299,14 @@ class TestCustomCreateTOC:
                         "startIndex": 1,
                         "paragraph": {
                             "paragraphStyle": {"namedStyleType": "HEADING_1"},
-                            "elements": [
-                                {"textRun": {"content": "Introduction\n"}}
-                            ],
+                            "elements": [{"textRun": {"content": "Introduction\n"}}],
                         },
                     },
                     {
                         "startIndex": 14,
                         "paragraph": {
                             "paragraphStyle": {"namedStyleType": "HEADING_2"},
-                            "elements": [
-                                {"textRun": {"content": "Background\n"}}
-                            ],
+                            "elements": [{"textRun": {"content": "Background\n"}}],
                         },
                     },
                     {
@@ -457,9 +454,7 @@ class TestCustomCreateTOC:
         fns = _register_and_extract(composio)
         fn = fns["CUSTOM_CREATE_TOC"]
         # Only H1 – should exclude the H2 heading
-        request = CreateTOCInput(
-            document_id=DOC_ID, include_heading_levels=[1]
-        )
+        request = CreateTOCInput(document_id=DOC_ID, include_heading_levels=[1])
         result = fn(request, MagicMock(), AUTH_CREDENTIALS)
         assert result["headings_found"] == 1
         assert result["headings"][0]["text"] == "Introduction"
@@ -475,9 +470,7 @@ class TestCustomCreateTOC:
                         "content": [
                             {
                                 "paragraph": {
-                                    "paragraphStyle": {
-                                        "namedStyleType": "NORMAL_TEXT"
-                                    },
+                                    "paragraphStyle": {"namedStyleType": "NORMAL_TEXT"},
                                     "elements": [
                                         {"textRun": {"content": "Plain text\n"}}
                                     ],

@@ -24,7 +24,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // ---------------------------------------------------------------------------
 
 vi.mock("discord.js", () => {
-  const EmbedBuilder = vi.fn().mockImplementation(() => {
+  const EmbedBuilder = vi.fn().mockImplementation(function () {
     const self: Record<string, unknown> = {};
     const chain = (name: string) => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -45,22 +45,26 @@ vi.mock("discord.js", () => {
 
   return {
     EmbedBuilder,
-    ActionRowBuilder: vi.fn().mockImplementation(() => ({
-      addComponents: vi.fn().mockReturnThis(),
-    })),
-    ButtonBuilder: vi.fn().mockImplementation(() => ({
-      setLabel: vi.fn().mockReturnThis(),
-      setURL: vi.fn().mockReturnThis(),
-      setStyle: vi.fn().mockReturnThis(),
-    })),
+    ActionRowBuilder: vi.fn().mockImplementation(function () {
+      return { addComponents: vi.fn().mockReturnThis() };
+    }),
+    ButtonBuilder: vi.fn().mockImplementation(function () {
+      return {
+        setLabel: vi.fn().mockReturnThis(),
+        setURL: vi.fn().mockReturnThis(),
+        setStyle: vi.fn().mockReturnThis(),
+      };
+    }),
     ButtonStyle: { Link: 5 },
-    Client: vi.fn().mockImplementation(() => ({
-      once: vi.fn(),
-      on: vi.fn(),
-      login: vi.fn().mockResolvedValue(undefined),
-      destroy: vi.fn(),
-      user: { id: "bot-user-id", tag: "GAIA#0001" },
-    })),
+    Client: vi.fn().mockImplementation(function () {
+      return {
+        once: vi.fn(),
+        on: vi.fn(),
+        login: vi.fn().mockResolvedValue(undefined),
+        destroy: vi.fn(),
+        user: { id: "bot-user-id", tag: "GAIA#0001" },
+      };
+    }),
     Events: {
       ClientReady: "ready",
       InteractionCreate: "interactionCreate",
@@ -95,17 +99,33 @@ vi.mock("@gaia/shared", () => {
     commands = new Map();
     protected async dispatchCommand(
       name: string,
-      target: { sendEphemeral: (t: string) => Promise<unknown> },
+      target: { sendEphemeral: (t: string) => Promise<unknown>; userId: string; channelId: string; profile?: { username?: string; displayName?: string } },
+      args: Record<string, string | number | boolean | undefined> = {},
+      rawText?: string,
     ) {
       const cmd = this.commands.get(name);
       if (!cmd) {
         await target.sendEphemeral(`Unknown command: /${name}`);
         return;
       }
-      await cmd.execute({ gaia: this.gaia, target, ctx: {}, args: {} });
+      const ctx = this.buildContext(target.userId, target.channelId, target.profile);
+      try {
+        await cmd.execute({ gaia: this.gaia, target, ctx, args, rawText });
+      } catch (error) {
+        const errMsg = error instanceof Error ? `Error: ${error.message}` : "Something went wrong";
+        try {
+          await target.sendEphemeral(errMsg);
+        } catch {
+          // Target may be expired
+        }
+      }
     }
-    protected buildContext(userId: string, channelId?: string) {
-      return { platform: this.platform, platformUserId: userId, channelId };
+    protected buildContext(
+      userId: string,
+      channelId?: string,
+      profile?: { username?: string; displayName?: string },
+    ) {
+      return { platform: this.platform, platformUserId: userId, channelId, profile };
     }
   };
 
@@ -230,11 +250,17 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
     vi.clearAllMocks();
     adapter = new DiscordAdapter();
     // Plant a simple command so dispatchCommand can find it.
+    // The execute calls target.send() so that createInteractionTarget's lazy
+    // deferral fires — allowing deferReply assertions to work correctly.
     const mockCommand = {
       name: "todo",
       description: "Manage todos",
       options: [{ name: "text", description: "Task text", type: "string" as const }],
-      execute: vi.fn().mockResolvedValue(undefined),
+      execute: vi.fn().mockImplementation(
+        async ({ target }: { target: { send: (t: string) => Promise<unknown> } }) => {
+          await target.send("todo response");
+        },
+      ),
     };
     // Access the protected `commands` map via the BaseBotAdapter stub.
     (adapter as unknown as { commands: Map<string, unknown> }).commands.set(
@@ -338,7 +364,7 @@ describe("DiscordAdapter - createInteractionTarget via handleInteraction", () =>
     expect(dispatchSpy).toHaveBeenCalledWith(
       "todo",
       expect.objectContaining({ platform: "discord", userId: "user-123" }),
-      expect.any(Object),
+      expect.any(Object), // args extracted from interaction options
     );
   });
 });
@@ -504,45 +530,104 @@ describe("DiscordAdapter - extractInteractionArgs", () => {
 // handleMentionMessage — mention stripping
 // ---------------------------------------------------------------------------
 
-describe("DiscordAdapter - mention stripping in handleMentionMessage", () => {
+describe("DiscordAdapter - mention stripping via handleMentionMessage", () => {
   /**
-   * The adapter strips the bot mention via:
-   *   message.content.replace(new RegExp(`<@!?${botId}>`, "g"), "").trim()
+   * These tests call the real handleMentionMessage method and assert on
+   * what content reaches handleStreamingChat — the actual production behavior.
    *
-   * We replicate that exact regex to verify correctness without needing
-   * a full adapter instance.
+   * BOT_ID matches the Client mock: user.id = "bot-user-id"
    */
-  const BOT_ID = "123456789";
-  const buildMentionRegex = (id: string) => new RegExp(`<@!?${id}>`, "g");
+  const BOT_ID = "bot-user-id";
+  let adapter: DiscordAdapter;
 
-  it("strips <@botId> mention from content", () => {
-    const raw = `<@${BOT_ID}> remind me to call dentist`;
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("remind me to call dentist");
+  beforeEach(() => {
+    vi.clearAllMocks();
+    adapter = new DiscordAdapter();
   });
 
-  it("strips <@!botId> (nickname mention) from content", () => {
-    const raw = `<@!${BOT_ID}> what time is it?`;
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("what time is it?");
+  it("strips <@botId> mention before passing content to handleStreamingChat", async () => {
+    const message = makeGuildMessage({
+      content: `<@${BOT_ID}> remind me to call dentist`,
+      botId: BOT_ID,
+    });
+
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, BOT_ID);
+
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: "remind me to call dentist" }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.anything(),
+    );
   });
 
-  it("strips multiple mentions", () => {
-    const raw = `<@${BOT_ID}> hello <@${BOT_ID}>`;
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("hello");
+  it("strips <@!botId> nickname mention before passing to handleStreamingChat", async () => {
+    const message = makeGuildMessage({
+      content: `<@!${BOT_ID}> what time is it?`,
+      botId: BOT_ID,
+    });
+
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, BOT_ID);
+
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: "what time is it?" }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.anything(),
+    );
   });
 
-  it("leaves content unchanged when no mention present", () => {
-    const raw = "remind me about something";
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("remind me about something");
+  it("replies 'How can I help you?' when message is only a mention (empty after strip)", async () => {
+    const message = makeGuildMessage({
+      content: `<@${BOT_ID}>`,
+      botId: BOT_ID,
+    });
+
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, BOT_ID);
+
+    expect(message.reply).toHaveBeenCalledWith("How can I help you?");
+    expect(handleStreamingChat).not.toHaveBeenCalled();
   });
 
-  it("returns empty string when message is only a mention", () => {
-    const raw = `<@${BOT_ID}>`;
-    const cleaned = raw.replace(buildMentionRegex(BOT_ID), "").trim();
-    expect(cleaned).toBe("");
+  it("leaves unrelated content unchanged when passed to handleStreamingChat", async () => {
+    const message = makeGuildMessage({
+      content: `<@${BOT_ID}> remind me about something`,
+      botId: BOT_ID,
+    });
+
+    await (
+      adapter as unknown as {
+        handleMentionMessage: (m: typeof message, botId: string) => Promise<void>;
+      }
+    ).handleMentionMessage(message, BOT_ID);
+
+    expect(handleStreamingChat).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({ message: "remind me about something" }),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.any(Function),
+      expect.anything(),
+    );
   });
 });
 
@@ -551,6 +636,10 @@ describe("DiscordAdapter - mention stripping in handleMentionMessage", () => {
 // ---------------------------------------------------------------------------
 
 describe("DiscordAdapter - mention with empty content", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("replies 'How can I help you?' when mention content is empty", async () => {
     const adapter = new DiscordAdapter();
 
@@ -653,6 +742,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
   });
 
   it("replies 'How can I help you?' when DM content is blank", async () => {
+    vi.clearAllMocks();
     const adapter = new DiscordAdapter();
 
     // Skip welcome for this user so we can isolate the blank-content check.
@@ -687,6 +777,7 @@ describe("DiscordAdapter - DM welcome flow", () => {
 
 describe("DiscordAdapter - context menu interaction", () => {
   it("replies with no-text error when target message has no content", async () => {
+    vi.clearAllMocks();
     const adapter = new DiscordAdapter();
 
     const interaction = {
@@ -835,5 +926,158 @@ describe("DiscordAdapter - dispatchCommand unknown command", () => {
     expect(target.sendEphemeral).toHaveBeenCalledWith(
       "Unknown command: /nonexistent",
     );
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatchCommand — forwards all args to BaseBotAdapter correctly
+// ---------------------------------------------------------------------------
+
+describe("DiscordAdapter - dispatchCommand args forwarding", () => {
+  it("forwards name, target, and args to BaseBotAdapter.dispatchCommand", async () => {
+    const adapter = new DiscordAdapter();
+
+    // Spy on the prototype method so we assert on the real dispatch being invoked.
+    const dispatchSpy = vi.spyOn(
+      Object.getPrototypeOf(Object.getPrototypeOf(adapter)) as {
+        dispatchCommand: (
+          name: string,
+          target: unknown,
+          args: Record<string, unknown>,
+          rawText?: string,
+        ) => Promise<void>;
+      },
+      "dispatchCommand",
+    ).mockResolvedValue(undefined);
+
+    const target = {
+      platform: "discord" as const,
+      userId: "user-999",
+      channelId: "channel-xyz",
+      send: vi.fn(),
+      sendEphemeral: vi.fn().mockResolvedValue({ id: "x", edit: vi.fn() }),
+      sendRich: vi.fn(),
+      startTyping: vi.fn(),
+    };
+
+    const args = { task: "Buy milk", count: 3 };
+
+    await (
+      adapter as unknown as {
+        dispatchCommand: (
+          name: string,
+          target: typeof target,
+          args: typeof args,
+        ) => Promise<void>;
+      }
+    ).dispatchCommand("todo", target, args);
+
+    expect(dispatchSpy).toHaveBeenCalledWith("todo", target, args);
+
+    dispatchSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// dispatchCommand — error propagation from BaseBotAdapter
+// ---------------------------------------------------------------------------
+
+describe("DiscordAdapter - dispatchCommand error propagation", () => {
+  it("propagates rejection when BaseBotAdapter.dispatchCommand rejects", async () => {
+    const adapter = new DiscordAdapter();
+
+    const boom = new Error("dispatch failed");
+
+    const dispatchSpy = vi.spyOn(
+      Object.getPrototypeOf(Object.getPrototypeOf(adapter)) as {
+        dispatchCommand: (
+          name: string,
+          target: unknown,
+          args: Record<string, unknown>,
+        ) => Promise<void>;
+      },
+      "dispatchCommand",
+    ).mockRejectedValue(boom);
+
+    const target = {
+      platform: "discord" as const,
+      userId: "user-123",
+      channelId: "channel-abc",
+      send: vi.fn(),
+      sendEphemeral: vi.fn().mockResolvedValue({ id: "x", edit: vi.fn() }),
+      sendRich: vi.fn(),
+      startTyping: vi.fn(),
+    };
+
+    await expect(
+      (
+        adapter as unknown as {
+          dispatchCommand: (
+            name: string,
+            target: typeof target,
+            args: Record<string, unknown>,
+          ) => Promise<void>;
+        }
+      ).dispatchCommand("todo", target, {}),
+    ).rejects.toThrow("dispatch failed");
+
+    dispatchSpy.mockRestore();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// buildContext — constructs expected shape
+// ---------------------------------------------------------------------------
+
+describe("DiscordAdapter - buildContext", () => {
+  it("constructs a context with platform, platformUserId, channelId, and profile", () => {
+    const adapter = new DiscordAdapter();
+
+    const ctx = (
+      adapter as unknown as {
+        buildContext: (
+          userId: string,
+          channelId?: string,
+          profile?: { username?: string; displayName?: string },
+        ) => {
+          platform: string;
+          platformUserId: string;
+          channelId: string | undefined;
+          profile: { username?: string; displayName?: string } | undefined;
+        };
+      }
+    ).buildContext("user-42", "channel-99", {
+      username: "tester",
+      displayName: "Tester Display",
+    });
+
+    expect(ctx).toEqual({
+      platform: "discord",
+      platformUserId: "user-42",
+      channelId: "channel-99",
+      profile: { username: "tester", displayName: "Tester Display" },
+    });
+  });
+
+  it("omits channelId and profile when not provided", () => {
+    const adapter = new DiscordAdapter();
+
+    const ctx = (
+      adapter as unknown as {
+        buildContext: (
+          userId: string,
+        ) => {
+          platform: string;
+          platformUserId: string;
+          channelId: string | undefined;
+          profile: unknown;
+        };
+      }
+    ).buildContext("user-solo");
+
+    expect(ctx.platform).toBe("discord");
+    expect(ctx.platformUserId).toBe("user-solo");
+    expect(ctx.channelId).toBeUndefined();
+    expect(ctx.profile).toBeUndefined();
   });
 });

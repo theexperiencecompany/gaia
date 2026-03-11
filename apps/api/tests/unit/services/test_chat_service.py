@@ -8,19 +8,13 @@ Tests cover the core orchestration logic in chat_service.py:
 - _extract_response_text: response text extraction from SSE chunks
 - update_conversation_messages: legacy background-task scheduling path
 
-Mocking strategy:
-- KEEP mocks for: stream_manager (Redis I/O), call_agent (external LLM call)
-- Mock DB at the collection level (conversations_collection), NOT at service
-  function level — this ensures create_conversation, update_messages, and
-  _process_token_usage_and_cost all run for real through their logic.
-- The deeper payment/rate-limiter deps are mocked where they touch real I/O.
+All external dependencies (Redis/stream_manager, MongoDB, agent, LLM) are
+mocked so tests exercise service logic only.
 """
 
-import asyncio
 import json
-from contextlib import ExitStack
 from datetime import datetime, timezone
-from typing import Any, AsyncGenerator, Dict
+from typing import AsyncGenerator
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -84,54 +78,6 @@ async def _text_then_nostream(text: str, complete: str) -> AsyncGenerator[str, N
     yield "data: [DONE]\n\n"
 
 
-def _make_usage_handler_class() -> MagicMock:
-    """Return a mock that acts like the UsageMetadataCallbackHandler class.
-
-    The service calls UsageMetadataCallbackHandler() to get an instance and
-    later reads instance.usage_metadata.  We need the instance to have
-    usage_metadata == {} (a real empty dict) so that Pydantic accepts it when
-    it ends up in MessageModel(metadata=...).
-    """
-    instance = MagicMock()
-    instance.usage_metadata = {}
-    handler_class = MagicMock(return_value=instance)
-    return handler_class
-
-
-def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
-    """Build a StreamManager mock with all async methods pre-configured."""
-    m = MagicMock()
-    m.publish_chunk = AsyncMock()
-    m.is_cancelled = AsyncMock(return_value=is_cancelled)
-    m.update_progress = AsyncMock()
-    m.complete_stream = AsyncMock()
-    m.set_error = AsyncMock()
-    m.cleanup = AsyncMock()
-    m.get_progress = AsyncMock(return_value=None)
-    return m
-
-
-def _make_conversations_collection_mock(
-    insert_acknowledged: bool = True,
-    update_modified: int = 1,
-) -> MagicMock:
-    """
-    Return a mock that satisfies the Motor collection API used by
-    conversation_service: insert_one and update_one.
-    """
-    col = AsyncMock()
-
-    insert_result = MagicMock()
-    insert_result.acknowledged = insert_acknowledged
-    col.insert_one = AsyncMock(return_value=insert_result)
-
-    update_result = MagicMock()
-    update_result.modified_count = update_modified
-    col.update_one = AsyncMock(return_value=update_result)
-
-    return col
-
-
 # ---------------------------------------------------------------------------
 # extract_tool_data — pure synchronous helper
 # ---------------------------------------------------------------------------
@@ -151,7 +97,11 @@ class TestExtractToolData:
         payload = json.dumps(
             {
                 "tool_data": [
-                    {"tool_name": "search_results", "data": {"items": []}, "timestamp": "t"}
+                    {
+                        "tool_name": "search_results",
+                        "data": {"items": []},
+                        "timestamp": "t",
+                    }
                 ]
             }
         )
@@ -250,11 +200,6 @@ class TestExtractResponseText:
 
 # ---------------------------------------------------------------------------
 # _initialize_new_conversation
-# Tests for this function still mock create_conversation because
-# _initialize_new_conversation is a thin wrapper — its own logic (SSE
-# formatting, field inclusion) is what we want to assert.
-# The deeper create_conversation -> DB path is tested in the orchestration
-# section below.
 # ---------------------------------------------------------------------------
 
 
@@ -350,52 +295,23 @@ class TestInitializeNewConversation:
 
 # ---------------------------------------------------------------------------
 # _save_conversation_async
-#
-# The function's own logic (message model construction, token processing
-# decision, tool_data assignment) is what we verify.  We mock at the DB
-# collection level so update_messages runs for real; we mock the payment /
-# rate-limiter I/O so _process_token_usage_and_cost runs for real too.
 # ---------------------------------------------------------------------------
-
-
-def _apply_payment_patches(stack: ExitStack) -> None:
-    """Enter the payment/rate-limiter stubs into an ExitStack.
-
-    Stubs out the I/O performed by _process_token_usage_and_cost without
-    bypassing the function itself, so the token-processing logic still runs.
-    """
-    stack.enter_context(
-        patch(
-            "app.services.chat_service.payment_service.get_user_subscription_status",
-            new=AsyncMock(return_value=MagicMock(plan_type=None)),
-        )
-    )
-    stack.enter_context(
-        patch(
-            "app.services.chat_service.calculate_token_cost",
-            new=AsyncMock(return_value={"total_cost": 0.0}),
-        )
-    )
-    stack.enter_context(
-        patch(
-            "app.services.chat_service.tiered_limiter.check_and_increment",
-            new=AsyncMock(),
-        )
-    )
 
 
 @pytest.mark.unit
 class TestSaveConversationAsync:
     async def test_saves_user_and_bot_messages(self, test_user, basic_body):
-        col = _make_conversations_collection_mock()
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch(
-                    "app.services.conversation_service.conversations_collection",
-                    col,
-                )
-            )
-            _apply_payment_patches(stack)
+        mock_update = AsyncMock()
+        with (
+            patch(
+                "app.services.chat_service.update_messages",
+                new=mock_update,
+            ),
+            patch(
+                "app.services.chat_service._process_token_usage_and_cost",
+                new=AsyncMock(),
+            ),
+        ):
             await _save_conversation_async(
                 body=basic_body,
                 user=test_user,
@@ -407,16 +323,15 @@ class TestSaveConversationAsync:
                 bot_message_id="bmsg_1",
             )
 
-        col.update_one.assert_called_once()
-        # The $push payload must contain exactly two messages
-        call_args = col.update_one.call_args
-        push_payload = call_args.args[1]["$push"]["messages"]["$each"]
-        types = [m["type"] for m in push_payload]
-        assert types == ["user", "bot"]
+        assert mock_update.called
+        request_arg = mock_update.call_args.args[0]
+        messages = request_arg.messages
+        assert len(messages) == 2
+        user_msg, bot_msg = messages
+        assert user_msg.type == "user"
+        assert bot_msg.type == "bot"
 
-    async def test_user_message_content_comes_from_last_messages_entry(
-        self, test_user
-    ):
+    async def test_user_message_content_comes_from_last_messages_entry(self, test_user):
         body = MessageRequestWithHistory(
             message="Fallback message",
             messages=[
@@ -425,15 +340,14 @@ class TestSaveConversationAsync:
             ],
             conversation_id="conv_x",
         )
-        col = _make_conversations_collection_mock()
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch(
-                    "app.services.conversation_service.conversations_collection",
-                    col,
-                )
-            )
-            _apply_payment_patches(stack)
+        mock_update = AsyncMock()
+        with (
+            patch("app.services.chat_service.update_messages", new=mock_update),
+            patch(
+                "app.services.chat_service._process_token_usage_and_cost",
+                new=AsyncMock(),
+            ),
+        ):
             await _save_conversation_async(
                 body=body,
                 user=test_user,
@@ -444,9 +358,9 @@ class TestSaveConversationAsync:
                 user_message_id="u",
                 bot_message_id="b",
             )
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        user_msg = push_payload[0]
-        assert user_msg["response"] == "Last turn"
+        request_arg = mock_update.call_args.args[0]
+        user_msg = request_arg.messages[0]
+        assert user_msg.response == "Last turn"
 
     async def test_user_message_falls_back_to_body_message(self, test_user):
         body = MessageRequestWithHistory(
@@ -454,15 +368,14 @@ class TestSaveConversationAsync:
             messages=[],
             conversation_id="conv_y",
         )
-        col = _make_conversations_collection_mock()
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch(
-                    "app.services.conversation_service.conversations_collection",
-                    col,
-                )
-            )
-            _apply_payment_patches(stack)
+        mock_update = AsyncMock()
+        with (
+            patch("app.services.chat_service.update_messages", new=mock_update),
+            patch(
+                "app.services.chat_service._process_token_usage_and_cost",
+                new=AsyncMock(),
+            ),
+        ):
             await _save_conversation_async(
                 body=body,
                 user=test_user,
@@ -473,20 +386,19 @@ class TestSaveConversationAsync:
                 user_message_id="u",
                 bot_message_id="b",
             )
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        user_msg = push_payload[0]
-        assert user_msg["response"] == "Fallback content"
+        request_arg = mock_update.call_args.args[0]
+        user_msg = request_arg.messages[0]
+        assert user_msg.response == "Fallback content"
 
     async def test_bot_message_contains_complete_message(self, test_user, basic_body):
-        col = _make_conversations_collection_mock()
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch(
-                    "app.services.conversation_service.conversations_collection",
-                    col,
-                )
-            )
-            _apply_payment_patches(stack)
+        mock_update = AsyncMock()
+        with (
+            patch("app.services.chat_service.update_messages", new=mock_update),
+            patch(
+                "app.services.chat_service._process_token_usage_and_cost",
+                new=AsyncMock(),
+            ),
+        ):
             await _save_conversation_async(
                 body=basic_body,
                 user=test_user,
@@ -497,20 +409,19 @@ class TestSaveConversationAsync:
                 user_message_id="u",
                 bot_message_id="b",
             )
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        bot_msg = push_payload[1]
-        assert bot_msg["response"] == "The answer is 42."
+        request_arg = mock_update.call_args.args[0]
+        bot_msg = request_arg.messages[1]
+        assert bot_msg.response == "The answer is 42."
 
     async def test_message_ids_are_set_on_models(self, test_user, basic_body):
-        col = _make_conversations_collection_mock()
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch(
-                    "app.services.conversation_service.conversations_collection",
-                    col,
-                )
-            )
-            _apply_payment_patches(stack)
+        mock_update = AsyncMock()
+        with (
+            patch("app.services.chat_service.update_messages", new=mock_update),
+            patch(
+                "app.services.chat_service._process_token_usage_and_cost",
+                new=AsyncMock(),
+            ),
+        ):
             await _save_conversation_async(
                 body=basic_body,
                 user=test_user,
@@ -521,37 +432,21 @@ class TestSaveConversationAsync:
                 user_message_id="umsg_specific",
                 bot_message_id="bmsg_specific",
             )
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        assert push_payload[0]["message_id"] == "umsg_specific"
-        assert push_payload[1]["message_id"] == "bmsg_specific"
+        request_arg = mock_update.call_args.args[0]
+        assert request_arg.messages[0].message_id == "umsg_specific"
+        assert request_arg.messages[1].message_id == "bmsg_specific"
 
     async def test_token_processing_called_when_metadata_present(
         self, test_user, basic_body
     ):
-        """_process_token_usage_and_cost must call calculate_token_cost when
-        metadata contains token counts — verified by asserting the downstream
-        call, not by mocking the function itself."""
-        col = _make_conversations_collection_mock()
-        mock_calc = AsyncMock(return_value={"total_cost": 0.001})
-        metadata = {
-            "claude-3-5-sonnet": {"input_tokens": 100, "output_tokens": 50}
-        }
+        mock_token_processor = AsyncMock()
+        mock_update = AsyncMock()
+        metadata = {"claude-3-5-sonnet": {"input_tokens": 100, "output_tokens": 50}}
         with (
+            patch("app.services.chat_service.update_messages", new=mock_update),
             patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=mock_calc,
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
+                "app.services.chat_service._process_token_usage_and_cost",
+                new=mock_token_processor,
             ),
         ):
             await _save_conversation_async(
@@ -564,30 +459,18 @@ class TestSaveConversationAsync:
                 user_message_id="u",
                 bot_message_id="b",
             )
-        mock_calc.assert_called_once_with("claude-3-5-sonnet", 100, 50)
+        mock_token_processor.assert_called_once_with("user_abc", metadata)
 
     async def test_token_processing_skipped_when_no_metadata(
         self, test_user, basic_body
     ):
-        """No token calls expected when metadata is empty."""
-        col = _make_conversations_collection_mock()
-        mock_calc = AsyncMock(return_value={"total_cost": 0.0})
+        mock_token_processor = AsyncMock()
+        mock_update = AsyncMock()
         with (
+            patch("app.services.chat_service.update_messages", new=mock_update),
             patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=mock_calc,
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
+                "app.services.chat_service._process_token_usage_and_cost",
+                new=mock_token_processor,
             ),
         ):
             await _save_conversation_async(
@@ -600,20 +483,17 @@ class TestSaveConversationAsync:
                 user_message_id="u",
                 bot_message_id="b",
             )
-        mock_calc.assert_not_called()
+        mock_token_processor.assert_not_called()
 
     async def test_token_processing_error_does_not_propagate(
         self, test_user, basic_body
     ):
         """A token processing failure must not prevent the conversation from saving."""
-        col = _make_conversations_collection_mock()
+        mock_update = AsyncMock()
         with (
+            patch("app.services.chat_service.update_messages", new=mock_update),
             patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
+                "app.services.chat_service._process_token_usage_and_cost",
                 new=AsyncMock(side_effect=Exception("payment service down")),
             ),
         ):
@@ -628,24 +508,22 @@ class TestSaveConversationAsync:
                 user_message_id="u",
                 bot_message_id="b",
             )
-        # update_one must still have been called despite the payment error
-        col.update_one.assert_called_once()
+        assert mock_update.called
 
     async def test_tool_data_applied_to_bot_message(self, test_user, basic_body):
-        col = _make_conversations_collection_mock()
+        mock_update = AsyncMock()
         tool_data = {
             "tool_data": [
                 {"tool_name": "search_results", "data": {"items": []}, "timestamp": "t"}
             ]
         }
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch(
-                    "app.services.conversation_service.conversations_collection",
-                    col,
-                )
-            )
-            _apply_payment_patches(stack)
+        with (
+            patch("app.services.chat_service.update_messages", new=mock_update),
+            patch(
+                "app.services.chat_service._process_token_usage_and_cost",
+                new=AsyncMock(),
+            ),
+        ):
             await _save_conversation_async(
                 body=basic_body,
                 user=test_user,
@@ -656,22 +534,21 @@ class TestSaveConversationAsync:
                 user_message_id="u",
                 bot_message_id="b",
             )
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        bot_msg = push_payload[1]
-        assert bot_msg["tool_data"] == tool_data["tool_data"]
+        request_arg = mock_update.call_args.args[0]
+        bot_msg = request_arg.messages[1]
+        assert bot_msg.tool_data == tool_data["tool_data"]
 
     async def test_correct_conversation_id_passed_to_update(
         self, test_user, basic_body
     ):
-        col = _make_conversations_collection_mock()
-        with ExitStack() as stack:
-            stack.enter_context(
-                patch(
-                    "app.services.conversation_service.conversations_collection",
-                    col,
-                )
-            )
-            _apply_payment_patches(stack)
+        mock_update = AsyncMock()
+        with (
+            patch("app.services.chat_service.update_messages", new=mock_update),
+            patch(
+                "app.services.chat_service._process_token_usage_and_cost",
+                new=AsyncMock(),
+            ),
+        ):
             await _save_conversation_async(
                 body=basic_body,
                 user=test_user,
@@ -682,88 +559,52 @@ class TestSaveConversationAsync:
                 user_message_id="u",
                 bot_message_id="b",
             )
-        # update_one filter must target the right conversation
-        filter_arg = col.update_one.call_args.args[0]
-        assert filter_arg["conversation_id"] == "specific_conv_id"
+        request_arg = mock_update.call_args.args[0]
+        assert request_arg.conversation_id == "specific_conv_id"
 
 
 # ---------------------------------------------------------------------------
 # run_chat_stream_background — top-level orchestrator
-#
-# These tests mock:
-#   - stream_manager   (Redis I/O)
-#   - call_agent       (external LLM)
-#   - get_user_selected_model  (model config fetch)
-#   - generate_and_update_description  (async LLM background task)
-#   - UsageMetadataCallbackHandler  (LangChain integration object)
-#   - conversations_collection  (MongoDB — DB level, not service level)
-#   - payment_service / calculate_token_cost / tiered_limiter (payment I/O)
-#
-# They do NOT mock: create_conversation, update_messages,
-# _save_conversation_async, or _process_token_usage_and_cost.
-# If any of those are removed from the service, the relevant test will fail.
 # ---------------------------------------------------------------------------
 
 
-def _apply_orchestration_patches(
-    stack: ExitStack,
-    sm: MagicMock,
-    agent_stream: Any,
-    col: MagicMock,
-    generate_desc: AsyncMock | None = None,
-) -> None:
-    """Enter all standard orchestration patches into an ExitStack.
-
-    Patches: stream_manager, call_agent, get_user_selected_model,
-    generate_and_update_description, UsageMetadataCallbackHandler,
-    conversations_collection, and all payment I/O.
-    Does NOT patch: create_conversation, update_messages,
-    _save_conversation_async, _process_token_usage_and_cost.
-    """
-    if generate_desc is None:
-        generate_desc = AsyncMock(return_value="Test conv")
-    stack.enter_context(patch("app.services.chat_service.stream_manager", sm))
-    stack.enter_context(
-        patch(
-            "app.services.chat_service.call_agent",
-            new=AsyncMock(return_value=agent_stream),
-        )
-    )
-    stack.enter_context(
-        patch(
-            "app.services.chat_service.get_user_selected_model",
-            new=AsyncMock(return_value=None),
-        )
-    )
-    stack.enter_context(
-        patch(
-            "app.services.chat_service.generate_and_update_description",
-            new=generate_desc,
-        )
-    )
-    stack.enter_context(
-        patch("app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class())
-    )
-    stack.enter_context(
-        patch(
-            "app.services.conversation_service.conversations_collection",
-            col,
-        )
-    )
-    _apply_payment_patches(stack)
+def _make_stream_manager_mock(is_cancelled: bool = False) -> MagicMock:
+    """Build a StreamManager mock with all async methods pre-configured."""
+    m = MagicMock()
+    m.publish_chunk = AsyncMock()
+    m.is_cancelled = AsyncMock(return_value=is_cancelled)
+    m.update_progress = AsyncMock()
+    m.complete_stream = AsyncMock()
+    m.set_error = AsyncMock()
+    m.cleanup = AsyncMock()
+    m.get_progress = AsyncMock(return_value=None)
+    return m
 
 
 @pytest.mark.unit
 class TestRunChatStreamBackground:
-    async def test_new_conversation_publishes_init_chunk(
-        self, test_user, basic_body
-    ):
+    async def test_new_conversation_publishes_init_chunk(self, test_user, basic_body):
         """When conversation_id is None, an init chunk must be published first."""
-        sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
 
+        async def _agent_stub(*args, **kwargs):
+            return _done_only_stream()
+
+        sm = _make_stream_manager_mock()
         with (
             patch("app.services.chat_service.stream_manager", sm),
+            patch(
+                "app.services.chat_service.create_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "conversation_id": "new_conv_id",
+                        "description": "Test conv",
+                    }
+                ),
+            ),
+            patch(
+                "app.services.chat_service.generate_and_update_description",
+                new=AsyncMock(return_value="Test conv"),
+            ),
             patch(
                 "app.services.chat_service.call_agent",
                 new=AsyncMock(return_value=_done_only_stream()),
@@ -773,27 +614,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.generate_and_update_description",
-                new=AsyncMock(return_value="Test conv"),
-            ),
-            patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -815,8 +640,6 @@ class TestRunChatStreamBackground:
     ):
         """Existing conversation: no conversation_id in the init chunk."""
         sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
-
         with (
             patch("app.services.chat_service.stream_manager", sm),
             patch(
@@ -828,23 +651,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -867,8 +678,6 @@ class TestRunChatStreamBackground:
         self, test_user, existing_conv_body
     ):
         sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
-
         with (
             patch("app.services.chat_service.stream_manager", sm),
             patch(
@@ -880,23 +689,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -914,8 +711,6 @@ class TestRunChatStreamBackground:
         self, test_user, existing_conv_body
     ):
         sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
-
         with (
             patch("app.services.chat_service.stream_manager", sm),
             patch(
@@ -927,23 +722,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -960,8 +743,6 @@ class TestRunChatStreamBackground:
         self, test_user, existing_conv_body
     ):
         sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
-
         with (
             patch("app.services.chat_service.stream_manager", sm),
             patch(
@@ -973,23 +754,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1008,7 +777,6 @@ class TestRunChatStreamBackground:
         """The finally block must always run cleanup even on agent failure."""
         sm = _make_stream_manager_mock()
         sm.get_progress = AsyncMock(return_value=None)
-        col = _make_conversations_collection_mock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1021,23 +789,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1067,9 +823,9 @@ class TestRunChatStreamBackground:
 
         async def track_set_error(stream_id: str, err: str) -> None:
             set_error_calls.append(err)
+            # Verify no further publish_chunk called after this
 
         sm.set_error = AsyncMock(side_effect=track_set_error)
-        col = _make_conversations_collection_mock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1082,23 +838,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1124,11 +868,9 @@ class TestRunChatStreamBackground:
     async def test_save_always_called_even_on_agent_failure(
         self, test_user, existing_conv_body
     ):
-        """update_one must be called even when the agent raises, because
-        _save_conversation_async is invoked in the finally block."""
         sm = _make_stream_manager_mock()
         sm.get_progress = AsyncMock(return_value=None)
-        col = _make_conversations_collection_mock()
+        mock_save = AsyncMock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1141,23 +883,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
+                "app.services.chat_service._save_conversation_async",
+                new=mock_save,
             ),
             patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1168,8 +898,7 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        # DB update must still have been attempted
-        col.update_one.assert_called()
+        mock_save.assert_called_once()
 
     async def test_nostream_chunk_sets_complete_message(
         self, test_user, existing_conv_body
@@ -1183,7 +912,7 @@ class TestRunChatStreamBackground:
             yield "data: [DONE]\n\n"
 
         sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
+        mock_save = AsyncMock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1196,23 +925,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
+                "app.services.chat_service._save_conversation_async",
+                new=mock_save,
             ),
             patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1223,10 +940,8 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        # The bot message persisted to the DB must carry the complete_message text
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        bot_msg = push_payload[1]
-        assert bot_msg["response"] == complete_text
+        save_kwargs = mock_save.call_args.kwargs
+        assert save_kwargs["complete_message"] == complete_text
 
     async def test_nostream_chunk_not_forwarded_to_client(
         self, test_user, existing_conv_body
@@ -1244,7 +959,6 @@ class TestRunChatStreamBackground:
             published_chunks.append(chunk)
 
         sm.publish_chunk = AsyncMock(side_effect=track_publish)
-        col = _make_conversations_collection_mock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1257,23 +971,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1288,9 +990,7 @@ class TestRunChatStreamBackground:
         for chunk in published_chunks:
             assert "nostream" not in chunk
 
-    async def test_cancellation_stops_stream_loop(
-        self, test_user, existing_conv_body
-    ):
+    async def test_cancellation_stops_stream_loop(self, test_user, existing_conv_body):
         """When is_cancelled returns True, no further agent chunks are processed."""
 
         async def agent_that_yields_many():
@@ -1298,7 +998,7 @@ class TestRunChatStreamBackground:
                 yield f"data: {json.dumps({'response': f'chunk {i}'})}\n\n"
 
         sm = _make_stream_manager_mock(is_cancelled=True)
-        col = _make_conversations_collection_mock()
+        mock_save = AsyncMock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1311,23 +1011,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
+                "app.services.chat_service._save_conversation_async",
+                new=mock_save,
             ),
             patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1338,8 +1026,8 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        # DB save still called even when cancelled
-        col.update_one.assert_called()
+        # Save still called even when cancelled
+        mock_save.assert_called_once()
 
     async def test_tool_data_chunks_accumulated_and_saved(
         self, test_user, existing_conv_body
@@ -1359,7 +1047,7 @@ class TestRunChatStreamBackground:
             yield "data: [DONE]\n\n"
 
         sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
+        mock_save = AsyncMock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1372,23 +1060,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
+                "app.services.chat_service._save_conversation_async",
+                new=mock_save,
             ),
             patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1399,11 +1075,11 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        bot_msg = push_payload[1]
-        tool_entries = bot_msg.get("tool_data", [])
-        assert len(tool_entries) >= 1
-        assert tool_entries[0]["tool_name"] == "search_results"
+        save_kwargs = mock_save.call_args.kwargs
+        saved_tool_data = save_kwargs["tool_data"]
+        assert "tool_data" in saved_tool_data
+        assert len(saved_tool_data["tool_data"]) >= 1
+        assert saved_tool_data["tool_data"][0]["tool_name"] == "search_results"
 
     async def test_tool_outputs_merged_into_tool_data_before_save(
         self, test_user, existing_conv_body
@@ -1427,7 +1103,7 @@ class TestRunChatStreamBackground:
             yield "data: [DONE]\n\n"
 
         sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
+        mock_save = AsyncMock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1440,23 +1116,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
+                "app.services.chat_service._save_conversation_async",
+                new=mock_save,
             ),
             patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1467,9 +1131,8 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        bot_msg = push_payload[1]
-        tool_entries = bot_msg.get("tool_data", [])
+        save_kwargs = mock_save.call_args.kwargs
+        tool_entries = save_kwargs["tool_data"].get("tool_data", [])
         calls_entry = next(
             (e for e in tool_entries if e.get("tool_name") == "tool_calls_data"), None
         )
@@ -1494,7 +1157,6 @@ class TestRunChatStreamBackground:
             published.append(chunk)
 
         sm.publish_chunk = AsyncMock(side_effect=track)
-        col = _make_conversations_collection_mock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1507,23 +1169,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1535,8 +1185,7 @@ class TestRunChatStreamBackground:
             )
 
         follow_up_chunks = [
-            c for c in published
-            if c.startswith("data: ") and "follow_up_actions" in c
+            c for c in published if c.startswith("data: ") and "follow_up_actions" in c
         ]
         assert follow_up_chunks, "Expected a follow_up_actions SSE event"
         payload = json.loads(follow_up_chunks[0][6:])
@@ -1551,7 +1200,7 @@ class TestRunChatStreamBackground:
         sm.get_progress = AsyncMock(
             return_value={"complete_message": "recovered text", "tool_data": {}}
         )
-        col = _make_conversations_collection_mock()
+        mock_save = AsyncMock()
 
         # Agent yields only a partial response without nostream marker
         async def partial_agent():
@@ -1570,23 +1219,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
+                "app.services.chat_service._save_conversation_async",
+                new=mock_save,
             ),
             patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1597,9 +1234,8 @@ class TestRunChatStreamBackground:
                 conversation_id="conv_existing_123",
             )
 
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        bot_msg = push_payload[1]
-        assert bot_msg["response"] == "recovered text"
+        save_kwargs = mock_save.call_args.kwargs
+        assert save_kwargs["complete_message"] == "recovered text"
 
     async def test_description_task_spawned_for_new_conversation(
         self, test_user, basic_body
@@ -1607,10 +1243,18 @@ class TestRunChatStreamBackground:
         """generate_and_update_description must be called for new conversations."""
         mock_desc = AsyncMock(return_value="Generated description")
         sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
+            patch(
+                "app.services.chat_service.create_conversation",
+                new=AsyncMock(
+                    return_value={
+                        "conversation_id": "new_id",
+                        "description": "New Chat",
+                    }
+                ),
+            ),
             patch(
                 "app.services.chat_service.generate_and_update_description",
                 new=mock_desc,
@@ -1624,23 +1268,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1659,7 +1291,6 @@ class TestRunChatStreamBackground:
         """generate_and_update_description must NOT be called for existing conversations."""
         mock_desc = AsyncMock(return_value="Should not be called")
         sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
 
         with (
             patch("app.services.chat_service.stream_manager", sm),
@@ -1676,23 +1307,11 @@ class TestRunChatStreamBackground:
                 new=AsyncMock(return_value=None),
             ),
             patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
+                "app.services.chat_service._save_conversation_async",
                 new=AsyncMock(),
+            ),
+            patch(
+                "app.services.chat_service.UsageMetadataCallbackHandler", MagicMock()
             ),
         ):
             await run_chat_stream_background(
@@ -1707,255 +1326,6 @@ class TestRunChatStreamBackground:
 
 
 # ---------------------------------------------------------------------------
-# New orchestration tests
-# These tests verify REAL orchestration — each test is designed to fail if
-# the corresponding service call is removed from the production code.
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.unit
-class TestOrchestrationBehavior:
-    async def test_new_conversation_created_when_no_id(
-        self, test_user, basic_body
-    ):
-        """When conversation_id is None, MongoDB insert_one must be called.
-        If create_conversation is removed from chat_service, this test fails."""
-        sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
-
-        with (
-            patch("app.services.chat_service.stream_manager", sm),
-            patch(
-                "app.services.chat_service.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "app.services.chat_service.generate_and_update_description",
-                new=AsyncMock(return_value="Test conv"),
-            ),
-            patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
-            ),
-        ):
-            await run_chat_stream_background(
-                stream_id="stream_create",
-                body=basic_body,
-                user=test_user,
-                user_time=datetime.now(timezone.utc),
-                conversation_id="new_conv_id",
-            )
-
-        # The conversation document must have been inserted into MongoDB
-        col.insert_one.assert_called_once()
-        inserted_doc = col.insert_one.call_args.args[0]
-        assert inserted_doc["conversation_id"] == "new_conv_id"
-        assert inserted_doc["user_id"] == "user_abc"
-
-    async def test_messages_saved_after_stream(
-        self, test_user, existing_conv_body
-    ):
-        """After the agent stream completes, update_one must push user+bot
-        messages into MongoDB.  Removing update_messages from _save_conversation_async
-        must make this test fail."""
-        sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
-
-        async def simple_agent():
-            yield f"data: {json.dumps({'response': 'hello'})}\n\n"
-            yield f"nostream: {json.dumps({'complete_message': 'hello'})}"
-            yield "data: [DONE]\n\n"
-
-        with (
-            patch("app.services.chat_service.stream_manager", sm),
-            patch(
-                "app.services.chat_service.call_agent",
-                new=AsyncMock(return_value=simple_agent()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
-            ),
-        ):
-            await run_chat_stream_background(
-                stream_id="stream_save_msgs",
-                body=existing_conv_body,
-                user=test_user,
-                user_time=datetime.now(timezone.utc),
-                conversation_id="conv_existing_123",
-            )
-
-        col.update_one.assert_called_once()
-        filter_arg, update_arg = col.update_one.call_args.args
-        assert filter_arg["conversation_id"] == "conv_existing_123"
-        pushed = update_arg["$push"]["messages"]["$each"]
-        assert len(pushed) == 2
-        assert pushed[0]["type"] == "user"
-        assert pushed[1]["type"] == "bot"
-        assert pushed[1]["response"] == "hello"
-
-    async def test_stream_cancelled_cleans_up_and_saves(
-        self, test_user, existing_conv_body
-    ):
-        """If cancellation happens mid-stream, the conversation is still saved to DB
-        and Redis is cleaned up.  Removing either call from the finally block fails
-        this test."""
-        sm = _make_stream_manager_mock(is_cancelled=True)
-        sm.get_progress = AsyncMock(
-            return_value={"complete_message": "partial text", "tool_data": {}}
-        )
-        col = _make_conversations_collection_mock()
-
-        async def multi_chunk_agent():
-            for i in range(4):
-                yield f"data: {json.dumps({'response': f'chunk {i}'})}\n\n"
-
-        with (
-            patch("app.services.chat_service.stream_manager", sm),
-            patch(
-                "app.services.chat_service.call_agent",
-                new=AsyncMock(return_value=multi_chunk_agent()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler", _make_usage_handler_class()
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=AsyncMock(return_value={"total_cost": 0.0}),
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=AsyncMock(),
-            ),
-        ):
-            await run_chat_stream_background(
-                stream_id="stream_cancelled",
-                body=existing_conv_body,
-                user=test_user,
-                user_time=datetime.now(timezone.utc),
-                conversation_id="conv_existing_123",
-            )
-
-        # Conversation must still be saved despite cancellation
-        col.update_one.assert_called_once()
-        # Redis must be cleaned up
-        sm.cleanup.assert_called_once_with("stream_cancelled")
-        # The recovered text from Redis progress must be in the bot message
-        push_payload = col.update_one.call_args.args[1]["$push"]["messages"]["$each"]
-        bot_msg = push_payload[1]
-        assert bot_msg["response"] == "partial text"
-
-    async def test_token_usage_tracked(
-        self, test_user, existing_conv_body
-    ):
-        """When the agent returns usage metadata, calculate_token_cost must be called
-        and, if costs > 0, check_and_increment must be called.
-        Removing _process_token_usage_and_cost from _save_conversation_async fails
-        this test."""
-        usage_metadata_mock = MagicMock()
-        usage_metadata_mock.usage_metadata = {
-            "claude-3-5-sonnet": {"input_tokens": 200, "output_tokens": 100}
-        }
-
-        sm = _make_stream_manager_mock()
-        col = _make_conversations_collection_mock()
-        mock_calc = AsyncMock(return_value={"total_cost": 0.005})
-        mock_limiter = AsyncMock()
-
-        with (
-            patch("app.services.chat_service.stream_manager", sm),
-            patch(
-                "app.services.chat_service.call_agent",
-                new=AsyncMock(return_value=_done_only_stream()),
-            ),
-            patch(
-                "app.services.chat_service.get_user_selected_model",
-                new=AsyncMock(return_value=None),
-            ),
-            patch(
-                "app.services.chat_service.UsageMetadataCallbackHandler",
-                return_value=usage_metadata_mock,
-            ),
-            patch(
-                "app.services.conversation_service.conversations_collection",
-                col,
-            ),
-            patch(
-                "app.services.chat_service.payment_service.get_user_subscription_status",
-                new=AsyncMock(return_value=MagicMock(plan_type=None)),
-            ),
-            patch(
-                "app.services.chat_service.calculate_token_cost",
-                new=mock_calc,
-            ),
-            patch(
-                "app.services.chat_service.tiered_limiter.check_and_increment",
-                new=mock_limiter,
-            ),
-        ):
-            await run_chat_stream_background(
-                stream_id="stream_tokens",
-                body=existing_conv_body,
-                user=test_user,
-                user_time=datetime.now(timezone.utc),
-                conversation_id="conv_existing_123",
-            )
-
-        mock_calc.assert_called_once_with("claude-3-5-sonnet", 200, 100)
-        mock_limiter.assert_called_once()
-
-
-# ---------------------------------------------------------------------------
 # update_conversation_messages — legacy synchronous scheduler
 # ---------------------------------------------------------------------------
 
@@ -1965,9 +1335,7 @@ class TestUpdateConversationMessages:
     def test_schedules_update_messages_task(self, test_user, basic_body):
         background_tasks = MagicMock()
 
-        with patch(
-            "app.services.chat_service._process_token_usage_and_cost"
-        ):
+        with patch("app.services.chat_service._process_token_usage_and_cost"):
             update_conversation_messages(
                 background_tasks=background_tasks,
                 body=basic_body,
@@ -2019,9 +1387,7 @@ class TestUpdateConversationMessages:
         task_funcs = [call.args[0].__name__ for call in call_args_list]
         assert "_process_token_usage_and_cost" not in task_funcs
 
-    def test_update_request_has_correct_conversation_id(
-        self, test_user, basic_body
-    ):
+    def test_update_request_has_correct_conversation_id(self, test_user, basic_body):
         background_tasks = MagicMock()
 
         update_conversation_messages(

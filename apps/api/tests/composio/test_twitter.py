@@ -1,25 +1,45 @@
-"""Twitter custom tool tests.
+"""Unit tests for twitter_tool.py custom tool handler functions.
 
-Tests the six custom Twitter tools registered via register_twitter_custom_tools:
-  - CUSTOM_BATCH_FOLLOW
-  - CUSTOM_BATCH_UNFOLLOW
-  - CUSTOM_CREATE_THREAD
-  - CUSTOM_SEARCH_USERS
-  - CUSTOM_SCHEDULE_TWEET
-  - CUSTOM_GATHER_CONTEXT
+These tests exercise every inner function registered by
+``register_twitter_custom_tools`` by calling those functions directly after
+extracting them from a mock Composio client.  They do **not** require real
+API credentials; all network I/O is patched at the ``_http_client`` boundary
+in ``app.utils.twitter_utils``.
 
-Strategy
---------
-Each tool function is a nested closure defined inside
-``register_twitter_custom_tools``.  We extract the real production functions
-by calling ``register_twitter_custom_tools`` with a mock Composio whose
-decorator simply records each registered function and returns it unchanged.
+What is being tested
+--------------------
+All five handler functions defined inside
+``app.agents.tools.integrations.twitter_tool.register_twitter_custom_tools``:
 
-All outbound HTTP is made through ``app.utils.twitter_utils._http_client``
-(an ``httpx.Client`` instance) and the free-function helpers in that same
-module.  We patch those at the source so every code path inside the real
-tool functions is exercised without a live network.
+* CUSTOM_BATCH_FOLLOW
+* CUSTOM_BATCH_UNFOLLOW
+* CUSTOM_CREATE_THREAD
+* CUSTOM_SEARCH_USERS
+* CUSTOM_SCHEDULE_TWEET
+
+For each handler the test suite covers:
+
+* Happy path – HTTP stubs return success; verify return value structure.
+* Error path – HTTP raises an error or returns bad data; verify the handler
+  propagates or raises the expected exception type.
+
+Markers
+-------
+All tests are tagged ``@pytest.mark.composio`` because they live in the
+``tests/composio/`` directory (auto-marked by the conftest) and we add the
+marker explicitly at class level for clarity.
+
+Import coupling
+---------------
+The import at the top of this file::
+
+    from app.agents.tools.integrations.twitter_tool import register_twitter_custom_tools
+
+means that if ``twitter_tool.py`` is deleted or the function is renamed,
+**every test in this module will fail**, which is the intended behaviour.
 """
+
+from __future__ import annotations
 
 from typing import Any, Dict
 from unittest.mock import MagicMock, patch
@@ -27,6 +47,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
+from app.agents.tools.integrations.twitter_tool import register_twitter_custom_tools
 from app.models.twitter_models import (
     BatchFollowInput,
     BatchUnfollowInput,
@@ -35,16 +56,26 @@ from app.models.twitter_models import (
     SearchUsersInput,
 )
 from app.utils.twitter_utils import (
-    TWITTER_API_BASE,
+    create_tweet,
+    follow_user,
     get_access_token,
     get_my_user_id,
     lookup_user_by_username,
-    follow_user,
-    unfollow_user,
-    create_tweet,
     search_tweets,
     twitter_headers,
+    unfollow_user,
 )
+
+
+@pytest.fixture(autouse=True)
+def mock_stream_writer():
+    """Patch get_stream_writer in twitter_tool for every test in this module."""
+    with patch(
+        "app.agents.tools.integrations.twitter_tool.get_stream_writer",
+        return_value=lambda _: None,
+    ):
+        yield
+
 
 # ---------------------------------------------------------------------------
 # Helpers / shared fixtures
@@ -53,9 +84,12 @@ from app.utils.twitter_utils import (
 FAKE_TOKEN = "fake-twitter-access-token"
 FAKE_USER_ID = "111222333"
 AUTH_CREDENTIALS: Dict[str, Any] = {"access_token": FAKE_TOKEN}
+EXECUTE_REQUEST_STUB = None  # handlers never use this arg; keep it None
 
 
-def _make_response(status_code: int = 200, json_data: Any = None, headers: dict = None) -> MagicMock:
+def _make_response(
+    status_code: int = 200, json_data: Any = None, headers: dict | None = None
+) -> MagicMock:
     """Build a minimal mock httpx.Response."""
     resp = MagicMock(spec=httpx.Response)
     resp.status_code = status_code
@@ -74,36 +108,38 @@ def _make_response(status_code: int = 200, json_data: Any = None, headers: dict 
     return resp
 
 
-TWITTER_TOOL_MODULE = "app.agents.tools.integrations.twitter_tool"
+def _make_composio_mock() -> tuple[MagicMock, dict[str, Any]]:
+    """Return a (composio_mock, handlers) pair.
 
-
-def _extract_twitter_tools() -> Dict[str, Any]:
+    Calling ``register_twitter_custom_tools(composio_mock)`` causes the
+    decorator ``composio.tools.custom_tool(toolkit=...)`` to be invoked for
+    each handler.  We capture every decorated function so the tests can call
+    them directly.
     """
-    Call the real register_twitter_custom_tools with a passthrough mock Composio
-    and return a dict mapping function name -> real callable.
+    captured: dict[str, Any] = {}
 
-    The @composio.tools.custom_tool decorator is applied outermost, then @with_doc.
-    We make custom_tool return a passthrough so the inner functions survive intact.
-    """
-    from app.agents.tools.integrations.twitter_tool import register_twitter_custom_tools
+    def _fake_custom_tool(toolkit: str):
+        """Mimic @composio.tools.custom_tool(toolkit=...) decorator."""
 
-    captured: Dict[str, Any] = {}
+        def _decorator(fn):
+            captured[fn.__name__] = fn
+            return fn
 
-    def _passthrough_decorator(fn: Any) -> Any:
-        captured[fn.__name__] = fn
-        return fn
+        return _decorator
 
-    mock_composio = MagicMock()
-    mock_composio.tools.custom_tool.return_value = _passthrough_decorator
+    composio = MagicMock()
+    composio.tools.custom_tool.side_effect = _fake_custom_tool
 
-    register_twitter_custom_tools(mock_composio)
+    with patch("langgraph.config.get_stream_writer", return_value=lambda _: None):
+        register_twitter_custom_tools(composio)
 
-    return captured
+    return composio, captured
 
 
 # ---------------------------------------------------------------------------
 # get_access_token (utility)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestGetAccessToken:
@@ -123,6 +159,7 @@ class TestGetAccessToken:
 # twitter_headers (utility)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.composio
 class TestTwitterHeaders:
     def test_contains_bearer_token(self):
@@ -134,6 +171,7 @@ class TestTwitterHeaders:
 # ---------------------------------------------------------------------------
 # get_my_user_id (utility)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestGetMyUserId:
@@ -164,6 +202,7 @@ class TestGetMyUserId:
 # ---------------------------------------------------------------------------
 # lookup_user_by_username (utility)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestLookupUserByUsername:
@@ -198,6 +237,7 @@ class TestLookupUserByUsername:
 # ---------------------------------------------------------------------------
 # follow_user / unfollow_user (utilities)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestFollowUnfollowUser:
@@ -240,6 +280,7 @@ class TestFollowUnfollowUser:
 # ---------------------------------------------------------------------------
 # create_tweet (utility)
 # ---------------------------------------------------------------------------
+
 
 @pytest.mark.composio
 class TestCreateTweet:
@@ -292,6 +333,7 @@ class TestCreateTweet:
 # search_tweets (utility)
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.composio
 class TestSearchTweets:
     def _search_response(self):
@@ -338,22 +380,18 @@ class TestSearchTweets:
         assert "HTTP 503" in result["error"]
 
 
-# ---------------------------------------------------------------------------
-# CUSTOM_BATCH_FOLLOW — real production function
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Tests for CUSTOM_BATCH_FOLLOW
+# ===========================================================================
+
 
 @pytest.mark.composio
 class TestCustomBatchFollow:
-    """Tests for CUSTOM_BATCH_FOLLOW using the real production function."""
+    """Tests for the CUSTOM_BATCH_FOLLOW handler captured from production."""
 
     def setup_method(self):
-        tools = _extract_twitter_tools()
-        self._fn = tools["CUSTOM_BATCH_FOLLOW"]
-
-    def _call(self, request: BatchFollowInput) -> Dict[str, Any]:
-        """Invoke the real tool function with our fake auth_credentials."""
-        with patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None):
-            return self._fn(request, execute_request=None, auth_credentials=AUTH_CREDENTIALS)
+        _, self.handlers = _make_composio_mock()
+        self.handler = self.handlers["CUSTOM_BATCH_FOLLOW"]
 
     def test_follow_by_user_ids_success(self):
         with patch("app.utils.twitter_utils._http_client") as mock_client:
@@ -363,7 +401,11 @@ class TestCustomBatchFollow:
             mock_client.post.return_value = _make_response(
                 json_data={"data": {"following": True}}
             )
-            result = self._call(BatchFollowInput(user_ids=["999"]))
+            result = self.handler(
+                request=BatchFollowInput(user_ids=["999"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["followed_count"] == 1
         assert result["failed_count"] == 0
         assert result["results"][0]["success"] is True
@@ -376,14 +418,17 @@ class TestCustomBatchFollow:
         follow_resp = _make_response(json_data={"data": {"following": True}})
 
         with patch("app.utils.twitter_utils._http_client") as mock_client:
-            # get calls: first = users/me, second = username lookup
             mock_client.get.side_effect = [my_id_resp, user_lookup_resp]
             mock_client.post.return_value = follow_resp
-            result = self._call(BatchFollowInput(usernames=["target_user"]))
+            result = self.handler(
+                request=BatchFollowInput(usernames=["target_user"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["followed_count"] == 1
         assert result["failed_count"] == 0
 
-    def test_username_not_found_recorded_as_failure_and_raises(self):
+    def test_username_not_found_recorded_as_failure(self):
         my_id_resp = _make_response(json_data={"data": {"id": FAKE_USER_ID}})
         not_found_resp = _make_response(status_code=404)
         not_found_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
@@ -392,10 +437,46 @@ class TestCustomBatchFollow:
 
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.side_effect = [my_id_resp, not_found_resp]
-            # lookup returns None → username goes to failed list
-            # all results are failures → RuntimeError raised by real production code
+            # All entries fail (one not-found username, no user_ids_to_process),
+            # so the production code raises RuntimeError when failed_count == len(results).
             with pytest.raises(RuntimeError, match="Failed to follow all users"):
-                self._call(BatchFollowInput(usernames=["ghost_user"]))
+                self.handler(
+                    request=BatchFollowInput(usernames=["ghost_user"]),
+                    execute_request=EXECUTE_REQUEST_STUB,
+                    auth_credentials=AUTH_CREDENTIALS,
+                )
+
+    def test_username_not_found_appears_in_failure_results(self):
+        my_id_resp = _make_response(json_data={"data": {"id": FAKE_USER_ID}})
+        ok_lookup_resp = _make_response(
+            json_data={"data": {"id": "42", "username": "real_user"}}
+        )
+        not_found_resp = _make_response(status_code=404)
+        not_found_resp.raise_for_status.side_effect = httpx.HTTPStatusError(
+            "404", request=MagicMock(), response=not_found_resp
+        )
+        follow_resp = _make_response(json_data={"data": {"following": True}})
+
+        with patch("app.utils.twitter_utils._http_client") as mock_client:
+            # get: users/me, lookup real_user (success), lookup ghost_user (404)
+            mock_client.get.side_effect = [my_id_resp, ok_lookup_resp, not_found_resp]
+            mock_client.post.return_value = follow_resp
+            result = self.handler(
+                request=BatchFollowInput(usernames=["real_user", "ghost_user"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
+
+        assert result["followed_count"] == 1
+        assert result["failed_count"] == 1
+        assert len(result["results"]) == 2
+        failed_entries = [r for r in result["results"] if not r["success"]]
+        assert len(failed_entries) == 1
+        assert failed_entries[0]["username"] == "ghost_user"
+        assert failed_entries[0]["error"] == "User not found"
+        successful_entries = [r for r in result["results"] if r["success"]]
+        assert len(successful_entries) == 1
+        assert successful_entries[0]["username"] == "real_user"
 
     def test_raises_when_all_fail(self):
         bad_follow_resp = _make_response(status_code=403)
@@ -407,14 +488,22 @@ class TestCustomBatchFollow:
                 "403", request=MagicMock(), response=bad_follow_resp
             )
             with pytest.raises(RuntimeError, match="Failed to follow all users"):
-                self._call(BatchFollowInput(user_ids=["999"]))
+                self.handler(
+                    request=BatchFollowInput(user_ids=["999"]),
+                    execute_request=EXECUTE_REQUEST_STUB,
+                    auth_credentials=AUTH_CREDENTIALS,
+                )
 
     def test_raises_when_neither_usernames_nor_user_ids(self):
         my_id_resp = _make_response(json_data={"data": {"id": FAKE_USER_ID}})
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = my_id_resp
             with pytest.raises(ValueError, match="Either usernames or user_ids"):
-                self._call(BatchFollowInput())
+                self.handler(
+                    request=BatchFollowInput(),
+                    execute_request=EXECUTE_REQUEST_STUB,
+                    auth_credentials=AUTH_CREDENTIALS,
+                )
 
     def test_raises_when_user_id_unavailable(self):
         error_resp = _make_response(status_code=401)
@@ -423,41 +512,52 @@ class TestCustomBatchFollow:
                 "401", request=MagicMock(), response=error_resp
             )
             with pytest.raises(ValueError, match="Could not get authenticated user ID"):
-                self._call(BatchFollowInput(user_ids=["999"]))
+                self.handler(
+                    request=BatchFollowInput(user_ids=["999"]),
+                    execute_request=EXECUTE_REQUEST_STUB,
+                    auth_credentials=AUTH_CREDENTIALS,
+                )
 
     def test_partial_success_does_not_raise(self):
         my_id_resp = _make_response(json_data={"data": {"id": FAKE_USER_ID}})
         ok_follow = _make_response(json_data={"data": {"following": True}})
         bad_resp = _make_response(status_code=403)
 
-        follow_responses = [ok_follow, httpx.HTTPStatusError("403", request=MagicMock(), response=bad_resp)]
-
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = my_id_resp
-            mock_client.post.side_effect = follow_responses
-            result = self._call(BatchFollowInput(user_ids=["111", "222"]))
+            mock_client.post.side_effect = [
+                ok_follow,
+                httpx.HTTPStatusError("403", request=MagicMock(), response=bad_resp),
+            ]
+            result = self.handler(
+                request=BatchFollowInput(user_ids=["111", "222"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["followed_count"] == 1
         assert result["failed_count"] == 1
 
     def test_missing_access_token_raises(self):
-        with patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None):
-            with pytest.raises(ValueError, match="Missing access_token"):
-                self._fn(BatchFollowInput(user_ids=["1"]), execute_request=None, auth_credentials={})
+        with pytest.raises(ValueError, match="Missing access_token"):
+            self.handler(
+                request=BatchFollowInput(user_ids=["1"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials={},
+            )
 
 
-# ---------------------------------------------------------------------------
-# CUSTOM_BATCH_UNFOLLOW — real production function
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Tests for CUSTOM_BATCH_UNFOLLOW
+# ===========================================================================
+
 
 @pytest.mark.composio
 class TestCustomBatchUnfollow:
-    def setup_method(self):
-        tools = _extract_twitter_tools()
-        self._fn = tools["CUSTOM_BATCH_UNFOLLOW"]
+    """Tests for the CUSTOM_BATCH_UNFOLLOW handler captured from production."""
 
-    def _call(self, request: BatchUnfollowInput) -> Dict[str, Any]:
-        with patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None):
-            return self._fn(request, execute_request=None, auth_credentials=AUTH_CREDENTIALS)
+    def setup_method(self):
+        _, self.handlers = _make_composio_mock()
+        self.handler = self.handlers["CUSTOM_BATCH_UNFOLLOW"]
 
     def test_unfollow_by_user_ids_success(self):
         my_id_resp = _make_response(json_data={"data": {"id": FAKE_USER_ID}})
@@ -466,7 +566,11 @@ class TestCustomBatchUnfollow:
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = my_id_resp
             mock_client.delete.return_value = ok_resp
-            result = self._call(BatchUnfollowInput(user_ids=["888"]))
+            result = self.handler(
+                request=BatchUnfollowInput(user_ids=["888"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["unfollowed_count"] == 1
         assert result["failed_count"] == 0
 
@@ -480,14 +584,22 @@ class TestCustomBatchUnfollow:
                 "429", request=MagicMock(), response=bad_resp
             )
             with pytest.raises(RuntimeError, match="Failed to unfollow all users"):
-                self._call(BatchUnfollowInput(user_ids=["888"]))
+                self.handler(
+                    request=BatchUnfollowInput(user_ids=["888"]),
+                    execute_request=EXECUTE_REQUEST_STUB,
+                    auth_credentials=AUTH_CREDENTIALS,
+                )
 
     def test_raises_when_no_targets(self):
         my_id_resp = _make_response(json_data={"data": {"id": FAKE_USER_ID}})
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = my_id_resp
             with pytest.raises(ValueError, match="Either usernames or user_ids"):
-                self._call(BatchUnfollowInput())
+                self.handler(
+                    request=BatchUnfollowInput(),
+                    execute_request=EXECUTE_REQUEST_STUB,
+                    auth_credentials=AUTH_CREDENTIALS,
+                )
 
     def test_partial_success_does_not_raise(self):
         my_id_resp = _make_response(json_data={"data": {"id": FAKE_USER_ID}})
@@ -500,7 +612,11 @@ class TestCustomBatchUnfollow:
                 ok_resp,
                 httpx.HTTPStatusError("403", request=MagicMock(), response=bad_resp),
             ]
-            result = self._call(BatchUnfollowInput(user_ids=["111", "222"]))
+            result = self.handler(
+                request=BatchUnfollowInput(user_ids=["111", "222"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["unfollowed_count"] == 1
         assert result["failed_count"] == 1
 
@@ -514,41 +630,34 @@ class TestCustomBatchUnfollow:
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.side_effect = [my_id_resp, user_lookup_resp]
             mock_client.delete.return_value = ok_resp
-            result = self._call(BatchUnfollowInput(usernames=["old_friend"]))
+            result = self.handler(
+                request=BatchUnfollowInput(usernames=["old_friend"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["unfollowed_count"] == 1
 
     def test_missing_access_token_raises(self):
-        with patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None):
-            with pytest.raises(ValueError, match="Missing access_token"):
-                self._fn(BatchUnfollowInput(user_ids=["1"]), execute_request=None, auth_credentials={})
+        with pytest.raises(ValueError, match="Missing access_token"):
+            self.handler(
+                request=BatchUnfollowInput(user_ids=["1"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials={},
+            )
 
 
-# ---------------------------------------------------------------------------
-# CUSTOM_CREATE_THREAD — real production function
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Tests for CUSTOM_CREATE_THREAD
+# ===========================================================================
+
 
 @pytest.mark.composio
 class TestCustomCreateThread:
+    """Tests for the CUSTOM_CREATE_THREAD handler captured from production."""
+
     def setup_method(self):
-        tools = _extract_twitter_tools()
-        self._fn = tools["CUSTOM_CREATE_THREAD"]
-
-    def _call(self, request: CreateThreadInput) -> Dict[str, Any]:
-        # CUSTOM_CREATE_THREAD captures _http_client from a local import inside
-        # register_twitter_custom_tools.  That local binding points to the same
-        # httpx.Client object as app.utils.twitter_utils._http_client.  We
-        # therefore use patch.object on the actual client instance so that both
-        # the module attribute and the closure's local reference see the mock.
-        import app.utils.twitter_utils as tw_utils
-
-        with (
-            patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None),
-            patch.object(tw_utils._http_client, "post") as mock_post,
-            patch.object(tw_utils._http_client, "get") as mock_get,
-        ):
-            self._mock_post = mock_post
-            self._mock_get = mock_get
-            return self._fn(request, execute_request=None, auth_credentials=AUTH_CREDENTIALS)
+        _, self.handlers = _make_composio_mock()
+        self.handler = self.handlers["CUSTOM_CREATE_THREAD"]
 
     def _tweet_post_response(self, tweet_id: str) -> MagicMock:
         return _make_response(json_data={"data": {"id": tweet_id, "text": "..."}})
@@ -556,21 +665,15 @@ class TestCustomCreateThread:
     def test_creates_two_tweet_thread(self):
         me_resp = _make_response(json_data={"data": {"username": "myhandle"}})
 
-        import app.utils.twitter_utils as tw_utils
-
-        with (
-            patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None),
-            patch.object(tw_utils._http_client, "post") as mock_post,
-            patch.object(tw_utils._http_client, "get") as mock_get,
-        ):
-            mock_post.side_effect = [
+        with patch("app.utils.twitter_utils._http_client") as mock_client:
+            mock_client.post.side_effect = [
                 self._tweet_post_response("t1"),
                 self._tweet_post_response("t2"),
             ]
-            mock_get.return_value = me_resp
-            result = self._fn(
-                CreateThreadInput(tweets=["First tweet", "Second tweet"]),
-                execute_request=None,
+            mock_client.get.return_value = me_resp
+            result = self.handler(
+                request=CreateThreadInput(tweets=["First tweet", "Second tweet"]),
+                execute_request=EXECUTE_REQUEST_STUB,
                 auth_credentials=AUTH_CREDENTIALS,
             )
 
@@ -583,116 +686,98 @@ class TestCustomCreateThread:
     def test_second_tweet_replies_to_first(self):
         me_resp = _make_response(json_data={"data": {"username": "u"}})
 
-        import app.utils.twitter_utils as tw_utils
-
-        with (
-            patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None),
-            patch.object(tw_utils._http_client, "post") as mock_post,
-            patch.object(tw_utils._http_client, "get") as mock_get,
-        ):
-            mock_post.side_effect = [
+        with patch("app.utils.twitter_utils._http_client") as mock_client:
+            mock_client.post.side_effect = [
                 self._tweet_post_response("t1"),
                 self._tweet_post_response("t2"),
             ]
-            mock_get.return_value = me_resp
-            self._fn(
-                CreateThreadInput(tweets=["Tweet 1", "Tweet 2"]),
-                execute_request=None,
+            mock_client.get.return_value = me_resp
+            self.handler(
+                request=CreateThreadInput(tweets=["Tweet 1", "Tweet 2"]),
+                execute_request=EXECUTE_REQUEST_STUB,
                 auth_credentials=AUTH_CREDENTIALS,
             )
-            second_call_body = mock_post.call_args_list[1][1]["json"]
+            second_call_body = mock_client.post.call_args_list[1][1]["json"]
         assert second_call_body["reply"]["in_reply_to_tweet_id"] == "t1"
 
-    def test_raises_for_single_tweet_at_model_level(self):
+    def test_raises_for_single_tweet(self):
         # CreateThreadInput with only 1 item is blocked by pydantic min_length=2
         with pytest.raises(Exception):
             CreateThreadInput(tweets=["solo"])
 
     def test_raises_when_tweet_post_fails(self):
-        import app.utils.twitter_utils as tw_utils
+        me_resp = _make_response(json_data={"data": {"username": "u"}})
 
-        with (
-            patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None),
-            patch.object(tw_utils._http_client, "post") as mock_post,
-            patch.object(tw_utils._http_client, "get") as mock_get,
-        ):
-            mock_get.return_value = _make_response(json_data={"data": {"username": "u"}})
-            mock_post.side_effect = [
+        with patch("app.utils.twitter_utils._http_client") as mock_client:
+            mock_client.get.return_value = me_resp
+            mock_client.post.side_effect = [
                 self._tweet_post_response("t1"),
-                httpx.HTTPStatusError("429", request=MagicMock(), response=_make_response(429)),
+                httpx.HTTPStatusError(
+                    "429", request=MagicMock(), response=_make_response(429)
+                ),
             ]
             with pytest.raises(RuntimeError, match="Failed at tweet 2"):
-                self._fn(
-                    CreateThreadInput(tweets=["Tweet 1", "Tweet 2"]),
-                    execute_request=None,
+                self.handler(
+                    request=CreateThreadInput(tweets=["Tweet 1", "Tweet 2"]),
+                    execute_request=EXECUTE_REQUEST_STUB,
                     auth_credentials=AUTH_CREDENTIALS,
                 )
 
     def test_falls_back_to_generic_username_on_me_api_error(self):
-        import app.utils.twitter_utils as tw_utils
-
-        with (
-            patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None),
-            patch.object(tw_utils._http_client, "post") as mock_post,
-            patch.object(tw_utils._http_client, "get") as mock_get,
-        ):
-            mock_post.side_effect = [
+        with patch("app.utils.twitter_utils._http_client") as mock_client:
+            mock_client.post.side_effect = [
                 self._tweet_post_response("t1"),
                 self._tweet_post_response("t2"),
             ]
-            mock_get.side_effect = httpx.ConnectError("network down")
-            result = self._fn(
-                CreateThreadInput(tweets=["A", "B"]),
-                execute_request=None,
+            mock_client.get.side_effect = httpx.ConnectError("network down")
+            result = self.handler(
+                request=CreateThreadInput(tweets=["A", "B"]),
+                execute_request=EXECUTE_REQUEST_STUB,
                 auth_credentials=AUTH_CREDENTIALS,
             )
-        # Falls back to "i" in URL
         assert result["thread_url"] == "https://twitter.com/i/status/t1"
 
     def test_thread_with_media_ids(self):
-        # media_ids must be List[List[str]] - each element is a list of strings
-        import app.utils.twitter_utils as tw_utils
+        me_resp = _make_response(json_data={"data": {"username": "u"}})
 
-        with (
-            patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None),
-            patch.object(tw_utils._http_client, "post") as mock_post,
-            patch.object(tw_utils._http_client, "get") as mock_get,
-        ):
-            mock_post.side_effect = [
+        with patch("app.utils.twitter_utils._http_client") as mock_client:
+            mock_client.post.side_effect = [
                 self._tweet_post_response("t1"),
                 self._tweet_post_response("t2"),
             ]
-            mock_get.return_value = _make_response(json_data={"data": {"username": "u"}})
-            self._fn(
-                CreateThreadInput(
+            mock_client.get.return_value = me_resp
+            self.handler(
+                request=CreateThreadInput(
                     tweets=["Tweet 1", "Tweet 2"],
-                    media_ids=[["media-1"], []],
+                    media_ids=[["media-1"], None],
                 ),
-                execute_request=None,
+                execute_request=EXECUTE_REQUEST_STUB,
                 auth_credentials=AUTH_CREDENTIALS,
             )
-            first_call_body = mock_post.call_args_list[0][1]["json"]
+            first_call_body = mock_client.post.call_args_list[0][1]["json"]
         assert first_call_body["media"]["media_ids"] == ["media-1"]
 
     def test_missing_access_token_raises(self):
-        with patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None):
-            with pytest.raises(ValueError, match="Missing access_token"):
-                self._fn(CreateThreadInput(tweets=["A", "B"]), execute_request=None, auth_credentials={})
+        with pytest.raises(ValueError, match="Missing access_token"):
+            self.handler(
+                request=CreateThreadInput(tweets=["A", "B"]),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials={},
+            )
 
 
-# ---------------------------------------------------------------------------
-# CUSTOM_SEARCH_USERS — real production function
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Tests for CUSTOM_SEARCH_USERS
+# ===========================================================================
+
 
 @pytest.mark.composio
 class TestCustomSearchUsers:
-    def setup_method(self):
-        tools = _extract_twitter_tools()
-        self._fn = tools["CUSTOM_SEARCH_USERS"]
+    """Tests for the CUSTOM_SEARCH_USERS handler captured from production."""
 
-    def _call(self, request: SearchUsersInput) -> Dict[str, Any]:
-        with patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None):
-            return self._fn(request, execute_request=None, auth_credentials=AUTH_CREDENTIALS)
+    def setup_method(self):
+        _, self.handlers = _make_composio_mock()
+        self.handler = self.handlers["CUSTOM_SEARCH_USERS"]
 
     def _build_search_resp(self, users: list) -> MagicMock:
         return _make_response(
@@ -715,16 +800,33 @@ class TestCustomSearchUsers:
         ]
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = self._build_search_resp(users)
-            result = self._call(SearchUsersInput(query="AI developer"))
+            result = self.handler(
+                request=SearchUsersInput(query="AI developer"),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["count"] == 1
         assert result["users"][0]["username"] == "aidev"
         assert result["users"][0]["followers"] == 1200
 
     def test_appends_retweet_filter_to_query(self):
-        users = [{"id": "u1", "username": "x", "name": "X", "description": "", "verified": False, "public_metrics": {}}]
+        users = [
+            {
+                "id": "u1",
+                "username": "x",
+                "name": "X",
+                "description": "",
+                "verified": False,
+                "public_metrics": {},
+            }
+        ]
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = self._build_search_resp(users)
-            self._call(SearchUsersInput(query="python dev"))
+            self.handler(
+                request=SearchUsersInput(query="python dev"),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
             params = mock_client.get.call_args[1]["params"]
         assert "-is:retweet" in params["query"]
         assert "python dev" in params["query"]
@@ -741,23 +843,41 @@ class TestCustomSearchUsers:
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = _make_response(
                 json_data={
-                    "data": [{"id": "tw1", "author_id": "u1"}, {"id": "tw2", "author_id": "u1"}],
+                    "data": [
+                        {"id": "tw1", "author_id": "u1"},
+                        {"id": "tw2", "author_id": "u1"},
+                    ],
                     "includes": {"users": [duplicate_user, duplicate_user]},
                 }
             )
-            result = self._call(SearchUsersInput(query="dedup test"))
+            result = self.handler(
+                request=SearchUsersInput(query="dedup test"),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["count"] == 1
 
     def test_respects_max_results(self):
         users = [
-            {"id": str(i), "username": f"user{i}", "name": f"U{i}", "description": "", "verified": False, "public_metrics": {}}
+            {
+                "id": str(i),
+                "username": f"user{i}",
+                "name": f"U{i}",
+                "description": "",
+                "verified": False,
+                "public_metrics": {},
+            }
             for i in range(10)
         ]
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = _make_response(
                 json_data={"data": [], "includes": {"users": users}}
             )
-            result = self._call(SearchUsersInput(query="many users", max_results=3))
+            result = self.handler(
+                request=SearchUsersInput(query="many users", max_results=3),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["count"] == 3
 
     def test_raises_on_search_failure(self):
@@ -767,7 +887,11 @@ class TestCustomSearchUsers:
                 "429", request=MagicMock(), response=bad_resp
             )
             with pytest.raises(RuntimeError, match="Search failed"):
-                self._call(SearchUsersInput(query="rate limited query"))
+                self.handler(
+                    request=SearchUsersInput(query="rate limited query"),
+                    execute_request=EXECUTE_REQUEST_STUB,
+                    auth_credentials=AUTH_CREDENTIALS,
+                )
 
     def test_truncates_description_to_150_chars(self):
         long_desc = "x" * 300
@@ -783,7 +907,11 @@ class TestCustomSearchUsers:
         ]
         with patch("app.utils.twitter_utils._http_client") as mock_client:
             mock_client.get.return_value = self._build_search_resp(users)
-            result = self._call(SearchUsersInput(query="verbose"))
+            result = self.handler(
+                request=SearchUsersInput(query="verbose"),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert len(result["users"][0]["description"]) == 150
 
     def test_returns_empty_when_no_users_in_includes(self):
@@ -791,38 +919,46 @@ class TestCustomSearchUsers:
             mock_client.get.return_value = _make_response(
                 json_data={"data": [], "includes": {}}
             )
-            result = self._call(SearchUsersInput(query="nobody"))
+            result = self.handler(
+                request=SearchUsersInput(query="nobody"),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
+            )
         assert result["count"] == 0
         assert result["users"] == []
 
     def test_missing_access_token_raises(self):
-        with patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None):
-            with pytest.raises(ValueError, match="Missing access_token"):
-                self._fn(SearchUsersInput(query="test"), execute_request=None, auth_credentials={})
+        with pytest.raises(ValueError, match="Missing access_token"):
+            self.handler(
+                request=SearchUsersInput(query="test"),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials={},
+            )
 
 
-# ---------------------------------------------------------------------------
-# CUSTOM_SCHEDULE_TWEET — real production function
-# ---------------------------------------------------------------------------
+# ===========================================================================
+# Tests for CUSTOM_SCHEDULE_TWEET
+# ===========================================================================
+
 
 @pytest.mark.composio
 class TestCustomScheduleTweet:
-    def setup_method(self):
-        tools = _extract_twitter_tools()
-        self._fn = tools["CUSTOM_SCHEDULE_TWEET"]
+    """Tests for the CUSTOM_SCHEDULE_TWEET handler captured from production."""
 
-    def _call(self, request: ScheduleTweetInput) -> Dict[str, Any]:
-        with patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None):
-            return self._fn(request, execute_request=None, auth_credentials=AUTH_CREDENTIALS)
+    def setup_method(self):
+        _, self.handlers = _make_composio_mock()
+        self.handler = self.handlers["CUSTOM_SCHEDULE_TWEET"]
 
     def test_returns_draft_with_all_fields(self):
-        result = self._call(
-            ScheduleTweetInput(
+        result = self.handler(
+            request=ScheduleTweetInput(
                 text="Hello future!",
                 scheduled_time="2026-12-25T10:00:00Z",
                 media_urls=["https://example.com/img.png"],
                 reply_to_tweet_id="tweet-99",
-            )
+            ),
+            execute_request=EXECUTE_REQUEST_STUB,
+            auth_credentials=AUTH_CREDENTIALS,
         )
         assert result["draft"]["text"] == "Hello future!"
         assert result["draft"]["scheduled_time"] == "2026-12-25T10:00:00Z"
@@ -830,33 +966,44 @@ class TestCustomScheduleTweet:
         assert result["draft"]["reply_to_tweet_id"] == "tweet-99"
 
     def test_message_contains_scheduled_time(self):
-        result = self._call(
-            ScheduleTweetInput(text="Reminder!", scheduled_time="2026-01-01T00:00:00Z")
+        result = self.handler(
+            request=ScheduleTweetInput(
+                text="Reminder!", scheduled_time="2026-01-01T00:00:00Z"
+            ),
+            execute_request=EXECUTE_REQUEST_STUB,
+            auth_credentials=AUTH_CREDENTIALS,
         )
         assert "2026-01-01T00:00:00Z" in result["message"]
 
     def test_optional_fields_default_to_none(self):
-        result = self._call(
-            ScheduleTweetInput(text="Simple tweet", scheduled_time="2026-06-15T09:00:00Z")
+        result = self.handler(
+            request=ScheduleTweetInput(
+                text="Simple tweet", scheduled_time="2026-06-15T09:00:00Z"
+            ),
+            execute_request=EXECUTE_REQUEST_STUB,
+            auth_credentials=AUTH_CREDENTIALS,
         )
         assert result["draft"]["media_urls"] is None
         assert result["draft"]["reply_to_tweet_id"] is None
 
-    def test_no_auth_required_for_draft_creation(self):
-        # CUSTOM_SCHEDULE_TWEET creates a local draft without calling the Twitter API,
-        # so it does not validate auth_credentials.
-        with patch(f"{TWITTER_TOOL_MODULE}.get_stream_writer", return_value=None):
-            result = self._fn(
-                ScheduleTweetInput(text="no auth needed", scheduled_time="2026-01-01T00:00:00Z"),
-                execute_request=None,
+    def test_missing_access_token_raises(self):
+        with pytest.raises(ValueError, match="Missing access_token"):
+            self.handler(
+                request=ScheduleTweetInput(
+                    text="no auth", scheduled_time="2026-01-01T00:00:00Z"
+                ),
+                execute_request=EXECUTE_REQUEST_STUB,
                 auth_credentials={},
             )
-        assert result["draft"]["text"] == "no auth needed"
 
     def test_does_not_make_any_http_calls(self):
         with patch("app.utils.twitter_utils._http_client") as mock_client:
-            self._call(
-                ScheduleTweetInput(text="offline", scheduled_time="2026-01-01T00:00:00Z")
+            self.handler(
+                request=ScheduleTweetInput(
+                    text="offline", scheduled_time="2026-01-01T00:00:00Z"
+                ),
+                execute_request=EXECUTE_REQUEST_STUB,
+                auth_credentials=AUTH_CREDENTIALS,
             )
         mock_client.post.assert_not_called()
         mock_client.get.assert_not_called()
@@ -866,15 +1013,15 @@ class TestCustomScheduleTweet:
 # register_twitter_custom_tools returns correct tool name list
 # ---------------------------------------------------------------------------
 
+
 @pytest.mark.composio
 class TestRegisterTwitterCustomTools:
-    def test_returns_all_tool_names(self):
-        from app.agents.tools.integrations.twitter_tool import register_twitter_custom_tools
-
+    def test_returns_all_six_tool_names(self):
         mock_composio = MagicMock()
         mock_composio.tools.custom_tool.return_value = lambda fn: fn
 
-        names = register_twitter_custom_tools(mock_composio)
+        with patch("langgraph.config.get_stream_writer", return_value=lambda _: None):
+            names = register_twitter_custom_tools(mock_composio)
 
         assert set(names) == {
             "TWITTER_CUSTOM_BATCH_FOLLOW",

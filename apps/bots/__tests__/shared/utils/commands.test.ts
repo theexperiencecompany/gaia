@@ -100,8 +100,7 @@ describe("handleWorkflowList", () => {
 
     const result = await handleWorkflowList(gaia, ctx);
 
-    expect(result).toContain("❌");
-    expect(result).not.toThrow;
+    expect(result).toBe("❌ Something went wrong. Please try again later.");
   });
 });
 

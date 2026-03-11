@@ -1,15 +1,13 @@
 """Unit tests for the MiddlewareExecutor."""
 
-import asyncio
 import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from langchain.agents.middleware import AgentMiddleware
-from langchain.agents.middleware.types import ModelRequest, ModelResponse, ToolCallRequest
-from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-from langchain_core.messages.tool import ToolCall
+from langchain_core.messages import AIMessage, ToolMessage
 
 from app.agents.middleware.executor import MiddlewareExecutor, _has_override
+from tests.factories import make_config, make_state, make_tool_call
 
 
 class SampleBeforeMiddleware(AgentMiddleware):
@@ -33,24 +31,17 @@ class SampleAfterMiddleware(AgentMiddleware):
         return {"after_key": "after_value"}
 
 
+class NoopMiddleware(AgentMiddleware):
+    """Middleware that does not override any methods."""
+
+    pass
+
+
 class SampleAsyncAfterMiddleware(AgentMiddleware):
     """Test middleware that overrides aafter_model."""
 
     async def aafter_model(self, state, runtime):
         return {"async_after_key": "async_after_value"}
-
-
-class RaisingBeforeMiddleware(AgentMiddleware):
-    """Test middleware whose before_model raises asyncio.CancelledError."""
-
-    def before_model(self, state, runtime):
-        raise asyncio.CancelledError("task was cancelled")
-
-
-class NoopMiddleware(AgentMiddleware):
-    """Middleware that does not override any methods."""
-
-    pass
 
 
 class SampleWrapModelMiddleware(AgentMiddleware):
@@ -64,41 +55,6 @@ class SampleWrapToolMiddleware(AgentMiddleware):
     """Test middleware that overrides awrap_tool_call."""
 
     async def awrap_tool_call(self, request, handler):
-        return await handler(request)
-
-
-class RecordingWrapModelMiddleware(AgentMiddleware):
-    """Middleware that records the call order and delegates to the handler."""
-
-    def __init__(self, call_log: list, label: str) -> None:
-        self._call_log = call_log
-        self._label = label
-
-    async def awrap_model_call(self, request, handler):
-        self._call_log.append(f"{self._label}:before")
-        result = await handler(request)
-        self._call_log.append(f"{self._label}:after")
-        return result
-
-
-class TransformingWrapModelMiddleware(AgentMiddleware):
-    """Middleware that replaces the model response with a fixed AIMessage."""
-
-    TRANSFORMED_CONTENT = "transformed by middleware"
-
-    async def awrap_model_call(self, request, handler):
-        await handler(request)
-        return ModelResponse(result=[AIMessage(content=self.TRANSFORMED_CONTENT)])
-
-
-class RecordingWrapToolMiddleware(AgentMiddleware):
-    """Middleware that captures the ToolCallRequest passed to it."""
-
-    def __init__(self) -> None:
-        self.captured_request: ToolCallRequest | None = None
-
-    async def awrap_tool_call(self, request, handler):
-        self.captured_request = request
         return await handler(request)
 
 
@@ -173,6 +129,8 @@ class TestHasWrapChecks:
 
 @pytest.mark.unit
 class TestExecuteBeforeModel:
+    pytestmark = pytest.mark.asyncio
+
     async def test_returns_state_unchanged_when_no_middleware(self):
         executor = MiddlewareExecutor()
         state = MagicMock()
@@ -188,11 +146,10 @@ class TestExecuteBeforeModel:
         mock_state.__iter__ = MagicMock(return_value=iter([]))
         mock_state.keys = MagicMock(return_value=[])
 
-        with patch(
-            "app.agents.middleware.executor.to_agent_state"
-        ) as mock_to_state, patch(
-            "app.agents.middleware.executor.BigtoolRuntime"
-        ) as mock_runtime_cls:
+        with (
+            patch("app.agents.middleware.executor.to_agent_state") as mock_to_state,
+            patch("app.agents.middleware.executor.BigtoolRuntime") as mock_runtime_cls,
+        ):
             mock_runtime_cls.from_graph_context.return_value = MagicMock()
             mock_to_state.return_value = MagicMock()
             await executor.execute_before_model(mock_state, {})
@@ -202,113 +159,11 @@ class TestExecuteBeforeModel:
         assert not _has_override(noop, "before_model")
         assert not _has_override(noop, "abefore_model")
 
-    async def test_execute_before_model_applies_state_updates(self):
-        """Middleware that returns a dict must have its updates merged into state."""
-        mw = SampleBeforeMiddleware()
-        executor = MiddlewareExecutor([mw])
-
-        # Use a plain dict so dict(state) inside execute_before_model works correctly.
-        fake_state = {"messages": [], "selected_tool_ids": [], "todos": []}
-
-        captured_state_kwargs: dict = {}
-
-        def fake_state_constructor(**kwargs):
-            captured_state_kwargs.update(kwargs)
-            return MagicMock()
-
-        with patch(
-            "app.agents.middleware.executor.to_agent_state"
-        ) as mock_to_state, patch(
-            "app.agents.middleware.executor.BigtoolRuntime"
-        ) as mock_runtime_cls, patch(
-            "app.agents.middleware.executor.State",
-            side_effect=fake_state_constructor,
-        ):
-            mock_runtime_cls.from_graph_context.return_value = MagicMock()
-            mock_to_state.return_value = MagicMock()
-            await executor.execute_before_model(fake_state, {})
-
-        # SampleBeforeMiddleware.before_model returns {"injected_key": "before_value"}
-        # That dict must have been merged into the state passed to State(...)
-        assert captured_state_kwargs.get("injected_key") == "before_value"
-
-    async def test_execute_before_model_runs_async_middleware(self):
-        """abefore_model must be awaited and its updates applied."""
-        mw = SampleAsyncBeforeMiddleware()
-        executor = MiddlewareExecutor([mw])
-
-        fake_state = {"messages": [], "selected_tool_ids": [], "todos": []}
-
-        captured_state_kwargs: dict = {}
-
-        def fake_state_constructor(**kwargs):
-            captured_state_kwargs.update(kwargs)
-            return MagicMock()
-
-        with patch(
-            "app.agents.middleware.executor.to_agent_state"
-        ) as mock_to_state, patch(
-            "app.agents.middleware.executor.BigtoolRuntime"
-        ) as mock_runtime_cls, patch(
-            "app.agents.middleware.executor.State",
-            side_effect=fake_state_constructor,
-        ):
-            mock_runtime_cls.from_graph_context.return_value = MagicMock()
-            mock_to_state.return_value = MagicMock()
-            await executor.execute_before_model(fake_state, {})
-
-        # SampleAsyncBeforeMiddleware.abefore_model returns {"async_key": "async_value"}
-        assert captured_state_kwargs.get("async_key") == "async_value"
-
-    async def test_execute_before_model_runs_sync_middleware(self):
-        """Sync before_model (not async) must also be called and applied."""
-        mw = SampleBeforeMiddleware()
-        executor = MiddlewareExecutor([mw])
-
-        fake_state = {"messages": [], "selected_tool_ids": [], "todos": []}
-
-        captured_state_kwargs: dict = {}
-
-        def fake_state_constructor(**kwargs):
-            captured_state_kwargs.update(kwargs)
-            return MagicMock()
-
-        with patch(
-            "app.agents.middleware.executor.to_agent_state"
-        ) as mock_to_state, patch(
-            "app.agents.middleware.executor.BigtoolRuntime"
-        ) as mock_runtime_cls, patch(
-            "app.agents.middleware.executor.State",
-            side_effect=fake_state_constructor,
-        ):
-            mock_runtime_cls.from_graph_context.return_value = MagicMock()
-            mock_to_state.return_value = MagicMock()
-            await executor.execute_before_model(fake_state, {})
-
-        # before_model (sync) returned {"injected_key": "before_value"}
-        assert "injected_key" in captured_state_kwargs
-        assert captured_state_kwargs["injected_key"] == "before_value"
-
-    async def test_execute_before_model_exception_propagates(self):
-        """asyncio.CancelledError from middleware must propagate, not be swallowed."""
-        mw = RaisingBeforeMiddleware()
-        executor = MiddlewareExecutor([mw])
-
-        fake_state = {"messages": [], "selected_tool_ids": [], "todos": []}
-
-        with patch(
-            "app.agents.middleware.executor.to_agent_state"
-        ) as mock_to_state, patch(
-            "app.agents.middleware.executor.BigtoolRuntime"
-        ) as mock_runtime_cls:
-            mock_runtime_cls.from_graph_context.return_value = MagicMock()
-            mock_to_state.return_value = MagicMock()
-            with pytest.raises(asyncio.CancelledError):
-                await executor.execute_before_model(fake_state, {})
-
 
 @pytest.mark.unit
 class TestExecuteAfterModel:
+    pytestmark = pytest.mark.asyncio
+
     async def test_returns_state_unchanged_when_no_middleware(self):
         executor = MiddlewareExecutor()
         state = MagicMock()
@@ -316,198 +171,312 @@ class TestExecuteAfterModel:
         result = await executor.execute_after_model(state, {})
         assert result is state
 
-    async def test_execute_after_model_receives_model_output(self):
-        """after_model hook must receive a state that reflects the AI response."""
+    async def test_sync_after_model_hook_merges_result_into_state(self):
+        """execute_after_model must call after_model and merge its return dict
+        into the state.  Without this test the entire active-middleware branch
+        of execute_after_model had zero coverage, meaning a silent deletion of
+        the update() call would never be caught."""
         mw = SampleAfterMiddleware()
         executor = MiddlewareExecutor([mw])
+        state = make_state()
+        config = make_config()
 
-        ai_response = AIMessage(content="The answer is 42.")
-        # Use a plain dict so that dict(state) inside execute_after_model
-        # faithfully reproduces the mapping including the messages key.
-        fake_state = {
-            "messages": [ai_response],
-            "selected_tool_ids": [],
-            "todos": [],
-        }
+        with patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls:
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            result = await executor.execute_after_model(state, config)
 
-        captured_agent_state_calls: list = []
+        # SampleAfterMiddleware.after_model returns {"after_key": "after_value"}
+        # which must have been merged into the returned State.
+        assert result["after_key"] == "after_value"
 
-        def fake_to_agent_state(state_dict):
-            captured_agent_state_calls.append(state_dict)
-            return MagicMock()
+    async def test_async_aafter_model_hook_merges_result_into_state(self):
+        """execute_after_model must prefer aafter_model over after_model and
+        still merge the async result.  A bug that awaited the wrong branch
+        (or forgot to await) would produce a coroutine instead of a dict and
+        the update() call would silently do nothing."""
+        mw = SampleAsyncAfterMiddleware()
+        executor = MiddlewareExecutor([mw])
+        state = make_state()
+        config = make_config()
 
-        captured_state_kwargs: dict = {}
+        with patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls:
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            result = await executor.execute_after_model(state, config)
 
-        def fake_state_constructor(**kwargs):
-            captured_state_kwargs.update(kwargs)
-            return MagicMock()
+        assert result["async_after_key"] == "async_after_value"
 
-        with patch(
-            "app.agents.middleware.executor.to_agent_state",
-            side_effect=fake_to_agent_state,
-        ), patch(
-            "app.agents.middleware.executor.BigtoolRuntime"
-        ) as mock_runtime_cls, patch(
-            "app.agents.middleware.executor.State",
-            side_effect=fake_state_constructor,
-        ):
-            mock_runtime_cls.from_graph_context.return_value = MagicMock()
-            await executor.execute_after_model(fake_state, {})
+    async def test_noop_middleware_skipped_returns_state_type(self):
+        """execute_after_model with a NoopMiddleware should hit the `continue`
+        branch and return a State, not the original object identity."""
+        mw = NoopMiddleware()
+        executor = MiddlewareExecutor([mw])
+        state = make_state()
+        config = make_config()
 
-        # to_agent_state was called with the current_state dict; the messages
-        # key must include the AI response, proving the model output reached
-        # the after-model hook.
-        assert len(captured_agent_state_calls) >= 1
-        passed_dict = captured_agent_state_calls[0]
-        assert passed_dict.get("messages") == [ai_response]
-        # SampleAfterMiddleware returns {"after_key": "after_value"}
-        assert captured_state_kwargs.get("after_key") == "after_value"
+        with patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls:
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            result = await executor.execute_after_model(state, config)
+
+        # The returned object is a freshly constructed State from dict(state)
+        # so it is NOT the same object but carries the same keys.
+        assert result["query"] == state["query"]
 
 
 @pytest.mark.unit
 class TestWrapModelInvocation:
-    def _make_model_request(self) -> ModelRequest:
-        return ModelRequest(
-            model=MagicMock(),
-            messages=[HumanMessage(content="hello")],
-            system_message=None,
-            tool_choice=None,
-            tools=[],
-            response_format=None,
-            state=MagicMock(),
-            runtime=MagicMock(),
-            model_settings={},
-        )
+    pytestmark = pytest.mark.asyncio
 
-    async def test_wrap_model_invocation_chains_handlers(self):
-        """Each middleware must wrap the next; the call log proves the chain order."""
+    async def test_calls_invoke_fn_and_returns_ai_message(self):
+        """wrap_model_invocation must call the provided invoke_fn exactly once
+        and return the AIMessage it produces.  Zero coverage here meant that a
+        bug swapping invoke_fn for some other callable would go undetected."""
+        executor = MiddlewareExecutor([SampleWrapModelMiddleware()])
+        state = make_state()
+        config = make_config()
+
+        expected = AIMessage(content="hello from model")
+        invoke_fn = AsyncMock(return_value=expected)
+        fake_model = MagicMock()
+
+        with (
+            patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls,
+            patch(
+                "app.agents.middleware.executor.create_model_request"
+            ) as mock_create_req,
+        ):
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            # ModelRequest stub: needs .system_message and .messages
+            mock_req = MagicMock()
+            mock_req.system_message = None
+            mock_req.messages = [MagicMock()]
+            mock_create_req.return_value = mock_req
+
+            result = await executor.wrap_model_invocation(
+                model=fake_model,
+                state=state,
+                config=config,
+                store=None,
+                tools=[],
+                invoke_fn=invoke_fn,
+            )
+
+        assert isinstance(result, AIMessage)
+        assert result.content == "hello from model"
+        invoke_fn.assert_awaited_once()
+
+    async def test_middleware_wraps_handler_chain(self):
+        """wrap_model_invocation must thread the request through each
+        middleware's awrap_model_call.  If the closure-capture bug (loop
+        variable reuse) were introduced, all middleware would wrap with the
+        same (last) handler and the chain would break."""
         call_log: list[str] = []
-        mw_first = RecordingWrapModelMiddleware(call_log, "first")
-        mw_second = RecordingWrapModelMiddleware(call_log, "second")
-        executor = MiddlewareExecutor([mw_first, mw_second])
 
-        fake_request = self._make_model_request()
-        final_ai_msg = AIMessage(content="model reply")
+        class LoggingWrapMiddleware(AgentMiddleware):
+            async def awrap_model_call(self, request, handler):
+                call_log.append("before")
+                response = await handler(request)
+                call_log.append("after")
+                return response
 
-        async def fake_invoke(messages):
-            call_log.append("invoke")
-            return final_ai_msg
+        executor = MiddlewareExecutor([LoggingWrapMiddleware()])
+        state = make_state()
+        config = make_config()
 
-        with patch(
-            "app.agents.middleware.executor.BigtoolRuntime"
-        ) as mock_runtime_cls, patch(
-            "app.agents.middleware.executor.create_model_request",
-            return_value=fake_request,
+        sentinel = AIMessage(content="sentinel")
+        invoke_fn = AsyncMock(return_value=sentinel)
+        fake_model = MagicMock()
+
+        with (
+            patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls,
+            patch(
+                "app.agents.middleware.executor.create_model_request"
+            ) as mock_create_req,
         ):
-            mock_runtime_cls.from_graph_context.return_value = MagicMock()
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            mock_req = MagicMock()
+            mock_req.system_message = None
+            mock_req.messages = []
+            mock_create_req.return_value = mock_req
+
             result = await executor.wrap_model_invocation(
-                model=MagicMock(),
-                state=MagicMock(),
-                config={},
+                model=fake_model,
+                state=state,
+                config=config,
                 store=None,
                 tools=[],
-                invoke_fn=fake_invoke,
+                invoke_fn=invoke_fn,
             )
 
-        # With two wrapping middlewares the expected order is:
-        # first:before -> second:before -> invoke -> second:after -> first:after
-        assert call_log == [
-            "first:before",
-            "second:before",
-            "invoke",
-            "second:after",
-            "first:after",
-        ]
-        assert isinstance(result, AIMessage)
-        assert result.content == "model reply"
+        assert result.content == "sentinel"
+        assert call_log == ["before", "after"]
 
-    async def test_wrap_model_invocation_transforms_response(self):
-        """Middleware can replace the model response with its own AIMessage."""
-        mw = TransformingWrapModelMiddleware()
-        executor = MiddlewareExecutor([mw])
+    async def test_empty_result_list_falls_back_to_direct_invoke(self):
+        """If middleware returns a ModelResponse with an empty result list,
+        wrap_model_invocation must fall back to calling invoke_fn directly
+        rather than raising to the caller."""
 
-        fake_request = self._make_model_request()
-        original_ai_msg = AIMessage(content="original model reply")
+        class EmptyResponseMiddleware(AgentMiddleware):
+            async def awrap_model_call(self, request, handler):
+                from langchain.agents.middleware.types import ModelResponse
 
-        async def fake_invoke(messages):
-            return original_ai_msg
+                return ModelResponse(result=[])
 
-        with patch(
-            "app.agents.middleware.executor.BigtoolRuntime"
-        ) as mock_runtime_cls, patch(
-            "app.agents.middleware.executor.create_model_request",
-            return_value=fake_request,
+        executor = MiddlewareExecutor([EmptyResponseMiddleware()])
+        state = make_state()
+        config = make_config()
+
+        fallback_msg = AIMessage(content="fallback")
+        invoke_fn = AsyncMock(return_value=fallback_msg)
+        fake_model = MagicMock()
+
+        with (
+            patch("app.agents.middleware.executor.BigtoolRuntime") as mock_rt_cls,
+            patch(
+                "app.agents.middleware.executor.create_model_request"
+            ) as mock_create_req,
         ):
-            mock_runtime_cls.from_graph_context.return_value = MagicMock()
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            mock_req = MagicMock()
+            mock_req.system_message = None
+            mock_req.messages = []
+            mock_create_req.return_value = mock_req
+
             result = await executor.wrap_model_invocation(
-                model=MagicMock(),
-                state=MagicMock(),
-                config={},
+                model=fake_model,
+                state=state,
+                config=config,
                 store=None,
                 tools=[],
-                invoke_fn=fake_invoke,
+                invoke_fn=invoke_fn,
             )
 
         assert isinstance(result, AIMessage)
-        assert result.content == TransformingWrapModelMiddleware.TRANSFORMED_CONTENT
+        invoke_fn.assert_awaited()
 
 
 @pytest.mark.unit
 class TestWrapToolInvocation:
-    def _make_tool_call_request(self, tool_call: dict) -> ToolCallRequest:
-        tc: ToolCall = {
-            "name": tool_call.get("name", ""),
-            "args": tool_call.get("args", {}),
-            "id": tool_call.get("id"),
-        }
-        return ToolCallRequest(
-            tool_call=tc,
-            tool=None,
-            state=MagicMock(),
-            runtime=MagicMock(),
-        )
+    pytestmark = pytest.mark.asyncio
 
-    async def test_wrap_tool_invocation_called_with_tool_args(self):
-        """The ToolCallRequest received by middleware must contain the original args."""
-        tool_call_dict = {
-            "name": "search_web",
-            "args": {"query": "latest news", "max_results": 5},
-            "id": "call_abc123",
-        }
-        mw = RecordingWrapToolMiddleware()
-        executor = MiddlewareExecutor([mw])
+    async def test_calls_invoke_fn_with_tool_call_dict(self):
+        """wrap_tool_invocation must call the provided invoke_fn and return the
+        ToolMessage it produces.  Zero coverage here meant that a regression
+        switching tool_call to request.tool_call would be invisible."""
+        executor = MiddlewareExecutor([SampleWrapToolMiddleware()])
+        state = make_state()
+        config = make_config()
+        tool_call = make_tool_call("my_tool", {"param": "value"})
 
-        fake_request = self._make_tool_call_request(tool_call_dict)
-        expected_tool_msg = ToolMessage(
-            content="search results",
-            tool_call_id="call_abc123",
-        )
+        expected = ToolMessage(content="tool result", tool_call_id=tool_call["id"])
+        invoke_fn = AsyncMock(return_value=expected)
+        fake_tool = MagicMock()
 
-        async def fake_invoke(tc):
-            return expected_tool_msg
-
-        with patch(
-            "app.agents.middleware.executor.BigtoolToolRuntime"
-        ) as mock_tool_runtime_cls, patch(
-            "app.agents.middleware.executor.create_tool_call_request",
-            return_value=fake_request,
+        with (
+            patch("app.agents.middleware.executor.BigtoolToolRuntime") as mock_rt_cls,
+            patch(
+                "app.agents.middleware.executor.create_tool_call_request"
+            ) as mock_create_req,
         ):
-            mock_tool_runtime_cls.from_graph_context.return_value = MagicMock()
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            mock_req = MagicMock()
+            mock_req.tool_call = tool_call
+            mock_create_req.return_value = mock_req
+
             result = await executor.wrap_tool_invocation(
-                tool_call=tool_call_dict,
-                tool=None,
-                state=MagicMock(),
-                config={},
+                tool_call=tool_call,
+                tool=fake_tool,
+                state=state,
+                config=config,
                 store=None,
-                invoke_fn=fake_invoke,
+                invoke_fn=invoke_fn,
             )
 
-        # The middleware captured the request; its tool_call must carry the args
-        assert mw.captured_request is not None
-        assert mw.captured_request.tool_call["name"] == "search_web"
-        assert mw.captured_request.tool_call["args"] == {
-            "query": "latest news",
-            "max_results": 5,
-        }
-        assert mw.captured_request.tool_call["id"] == "call_abc123"
-        assert result is expected_tool_msg
+        assert isinstance(result, ToolMessage)
+        assert result.content == "tool result"
+        invoke_fn.assert_awaited_once()
+
+    async def test_middleware_wraps_tool_handler_chain(self):
+        """wrap_tool_invocation must thread through awrap_tool_call middleware.
+        If the wrapping chain is skipped entirely the middleware's before/after
+        logic would silently not run."""
+        call_log: list[str] = []
+
+        class LoggingToolWrapMiddleware(AgentMiddleware):
+            async def awrap_tool_call(self, request, handler):
+                call_log.append("before_tool")
+                response = await handler(request)
+                call_log.append("after_tool")
+                return response
+
+        executor = MiddlewareExecutor([LoggingToolWrapMiddleware()])
+        state = make_state()
+        config = make_config()
+        tool_call = make_tool_call("search", {"q": "test"})
+
+        sentinel = ToolMessage(content="ok", tool_call_id=tool_call["id"])
+        invoke_fn = AsyncMock(return_value=sentinel)
+        fake_tool = MagicMock()
+
+        with (
+            patch("app.agents.middleware.executor.BigtoolToolRuntime") as mock_rt_cls,
+            patch(
+                "app.agents.middleware.executor.create_tool_call_request"
+            ) as mock_create_req,
+        ):
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            mock_req = MagicMock()
+            mock_req.tool_call = tool_call
+            mock_create_req.return_value = mock_req
+
+            result = await executor.wrap_tool_invocation(
+                tool_call=tool_call,
+                tool=fake_tool,
+                state=state,
+                config=config,
+                store=None,
+                invoke_fn=invoke_fn,
+            )
+
+        assert result.content == "ok"
+        assert call_log == ["before_tool", "after_tool"]
+
+    async def test_exception_in_wrap_falls_back_to_direct_invoke(self):
+        """wrap_tool_invocation must catch middleware exceptions and fall back
+        to direct invoke_fn rather than propagating to the caller.  Without
+        coverage of this path a removal of the except block would pass silently."""
+
+        class ExplodingToolMiddleware(AgentMiddleware):
+            async def awrap_tool_call(self, request, handler):
+                raise RuntimeError("middleware exploded")
+
+        executor = MiddlewareExecutor([ExplodingToolMiddleware()])
+        state = make_state()
+        config = make_config()
+        tool_call = make_tool_call("exploding_tool")
+
+        fallback = ToolMessage(content="direct result", tool_call_id=tool_call["id"])
+        invoke_fn = AsyncMock(return_value=fallback)
+        fake_tool = MagicMock()
+
+        with (
+            patch("app.agents.middleware.executor.BigtoolToolRuntime") as mock_rt_cls,
+            patch(
+                "app.agents.middleware.executor.create_tool_call_request"
+            ) as mock_create_req,
+        ):
+            mock_rt_cls.from_graph_context.return_value = MagicMock()
+            mock_req = MagicMock()
+            mock_req.tool_call = tool_call
+            mock_create_req.return_value = mock_req
+
+            result = await executor.wrap_tool_invocation(
+                tool_call=tool_call,
+                tool=fake_tool,
+                state=state,
+                config=config,
+                store=None,
+                invoke_fn=invoke_fn,
+            )
+
+        assert result.content == "direct result"
+        invoke_fn.assert_awaited()

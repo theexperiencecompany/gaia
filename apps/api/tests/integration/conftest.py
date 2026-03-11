@@ -5,10 +5,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from langchain_core.language_models.fake_chat_models import (
-    FakeMessagesListChatModel,
-)
-from langchain_core.messages import AIMessage, HumanMessage
+from langchain_core.messages import AIMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 from langgraph.graph.message import add_messages
@@ -16,7 +13,6 @@ from pydantic import BaseModel, Field
 from typing_extensions import Annotated
 
 from tests.factories import make_config, make_user
-from tests.helpers import create_fake_llm
 
 
 class SimpleState(BaseModel):

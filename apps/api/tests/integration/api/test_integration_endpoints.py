@@ -15,10 +15,6 @@ from app.models.integration_models import (
     UserIntegrationResponse,
     UserIntegrationsListResponse,
 )
-from app.schemas.integrations.responses import (
-    AddUserIntegrationResponse,
-    IntegrationSuccessResponse,
-)
 
 
 # ---------------------------------------------------------------------------
@@ -75,9 +71,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.get_user_integrations",
         new_callable=AsyncMock,
     )
-    async def test_list_user_integrations_returns_200(
-        self, mock_get, test_client
-    ):
+    async def test_list_user_integrations_returns_200(self, mock_get, test_client):
         """GET user integrations should return 200 with correct response structure."""
         mock_get.return_value = UserIntegrationsListResponse(
             integrations=[_make_user_integration_response()],
@@ -117,9 +111,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.get_user_integrations",
         new_callable=AsyncMock,
     )
-    async def test_list_user_integrations_response_shape(
-        self, mock_get, test_client
-    ):
+    async def test_list_user_integrations_response_shape(self, mock_get, test_client):
         """GET user integrations response should include nested integration fields."""
         mock_get.return_value = UserIntegrationsListResponse(
             integrations=[_make_user_integration_response()],
@@ -155,9 +147,7 @@ class TestUserIntegrationEndpoints:
         assert response.status_code == 500
         assert "Failed to fetch user integrations" in response.json()["detail"]
 
-    async def test_list_user_integrations_requires_auth(
-        self, unauthenticated_client
-    ):
+    async def test_list_user_integrations_requires_auth(self, unauthenticated_client):
         """GET user integrations without auth should return 401."""
         response = await unauthenticated_client.get(_BASE)
         assert response.status_code == 401
@@ -200,7 +190,9 @@ class TestUserIntegrationEndpoints:
         self, mock_add, test_client
     ):
         """POST to add duplicate integration should return 400."""
-        mock_add.side_effect = ValueError("Integration 'gmail' already added to workspace")
+        mock_add.side_effect = ValueError(
+            "Integration 'gmail' already added to workspace"
+        )
 
         response = await test_client.post(
             _BASE,
@@ -214,9 +206,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.add_user_integration_service",
         new_callable=AsyncMock,
     )
-    async def test_add_integration_not_found_returns_400(
-        self, mock_add, test_client
-    ):
+    async def test_add_integration_not_found_returns_400(self, mock_add, test_client):
         """POST with unknown integration_id should return 400."""
         mock_add.side_effect = ValueError("Integration 'unknown' not found")
 
@@ -284,9 +274,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.remove_user_integration",
         new_callable=AsyncMock,
     )
-    async def test_remove_integration_returns_200(
-        self, mock_remove, test_client
-    ):
+    async def test_remove_integration_returns_200(self, mock_remove, test_client):
         """DELETE integration should return 200 with success message."""
         mock_remove.return_value = True
 
@@ -329,9 +317,7 @@ class TestUserIntegrationEndpoints:
         assert response.status_code == 500
         assert "Failed to remove integration" in response.json()["detail"]
 
-    async def test_remove_integration_requires_auth(
-        self, unauthenticated_client
-    ):
+    async def test_remove_integration_requires_auth(self, unauthenticated_client):
         """DELETE without auth should return 401."""
         response = await unauthenticated_client.delete(f"{_BASE}/gmail")
         assert response.status_code == 401
@@ -340,9 +326,7 @@ class TestUserIntegrationEndpoints:
         "app.api.v1.endpoints.integrations.user.remove_user_integration",
         new_callable=AsyncMock,
     )
-    async def test_remove_integration_passes_correct_id(
-        self, mock_remove, test_client
-    ):
+    async def test_remove_integration_passes_correct_id(self, mock_remove, test_client):
         """DELETE should call service with the integration_id from the path."""
         mock_remove.return_value = True
 

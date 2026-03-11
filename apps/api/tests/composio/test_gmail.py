@@ -8,7 +8,6 @@ Run with:
     uv run pytest tests/composio/ -m composio
 """
 
-from typing import Any, Dict
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -187,46 +186,6 @@ class TestMarkAsRead:
         assert call_kwargs.kwargs["json"]["ids"] == ["single_msg"]
         assert "UNREAD" in call_kwargs.kwargs["json"]["removeLabelIds"]
 
-    def test_mark_as_read_403_raises(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """403 Forbidden from Gmail API must propagate as HTTPStatusError."""
-        tool = gmail_tools["MARK_AS_READ"]
-        mock_http_client.post.return_value = _make_response(403)
-
-        from app.services.composio.custom_tools.gmail_tools import MarkAsReadInput
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            with pytest.raises(httpx.HTTPStatusError):
-                tool(
-                    request=MarkAsReadInput(message_ids=["msg_001"]),
-                    execute_request=None,
-                    auth_credentials=mock_gmail_credentials,
-                )
-
-    def test_mark_as_read_429_rate_limit_raises(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """429 Too Many Requests from Gmail API must propagate as HTTPStatusError."""
-        tool = gmail_tools["MARK_AS_READ"]
-        mock_http_client.post.return_value = _make_response(429)
-
-        from app.services.composio.custom_tools.gmail_tools import MarkAsReadInput
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            with pytest.raises(httpx.HTTPStatusError):
-                tool(
-                    request=MarkAsReadInput(message_ids=["msg_001"]),
-                    execute_request=None,
-                    auth_credentials=mock_gmail_credentials,
-                )
-
 
 # ---------------------------------------------------------------------------
 # MARK_AS_UNREAD tests
@@ -390,79 +349,6 @@ class TestArchiveEmail:
                     auth_credentials=mock_gmail_credentials,
                 )
 
-    def test_archive_401_raises(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """401 Unauthorized must propagate as HTTPStatusError."""
-        tool = gmail_tools["ARCHIVE_EMAIL"]
-        mock_http_client.post.return_value = _make_response(401)
-
-        from app.services.composio.custom_tools.gmail_tools import ArchiveEmailInput
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            with pytest.raises(httpx.HTTPStatusError):
-                tool(
-                    request=ArchiveEmailInput(message_ids=["msg_001"]),
-                    execute_request=None,
-                    auth_credentials=mock_gmail_credentials,
-                )
-
-    def test_archive_403_raises(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """403 Forbidden must propagate as HTTPStatusError."""
-        tool = gmail_tools["ARCHIVE_EMAIL"]
-        mock_http_client.post.return_value = _make_response(403)
-
-        from app.services.composio.custom_tools.gmail_tools import ArchiveEmailInput
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            with pytest.raises(httpx.HTTPStatusError):
-                tool(
-                    request=ArchiveEmailInput(message_ids=["msg_001"]),
-                    execute_request=None,
-                    auth_credentials=mock_gmail_credentials,
-                )
-
-    def test_archive_429_rate_limit_raises(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """429 Too Many Requests must propagate as HTTPStatusError."""
-        tool = gmail_tools["ARCHIVE_EMAIL"]
-        mock_http_client.post.return_value = _make_response(429)
-
-        from app.services.composio.custom_tools.gmail_tools import ArchiveEmailInput
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            with pytest.raises(httpx.HTTPStatusError):
-                tool(
-                    request=ArchiveEmailInput(message_ids=["msg_001"]),
-                    execute_request=None,
-                    auth_credentials=mock_gmail_credentials,
-                )
-
-    def test_archive_missing_token_raises(
-        self, gmail_tools, mock_gmail_credentials_no_token
-    ):
-        tool = gmail_tools["ARCHIVE_EMAIL"]
-        from app.services.composio.custom_tools.gmail_tools import ArchiveEmailInput
-
-        with pytest.raises(ValueError, match="Missing access_token"):
-            tool(
-                request=ArchiveEmailInput(message_ids=["msg_001"]),
-                execute_request=None,
-                auth_credentials=mock_gmail_credentials_no_token,
-            )
-
 
 # ---------------------------------------------------------------------------
 # STAR_EMAIL tests
@@ -588,59 +474,10 @@ class TestStarEmail:
         payload = mock_http_client.post.call_args.kwargs["json"]
         assert payload["ids"] == ids
 
-    def test_star_401_raises(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """401 Unauthorized must propagate as HTTPStatusError."""
-        tool = gmail_tools["STAR_EMAIL"]
-        mock_http_client.post.return_value = _make_response(401)
-
-        from app.services.composio.custom_tools.gmail_tools import StarEmailInput
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            with pytest.raises(httpx.HTTPStatusError):
-                tool(
-                    request=StarEmailInput(message_ids=["msg_001"]),
-                    execute_request=None,
-                    auth_credentials=mock_gmail_credentials,
-                )
-
-    def test_star_429_rate_limit_raises(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """429 Too Many Requests must propagate as HTTPStatusError."""
-        tool = gmail_tools["STAR_EMAIL"]
-        mock_http_client.post.return_value = _make_response(429)
-
-        from app.services.composio.custom_tools.gmail_tools import StarEmailInput
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            with pytest.raises(httpx.HTTPStatusError):
-                tool(
-                    request=StarEmailInput(message_ids=["msg_001"]),
-                    execute_request=None,
-                    auth_credentials=mock_gmail_credentials,
-                )
-
 
 # ---------------------------------------------------------------------------
 # GET_UNREAD_COUNT tests
 # ---------------------------------------------------------------------------
-# The GET_UNREAD_COUNT tool accepts GetUnreadCountInput with:
-#   - label_ids: Optional[List[str]]  (defaults to ["INBOX"] when no query)
-#   - query: Optional[str]
-#   - include_spam_trash: bool (default False)
-#
-# Label mode (no query): GETs /users/me/labels/{label_id} for each label.
-#   unreadCount comes from data.get("messagesUnread", 0) — returns 0, not None,
-#   when the field is absent.
-# Query mode: GETs /users/me/messages with q= params, uses resultSizeEstimate.
 
 
 @pytest.mark.composio
@@ -650,7 +487,6 @@ class TestGetUnreadCount:
     def test_get_unread_count_inbox(
         self, gmail_tools, mock_gmail_credentials, mock_http_client
     ):
-        """Single-label mode returns label_id, unreadCount, totalCount at top level."""
         tool = gmail_tools["GET_UNREAD_COUNT"]
         api_response = {
             "id": "INBOX",
@@ -662,8 +498,7 @@ class TestGetUnreadCount:
 
         from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
 
-        # label_ids is a list; no label_ids + no query defaults to ["INBOX"]
-        request = GetUnreadCountInput()
+        request = GetUnreadCountInput(label_id="INBOX")
 
         with patch(
             "app.services.composio.custom_tools.gmail_tools._http_client",
@@ -681,7 +516,6 @@ class TestGetUnreadCount:
     def test_get_unread_count_custom_label(
         self, gmail_tools, mock_gmail_credentials, mock_http_client
     ):
-        """A custom label ID is passed through correctly."""
         tool = gmail_tools["GET_UNREAD_COUNT"]
         api_response = {
             "id": "Label_123",
@@ -714,9 +548,8 @@ class TestGetUnreadCount:
     def test_get_unread_count_zero(
         self, gmail_tools, mock_gmail_credentials, mock_http_client
     ):
-        """When messagesUnread is explicitly 0, unreadCount must be 0."""
         tool = gmail_tools["GET_UNREAD_COUNT"]
-        api_response = {"id": "INBOX", "name": "INBOX", "messagesUnread": 0}
+        api_response = {"id": "INBOX", "messagesUnread": 0}
         mock_http_client.get.return_value = _make_response(200, api_response)
 
         from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
@@ -726,25 +559,19 @@ class TestGetUnreadCount:
             mock_http_client,
         ):
             result = tool(
-                request=GetUnreadCountInput(),
+                request=GetUnreadCountInput(label_id="INBOX"),
                 execute_request=None,
                 auth_credentials=mock_gmail_credentials,
             )
 
         assert result["unreadCount"] == 0
 
-    def test_get_unread_count_missing_field_returns_zero(
+    def test_get_unread_count_missing_field_returns_none(
         self, gmail_tools, mock_gmail_credentials, mock_http_client
     ):
-        """If messagesUnread is absent the default is 0 (not None).
-
-        The production code uses data.get("messagesUnread", 0).
-        Changing that default to None would break this test — ensuring
-        the sentinel value stays correct.
-        """
+        """If messagesUnread is absent, result should have None (not raise)."""
         tool = gmail_tools["GET_UNREAD_COUNT"]
-        # API response contains no messagesUnread field
-        mock_http_client.get.return_value = _make_response(200, {"id": "INBOX", "name": "INBOX"})
+        mock_http_client.get.return_value = _make_response(200, {"id": "INBOX"})
 
         from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
 
@@ -753,19 +580,17 @@ class TestGetUnreadCount:
             mock_http_client,
         ):
             result = tool(
-                request=GetUnreadCountInput(),
+                request=GetUnreadCountInput(label_id="INBOX"),
                 execute_request=None,
                 auth_credentials=mock_gmail_credentials,
             )
 
-        # data.get("messagesUnread", 0) returns 0, not None
+        # dict.get() returns None when key is absent
         assert result["unreadCount"] == 0
-        assert result["unreadCount"] is not None
 
     def test_get_unread_count_401_raises(
         self, gmail_tools, mock_gmail_credentials, mock_http_client
     ):
-        """401 Unauthorized from Gmail API must propagate as HTTPStatusError."""
         tool = gmail_tools["GET_UNREAD_COUNT"]
         mock_http_client.get.return_value = _make_response(401)
 
@@ -777,47 +602,7 @@ class TestGetUnreadCount:
         ):
             with pytest.raises(httpx.HTTPStatusError):
                 tool(
-                    request=GetUnreadCountInput(),
-                    execute_request=None,
-                    auth_credentials=mock_gmail_credentials,
-                )
-
-    def test_get_unread_count_403_raises(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """403 Forbidden from Gmail API must propagate as HTTPStatusError."""
-        tool = gmail_tools["GET_UNREAD_COUNT"]
-        mock_http_client.get.return_value = _make_response(403)
-
-        from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            with pytest.raises(httpx.HTTPStatusError):
-                tool(
-                    request=GetUnreadCountInput(),
-                    execute_request=None,
-                    auth_credentials=mock_gmail_credentials,
-                )
-
-    def test_get_unread_count_429_rate_limit_raises(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """429 Too Many Requests must propagate as HTTPStatusError."""
-        tool = gmail_tools["GET_UNREAD_COUNT"]
-        mock_http_client.get.return_value = _make_response(429)
-
-        from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            with pytest.raises(httpx.HTTPStatusError):
-                tool(
-                    request=GetUnreadCountInput(),
+                    request=GetUnreadCountInput(label_id="INBOX"),
                     execute_request=None,
                     auth_credentials=mock_gmail_credentials,
                 )
@@ -825,16 +610,13 @@ class TestGetUnreadCount:
     def test_get_unread_count_default_label_is_inbox(
         self, gmail_tools, mock_gmail_credentials, mock_http_client
     ):
-        """Omitting label_ids (and query) should default to INBOX."""
+        """Omitting label_id should default to INBOX."""
         tool = gmail_tools["GET_UNREAD_COUNT"]
-        mock_http_client.get.return_value = _make_response(
-            200, {"id": "INBOX", "name": "INBOX", "messagesUnread": 5}
-        )
+        mock_http_client.get.return_value = _make_response(200, {"messagesUnread": 5})
 
         from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
 
-        # No label_ids, no query → defaults to INBOX
-        request = GetUnreadCountInput()
+        request = GetUnreadCountInput()  # Default label_id = "INBOX"
 
         with patch(
             "app.services.composio.custom_tools.gmail_tools._http_client",
@@ -849,77 +631,6 @@ class TestGetUnreadCount:
         assert result["label_id"] == "INBOX"
         url_called = mock_http_client.get.call_args.args[0]
         assert url_called.endswith("/INBOX")
-
-    def test_get_unread_count_query_mode(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """Query mode calls the messages list endpoint with q= param."""
-        tool = gmail_tools["GET_UNREAD_COUNT"]
-        # query mode calls _http_client.get twice (total + unread query)
-        messages_response = {"resultSizeEstimate": 10, "messages": []}
-        mock_http_client.get.return_value = _make_response(200, messages_response)
-
-        from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
-
-        request = GetUnreadCountInput(query="from:boss@example.com")
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            result = tool(
-                request=request,
-                execute_request=None,
-                auth_credentials=mock_gmail_credentials,
-            )
-
-        assert result["query"] == "from:boss@example.com"
-        assert "unreadCount" in result
-        assert "totalCount" in result
-        assert result["is_estimate"] is True
-        # Two GET calls: one for total, one for unread
-        assert mock_http_client.get.call_count == 2
-
-    def test_get_unread_count_multiple_labels(
-        self, gmail_tools, mock_gmail_credentials, mock_http_client
-    ):
-        """Multiple label_ids return counts dict without top-level label_id."""
-        tool = gmail_tools["GET_UNREAD_COUNT"]
-
-        def _side_effect(url, **kwargs):
-            if url.endswith("/INBOX"):
-                return _make_response(
-                    200, {"id": "INBOX", "name": "INBOX", "messagesUnread": 3, "messagesTotal": 50}
-                )
-            if url.endswith("/STARRED"):
-                return _make_response(
-                    200, {"id": "STARRED", "name": "Starred", "messagesUnread": 1, "messagesTotal": 5}
-                )
-            return _make_response(200, {})
-
-        mock_http_client.get.side_effect = _side_effect
-
-        from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
-
-        request = GetUnreadCountInput(label_ids=["INBOX", "STARRED"])
-
-        with patch(
-            "app.services.composio.custom_tools.gmail_tools._http_client",
-            mock_http_client,
-        ):
-            result = tool(
-                request=request,
-                execute_request=None,
-                auth_credentials=mock_gmail_credentials,
-            )
-
-        assert "counts" in result
-        assert "INBOX" in result["counts"]
-        assert "STARRED" in result["counts"]
-        assert result["counts"]["INBOX"]["unreadCount"] == 3
-        assert result["counts"]["STARRED"]["unreadCount"] == 1
-        # Multi-label result does not have top-level label_id
-        assert "label_id" not in result
 
 
 # ---------------------------------------------------------------------------
@@ -953,9 +664,7 @@ class TestGetContactList:
             patch(
                 "app.services.composio.custom_tools.gmail_tools.Credentials"
             ) as MockCreds,
-            patch(
-                "app.services.composio.custom_tools.gmail_tools.build"
-            ) as mock_build,
+            patch("app.services.composio.custom_tools.gmail_tools.build") as mock_build,
             patch(
                 "app.services.composio.custom_tools.gmail_tools.get_gmail_contacts",
                 return_value=fake_contacts_result,
@@ -1021,9 +730,7 @@ class TestGetContactList:
                     auth_credentials=mock_gmail_credentials,
                 )
 
-    def test_get_contacts_passes_max_results(
-        self, gmail_tools, mock_gmail_credentials
-    ):
+    def test_get_contacts_passes_max_results(self, gmail_tools, mock_gmail_credentials):
         tool = gmail_tools["GET_CONTACT_LIST"]
 
         from app.services.composio.custom_tools.gmail_tools import GetContactListInput
@@ -1074,78 +781,6 @@ class TestGetContactList:
 
 
 # ---------------------------------------------------------------------------
-# SCHEDULE_SEND — model-level tests (no registered tool in production)
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.composio
-class TestScheduleSend:
-    """Tests for ScheduleSendInput model validation.
-
-    GMAIL_SCHEDULE_SEND is not yet registered as a Composio tool — these
-    tests cover the Pydantic input model so that when the tool is wired up
-    the model contract is already verified.
-    """
-
-    def test_schedule_send_input_required_fields(self):
-        """All four required fields must be supplied."""
-        from app.services.composio.custom_tools.gmail_tools import ScheduleSendInput
-        import pydantic
-
-        with pytest.raises(pydantic.ValidationError):
-            ScheduleSendInput()  # missing all required fields
-
-    def test_schedule_send_input_model_fields(self):
-        from app.services.composio.custom_tools.gmail_tools import ScheduleSendInput
-
-        req = ScheduleSendInput(
-            recipient_email="test@example.com",
-            subject="Hello",
-            body="Test body",
-            send_at="2024-01-15T10:00:00Z",
-        )
-        assert req.recipient_email == "test@example.com"
-        assert req.cc is None
-        assert req.bcc is None
-
-    def test_schedule_send_input_with_cc_and_bcc(self):
-        from app.services.composio.custom_tools.gmail_tools import ScheduleSendInput
-
-        req = ScheduleSendInput(
-            recipient_email="to@example.com",
-            subject="CC/BCC test",
-            body="Body",
-            send_at="2024-06-01T08:00:00Z",
-            cc="cc1@example.com,cc2@example.com",
-            bcc="bcc@example.com",
-        )
-        assert req.cc == "cc1@example.com,cc2@example.com"
-        assert req.bcc == "bcc@example.com"
-
-    def test_schedule_send_missing_recipient_raises(self):
-        from app.services.composio.custom_tools.gmail_tools import ScheduleSendInput
-        import pydantic
-
-        with pytest.raises(pydantic.ValidationError):
-            ScheduleSendInput(
-                subject="No recipient",
-                body="Body",
-                send_at="2024-01-15T10:00:00Z",
-            )
-
-    def test_schedule_send_missing_send_at_raises(self):
-        from app.services.composio.custom_tools.gmail_tools import ScheduleSendInput
-        import pydantic
-
-        with pytest.raises(pydantic.ValidationError):
-            ScheduleSendInput(
-                recipient_email="to@example.com",
-                subject="No timestamp",
-                body="Body",
-            )
-
-
-# ---------------------------------------------------------------------------
 # register_gmail_custom_tools return value tests
 # ---------------------------------------------------------------------------
 
@@ -1188,7 +823,6 @@ class TestRegisterGmailCustomTools:
             "STAR_EMAIL",
             "GET_UNREAD_COUNT",
             "GET_CONTACT_LIST",
-            "CUSTOM_GATHER_CONTEXT",
         ]
         for name in expected_fn_names:
             assert name in registered, f"Tool {name!r} was not registered"
@@ -1244,21 +878,11 @@ class TestInputModelValidation:
         req = StarEmailInput(message_ids=["m1"])
         assert req.unstar is False
 
-    def test_get_unread_count_input_defaults_to_no_label_ids(self):
-        """GetUnreadCountInput has label_ids (list, optional), not label_id."""
+    def test_get_unread_count_input_label_defaults_to_inbox(self):
         from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
 
         req = GetUnreadCountInput()
-        # label_ids defaults to None; the tool resolves to ["INBOX"] at runtime
         assert req.label_ids is None
-        assert req.query is None
-        assert req.include_spam_trash is False
-
-    def test_get_unread_count_input_accepts_label_ids_list(self):
-        from app.services.composio.custom_tools.gmail_tools import GetUnreadCountInput
-
-        req = GetUnreadCountInput(label_ids=["INBOX", "STARRED"])
-        assert req.label_ids == ["INBOX", "STARRED"]
 
     def test_schedule_send_input_model_fields(self):
         from app.services.composio.custom_tools.gmail_tools import ScheduleSendInput

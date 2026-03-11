@@ -95,7 +95,9 @@ class TestIsMarkdownContent:
         assert is_markdown_content("This is _italic_ text") is True
 
     def test_detects_links(self):
-        assert is_markdown_content("Click [here](http://example.com)") is True
+        assert (
+            is_markdown_content("Click [here](http://example.com)") is True
+        )  # NOSONAR
 
     def test_detects_lists(self):
         assert is_markdown_content("- item one") is True
@@ -135,7 +137,9 @@ class TestConvertMarkdownToPlainText:
         assert result == "This is italic text"
 
     def test_converts_links(self):
-        result = convert_markdown_to_plain_text("[Click here](http://example.com)")
+        result = convert_markdown_to_plain_text(
+            "[Click here](http://example.com)"
+        )  # NOSONAR
         assert result == "Click here"
 
     def test_strips_code_blocks(self):

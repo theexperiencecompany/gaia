@@ -20,7 +20,7 @@
  * - dispatchCommand — unknown command sends ephemeral error
  */
 
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 
 // ---------------------------------------------------------------------------
 // Mock @slack/bolt
@@ -42,30 +42,11 @@ vi.mock("@slack/bolt", () => ({
 // Mock @gaia/shared
 // ---------------------------------------------------------------------------
 
-vi.mock("@gaia/shared", () => {
-  const BaseBotAdapter = class {
-    platform = "slack";
-    gaia = {};
-    config = {};
-    commands = new Map();
-    protected async dispatchCommand(
-      name: string,
-      target: { sendEphemeral: (t: string) => Promise<unknown> },
-    ) {
-      const cmd = this.commands.get(name);
-      if (!cmd) {
-        await target.sendEphemeral(`Unknown command: /${name}`);
-        return;
-      }
-      await cmd.execute({ gaia: this.gaia, target, ctx: {}, args: {} });
-    }
-    protected buildContext(userId: string, channelId?: string) {
-      return { platform: this.platform, platformUserId: userId, channelId };
-    }
-  };
+vi.mock("@gaia/shared", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@gaia/shared")>();
 
   return {
-    BaseBotAdapter,
+    ...actual,
     formatBotError: vi.fn((err: unknown) =>
       err instanceof Error ? `Error: ${err.message}` : "Something went wrong",
     ),
@@ -73,7 +54,6 @@ vi.mock("@gaia/shared", () => {
     STREAMING_DEFAULTS: {
       slack: { editIntervalMs: 1500, streaming: true, platform: "slack" },
     },
-    convertToSlackMrkdwn: vi.fn((t: string) => t),
     richMessageToMarkdown: vi.fn().mockReturnValue("## Rich Title\nBody text"),
     parseTextArgs: vi.fn((text: string) => ({
       subcommand: text.split(" ")[0] || undefined,
@@ -159,10 +139,9 @@ describe("SlackAdapter - createCommandTarget.send", () => {
 
     const sent = await target.send("Hello world");
 
-    expect(convertToSlackMrkdwn).toHaveBeenCalledWith("Hello world");
     expect(client.chat.postMessage).toHaveBeenCalledWith({
       channel: "C456",
-      text: "Hello world", // convertToSlackMrkdwn is mocked to return identity
+      text: convertToSlackMrkdwn("Hello world"),
     });
     expect(sent.id).toBe("ts-abc");
 
@@ -171,7 +150,7 @@ describe("SlackAdapter - createCommandTarget.send", () => {
     expect(client.chat.update).toHaveBeenCalledWith({
       channel: "C456",
       ts: "ts-abc",
-      text: "Updated text",
+      text: convertToSlackMrkdwn("Updated text"),
     });
   });
 
@@ -221,7 +200,7 @@ describe("SlackAdapter - createCommandTarget.sendEphemeral", () => {
     const sent = await target.sendEphemeral("Only you can see this");
 
     expect(respond).toHaveBeenCalledWith({
-      text: "Only you can see this",
+      text: convertToSlackMrkdwn("Only you can see this"),
       response_type: "ephemeral",
     });
     expect(sent.id).toBe("ephemeral");
@@ -326,6 +305,8 @@ describe("SlackAdapter - handleSlackStreaming", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     adapter = new SlackAdapter();
+    // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
+    (adapter as unknown as { gaia: object }).gaia = {};
   });
 
   it("posts 'Thinking...' before invoking handleStreamingChat", async () => {
@@ -437,11 +418,10 @@ describe("SlackAdapter - handleSlackStreaming streaming callbacks", () => {
 
     await capturedEditMessage!("Streamed response text");
 
-    expect(convertToSlackMrkdwn).toHaveBeenCalledWith("Streamed response text");
     expect(client.chat.update).toHaveBeenCalledWith({
       channel: "C789",
       ts: "ts-edit",
-      text: "Streamed response text",
+      text: convertToSlackMrkdwn("Streamed response text"),
     });
   });
 });
@@ -561,6 +541,8 @@ describe("SlackAdapter - app_mention event handling", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     adapter = new SlackAdapter();
+    // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
+    (adapter as unknown as { gaia: object }).gaia = {};
 
     const appMock = { ...mockApp, event: vi.fn(), message: vi.fn() };
     (adapter as unknown as { app: typeof appMock }).app = appMock;
@@ -654,6 +636,8 @@ describe("SlackAdapter - DM message event handling", () => {
   beforeEach(async () => {
     vi.clearAllMocks();
     adapter = new SlackAdapter();
+    // boot() is not called in tests; inject a mock gaia so this.gaia !== undefined
+    (adapter as unknown as { gaia: object }).gaia = {};
 
     const appMock = { ...mockApp, event: vi.fn(), message: vi.fn() };
     (adapter as unknown as { app: typeof appMock }).app = appMock;

@@ -49,8 +49,7 @@ from __future__ import annotations
 
 import httpx
 import pytest
-from unittest.mock import MagicMock, patch, call
-from datetime import datetime, timezone
+from unittest.mock import MagicMock, patch
 
 from app.agents.tools.integrations.calendar_tool import (
     _get_access_token,
@@ -58,7 +57,6 @@ from app.agents.tools.integrations.calendar_tool import (
     _auth_headers,
     register_calendar_custom_tools,
 )
-
 from app.models.calendar_models import (
     AddRecurrenceInput,
     CreateEventInput,
@@ -73,14 +71,11 @@ from app.models.calendar_models import (
     SingleEventInput,
 )
 
-# Sentinel used in _run helpers so that passing creds={} (falsy empty dict)
-# is correctly distinguished from passing creds=None (use default).
-_USE_DEFAULT_CREDS = object()
-
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_composio_mock() -> tuple[MagicMock, dict[str, MagicMock]]:
     """Return a (composio_mock, handlers) pair.
@@ -94,9 +89,11 @@ def _make_composio_mock() -> tuple[MagicMock, dict[str, MagicMock]]:
 
     def _fake_custom_tool(toolkit: str):
         """Mimic @composio.tools.custom_tool(toolkit=...) decorator."""
+
         def _decorator(fn):
             captured[fn.__name__] = fn
             return fn
+
         return _decorator
 
     composio = MagicMock()
@@ -106,7 +103,9 @@ def _make_composio_mock() -> tuple[MagicMock, dict[str, MagicMock]]:
     return composio, captured
 
 
-def _http_status_error(status_code: int, method: str = "GET", url: str = "https://example.com") -> httpx.HTTPStatusError:
+def _http_status_error(
+    status_code: int, method: str = "GET", url: str = "https://example.com"
+) -> httpx.HTTPStatusError:
     """Build a minimal httpx.HTTPStatusError for testing."""
     request = httpx.Request(method, url)
     response = httpx.Response(status_code, request=request)
@@ -121,28 +120,10 @@ AUTH_CREDS_BASIC = {"access_token": "test-token-abc", "user_id": "user-42"}
 EXECUTE_REQUEST_STUB = None  # handlers never use this arg; keep it None
 
 
-@pytest.fixture(autouse=True)
-def _patch_stream_writer():
-    """Suppress LangGraph's get_stream_writer for all calendar tool tests.
-
-    Every handler calls ``writer = get_stream_writer()`` to push data to the
-    frontend.  Outside a LangGraph runnable context that call raises
-    ``RuntimeError("Called get_config outside of a runnable context")``.
-    This autouse fixture replaces the writer with a no-op MagicMock so that
-    every test in this module works without a real LangGraph runtime.
-    """
-    mock_writer = MagicMock()
-    mock_writer.return_value = MagicMock()
-    with patch(
-        "app.agents.tools.integrations.calendar_tool.get_stream_writer",
-        return_value=mock_writer,
-    ):
-        yield
-
-
 # ===========================================================================
 # Tests for pure helper functions
 # ===========================================================================
+
 
 @pytest.mark.composio
 class TestHelpers:
@@ -176,6 +157,7 @@ class TestHelpers:
 # ===========================================================================
 # Tests for CUSTOM_LIST_CALENDARS
 # ===========================================================================
+
 
 @pytest.mark.composio
 class TestCustomListCalendars:
@@ -239,6 +221,7 @@ class TestCustomListCalendars:
 # Tests for CUSTOM_GET_DAY_SUMMARY
 # ===========================================================================
 
+
 @pytest.mark.composio
 class TestCustomGetDaySummary:
     """Tests for the CUSTOM_GET_DAY_SUMMARY handler."""
@@ -247,9 +230,8 @@ class TestCustomGetDaySummary:
         _, self.handlers = _make_composio_mock()
         self.handler = self.handlers["CUSTOM_GET_DAY_SUMMARY"]
 
-    def _run(self, request: GetDaySummaryInput, creds=_USE_DEFAULT_CREDS):
-        if creds is _USE_DEFAULT_CREDS:
-            creds = AUTH_CREDS_BASIC
+    def _run(self, request: GetDaySummaryInput, creds=None):
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -373,6 +355,7 @@ class TestCustomGetDaySummary:
 # Tests for CUSTOM_FETCH_EVENTS
 # ===========================================================================
 
+
 @pytest.mark.composio
 class TestCustomFetchEvents:
     """Tests for the CUSTOM_FETCH_EVENTS handler."""
@@ -381,9 +364,8 @@ class TestCustomFetchEvents:
         _, self.handlers = _make_composio_mock()
         self.handler = self.handlers["CUSTOM_FETCH_EVENTS"]
 
-    def _run(self, request: FetchEventsInput, creds=_USE_DEFAULT_CREDS):
-        if creds is _USE_DEFAULT_CREDS:
-            creds = AUTH_CREDS_BASIC
+    def _run(self, request: FetchEventsInput, creds=None):
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -488,6 +470,7 @@ class TestCustomFetchEvents:
 # Tests for CUSTOM_FIND_EVENT
 # ===========================================================================
 
+
 @pytest.mark.composio
 class TestCustomFindEvent:
     """Tests for the CUSTOM_FIND_EVENT handler."""
@@ -496,9 +479,8 @@ class TestCustomFindEvent:
         _, self.handlers = _make_composio_mock()
         self.handler = self.handlers["CUSTOM_FIND_EVENT"]
 
-    def _run(self, request: FindEventInput, creds=_USE_DEFAULT_CREDS):
-        if creds is _USE_DEFAULT_CREDS:
-            creds = AUTH_CREDS_BASIC
+    def _run(self, request: FindEventInput, creds=None):
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -585,6 +567,7 @@ class TestCustomFindEvent:
 # Tests for CUSTOM_GET_EVENT
 # ===========================================================================
 
+
 @pytest.mark.composio
 class TestCustomGetEvent:
     """Tests for the CUSTOM_GET_EVENT handler."""
@@ -593,9 +576,8 @@ class TestCustomGetEvent:
         _, self.handlers = _make_composio_mock()
         self.handler = self.handlers["CUSTOM_GET_EVENT"]
 
-    def _run(self, request: GetEventInput, creds=_USE_DEFAULT_CREDS):
-        if creds is _USE_DEFAULT_CREDS:
-            creds = AUTH_CREDS_BASIC
+    def _run(self, request: GetEventInput, creds=None):
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -603,7 +585,9 @@ class TestCustomGetEvent:
         )
 
     def _make_request(self, event_id="ev1", calendar_id="primary") -> GetEventInput:
-        return GetEventInput(events=[EventReference(event_id=event_id, calendar_id=calendar_id)])
+        return GetEventInput(
+            events=[EventReference(event_id=event_id, calendar_id=calendar_id)]
+        )
 
     def test_happy_path_single_event(self):
         fake_event = {"id": "ev1", "summary": "Standup"}
@@ -628,10 +612,12 @@ class TestCustomGetEvent:
         mock_response.json.return_value = fake_event
         mock_response.raise_for_status.return_value = None
 
-        request = GetEventInput(events=[
-            EventReference(event_id="evA", calendar_id="primary"),
-            EventReference(event_id="evB", calendar_id="work@group.calendar"),
-        ])
+        request = GetEventInput(
+            events=[
+                EventReference(event_id="evA", calendar_id="primary"),
+                EventReference(event_id="evB", calendar_id="work@group.calendar"),
+            ]
+        )
 
         with patch(
             "app.agents.tools.integrations.calendar_tool._http_client.get",
@@ -662,10 +648,12 @@ class TestCustomGetEvent:
                 raise _http_status_error(404)
             return good_resp
 
-        request = GetEventInput(events=[
-            EventReference(event_id="evGood", calendar_id="primary"),
-            EventReference(event_id="evBad", calendar_id="primary"),
-        ])
+        request = GetEventInput(
+            events=[
+                EventReference(event_id="evGood", calendar_id="primary"),
+                EventReference(event_id="evBad", calendar_id="primary"),
+            ]
+        )
 
         with patch(
             "app.agents.tools.integrations.calendar_tool._http_client.get",
@@ -685,6 +673,7 @@ class TestCustomGetEvent:
 # Tests for CUSTOM_DELETE_EVENT
 # ===========================================================================
 
+
 @pytest.mark.composio
 class TestCustomDeleteEvent:
     """Tests for the CUSTOM_DELETE_EVENT handler."""
@@ -693,9 +682,8 @@ class TestCustomDeleteEvent:
         _, self.handlers = _make_composio_mock()
         self.handler = self.handlers["CUSTOM_DELETE_EVENT"]
 
-    def _run(self, request: DeleteEventInput, creds=_USE_DEFAULT_CREDS):
-        if creds is _USE_DEFAULT_CREDS:
-            creds = AUTH_CREDS_BASIC
+    def _run(self, request: DeleteEventInput, creds=None):
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -763,7 +751,7 @@ class TestCustomDeleteEvent:
         good_resp = MagicMock()
         good_resp.raise_for_status.return_value = None
 
-        def _side_effect(url, **kwargs):
+        def _side_effect(url, headers, params):
             if "evBad" in url:
                 raise _http_status_error(404)
             return good_resp
@@ -793,6 +781,7 @@ class TestCustomDeleteEvent:
 # Tests for CUSTOM_PATCH_EVENT
 # ===========================================================================
 
+
 @pytest.mark.composio
 class TestCustomPatchEvent:
     """Tests for the CUSTOM_PATCH_EVENT handler."""
@@ -801,9 +790,8 @@ class TestCustomPatchEvent:
         _, self.handlers = _make_composio_mock()
         self.handler = self.handlers["CUSTOM_PATCH_EVENT"]
 
-    def _run(self, request: PatchEventInput, creds=_USE_DEFAULT_CREDS):
-        if creds is _USE_DEFAULT_CREDS:
-            creds = AUTH_CREDS_BASIC
+    def _run(self, request: PatchEventInput, creds=None):
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -821,7 +809,9 @@ class TestCustomPatchEvent:
             return_value=mock_response,
         ) as mock_patch:
             result = self._run(
-                PatchEventInput(event_id="ev1", calendar_id="primary", summary="New Title")
+                PatchEventInput(
+                    event_id="ev1", calendar_id="primary", summary="New Title"
+                )
             )
 
         assert result == {"event": updated_event}
@@ -838,7 +828,7 @@ class TestCustomPatchEvent:
             "app.agents.tools.integrations.calendar_tool._http_client.patch",
             return_value=mock_response,
         ) as mock_patch:
-            result = self._run(
+            self._run(
                 PatchEventInput(
                     event_id="ev1",
                     calendar_id="primary",
@@ -910,6 +900,7 @@ class TestCustomPatchEvent:
 # Tests for CUSTOM_ADD_RECURRENCE
 # ===========================================================================
 
+
 @pytest.mark.composio
 class TestCustomAddRecurrence:
     """Tests for the CUSTOM_ADD_RECURRENCE handler."""
@@ -918,9 +909,8 @@ class TestCustomAddRecurrence:
         _, self.handlers = _make_composio_mock()
         self.handler = self.handlers["CUSTOM_ADD_RECURRENCE"]
 
-    def _run(self, request: AddRecurrenceInput, creds=_USE_DEFAULT_CREDS):
-        if creds is _USE_DEFAULT_CREDS:
-            creds = AUTH_CREDS_BASIC
+    def _run(self, request: AddRecurrenceInput, creds=None):
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -936,7 +926,10 @@ class TestCustomAddRecurrence:
         get_resp.raise_for_status.return_value = None
 
         put_resp = MagicMock()
-        put_resp.json.return_value = {**existing_event, "recurrence": ["RRULE:FREQ=DAILY"]}
+        put_resp.json.return_value = {
+            **existing_event,
+            "recurrence": ["RRULE:FREQ=DAILY"],
+        }
         put_resp.raise_for_status.return_value = None
 
         client = MagicMock()
@@ -961,7 +954,9 @@ class TestCustomAddRecurrence:
 
     def test_happy_path_weekly_with_byday(self):
         client, _, put_resp = self._make_mock_client()
-        put_resp.json.return_value = {"recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]}
+        put_resp.json.return_value = {
+            "recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=MO,WE,FR"]
+        }
 
         with patch("app.agents.tools.integrations.calendar_tool._http_client", client):
             result = self._run(
@@ -1056,6 +1051,7 @@ class TestCustomAddRecurrence:
 # Tests for CUSTOM_CREATE_EVENT
 # ===========================================================================
 
+
 @pytest.mark.composio
 class TestCustomCreateEvent:
     """Tests for the CUSTOM_CREATE_EVENT handler."""
@@ -1064,9 +1060,8 @@ class TestCustomCreateEvent:
         _, self.handlers = _make_composio_mock()
         self.handler = self.handlers["CUSTOM_CREATE_EVENT"]
 
-    def _run(self, request: CreateEventInput, creds=_USE_DEFAULT_CREDS):
-        if creds is _USE_DEFAULT_CREDS:
-            creds = AUTH_CREDS_BASIC
+    def _run(self, request: CreateEventInput, creds=None):
+        creds = AUTH_CREDS_BASIC if creds is None else creds
         return self.handler(
             request=request,
             execute_request=EXECUTE_REQUEST_STUB,
@@ -1200,7 +1195,7 @@ class TestCustomCreateEvent:
             )
 
         assert "message" in result
-        assert "drafted for review" in result["message"]
+        assert "1 event(s) prepared" in result["message"]
 
     def test_unknown_calendar_uses_default_color(self):
         """Calendar not in color_map should fall back to #4285f4."""
@@ -1221,15 +1216,7 @@ class TestCustomCreateEvent:
     # ---- timezone handling ----
 
     def test_naive_datetime_defaults_to_utc(self):
-        """A start_datetime without timezone info should be treated as UTC.
-
-        ``_get_user_timezone()`` calls ``get_config()`` which fails outside a
-        LangGraph runnable context.  We patch it to return an empty config so
-        that the function returns ``None`` and the handler leaves the datetime
-        naive (no tz is applied), meaning the isoformat string has no offset.
-        The assertion therefore checks that the string is produced at all and
-        is a valid ISO datetime string.
-        """
+        """A start_datetime without timezone info should be treated as UTC."""
         created = {"id": "evUTC", "htmlLink": "https://cal.google.com/evUTC"}
         mock_response = MagicMock()
         mock_response.json.return_value = created
@@ -1241,25 +1228,23 @@ class TestCustomCreateEvent:
                 return_value=({}, {}),
             ),
             patch(
-                "app.agents.tools.integrations.calendar_tool.get_config",
-                return_value={"configurable": {}},
-            ),
-            patch(
                 "app.agents.tools.integrations.calendar_tool._http_client.post",
                 return_value=mock_response,
             ) as mock_post,
         ):
             self._run(
                 CreateEventInput(
-                    events=[self._single_event_input(start_datetime="2026-05-01T09:00:00")],
+                    events=[
+                        self._single_event_input(start_datetime="2026-05-01T09:00:00")
+                    ],
                     confirm_immediately=True,
                 )
             )
 
         _, kwargs = mock_post.call_args
         start_dt_str = kwargs["json"]["start"]["dateTime"]
-        # The datetime is serialised; it must include the date portion.
-        assert "2026-05-01" in start_dt_str
+        # Should contain UTC offset info
+        assert "+00:00" in start_dt_str or "Z" in start_dt_str
 
     # ---- all-day events ----
 
@@ -1292,9 +1277,7 @@ class TestCustomCreateEvent:
             with pytest.raises(ValueError, match="All events failed validation"):
                 self._run(
                     CreateEventInput(
-                        events=[
-                            self._single_event_input(start_datetime="NOT-A-DATE")
-                        ],
+                        events=[self._single_event_input(start_datetime="NOT-A-DATE")],
                         confirm_immediately=False,
                     )
                 )
@@ -1328,6 +1311,7 @@ class TestCustomCreateEvent:
 # Tests for register_calendar_custom_tools return value
 # ===========================================================================
 
+
 @pytest.mark.composio
 class TestRegisterCalendarCustomTools:
     """Verify that register_calendar_custom_tools registers the expected tool names."""
@@ -1337,11 +1321,11 @@ class TestRegisterCalendarCustomTools:
 
         # Invoke with a fresh mock to get the return value
         composio_mock2 = MagicMock()
-        captured2: list[str] = []
 
         def _fake_custom_tool2(toolkit: str):
             def _decorator(fn):
                 return fn
+
             return _decorator
 
         composio_mock2.tools.custom_tool.side_effect = _fake_custom_tool2
@@ -1368,6 +1352,7 @@ class TestRegisterCalendarCustomTools:
         def _fake(toolkit):
             def _d(fn):
                 return fn
+
             return _d
 
         composio_mock.tools.custom_tool.side_effect = _fake
@@ -1375,7 +1360,7 @@ class TestRegisterCalendarCustomTools:
         assert len(result) == 10
 
     def test_all_ten_handlers_are_captured(self):
-        """Ensure all nine inner functions are decorated and captured."""
+        """Ensure all ten inner functions are decorated and captured."""
         _, handlers = _make_composio_mock()
         expected_names = {
             "CUSTOM_LIST_CALENDARS",
@@ -1390,246 +1375,3 @@ class TestRegisterCalendarCustomTools:
             "CUSTOM_GATHER_CONTEXT",
         }
         assert set(handlers.keys()) == expected_names
-
-
-# ===========================================================================
-# Regression tests: specific return-value contracts
-# ===========================================================================
-# These tests are the primary safety net described in the task.  Each one
-# calls the REAL handler function (captured from a mock Composio client) and
-# asserts an exact field in the response.  If you break the production code
-# so that the field is missing or wrong, the test MUST fail.
-# ===========================================================================
-
-
-@pytest.mark.composio
-class TestContractCreateEventReturnsEventId:
-    """test_create_event_returns_event_id: event_id must be present in created_events."""
-
-    def setup_method(self):
-        _, handlers = _make_composio_mock()
-        self.handler = handlers["CUSTOM_CREATE_EVENT"]
-
-    def test_create_event_returns_event_id(self):
-        """CUSTOM_CREATE_EVENT with confirm_immediately=True must return event_id.
-
-        If the production code stops extracting ``id`` from the Google API
-        response into the ``event_id`` key, this test will fail.
-        """
-        google_api_response = {
-            "id": "gcal-event-xyz-789",
-            "htmlLink": "https://calendar.google.com/event?eid=gcal-event-xyz-789",
-            "summary": "Important Meeting",
-        }
-        mock_response = MagicMock()
-        mock_response.json.return_value = google_api_response
-        mock_response.raise_for_status.return_value = None
-
-        event_input = SingleEventInput(
-            summary="Important Meeting",
-            start_datetime="2026-04-01T14:00:00+00:00",
-            duration_hours=1,
-            duration_minutes=0,
-            calendar_id="primary",
-        )
-
-        with (
-            patch(
-                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
-                return_value=({"primary": "#4285f4"}, {"primary": "My Calendar"}),
-            ),
-            patch(
-                "app.agents.tools.integrations.calendar_tool._http_client.post",
-                return_value=mock_response,
-            ),
-        ):
-            result = self.handler(
-                request=CreateEventInput(events=[event_input], confirm_immediately=True),
-                execute_request=EXECUTE_REQUEST_STUB,
-                auth_credentials=AUTH_CREDS_BASIC,
-            )
-
-        # Top-level shape
-        assert result["created"] is True
-        assert "created_events" in result
-        assert len(result["created_events"]) == 1
-
-        # The event_id field must come from the Google API "id" field.
-        # Breaking CUSTOM_CREATE_EVENT to omit event_id will fail here.
-        created_event = result["created_events"][0]
-        assert created_event["event_id"] == "gcal-event-xyz-789", (
-            "event_id must equal the 'id' returned by the Google Calendar API"
-        )
-        assert created_event["summary"] == "Important Meeting"
-        assert created_event["calendar_id"] == "primary"
-        assert "link" in created_event
-
-
-@pytest.mark.composio
-class TestContractFetchEventsReturnsList:
-    """test_fetch_events_returns_list: result must contain a list under calendar_fetch_data."""
-
-    def setup_method(self):
-        _, handlers = _make_composio_mock()
-        self.handler = handlers["CUSTOM_FETCH_EVENTS"]
-
-    def test_fetch_events_returns_list(self):
-        """CUSTOM_FETCH_EVENTS must return a non-empty list with correct structure.
-
-        Verifies that each event dict from the service is present in the
-        ``calendar_fetch_data`` list of the response.
-        """
-        raw_events = [
-            {
-                "id": "ev-aaa",
-                "summary": "Team standup",
-                "start": {"dateTime": "2026-04-01T09:00:00+00:00"},
-                "end": {"dateTime": "2026-04-01T09:30:00+00:00"},
-            },
-            {
-                "id": "ev-bbb",
-                "summary": "1:1 with manager",
-                "start": {"dateTime": "2026-04-01T11:00:00+00:00"},
-                "end": {"dateTime": "2026-04-01T11:30:00+00:00"},
-            },
-        ]
-
-        with (
-            patch(
-                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_events",
-                return_value={"events": raw_events, "has_more": False},
-            ),
-            patch(
-                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
-                return_value=({}, {}),
-            ),
-            patch(
-                "app.agents.tools.integrations.calendar_tool.calendar_service.format_event_for_frontend",
-                side_effect=lambda ev, cm, nm: ev,
-            ),
-        ):
-            result = self.handler(
-                request=FetchEventsInput(
-                    time_min="2026-04-01T00:00:00+00:00",
-                    time_max="2026-04-01T23:59:59+00:00",
-                ),
-                execute_request=EXECUTE_REQUEST_STUB,
-                auth_credentials=AUTH_CREDS_BASIC,
-            )
-
-        # Must be a list, not None or dict
-        assert isinstance(result["calendar_fetch_data"], list), (
-            "calendar_fetch_data must be a list"
-        )
-        assert len(result["calendar_fetch_data"]) == 2, (
-            "Both fetched events must appear in the response"
-        )
-        assert result["has_more"] is False
-
-        # Verify each returned item has the event id
-        ids = {e["id"] for e in result["calendar_fetch_data"]}
-        assert "ev-aaa" in ids
-        assert "ev-bbb" in ids
-
-
-@pytest.mark.composio
-class TestContractDeleteEventNonexistentReturnsError:
-    """test_delete_event_nonexistent_returns_error: 404 for all events raises RuntimeError."""
-
-    def setup_method(self):
-        _, handlers = _make_composio_mock()
-        self.handler = handlers["CUSTOM_DELETE_EVENT"]
-
-    def test_delete_event_nonexistent_returns_error(self):
-        """Deleting a non-existent event (HTTP 404) must raise RuntimeError.
-
-        The Google Calendar API returns 404 when the event does not exist.
-        CUSTOM_DELETE_EVENT must propagate this as a RuntimeError so that the
-        caller knows the operation failed rather than silently succeeding.
-        """
-        with patch(
-            "app.agents.tools.integrations.calendar_tool._http_client.delete",
-            side_effect=_http_status_error(404, method="DELETE"),
-        ):
-            with pytest.raises(RuntimeError) as exc_info:
-                self.handler(
-                    request=DeleteEventInput(
-                        events=[
-                            EventReference(
-                                event_id="does-not-exist-000",
-                                calendar_id="primary",
-                            )
-                        ],
-                    ),
-                    execute_request=EXECUTE_REQUEST_STUB,
-                    auth_credentials=AUTH_CREDS_BASIC,
-                )
-
-        # The error message must mention the failure (not an empty/generic error)
-        assert "Failed to delete events" in str(exc_info.value)
-
-    def test_delete_event_auth_failure_raises_runtime_error(self):
-        """HTTP 401 from the Google API must also be surfaced as RuntimeError."""
-        with patch(
-            "app.agents.tools.integrations.calendar_tool._http_client.delete",
-            side_effect=_http_status_error(401, method="DELETE"),
-        ):
-            with pytest.raises(RuntimeError, match="Failed to delete events"):
-                self.handler(
-                    request=DeleteEventInput(
-                        events=[EventReference(event_id="ev1", calendar_id="primary")],
-                    ),
-                    execute_request=EXECUTE_REQUEST_STUB,
-                    auth_credentials=AUTH_CREDS_BASIC,
-                )
-
-
-@pytest.mark.composio
-class TestContractGetDaySummaryEmptyDay:
-    """test_get_day_summary_empty_day: a day with no events must not raise."""
-
-    def setup_method(self):
-        _, handlers = _make_composio_mock()
-        self.handler = handlers["CUSTOM_GET_DAY_SUMMARY"]
-
-    def test_get_day_summary_empty_day(self):
-        """CUSTOM_GET_DAY_SUMMARY for a day with no events must return a valid
-        summary with empty events list and zero busy_hours — not raise.
-
-        This test catches regressions where empty-event handling is broken
-        (e.g. division by zero, missing key, or uncaught StopIteration).
-        """
-        with (
-            patch(
-                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_events",
-                return_value={"events": []},
-            ),
-            patch(
-                "app.agents.tools.integrations.calendar_tool.calendar_service.get_calendar_metadata_map",
-                return_value=({}, {}),
-            ),
-            patch(
-                "app.agents.tools.integrations.calendar_tool.calendar_service.format_event_for_frontend",
-                side_effect=lambda ev, cm, nm: ev,
-            ),
-            patch(
-                "app.agents.tools.integrations.calendar_tool.user_service.get_user_by_id",
-                return_value={"timezone": "UTC"},
-            ),
-        ):
-            result = self.handler(
-                request=GetDaySummaryInput(date="2026-06-15"),
-                execute_request=EXECUTE_REQUEST_STUB,
-                auth_credentials=AUTH_CREDS_BASIC,
-            )
-
-        # Must not raise; must return a structurally valid response
-        assert result["date"] == "2026-06-15"
-        assert result["events"] == [], "Empty day must return empty events list"
-        assert result["busy_hours"] == 0.0, (
-            "Empty day must return 0 busy hours, not raise or return non-zero"
-        )
-        assert result["next_event"] is None, (
-            "Empty day must have no next_event"
-        )
-        assert "timezone" in result

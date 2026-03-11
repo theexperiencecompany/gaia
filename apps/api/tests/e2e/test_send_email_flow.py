@@ -15,7 +15,7 @@ before the model is called again — which is what allows the fake LLM
 to respond correctly in turn 2 without being confused by stale tool calls.
 
 Mock surfaces:
-- LLM: BindableToolsFakeModel (wraps FakeMessagesListChatModel with bind_tools support)
+- LLM: FakeMessagesListChatModel
 - Store: InMemoryStore (no ChromaDB)
 - Checkpointer: MemorySaver (no PostgreSQL)
 - email sending: a @tool stub is used, but the graph infrastructure is real
@@ -24,11 +24,8 @@ DELETE ``app/agents/core/nodes/filter_messages.py`` → these tests FAIL.
 DELETE ``app/override/langgraph_bigtool/create_agent.py`` → these tests FAIL.
 """
 
-from typing import Any
-from unittest.mock import MagicMock
-from uuid import uuid4
-
 import pytest
+from tests.helpers import BindableToolsFakeModel
 from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
@@ -39,7 +36,7 @@ from tests.e2e.conftest import (
     make_mock_store,
     make_node_config,
 )
-from tests.helpers import BindableToolsFakeModel, assert_tool_called, extract_tool_calls
+from tests.helpers import assert_tool_called
 
 
 @tool
@@ -55,6 +52,14 @@ class TestSendEmailFlow:
     The real value here is that filter_messages_node (production code) is
     exercised as part of the graph run — not just unit-tested in isolation.
     """
+
+    # -------------------------------------------------------------------------
+    # The four tests below call filter_messages_node directly (unit-test style).
+    # They belong here because they exercise the real production node that is
+    # wired into the E2E graph, acting as a contract check for the node's
+    # public interface. Comprehensive unit coverage lives in:
+    #   tests/unit/agents/nodes/test_filter_messages.py
+    # -------------------------------------------------------------------------
 
     async def test_filter_messages_node_removes_dangling_tool_calls(self):
         """filter_messages_node must strip AI tool_calls with no ToolMessage response.
@@ -158,7 +163,11 @@ class TestSendEmailFlow:
         )
 
         result = await graph.ainvoke(
-            {"messages": [HumanMessage(content="Send an email to carol about the project")]},
+            {
+                "messages": [
+                    HumanMessage(content="Send an email to carol about the project")
+                ]
+            },
             config=thread_config,
         )
 
@@ -204,6 +213,23 @@ class TestSendEmailFlow:
             "Result must contain 'todos' key — the GAIA-specific state channel. "
             "If missing, the graph is using a generic state instead of GAIA State."
         )
+        # Value assertions: confirm the channels hold the right types, not just
+        # that the keys are present. A wrong type here means the State schema
+        # reducers are not functioning correctly.
+        assert isinstance(result["todos"], list), (
+            "'todos' must be a list (last-write-wins reducer returns a list). "
+            f"Got {type(result['todos']).__name__!r} instead."
+        )
+        assert isinstance(result["messages"], list), (
+            "'messages' must be a list (add_messages reducer returns a list). "
+            f"Got {type(result['messages']).__name__!r} instead."
+        )
+        # The graph was invoked with one HumanMessage; the fake LLM produced one
+        # AIMessage. At minimum both must be present.
+        assert len(result["messages"]) >= 2, (
+            "Expected at least a HumanMessage and an AIMessage in the result. "
+            f"Got {len(result['messages'])} message(s)."
+        )
 
     async def test_multi_turn_conversation_filter_cleans_between_turns(self):
         """filter_messages_node must clean unanswered tool calls across turns.
@@ -214,18 +240,26 @@ class TestSendEmailFlow:
         """
         dangling_ai = AIMessage(
             content="",
-            tool_calls=[{"id": "stale_001", "name": "send_email", "args": {}, }],
+            tool_calls=[
+                {
+                    "id": "stale_001",
+                    "name": "send_email",
+                    "args": {},
+                }
+            ],
         )
         answered_ai = AIMessage(
             content="",
-            tool_calls=[{"id": "live_002", "name": "send_email", "args": {}, }],
+            tool_calls=[
+                {
+                    "id": "live_002",
+                    "name": "send_email",
+                    "args": {},
+                }
+            ],
         )
-        live_response = ToolMessage(
-            content="Email sent", tool_call_id="live_002"
-        )
-        state = make_gaia_state(
-            messages=[dangling_ai, answered_ai, live_response]
-        )
+        live_response = ToolMessage(content="Email sent", tool_call_id="live_002")
+        state = make_gaia_state(messages=[dangling_ai, answered_ai, live_response])
         config = make_node_config()
         store = make_mock_store()
 
@@ -245,9 +279,7 @@ class TestSendEmailFlow:
         """
         ai = AIMessage(
             content="I will try to send an email for you",
-            tool_calls=[
-                {"id": "no_response_tc", "name": "send_email", "args": {}}
-            ],
+            tool_calls=[{"id": "no_response_tc", "name": "send_email", "args": {}}],
         )
         state = make_gaia_state(messages=[ai])
         config = make_node_config()

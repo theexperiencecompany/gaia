@@ -1,7 +1,6 @@
 """Unit tests for Pydantic model validation across chat, message, and user models."""
 
 import pytest
-from datetime import datetime
 from pydantic import ValidationError
 
 from app.models.chat_models import (
@@ -16,7 +15,6 @@ from app.models.chat_models import (
 )
 from app.models.message_models import (
     FileData,
-    MessageRequest,
     MessageRequestWithHistory,
     ReplyToMessageData,
     SelectedWorkflowData,
@@ -26,7 +24,6 @@ from app.models.user_models import (
     OnboardingPhase,
     OnboardingPreferences,
     OnboardingRequest,
-    UserUpdateRequest,
     UserUpdateResponse,
     BioStatus,
 )
@@ -325,7 +322,9 @@ class TestOnboardingPreferences:
         assert p.profession == "Developer"
 
     def test_empty_string_normalized_to_none(self):
-        p = OnboardingPreferences(profession="", response_style="", custom_instructions="")
+        p = OnboardingPreferences(
+            profession="", response_style="", custom_instructions=""
+        )
         assert p.profession is None
         assert p.response_style is None
         assert p.custom_instructions is None

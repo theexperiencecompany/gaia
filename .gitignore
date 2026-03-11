@@ -119,3 +119,6 @@ postman/
 
 docs/plans/
 .opencode/plans
+
+
+.coverage

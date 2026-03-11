@@ -1,9 +1,9 @@
 """Unit tests for MemoryService parsing and formatting logic."""
 
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
-from app.models.memory_models import MemoryEntry, MemoryRelation, MemorySearchResult
+from app.models.memory_models import MemorySearchResult
 from app.services.memory_service import MemoryService
 
 
@@ -161,7 +161,9 @@ class TestParseAddResult:
 @pytest.mark.unit
 class TestExtractRelationships:
     def test_extracts_relations_key(self, service):
-        response = {"relations": [{"source": "a", "relation": "knows", "destination": "b"}]}
+        response = {
+            "relations": [{"source": "a", "relation": "knows", "destination": "b"}]
+        }
         result = service._extract_relationships_from_response(response)
         assert len(result) == 1
 
@@ -368,9 +370,7 @@ class TestSearchMemories:
         mock_client = AsyncMock()
         mock_client.search = AsyncMock(
             return_value={
-                "results": [
-                    {"id": "m1", "memory": "Python expert", "score": 0.9}
-                ],
+                "results": [{"id": "m1", "memory": "Python expert", "score": 0.9}],
                 "relations": [],
             }
         )
