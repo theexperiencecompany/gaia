@@ -112,6 +112,26 @@ class GmailTriggerHandler(TriggerHandler):
                     except Exception as e:
                         logger.error(f"Error processing workflow: {e}")
 
+            # GaiaTask matching: find tasks watching this thread or sender
+            try:
+                from app.services.gaia_task_service import GaiaTaskService
+
+                thread_id = data.get("thread_id") or data.get("threadId")
+                sender = data.get("sender") or data.get("from")
+
+                matched_tasks = await GaiaTaskService.find_matching_tasks(
+                    user_id, thread_id, sender
+                )
+                if matched_tasks:
+                    data["_matched_gaia_tasks"] = [
+                        t.model_dump(mode="json") for t in matched_tasks
+                    ]
+                    logger.info(
+                        f"Matched {len(matched_tasks)} GaiaTasks for Gmail event"
+                    )
+            except Exception as e:
+                logger.warning(f"GaiaTask matching failed: {e}")
+
             return workflows
 
         except Exception as e:

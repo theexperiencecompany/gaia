@@ -182,6 +182,7 @@ class ToolRegistry:
             document_tool,
             file_tools,
             flowchart_tool,
+            gaia_task_tool,
             goal_tool,
             image_tool,
             integration_tool,
@@ -255,6 +256,11 @@ class ToolRegistry:
         self._add_category("creative", tools=[image_tool.generate_image])
         self._add_category("weather", tools=[weather_tool.get_weather])
         self._add_category("context", tools=[context_tool.gather_context])
+        self._add_category(
+            "task_registry",
+            tools=gaia_task_tool.tools,
+            space="task_registry",
+        )
 
     async def register_provider_tools(
         self,

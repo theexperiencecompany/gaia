@@ -226,6 +226,14 @@ async def execute_workflow_by_id(
             workflow_id, workflow.user_id, is_successful=True
         )
 
+        # Activate matched GaiaTasks if any
+        trigger_data = (context or {}).get("trigger_data", {})
+        matched_tasks = trigger_data.get("_matched_gaia_tasks", [])
+        if matched_tasks:
+            await _activate_matched_tasks(
+                matched_tasks, workflow.user_id, trigger_data, execution_messages
+            )
+
         # Store messages and send notification
         conversation = await create_workflow_completion_notification(
             workflow, execution_messages, workflow.user_id
@@ -704,3 +712,36 @@ async def create_workflow_completion_notification(
         logger.error(f"Failed to send notification for workflow {workflow.id}: {e}")
 
     return conversation
+
+
+async def _activate_matched_tasks(
+    matched_tasks: list[dict],
+    user_id: str,
+    trigger_data: dict,
+    execution_messages: list,
+) -> None:
+    """Activate GaiaTasks that matched a trigger event."""
+    from app.models.gaia_task_models import GaiaTask
+    from app.services.gaia_task_service import GaiaTaskService
+
+    # Build a summary from workflow execution
+    bot_messages = [m for m in execution_messages if m.type == "bot"]
+    workflow_summary = bot_messages[-1].response[:500] if bot_messages else ""
+
+    for task_data in matched_tasks:
+        try:
+            task = GaiaTask(**task_data)
+            await GaiaTaskService.activate_task(
+                task=task,
+                user_id=user_id,
+                trigger_event={
+                    "type": "email",
+                    "thread_id": trigger_data.get("thread_id")
+                    or trigger_data.get("threadId"),
+                    "sender": trigger_data.get("sender") or trigger_data.get("from"),
+                    "subject": trigger_data.get("subject"),
+                    "summary": workflow_summary,
+                },
+            )
+        except Exception as e:
+            logger.error(f"Failed to activate task {task_data.get('id')}: {e}")

@@ -97,6 +97,33 @@ async def _get_gaia_knowledge_section(query: str) -> str:
     return ""
 
 
+async def _get_active_tasks_section(user_id: str) -> str:
+    """Fetch active GaiaTasks and format for agent context injection."""
+    try:
+        from app.services.gaia_task_service import GaiaTaskService
+
+        tasks = await GaiaTaskService.list_active_tasks(user_id)
+        if not tasks:
+            return ""
+
+        lines = ["\n\nActive Tasks (GAIA's working memory):"]
+        for t in tasks:
+            lines.append(
+                f'- [{t.category.value}] "{t.title}" | '
+                f"waiting for: {t.waiting_for or 'N/A'} | "
+                f"task_id: {t.id} | conv: {t.task_conversation_id}"
+            )
+        lines.append(
+            "When a trigger relates to a task: update it via update_gaia_task, write progress to VFS.\n"
+            "When goal achieved: call complete_gaia_task.\n"
+            "To continue a task: work in its dedicated task conversation."
+        )
+        return "\n".join(lines)
+    except Exception as e:
+        logger.warning(f"Error retrieving active tasks: {e}")
+        return ""
+
+
 async def get_memory_message(
     user_id: str,
     query: str,
@@ -152,14 +179,24 @@ async def get_memory_message(
             except Exception as e:
                 logger.warning(f"Error formatting user local time: {e}")
 
-        # Search for conversation memories and GAIA knowledge in parallel
-        memories_section, gaia_knowledge_section = await asyncio.gather(
+        # Search for conversation memories, GAIA knowledge, and active tasks in parallel
+        (
+            memories_section,
+            gaia_knowledge_section,
+            active_tasks_section,
+        ) = await asyncio.gather(
             _get_user_memories_section(query, user_id),
             _get_gaia_knowledge_section(query),
+            _get_active_tasks_section(user_id),
         )
 
         # Combine all sections
-        content = "\n".join(context_parts) + memories_section + gaia_knowledge_section
+        content = (
+            "\n".join(context_parts)
+            + memories_section
+            + gaia_knowledge_section
+            + active_tasks_section
+        )
         return SystemMessage(content=content, memory_message=True)
 
     except Exception as e:

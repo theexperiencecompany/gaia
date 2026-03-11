@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timezone
+from typing import Optional
 
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import (
@@ -326,7 +327,10 @@ async def get_starred_messages(user: dict) -> dict:
 
 
 async def create_system_conversation(
-    user_id: str, description: str, system_purpose: SystemPurpose
+    user_id: str,
+    description: str,
+    system_purpose: SystemPurpose,
+    conversation_id: Optional[str] = None,
 ) -> dict:
     """
     Create a system-generated conversation with proper flags.
@@ -335,11 +339,12 @@ async def create_system_conversation(
         user_id: The user ID
         description: Description of the conversation
         system_purpose: Purpose identifier (e.g., "email_processing", "reminder_processing")
+        conversation_id: Optional pre-generated conversation ID
 
     Returns:
         dict: Created conversation data
     """
-    conversation_id = str(uuid4())
+    conversation_id = conversation_id or str(uuid4())
     created_at = datetime.now(timezone.utc).isoformat()
 
     conversation_data = ConversationModel(

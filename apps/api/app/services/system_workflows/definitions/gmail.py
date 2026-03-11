@@ -23,7 +23,11 @@ def _email_intelligence() -> CreateWorkflowRequest:
         title="Inbox Triage",
         description="Scans new emails, triages by importance, and creates todos for action items.",
         prompt=(
-            "Triage the new inbox emails provided by the trigger. "
+            "First: check if trigger context contains '_matched_gaia_tasks'. "
+            "If it does, PRIORITIZE these emails — they relate to active tasks. "
+            "For matched tasks: summarize what the reply says, note any decisions or action items. "
+            "The task will be automatically activated in its dedicated conversation after this workflow. "
+            "Then proceed with normal triage for remaining emails: "
             "Classify each as spam, transactional, newsletter, informational, important, or action-required. "
             "Skip spam, transactional, and newsletters entirely. "
             "For important or action-required emails: extract action items, deadlines, and urgency "
@@ -129,7 +133,96 @@ def _smart_reply_drafts() -> CreateWorkflowRequest:
     )
 
 
+def _follow_up_tracker() -> CreateWorkflowRequest:
+    return CreateWorkflowRequest(
+        title="Follow-up Tracker",
+        description="Checks active tasks awaiting replies and reminds you when follow-up is needed.",
+        prompt=(
+            "Check the user's active GaiaTasks for tasks with status 'waiting_for_reply'. "
+            "For each task: search Gmail for any reply in the watched thread IDs. "
+            "If reply found but task not yet updated: flag it for processing. "
+            "If no reply and task is older than 5 days: notify user to follow up manually. "
+            "If no reply and task is older than 10 days: suggest cancelling the task."
+        ),
+        is_system_workflow=True,
+        source_integration="gmail",
+        system_workflow_key="gmail:follow_up_tracker",
+        trigger_config=TriggerConfig(
+            type=TriggerType.INTEGRATION,
+            trigger_name="gmail_poll_inbox",
+            enabled=True,
+            trigger_data=GmailPollInboxConfig(interval=120),
+        ),
+        steps=[
+            WorkflowStep(
+                id=str(uuid4()),
+                title="Check active tasks awaiting replies",
+                category="gaia",
+                description=(
+                    "List all active GaiaTasks with status 'waiting_for_reply'. "
+                    "For each, check if a reply has arrived in the watched Gmail threads."
+                ),
+            ),
+            WorkflowStep(
+                id=str(uuid4()),
+                title="Notify or suggest follow-up",
+                category="gaia",
+                description=(
+                    "For tasks with no reply after 5 days: notify user to follow up. "
+                    "For tasks with no reply after 10 days: suggest cancelling. "
+                    "For tasks with new replies: summarize and flag for processing."
+                ),
+            ),
+        ],
+    )
+
+
+def _newsletter_manager() -> CreateWorkflowRequest:
+    return CreateWorkflowRequest(
+        title="Newsletter Manager",
+        description="Identifies unread newsletters and suggests unsubscribes.",
+        prompt=(
+            "Search Gmail for unread emails from newsletter/list senders older than 7 days. "
+            "Check user memory: has user ever engaged with this sender in last 30 days? "
+            "If no engagement: create a Todo 'Consider unsubscribing from [sender]' "
+            "and apply a 'review-subscription' label. "
+            "Summarize actions taken."
+        ),
+        is_system_workflow=True,
+        source_integration="gmail",
+        system_workflow_key="gmail:newsletter_manager",
+        trigger_config=TriggerConfig(
+            type=TriggerType.SCHEDULE,
+            cron_expression="0 9 * * 1",
+            enabled=True,
+        ),
+        steps=[
+            WorkflowStep(
+                id=str(uuid4()),
+                title="Find stale newsletters",
+                category="gmail",
+                description=(
+                    "Search for unread emails from newsletter or mailing list senders "
+                    "that are older than 7 days. Check user memory for engagement history."
+                ),
+            ),
+            WorkflowStep(
+                id=str(uuid4()),
+                title="Create unsubscribe suggestions",
+                category="todos",
+                description=(
+                    "For newsletters with no user engagement in 30 days: "
+                    "create a todo suggesting unsubscribe. "
+                    "Apply 'review-subscription' label to the emails."
+                ),
+            ),
+        ],
+    )
+
+
 GMAIL_SYSTEM_WORKFLOWS: list[tuple[str, Callable[[], CreateWorkflowRequest]]] = [
     ("gmail:email_intelligence", _email_intelligence),
     ("gmail:smart_reply_drafts", _smart_reply_drafts),
+    ("gmail:follow_up_tracker", _follow_up_tracker),
+    ("gmail:newsletter_manager", _newsletter_manager),
 ]
