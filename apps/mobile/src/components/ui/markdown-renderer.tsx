@@ -1,37 +1,20 @@
-import * as Clipboard from "expo-clipboard";
 import * as Linking from "expo-linking";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  Pressable,
-  Text as RNText,
-  ScrollView,
-  View,
-} from "react-native";
+import { memo, useCallback, useState } from "react";
+import { Text as RNText, View } from "react-native";
 import { WebView } from "react-native-webview";
-import { AppIcon, Copy01Icon, Tick02Icon } from "@/components/icons";
-import { THEME } from "@/features/chat/components/code-block/syntax-theme";
-import { tokenizeLine } from "@/features/chat/components/code-block/tokenizer";
+import {
+  CodeBlock,
+  InlineCode,
+} from "@/features/chat/components/code-block/CodeBlock";
 
 // -- Theme constants ----------------------------------------------------------
 
 const COLORS = {
   text: "#ffffff",
   muted: "#a1a1aa",
-  accent: "#00bbff",
-  codeBg: "#27272a", // zinc-800 (inline code)
-  codeText: "#e4e4e7", // zinc-200
-  blockBg: THEME.background, // #1e1e2e - code block background
-  blockHeaderBg: THEME.headerBg, // #181825 - code block header
-  blockHeaderBorder: THEME.headerBorder, // #313244 - header divider
   blockquoteBorder: "#3f3f46", // zinc-700
   hrColor: "#3f3f46",
   linkColor: "#00bbff",
-} as const;
-
-const FONT = {
-  mono: "RobotoMono_400Regular",
-  monoMedium: "RobotoMono_500Medium",
 } as const;
 
 // -- Types --------------------------------------------------------------------
@@ -279,22 +262,7 @@ function InlineContent({ segments }: { segments: InlineSegment[] }) {
               </RNText>
             );
           case "code":
-            return (
-              <RNText
-                key={key}
-                style={{
-                  fontFamily: FONT.mono,
-                  fontSize: 13,
-                  backgroundColor: COLORS.codeBg,
-                  color: COLORS.codeText,
-                  borderRadius: 4,
-                  paddingHorizontal: 5,
-                  paddingVertical: 1,
-                }}
-              >
-                {seg.text}
-              </RNText>
-            );
+            return <InlineCode key={key}>{seg.text}</InlineCode>;
           case "link":
             return (
               <RNText
@@ -321,146 +289,6 @@ function InlineContent({ segments }: { segments: InlineSegment[] }) {
         }
       })}
     </RNText>
-  );
-}
-
-function CodeBlockCopyButton({ code }: { code: string }) {
-  const [copied, setCopied] = useState(false);
-  const fadeAnim = useRef(new Animated.Value(1)).current;
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
-    };
-  }, []);
-
-  const handleCopy = useCallback(async () => {
-    if (copied) return;
-    await Clipboard.setStringAsync(code);
-    setCopied(true);
-
-    Animated.sequence([
-      Animated.timing(fadeAnim, {
-        toValue: 0.3,
-        duration: 100,
-        useNativeDriver: true,
-      }),
-      Animated.timing(fadeAnim, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    timerRef.current = setTimeout(() => setCopied(false), 2000);
-  }, [copied, code, fadeAnim]);
-
-  return (
-    <Pressable onPress={handleCopy} style={{ padding: 6 }} hitSlop={8}>
-      <Animated.View style={{ opacity: fadeAnim }}>
-        <AppIcon
-          icon={copied ? Tick02Icon : Copy01Icon}
-          size={14}
-          color={copied ? "#34c759" : "#71717a"}
-        />
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-function SyntaxLine({ line, language }: { line: string; language: string }) {
-  const tokens = tokenizeLine(line, language || "text");
-  return (
-    <RNText
-      style={{
-        fontFamily: FONT.mono,
-        fontSize: 13,
-        lineHeight: 20,
-        color: THEME.plain,
-      }}
-    >
-      {tokens.map((token, tokenIdx) => {
-        const tokenKey = `t-${tokenIdx}`;
-        const color =
-          token.type === "plain"
-            ? THEME.plain
-            : (THEME[token.type as keyof typeof THEME] ?? THEME.plain);
-        return (
-          <RNText
-            key={tokenKey}
-            style={{
-              fontFamily: FONT.mono,
-              fontSize: 13,
-              color: typeof color === "string" ? color : THEME.plain,
-            }}
-          >
-            {token.value}
-          </RNText>
-        );
-      })}
-    </RNText>
-  );
-}
-
-function CodeBlock({ language, code }: { language: string; code: string }) {
-  const lines = code.split("\n");
-  // Strip trailing empty line that often appears after the closing ```
-  const displayLines =
-    lines.length > 0 && lines[lines.length - 1] === ""
-      ? lines.slice(0, -1)
-      : lines;
-  const lang = language || "code";
-
-  return (
-    <View
-      style={{
-        backgroundColor: COLORS.blockBg,
-        borderRadius: 8,
-        marginVertical: 6,
-        overflow: "hidden",
-      }}
-    >
-      {/* Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          justifyContent: "space-between",
-          alignItems: "center",
-          paddingHorizontal: 12,
-          paddingVertical: 6,
-          backgroundColor: COLORS.blockHeaderBg,
-          borderBottomWidth: 1,
-          borderBottomColor: COLORS.blockHeaderBorder,
-        }}
-      >
-        <RNText
-          style={{
-            fontFamily: FONT.mono,
-            fontSize: 11,
-            color: COLORS.muted,
-            textTransform: "lowercase",
-          }}
-        >
-          {lang}
-        </RNText>
-        <CodeBlockCopyButton code={code} />
-      </View>
-
-      {/* Code body — horizontal scroll for long lines */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ padding: 12 }}
-      >
-        <View>
-          {displayLines.map((line, lineIdx) => {
-            const lineKey = `line-${lineIdx}`;
-            return <SyntaxLine key={lineKey} line={line} language={language} />;
-          })}
-        </View>
-      </ScrollView>
-    </View>
   );
 }
 
@@ -495,19 +323,7 @@ function HeadingBlock({
           const key = segmentKey(seg, idx);
           switch (seg.type) {
             case "code":
-              return (
-                <RNText
-                  key={key}
-                  style={{
-                    fontFamily: FONT.mono,
-                    fontSize: fontSize - 2,
-                    backgroundColor: COLORS.codeBg,
-                    color: COLORS.codeText,
-                  }}
-                >
-                  {seg.text}
-                </RNText>
-              );
+              return <InlineCode key={key}>{seg.text}</InlineCode>;
             case "link":
               return (
                 <RNText
@@ -559,19 +375,7 @@ function BlockquoteBlock({ segments }: { segments: InlineSegment[] }) {
               </RNText>
             );
           if (seg.type === "code")
-            return (
-              <RNText
-                key={key}
-                style={{
-                  fontFamily: FONT.mono,
-                  fontSize: 13,
-                  backgroundColor: COLORS.codeBg,
-                  color: COLORS.codeText,
-                }}
-              >
-                {seg.text}
-              </RNText>
-            );
+            return <InlineCode key={key}>{seg.text}</InlineCode>;
           return <RNText key={key}>{seg.text}</RNText>;
         })}
       </RNText>

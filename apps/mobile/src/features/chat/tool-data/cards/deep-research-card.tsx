@@ -1,6 +1,13 @@
 import { Card } from "heroui-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, Linking, Pressable, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import {
   type AnyIcon,
   AppIcon,
@@ -34,7 +41,21 @@ export interface SearchResults {
   query?: string;
 }
 
+export interface DeepResearchSource {
+  url: string;
+  title: string;
+  snippet?: string;
+}
+
 export interface DeepResearchResults {
+  /** Present when streaming / running */
+  status?: "running" | "complete" | "error";
+  progress?: string;
+  subSteps?: string[];
+  sources?: DeepResearchSource[];
+  totalSources?: number;
+
+  /** Present when complete */
   original_search?: SearchResults;
   enhanced_results?: EnhancedWebResult[];
   screenshots_taken?: boolean;
@@ -55,6 +76,10 @@ function getHostname(url?: string): string {
     return url;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Shared sub-components
+// ---------------------------------------------------------------------------
 
 function FaviconImage({ url }: { url?: string }) {
   const [errored, setErrored] = useState(false);
@@ -79,6 +104,161 @@ function FaviconImage({ url }: { url?: string }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Streaming / running state
+// ---------------------------------------------------------------------------
+
+function PulsingDot() {
+  const opacity = useSharedValue(1);
+
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.25, { duration: 600 }),
+        withTiming(1, { duration: 600 }),
+      ),
+      -1,
+      false,
+    );
+  }, [opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <Animated.View
+      style={[
+        animatedStyle,
+        { width: 6, height: 6, borderRadius: 3, backgroundColor: "#00bbff" },
+      ]}
+    />
+  );
+}
+
+interface RunningSourceRowProps {
+  source: DeepResearchSource;
+}
+
+function RunningSourceRow({ source }: RunningSourceRowProps) {
+  const hostname = getHostname(source.url);
+  return (
+    <Pressable
+      onPress={() => Linking.openURL(source.url)}
+      className="flex-row items-center gap-2 py-1.5 active:opacity-70"
+    >
+      <FaviconImage url={source.url} />
+      <Text className="text-xs text-muted flex-1" numberOfLines={1}>
+        {hostname || source.title}
+      </Text>
+    </Pressable>
+  );
+}
+
+interface DeepResearchRunningCardProps {
+  data: DeepResearchResults;
+}
+
+function DeepResearchRunningCard({ data }: DeepResearchRunningCardProps) {
+  const sources = data.sources ?? [];
+  const recentSources = sources.slice(-3);
+  const totalSources = data.totalSources ?? sources.length;
+  const subSteps = data.subSteps ?? [];
+  const latestStep =
+    data.progress ?? subSteps[subSteps.length - 1] ?? "Researching...";
+
+  return (
+    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
+      <Card.Body className="py-3 px-4">
+        {/* Header */}
+        <View className="flex-row items-center gap-2 mb-3">
+          <View className="w-5 h-5 rounded-md bg-[#00bbff]/15 items-center justify-center">
+            <AppIcon icon={Search01Icon} size={12} color="#00bbff" />
+          </View>
+          <Text className="text-xs font-medium text-[#00bbff]">
+            Deep Research
+          </Text>
+          <View className="ml-auto">
+            <PulsingDot />
+          </View>
+        </View>
+
+        {/* Current step */}
+        <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
+          <Text className="text-xs text-muted mb-0.5">Current step</Text>
+          <Text className="text-sm text-foreground" numberOfLines={2}>
+            {latestStep}
+          </Text>
+        </View>
+
+        {/* Sub-steps history */}
+        {subSteps.length > 1 && (
+          <View className="mb-3 gap-1">
+            {subSteps.slice(0, -1).map((step, index) => (
+              <View
+                key={`step-${index}-${step.slice(0, 10)}`}
+                className="flex-row items-center gap-1.5"
+              >
+                <View className="w-1 h-1 rounded-full bg-white/30" />
+                <Text className="text-[11px] text-muted" numberOfLines={1}>
+                  {step}
+                </Text>
+              </View>
+            ))}
+          </View>
+        )}
+
+        {/* Recent sources being visited */}
+        {recentSources.length > 0 && (
+          <View>
+            <Text className="text-[11px] text-muted mb-1">
+              {totalSources > 0
+                ? `Visiting sources (${totalSources} found)`
+                : "Visiting sources"}
+            </Text>
+            <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
+              {recentSources.map((source, index) => (
+                <View
+                  key={source.url || `src-${index}`}
+                  className={
+                    index < recentSources.length - 1
+                      ? "border-b border-white/8"
+                      : ""
+                  }
+                >
+                  <RunningSourceRow source={source} />
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
+      </Card.Body>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Error state
+// ---------------------------------------------------------------------------
+
+function DeepResearchErrorCard() {
+  return (
+    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
+      <Card.Body className="py-3 px-4">
+        <View className="flex-row items-center gap-2">
+          <AppIcon icon={Search01Icon} size={14} color="#f87171" />
+          <Text className="text-xs text-[#f87171]">Deep Research</Text>
+        </View>
+        <Text className="text-sm text-muted mt-1.5">
+          Research encountered an error.
+        </Text>
+      </Card.Body>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Completed state (original implementation, preserved)
+// ---------------------------------------------------------------------------
+
 function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
   const [showFull, setShowFull] = useState(false);
   const hostname = getHostname(result.url);
@@ -86,7 +266,6 @@ function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
 
   return (
     <View className="py-3 border-b border-white/8">
-      {/* Title */}
       <Pressable
         onPress={() => result.url && Linking.openURL(result.url)}
         className="active:opacity-70"
@@ -96,7 +275,6 @@ function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
         </Text>
       </Pressable>
 
-      {/* Domain row */}
       <View className="flex-row items-center gap-1.5 mt-1">
         <FaviconImage url={result.url} />
         <Pressable
@@ -110,7 +288,6 @@ function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
         </Pressable>
       </View>
 
-      {/* Snippet */}
       {!!result.content && (
         <Text
           className="text-xs text-muted leading-4 mt-1.5"
@@ -120,7 +297,6 @@ function EnhancedResultRow({ result }: { result: EnhancedWebResult }) {
         </Text>
       )}
 
-      {/* Full content toggle */}
       {hasFullContent && (
         <Pressable
           onPress={() => setShowFull((prev) => !prev)}
@@ -289,7 +465,7 @@ const TABS: { key: Tab; label: string; icon: AnyIcon }[] = [
   { key: "metadata", label: "Info", icon: InformationCircleIcon },
 ];
 
-export function DeepResearchCard({ data }: { data: DeepResearchResults }) {
+function DeepResearchCompleteCard({ data }: { data: DeepResearchResults }) {
   const [expanded, setExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("enhanced");
 
@@ -309,6 +485,13 @@ export function DeepResearchCard({ data }: { data: DeepResearchResults }) {
     visibleTabs.find((t) => t.key === activeTab)?.key ??
     visibleTabs[0]?.key ??
     "enhanced";
+
+  // Derive summary counts
+  const sourcesCount =
+    data.sources?.length ??
+    data.enhanced_results?.length ??
+    data.original_search?.web?.length ??
+    0;
 
   return (
     <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
@@ -334,21 +517,12 @@ export function DeepResearchCard({ data }: { data: DeepResearchResults }) {
         {/* Summary stats */}
         {(hasEnhanced || hasOriginal) && (
           <View className="flex-row gap-3 mt-2.5">
-            {hasEnhanced && (
-              <View className="flex-row items-center gap-1">
-                <AppIcon icon={LinkSquare01Icon} size={11} color="#8e8e93" />
-                <Text className="text-[11px] text-muted">
-                  {data.enhanced_results!.length} enhanced result
-                  {data.enhanced_results!.length !== 1 ? "s" : ""}
-                </Text>
-              </View>
-            )}
-            {hasOriginal && (data.original_search?.web?.length ?? 0) > 0 && (
+            {sourcesCount > 0 && (
               <View className="flex-row items-center gap-1">
                 <AppIcon icon={Globe02Icon} size={11} color="#8e8e93" />
                 <Text className="text-[11px] text-muted">
-                  {data.original_search!.web!.length} web result
-                  {data.original_search!.web!.length !== 1 ? "s" : ""}
+                  Researched {sourcesCount} source
+                  {sourcesCount !== 1 ? "s" : ""}
                 </Text>
               </View>
             )}
@@ -409,4 +583,20 @@ export function DeepResearchCard({ data }: { data: DeepResearchResults }) {
       </Card.Body>
     </Card>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Main export — routes to running / error / complete sub-component
+// ---------------------------------------------------------------------------
+
+export function DeepResearchCard({ data }: { data: DeepResearchResults }) {
+  if (data.status === "running") {
+    return <DeepResearchRunningCard data={data} />;
+  }
+
+  if (data.status === "error") {
+    return <DeepResearchErrorCard />;
+  }
+
+  return <DeepResearchCompleteCard data={data} />;
 }

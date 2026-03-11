@@ -18,7 +18,11 @@ import {
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useResponsive } from "@/lib/responsive";
 import type { Message } from "../../api/chat-api";
-import { deleteMessage, pinMessage } from "../../api/chat-api";
+import {
+  branchConversation,
+  deleteMessage,
+  pinMessage,
+} from "../../api/chat-api";
 import { useChat } from "../../hooks/use-chat";
 import { useChatContext } from "../../hooks/use-chat-context";
 import type { ReplyToMessageData } from "../../types";
@@ -293,6 +297,47 @@ export function ChatScreenContent({
     [messages, sendMessage],
   );
 
+  const handleActionReply = useCallback(
+    (messageId: string, _conversationId: string) => {
+      const msg = messages.find((m) => m.id === messageId);
+      if (msg) {
+        handleReply(msg);
+      }
+    },
+    [messages, handleReply],
+  );
+
+  const handleActionRegenerate = useCallback(
+    (messageId: string, _conversationId: string) => {
+      const msgIndex = messages.findIndex((m) => m.id === messageId);
+      if (msgIndex === -1) return;
+      for (let i = msgIndex - 1; i >= 0; i--) {
+        const candidate = messages[i];
+        if (candidate.isUser) {
+          void sendMessage(candidate.text, {
+            replyToMessage: null,
+            selectedWorkflow: null,
+            selectedTool: null,
+            toolCategory: null,
+            attachments: [],
+          });
+          return;
+        }
+      }
+    },
+    [messages, sendMessage],
+  );
+
+  const handleActionBranch = useCallback(
+    async (messageId: string, conversationId: string) => {
+      const newConvId = await branchConversation(conversationId, messageId);
+      if (newConvId) {
+        router.push(`/(app)/c/${newConvId}`);
+      }
+    },
+    [router],
+  );
+
   const handleSend = useCallback(
     (text: string, attachments: AttachmentFile[]) => {
       setLastUserMessage(text);
@@ -340,6 +385,23 @@ export function ChatScreenContent({
         return true;
       }
 
+      if (command === "clear") {
+        clearActiveMessages();
+        setInputValue("");
+        setLastUserMessage("");
+        setReplyingTo(null);
+        setSelectedTool(null);
+        setSelectedWorkflow(null);
+        return true;
+      }
+
+      if (command === "help") {
+        setInputValue(
+          "Available commands: /new, /clear, /help, /model, /workflows, /integrations, /notifications, /settings",
+        );
+        return true;
+      }
+
       if (command === "integrations") {
         router.push("/(app)/(tabs)/integrations");
         return true;
@@ -360,6 +422,7 @@ export function ChatScreenContent({
         return true;
       }
 
+      // /model is handled by the composer's model picker directly
       return false;
     },
     [clearActiveMessages, router, setActiveChatId],
@@ -536,6 +599,11 @@ export function ChatScreenContent({
           void handleActionPin(messageId, conversationId);
         }}
         onRetry={handleActionRetry}
+        onReply={handleActionReply}
+        onRegenerate={handleActionRegenerate}
+        onBranch={(messageId, conversationId) => {
+          void handleActionBranch(messageId, conversationId);
+        }}
       />
     </KeyboardAvoidingView>
   );

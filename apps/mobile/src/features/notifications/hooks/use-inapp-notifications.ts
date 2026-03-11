@@ -4,6 +4,9 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { useEffect } from "react";
+import { wsManager } from "@/lib/websocket-client";
+import { WS_EVENTS } from "@/lib/websocket-events";
 import { inAppNotificationsApi } from "../api";
 import {
   type InAppNotification,
@@ -15,6 +18,7 @@ const notificationsKeys = {
   all: ["inapp-notifications"] as const,
   unread: () => [...notificationsKeys.all, "unread"] as const,
   list: () => [...notificationsKeys.all, "list"] as const,
+  archived: () => [...notificationsKeys.all, "archived"] as const,
 };
 
 type RawNotification = Record<string, unknown>;
@@ -82,14 +86,22 @@ function normalizeListResponse(
 interface UseInappNotificationsResult {
   unreadNotifications: InAppNotification[];
   allNotifications: InAppNotification[];
+  archivedNotifications: InAppNotification[];
   isLoading: boolean;
   isRefreshing: boolean;
   error: string | null;
   refetch: () => Promise<void>;
   markAsRead: (notificationId: string) => Promise<void>;
   markAllAsRead: (notificationIds: string[]) => Promise<void>;
+  archiveNotification: (notificationId: string) => Promise<void>;
+  deleteNotification: (notificationId: string) => Promise<void>;
+  bulkMarkRead: (notificationIds: string[]) => Promise<void>;
+  bulkArchive: (notificationIds: string[]) => Promise<void>;
+  bulkDelete: (notificationIds: string[]) => Promise<void>;
   isMarkingAsRead: boolean;
   isMarkingAllAsRead: boolean;
+  isArchiving: boolean;
+  isDeleting: boolean;
 }
 
 function getErrorMessage(
@@ -101,6 +113,33 @@ function getErrorMessage(
 
 export function useInappNotifications(): UseInappNotificationsResult {
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    const invalidateAll = () => {
+      void queryClient.invalidateQueries({
+        queryKey: notificationsKeys.all,
+      });
+    };
+
+    const unsubDelivered = wsManager.subscribe(
+      WS_EVENTS.NOTIFICATION_DELIVERED,
+      invalidateAll,
+    );
+    const unsubRead = wsManager.subscribe(
+      WS_EVENTS.NOTIFICATION_READ,
+      invalidateAll,
+    );
+    const unsubUpdated = wsManager.subscribe(
+      WS_EVENTS.NOTIFICATION_UPDATED,
+      invalidateAll,
+    );
+
+    return () => {
+      unsubDelivered();
+      unsubRead();
+      unsubUpdated();
+    };
+  }, [queryClient]);
 
   const unreadQuery = useQuery({
     queryKey: notificationsKeys.unread(),
@@ -118,6 +157,18 @@ export function useInappNotifications(): UseInappNotificationsResult {
     queryKey: notificationsKeys.list(),
     queryFn: async () => {
       const response = await inAppNotificationsApi.getNotifications({
+        limit: 100,
+      });
+
+      return normalizeListResponse(response);
+    },
+  });
+
+  const archivedQuery = useQuery({
+    queryKey: notificationsKeys.archived(),
+    queryFn: async () => {
+      const response = await inAppNotificationsApi.getNotifications({
+        status: InAppNotificationStatus.ARCHIVED,
         limit: 100,
       });
 
@@ -153,14 +204,98 @@ export function useInappNotifications(): UseInappNotificationsResult {
     },
   });
 
+  const archiveMutation = useMutation({
+    mutationFn: async (notificationId: string) => {
+      await inAppNotificationsApi.archiveNotification(notificationId);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.unread() }),
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.list() }),
+        queryClient.invalidateQueries({
+          queryKey: notificationsKeys.archived(),
+        }),
+      ]);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (notificationId: string) => {
+      await inAppNotificationsApi.deleteNotification(notificationId);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.unread() }),
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.list() }),
+        queryClient.invalidateQueries({
+          queryKey: notificationsKeys.archived(),
+        }),
+      ]);
+    },
+  });
+
+  const bulkArchiveMutation = useMutation({
+    mutationFn: async (notificationIds: string[]) => {
+      if (notificationIds.length === 0) return;
+      await inAppNotificationsApi.bulkArchive(notificationIds);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.unread() }),
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.list() }),
+        queryClient.invalidateQueries({
+          queryKey: notificationsKeys.archived(),
+        }),
+      ]);
+    },
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (notificationIds: string[]) => {
+      if (notificationIds.length === 0) return;
+      await inAppNotificationsApi.bulkDelete(notificationIds);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.unread() }),
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.list() }),
+        queryClient.invalidateQueries({
+          queryKey: notificationsKeys.archived(),
+        }),
+      ]);
+    },
+  });
+
+  const bulkMarkReadMutation = useMutation({
+    mutationFn: async (notificationIds: string[]) => {
+      if (notificationIds.length === 0) return;
+      await inAppNotificationsApi.bulkMarkRead(notificationIds);
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.unread() }),
+        queryClient.invalidateQueries({ queryKey: notificationsKeys.list() }),
+      ]);
+    },
+  });
+
   return {
     unreadNotifications: unreadQuery.data?.notifications ?? [],
     allNotifications: allQuery.data?.notifications ?? [],
-    isLoading: unreadQuery.isLoading || allQuery.isLoading,
-    isRefreshing: unreadQuery.isRefetching || allQuery.isRefetching,
+    archivedNotifications: archivedQuery.data?.notifications ?? [],
+    isLoading:
+      unreadQuery.isLoading || allQuery.isLoading || archivedQuery.isLoading,
+    isRefreshing:
+      unreadQuery.isRefetching ||
+      allQuery.isRefetching ||
+      archivedQuery.isRefetching,
     error: getErrorMessage(unreadQuery, allQuery),
     refetch: async () => {
-      await Promise.all([unreadQuery.refetch(), allQuery.refetch()]);
+      await Promise.all([
+        unreadQuery.refetch(),
+        allQuery.refetch(),
+        archivedQuery.refetch(),
+      ]);
     },
     markAsRead: async (notificationId: string) => {
       await markAsReadMutation.mutateAsync(notificationId);
@@ -168,7 +303,24 @@ export function useInappNotifications(): UseInappNotificationsResult {
     markAllAsRead: async (notificationIds: string[]) => {
       await bulkMarkAsReadMutation.mutateAsync(notificationIds);
     },
+    archiveNotification: async (notificationId: string) => {
+      await archiveMutation.mutateAsync(notificationId);
+    },
+    deleteNotification: async (notificationId: string) => {
+      await deleteMutation.mutateAsync(notificationId);
+    },
+    bulkMarkRead: async (notificationIds: string[]) => {
+      await bulkMarkReadMutation.mutateAsync(notificationIds);
+    },
+    bulkArchive: async (notificationIds: string[]) => {
+      await bulkArchiveMutation.mutateAsync(notificationIds);
+    },
+    bulkDelete: async (notificationIds: string[]) => {
+      await bulkDeleteMutation.mutateAsync(notificationIds);
+    },
     isMarkingAsRead: markAsReadMutation.isPending,
     isMarkingAllAsRead: bulkMarkAsReadMutation.isPending,
+    isArchiving: archiveMutation.isPending,
+    isDeleting: deleteMutation.isPending,
   };
 }

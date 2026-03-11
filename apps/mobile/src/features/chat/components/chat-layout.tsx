@@ -89,6 +89,10 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
     void chatApi.toggleStarConversation(activeChatId, newStarred);
   }, [activeChatId, isStarred, updateConversationStarred]);
 
+  const handleSearchPress = useCallback(() => {
+    router.push("/(app)/search");
+  }, [router]);
+
   const renderDrawerContent = useCallback(
     () => (
       <SidebarContent
@@ -131,6 +135,7 @@ export function ChatLayout({ children, background }: ChatLayoutProps) {
             <ChatHeader
               onMenuPress={toggleSidebar}
               onNewChatPress={handleNewChat}
+              onSearchPress={handleSearchPress}
               conversationTitle={conversationTitle ?? undefined}
               isStarred={isStarred}
               onStarPress={handleStar}

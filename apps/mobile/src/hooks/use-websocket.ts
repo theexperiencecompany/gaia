@@ -1,180 +1,54 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, type AppStateStatus } from "react-native";
-import { useAuth } from "@/features/auth/hooks/use-auth";
-import {
-  createWebSocketConnection,
-  type NotificationMessage,
-  type WebSocketCallbacks,
-  type WebSocketConfig,
-  type WebSocketController,
-  type WebSocketMessage,
-  type WebSocketState,
-} from "@/lib/websocket-client";
-
-export interface UseWebSocketOptions extends WebSocketConfig {
-  /** Whether to auto-connect when authenticated (default: true) */
-  autoConnect?: boolean;
-  /** Handler for all WebSocket messages */
-  onMessage?: (message: WebSocketMessage) => void;
-  /** Handler for notification-specific messages */
-  onNotification?: (message: NotificationMessage) => void;
-  /** Handler for connection errors */
-  onError?: (error: Error) => void;
-}
-
-export interface UseWebSocketReturn {
-  /** Current connection state */
-  state: WebSocketState;
-  /** Whether connected to WebSocket */
-  isConnected: boolean;
-  /** Manually connect to WebSocket */
-  connect: () => Promise<void>;
-  /** Manually disconnect from WebSocket */
-  disconnect: () => void;
-  /** Last received message */
-  lastMessage: WebSocketMessage | null;
-  /** Last received notification message */
-  lastNotification: NotificationMessage | null;
-}
+import { useEffect, useRef, useState } from "react";
+import { wsManager } from "@/lib/websocket-client";
 
 /**
- * React hook for managing WebSocket connection to the backend.
- * Automatically handles:
- * - Connection on auth state change
- * - Reconnection on app foregrounding
- * - Cleanup on unmount
+ * Subscribe to a specific WebSocket event type and receive a live
+ * `isConnected` flag reflecting the current connection state.
+ *
+ * The hook wires up / cleans up the subscription automatically so callers
+ * never need to interact with the manager directly.
  *
  * @example
  * ```tsx
- * function NotificationListener() {
- *   const { state, isConnected, lastNotification } = useWebSocket({
- *     onNotification: (notification) => {
- *       if (notification.type === 'notification.delivered') {
- *         showLocalNotification(notification.notification);
- *       }
- *     },
- *   });
- *
- *   return (
- *     <View>
- *       <Text>WS: {state}</Text>
- *     </View>
- *   );
- * }
+ * const { isConnected } = useWebSocket('notification.delivered', (data) => {
+ *   console.log('New notification', data);
+ * });
  * ```
  */
 export function useWebSocket(
-  options: UseWebSocketOptions = {},
-): UseWebSocketReturn {
-  const {
-    autoConnect = true,
-    onMessage,
-    onNotification,
-    onError,
-    ...config
-  } = options;
+  eventType: string,
+  handler: (data: unknown) => void,
+): { isConnected: boolean } {
+  const [isConnected, setIsConnected] = useState(wsManager.isConnected);
 
-  const { isAuthenticated, isLoading: authLoading } = useAuth();
-
-  const [state, setState] = useState<WebSocketState>("disconnected");
-  const [lastMessage, setLastMessage] = useState<WebSocketMessage | null>(null);
-  const [lastNotification, setLastNotification] =
-    useState<NotificationMessage | null>(null);
-
-  const controllerRef = useRef<WebSocketController | null>(null);
-  const callbacksRef = useRef({ onMessage, onNotification, onError });
-
-  // Keep callbacks ref updated
+  // Keep a stable ref so changing the handler identity doesn't force a
+  // re-subscribe on every render.
+  const handlerRef = useRef(handler);
   useEffect(() => {
-    callbacksRef.current = { onMessage, onNotification, onError };
-  }, [onMessage, onNotification, onError]);
+    handlerRef.current = handler;
+  }, [handler]);
 
-  const connect = useCallback(async () => {
-    // Don't connect if already connected or connecting
-    if (controllerRef.current?.isConnected()) {
-      return;
-    }
-
-    // Disconnect existing connection first
-    controllerRef.current?.disconnect();
-
-    const callbacks: WebSocketCallbacks = {
-      onMessage: (message) => {
-        setLastMessage(message);
-        callbacksRef.current.onMessage?.(message);
-      },
-      onNotification: (notification) => {
-        setLastNotification(notification);
-        callbacksRef.current.onNotification?.(notification);
-      },
-      onStateChange: setState,
-      onError: (error) => {
-        callbacksRef.current.onError?.(error);
-      },
+  useEffect(() => {
+    // Stable wrapper that always delegates to the latest handler ref
+    const stableHandler = (data: unknown) => {
+      handlerRef.current(data);
     };
 
-    try {
-      controllerRef.current = await createWebSocketConnection(
-        callbacks,
-        config,
-      );
-    } catch (error) {
-      console.error("[useWebSocket] Failed to create connection:", error);
-    }
-  }, [config]);
+    const unsubscribe = wsManager.subscribe(eventType, stableHandler);
 
-  const disconnect = useCallback(() => {
-    controllerRef.current?.disconnect();
-    controllerRef.current = null;
-    setState("disconnected");
-  }, []);
+    // Mirror connection state changes into React state
+    const handleConnect = () => setIsConnected(true);
+    const handleDisconnect = () => setIsConnected(false);
 
-  // Auto-connect when authenticated
-  useEffect(() => {
-    if (!autoConnect) return;
-
-    if (!authLoading && isAuthenticated) {
-      connect();
-    } else if (!isAuthenticated) {
-      disconnect();
-    }
-  }, [autoConnect, authLoading, isAuthenticated, connect, disconnect]);
-
-  // Handle app state changes (reconnect when app comes to foreground)
-  useEffect(() => {
-    const handleAppStateChange = (nextAppState: AppStateStatus) => {
-      if (nextAppState === "active" && isAuthenticated) {
-        // Reconnect if we were disconnected while in background
-        if (!controllerRef.current?.isConnected()) {
-          connect();
-        }
-      }
-    };
-
-    const subscription = AppState.addEventListener(
-      "change",
-      handleAppStateChange,
-    );
+    wsManager.onConnect(handleConnect);
+    wsManager.onDisconnect(handleDisconnect);
 
     return () => {
-      subscription.remove();
+      unsubscribe();
+      wsManager.offConnect(handleConnect);
+      wsManager.offDisconnect(handleDisconnect);
     };
-  }, [isAuthenticated, connect]);
+  }, [eventType]);
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      controllerRef.current?.disconnect();
-      controllerRef.current = null;
-    };
-  }, []);
-
-  return {
-    state,
-    isConnected: state === "connected",
-    connect,
-    disconnect,
-    lastMessage,
-    lastNotification,
-  };
+  return { isConnected };
 }

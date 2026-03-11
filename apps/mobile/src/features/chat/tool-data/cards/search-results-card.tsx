@@ -1,6 +1,13 @@
 import { Card } from "heroui-native";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Image, Linking, Pressable, View } from "react-native";
+import Animated, {
+  useAnimatedStyle,
+  useSharedValue,
+  withRepeat,
+  withSequence,
+  withTiming,
+} from "react-native-reanimated";
 import {
   AppIcon,
   Globe02Icon,
@@ -25,6 +32,10 @@ export interface NewsResult {
 }
 
 export interface SearchResults {
+  /** Streaming status — present only during live updates */
+  status?: "running" | "complete" | "error";
+  progress?: string;
+
   web?: WebResult[];
   images?: string[];
   news?: NewsResult[];
@@ -34,6 +45,10 @@ export interface SearchResults {
   request_id?: string;
 }
 
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
 function getHostname(url?: string): string {
   if (!url) return "";
   try {
@@ -42,6 +57,10 @@ function getHostname(url?: string): string {
     return url;
   }
 }
+
+// ---------------------------------------------------------------------------
+// Shared sub-components
+// ---------------------------------------------------------------------------
 
 function FaviconImage({ url }: { url?: string }) {
   const [errored, setErrored] = useState(false);
@@ -81,7 +100,7 @@ function WebResultRow({ result }: { result: WebResult }) {
         </View>
         <View className="flex-1 gap-0.5">
           <Text
-            className="text-sm font-medium text-foreground"
+            className="text-sm font-semibold text-foreground"
             numberOfLines={2}
           >
             {result.title || hostname || "Untitled"}
@@ -120,7 +139,7 @@ function NewsResultRow({ article }: { article: NewsResult }) {
         </View>
         <View className="flex-1 gap-0.5">
           <Text
-            className="text-sm font-medium text-foreground"
+            className="text-sm font-semibold text-foreground"
             numberOfLines={2}
           >
             {article.title || "Untitled"}
@@ -144,14 +163,87 @@ function NewsResultRow({ article }: { article: NewsResult }) {
   );
 }
 
-export function SearchResultsCard({ data }: { data: SearchResults }) {
+// ---------------------------------------------------------------------------
+// Running / streaming state
+// ---------------------------------------------------------------------------
+
+function PulsingDot() {
+  const opacity = useSharedValue(1);
+
+  useEffect(() => {
+    opacity.value = withRepeat(
+      withSequence(
+        withTiming(0.25, { duration: 600 }),
+        withTiming(1, { duration: 600 }),
+      ),
+      -1,
+      false,
+    );
+  }, [opacity]);
+
+  const animatedStyle = useAnimatedStyle(() => ({ opacity: opacity.value }));
+
+  return (
+    <Animated.View
+      style={[
+        animatedStyle,
+        { width: 6, height: 6, borderRadius: 3, backgroundColor: "#00bbff" },
+      ]}
+    />
+  );
+}
+
+function SearchRunningCard({ data }: { data: SearchResults }) {
+  const queryText = data.query;
+  const progressText = data.progress ?? "Searching the web...";
+
+  return (
+    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
+      <Card.Body className="py-3 px-4">
+        {/* Header */}
+        <View className="flex-row items-center gap-2 mb-3">
+          <View className="w-5 h-5 rounded-md bg-[#00bbff]/15 items-center justify-center">
+            <AppIcon icon={Search01Icon} size={12} color="#00bbff" />
+          </View>
+          <Text className="text-xs font-medium text-[#00bbff]">Web Search</Text>
+          <View className="ml-auto">
+            <PulsingDot />
+          </View>
+        </View>
+
+        {/* Query */}
+        {!!queryText && (
+          <View className="rounded-xl bg-white/5 border border-white/8 px-3 py-2 mb-3">
+            <Text className="text-xs text-muted mb-0.5">Query</Text>
+            <Text className="text-sm text-foreground font-medium">
+              "{queryText}"
+            </Text>
+          </View>
+        )}
+
+        {/* Progress */}
+        <Text className="text-xs text-muted">{progressText}</Text>
+      </Card.Body>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Complete state
+// ---------------------------------------------------------------------------
+
+function SearchCompleteCard({ data }: { data: SearchResults }) {
   const [expanded, setExpanded] = useState(false);
   const webResults = data.web ?? [];
   const newsResults = data.news ?? [];
   const totalResults = webResults.length + newsResults.length;
-  const previewResults = webResults.slice(0, 3);
-  const allWebResults = expanded ? webResults : previewResults;
-  const hasMore = webResults.length > 3 || newsResults.length > 0;
+
+  // Show up to 5 web results before collapsing
+  const MAX_VISIBLE = 5;
+  const visibleWebResults = expanded
+    ? webResults
+    : webResults.slice(0, MAX_VISIBLE);
+  const hasMore = webResults.length > MAX_VISIBLE || newsResults.length > 0;
 
   return (
     <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
@@ -194,13 +286,13 @@ export function SearchResultsCard({ data }: { data: SearchResults }) {
         )}
 
         {/* Web results */}
-        {allWebResults.length > 0 && (
+        {visibleWebResults.length > 0 && (
           <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
-            {allWebResults.map((result, index) => (
+            {visibleWebResults.map((result, index) => (
               <View
                 key={result.url || result.title || String(index)}
                 className={
-                  index === allWebResults.length - 1 ? "border-b-0" : ""
+                  index === visibleWebResults.length - 1 ? "border-b-0" : ""
                 }
               >
                 <WebResultRow result={result} />
@@ -243,4 +335,15 @@ export function SearchResultsCard({ data }: { data: SearchResults }) {
       </Card.Body>
     </Card>
   );
+}
+
+// ---------------------------------------------------------------------------
+// Main export — routes to running or complete sub-component
+// ---------------------------------------------------------------------------
+
+export function SearchResultsCard({ data }: { data: SearchResults }) {
+  if (data.status === "running") {
+    return <SearchRunningCard data={data} />;
+  }
+  return <SearchCompleteCard data={data} />;
 }

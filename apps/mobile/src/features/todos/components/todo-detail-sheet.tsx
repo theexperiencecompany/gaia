@@ -1,4 +1,4 @@
-import {
+import BottomSheet, {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
@@ -23,9 +23,13 @@ import {
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
-import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 import type { Project, SubTask, Todo, TodoUpdate } from "../types/todo-types";
 import { Priority } from "../types/todo-types";
+import { LabelChip } from "./label-chip";
+import {
+  LabelPickerSheet,
+  type LabelPickerSheetRef,
+} from "./label-picker-sheet";
 
 export interface TodoDetailSheetRef {
   open: (todo: Todo) => void;
@@ -69,13 +73,16 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
     { projects, onUpdate, onAddSubtask, onToggleSubtask, onDeleteSubtask },
     ref,
   ) => {
-    const [isOpen, setIsOpen] = useState(false);
+    const bottomSheetRef = useRef<BottomSheet>(null);
+    const labelPickerRef = useRef<LabelPickerSheetRef>(null);
     const [todo, setTodo] = useState<Todo | null>(null);
     const [title, setTitle] = useState("");
     const [description, setDescription] = useState("");
     const [priority, setPriority] = useState<Priority>(Priority.NONE);
     const [dueDate, setDueDate] = useState<Date | null>(null);
     const [projectId, setProjectId] = useState<string | null>(null);
+    const [labels, setLabels] = useState<string[]>([]);
+    const [allLabels, setAllLabels] = useState<string[]>([]);
     const [newSubtaskText, setNewSubtaskText] = useState("");
     const [showPriorityPicker, setShowPriorityPicker] = useState(false);
     const [showProjectPicker, setShowProjectPicker] = useState(false);
@@ -101,13 +108,15 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
         setPriority(t.priority);
         setDueDate(t.due_date ? new Date(t.due_date) : null);
         setProjectId(t.project_id ?? null);
+        setLabels(t.labels ?? []);
+        setAllLabels(t.labels ?? []);
         setNewSubtaskText("");
         setShowPriorityPicker(false);
         setShowProjectPicker(false);
         setShowDatePicker(false);
-        setIsOpen(true);
+        bottomSheetRef.current?.expand();
       },
-      close: () => setIsOpen(false),
+      close: () => bottomSheetRef.current?.close(),
     }));
 
     const handleAddSubtask = useCallback(async () => {
@@ -116,7 +125,45 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
       setNewSubtaskText("");
     }, [todo, newSubtaskText, onAddSubtask]);
 
-    const subtasks: SubTask[] = todo?.subtasks ?? [];
+    const handleLabelsChange = useCallback(
+      (newLabels: string[]) => {
+        setLabels(newLabels);
+        setAllLabels((prev) => {
+          const merged = new Set([...prev, ...newLabels]);
+          return Array.from(merged);
+        });
+        if (!todo) return;
+        void onUpdate(todo.id, { labels: newLabels });
+      },
+      [todo, onUpdate],
+    );
+
+    const handleOpenLabelPicker = useCallback(() => {
+      setShowPriorityPicker(false);
+      setShowProjectPicker(false);
+      setShowDatePicker(false);
+      labelPickerRef.current?.open(labels, allLabels);
+    }, [labels, allLabels]);
+
+    if (!todo) {
+      return (
+        <>
+          <BottomSheet
+            ref={bottomSheetRef}
+            index={-1}
+            snapPoints={["70%", "95%"]}
+            enablePanDownToClose
+            backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+            handleIndicatorStyle={{ backgroundColor: "#3f3f46" }}
+          >
+            <View />
+          </BottomSheet>
+          <LabelPickerSheet ref={labelPickerRef} onDone={handleLabelsChange} />
+        </>
+      );
+    }
+
+    const subtasks: SubTask[] = todo.subtasks ?? [];
     const activeProject = projects.find((p) => p.id === projectId) ?? null;
 
     const chipStyle = {
@@ -132,226 +179,280 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
     };
 
     return (
-      <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
-        <BottomSheet.Portal>
-          <BottomSheet.Overlay />
-          <BottomSheet.Content
-            snapPoints={["70%", "95%"]}
-            enablePanDownToClose
-            backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-            handleIndicatorStyle={{ backgroundColor: "#3f3f46" }}
+      <>
+        <BottomSheet
+          ref={bottomSheetRef}
+          index={-1}
+          snapPoints={["70%", "95%"]}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+          handleIndicatorStyle={{ backgroundColor: "#3f3f46" }}
+        >
+          <BottomSheetScrollView
+            contentContainerStyle={{
+              padding: 20,
+              gap: 16,
+              paddingBottom: 40,
+            }}
+            keyboardShouldPersistTaps="handled"
           >
-            {todo ? (
-              <BottomSheetScrollView
-                contentContainerStyle={{
-                  padding: 20,
-                  gap: 16,
-                  paddingBottom: 40,
+            {/* Title */}
+            <BottomSheetTextInput
+              value={title}
+              onChangeText={(text) => {
+                setTitle(text);
+                scheduleSave({ title: text });
+              }}
+              placeholder="Task title"
+              placeholderTextColor="#52525b"
+              style={{
+                fontSize: 20,
+                fontWeight: "600",
+                color: "#f4f4f5",
+                borderBottomWidth: 1,
+                borderBottomColor: "#3f3f46",
+                paddingVertical: 6,
+              }}
+            />
+
+            {/* Description */}
+            <BottomSheetTextInput
+              value={description}
+              onChangeText={(text) => {
+                setDescription(text);
+                scheduleSave({ description: text });
+              }}
+              placeholder="Add description..."
+              placeholderTextColor="#52525b"
+              multiline
+              style={{
+                fontSize: fontSize.sm,
+                color: "#e4e4e7",
+                minHeight: 48,
+                textAlignVertical: "top",
+              }}
+            />
+
+            {/* Chips row */}
+            <View
+              style={{
+                flexDirection: "row",
+                flexWrap: "wrap",
+                gap: 8,
+              }}
+            >
+              {/* Priority chip */}
+              <Pressable
+                style={chipStyle}
+                onPress={() => {
+                  setShowPriorityPicker((v) => !v);
+                  setShowProjectPicker(false);
+                  setShowDatePicker(false);
                 }}
-                keyboardShouldPersistTaps="handled"
               >
-                {/* Title */}
-                <BottomSheetTextInput
-                  value={title}
-                  onChangeText={(text) => {
-                    setTitle(text);
-                    scheduleSave({ title: text });
-                  }}
-                  placeholder="Task title"
-                  placeholderTextColor="#52525b"
-                  style={{
-                    fontSize: 20,
-                    fontWeight: "600",
-                    color: "#f4f4f5",
-                    borderBottomWidth: 1,
-                    borderBottomColor: "#3f3f46",
-                    paddingVertical: 6,
-                  }}
+                <AppIcon
+                  icon={Flag02Icon}
+                  size={14}
+                  color={priorityColor(priority)}
                 />
-
-                {/* Description */}
-                <BottomSheetTextInput
-                  value={description}
-                  onChangeText={(text) => {
-                    setDescription(text);
-                    scheduleSave({ description: text });
-                  }}
-                  placeholder="Add description..."
-                  placeholderTextColor="#52525b"
-                  multiline
+                <Text
                   style={{
-                    fontSize: fontSize.sm,
-                    color: "#e4e4e7",
-                    minHeight: 48,
-                    textAlignVertical: "top",
-                  }}
-                />
-
-                {/* Chips row */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    flexWrap: "wrap",
-                    gap: 8,
+                    fontSize: fontSize.xs,
+                    color: priorityColor(priority),
+                    fontWeight: "500",
                   }}
                 >
-                  {/* Priority chip */}
-                  <Pressable
-                    style={chipStyle}
-                    onPress={() => {
-                      setShowPriorityPicker((v) => !v);
-                      setShowProjectPicker(false);
-                      setShowDatePicker(false);
-                    }}
-                  >
-                    <AppIcon
-                      icon={Flag02Icon}
-                      size={14}
-                      color={priorityColor(priority)}
-                    />
-                    <Text
-                      style={{
-                        fontSize: fontSize.xs,
-                        color: priorityColor(priority),
-                        fontWeight: "500",
-                      }}
-                    >
-                      {PRIORITY_OPTIONS.find((o) => o.value === priority)
-                        ?.label ?? "None"}
-                    </Text>
-                  </Pressable>
+                  {PRIORITY_OPTIONS.find((o) => o.value === priority)?.label ??
+                    "None"}
+                </Text>
+              </Pressable>
 
-                  {/* Due date chip */}
-                  <Pressable
-                    style={chipStyle}
-                    onPress={() => {
-                      setShowDatePicker((v) => !v);
-                      setShowPriorityPicker(false);
-                      setShowProjectPicker(false);
-                    }}
-                  >
-                    <AppIcon
-                      icon={Calendar03Icon}
-                      size={14}
-                      color={dueDate ? "#16c1ff" : "#71717a"}
-                    />
-                    <Text
-                      style={{
-                        fontSize: fontSize.xs,
-                        color: dueDate ? "#16c1ff" : "#71717a",
-                        fontWeight: "500",
-                      }}
-                    >
-                      {dueDate ? formatDate(dueDate.toISOString()) : "Due date"}
-                    </Text>
-                  </Pressable>
+              {/* Due date chip */}
+              <Pressable
+                style={chipStyle}
+                onPress={() => {
+                  setShowDatePicker((v) => !v);
+                  setShowPriorityPicker(false);
+                  setShowProjectPicker(false);
+                }}
+              >
+                <AppIcon
+                  icon={Calendar03Icon}
+                  size={14}
+                  color={dueDate ? "#16c1ff" : "#71717a"}
+                />
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: dueDate ? "#16c1ff" : "#71717a",
+                    fontWeight: "500",
+                  }}
+                >
+                  {dueDate ? formatDate(dueDate.toISOString()) : "Due date"}
+                </Text>
+              </Pressable>
 
-                  {/* Project chip */}
-                  <Pressable
-                    style={chipStyle}
-                    onPress={() => {
-                      setShowProjectPicker((v) => !v);
-                      setShowPriorityPicker(false);
-                      setShowDatePicker(false);
-                    }}
-                  >
-                    <AppIcon
-                      icon={Folder02Icon}
-                      size={14}
-                      color={activeProject?.color ?? "#71717a"}
-                    />
-                    <Text
-                      style={{
-                        fontSize: fontSize.xs,
-                        color: activeProject
-                          ? (activeProject.color ?? "#a1a1aa")
-                          : "#71717a",
-                        fontWeight: "500",
-                      }}
-                    >
-                      {activeProject ? activeProject.name : "Project"}
-                    </Text>
-                  </Pressable>
-                </View>
+              {/* Project chip */}
+              <Pressable
+                style={chipStyle}
+                onPress={() => {
+                  setShowProjectPicker((v) => !v);
+                  setShowPriorityPicker(false);
+                  setShowDatePicker(false);
+                }}
+              >
+                <AppIcon
+                  icon={Folder02Icon}
+                  size={14}
+                  color={activeProject?.color ?? "#71717a"}
+                />
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: activeProject
+                      ? (activeProject.color ?? "#a1a1aa")
+                      : "#71717a",
+                    fontWeight: "500",
+                  }}
+                >
+                  {activeProject ? activeProject.name : "Project"}
+                </Text>
+              </Pressable>
 
-                {/* Inline priority picker */}
-                {showPriorityPicker && (
-                  <View
-                    style={{
-                      backgroundColor: "#27272a",
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: "#3f3f46",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {PRIORITY_OPTIONS.map((opt, idx) => {
-                      const isActive = priority === opt.value;
-                      return (
-                        <Pressable
-                          key={opt.value}
-                          onPress={() => {
-                            setPriority(opt.value);
-                            void onUpdate(todo.id, { priority: opt.value });
-                            setShowPriorityPicker(false);
-                          }}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            paddingHorizontal: 14,
-                            paddingVertical: 11,
-                            gap: 10,
-                            borderTopWidth: idx > 0 ? 1 : 0,
-                            borderTopColor: "#3f3f46",
-                          }}
-                        >
-                          <View
-                            style={{
-                              width: 10,
-                              height: 10,
-                              borderRadius: 5,
-                              backgroundColor: opt.color,
-                            }}
-                          />
-                          <Text
-                            style={{
-                              flex: 1,
-                              fontSize: fontSize.sm,
-                              color: isActive ? opt.color : "#e4e4e7",
-                              fontWeight: isActive ? "600" : "400",
-                            }}
-                          >
-                            {opt.label}
-                          </Text>
-                          {isActive && (
-                            <AppIcon
-                              icon={Tick02Icon}
-                              size={14}
-                              color={opt.color}
-                            />
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
+              {/* Labels chip */}
+              <Pressable style={chipStyle} onPress={handleOpenLabelPicker}>
+                <AppIcon
+                  icon={Tag01Icon}
+                  size={14}
+                  color={labels.length > 0 ? "#a78bfa" : "#71717a"}
+                />
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: labels.length > 0 ? "#a78bfa" : "#71717a",
+                    fontWeight: "500",
+                  }}
+                >
+                  {labels.length > 0
+                    ? `${labels.length} label${labels.length === 1 ? "" : "s"}`
+                    : "Labels"}
+                </Text>
+              </Pressable>
+            </View>
 
-                {/* Inline project picker */}
-                {showProjectPicker && (
-                  <View
-                    style={{
-                      backgroundColor: "#27272a",
-                      borderRadius: 12,
-                      borderWidth: 1,
-                      borderColor: "#3f3f46",
-                      overflow: "hidden",
-                    }}
-                  >
-                    {/* No project option */}
+            {/* Inline priority picker */}
+            {showPriorityPicker && (
+              <View
+                style={{
+                  backgroundColor: "#27272a",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#3f3f46",
+                  overflow: "hidden",
+                }}
+              >
+                {PRIORITY_OPTIONS.map((opt, idx) => {
+                  const isActive = priority === opt.value;
+                  return (
                     <Pressable
+                      key={opt.value}
                       onPress={() => {
-                        setProjectId(null);
-                        void onUpdate(todo.id, { project_id: undefined });
+                        setPriority(opt.value);
+                        void onUpdate(todo.id, { priority: opt.value });
+                        setShowPriorityPicker(false);
+                      }}
+                      style={{
+                        flexDirection: "row",
+                        alignItems: "center",
+                        paddingHorizontal: 14,
+                        paddingVertical: 11,
+                        gap: 10,
+                        borderTopWidth: idx > 0 ? 1 : 0,
+                        borderTopColor: "#3f3f46",
+                      }}
+                    >
+                      <View
+                        style={{
+                          width: 10,
+                          height: 10,
+                          borderRadius: 5,
+                          backgroundColor: opt.color,
+                        }}
+                      />
+                      <Text
+                        style={{
+                          flex: 1,
+                          fontSize: fontSize.sm,
+                          color: isActive ? opt.color : "#e4e4e7",
+                          fontWeight: isActive ? "600" : "400",
+                        }}
+                      >
+                        {opt.label}
+                      </Text>
+                      {isActive && (
+                        <AppIcon
+                          icon={Tick02Icon}
+                          size={14}
+                          color={opt.color}
+                        />
+                      )}
+                    </Pressable>
+                  );
+                })}
+              </View>
+            )}
+
+            {/* Inline project picker */}
+            {showProjectPicker && (
+              <View
+                style={{
+                  backgroundColor: "#27272a",
+                  borderRadius: 12,
+                  borderWidth: 1,
+                  borderColor: "#3f3f46",
+                  overflow: "hidden",
+                }}
+              >
+                {/* No project option */}
+                <Pressable
+                  onPress={() => {
+                    setProjectId(null);
+                    void onUpdate(todo.id, { project_id: undefined });
+                    setShowProjectPicker(false);
+                  }}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    paddingHorizontal: 14,
+                    paddingVertical: 11,
+                    gap: 10,
+                  }}
+                >
+                  <AppIcon icon={Folder02Icon} size={14} color="#52525b" />
+                  <Text
+                    style={{
+                      flex: 1,
+                      fontSize: fontSize.sm,
+                      color: projectId === null ? "#16c1ff" : "#e4e4e7",
+                      fontWeight: projectId === null ? "600" : "400",
+                    }}
+                  >
+                    No project
+                  </Text>
+                  {projectId === null && (
+                    <AppIcon icon={Tick02Icon} size={14} color="#16c1ff" />
+                  )}
+                </Pressable>
+
+                {projects.map((proj, _idx) => {
+                  const isActive = projectId === proj.id;
+                  const color = proj.color ?? "#71717a";
+                  return (
+                    <Pressable
+                      key={proj.id}
+                      onPress={() => {
+                        setProjectId(proj.id);
+                        void onUpdate(todo.id, { project_id: proj.id });
                         setShowProjectPicker(false);
                       }}
                       style={{
@@ -360,266 +461,202 @@ export const TodoDetailSheet = forwardRef<TodoDetailSheetRef, Props>(
                         paddingHorizontal: 14,
                         paddingVertical: 11,
                         gap: 10,
+                        borderTopWidth: 1,
+                        borderTopColor: "#3f3f46",
                       }}
                     >
-                      <AppIcon icon={Folder02Icon} size={14} color="#52525b" />
+                      <AppIcon
+                        icon={Folder02Icon}
+                        size={14}
+                        color={isActive ? color : "#52525b"}
+                      />
                       <Text
                         style={{
                           flex: 1,
                           fontSize: fontSize.sm,
-                          color: projectId === null ? "#16c1ff" : "#e4e4e7",
-                          fontWeight: projectId === null ? "600" : "400",
+                          color: isActive ? color : "#e4e4e7",
+                          fontWeight: isActive ? "600" : "400",
                         }}
                       >
-                        No project
+                        {proj.name}
                       </Text>
-                      {projectId === null && (
-                        <AppIcon icon={Tick02Icon} size={14} color="#16c1ff" />
+                      {isActive && (
+                        <AppIcon icon={Tick02Icon} size={14} color={color} />
                       )}
                     </Pressable>
+                  );
+                })}
+              </View>
+            )}
 
-                    {projects.map((proj, _idx) => {
-                      const isActive = projectId === proj.id;
-                      const color = proj.color ?? "#71717a";
-                      return (
-                        <Pressable
-                          key={proj.id}
-                          onPress={() => {
-                            setProjectId(proj.id);
-                            void onUpdate(todo.id, { project_id: proj.id });
-                            setShowProjectPicker(false);
-                          }}
-                          style={{
-                            flexDirection: "row",
-                            alignItems: "center",
-                            paddingHorizontal: 14,
-                            paddingVertical: 11,
-                            gap: 10,
-                            borderTopWidth: 1,
-                            borderTopColor: "#3f3f46",
-                          }}
-                        >
-                          <AppIcon
-                            icon={Folder02Icon}
-                            size={14}
-                            color={isActive ? color : "#52525b"}
-                          />
-                          <Text
-                            style={{
-                              flex: 1,
-                              fontSize: fontSize.sm,
-                              color: isActive ? color : "#e4e4e7",
-                              fontWeight: isActive ? "600" : "400",
-                            }}
-                          >
-                            {proj.name}
-                          </Text>
-                          {isActive && (
-                            <AppIcon
-                              icon={Tick02Icon}
-                              size={14}
-                              color={color}
-                            />
-                          )}
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
+            {/* DateTimePicker */}
+            {showDatePicker && (
+              <DateTimePicker
+                value={dueDate ?? new Date()}
+                mode="date"
+                display={Platform.OS === "ios" ? "spinner" : "default"}
+                onChange={(_, date) => {
+                  setShowDatePicker(false);
+                  if (date) {
+                    setDueDate(date);
+                    void onUpdate(todo.id, { due_date: date.toISOString() });
+                  }
+                }}
+                minimumDate={new Date()}
+                themeVariant="dark"
+              />
+            )}
 
-                {/* DateTimePicker */}
-                {showDatePicker && (
-                  <DateTimePicker
-                    value={dueDate ?? new Date()}
-                    mode="date"
-                    display={Platform.OS === "ios" ? "spinner" : "default"}
-                    onChange={(_, date) => {
-                      setShowDatePicker(false);
-                      if (date) {
-                        setDueDate(date);
-                        void onUpdate(todo.id, {
-                          due_date: date.toISOString(),
-                        });
-                      }
-                    }}
-                    minimumDate={new Date()}
-                    themeVariant="dark"
-                  />
-                )}
-
-                {/* Labels (read-only) */}
-                {todo.labels && todo.labels.length > 0 && (
-                  <View
-                    style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
-                  >
-                    {todo.labels.map((label) => (
-                      <View
-                        key={label}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          gap: 5,
-                          paddingHorizontal: 8,
-                          paddingVertical: 4,
-                          borderRadius: 6,
-                          backgroundColor: "rgba(255,255,255,0.05)",
-                          borderWidth: 1,
-                          borderColor: "rgba(255,255,255,0.08)",
-                        }}
-                      >
-                        <AppIcon icon={Tag01Icon} size={11} color="#71717a" />
-                        <Text style={{ fontSize: 11, color: "#a1a1aa" }}>
-                          {label}
-                        </Text>
-                      </View>
-                    ))}
-                  </View>
-                )}
-
-                {/* Subtasks header */}
-                <View
-                  style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
-                >
-                  <Text
-                    style={{
-                      fontSize: fontSize.xs,
-                      fontWeight: "600",
-                      color: "#a1a1aa",
-                      textTransform: "uppercase",
-                      letterSpacing: 0.8,
-                      flex: 1,
-                    }}
-                  >
-                    Subtasks
-                  </Text>
-                  <Text style={{ fontSize: fontSize.xs, color: "#52525b" }}>
-                    {subtasks.filter((s) => s.completed).length}/
-                    {subtasks.length}
-                  </Text>
-                </View>
-
-                {/* Subtask list */}
-                {subtasks.map((subtask) => (
-                  <View
-                    key={subtask.id}
-                    style={{
-                      flexDirection: "row",
-                      alignItems: "center",
-                      gap: spacing.sm,
-                    }}
-                  >
-                    <Pressable
-                      onPress={() =>
-                        void onToggleSubtask(
-                          todo.id,
-                          subtask.id,
-                          !subtask.completed,
-                        )
-                      }
-                    >
-                      <View
-                        style={{
-                          width: 20,
-                          height: 20,
-                          borderRadius: 10,
-                          borderWidth: 2,
-                          borderStyle: subtask.completed ? "solid" : "dashed",
-                          borderColor: subtask.completed
-                            ? "#00bbff"
-                            : "#52525b",
-                          backgroundColor: subtask.completed
-                            ? "#00bbff"
-                            : "transparent",
-                          alignItems: "center",
-                          justifyContent: "center",
-                        }}
-                      >
-                        {subtask.completed && (
-                          <AppIcon icon={Tick02Icon} size={12} color="#000" />
-                        )}
-                      </View>
-                    </Pressable>
-                    <Text
-                      style={{
-                        flex: 1,
-                        fontSize: fontSize.sm,
-                        color: subtask.completed ? "#71717a" : "#e4e4e7",
-                        textDecorationLine: subtask.completed
-                          ? "line-through"
-                          : "none",
-                      }}
-                    >
-                      {subtask.title}
-                    </Text>
-                    <Pressable
-                      onPress={() => void onDeleteSubtask(todo.id, subtask.id)}
-                      hitSlop={8}
-                    >
-                      <AppIcon icon={Cancel01Icon} size={14} color="#71717a" />
-                    </Pressable>
-                  </View>
+            {/* Labels */}
+            {labels.length > 0 && (
+              <Pressable
+                onPress={handleOpenLabelPicker}
+                style={{ flexDirection: "row", flexWrap: "wrap", gap: 6 }}
+              >
+                {labels.map((lbl) => (
+                  <LabelChip key={lbl} label={lbl} size="sm" />
                 ))}
+              </Pressable>
+            )}
 
-                {subtasks.length === 0 && (
-                  <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      color: "#52525b",
-                      fontStyle: "italic",
-                    }}
-                  >
-                    No subtasks yet
-                  </Text>
-                )}
+            {/* Subtasks header */}
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: 6 }}
+            >
+              <Text
+                style={{
+                  fontSize: fontSize.xs,
+                  fontWeight: "600",
+                  color: "#a1a1aa",
+                  textTransform: "uppercase",
+                  letterSpacing: 0.8,
+                  flex: 1,
+                }}
+              >
+                Subtasks
+              </Text>
+              <Text style={{ fontSize: fontSize.xs, color: "#52525b" }}>
+                {subtasks.filter((s) => s.completed).length}/{subtasks.length}
+              </Text>
+            </View>
 
-                {/* Add subtask input */}
-                <View
-                  style={{
-                    flexDirection: "row",
-                    alignItems: "center",
-                    gap: spacing.sm,
-                  }}
+            {/* Subtask list */}
+            {subtasks.map((subtask) => (
+              <View
+                key={subtask.id}
+                style={{
+                  flexDirection: "row",
+                  alignItems: "center",
+                  gap: spacing.sm,
+                }}
+              >
+                <Pressable
+                  onPress={() =>
+                    void onToggleSubtask(
+                      todo.id,
+                      subtask.id,
+                      !subtask.completed,
+                    )
+                  }
                 >
-                  {/* Dashed circle placeholder */}
                   <View
                     style={{
                       width: 20,
                       height: 20,
                       borderRadius: 10,
                       borderWidth: 2,
-                      borderStyle: "dashed",
-                      borderColor: "#3f3f46",
-                      flexShrink: 0,
+                      borderStyle: subtask.completed ? "solid" : "dashed",
+                      borderColor: subtask.completed ? "#00bbff" : "#52525b",
+                      backgroundColor: subtask.completed
+                        ? "#00bbff"
+                        : "transparent",
+                      alignItems: "center",
+                      justifyContent: "center",
                     }}
-                  />
-                  <BottomSheetTextInput
-                    value={newSubtaskText}
-                    onChangeText={setNewSubtaskText}
-                    placeholder="Add subtask..."
-                    placeholderTextColor="#52525b"
-                    style={{
-                      flex: 1,
-                      color: "#f4f4f5",
-                      fontSize: fontSize.sm,
-                      borderBottomWidth: 1,
-                      borderBottomColor: "#3f3f46",
-                      paddingVertical: 6,
-                    }}
-                    onSubmitEditing={() => void handleAddSubtask()}
-                    returnKeyType="done"
-                  />
-                  <Pressable
-                    onPress={() => void handleAddSubtask()}
-                    hitSlop={8}
                   >
-                    <AppIcon icon={Add01Icon} size={18} color="#00bbff" />
-                  </Pressable>
-                </View>
-              </BottomSheetScrollView>
-            ) : null}
-          </BottomSheet.Content>
-        </BottomSheet.Portal>
-      </BottomSheet>
+                    {subtask.completed && (
+                      <AppIcon icon={Tick02Icon} size={12} color="#000" />
+                    )}
+                  </View>
+                </Pressable>
+                <Text
+                  style={{
+                    flex: 1,
+                    fontSize: fontSize.sm,
+                    color: subtask.completed ? "#71717a" : "#e4e4e7",
+                    textDecorationLine: subtask.completed
+                      ? "line-through"
+                      : "none",
+                  }}
+                >
+                  {subtask.title}
+                </Text>
+                <Pressable
+                  onPress={() => void onDeleteSubtask(todo.id, subtask.id)}
+                  hitSlop={8}
+                >
+                  <AppIcon icon={Cancel01Icon} size={14} color="#71717a" />
+                </Pressable>
+              </View>
+            ))}
+
+            {subtasks.length === 0 && (
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  color: "#52525b",
+                  fontStyle: "italic",
+                }}
+              >
+                No subtasks yet
+              </Text>
+            )}
+
+            {/* Add subtask input */}
+            <View
+              style={{
+                flexDirection: "row",
+                alignItems: "center",
+                gap: spacing.sm,
+              }}
+            >
+              {/* Dashed circle placeholder */}
+              <View
+                style={{
+                  width: 20,
+                  height: 20,
+                  borderRadius: 10,
+                  borderWidth: 2,
+                  borderStyle: "dashed",
+                  borderColor: "#3f3f46",
+                  flexShrink: 0,
+                }}
+              />
+              <BottomSheetTextInput
+                value={newSubtaskText}
+                onChangeText={setNewSubtaskText}
+                placeholder="Add subtask..."
+                placeholderTextColor="#52525b"
+                style={{
+                  flex: 1,
+                  color: "#f4f4f5",
+                  fontSize: fontSize.sm,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "#3f3f46",
+                  paddingVertical: 6,
+                }}
+                onSubmitEditing={() => void handleAddSubtask()}
+                returnKeyType="done"
+              />
+              <Pressable onPress={() => void handleAddSubtask()} hitSlop={8}>
+                <AppIcon icon={Add01Icon} size={18} color="#00bbff" />
+              </Pressable>
+            </View>
+          </BottomSheetScrollView>
+        </BottomSheet>
+
+        <LabelPickerSheet ref={labelPickerRef} onDone={handleLabelsChange} />
+      </>
     );
   },
 );

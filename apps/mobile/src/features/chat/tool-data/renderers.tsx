@@ -1,14 +1,11 @@
 import { Card } from "heroui-native";
 import React from "react";
 import { View } from "react-native";
-import { AppIcon, Brain02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+
 import { EmailComposeCard } from "../components/chat/email-compose-card";
-import type { ToolCallEntry } from "../components/chat/tool-calls-section";
-import { ToolCallsSection } from "../components/chat/tool-calls-section";
 import type { EmailComposeData, ToolDataEntry } from "./registry";
 import {
-  ArtifactCard,
   CalendarDeleteCard,
   type CalendarDeleteOption,
   CalendarEditCard,
@@ -17,8 +14,6 @@ import {
   type CalendarFetchItem,
   type CalendarOption,
   CalendarOptionsCard,
-  ChartCard,
-  type ChartDisplayData,
   type CodeData,
   CodeExecutionCard,
   type ContactData,
@@ -38,12 +33,10 @@ import {
   type GoogleDocsData,
   IntegrationConnectionCard,
   type IntegrationConnectionData,
-  MCPAppCard,
   NotificationCard,
   type NotificationData,
   PeopleSearchCard,
   type PeopleSearchData,
-  RateLimitCard,
   RedditCard,
   type RedditData,
   type SearchResults,
@@ -54,49 +47,9 @@ import {
   type TodoData,
   TodoProgressCard,
   type TodoProgressData,
-  TwitterSearchCard,
-  TwitterUsersCard,
   WeatherCard,
   type WeatherData,
-  WorkflowCreatedCard,
-  WorkflowDraftCard,
 } from "./tool-cards";
-
-function MemoryBrainIcon({ size = 12 }: { size?: number }) {
-  return <AppIcon icon={Brain02Icon} size={size} color="#818cf8" />;
-}
-
-const GROUPED_TOOLS = new Set<string>([
-  "search_results",
-  "reddit_data",
-  "tool_calls_data",
-  "integration_connection_required",
-  "integration_list_data",
-  "rate_limit_data",
-  "email_fetch_data",
-  "email_compose_data",
-  "email_sent_data",
-  "artifact_data",
-  "twitter_user_data",
-  "chart_data",
-]);
-
-const flattenOneLevel = (value: unknown): unknown[] => {
-  if (!Array.isArray(value)) return [value];
-  return value.flat(1);
-};
-
-const dedupeToolCalls = (calls: unknown[]): unknown[] => {
-  const seen = new Set<string>();
-  return calls.filter((call) => {
-    if (typeof call !== "object" || call === null) return true;
-    const toolCallId = (call as { tool_call_id?: string }).tool_call_id;
-    if (!toolCallId) return true;
-    if (seen.has(toolCallId)) return false;
-    seen.add(toolCallId);
-    return true;
-  });
-};
 
 function UnsupportedToolCard({
   toolName,
@@ -275,67 +228,13 @@ const TOOL_RENDERERS: Record<
     />
   ),
 
-  integration_list_data: (data, baseKey) => {
-    const source = Array.isArray(data) ? data[0] : data;
-    const suggested =
-      source && typeof source === "object" && "suggested" in source
-        ? ((source as { suggested?: unknown[] }).suggested ?? [])
-        : [];
-
-    return (
-      <Card
-        key={baseKey}
-        variant="secondary"
-        className="mx-4 my-2 rounded-2xl bg-[#171920]"
-      >
-        <Card.Body className="py-3 px-4">
-          <Text className="text-foreground text-sm">
-            Suggested Integrations
-          </Text>
-          <Text className="text-xs text-muted mt-1">
-            {suggested.length > 0
-              ? `${suggested.length} suggestion${suggested.length > 1 ? "s" : ""}`
-              : "Open /integrations to connect tools"}
-          </Text>
-        </Card.Body>
-      </Card>
-    );
-  },
-
-  tool_calls_data: (data, baseKey) => {
-    const calls = (
-      Array.isArray(data) ? (data as unknown[]).flat(1) : [data]
-    ) as ToolCallEntry[];
-    return (
-      <View key={baseKey} style={{ paddingHorizontal: 16, paddingVertical: 4 }}>
-        <ToolCallsSection tool_calls_data={calls} />
-      </View>
-    );
-  },
-
-  twitter_search_data: (data, baseKey) => (
-    <TwitterSearchCard key={baseKey} data={data} />
+  integration_list_data: (_data, baseKey) => (
+    <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
+      <Card.Body className="py-3 px-4">
+        <Text className="text-foreground text-sm">Available Integrations</Text>
+      </Card.Body>
+    </Card>
   ),
-
-  twitter_user_data: (data, baseKey) => (
-    <TwitterUsersCard key={baseKey} data={data} />
-  ),
-
-  workflow_draft: (data, baseKey) => (
-    <WorkflowDraftCard key={baseKey} data={data} />
-  ),
-
-  workflow_created: (data, baseKey) => (
-    <WorkflowCreatedCard key={baseKey} data={data} />
-  ),
-
-  mcp_app: (data, baseKey) => <MCPAppCard key={baseKey} data={data} />,
-
-  rate_limit_data: (data, baseKey) => (
-    <RateLimitCard key={baseKey} data={data} />
-  ),
-
-  artifact_data: (data, baseKey) => <ArtifactCard key={baseKey} data={data} />,
 
   reddit_data: (data, baseKey) => {
     const items = Array.isArray(data) ? data : [data];
@@ -351,88 +250,22 @@ const TOOL_RENDERERS: Record<
     );
   },
 
-  memory_data: (data, baseKey) => {
-    const mem = data as {
-      type?: string;
-      operation?: string;
-      status?: string;
-      count?: number;
-      content?: string;
-    } | null;
-
-    let label = "Memory updated";
-    let detail: string | null = null;
-
-    if (mem) {
-      if (mem.type === "memory_stored") {
-        label = "Memory stored";
-        if (mem.content) detail = mem.content;
-      } else if (mem.status === "success") {
-        switch (mem.operation) {
-          case "create":
-            label = "Memory created";
-            if (mem.content) detail = mem.content;
-            break;
-          case "search":
-            label =
-              mem.count === 0
-                ? "No memories found"
-                : mem.count === 1
-                  ? "Found 1 memory"
-                  : `Found ${mem.count} memories`;
-            break;
-          case "list":
-            label =
-              mem.count === 0
-                ? "No memories"
-                : `Retrieved ${mem.count} memories`;
-            break;
-          default:
-            label = "Memory operation completed";
-        }
-      } else if (mem.status === "storing") {
-        label = "Storing memory...";
-      } else if (mem.status === "searching") {
-        label = "Searching memories...";
-      } else if (mem.status === "retrieving") {
-        label = "Retrieving memories...";
-      }
-    }
-
-    return (
-      <Card
-        key={baseKey}
-        variant="secondary"
-        className="mx-4 my-2 rounded-2xl bg-[#171920]"
-      >
-        <Card.Body className="py-3 px-4">
-          <View className="flex-row items-center gap-2">
-            <View className="rounded-full bg-indigo-500/20 p-1">
-              <MemoryBrainIcon size={12} />
-            </View>
-            <Text className="text-xs text-muted">Memory</Text>
-          </View>
-          <Text className="text-foreground text-sm font-medium mt-1.5">
-            {label}
-          </Text>
-          {!!detail && (
-            <Text className="text-xs text-muted mt-1" numberOfLines={3}>
-              {detail}
-            </Text>
-          )}
-        </Card.Body>
-      </Card>
-    );
-  },
-
-  todo_progress: (data, baseKey) => (
-    <TodoProgressCard key={baseKey} data={data as TodoProgressData} />
+  memory_data: (_data, baseKey) => (
+    <Card key={baseKey} variant="secondary" className="mx-4 my-2 rounded-xl">
+      <Card.Body className="py-3 px-4">
+        <Text className="text-xs text-muted mb-1">Memory</Text>
+        <Text className="text-foreground text-sm">Memory updated</Text>
+      </Card.Body>
+    </Card>
   ),
 
-  chart_data: (data, baseKey) => {
-    const charts = (Array.isArray(data) ? data : [data]) as ChartDisplayData[];
-    return <ChartCard key={baseKey} data={charts} />;
-  },
+  todo_progress: (data, baseKey) => (
+    <TodoProgressCard
+      key={baseKey}
+      data={data as TodoProgressData}
+      isStreaming
+    />
+  ),
 };
 
 interface ToolDataRendererProps {
@@ -444,40 +277,9 @@ export function ToolDataRenderer({ toolData }: ToolDataRendererProps) {
     return null;
   }
 
-  const grouped = new Map<string, unknown[]>();
-  const individual: ToolDataEntry[] = [];
-
-  for (const entry of toolData) {
-    if (GROUPED_TOOLS.has(entry.tool_name)) {
-      if (!grouped.has(entry.tool_name)) {
-        grouped.set(entry.tool_name, []);
-      }
-      grouped.get(entry.tool_name)?.push(entry.data);
-      continue;
-    }
-
-    individual.push(entry);
-  }
-
-  const groupedEntries: ToolDataEntry[] = Array.from(grouped.entries()).map(
-    ([toolName, dataArray]) => {
-      const flattened = flattenOneLevel(dataArray);
-      const normalizedData =
-        toolName === "tool_calls_data" ? dedupeToolCalls(flattened) : flattened;
-
-      return {
-        tool_name: toolName,
-        data: normalizedData,
-        timestamp: null,
-      };
-    },
-  );
-
-  const processedToolData = [...groupedEntries, ...individual];
-
   return (
     <View className="flex-col">
-      {processedToolData.map((entry, index) => {
+      {toolData.map((entry, index) => {
         const toolName = entry.tool_name;
         const renderer = TOOL_RENDERERS[toolName];
         const baseKey = `tool-${toolName}-${entry.timestamp || index}`;

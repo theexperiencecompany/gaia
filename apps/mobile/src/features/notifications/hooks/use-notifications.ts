@@ -1,6 +1,7 @@
 import Constants from "expo-constants";
 import * as Device from "expo-device";
 import * as Notifications from "expo-notifications";
+import { useRouter } from "expo-router";
 import * as SecureStore from "expo-secure-store";
 import { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
@@ -37,7 +38,37 @@ interface UseNotificationsReturn {
   isLoading: boolean;
 }
 
+function resolveNotificationRoute(
+  data: Record<string, unknown>,
+): string | null {
+  const type = typeof data.type === "string" ? data.type.toLowerCase() : "";
+  const source =
+    typeof data.source === "string" ? data.source.toLowerCase() : "";
+  const key = `${source} ${type}`;
+
+  if (key.includes("todo") || key.includes("task")) {
+    return "/(app)/(tabs)/todos";
+  }
+
+  if (key.includes("workflow") || key.includes("automation")) {
+    const workflowId =
+      typeof data.workflow_id === "string" ? data.workflow_id : null;
+    return workflowId ? `/(app)/workflows/${workflowId}` : "/(app)/(tabs)";
+  }
+
+  if (
+    key.includes("chat") ||
+    key.includes("conversation") ||
+    key.includes("message")
+  ) {
+    return "/(app)/(tabs)";
+  }
+
+  return null;
+}
+
 export function useNotifications(): UseNotificationsReturn {
+  const router = useRouter();
   const [expoPushToken, setExpoPushToken] = useState<string | null>(null);
   const [notification, setNotification] =
     useState<Notifications.Notification | null>(null);
@@ -179,8 +210,15 @@ export function useNotifications(): UseNotificationsReturn {
         );
 
       responseListener.current =
-        Notifications.addNotificationResponseReceivedListener((_response) => {
-          // TODO: Handle notification response when navigation is implemented
+        Notifications.addNotificationResponseReceivedListener((response) => {
+          const data = response.notification.request.content.data as Record<
+            string,
+            unknown
+          >;
+          const route = resolveNotificationRoute(data);
+          if (route) {
+            router.push(route as never);
+          }
         });
     }
 
@@ -189,7 +227,7 @@ export function useNotifications(): UseNotificationsReturn {
       notificationListener.current?.remove();
       responseListener.current?.remove();
     };
-  }, []);
+  }, [router]);
 
   return {
     expoPushToken,

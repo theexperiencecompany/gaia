@@ -40,6 +40,9 @@ import {
 
 const DEFAULT_COMMANDS = [
   "new",
+  "clear",
+  "help",
+  "model",
   "integrations",
   "notifications",
   "settings",
@@ -169,6 +172,12 @@ export function Composer({
         setMessage("");
         dismissKeyboard();
         workflowPickerRef.current?.open();
+        return;
+      }
+      if (command === "model") {
+        setMessage("");
+        dismissKeyboard();
+        modelPickerRef.current?.open();
         return;
       }
       const handled = onCommand?.(command) ?? false;

@@ -1,94 +1,71 @@
 import { Card } from "heroui-native";
 import { View } from "react-native";
-import {
-  AppIcon,
-  CheckmarkCircle02Icon,
-  Mail01Icon,
-  MailSend01Icon,
-} from "@/components/icons";
+import { HugeiconsIcon, SentIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
 export interface EmailSentData {
+  to: string[];
+  subject: string;
+  body?: string;
   message_id?: string;
-  message?: string;
-  timestamp?: string;
-  recipients?: string[];
-  subject?: string;
-  // Legacy shape used by renderers
-  to?: string[];
   sent_at?: string;
 }
 
-function formatTime(timestamp?: string): string {
-  if (!timestamp) return "Just now";
-  const date = new Date(timestamp);
-  const now = new Date();
-  const diffInSeconds = (now.getTime() - date.getTime()) / 1000;
-  if (diffInSeconds < 60) return "Just now";
-  if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-  return date.toLocaleTimeString("en-US", {
-    hour: "numeric",
+function formatSentTime(dateStr?: string): string {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return dateStr;
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
     minute: "2-digit",
-    hour12: true,
   });
 }
 
 export function EmailSentCard({ data }: { data: EmailSentData }) {
-  const recipients = data.recipients ?? data.to ?? [];
-  const timestamp = data.timestamp ?? data.sent_at;
+  const sentTime = formatSentTime(data.sent_at);
+  const toDisplay = data.to?.join(", ") || "";
+  const bodyPreview = data.body?.split("\n").find((l) => l.trim()) || "";
 
   return (
-    <Card
-      variant="secondary"
-      className="mx-4 my-2 rounded-2xl overflow-hidden"
-      style={{ backgroundColor: "#0d1f0f" }}
-    >
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center gap-2">
-            <AppIcon icon={Mail01Icon} size={16} color="#8e8e93" />
-            <AppIcon icon={CheckmarkCircle02Icon} size={16} color="#4ade80" />
-            <Text className="text-sm font-medium text-green-400">
-              Email Sent
+    <Card variant="secondary" className="mx-4 my-2 rounded-xl overflow-hidden">
+      <View className="flex-row items-center gap-2 px-4 py-3 border-b border-muted/20">
+        <HugeiconsIcon icon={SentIcon} size={16} color="#22c55e" />
+        <Text className="text-success text-sm font-medium flex-1">
+          Email Sent
+        </Text>
+        {sentTime ? (
+          <Text className="text-muted text-xs">{sentTime}</Text>
+        ) : null}
+      </View>
+      <Card.Body className="p-4">
+        <View className="flex-row mb-2">
+          <Text className="text-muted text-sm" style={{ width: 52 }}>
+            To:
+          </Text>
+          <Text className="text-foreground text-sm flex-1" numberOfLines={2}>
+            {toDisplay}
+          </Text>
+        </View>
+        <View className="flex-row mb-2">
+          <Text className="text-muted text-sm" style={{ width: 52 }}>
+            Subject:
+          </Text>
+          <Text
+            className="text-foreground text-sm font-medium flex-1"
+            numberOfLines={1}
+          >
+            {data.subject || "No Subject"}
+          </Text>
+        </View>
+        {bodyPreview ? (
+          <View className="mt-1 pt-2 border-t border-muted/20">
+            <Text className="text-muted text-xs" numberOfLines={2}>
+              {bodyPreview}{" "}
             </Text>
           </View>
-          <View className="rounded-full bg-green-500/15 px-2 py-0.5">
-            <Text className="text-[10px] text-green-400">
-              {formatTime(timestamp)}
-            </Text>
-          </View>
-        </View>
-
-        {/* Details */}
-        <View className="gap-1.5">
-          {!!data.subject && (
-            <View className="flex-row gap-1">
-              <Text className="text-sm text-[#8e8e93]">Subject:</Text>
-              <Text className="text-sm text-[#e5e5e7] flex-1" numberOfLines={1}>
-                {data.subject}
-              </Text>
-            </View>
-          )}
-
-          {recipients.length > 0 && (
-            <View className="flex-row gap-1">
-              <Text className="text-sm text-[#8e8e93]">To:</Text>
-              <Text className="text-sm text-[#e5e5e7] flex-1" numberOfLines={1}>
-                {recipients.join(", ")}
-              </Text>
-            </View>
-          )}
-
-          {!!data.message && (
-            <View className="flex-row items-center gap-1.5 mt-1">
-              <AppIcon icon={MailSend01Icon} size={12} color="#4ade80" />
-              <Text className="text-sm font-medium text-green-400">
-                {data.message}
-              </Text>
-            </View>
-          )}
-        </View>
+        ) : null}
       </Card.Body>
     </Card>
   );

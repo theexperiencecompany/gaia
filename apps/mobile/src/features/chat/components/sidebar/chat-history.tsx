@@ -5,6 +5,7 @@ import { useCallback, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Modal,
   Platform,
   Pressable,
@@ -19,7 +20,12 @@ import Reanimated, {
   type SharedValue,
   useAnimatedStyle,
 } from "react-native-reanimated";
-import { AppIcon, Delete02Icon, FavouriteIcon } from "@/components/icons";
+import {
+  AppIcon,
+  BubbleChatIcon,
+  Delete02Icon,
+  FavouriteIcon,
+} from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { useChatStore } from "@/stores/chat-store";
@@ -224,6 +230,76 @@ function DeleteSwipeAction({ dragX, onDelete }: DeleteSwipeActionProps) {
   );
 }
 
+interface HighlightedTextProps {
+  text: string;
+  query: string;
+  baseStyle: object;
+  numberOfLines?: number;
+}
+
+function HighlightedText({
+  text,
+  query,
+  baseStyle,
+  numberOfLines,
+}: HighlightedTextProps) {
+  if (!query.trim()) {
+    return (
+      <Text numberOfLines={numberOfLines} style={baseStyle}>
+        {text}
+      </Text>
+    );
+  }
+
+  const lowerText = text.toLowerCase();
+  const lowerQuery = query.toLowerCase();
+  const parts: { text: string; highlighted: boolean }[] = [];
+  let lastIndex = 0;
+
+  let matchIndex = lowerText.indexOf(lowerQuery, lastIndex);
+  while (matchIndex !== -1) {
+    if (matchIndex > lastIndex) {
+      parts.push({
+        text: text.slice(lastIndex, matchIndex),
+        highlighted: false,
+      });
+    }
+    parts.push({
+      text: text.slice(matchIndex, matchIndex + lowerQuery.length),
+      highlighted: true,
+    });
+    lastIndex = matchIndex + lowerQuery.length;
+    matchIndex = lowerText.indexOf(lowerQuery, lastIndex);
+  }
+  if (lastIndex < text.length) {
+    parts.push({ text: text.slice(lastIndex), highlighted: false });
+  }
+
+  if (parts.length === 0) {
+    return (
+      <Text numberOfLines={numberOfLines} style={baseStyle}>
+        {text}
+      </Text>
+    );
+  }
+
+  return (
+    <Text numberOfLines={numberOfLines} style={baseStyle}>
+      {parts.map((part, i) =>
+        part.highlighted ? (
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable index for highlight parts
+          <Text key={i} style={{ color: "#00bbff", fontWeight: "600" }}>
+            {part.text}
+          </Text>
+        ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: stable index for plain parts
+          <Text key={i}>{part.text}</Text>
+        ),
+      )}
+    </Text>
+  );
+}
+
 interface ChatItemProps {
   item: Conversation;
   isActive: boolean;
@@ -232,6 +308,7 @@ interface ChatItemProps {
   onRename: (id: string, currentTitle: string) => void;
   onDelete: (id: string) => void;
   onToggleStar: (id: string, currentStarred: boolean) => void;
+  searchQuery?: string;
 }
 
 function ChatItem({
@@ -242,6 +319,7 @@ function ChatItem({
   onRename,
   onDelete,
   onToggleStar,
+  searchQuery = "",
 }: ChatItemProps) {
   const { spacing, fontSize, iconSize } = useResponsive();
   const swipeableRef = useRef<SwipeableMethods>(null);
@@ -346,9 +424,10 @@ function ChatItem({
               color="#f59e0b"
             />
           )}
-          <Text
-            numberOfLines={1}
-            style={{
+          <HighlightedText
+            text={item.title}
+            query={searchQuery}
+            baseStyle={{
               fontSize: fontSize.sm,
               color: isActive
                 ? "#ffffff"
@@ -358,9 +437,8 @@ function ChatItem({
               fontWeight: item.is_unread ? "600" : "400",
               flex: 1,
             }}
-          >
-            {item.title}
-          </Text>
+            numberOfLines={1}
+          />
           <Text
             style={{
               fontSize: fontSize.xs - 1,
@@ -585,14 +663,41 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
     [updateConversationStarred, invalidateConversations],
   );
 
-  const filteredConversations =
-    searchQuery.trim().length > 0
-      ? conversations.filter((c) =>
-          c.title.toLowerCase().includes(searchQuery.toLowerCase()),
-        )
-      : conversations;
+  const isSearching = searchQuery.trim().length > 0;
+
+  const filteredConversations = isSearching
+    ? conversations.filter((c) =>
+        c.title.toLowerCase().includes(searchQuery.toLowerCase()),
+      )
+    : conversations;
 
   const groupedChats = groupConversationsByDate(filteredConversations);
+
+  const renderSearchItem = useCallback(
+    ({ item }: { item: Conversation }) => (
+      <ChatItem
+        item={item}
+        isActive={activeChatId === item.id}
+        isStreaming={streamingConversationId === item.id}
+        onPress={() => handleSelectChat(item.id)}
+        onRename={handleRename}
+        onDelete={handleDelete}
+        onToggleStar={handleToggleStar}
+        searchQuery={searchQuery}
+      />
+    ),
+    [
+      activeChatId,
+      streamingConversationId,
+      handleSelectChat,
+      handleRename,
+      handleDelete,
+      handleToggleStar,
+      searchQuery,
+    ],
+  );
+
+  const keyExtractor = useCallback((item: Conversation) => item.id, []);
 
   if (isLoading) {
     return (
@@ -634,7 +739,7 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
     );
   }
 
-  if (filteredConversations.length === 0 && searchQuery.trim().length > 0) {
+  if (filteredConversations.length === 0 && isSearching) {
     return (
       <View
         style={{
@@ -675,8 +780,23 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
           justifyContent: "center",
           alignItems: "center",
           padding: spacing.lg,
+          gap: spacing.md,
         }}
       >
+        <View
+          style={{
+            width: 56,
+            height: 56,
+            borderRadius: 28,
+            backgroundColor: "rgba(255,255,255,0.04)",
+            borderWidth: 1,
+            borderColor: "rgba(255,255,255,0.06)",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <AppIcon icon={BubbleChatIcon} size={28} color="#3f3f46" />
+        </View>
         <Text
           style={{
             color: "#52525b",
@@ -691,12 +811,53 @@ export function ChatHistory({ onSelectChat, searchQuery }: ChatHistoryProps) {
             color: "#3f3f46",
             fontSize: fontSize.xs,
             textAlign: "center",
-            marginTop: spacing.sm,
+            marginTop: -spacing.xs,
           }}
         >
           Start a new chat to begin
         </Text>
       </View>
+    );
+  }
+
+  // When searching: show flat list with highlighted matches
+  if (isSearching) {
+    return (
+      <>
+        <RenameModal
+          visible={renameModal.visible}
+          currentTitle={renameModal.currentTitle}
+          onConfirm={handleRenameConfirm}
+          onCancel={handleRenameCancel}
+        />
+        <View
+          style={{
+            paddingHorizontal: spacing.md,
+            paddingVertical: spacing.sm,
+          }}
+        >
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              color: "#52525b",
+              fontWeight: "500",
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+            }}
+          >
+            {filteredConversations.length}{" "}
+            {filteredConversations.length === 1 ? "result" : "results"}
+          </Text>
+        </View>
+        <FlatList
+          data={filteredConversations}
+          keyExtractor={keyExtractor}
+          renderItem={renderSearchItem}
+          contentContainerStyle={{ paddingBottom: spacing.md }}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        />
+      </>
     );
   }
 

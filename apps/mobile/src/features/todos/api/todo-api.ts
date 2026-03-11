@@ -1,6 +1,7 @@
 import { buildQueryString, normalizeListResponse } from "@gaia/shared/api";
 import { apiService } from "@/lib/api";
 import type {
+  Priority,
   Project,
   Todo,
   TodoCounts,
@@ -50,12 +51,51 @@ export const todoApi = {
     return apiService.get<Project[]>("/projects");
   },
 
+  createProject: async (data: {
+    name: string;
+    color?: string;
+    description?: string;
+  }): Promise<Project> => {
+    return apiService.post<Project>("/projects", data);
+  },
+
+  updateProject: async (
+    projectId: string,
+    data: { name?: string; color?: string; description?: string },
+  ): Promise<Project> => {
+    return apiService.put<Project>(`/projects/${projectId}`, data);
+  },
+
+  deleteProject: async (projectId: string): Promise<void> => {
+    return apiService.delete(`/projects/${projectId}`);
+  },
+
   bulkComplete: async (todoIds: string[]): Promise<void> => {
     await apiService.post("/todos/bulk/complete", { todo_ids: todoIds });
   },
 
   bulkDelete: async (todoIds: string[]): Promise<void> => {
     await apiService.delete("/todos/bulk", { todo_ids: todoIds });
+  },
+
+  bulkUpdatePriority: async (
+    todoIds: string[],
+    priority: Priority,
+  ): Promise<void> => {
+    await apiService.post("/todos/bulk/priority", {
+      todo_ids: todoIds,
+      priority,
+    });
+  },
+
+  bulkMoveToProject: async (
+    todoIds: string[],
+    projectId: string | null,
+  ): Promise<void> => {
+    await apiService.post("/todos/bulk/project", {
+      todo_ids: todoIds,
+      project_id: projectId,
+    });
   },
 
   addSubtask: async (todoId: string, title: string): Promise<void> => {

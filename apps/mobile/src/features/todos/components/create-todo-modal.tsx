@@ -17,6 +17,7 @@ import {
   Tag01Icon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { impactHaptic, notificationHaptic } from "@/lib/haptics";
 import { useResponsive } from "@/lib/responsive";
 import { Priority, type Project, type TodoCreate } from "../types/todo-types";
 
@@ -25,6 +26,7 @@ interface CreateTodoModalProps {
   onClose: () => void;
   onCreated: (data: TodoCreate) => void;
   projects?: Project[];
+  defaultProjectId?: string;
 }
 
 const PRIORITY_OPTIONS: {
@@ -78,6 +80,7 @@ export function CreateTodoModal({
   onClose,
   onCreated,
   projects = [],
+  defaultProjectId,
 }: CreateTodoModalProps) {
   const { spacing, fontSize } = useResponsive();
   const [title, setTitle] = useState("");
@@ -86,7 +89,7 @@ export function CreateTodoModal({
   const [dueDate, setDueDate] = useState<string | undefined>(undefined);
   const [selectedProjectId, setSelectedProjectId] = useState<
     string | undefined
-  >(undefined);
+  >(defaultProjectId);
   const [labelsText, setLabelsText] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -98,6 +101,7 @@ export function CreateTodoModal({
       .map((l) => l.trim())
       .filter(Boolean);
 
+    impactHaptic("medium");
     setIsSubmitting(true);
     try {
       onCreated({
@@ -108,11 +112,12 @@ export function CreateTodoModal({
         labels,
         project_id: selectedProjectId,
       });
+      notificationHaptic("success");
       setTitle("");
       setDescription("");
       setPriority(Priority.NONE);
       setDueDate(undefined);
-      setSelectedProjectId(undefined);
+      setSelectedProjectId(defaultProjectId);
       setLabelsText("");
     } finally {
       setIsSubmitting(false);
@@ -124,7 +129,7 @@ export function CreateTodoModal({
     setDescription("");
     setPriority(Priority.NONE);
     setDueDate(undefined);
-    setSelectedProjectId(undefined);
+    setSelectedProjectId(defaultProjectId);
     setLabelsText("");
     onClose();
   };

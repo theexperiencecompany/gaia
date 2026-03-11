@@ -4,6 +4,7 @@
 export type IntegrationCategoryValue =
   | "productivity"
   | "communication"
+  | "social"
   | "developer"
   | "analytics"
   | "finance"
@@ -33,6 +34,10 @@ export interface Integration {
   tools?: Array<{ name: string; description?: string }>;
   iconUrl?: string;
   slug: string;
+  creator?: {
+    name: string | null;
+    picture: string | null;
+  } | null;
 }
 
 export interface IntegrationStatus {
@@ -80,7 +85,13 @@ export interface MarketplaceIntegration {
   iconUrl?: string;
   isPublic?: boolean;
   createdBy?: string;
+  publishedAt?: string;
+  cloneCount?: number;
   slug: string;
+  creator?: {
+    name: string | null;
+    picture: string | null;
+  } | null;
 }
 
 export interface UserIntegration {
@@ -102,4 +113,63 @@ export interface UserIntegrationsResponse {
 export interface IntegrationWithStatus extends Integration {
   connected: boolean;
   logo: string;
+}
+
+export interface CreateCustomIntegrationRequest {
+  name: string;
+  description?: string;
+  category?: string;
+  server_url: string;
+  requires_auth?: boolean;
+  auth_type?: "none" | "oauth" | "bearer";
+  is_public?: boolean;
+  bearer_token?: string;
+}
+
+export interface CreateCustomIntegrationResponse {
+  status: string;
+  message: string;
+  integrationId: string;
+  name: string;
+}
+
+export interface CommunityIntegrationCreator {
+  name: string | null;
+  picture: string | null;
+}
+
+export interface CommunityIntegration {
+  integrationId: string;
+  slug: string;
+  name: string;
+  description: string;
+  category: string;
+  iconUrl: string | null;
+  cloneCount: number;
+  toolCount: number;
+  tools: Array<{ name: string; description: string | null }>;
+  publishedAt: string;
+  creator: CommunityIntegrationCreator | null;
+}
+
+export interface CommunityIntegrationsResponse {
+  integrations: CommunityIntegration[];
+  total: number;
+  hasMore: boolean;
+}
+
+export interface PublicIntegrationResponse extends CommunityIntegration {
+  mcpConfig?: {
+    serverUrl: string;
+    requiresAuth: boolean;
+    authType: string | null;
+  };
+}
+
+export interface CommunitySearchParams {
+  search?: string;
+  category?: string;
+  limit?: number;
+  offset?: number;
+  sort?: "popular" | "recent" | "name";
 }

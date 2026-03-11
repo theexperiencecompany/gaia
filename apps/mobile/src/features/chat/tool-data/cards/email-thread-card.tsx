@@ -1,198 +1,132 @@
 import { Card } from "heroui-native";
 import { useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
-import {
-  AppIcon,
-  ArrowDown01Icon,
-  ArrowUp01Icon,
-  Mail01Icon,
-} from "@/components/icons";
+import { Pressable, View } from "react-native";
+import { HugeiconsIcon, Mail01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
 export interface EmailThreadMessage {
-  id?: string;
   from?: string;
-  subject?: string;
-  time?: string;
-  snippet?: string;
+  from_name?: string;
   body?: string;
-  content?: { text?: string; html?: string };
+  snippet?: string;
+  date?: string;
 }
 
 export interface EmailThreadData {
   thread_id?: string;
   subject?: string;
   messages?: EmailThreadMessage[];
-  messages_count?: number;
 }
 
-function extractSenderName(from: string): string {
-  const match = from.match(/^"?([^"<]+)"?\s*</);
-  if (match) return match[1].trim();
-  const spaceMatch = from.match(/^([^<]+)\s+</);
-  if (spaceMatch) return spaceMatch[1].trim();
-  const emailMatch = from.match(/<([^>]+)>/);
-  if (emailMatch) return emailMatch[1].split("@")[0];
-  return from.split("@")[0] || from;
-}
-
-function extractSenderEmail(from: string): string {
-  const emailMatch = from.match(/<([^>]+)>/);
-  if (emailMatch) return emailMatch[1];
-  if (from.includes("@")) return from;
-  return "";
-}
-
-function formatTime(time?: string | null): string {
-  if (!time) return "Yesterday";
-  const date = new Date(time);
+function formatRelativeDate(dateStr?: string): string {
+  if (!dateStr) return "";
+  const date = new Date(dateStr);
+  if (Number.isNaN(date.getTime())) return dateStr;
   const now = new Date();
-  const diffInHours = (now.getTime() - date.getTime()) / (1000 * 60 * 60);
-  if (diffInHours < 24) {
-    return date.toLocaleTimeString("en-US", {
-      hour: "numeric",
-      minute: "2-digit",
-      hour12: true,
-    });
+  const diffMs = now.getTime() - date.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) {
+    return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
-  if (diffInHours < 48) return "Yesterday";
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return date.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function stripHtmlTags(html: string): string {
-  return html
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&")
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/\s{2,}/g, " ")
-    .trim();
+function extractFromName(from?: string, fromName?: string): string {
+  if (fromName) return fromName;
+  if (!from) return "Unknown";
+  const match = from.match(/^([^<]+)</);
+  if (match) return match[1].trim();
+  return from;
 }
 
-function MessageItem({ message }: { message: EmailThreadMessage }) {
-  const [expanded, setExpanded] = useState(false);
+function senderInitials(name: string): string {
+  const parts = name.trim().split(" ");
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  }
+  return name.slice(0, 2).toUpperCase();
+}
 
-  const senderName = message.from ? extractSenderName(message.from) : "Unknown";
-  const senderEmail = message.from ? extractSenderEmail(message.from) : "";
+interface MessageRowProps {
+  message: EmailThreadMessage;
+  index: number;
+}
 
-  const rawBody =
-    message.content?.text ||
-    (message.content?.html ? stripHtmlTags(message.content.html) : null) ||
-    message.body ||
-    message.snippet;
+function MessageRow({ message, index }: MessageRowProps) {
+  const [expanded, setExpanded] = useState(index === 0);
+  const senderName = extractFromName(message.from, message.from_name);
+  const initials = senderInitials(senderName);
+  const bodyText = message.body || message.snippet || "";
 
   return (
     <Pressable
       onPress={() => setExpanded((prev) => !prev)}
-      className="py-3 border-b border-white/8 active:opacity-70"
+      className="px-4 py-3 active:bg-muted/10"
     >
-      {/* Header row */}
-      <View className="flex-row items-start justify-between gap-2">
-        <View className="flex-1 gap-1">
-          <View className="flex-row items-center gap-2">
-            <View className="rounded-full bg-white/10 px-2 py-0.5">
-              <Text className="text-[10px] text-[#8e8e93]">From</Text>
-            </View>
+      <View className="flex-row items-start gap-3">
+        <View className="w-8 h-8 rounded-full bg-primary/20 items-center justify-center shrink-0">
+          <Text className="text-primary text-xs font-semibold">{initials}</Text>
+        </View>
+        <View className="flex-1 min-w-0">
+          <View className="flex-row items-center justify-between mb-0.5">
             <Text
-              className="text-sm text-[#e5e5e7] font-medium"
+              className="text-foreground text-sm font-medium"
               numberOfLines={1}
             >
               {senderName}
             </Text>
-            {!!senderEmail && (
-              <Text className="text-xs text-[#8e8e93] flex-1" numberOfLines={1}>
-                {senderEmail}
-              </Text>
-            )}
+            <Text className="text-muted text-xs ml-2 shrink-0">
+              {formatRelativeDate(message.date)}
+            </Text>
           </View>
-          {!!message.subject && (
-            <View className="flex-row items-center gap-2">
-              <View className="rounded-full bg-white/10 px-2 py-0.5">
-                <Text className="text-[10px] text-[#8e8e93]">Subject</Text>
-              </View>
-              <Text
-                className="text-sm font-medium text-[#e5e5e7]"
-                numberOfLines={1}
-              >
-                {message.subject}
-              </Text>
-            </View>
+          {expanded ? (
+            <Text className="text-foreground/80 text-sm leading-relaxed">
+              {bodyText}
+            </Text>
+          ) : (
+            <Text className="text-muted text-xs" numberOfLines={1}>
+              {bodyText}
+            </Text>
           )}
         </View>
-        <View className="flex-row items-center gap-1.5">
-          <Text className="text-xs text-[#8e8e93]">
-            {formatTime(message.time)}
-          </Text>
-          <AppIcon
-            icon={expanded ? ArrowUp01Icon : ArrowDown01Icon}
-            size={12}
-            color="#8e8e93"
-          />
-        </View>
       </View>
-
-      {/* Collapsed preview */}
-      {!expanded && !!rawBody && (
-        <Text className="text-xs text-[#8e8e93] mt-2" numberOfLines={1}>
-          {rawBody}
-        </Text>
-      )}
-
-      {/* Expanded body */}
-      {expanded && !!rawBody && (
-        <ScrollView
-          className="mt-3 rounded-lg bg-white/5 p-3"
-          style={{ maxHeight: 200 }}
-          nestedScrollEnabled
-        >
-          <Text className="text-sm text-[#e5e5e7] leading-5">{rawBody}</Text>
-        </ScrollView>
-      )}
     </Pressable>
   );
 }
 
 export function EmailThreadCard({ data }: { data: EmailThreadData }) {
-  const messages = data.messages ?? [];
-  const messageCount = data.messages_count ?? messages.length;
+  const messageCount = data.messages?.length || 0;
 
   return (
-    <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-      <Card.Body className="py-3 px-4">
-        {/* Header */}
-        <View className="flex-row items-center justify-between mb-3">
-          <View className="flex-row items-center gap-2">
-            <AppIcon icon={Mail01Icon} size={14} color="#8e8e93" />
-            <Text className="text-xs text-[#8e8e93]">Email Thread</Text>
-          </View>
-          <View className="rounded-full bg-white/10 px-2 py-0.5">
-            <Text className="text-[10px] text-[#8e8e93]">
-              {messageCount} message{messageCount !== 1 ? "s" : ""}
-            </Text>
-          </View>
+    <Card variant="secondary" className="mx-4 my-2 rounded-xl overflow-hidden">
+      <View className="flex-row items-center gap-2 px-4 py-3 border-b border-muted/20">
+        <HugeiconsIcon icon={Mail01Icon} size={16} color="#6b6b6b" />
+        <Text
+          className="text-foreground text-sm font-medium flex-1"
+          numberOfLines={1}
+        >
+          {data.subject || "No Subject"}
+        </Text>
+        <View className="bg-muted/20 rounded-full px-2 py-0.5">
+          <Text className="text-muted text-xs">
+            {messageCount} msg{messageCount !== 1 ? "s" : ""}
+          </Text>
         </View>
-
-        {/* Messages */}
-        <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
-          {messages.length === 0 ? (
-            <View className="py-4 items-center">
-              <Text className="text-xs text-[#8e8e93]">No messages</Text>
-            </View>
-          ) : (
-            messages.map((message, index) => (
-              <View
-                key={message.id || `msg-${index}`}
-                className={index === messages.length - 1 ? "border-b-0" : ""}
-              >
-                <MessageItem message={message} />
-              </View>
-            ))
-          )}
-        </View>
+      </View>
+      <Card.Body className="p-0">
+        {data.messages?.map((message, index) => (
+          <View key={`msg-${message.from || index}-${index}`}>
+            {index > 0 && <View className="h-px bg-muted/10 mx-4" />}
+            <MessageRow message={message} index={index} />
+          </View>
+        ))}
+        {messageCount === 0 && (
+          <View className="px-4 py-3">
+            <Text className="text-muted text-sm">No messages in thread</Text>
+          </View>
+        )}
       </Card.Body>
     </Card>
   );

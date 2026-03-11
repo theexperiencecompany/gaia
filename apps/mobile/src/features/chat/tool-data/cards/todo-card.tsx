@@ -1,232 +1,259 @@
-import { formatDueDate } from "@gaia/shared/tool-utils";
 import { Card } from "heroui-native";
-import { View } from "react-native";
-import {
-  AppIcon,
-  Calendar03Icon,
-  CheckmarkCircle02Icon,
-  Flag02Icon,
-  FolderIcon,
-  LayoutGridIcon,
-} from "@/components/icons";
+import { TouchableOpacity, View } from "react-native";
 import { Text } from "@/components/ui/text";
 
-export type TodoStatus = "pending" | "in_progress" | "completed" | "cancelled";
+export type TodoPriority = "high" | "medium" | "low" | "none";
+export type TodoAction =
+  | "list"
+  | "create"
+  | "update"
+  | "delete"
+  | "search"
+  | "stats";
 
-export interface TodoItem {
-  id?: string;
-  title?: string;
-  description?: string;
-  completed?: boolean;
-  status?: TodoStatus;
-  priority?: "high" | "medium" | "low" | "none";
-  due_date?: string;
-  labels?: string[];
-  project?: { name?: string; color?: string };
-  subtasks?: Array<{ id?: string; title?: string; completed?: boolean }>;
+export interface TodoSubtask {
+  id: string;
+  title: string;
+  completed: boolean;
 }
 
 export interface TodoProject {
-  id?: string;
-  name?: string;
+  id: string;
+  name: string;
   color?: string;
-  todo_count?: number;
-  completion_percentage?: number;
+}
+
+export interface TodoItem {
+  id: string;
+  title: string;
+  completed: boolean;
+  priority: TodoPriority;
+  labels: string[];
+  due_date?: string;
+  project?: TodoProject;
+  subtasks: TodoSubtask[];
+  description?: string;
 }
 
 export interface TodoStats {
-  total?: number;
-  completed?: number;
-  pending?: number;
-  overdue?: number;
-  today?: number;
-  upcoming?: number;
+  total: number;
+  completed: number;
+  pending: number;
+  overdue: number;
+  today: number;
+  upcoming: number;
 }
 
 export interface TodoData {
   todos?: TodoItem[];
-  projects?: TodoProject[];
+  projects?: Array<{
+    id: string;
+    name: string;
+    color?: string;
+    todo_count?: number;
+    completion_percentage?: number;
+  }>;
   stats?: TodoStats;
-  action?: string;
+  action?: TodoAction;
   message?: string;
 }
 
-const priorityConfig: Record<
-  string,
-  { bgColor: string; textColor: string; label: string; iconColor: string }
-> = {
-  high: {
-    bgColor: "bg-red-500/10",
-    textColor: "text-red-500",
-    label: "High",
-    iconColor: "#ef4444",
-  },
-  medium: {
-    bgColor: "bg-yellow-500/10",
-    textColor: "text-yellow-500",
-    label: "Medium",
-    iconColor: "#eab308",
-  },
-  low: {
-    bgColor: "bg-blue-500/10",
-    textColor: "text-blue-500",
-    label: "Low",
-    iconColor: "#3b82f6",
-  },
-  none: {
-    bgColor: "",
-    textColor: "text-muted",
-    label: "",
-    iconColor: "#71717a",
-  },
+const PRIORITY_DOT_COLOR: Record<TodoPriority, string> = {
+  high: "bg-red-500",
+  medium: "bg-amber-500",
+  low: "bg-blue-500",
+  none: "bg-zinc-600",
 };
 
-const statusConfig: Record<
-  string,
-  {
-    bgColor: string;
-    textColor: string;
-    checkColor: string;
-    borderColor: string;
-    label: string;
-  }
-> = {
-  pending: {
-    bgColor: "",
-    textColor: "text-muted",
-    checkColor: "#71717a",
-    borderColor: "border-zinc-600",
-    label: "Pending",
-  },
-  in_progress: {
-    bgColor: "bg-primary/10",
-    textColor: "text-primary",
-    checkColor: "#6366f1",
-    borderColor: "border-primary",
-    label: "In Progress",
-  },
-  completed: {
-    bgColor: "bg-green-500/10",
-    textColor: "text-green-500",
-    checkColor: "#22c55e",
-    borderColor: "border-green-500",
-    label: "Completed",
-  },
-  cancelled: {
-    bgColor: "bg-red-500/10",
-    textColor: "text-red-500",
-    checkColor: "#ef4444",
-    borderColor: "border-red-500",
-    label: "Cancelled",
-  },
-};
+function formatDueDate(dateStr: string): {
+  label: string;
+  isOverdue: boolean;
+  isToday: boolean;
+} {
+  const due = new Date(dateStr);
+  const now = new Date();
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const dueStart = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const diffDays = Math.round(
+    (dueStart.getTime() - todayStart.getTime()) / (1000 * 60 * 60 * 24),
+  );
 
-function getTodoStatus(todo: TodoItem): TodoStatus {
-  if (todo.status) return todo.status;
-  if (todo.completed) return "completed";
-  return "pending";
+  const isOverdue = diffDays < 0;
+  const isToday = diffDays === 0;
+
+  let label: string;
+  if (diffDays === 0) label = "Today";
+  else if (diffDays === 1) label = "Tomorrow";
+  else if (diffDays === -1) label = "Yesterday";
+  else if (diffDays > 1 && diffDays < 7)
+    label = due.toLocaleDateString("en-US", { weekday: "short" });
+  else
+    label = due.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+
+  return { label, isOverdue, isToday };
 }
 
-function isTodoDone(todo: TodoItem): boolean {
-  const s = getTodoStatus(todo);
-  return s === "completed" || s === "cancelled";
-}
-
-function isOverdue(date: string): boolean {
-  return new Date(date) < new Date();
-}
-
-function TodoCheckbox({ todo }: { todo: TodoItem }) {
-  const status = getTodoStatus(todo);
-  const cfg = statusConfig[status] ?? statusConfig.pending;
-  const done = isTodoDone(todo);
+function TodoItemRow({
+  todo,
+  onPress,
+}: {
+  todo: TodoItem;
+  onPress?: () => void;
+}) {
+  const completedSubtasks = todo.subtasks.filter((s) => s.completed).length;
+  const totalSubtasks = todo.subtasks.length;
+  const dueInfo = todo.due_date ? formatDueDate(todo.due_date) : null;
 
   return (
-    <View
-      className={`mt-0.5 w-4 h-4 rounded-full border-2 items-center justify-center ${cfg.borderColor}`}
-      style={
-        done
-          ? {
-              backgroundColor:
-                status === "completed"
-                  ? "rgba(34,197,94,0.9)"
-                  : "rgba(239,68,68,0.85)",
-            }
-          : undefined
-      }
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+      className="rounded-xl bg-zinc-900 p-3 mb-2"
     >
-      {done && (
-        <AppIcon
-          icon={CheckmarkCircle02Icon}
-          size={10}
-          color="#ffffff"
-          strokeWidth={2.5}
+      <View className="flex-row items-start gap-2">
+        <View
+          className={`mt-1.5 h-3.5 w-3.5 rounded-full shrink-0 border-2 ${
+            todo.completed
+              ? "border-emerald-500 bg-emerald-500"
+              : "border-zinc-600"
+          }`}
         />
-      )}
-    </View>
+        <View className="flex-1">
+          <Text
+            className={`text-sm font-medium ${
+              todo.completed ? "text-zinc-500 line-through" : "text-zinc-100"
+            }`}
+            numberOfLines={2}
+          >
+            {todo.title}
+          </Text>
+
+          <View className="flex-row flex-wrap items-center gap-1.5 mt-1.5">
+            {todo.priority !== "none" && (
+              <View className="flex-row items-center gap-1">
+                <View
+                  className={`h-2 w-2 rounded-full ${PRIORITY_DOT_COLOR[todo.priority]}`}
+                />
+                <Text
+                  className={`text-xs capitalize ${
+                    todo.priority === "high"
+                      ? "text-red-400"
+                      : todo.priority === "medium"
+                        ? "text-amber-400"
+                        : "text-blue-400"
+                  }`}
+                >
+                  {todo.priority}
+                </Text>
+              </View>
+            )}
+
+            {dueInfo && (
+              <View
+                className={`rounded-full px-1.5 py-0.5 ${
+                  dueInfo.isOverdue
+                    ? "bg-red-500/15"
+                    : dueInfo.isToday
+                      ? "bg-amber-500/15"
+                      : "bg-zinc-800"
+                }`}
+              >
+                <Text
+                  className={`text-xs ${
+                    dueInfo.isOverdue
+                      ? "text-red-400"
+                      : dueInfo.isToday
+                        ? "text-amber-400"
+                        : "text-zinc-400"
+                  }`}
+                >
+                  {dueInfo.label}
+                </Text>
+              </View>
+            )}
+
+            {todo.project && (
+              <View className="flex-row items-center gap-1 rounded-full bg-zinc-800 px-1.5 py-0.5">
+                {todo.project.color ? (
+                  <View
+                    className="h-2 w-2 rounded-full"
+                    style={{ backgroundColor: todo.project.color }}
+                  />
+                ) : null}
+                <Text className="text-xs text-zinc-400" numberOfLines={1}>
+                  {todo.project.name}
+                </Text>
+              </View>
+            )}
+
+            {totalSubtasks > 0 && (
+              <View className="rounded-full bg-zinc-800 px-1.5 py-0.5">
+                <Text className="text-xs text-zinc-400">
+                  {completedSubtasks}/{totalSubtasks} subtasks
+                </Text>
+              </View>
+            )}
+          </View>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
-function StatusBadge({ status }: { status: TodoStatus }) {
-  const cfg = statusConfig[status] ?? statusConfig.pending;
-  if (status === "pending") return null;
+function StatBox({
+  value,
+  label,
+  color,
+}: {
+  value: number;
+  label: string;
+  color: string;
+}) {
   return (
-    <View className={`rounded-full px-2 py-0.5 ${cfg.bgColor}`}>
-      <Text className={`text-xs ${cfg.textColor}`}>{cfg.label}</Text>
+    <View className="flex-1 rounded-xl bg-zinc-900 p-3 items-center">
+      <Text className={`text-xl font-semibold ${color}`}>{value}</Text>
+      <Text className="text-xs text-zinc-500 mt-0.5">{label}</Text>
     </View>
   );
 }
 
 export function TodoCard({ data }: { data: TodoData }) {
-  // Statistics View
-  if (data.action === "stats" && data.stats) {
+  const action = data.action ?? "list";
+
+  // Stats view
+  if (action === "stats" && data.stats) {
+    const s = data.stats;
     return (
-      <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-3 px-4">
-          <Text className="text-sm text-foreground mb-3">Task Overview</Text>
-          <View className="flex-row flex-wrap gap-2">
-            <View className="rounded-xl bg-white/5 p-3 items-center flex-1 min-w-[80px]">
-              <Text className="text-xl font-semibold text-foreground">
-                {data.stats.total}
-              </Text>
-              <Text className="text-xs text-muted">Total</Text>
-            </View>
-            <View className="rounded-xl bg-white/5 p-3 items-center flex-1 min-w-[80px]">
-              <Text className="text-xl font-semibold text-green-500">
-                {data.stats.completed}
-              </Text>
-              <Text className="text-xs text-muted">Done</Text>
-            </View>
-            <View className="rounded-xl bg-white/5 p-3 items-center flex-1 min-w-[80px]">
-              <Text className="text-xl font-semibold text-muted">
-                {data.stats.pending}
-              </Text>
-              <Text className="text-xs text-muted">Pending</Text>
-            </View>
+      <Card variant="secondary" className="mx-4 my-2 rounded-xl">
+        <Card.Body className="p-4">
+          <Text className="text-xs text-muted mb-3">Task Overview</Text>
+          <View className="flex-row gap-2 mb-2">
+            <StatBox value={s.total} label="Total" color="text-zinc-100" />
+            <StatBox
+              value={s.completed}
+              label="Done"
+              color="text-emerald-500"
+            />
+            <StatBox value={s.pending} label="Pending" color="text-amber-500" />
           </View>
-          {(data.stats.overdue ?? 0) > 0 && (
-            <View className="flex-row flex-wrap gap-2 mt-2">
-              <View className="rounded-xl bg-white/5 p-3 items-center flex-1 min-w-[80px]">
-                <Text className="text-xl font-semibold text-red-500">
-                  {data.stats.overdue}
-                </Text>
-                <Text className="text-xs text-muted">Overdue</Text>
-              </View>
-              {(data.stats.today ?? 0) > 0 && (
-                <View className="rounded-xl bg-white/5 p-3 items-center flex-1 min-w-[80px]">
-                  <Text className="text-xl font-semibold text-primary">
-                    {data.stats.today}
-                  </Text>
-                  <Text className="text-xs text-muted">Today</Text>
-                </View>
+          {(s.overdue > 0 || s.today > 0 || s.upcoming > 0) && (
+            <View className="flex-row gap-2">
+              {s.overdue > 0 && (
+                <StatBox
+                  value={s.overdue}
+                  label="Overdue"
+                  color="text-red-500"
+                />
               )}
-              {(data.stats.upcoming ?? 0) > 0 && (
-                <View className="rounded-xl bg-white/5 p-3 items-center flex-1 min-w-[80px]">
-                  <Text className="text-xl font-semibold text-purple-500">
-                    {data.stats.upcoming}
-                  </Text>
-                  <Text className="text-xs text-muted">Soon</Text>
-                </View>
+              {s.today > 0 && (
+                <StatBox value={s.today} label="Today" color="text-blue-500" />
+              )}
+              {s.upcoming > 0 && (
+                <StatBox
+                  value={s.upcoming}
+                  label="Soon"
+                  color="text-purple-500"
+                />
               )}
             </View>
           )}
@@ -235,77 +262,40 @@ export function TodoCard({ data }: { data: TodoData }) {
     );
   }
 
-  // Projects View
+  // Projects view
   if (data.projects && data.projects.length > 0 && !data.todos) {
-    const totalTasks = data.projects.reduce(
-      (sum, p) => sum + (p.todo_count ?? 0),
-      0,
-    );
-    const avgCompletion =
-      data.projects.length > 0
-        ? Math.round(
-            data.projects.reduce(
-              (sum, p) => sum + (p.completion_percentage ?? 0),
-              0,
-            ) / data.projects.length,
-          )
-        : 0;
-
     return (
-      <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-3 px-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-sm text-foreground">Your Projects</Text>
-            <View className="flex-row items-center gap-2">
-              {totalTasks > 0 && (
-                <Text className="text-xs text-muted">{totalTasks} tasks</Text>
-              )}
-              {avgCompletion > 0 && (
-                <Text className="text-xs text-green-500">
-                  {avgCompletion}% done
-                </Text>
-              )}
-            </View>
-          </View>
+      <Card variant="secondary" className="mx-4 my-2 rounded-xl">
+        <Card.Body className="p-4">
+          <Text className="text-xs text-muted mb-3">Your Projects</Text>
           {data.projects.map((project) => (
             <View
-              key={project.id || project.name}
-              className="rounded-xl bg-white/5 border border-white/8 p-3 mb-2 flex-row items-center justify-between"
+              key={project.id}
+              className="flex-row items-center justify-between rounded-xl bg-zinc-900 p-3 mb-2"
             >
-              <View className="flex-row items-center gap-3 flex-1">
+              <View className="flex-row items-center gap-2 flex-1">
                 {project.color ? (
                   <View
-                    className="w-3 h-3 rounded-full"
+                    className="h-3 w-3 rounded-full"
                     style={{ backgroundColor: project.color }}
                   />
-                ) : (
-                  <AppIcon
-                    icon={FolderIcon}
-                    size={12}
-                    color="#71717a"
-                    strokeWidth={1.5}
-                  />
-                )}
-                <Text className="text-sm font-medium text-foreground flex-1">
+                ) : null}
+                <Text
+                  className="text-sm font-medium text-zinc-100"
+                  numberOfLines={1}
+                >
                   {project.name}
                 </Text>
               </View>
-              <View className="flex-row items-center gap-2">
+              <View className="flex-row items-center gap-1">
                 {project.todo_count !== undefined && (
-                  <Text className="text-xs text-muted">
+                  <Text className="text-xs text-zinc-500">
                     {project.todo_count} tasks
                   </Text>
                 )}
                 {project.completion_percentage !== undefined && (
-                  <Text
-                    className={`text-xs font-medium ${
-                      project.completion_percentage >= 80
-                        ? "text-green-500"
-                        : project.completion_percentage >= 40
-                          ? "text-primary"
-                          : "text-muted"
-                    }`}
-                  >
+                  <Text className="text-xs text-zinc-500">
+                    {" · "}
                     {Math.round(project.completion_percentage)}%
                   </Text>
                 )}
@@ -317,165 +307,31 @@ export function TodoCard({ data }: { data: TodoData }) {
     );
   }
 
-  // Todos List View
+  // Todos list view
   if (data.todos && data.todos.length > 0) {
-    const actionLabel =
-      data.action === "search"
+    const headerLabel =
+      action === "search"
         ? "Search Results"
-        : data.action === "create"
+        : action === "create"
           ? "New Task"
-          : data.action === "update"
+          : action === "update"
             ? "Updated Tasks"
-            : "Tasks";
-
-    const completedCount = data.todos.filter((t) => isTodoDone(t)).length;
-    const totalCount = data.todos.length;
+            : action === "delete"
+              ? "Deleted Tasks"
+              : "Tasks";
 
     return (
-      <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-3 px-4">
+      <Card variant="secondary" className="mx-4 my-2 rounded-xl">
+        <Card.Body className="p-4">
           <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-sm text-foreground">{actionLabel}</Text>
-            <View className="flex-row items-center gap-2">
-              {completedCount > 0 ? (
-                <Text className="text-xs text-green-500">
-                  {completedCount}/{totalCount} done
-                </Text>
-              ) : (
-                <Text className="text-xs text-muted">
-                  {totalCount} {totalCount === 1 ? "task" : "tasks"}
-                </Text>
-              )}
-            </View>
+            <Text className="text-xs text-muted">{headerLabel}</Text>
+            <Text className="text-xs text-muted">
+              {data.todos.length} {data.todos.length === 1 ? "task" : "tasks"}
+            </Text>
           </View>
-
-          {data.todos.map((todo) => {
-            const done = isTodoDone(todo);
-            const status = getTodoStatus(todo);
-
-            return (
-              <View
-                key={todo.id || todo.title}
-                className="rounded-xl bg-white/5 border border-white/8 p-3 mb-2"
-              >
-                <View className="flex-row items-start gap-3">
-                  <TodoCheckbox todo={todo} />
-
-                  <View className="flex-1">
-                    <View className="flex-row items-start justify-between gap-2">
-                      <Text
-                        className={`text-sm font-medium flex-1 ${
-                          done ? "text-muted line-through" : "text-foreground"
-                        }`}
-                      >
-                        {todo.title}
-                      </Text>
-                      {status !== "pending" && <StatusBadge status={status} />}
-                    </View>
-
-                    {/* Metadata row */}
-                    <View className="flex-row flex-wrap items-center gap-2 mt-2">
-                      {todo.priority &&
-                        todo.priority !== "none" &&
-                        priorityConfig[todo.priority] && (
-                          <View
-                            className={`rounded-full px-2 py-0.5 flex-row items-center gap-1 ${priorityConfig[todo.priority].bgColor}`}
-                          >
-                            <AppIcon
-                              icon={Flag02Icon}
-                              size={10}
-                              color={priorityConfig[todo.priority].iconColor}
-                              strokeWidth={1.5}
-                            />
-                            <Text
-                              className={`text-xs ${priorityConfig[todo.priority].textColor}`}
-                            >
-                              {priorityConfig[todo.priority].label}
-                            </Text>
-                          </View>
-                        )}
-
-                      {todo.due_date && (
-                        <View
-                          className={`rounded-full px-2 py-0.5 flex-row items-center gap-1 ${
-                            !done && isOverdue(todo.due_date)
-                              ? "bg-red-500/10"
-                              : "bg-white/5"
-                          }`}
-                        >
-                          <AppIcon
-                            icon={Calendar03Icon}
-                            size={10}
-                            color={
-                              !done && isOverdue(todo.due_date)
-                                ? "#ef4444"
-                                : "#71717a"
-                            }
-                            strokeWidth={1.5}
-                          />
-                          <Text
-                            className={`text-xs ${
-                              !done && isOverdue(todo.due_date)
-                                ? "text-red-500"
-                                : "text-muted"
-                            }`}
-                          >
-                            {formatDueDate(todo.due_date)}
-                          </Text>
-                        </View>
-                      )}
-
-                      {todo.project?.name && (
-                        <View className="rounded-full bg-white/5 px-2 py-0.5 flex-row items-center gap-1">
-                          {todo.project.color ? (
-                            <View
-                              className="w-2 h-2 rounded-full"
-                              style={{ backgroundColor: todo.project.color }}
-                            />
-                          ) : (
-                            <AppIcon
-                              icon={FolderIcon}
-                              size={10}
-                              color="#71717a"
-                              strokeWidth={1.5}
-                            />
-                          )}
-                          <Text className="text-xs text-muted">
-                            {todo.project.name}
-                          </Text>
-                        </View>
-                      )}
-
-                      {todo.labels?.map((label) => (
-                        <View
-                          key={label}
-                          className="rounded-full bg-white/5 px-2 py-0.5 flex-row items-center gap-1"
-                        >
-                          <AppIcon
-                            icon={LayoutGridIcon}
-                            size={10}
-                            color="#71717a"
-                            strokeWidth={1.5}
-                          />
-                          <Text className="text-xs text-muted">{label}</Text>
-                        </View>
-                      ))}
-
-                      {todo.subtasks && todo.subtasks.length > 0 && (
-                        <View className="rounded-full bg-white/5 px-2 py-0.5">
-                          <Text className="text-xs text-muted">
-                            {todo.subtasks.filter((s) => s.completed).length}/
-                            {todo.subtasks.length} subtasks
-                          </Text>
-                        </View>
-                      )}
-                    </View>
-                  </View>
-                </View>
-              </View>
-            );
-          })}
-
+          {data.todos.map((todo) => (
+            <TodoItemRow key={todo.id} todo={todo} />
+          ))}
           {data.message && (
             <Text className="text-xs text-muted mt-1">{data.message}</Text>
           )}
@@ -484,40 +340,40 @@ export function TodoCard({ data }: { data: TodoData }) {
     );
   }
 
-  // Empty state
-  if (data.action === "list" && (!data.todos || data.todos.length === 0)) {
+  // Empty state for list action
+  if (action === "list" && (!data.todos || data.todos.length === 0)) {
     return (
-      <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-6 px-4 items-center gap-2">
-          <AppIcon
-            icon={CheckmarkCircle02Icon}
-            size={28}
-            color="#3f3f46"
-            strokeWidth={1.5}
-          />
-          <Text className="text-sm text-foreground">No tasks found</Text>
+      <Card variant="secondary" className="mx-4 my-2 rounded-xl">
+        <Card.Body className="p-4 items-center">
+          <Text className="text-zinc-300 text-sm">No tasks found</Text>
           {data.message && (
-            <Text className="text-xs text-muted">{data.message}</Text>
+            <Text className="text-xs text-muted mt-1">{data.message}</Text>
           )}
         </Card.Body>
       </Card>
     );
   }
 
-  // Success/Action Message
+  // Action message (delete/success with no todos)
   if (data.message && !data.todos && !data.stats && !data.projects) {
-    const isDeleteAction = data.action === "delete";
-
     return (
-      <Card variant="secondary" className="mx-4 my-2 rounded-2xl bg-[#171920]">
-        <Card.Body className="py-3 px-4">
+      <Card variant="secondary" className="mx-4 my-2 rounded-xl">
+        <Card.Body className="p-4">
           <View className="flex-row items-center gap-2">
-            <Text
-              className={`text-xs ${isDeleteAction ? "text-red-500" : "text-green-500"}`}
+            <View
+              className={`h-4 w-4 rounded-full items-center justify-center ${
+                action === "delete" ? "bg-red-500/20" : "bg-emerald-500/20"
+              }`}
             >
-              ●
-            </Text>
-            <Text className="text-sm text-foreground">{data.message}</Text>
+              <Text
+                className={`text-xs font-bold ${
+                  action === "delete" ? "text-red-400" : "text-emerald-400"
+                }`}
+              >
+                {action === "delete" ? "✕" : "✓"}
+              </Text>
+            </View>
+            <Text className="text-sm text-zinc-100 flex-1">{data.message}</Text>
           </View>
         </Card.Body>
       </Card>
