@@ -2,7 +2,7 @@
 
 from typing import Any, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import COMMUNITY_CACHE_TTL
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import integrations_collection
@@ -22,6 +22,12 @@ async def list_community_integrations(
     search: Optional[str] = None,
 ) -> CommunityListResponse:
     """List public integrations for the community marketplace."""
+    log.set(
+        integration={
+            "provider": category or "all",
+            "action": "list_community_integrations",
+        }
+    )
     limit = min(limit, 100)
 
     # Search path - semantic search first, fallback to MongoDB
@@ -70,7 +76,7 @@ async def _search_community_integrations(
         )
 
     # Fallback to MongoDB regex search
-    logger.info(f"ChromaDB returned no results for '{query}', falling back to MongoDB")
+    log.info(f"ChromaDB returned no results for '{query}', falling back to MongoDB")
     search_regex = {"$regex": query, "$options": "i"}
     mongo_query: dict[str, Any] = {
         "is_public": True,

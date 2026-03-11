@@ -12,7 +12,7 @@ from llama_cloud_services import LlamaParse
 from llama_cloud_services.parse.utils import ResultType
 
 from app.agents.llm.client import init_llm
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.models.files_models import DocumentPageModel, DocumentSummaryModel
 
@@ -44,6 +44,7 @@ class DocumentProcessor:
         Returns:
             Appropriate summary based on file type
         """
+        log.set(filename=filename, content_type=content_type)
         try:
             if content_type.startswith("image/"):
                 return await self.process_image(file_content)
@@ -60,7 +61,7 @@ class DocumentProcessor:
                 ext = os.path.splitext(filename)[1].lower()
                 return f"File of type {ext} (no content extraction available)"
         except Exception as e:
-            logger.error(f"Failed to process file {filename}: {str(e)}", exc_info=True)
+            log.error(f"Failed to process file {filename}: {str(e)}", exc_info=True)
             return f"File processing failed for {filename}"
 
     async def process_image(self, image_data: bytes) -> str:
@@ -108,7 +109,7 @@ class DocumentProcessor:
             return description
 
         except Exception as e:
-            logger.error(f"Failed to process image: {str(e)}", exc_info=True)
+            log.error(f"Failed to process image: {str(e)}", exc_info=True)
             return "Image description could not be generated."
 
     async def process_doc(
@@ -175,7 +176,7 @@ class DocumentProcessor:
             ]
 
         except Exception as e:
-            logger.error(f"Failed to process PDF: {str(e)}", exc_info=True)
+            log.error(f"Failed to process PDF: {str(e)}", exc_info=True)
             return []
 
     async def process_text(self, text_data: bytes) -> DocumentSummaryModel:
@@ -206,7 +207,7 @@ class DocumentProcessor:
             )
 
         except Exception as e:
-            logger.error(f"Failed to process text: {str(e)}", exc_info=True)
+            log.error(f"Failed to process text: {str(e)}", exc_info=True)
             raise e
 
     async def _generate_text_summary(self, text: str) -> str:
@@ -228,7 +229,7 @@ class DocumentProcessor:
             return str(response)
 
         except Exception as e:
-            logger.error(f"Failed to generate summary: {str(e)}", exc_info=True)
+            log.error(f"Failed to generate summary: {str(e)}", exc_info=True)
             return "Summary could not be generated."
 
 

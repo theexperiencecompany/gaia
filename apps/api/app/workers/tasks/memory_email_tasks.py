@@ -1,6 +1,7 @@
 """ARQ worker task for Gmail email memory processing."""
 
 from app.agents.memory.email_processor import process_gmail_to_memory
+from shared.py.wide_events import log, wide_task
 
 
 async def process_gmail_emails_to_memory(ctx, user_id: str) -> str:
@@ -14,21 +15,26 @@ async def process_gmail_emails_to_memory(ctx, user_id: str) -> str:
     Returns:
         Processing result message
     """
-    try:
+    async with wide_task("process_gmail_emails_to_memory", user_id=user_id):
         result = await process_gmail_to_memory(user_id)
 
         if result.get("already_processed", False):
-            return f"Gmail emails already processed for user {user_id}"
+            message = f"Gmail emails already processed for user {user_id}"
+            log.info(message)
+            return message
 
         total = result.get("total", 0)
         successful = result.get("successful", 0)
         failed = result.get("failed", 0)
         processing_complete = result.get("processing_complete", False)
+        log.set(total=total, successful=successful, failed=failed)
 
         if processing_complete:
-            return f"Gmail email processing completed for user {user_id}: {successful}/{total} emails processed successfully"
+            message = f"Gmail email processing completed for user {user_id}: {successful}/{total} emails processed successfully"
+            log.info(message)
+            return message
         else:
+            log.warning(
+                f"Gmail email processing incomplete for user {user_id}: {failed} failed",
+            )
             return f"Gmail email processing failed for user {user_id}: {successful}/{total} emails processed, {failed} failed - not marking as complete"
-
-    except Exception as e:
-        return f"Fatal error in Gmail email processing for user {user_id}: {e}"

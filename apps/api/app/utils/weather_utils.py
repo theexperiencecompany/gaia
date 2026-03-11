@@ -4,7 +4,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import ONE_HOUR_TTL
 from app.db.redis import get_cache, set_cache
@@ -181,6 +181,7 @@ async def user_weather(location_name: Optional[str] = None):
     Yields:
         str: JSON-formatted weather data as server-sent events
     """
+    log.set(operation="user_weather", location_name=location_name)
     try:
         api_key = settings.OPENWEATHER_API_KEY
         if not api_key:
@@ -192,7 +193,7 @@ async def user_weather(location_name: Optional[str] = None):
 
             cached_weather = await get_cache(cache_key)
             if cached_weather:
-                logger.debug(f"Using cached weather data for location {cached_weather}")
+                log.debug(f"Using cached weather data for location {cached_weather}")
                 return cached_weather
 
             weather = await prepare_weather_data(
@@ -205,11 +206,11 @@ async def user_weather(location_name: Optional[str] = None):
 
         except Exception as e:
             error_msg = f"Could not find location: {location_name}"
-            logger.error(f"Error getting location data: {str(e)}")
+            log.error(f"Error getting location data: {str(e)}")
             return error_msg
 
     except Exception as e:
-        logger.error(f"Error fetching weather: {str(e)}")
+        log.error(f"Error fetching weather: {str(e)}")
         return f"Failed to fetch weather: {str(e)}"
 
 
@@ -305,6 +306,7 @@ async def geocode_location(location_name: str) -> Dict[str, Any]:
     Returns:
         Dict[str, Any]: Dictionary containing location data including latitude and longitude
     """
+    log.set(operation="geocode_location", location_name=location_name)
     try:
         # OpenStreetMap Nominatim API follows usage policy requiring a valid user agent
         headers = {
@@ -337,5 +339,5 @@ async def geocode_location(location_name: str) -> Dict[str, Any]:
         }
 
     except Exception as e:
-        logger.error(f"Error geocoding location '{location_name}': {str(e)}")
+        log.error(f"Error geocoding location '{location_name}': {str(e)}")
         raise Exception(f"Failed to geocode location: {str(e)}")

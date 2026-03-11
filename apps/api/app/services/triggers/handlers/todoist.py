@@ -4,7 +4,7 @@ Todoist trigger handler.
 
 from typing import Any, Dict, List, Set
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.trigger_configs import TodoistNewTaskCreatedConfig
 from app.models.workflow_models import TriggerConfig, TriggerType, Workflow
@@ -76,6 +76,7 @@ class TodoistTriggerHandler(TriggerHandler):
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:
         """Find workflows matching a Todoist trigger event."""
+        log.set(trigger={"provider": "todoist", "event": event_type})
         try:
             query = {
                 "activated": True,
@@ -95,13 +96,13 @@ class TodoistTriggerHandler(TriggerHandler):
                     workflow = Workflow(**workflow_doc)
                     workflows.append(workflow)
                 except Exception as e:
-                    logger.error(f"Error processing workflow document: {e}")
+                    log.error(f"Error processing workflow document: {e}")
                     continue
 
             return workflows
 
         except Exception as e:
-            logger.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
 

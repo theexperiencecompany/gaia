@@ -3,13 +3,18 @@
 import asyncio
 from datetime import datetime, timezone
 
-from app.config.loggers import llm_logger as logger
+from shared.py.wide_events import log
 from app.services.memory_service import memory_service
 from app.agents.templates.mail_templates import GmailMessageParser
 
 
 async def store_user_message_memory(user_id: str, message: str, conversation_id: str):
     """Store user message in memory and return formatted data if successful."""
+    log.set(
+        user_id=user_id,
+        conversation_id=conversation_id,
+        operation="store_user_message_memory",
+    )
     try:
         result = await memory_service.store_memory(
             message=message,
@@ -31,7 +36,7 @@ async def store_user_message_memory(user_id: str, message: str, conversation_id:
                 "conversation_id": conversation_id,
             }
     except Exception as e:
-        logger.error(f"Error storing memory: {e}")
+        log.error(f"Error storing memory: {e}")
 
     return None
 
@@ -53,7 +58,7 @@ def check_memory_task_yield(memory_task, memory_yielded: bool):
             if memory_stored:
                 return memory_stored, True
         except Exception as e:
-            logger.error(f"Error getting memory task result: {e}")
+            log.error(f"Error getting memory task result: {e}")
             return None, True
     return None, memory_yielded
 
@@ -66,7 +71,7 @@ async def await_remaining_memory_task(memory_task, memory_yielded: bool):
             if memory_stored:
                 return memory_stored
         except Exception as e:
-            logger.error(f"Error awaiting memory task: {e}")
+            log.error(f"Error awaiting memory task: {e}")
     return None
 
 

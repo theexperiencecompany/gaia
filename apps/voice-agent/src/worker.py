@@ -13,7 +13,6 @@ from contextlib import asynccontextmanager
 from typing import Optional, Any
 
 import aiohttp
-from shared.py.logging import get_contextual_logger
 from livekit import rtc  # type: ignore[attr-defined]
 from livekit.agents import (
     NOT_GIVEN,
@@ -31,6 +30,10 @@ from livekit.agents import (
 from livekit.agents.llm import LLM, ChatChunk, ChatContext, ChoiceDelta
 from livekit.plugins import deepgram, elevenlabs, noise_cancellation, silero  # type: ignore[attr-defined]
 from livekit.plugins.turn_detector.multilingual import MultilingualModel
+from shared.py.logging import configure_file_logging, get_contextual_logger
+
+# Write structured JSON log files for Promtail to scrape in local dev
+configure_file_logging("./logs")
 
 logger = get_contextual_logger("voice")
 

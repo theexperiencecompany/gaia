@@ -3,7 +3,7 @@
 import asyncio
 from typing import Optional
 
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import MCP_TOOLS_CACHE_KEY, MCP_TOOLS_CACHE_TTL
 from app.db.mongodb.collections import integrations_collection
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -38,7 +38,7 @@ class MCPToolsStore:
             await delete_cache(MCP_TOOLS_CACHE_KEY)
             asyncio.create_task(self._refresh_cache())
         except Exception as e:
-            logger.error(f"[{integration_id}] Error storing tools: {e}")
+            log.error(f"[{integration_id}] Error storing tools: {e}")
             raise
 
     async def get_tools(self, integration_id: str) -> Optional[list[dict]]:
@@ -50,7 +50,7 @@ class MCPToolsStore:
             )
             return doc.get("tools") if doc else None
         except Exception as e:
-            logger.error(f"Error getting tools for {integration_id}: {e}")
+            log.error(f"Error getting tools for {integration_id}: {e}")
             return None
 
     async def get_all_mcp_tools(self) -> dict[str, dict]:
@@ -79,7 +79,7 @@ class MCPToolsStore:
             await set_cache(MCP_TOOLS_CACHE_KEY, grouped, ttl=MCP_TOOLS_CACHE_TTL)
             return grouped
         except Exception as e:
-            logger.error(f"Error getting all MCP tools: {e}")
+            log.error(f"Error getting all MCP tools: {e}")
             return {}
 
     async def _refresh_cache(self) -> None:
@@ -87,7 +87,7 @@ class MCPToolsStore:
         try:
             await self.get_all_mcp_tools()
         except Exception as e:
-            logger.warning(f"Failed to refresh MCP tools cache: {e}")
+            log.warning(f"Failed to refresh MCP tools cache: {e}")
 
 
 def get_mcp_tools_store() -> MCPToolsStore:

@@ -24,7 +24,7 @@ import inspect
 import time
 from typing import Callable
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 
 
 def async_timer(func: Callable) -> Callable:
@@ -44,11 +44,17 @@ def async_timer(func: Callable) -> Callable:
         try:
             result = await func(*args, **kwargs)
             execution_time = time.time() - start_time
-            logger.info(f"⏱️  {func.__name__} completed in {execution_time:.3f}s")
+            log.info(f"⏱️  {func.__name__} completed in {execution_time:.3f}s")
+            if execution_time > 1.0:
+                log.warning(
+                    "slow function",
+                    function=func.__name__,
+                    duration_ms=round(execution_time * 1000, 2),
+                )
             return result
         except Exception as e:
             execution_time = time.time() - start_time
-            logger.error(f"⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
+            log.error(f"⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
             raise
 
     return wrapper
@@ -71,11 +77,17 @@ def sync_timer(func: Callable) -> Callable:
         try:
             result = func(*args, **kwargs)
             execution_time = time.time() - start_time
-            logger.info(f"⏱️  {func.__name__} completed in {execution_time:.3f}s")
+            log.info(f"⏱️  {func.__name__} completed in {execution_time:.3f}s")
+            if execution_time > 1.0:
+                log.warning(
+                    "slow function",
+                    function=func.__name__,
+                    duration_ms=round(execution_time * 1000, 2),
+                )
             return result
         except Exception as e:
             execution_time = time.time() - start_time
-            logger.error(f"⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
+            log.error(f"⏱️  {func.__name__} failed after {execution_time:.3f}s: {e}")
             raise
 
     return wrapper
@@ -124,13 +136,19 @@ def detailed_timer(include_args: bool = False, include_kwargs: bool = False):
                 try:
                     result = await func(*args, **kwargs)
                     execution_time = time.time() - start_time
-                    logger.info(
+                    log.info(
                         f"⏱️  {func.__name__}{arg_info} completed in {execution_time:.3f}s"
                     )
+                    if execution_time > 1.0:
+                        log.warning(
+                            "slow function",
+                            function=func.__name__,
+                            duration_ms=round(execution_time * 1000, 2),
+                        )
                     return result
                 except Exception as e:
                     execution_time = time.time() - start_time
-                    logger.error(
+                    log.error(
                         f"⏱️  {func.__name__}{arg_info} failed after {execution_time:.3f}s: {e}"
                     )
                     raise
@@ -150,13 +168,19 @@ def detailed_timer(include_args: bool = False, include_kwargs: bool = False):
                 try:
                     result = func(*args, **kwargs)
                     execution_time = time.time() - start_time
-                    logger.info(
+                    log.info(
                         f"⏱️  {func.__name__}{arg_info} completed in {execution_time:.3f}s"
                     )
+                    if execution_time > 1.0:
+                        log.warning(
+                            "slow function",
+                            function=func.__name__,
+                            duration_ms=round(execution_time * 1000, 2),
+                        )
                     return result
                 except Exception as e:
                     execution_time = time.time() - start_time
-                    logger.error(
+                    log.error(
                         f"⏱️  {func.__name__}{arg_info} failed after {execution_time:.3f}s: {e}"
                     )
                     raise

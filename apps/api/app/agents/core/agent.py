@@ -19,7 +19,7 @@ from typing import AsyncGenerator, Optional
 
 from app.agents.core.graph_manager import GraphManager
 from app.agents.core.messages import construct_langchain_messages
-from app.config.loggers import llm_logger as logger
+from shared.py.wide_events import log
 from app.helpers.agent_helpers import (
     build_agent_config,
     build_initial_state,
@@ -111,6 +111,17 @@ async def _core_agent_logic(
         tool_category=request.toolCategory,
     )
 
+    log.set(
+        agent=dict(
+            model=config["configurable"].get("model_name"),
+            has_workflow=bool(request.selectedWorkflow),
+            has_trigger_context=bool(trigger_context),
+            has_calendar_event=bool(request.selectedCalendarEvent),
+            has_reply=bool(request.replyToMessage),
+            history_message_count=len(history),
+        )
+    )
+
     return graph, initial_state, config
 
 
@@ -149,7 +160,7 @@ async def call_agent(
         return execute_graph_streaming(graph, initial_state, config)
 
     except Exception as exc:
-        logger.error(f"Error when calling agent: {exc}")
+        log.error(f"Error when calling agent: {exc}")
         error_message = f"Error when calling agent: {str(exc)}"
 
         async def error_generator():
@@ -185,8 +196,27 @@ async def call_agent_silent(
             usage_metadata_callback=usage_metadata_callback,
         )
 
-        return await execute_graph_silent(graph, initial_state, config)
+        result = await execute_graph_silent(graph, initial_state, config)
+
+        if usage_metadata_callback and hasattr(
+            usage_metadata_callback, "usage_metadata"
+        ):
+            usage = usage_metadata_callback.usage_metadata or {}
+            total_input = sum(
+                v.get("input_tokens", 0) for v in usage.values() if isinstance(v, dict)
+            )
+            total_output = sum(
+                v.get("output_tokens", 0) for v in usage.values() if isinstance(v, dict)
+            )
+            log.set(
+                agent={"model": config["configurable"].get("model_name")},
+                token_input=total_input,
+                token_output=total_output,
+                token_total=total_input + total_output,
+            )
+
+        return result
 
     except Exception as exc:
-        logger.error(f"Error when calling silent agent: {exc}")
+        log.error(f"Error when calling silent agent: {exc}")
         return f"Error when calling silent agent: {str(exc)}", {}

@@ -7,7 +7,7 @@ from langchain_core.tools import tool
 from langgraph.config import get_stream_writer
 from e2b_code_interpreter import Sandbox
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.templates.docstrings.code_exec_docs import CODE_EXECUTION_TOOL
 from app.decorators import with_doc, with_rate_limiting
@@ -27,6 +27,8 @@ async def execute_code(
     user_id: Annotated[str, "User ID for chart uploads"] = "anonymous",
 ) -> str:
     """Execute code safely in an isolated E2B sandbox with chart detection."""
+
+    log.set(tool={"name": "execute_code", "action": "execute"})
 
     # Input validation
     if not code or not code.strip():
@@ -67,18 +69,18 @@ async def execute_code(
 
         charts, chart_errors = await process_chart_results(execution.results, user_id)
 
-        logger.info(
+        log.info(
             f"Charts processed: {len(charts) if charts else 0}, errors: {len(chart_errors) if chart_errors else 0}"
         )
         if charts:
-            logger.info(f"Raw charts before validation: {charts}")
+            log.info(f"Raw charts before validation: {charts}")
 
         # Validate chart data
         if charts:
             charts = validate_chart_data(charts)
-            logger.info(f"Charts after validation: {len(charts) if charts else 0}")
+            log.info(f"Charts after validation: {len(charts) if charts else 0}")
             if charts:
-                logger.info(f"Validated charts: {charts}")
+                log.info(f"Validated charts: {charts}")
 
         # Update code data with results
         code_data["code_data"]["output"] = {
@@ -94,9 +96,9 @@ async def execute_code(
 
         if charts:
             code_data["code_data"]["charts"] = charts
-            logger.info(f"Adding {len(charts)} charts to code_data")
+            log.info(f"Adding {len(charts)} charts to code_data")
         else:
-            logger.info("No charts to add to code_data")
+            log.info("No charts to add to code_data")
 
         # Include chart processing errors in output if any
         if chart_errors:
@@ -112,7 +114,7 @@ async def execute_code(
                     )
 
         code_data["code_data"]["status"] = "completed"
-        logger.info(f"Streaming final code_data: {code_data}")
+        log.info(f"Streaming final code_data: {code_data}")
         writer(code_data)
 
         # Format output for return
@@ -147,7 +149,7 @@ async def execute_code(
 
     except Exception as e:
         error_msg = f"Error executing code: {str(e)}"
-        logger.error(error_msg)
+        log.error(error_msg)
 
         # Send error state to frontend
         if writer:
@@ -170,7 +172,7 @@ async def execute_code(
                 )
             except Exception as streaming_error:
                 # Log streaming errors but don't mask the original error
-                logger.error(
+                log.error(
                     f"Failed to send error state to frontend: {str(streaming_error)}",
                     exc_info=True,
                 )

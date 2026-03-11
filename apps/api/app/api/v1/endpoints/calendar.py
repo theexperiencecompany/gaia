@@ -20,6 +20,7 @@ from app.services.calendar_service import (
 )
 from app.utils.composio_token_utils import get_google_calendar_token
 from fastapi import APIRouter, Depends, HTTPException, Query
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -43,10 +44,19 @@ async def get_calendar_list(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
+        log.set(user={"id": user_id}, calendar={"operation": "list_calendars"})
+
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
 
-        return calendar_service.list_calendars(access_token)
+        calendars = calendar_service.list_calendars(access_token)
+        log.set(
+            calendar={
+                "operation": "list_calendars",
+                "event_count": len(calendars) if isinstance(calendars, list) else None,
+            }
+        )
+        return calendars
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -107,10 +117,28 @@ async def query_events(
                     status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
                 )
 
+        time_range_days = None
+        if time_min and time_max:
+            try:
+                time_range_days = (
+                    datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
+                ).days
+            except Exception:  # nosec B110
+                pass
+
+        log.set(
+            user={"id": user_id},
+            calendar={
+                "operation": "get_events",
+                "calendar_id": None,
+                "time_range_days": time_range_days,
+            },
+        )
+
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
 
-        return calendar_service.get_calendar_events(
+        result = calendar_service.get_calendar_events(
             user_id=user_id,
             access_token=access_token,
             page_token=None,
@@ -120,6 +148,14 @@ async def query_events(
             max_results=request.max_results,
             fetch_all=request.fetch_all,
         )
+        events = result.get("events", []) if isinstance(result, dict) else result
+        log.set(
+            calendar={
+                "operation": "get_events",
+                "event_count": len(events) if isinstance(events, list) else None,
+            }
+        )
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -186,10 +222,28 @@ async def get_events(
                     status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
                 )
 
+        time_range_days = None
+        if time_min and time_max:
+            try:
+                time_range_days = (
+                    datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
+                ).days
+            except Exception:  # nosec B110
+                pass
+
+        log.set(
+            user={"id": user_id},
+            calendar={
+                "operation": "get_events",
+                "calendar_id": None,
+                "time_range_days": time_range_days,
+            },
+        )
+
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
 
-        return calendar_service.get_calendar_events(
+        result = calendar_service.get_calendar_events(
             user_id=user_id,
             access_token=access_token,
             page_token=page_token,
@@ -199,6 +253,14 @@ async def get_events(
             max_results=max_results,
             fetch_all=fetch_all,
         )
+        events = result.get("events", []) if isinstance(result, dict) else result
+        log.set(
+            calendar={
+                "operation": "get_events",
+                "event_count": len(events) if isinstance(events, list) else None,
+            }
+        )
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -261,16 +323,42 @@ async def get_events_by_calendar(
                     status_code=400, detail="Invalid end_date format. Use YYYY-MM-DD"
                 )
 
+        time_range_days = None
+        if time_min and time_max:
+            try:
+                time_range_days = (
+                    datetime.fromisoformat(time_max) - datetime.fromisoformat(time_min)
+                ).days
+            except Exception:  # nosec B110
+                pass
+
+        log.set(
+            user={"id": user_id},
+            calendar={
+                "operation": "get_events",
+                "calendar_id": calendar_id,
+                "time_range_days": time_range_days,
+            },
+        )
+
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
 
-        return calendar_service.get_calendar_events_by_id(
+        result = calendar_service.get_calendar_events_by_id(
             calendar_id=calendar_id,
             access_token=access_token,
             page_token=page_token,
             time_min=time_min,
             time_max=time_max,
         )
+        events = result.get("events", []) if isinstance(result, dict) else result
+        log.set(
+            calendar={
+                "operation": "get_events",
+                "event_count": len(events) if isinstance(events, list) else None,
+            }
+        )
+        return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -299,6 +387,14 @@ async def create_event(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
+        log.set(
+            user={"id": user_id},
+            calendar={
+                "operation": "create_event",
+                "calendar_id": getattr(event, "calendar_id", None),
+            },
+        )
+
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
 
@@ -321,9 +417,9 @@ async def get_calendar_preferences(
         HTTPException: If the user is not authenticated or preferences are not found.
     """
     try:
-        return calendar_service.get_user_calendar_preferences(
-            str(current_user.get("user_id", ""))
-        )
+        user_id = current_user.get("user_id")
+        log.set(user={"id": user_id}, calendar={"operation": "get_preferences"})
+        return calendar_service.get_user_calendar_preferences(str(user_id or ""))
     except HTTPException as e:
         raise e
     except Exception as e:
@@ -349,6 +445,8 @@ async def update_calendar_preferences(
         HTTPException: If the user is not authenticated.
     """
     try:
+        user_id = current_user.get("user_id")
+        log.set(user={"id": user_id}, calendar={"operation": "update_preferences"})
         return calendar_service.update_user_calendar_preferences(
             current_user["user_id"], preferences.selected_calendars
         )
@@ -378,6 +476,8 @@ async def delete_event(
         user_id = current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
+
+        log.set(user={"id": user_id}, calendar={"operation": "delete_event"})
 
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
@@ -411,6 +511,8 @@ async def update_event(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
+        log.set(user={"id": user_id}, calendar={"operation": "update_event"})
+
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
 
@@ -441,6 +543,8 @@ async def create_events_batch(
         user_id = current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
+
+        log.set(user={"id": user_id}, calendar={"operation": "batch_create"})
 
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
@@ -489,6 +593,8 @@ async def update_events_batch(
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
 
+        log.set(user={"id": user_id}, calendar={"operation": "batch_update"})
+
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))
 
@@ -533,6 +639,8 @@ async def delete_events_batch(
         user_id = current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=400, detail="User ID not found")
+
+        log.set(user={"id": user_id}, calendar={"operation": "batch_delete"})
 
         # Get token from Composio
         access_token = get_google_calendar_token(str(user_id))

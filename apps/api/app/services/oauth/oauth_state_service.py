@@ -12,7 +12,7 @@ Uses Redis for temporary state storage with automatic expiration.
 import secrets
 from typing import Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import STATE_KEY_PREFIX, STATE_TOKEN_TTL
 from app.db.redis import redis_cache
 
@@ -36,9 +36,11 @@ async def create_oauth_state(
         - Stores state server-side with automatic expiration
         - Validates redirect path against allowlist
     """
+    log.set(auth={"user_id": user_id, "provider": integration_id})
+
     # Validate redirect path - only allow safe paths
     if not _is_safe_redirect_path(redirect_path):
-        logger.warning(
+        log.warning(
             f"Unsafe redirect path rejected for user {user_id}: {redirect_path}"
         )
         # Default to safe path
@@ -60,7 +62,7 @@ async def create_oauth_state(
     await redis_client.hset(state_key, mapping=state_data)  # type: ignore[arg-type]
     await redis_client.expire(state_key, STATE_TOKEN_TTL)
 
-    logger.info(
+    log.info(
         f"Created OAuth state token for user {user_id}, integration {integration_id}"
     )
     return state_token
@@ -91,7 +93,7 @@ async def validate_and_consume_oauth_state(
         state_data = await redis_client.hgetall(state_key)
 
         if not state_data:
-            logger.warning(f"Invalid or expired OAuth state token: {state_token}")
+            log.warning(f"Invalid or expired OAuth state token: {state_token}")
             return None
 
         # Decode bytes to strings
@@ -101,24 +103,28 @@ async def validate_and_consume_oauth_state(
             "integration_id": state_data.get("integration_id", ""),
         }
 
+        log.set(
+            auth={"user_id": result["user_id"], "provider": result["integration_id"]}
+        )
+
         # Validate that we have all required fields
         if not all(
             [result["user_id"], result["redirect_path"], result["integration_id"]]
         ):
-            logger.warning(f"Incomplete OAuth state data for token: {state_token}")
+            log.warning(f"Incomplete OAuth state data for token: {state_token}")
             return None
 
         # Delete the token to prevent replay attacks
         await redis_client.delete(state_key)
 
-        logger.info(
+        log.info(
             f"OAuth state validated and consumed for user {result['user_id']}, "
             f"integration {result['integration_id']}"
         )
         return result
 
     except Exception as e:
-        logger.error(f"Error validating OAuth state: {e}")
+        log.error(f"Error validating OAuth state: {e}")
         return None
 
 

@@ -1,7 +1,7 @@
 """Custom MCP integration routes."""
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.models.integration_models import (
     CreateCustomIntegrationRequest as RequestModel,
 )
@@ -41,6 +41,7 @@ async def create_custom_mcp_integration(
     user_id: str = Depends(get_user_id),
 ) -> CreateCustomIntegrationResponse:
     try:
+        log.set(operation="create_custom_integration", integration_name=request.name, user={"id": user_id})
         mcp_client = await get_mcp_client(user_id=user_id)
         integration, conn_result = await create_and_connect_custom_integration(
             user_id,
@@ -57,6 +58,8 @@ async def create_custom_mcp_integration(
             mcp_client,
         )
 
+        log.set(integration_id=integration.integration_id)
+        log.set(outcome="success")
         return CreateCustomIntegrationResponse(
             message="Custom integration created",
             integration_id=integration.integration_id,
@@ -71,7 +74,7 @@ async def create_custom_mcp_integration(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        logger.error(f"Error creating custom integration: {e}")
+        log.error(f"Error creating custom integration: {e}")
         raise HTTPException(status_code=500, detail="Failed to create integration")
 
 
@@ -82,6 +85,7 @@ async def update_custom_mcp_integration(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
     try:
+        log.set(operation="update_custom_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
         updated = await update_custom_integration(
             user_id,
             integration_id,
@@ -98,6 +102,8 @@ async def update_custom_mcp_integration(
             raise HTTPException(
                 status_code=404, detail="Integration not found or you are not the owner"
             )
+        log.set(integration_name=updated.name)
+        log.set(outcome="success")
         return IntegrationSuccessResponse(
             message="Integration updated",
             integration_id=updated.integration_id,
@@ -105,7 +111,7 @@ async def update_custom_mcp_integration(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error updating integration {integration_id}: {e}")
+        log.error(f"Error updating integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to update integration")
 
 
@@ -115,11 +121,13 @@ async def delete_custom_mcp_integration(
     user_id: str = Depends(get_user_id),
 ) -> IntegrationSuccessResponse:
     try:
+        log.set(operation="delete_custom_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
         deleted = await delete_custom_integration(user_id, integration_id)
         if not deleted:
             raise HTTPException(
                 status_code=404, detail="Integration not found or you are not the owner"
             )
+        log.set(outcome="success")
         return IntegrationSuccessResponse(
             message="Integration deleted",
             integration_id=integration_id,
@@ -127,7 +135,7 @@ async def delete_custom_mcp_integration(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error deleting integration {integration_id}: {e}")
+        log.error(f"Error deleting integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to delete integration")
 
 
@@ -137,7 +145,9 @@ async def publish_integration(
     user_id: str = Depends(get_user_id),
 ) -> PublishIntegrationResponse:
     try:
+        log.set(operation="publish_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
         result = await publish_custom_integration(integration_id, user_id)
+        log.set(outcome="success")
         return PublishIntegrationResponse(
             message="Integration published successfully",
             integration_id=result["integration_id"],
@@ -146,7 +156,7 @@ async def publish_integration(
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
-        logger.error(f"Error publishing integration {integration_id}: {e}")
+        log.error(f"Error publishing integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to publish integration")
 
 
@@ -156,7 +166,9 @@ async def unpublish_integration(
     user_id: str = Depends(get_user_id),
 ) -> UnpublishIntegrationResponse:
     try:
+        log.set(operation="unpublish_integration", integration_id=integration_id, user={"id": user_id}, integration={"id": integration_id})
         result = await unpublish_custom_integration(integration_id, user_id)
+        log.set(outcome="success")
         return UnpublishIntegrationResponse(
             message="Integration unpublished successfully",
             integration_id=result["integration_id"],
@@ -164,5 +176,5 @@ async def unpublish_integration(
     except PublishError as e:
         raise HTTPException(status_code=e.status_code, detail=e.message)
     except Exception as e:
-        logger.error(f"Error unpublishing integration {integration_id}: {e}")
+        log.error(f"Error unpublishing integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to unpublish integration")

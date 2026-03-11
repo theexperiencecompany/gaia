@@ -18,7 +18,7 @@ import time
 from functools import lru_cache
 from typing import Literal, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.secrets import inject_infisical_secrets
 from app.config.settings_validator import settings_validator
 from dotenv import load_dotenv
@@ -48,7 +48,7 @@ class BaseAppSettings(BaseSettings):
         try:
             return cls(**kwargs)
         except Exception as e:
-            logger.warning(f"Error creating settings: {str(e)}")
+            log.warning(f"Error creating settings: {str(e)}")
             # Create a minimal instance with empty strings for required fields,
             # but skip fields that already have env vars set or have defaults.
             fields = cls.model_fields
@@ -89,6 +89,13 @@ class CommonSettings(BaseAppSettings):
     DUMMY_IP: str = "8.8.8.8"
     WORKER_TYPE: str = "unknown"
     ENABLE_LAZY_LOADING: bool = True
+
+    # ----------------------------------------------
+    # Observability
+    # ----------------------------------------------
+    # Secret token Prometheus sends as "Authorization: Bearer <token>" when
+    # scraping /metrics. Generate with: openssl rand -hex 32
+    METRICS_TOKEN: Optional[str] = None
 
     # ----------------------------------------------
     # Profiling & Performance Monitoring
@@ -482,9 +489,7 @@ def _ensure_infisical_loaded():
     if not _infisical_secrets_loaded:
         infisical_start = time.time()
         inject_infisical_secrets()
-        logger.info(
-            f"Infisical secrets loaded in {(time.time() - infisical_start):.3f}s"
-        )
+        log.info(f"Infisical secrets loaded in {(time.time() - infisical_start):.3f}s")
         _infisical_secrets_loaded = True
 
 
@@ -496,7 +501,8 @@ def get_settings():
     This function uses LRU cache to ensure settings are instantiated only once,
     avoiding expensive Pydantic validation on every import.
     """
-    logger.info("Starting settings initialization...")
+    log.set(service={"name": "gaia-api"})
+    log.info("Starting settings initialization...")
 
     _ensure_infisical_loaded()
 
@@ -508,7 +514,7 @@ def get_settings():
             settings_obj = DevelopmentSettings.from_env()
         else:
             settings_obj = ProductionSettings.from_env()
-            logger.info("Production settings initialized")
+            log.info("Production settings initialized")
 
         # Validate settings after full initialization
         settings_validator.configure(
@@ -523,13 +529,13 @@ def get_settings():
         return settings_obj
 
     except Exception as e:
-        logger.error(f"Error initializing settings: {str(e)}")
+        log.error(f"Error initializing settings: {str(e)}")
         # In case of error, we still need to return a settings object
         # Use development settings with defaults as fallback
         if env == "development":
             return DevelopmentSettings.from_env(SHOW_MISSING_KEY_WARNINGS=True)
         else:
-            logger.critical("Critical error initializing production settings!")
+            log.critical("Critical error initializing production settings!")
             raise
 
 

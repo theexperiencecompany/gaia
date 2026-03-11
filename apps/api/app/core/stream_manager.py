@@ -43,7 +43,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, Optional
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import (
     STREAM_CHANNEL_PREFIX,
     STREAM_PROGRESS_PREFIX,
@@ -112,13 +112,21 @@ class StreamManager:
             user_id=user_id,
         )
 
+        log.set(
+            stream={
+                "stream_id": stream_id,
+                "conversation_id": conversation_id,
+                "user_id": user_id,
+            }
+        )
+
         await redis_cache.set(
             f"{STREAM_PROGRESS_PREFIX}{stream_id}",
             asdict(progress),
             ttl=STREAM_TTL,
         )
 
-        logger.debug(f"Stream {stream_id} started for conversation {conversation_id}")
+        log.debug(f"Stream {stream_id} started for conversation {conversation_id}")
 
     @classmethod
     async def complete_stream(cls, stream_id: str) -> None:
@@ -138,7 +146,7 @@ class StreamManager:
         # Notify subscribers that stream is done
         await cls._publish(stream_id, STREAM_DONE_SIGNAL)
 
-        logger.debug(f"Stream {stream_id} completed")
+        log.debug(f"Stream {stream_id} completed")
 
     @classmethod
     async def cleanup(cls, stream_id: str) -> None:
@@ -150,7 +158,7 @@ class StreamManager:
         await redis_cache.delete(f"{STREAM_PROGRESS_PREFIX}{stream_id}")
         await redis_cache.delete(f"{STREAM_SIGNAL_PREFIX}{stream_id}")
 
-        logger.debug(f"Stream {stream_id} cleaned up")
+        log.debug(f"Stream {stream_id} cleaned up")
 
     # -------------------------------------------------------------------------
     # Pub/Sub Communication
@@ -189,7 +197,7 @@ class StreamManager:
             interspersed with ``": keepalive\\n\\n"`` comments during idle periods.
         """
         if not redis_cache.redis:
-            logger.error("Redis not available for stream subscription")
+            log.error("Redis not available for stream subscription")
             return
 
         pubsub = redis_cache.redis.pubsub()
@@ -198,7 +206,7 @@ class StreamManager:
 
         try:
             await pubsub.subscribe(channel)
-            logger.debug(f"Subscribed to stream channel: {channel}")
+            log.debug(f"Subscribed to stream channel: {channel}")
 
             while True:
                 # get_message returns None on timeout instead of cancelling
@@ -225,18 +233,18 @@ class StreamManager:
 
                 # Handle control signals
                 if data == STREAM_DONE_SIGNAL:
-                    logger.debug(
+                    log.debug(
                         f"Stream {stream_id} completed successfully ({chunks_received} chunks)"
                     )
                     break
 
                 if data == STREAM_CANCELLED_SIGNAL:
-                    logger.info(f"Stream {stream_id} was cancelled by user")
+                    log.info(f"Stream {stream_id} was cancelled by user")
                     yield "data: [DONE]\n\n"
                     break
 
                 if data == STREAM_ERROR_SIGNAL:
-                    logger.error(f"Stream {stream_id} encountered an error")
+                    log.error(f"Stream {stream_id} encountered an error")
                     progress = await cls.get_progress(stream_id)
                     error_msg = (
                         progress.get("error", "An unexpected error occurred")
@@ -250,12 +258,10 @@ class StreamManager:
                 yield data
 
             if chunks_received == 0:
-                logger.warning(f"Stream {stream_id} ended without receiving any chunks")
+                log.warning(f"Stream {stream_id} ended without receiving any chunks")
 
         except Exception as e:
-            logger.error(
-                f"Error in stream subscription {stream_id}: {e}", exc_info=True
-            )
+            log.error(f"Error in stream subscription {stream_id}: {e}", exc_info=True)
             yield f"data: {json.dumps({'error': 'Stream subscription failed'})}\n\n"
         finally:
             try:
@@ -304,7 +310,7 @@ class StreamManager:
         # Notify subscribers
         await cls._publish(stream_id, STREAM_CANCELLED_SIGNAL)
 
-        logger.info(f"Stream {stream_id} cancelled")
+        log.info(f"Stream {stream_id} cancelled")
         return True
 
     @classmethod

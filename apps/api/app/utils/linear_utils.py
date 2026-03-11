@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Optional
 
 import httpx
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 
 LINEAR_GRAPHQL_ENDPOINT = "https://api.linear.app/graphql"
 
@@ -56,6 +56,7 @@ def graphql_request(
     """
     access_token = get_access_token(auth_credentials)
     headers = auth_headers(access_token)
+    log.set(operation="graphql_request", endpoint=LINEAR_GRAPHQL_ENDPOINT)
 
     payload: Dict[str, Any] = {"query": query}
     if variables:
@@ -71,7 +72,7 @@ def graphql_request(
 
     if "errors" in result:
         error_messages = [e.get("message", str(e)) for e in result["errors"]]
-        logger.error(
+        log.error(
             f"GraphQL Errors: {error_messages} Query: {query} Variables: {variables}"
         )
         raise Exception(f"GraphQL errors: {'; '.join(error_messages)}")

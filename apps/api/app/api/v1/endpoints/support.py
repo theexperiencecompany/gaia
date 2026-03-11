@@ -2,6 +2,7 @@
 
 from typing import List, Optional
 
+from shared.py.wide_events import log
 from fastapi import (
     APIRouter,
     Depends,
@@ -59,6 +60,7 @@ async def submit_support_request(
     Returns:
         SupportRequestSubmissionResponse with success status and ticket ID
     """
+    log.set(operation="submit_support_request", category=request_data.type)
     try:
         user_id = current_user.get("user_id")
         user_email = current_user.get("email")
@@ -67,12 +69,15 @@ async def submit_support_request(
         if not user_id or not user_email:
             raise HTTPException(status_code=401, detail="User authentication required")
 
-        return await create_support_request(
+        result = await create_support_request(
             request_data=request_data,
             user_id=user_id,
             user_email=user_email,
             user_name=user_name,
         )
+        log.set(ticket_id=result.ticket_id if hasattr(result, "ticket_id") else None)
+        log.set(outcome="success")
+        return result
 
     except HTTPException:
         raise
@@ -118,6 +123,7 @@ async def submit_support_request_with_attachments(
     Returns:
         SupportRequestSubmissionResponse with success status and ticket ID
     """
+    log.set(operation="submit_support_request_with_attachments", category=type)
     try:
         user_id = current_user.get("user_id")
         user_email = current_user.get("email")
@@ -142,13 +148,16 @@ async def submit_support_request_with_attachments(
             description=description,
         )
 
-        return await create_support_request_with_attachments(
+        result = await create_support_request_with_attachments(
             request_data=request_data,
             attachments=attachments,
             user_id=user_id,
             user_email=user_email,
             user_name=user_name,
         )
+        log.set(ticket_id=result.ticket_id if hasattr(result, "ticket_id") else None)
+        log.set(outcome="success")
+        return result
 
     except HTTPException:
         raise
@@ -187,14 +196,17 @@ async def get_my_support_requests(
     Returns:
         Dictionary with user's support requests and pagination info
     """
+    log.set(operation="list_support_requests")
     try:
         user_id = current_user.get("user_id")
         if not user_id:
             raise HTTPException(status_code=401, detail="User authentication required")
 
-        return await get_user_support_requests(
+        result = await get_user_support_requests(
             user_id=user_id, page=page, per_page=per_page, status_filter=status
         )
+        log.set(outcome="success")
+        return result
 
     except HTTPException:
         raise
@@ -218,16 +230,19 @@ async def get_support_rate_limit_status(
 
     Returns information about remaining requests for hourly and daily limits.
     """
+    log.set(operation="get_support_rate_limit_status")
     try:
         # This is a simple status endpoint - SlowAPI handles the actual limiting
         # We can return static information about the limits
-        return {
+        result = {
             "limits": {
                 "hourly": {"limit": 5, "window": "1 hour"},
                 "daily": {"limit": 10, "window": "1 day"},
             },
             "note": "Rate limiting is enforced per user. Limits reset at the start of each time window.",
         }
+        log.set(outcome="success")
+        return result
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Failed to get rate limit status: {str(e)}"

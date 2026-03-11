@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, List, Optional
 
-from app.config.loggers import todos_logger
+from shared.py.wide_events import log
 from app.constants.cache import STATS_CACHE_TTL
 from app.db.mongodb.collections import (
     projects_collection,
@@ -138,7 +138,7 @@ class TodoService:
                 await delete_cache(f"projects:{user_id}")
                 await delete_cache_by_pattern(f"*:project:{project_id}*")
         except Exception as e:
-            todos_logger.warning(f"Cache invalidation failed: {str(e)}")
+            log.warning(f"Cache invalidation failed: {str(e)}")
 
     @staticmethod
     async def _get_or_create_inbox(user_id: str) -> str:
@@ -300,6 +300,19 @@ class TodoService:
     @classmethod
     async def create_todo(cls, todo: TodoModel, user_id: str) -> TodoResponse:
         """Create a new todo with automatic inbox assignment."""
+        log.set(
+            service="todo_service",
+            operation="create_todo",
+            user_id=user_id,
+            todo={
+                "title": todo.title,
+                "project_id": todo.project_id,
+                "priority": str(todo.priority) if todo.priority else None,
+                "has_due_date": todo.due_date is not None,
+                "is_completed": False,
+                "user_id": user_id,
+            },
+        )
         # Ensure project exists or use inbox
         if not todo.project_id:
             todo.project_id = await cls._get_or_create_inbox(user_id)
@@ -350,17 +363,15 @@ class TodoService:
             )
 
             if success:
-                todos_logger.info(
+                log.info(
                     f"Queued workflow generation for todo '{todo.title}' (ID: {todo_id_str})"
                 )
             else:
-                todos_logger.warning(
+                log.warning(
                     f"Failed to queue workflow generation for todo '{todo.title}'"
                 )
         except Exception as e:
-            todos_logger.warning(
-                f"Failed to queue workflow for todo '{todo.title}': {str(e)}"
-            )
+            log.warning(f"Failed to queue workflow for todo '{todo.title}': {str(e)}")
 
         # Index for search
         try:
@@ -369,7 +380,7 @@ class TodoService:
                     str(result.inserted_id), created_todo, user_id
                 )
         except Exception as e:
-            todos_logger.warning(f"Failed to index todo: {str(e)}")
+            log.warning(f"Failed to index todo: {str(e)}")
 
         await cls._invalidate_cache(
             user_id, todo.project_id, str(result.inserted_id), "create"
@@ -384,6 +395,12 @@ class TodoService:
     @classmethod
     async def get_todo(cls, todo_id: str, user_id: str) -> TodoResponse:
         """Get a single todo by ID."""
+        log.set(
+            service="todo_service",
+            operation="get_todo",
+            user_id=user_id,
+            todo_id=todo_id,
+        )
         # Try cache first
         cache_key = f"todo:{user_id}:{todo_id}"
         cached = await get_cache(cache_key)
@@ -492,6 +509,21 @@ class TodoService:
         cls, todo_id: str, updates: TodoUpdateRequest, user_id: str
     ) -> TodoResponse:
         """Update a todo."""
+        log.set(
+            service="todo_service",
+            operation="update_todo",
+            user_id=user_id,
+            todo={
+                "id": todo_id,
+                "user_id": user_id,
+                "is_completed": updates.completed
+                if updates.completed is not None
+                else None,
+                "priority": str(updates.priority)
+                if updates.priority is not None
+                else None,
+            },
+        )
         # Prepare updates
         update_dict = {k: v for k, v in updates.model_dump().items() if v is not None}
 
@@ -538,7 +570,7 @@ class TodoService:
         try:
             await update_todo_embedding(todo_id, updated, user_id)
         except Exception as e:
-            todos_logger.warning(f"Failed to update index: {str(e)}")
+            log.warning(f"Failed to update index: {str(e)}")
 
         # Sync subtask changes back to goals if this is a goal-related todo
         if "subtasks" in update_dict:
@@ -557,9 +589,7 @@ class TodoService:
                         todo_id, new_subtask_id, new_completed, user_id
                     )
             except Exception as e:
-                todos_logger.warning(
-                    f"Failed to sync subtask completion to goal: {str(e)}"
-                )
+                log.warning(f"Failed to sync subtask completion to goal: {str(e)}")
 
         # Determine if this update affects list visibility
         affects_visibility = any(
@@ -584,6 +614,12 @@ class TodoService:
     @classmethod
     async def delete_todo(cls, todo_id: str, user_id: str) -> None:
         """Delete a todo."""
+        log.set(
+            service="todo_service",
+            operation="delete_todo",
+            user_id=user_id,
+            todo_id=todo_id,
+        )
         # Single atomic delete with ownership verification
         result = await todos_collection.delete_one(
             {"_id": ObjectId(todo_id), "user_id": user_id}
@@ -596,7 +632,7 @@ class TodoService:
         try:
             await delete_todo_embedding(todo_id)
         except Exception as e:
-            todos_logger.warning(f"Failed to remove from index: {str(e)}")
+            log.warning(f"Failed to remove from index: {str(e)}")
 
         # Invalidate cache broadly since we don't know the project_id
         await cls._invalidate_cache(user_id, None, todo_id, "delete")
@@ -664,11 +700,11 @@ class TodoService:
                     try:
                         await update_todo_embedding(str(todo["_id"]), todo, user_id)
                     except Exception as e:
-                        todos_logger.warning(
+                        log.warning(
                             f"Failed to update index for todo {todo['_id']}: {str(e)}"
                         )
             except Exception as e:
-                todos_logger.warning(f"Failed to update search index: {str(e)}")
+                log.warning(f"Failed to update search index: {str(e)}")
 
         await cls._invalidate_cache(user_id, operation="bulk_update")
 
@@ -707,11 +743,11 @@ class TodoService:
                     try:
                         await delete_todo_embedding(str(todo["_id"]))
                     except Exception as e:
-                        todos_logger.warning(
+                        log.warning(
                             f"Failed to remove todo {todo['_id']} from index: {str(e)}"
                         )
             except Exception as e:
-                todos_logger.warning(f"Failed to cleanup search index: {str(e)}")
+                log.warning(f"Failed to cleanup search index: {str(e)}")
 
         return BulkOperationResponse(
             success=todo_ids[: result.deleted_count],  # Approximation
@@ -835,6 +871,12 @@ class ProjectService:
     @staticmethod
     async def create_project(project: ProjectCreate, user_id: str) -> ProjectResponse:
         """Create a new project."""
+        log.set(
+            service="todo_service",
+            operation="create_project",
+            user_id=user_id,
+            project_name=project.name,
+        )
         # Ensure user has inbox
         await TodoService._get_or_create_inbox(user_id)
 
@@ -923,6 +965,12 @@ class ProjectService:
         project_id: str, updates: UpdateProjectRequest, user_id: str
     ) -> ProjectResponse:
         """Update a project."""
+        log.set(
+            service="todo_service",
+            operation="update_project",
+            user_id=user_id,
+            project_id=project_id,
+        )
         existing = await projects_collection.find_one(
             {"_id": ObjectId(project_id), "user_id": user_id}
         )
@@ -956,6 +1004,12 @@ class ProjectService:
     @staticmethod
     async def delete_project(project_id: str, user_id: str) -> None:
         """Delete a project and move todos to inbox."""
+        log.set(
+            service="todo_service",
+            operation="delete_project",
+            user_id=user_id,
+            project_id=project_id,
+        )
         project = await projects_collection.find_one(
             {"_id": ObjectId(project_id), "user_id": user_id}
         )

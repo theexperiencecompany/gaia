@@ -23,7 +23,7 @@ from app.agents.core.subagents.subagent_helpers import (
     create_agent_context_message,
     create_subagent_system_message,
 )
-from app.config.loggers import common_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.core.lazy_loader import providers
 from app.core.stream_manager import stream_manager
@@ -174,6 +174,7 @@ async def prepare_subagent_execution(
 
     subagent_cfg = integration.subagent_config
     agent_name = subagent_cfg.agent_name
+    log.set(subagent={"name": agent_name, "provider": integration.provider, "task_length": len(task)})
 
     # Load subagent graph
     subagent_graph = await providers.aget(agent_name)
@@ -246,6 +247,7 @@ async def execute_subagent_stream(
         2. "messages" - Stream content, emit tool_output when ToolMessage arrives
         3. "custom" - Forward custom events (progress messages, etc.) to parent
     """
+    log.set(subagent={"name": ctx.agent_name, "provider": ctx.integration_id})
     complete_message = ""
     emitted_tool_calls: set[str] = set()
 
@@ -256,7 +258,7 @@ async def execute_subagent_stream(
     ):
         # Check for cancellation
         if ctx.stream_id and await stream_manager.is_cancelled(ctx.stream_id):
-            logger.info(f"Subagent stream {ctx.stream_id} cancelled by user")
+            log.info(f"Subagent stream {ctx.stream_id} cancelled by user")
             break
 
         # Handle 2-tuple format only (no subgraphs)
@@ -310,7 +312,16 @@ async def execute_subagent_stream(
             if stream_writer:
                 stream_writer(payload)
 
-    return complete_message if complete_message else "Task completed"
+    final_message = complete_message if complete_message else "Task completed"
+    log.set(
+        subagent={
+            "name": ctx.agent_name,
+            "provider": ctx.integration_id,
+            "response_length": len(final_message),
+            "messages_count": len(ctx.initial_state.get("messages", [])),
+        }
+    )
+    return final_message
 
 
 async def prepare_executor_execution(
@@ -434,7 +445,7 @@ async def check_subagent_integration(
             f"Integration {integration_id} is not connected. Please connect it first."
         )
     except Exception as e:
-        logger.warning(f"Integration check failed: {e}")
+        log.warning(f"Integration check failed: {e}")
         return None
 
 
@@ -499,12 +510,12 @@ async def call_subagent(
     )
 
     if error or ctx is None:
-        logger.error(error or "Failed to prepare subagent execution")
+        log.error(error or "Failed to prepare subagent execution")
         yield f"data: {json.dumps({'error': error or 'Failed to prepare subagent execution'})}\n\n"
         yield "data: [DONE]\n\n"
         return
 
-    logger.info(
+    log.info(
         f"[DIRECT] Invoking subagent '{ctx.agent_name}' with query: {query[:80]}..."
     )
 
@@ -518,7 +529,7 @@ async def call_subagent(
     ):
         # Check for cancellation
         if stream_id and await stream_manager.is_cancelled(stream_id):
-            logger.info(f"Subagent stream {stream_id} cancelled by user")
+            log.info(f"Subagent stream {stream_id} cancelled by user")
             break
         # Handle 2-tuple format only (no subgraphs)
         if len(event) != 2:
@@ -565,6 +576,13 @@ async def call_subagent(
     yield f"nostream: {json.dumps({'complete_message': complete_message})}"
     yield "data: [DONE]\n\n"
 
-    logger.info(
+    log.set(
+        subagent={
+            "name": ctx.agent_name,
+            "provider": ctx.integration_id,
+            "response_length": len(complete_message),
+        }
+    )
+    log.info(
         f"[DIRECT] Subagent '{ctx.agent_name}' completed. Response: {len(complete_message)} chars"
     )

@@ -2,7 +2,7 @@
 Reminder task handlers for static reminders only.
 """
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.models.reminder_models import (
     AgentType,
     ReminderModel,
@@ -35,7 +35,7 @@ async def _execute_static_reminder(reminder: ReminderModel) -> None:
 
     await notification_service.create_notification(notification)
 
-    logger.info(
+    log.info(
         f"Static reminder {reminder.id} sent notification to user {reminder.user_id}"
     )
 
@@ -52,10 +52,10 @@ async def execute_reminder_by_agent(
     Args:
         reminder: The reminder to execute
     """
-    logger.info(f"Executing reminder: {reminder.id} for agent: {reminder.agent}")
+    log.info(f"Executing reminder: {reminder.id} for agent: {reminder.agent}")
 
     if not reminder.id:
-        logger.error(f"Reminder {reminder.id} has no ID, skipping execution.")
+        log.error(f"Reminder {reminder.id} has no ID, skipping execution.")
         raise ValueError(f"Reminder {reminder.id} has no ID, skipping execution.")
 
     try:
@@ -64,9 +64,9 @@ async def execute_reminder_by_agent(
         else:
             raise ValueError(f"Unknown agent type: {reminder.agent}")
 
-        logger.info(
+        log.info(
             f"Reminder {reminder.id} executed successfully for agent: {reminder.agent}"
         )
     except Exception as e:
-        logger.error(f"Failed to execute reminder {reminder.id}: {str(e)}")
+        log.error(f"Failed to execute reminder {reminder.id}: {str(e)}")
         raise

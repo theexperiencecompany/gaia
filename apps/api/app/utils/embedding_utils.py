@@ -6,7 +6,7 @@ from typing import Any, List, Optional, Tuple
 from bson import ObjectId
 from langchain_core.documents import Document
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection, notes_collection
 from app.db.redis import redis_cache
@@ -65,15 +65,15 @@ async def get_or_compute_embeddings(all_tools, embeddings):
     cached_embeddings = await redis_cache.get(cache_key)
 
     if cached_embeddings:
-        logger.info("Using cached embeddings (description + code hash)")
+        log.info("Using cached embeddings (description + code hash)")
         return cached_embeddings, tool_descriptions
     else:
         # Compute embeddings in one batch call
-        logger.info("Sending batch request to Google Embeddings API...")
+        log.info("Sending batch request to Google Embeddings API...")
         embed_start = time.time()
         embeddings_list = embeddings.embed_documents(tool_descriptions)
         embed_time = time.time() - embed_start
-        logger.info(
+        log.info(
             f"Batch computed {len(embeddings_list)} embeddings in {embed_time:.3f}s"
         )
 
@@ -104,6 +104,11 @@ async def search_by_similarity(
     Returns:
         List of items with their content and metadata
     """
+    log.set(
+        collection_name=collection_name,
+        user_id=user_id,
+        top_k=top_k,
+    )
     try:
         # Get the specified collection
         chroma_collection = await ChromaClient.get_langchain_client(
@@ -195,7 +200,7 @@ async def search_by_similarity(
 
         return result_items
     except Exception as e:
-        logger.error(
+        log.error(
             f"Error searching in ChromaDB collection '{collection_name}': {str(e)}",
             exc_info=True,
         )

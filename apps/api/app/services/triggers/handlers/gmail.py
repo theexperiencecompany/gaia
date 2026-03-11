@@ -6,7 +6,7 @@ Handles Gmail new message trigger processing.
 
 from typing import Any, Dict, List, Set
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import GmailNewMessagePayload
 from app.models.trigger_configs import GmailNewMessageConfig
@@ -56,7 +56,7 @@ class GmailTriggerHandler(TriggerHandler):
                 f"but got {type(trigger_data).__name__}"
             )
 
-        logger.info(f"Gmail trigger enabled for workflow {workflow_id}")
+        log.info(f"Gmail trigger enabled for workflow {workflow_id}")
         return []  # No explicit trigger IDs for Gmail
 
     async def find_workflows(
@@ -70,15 +70,16 @@ class GmailTriggerHandler(TriggerHandler):
 
         Both are routed here because they share the GMAIL_NEW_GMAIL_MESSAGE Composio event.
         """
+        log.set(trigger={"provider": "gmail", "event": event_type})
         try:
             try:
                 GmailNewMessagePayload.model_validate(data)
             except Exception as e:
-                logger.debug(f"Gmail payload validation failed: {e}")
+                log.debug(f"Gmail payload validation failed: {e}")
 
             user_id = data.get("user_id")
             if not user_id:
-                logger.error("No user_id in Gmail webhook data")
+                log.error("No user_id in Gmail webhook data")
                 return []
 
             workflows: List[Workflow] = []
@@ -110,12 +111,12 @@ class GmailTriggerHandler(TriggerHandler):
                             del workflow_doc["_id"]
                         workflows.append(Workflow(**workflow_doc))
                     except Exception as e:
-                        logger.error(f"Error processing workflow: {e}")
+                        log.error(f"Error processing workflow: {e}")
 
             return workflows
 
         except Exception as e:
-            logger.error(f"Error finding Gmail workflows: {e}")
+            log.error(f"Error finding Gmail workflows: {e}")
             return []
 
 

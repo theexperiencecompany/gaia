@@ -7,7 +7,7 @@ import pymongo.errors
 import redis
 from mcp_use.exceptions import OAuthAuthenticationError
 
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
     get_integration_by_id,
@@ -82,6 +82,7 @@ async def connect_mcp_integration(
     bearer_token: str | None = None,
 ) -> ConnectIntegrationResponse:
     """Handle MCP integration connection."""
+    log.set(integration={"provider": integration_name, "action": "connect_mcp"})
     mcp_client = await get_mcp_client(user_id=user_id)
 
     # Bearer token flow - store and connect directly
@@ -132,6 +133,14 @@ async def connect_mcp_integration(
             redirect_uri=f"{get_api_base_url()}/api/v1/mcp/oauth/callback",
             redirect_path=redirect_path,
         )
+        log.set(
+            integration={
+                "provider": integration_name,
+                "action": "connect_mcp",
+                "status": "redirect",
+                "auth_type": "oauth",
+            }
+        )
         return ConnectIntegrationResponse(
             status="redirect",
             integration_id=integration_id,
@@ -143,6 +152,15 @@ async def connect_mcp_integration(
     tools_count = len(tools) if tools else 0
     await invalidate_mcp_status_cache(user_id)
 
+    log.set(
+        integration={
+            "provider": integration_name,
+            "action": "connect_mcp",
+            "status": "connected",
+            "auth_type": "bearer" if bearer_token else "none",
+            "tools_count": tools_count,
+        }
+    )
     return ConnectIntegrationResponse(
         status="connected",
         integration_id=integration_id,
@@ -167,17 +185,35 @@ async def _connect_with_bearer_token(
         tools = await mcp_client.connect(integration_id)
         await update_user_integration_status(user_id, integration_id, "connected")
         await invalidate_mcp_status_cache(user_id)
+        tools_count = len(tools) if tools else 0
+        log.set(
+            integration={
+                "provider": integration_name,
+                "action": "connect_mcp",
+                "auth_type": "bearer",
+                "status": "connected",
+                "tools_count": tools_count,
+            }
+        )
         return ConnectIntegrationResponse(
             status="connected",
             integration_id=integration_id,
             name=integration_name,
-            tools_count=len(tools) if tools else 0,
+            tools_count=tools_count,
             message="Integration connected successfully",
         )
     except Exception as e:
         # Rollback: clean up stored credentials on connection failure
         await token_store.delete_credentials(integration_id)
         await invalidate_mcp_status_cache(user_id)
+        log.set(
+            integration={
+                "provider": integration_name,
+                "action": "connect_mcp",
+                "auth_type": "bearer",
+                "status": "error",
+            }
+        )
         return ConnectIntegrationResponse(
             status="error",
             integration_id=integration_id,
@@ -195,6 +231,7 @@ async def connect_composio_integration(
     redirect_path: str,
 ) -> ConnectIntegrationResponse:
     """Handle Composio integration connection."""
+    log.set(integration={"provider": provider, "action": "connect_composio"})
     composio_service = get_composio_service()
 
     state_token = await create_oauth_state(
@@ -209,6 +246,15 @@ async def connect_composio_integration(
         provider, user_id, state_token=state_token
     )
 
+    log.set(
+        integration={
+            "provider": provider,
+            "action": "connect_composio",
+            "managed_by": "composio",
+            "auth_type": "oauth2",
+            "status": "redirect",
+        }
+    )
     return ConnectIntegrationResponse(
         status="redirect",
         integration_id=integration_id,
@@ -227,6 +273,7 @@ async def connect_self_integration(
     redirect_path: str,
 ) -> ConnectIntegrationResponse:
     """Handle self-managed integration connection (Google)."""
+    log.set(integration={"provider": provider, "action": "connect_self"})
     if provider != "google":
         return ConnectIntegrationResponse(
             status="error",
@@ -250,6 +297,15 @@ async def connect_self_integration(
         user_id=user_id,
     )
 
+    log.set(
+        integration={
+            "provider": provider,
+            "action": "connect_self",
+            "managed_by": "self",
+            "auth_type": "oauth2",
+            "status": "redirect",
+        }
+    )
     return ConnectIntegrationResponse(
         status="redirect",
         integration_id=integration_id,
@@ -263,6 +319,7 @@ async def disconnect_integration(
     user_id: str, integration_id: str
 ) -> IntegrationSuccessResponse:
     """Disconnect an integration for the user."""
+    log.set(integration={"provider": integration_id, "action": "disconnect"})
     resolved = await IntegrationResolver.resolve(integration_id)
     if not resolved:
         raise ValueError(f"Integration {integration_id} not found")
@@ -307,6 +364,14 @@ async def disconnect_integration(
 
     await _invalidate_caches(user_id, integration_id, resolved.managed_by)
 
+    log.set(
+        integration={
+            "provider": integration_id,
+            "action": "disconnect",
+            "managed_by": resolved.managed_by,
+            "status": "disconnected",
+        }
+    )
     return IntegrationSuccessResponse(
         message=f"Successfully disconnected {resolved.name}",
         integration_id=integration_id,
@@ -320,14 +385,14 @@ async def _invalidate_caches(
     try:
         cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
         await delete_cache(cache_key)
-        logger.info(f"OAuth status cache invalidated for user {user_id}")
+        log.info(f"OAuth status cache invalidated for user {user_id}")
     except redis.RedisError as e:
-        logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+        log.warning(f"Failed to invalidate OAuth status cache: {e}")
 
     # Determine whether to delete record or set status to "created"
     if managed_by == "mcp":
         # MCP integrations: record already deleted in main disconnect logic
-        logger.info(f"MCP integration {integration_id} record removed")
+        log.info(f"MCP integration {integration_id} record removed")
     else:
         # Check if it's a platform integration (defined in oauth_config.py)
         # If get_integration_by_id returns a value, it's a platform integration
@@ -336,15 +401,15 @@ async def _invalidate_caches(
             # Platform integrations: delete the record entirely
             try:
                 await remove_user_integration(user_id, integration_id)
-                logger.info(f"Removed platform integration {integration_id} record")
+                log.info(f"Removed platform integration {integration_id} record")
             except pymongo.errors.PyMongoError as e:
-                logger.warning(f"Failed to remove integration record: {e}")
+                log.warning(f"Failed to remove integration record: {e}")
         else:
             # Custom integrations: preserve in workspace by setting status to "created"
             try:
                 await update_user_integration_status(user_id, integration_id, "created")
-                logger.info(
+                log.info(
                     f"Updated status to 'created' for custom integration {integration_id}"
                 )
             except pymongo.errors.PyMongoError as e:
-                logger.warning(f"Failed to update status: {e}")
+                log.warning(f"Failed to update status: {e}")

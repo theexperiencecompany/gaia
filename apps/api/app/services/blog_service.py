@@ -6,7 +6,7 @@ from typing import List
 
 from fastapi import HTTPException, status
 
-from app.config.loggers import blogs_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import blog_collection
 from app.decorators.caching import Cacheable, CacheInvalidator
 from app.db.utils import serialize_document
@@ -36,7 +36,7 @@ class BlogService:
         Returns:
             List of blog posts with author details
         """
-        logger.info(
+        log.info(
             f"Fetching blogs - page: {page}, limit: {limit}, include_content: {include_content}"
         )
 
@@ -116,7 +116,8 @@ class BlogService:
 
             blog_posts.append(BlogPost(**serialize_document(blog)))
 
-        logger.info(f"Retrieved {len(blog_posts)} blogs")
+        log.set(blog={"page": page, "limit": limit, "result_count": len(blog_posts)})
+        log.info(f"Retrieved {len(blog_posts)} blogs")
         return blog_posts
 
     @staticmethod
@@ -138,7 +139,7 @@ class BlogService:
         Raises:
             HTTPException: If blog post not found
         """
-        logger.info(f"Fetching blog by slug: {slug}")
+        log.info(f"Fetching blog by slug: {slug}")
 
         # Use aggregation for efficient author population
         pipeline = [
@@ -183,7 +184,7 @@ class BlogService:
         blogs = await blog_collection.aggregate(pipeline).to_list(1)
 
         if not blogs:
-            logger.warning(f"Blog not found: {slug}")
+            log.warning(f"Blog not found: {slug}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found"
             )
@@ -197,7 +198,7 @@ class BlogService:
                 for author_id in blog.get("authors", [])
             ]
 
-        logger.info(f"Retrieved blog: {slug}")
+        log.info(f"Retrieved blog: {slug}")
         return BlogPost(**serialize_document(blog))
 
     @staticmethod
@@ -219,12 +220,12 @@ class BlogService:
         Raises:
             HTTPException: If slug already exists
         """
-        logger.info(f"Creating blog with slug: {blog_data.slug}")
+        log.info(f"Creating blog with slug: {blog_data.slug}")
 
         # Check if slug already exists
         existing = await blog_collection.find_one({"slug": blog_data.slug})
         if existing:
-            logger.warning(f"Blog slug already exists: {blog_data.slug}")
+            log.warning(f"Blog slug already exists: {blog_data.slug}")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="Blog post with this slug already exists",
@@ -235,13 +236,14 @@ class BlogService:
         result = await blog_collection.insert_one(blog_dict)
 
         if not result.inserted_id:
-            logger.error("Failed to create blog post")
+            log.error("Failed to create blog post")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create blog post",
             )
 
-        logger.info(f"Blog created with ID: {result.inserted_id}")
+        log.set(blog={"slug": blog_data.slug, "inserted_id": str(result.inserted_id)})
+        log.info(f"Blog created with ID: {result.inserted_id}")
 
         # Return the created blog with populated authors
         return await BlogService.get_blog_by_slug(blog_data.slug)
@@ -267,7 +269,7 @@ class BlogService:
         Raises:
             HTTPException: If blog post not found
         """
-        logger.info(f"Updating blog: {slug}")
+        log.info(f"Updating blog: {slug}")
 
         # Build update dictionary (exclude None values)
         update_dict = {
@@ -275,19 +277,19 @@ class BlogService:
         }
 
         if not update_dict:
-            logger.info("No fields to update")
+            log.info("No fields to update")
             return await BlogService.get_blog_by_slug(slug)
 
         # Update blog post
         result = await blog_collection.update_one({"slug": slug}, {"$set": update_dict})
 
         if result.matched_count == 0:
-            logger.warning(f"Blog not found for update: {slug}")
+            log.warning(f"Blog not found for update: {slug}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found"
             )
 
-        logger.info(f"Blog updated: {slug}")
+        log.info(f"Blog updated: {slug}")
 
         # Return the updated blog with populated authors
         return await BlogService.get_blog_by_slug(slug)
@@ -309,17 +311,17 @@ class BlogService:
         Raises:
             HTTPException: If blog post not found
         """
-        logger.info(f"Deleting blog: {slug}")
+        log.info(f"Deleting blog: {slug}")
 
         result = await blog_collection.delete_one({"slug": slug})
 
         if result.deleted_count == 0:
-            logger.warning(f"Blog not found for deletion: {slug}")
+            log.warning(f"Blog not found for deletion: {slug}")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND, detail="Blog post not found"
             )
 
-        logger.info(f"Blog deleted: {slug}")
+        log.info(f"Blog deleted: {slug}")
 
     @staticmethod
     async def get_blog_count() -> int:
@@ -342,7 +344,7 @@ class BlogService:
         Returns:
             List of matching blog posts
         """
-        logger.info(f"Searching blogs: {query}, include_content: {include_content}")
+        log.info(f"Searching blogs: {query}, include_content: {include_content}")
 
         skip = (page - 1) * limit
 
@@ -428,5 +430,6 @@ class BlogService:
 
             blog_posts.append(BlogPost(**serialize_document(blog)))
 
-        logger.info(f"Found {len(blog_posts)} blogs matching: {query}")
+        log.set(blog={"search_query": query, "result_count": len(blog_posts)})
+        log.info(f"Found {len(blog_posts)} blogs matching: {query}")
         return blog_posts

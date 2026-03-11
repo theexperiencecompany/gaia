@@ -4,7 +4,7 @@ Workflow conversation service for managing single conversations per workflow.
 
 from typing import List
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import conversations_collection
 from app.models.chat_models import MessageModel, SystemPurpose, UpdateMessagesRequest
 from app.services.conversation_service import (
@@ -90,7 +90,7 @@ async def add_workflow_execution_messages(
         await update_messages(messages_request, user_dict)
 
     except Exception as e:
-        logger.error(
+        log.error(
             f"Failed to store messages in conversation {conversation_id}: {str(e)}"
         )
         raise

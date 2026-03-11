@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Optional
 from uuid import uuid4
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import bot_sessions_collection, conversations_collection
 from app.db.redis import redis_cache
 from app.models.chat_models import ConversationModel
@@ -52,7 +52,7 @@ class BotService:
             # to proceed without rate limiting to maintain service availability. This is
             # acceptable because bot rate limiting is a nice-to-have feature that should
             # not block legitimate users when infrastructure is degraded.
-            logger.warning(
+            log.warning(
                 f"Rate limit check failed for {platform}:{platform_user_id}, "
                 f"failing open: {e!r}"
             )
@@ -114,6 +114,14 @@ class BotService:
                 {"_id": 1},
             )
             if conv:
+                log.set(
+                    bot={
+                        "platform": platform,
+                        "session_key": session_key,
+                        "conversation_id": conv_id,
+                        "session_status": "existing",
+                    }
+                )
                 return conv_id
 
         conversation_id = str(uuid4())
@@ -141,6 +149,14 @@ class BotService:
             upsert=True,
         )
 
+        log.set(
+            bot={
+                "platform": platform,
+                "session_key": session_key,
+                "conversation_id": conversation_id,
+                "session_status": "new",
+            }
+        )
         return conversation_id
 
     @staticmethod

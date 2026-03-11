@@ -17,7 +17,7 @@ from app.api.v1.dependencies.oauth_dependencies import (
     get_current_user,
     get_user_timezone,
 )
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import ChatContext, log
 from app.core.stream_manager import stream_manager
 from app.db.redis import redis_cache
 from app.decorators import tiered_rate_limit
@@ -56,6 +56,23 @@ async def chat_stream_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="user_id is required",
         )
+    log.set(
+        user={"id": user_id},
+        chat=ChatContext(
+            conversation_id=conversation_id,
+            stream_id=stream_id,
+            is_new_conversation=body.conversation_id is None,
+            message_count=len(body.messages) if body.messages else 0,
+            has_files=bool(body.fileIds or body.fileData),
+            file_count=len(body.fileIds or []) + len(body.fileData or []),
+            tool_category=body.toolCategory,
+            has_reply=bool(body.replyToMessage),
+            has_calendar_event=bool(body.selectedCalendarEvent),
+            selected_workflow_id=body.selectedWorkflow.id if body.selectedWorkflow else None,
+        ),
+        user_message_length=len(body.messages[-1]["content"]) if body.messages else 0,
+        selected_tool=body.selectedTool,
+    )
 
     # Initialize stream tracking in Redis
     await stream_manager.start_stream(
@@ -81,7 +98,7 @@ async def chat_stream_endpoint(
         """Subscribe to Redis channel and forward chunks to HTTP response."""
         # Check Redis availability before subscribing
         if not redis_cache.redis:
-            logger.error(f"Redis unavailable for stream {stream_id}")
+            log.error(f"Redis unavailable for stream {stream_id}")
             yield "data: [STREAM_ERROR]\n\n"
             return
 
@@ -89,16 +106,16 @@ async def chat_stream_endpoint(
             async for chunk in stream_manager.subscribe_stream(stream_id):
                 # Check if client disconnected
                 if await request.is_disconnected():
-                    logger.info(
+                    log.info(
                         f"Client disconnected, stream {stream_id} continues in background"
                     )
                     break
                 yield chunk
         except asyncio.CancelledError:
             # Client disconnected - stream continues in background
-            logger.info(f"Stream {stream_id}: client connection cancelled")
+            log.info(f"Stream {stream_id}: client connection cancelled")
         except Exception as e:
-            logger.error(f"Error streaming to client: {e}")
+            log.error(f"Error streaming to client: {e}")
 
     return StreamingResponse(
         stream_from_redis(),
@@ -130,6 +147,7 @@ async def cancel_stream_endpoint(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="user_id is required",
         )
+    log.set(user={"id": user_id}, chat={"stream_id": stream_id})
 
     # Verify stream ownership
     progress = await stream_manager.get_progress(stream_id)
@@ -147,7 +165,7 @@ async def cancel_stream_endpoint(
         )
 
     success = await stream_manager.cancel_stream(stream_id)
-    logger.info(f"Cancel stream request: stream_id={stream_id}, success={success}")
+    log.info(f"Cancel stream request: stream_id={stream_id}, success={success}")
 
     return {
         "success": success,

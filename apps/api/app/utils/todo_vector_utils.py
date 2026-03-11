@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from bson import ObjectId
 
-from app.config.loggers import todos_logger as logger
+from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import todos_collection
 from app.db.utils import serialize_document
@@ -72,6 +72,7 @@ async def store_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> b
     Returns:
         bool: True if successful, False otherwise
     """
+    log.set(operation="store_todo_embedding", todo_id=todo_id, user_id=user_id)
     try:
         # Create content for embedding
         content = create_todo_content_for_embedding(todo_data)
@@ -126,11 +127,11 @@ async def store_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> b
             texts=[content], metadatas=[metadata], ids=[str(todo_id)]
         )
 
-        logger.info(f"Stored embedding for todo {todo_id}")
+        log.info(f"Stored embedding for todo {todo_id}")
         return True
 
     except Exception as e:
-        logger.error(f"Error storing embedding for todo {todo_id}: {str(e)}")
+        log.error(f"Error storing embedding for todo {todo_id}: {str(e)}")
         return False
 
 
@@ -154,7 +155,7 @@ async def update_todo_embedding(todo_id: str, todo_data: dict, user_id: str) -> 
         return await store_todo_embedding(todo_id, todo_data, user_id)
 
     except Exception as e:
-        logger.error(f"Error updating embedding for todo {todo_id}: {str(e)}")
+        log.error(f"Error updating embedding for todo {todo_id}: {str(e)}")
         return False
 
 
@@ -177,11 +178,11 @@ async def delete_todo_embedding(todo_id: str) -> bool:
         # Delete the embedding
         chroma_collection.delete(ids=[str(todo_id)])
 
-        logger.info(f"Deleted embedding for todo {todo_id}")
+        log.info(f"Deleted embedding for todo {todo_id}")
         return True
 
     except Exception as e:
-        logger.error(f"Error deleting embedding for todo {todo_id}: {str(e)}")
+        log.error(f"Error deleting embedding for todo {todo_id}: {str(e)}")
         return False
 
 
@@ -209,6 +210,15 @@ async def semantic_search_todos(
     Returns:
         List[TodoResponse]: List of matching todos
     """
+    log.set(
+        operation="semantic_search_todos",
+        user_id=user_id,
+        search_query=query,
+        top_k=top_k,
+        filter_completed=completed,
+        filter_priority=priority,
+        filter_project_id=project_id,
+    )
     try:
         # Get ChromaDB collection
         chroma_collection = await ChromaClient.get_langchain_client(
@@ -242,7 +252,7 @@ async def semantic_search_todos(
 
         if not todo_ids:
             # No vector results found
-            logger.info(f"No vector results for query '{query}'")
+            log.info(f"No vector results for query '{query}'")
             return []
 
         # Fetch full todo documents from MongoDB in the order of similarity
@@ -254,15 +264,15 @@ async def semantic_search_todos(
             if todo_doc:
                 todos.append(TodoResponse(**serialize_document(todo_doc)))
 
-        logger.info(f"Semantic search returned {len(todos)} todos for query '{query}'")
+        log.info(f"Semantic search returned {len(todos)} todos for query '{query}'")
         return todos
 
     except Exception as e:
-        logger.error(f"Error in semantic search for todos: {str(e)}")
+        log.error(f"Error in semantic search for todos: {str(e)}")
 
         # Fallback to traditional search on error
         if include_traditional_search:
-            logger.info("Falling back to traditional search due to error")
+            log.info("Falling back to traditional search due to error")
             from app.services.todos.todo_service import search_todos
 
             return await search_todos(query, user_id)
@@ -281,6 +291,7 @@ async def bulk_index_todos(user_id: str, batch_size: int = 100) -> int:
     Returns:
         int: Number of todos successfully indexed
     """
+    log.set(operation="bulk_index_todos", user_id=user_id, batch_size=batch_size)
     try:
         indexed_count = 0
         skip = 0
@@ -307,11 +318,11 @@ async def bulk_index_todos(user_id: str, batch_size: int = 100) -> int:
             if len(todos) < batch_size:
                 break
 
-        logger.info(f"Bulk indexed {indexed_count} todos for user {user_id}")
+        log.info(f"Bulk indexed {indexed_count} todos for user {user_id}")
         return indexed_count
 
     except Exception as e:
-        logger.error(f"Error in bulk indexing todos for user {user_id}: {str(e)}")
+        log.error(f"Error in bulk indexing todos for user {user_id}: {str(e)}")
         return 0
 
 
@@ -385,10 +396,10 @@ async def hybrid_search_todos(
         # Return top results
         result = [all_todos[todo_id] for todo_id in sorted_todo_ids[:top_k]]
 
-        logger.info(f"Hybrid search returned {len(result)} todos for query '{query}'")
+        log.info(f"Hybrid search returned {len(result)} todos for query '{query}'")
         return result
 
     except Exception as e:
-        logger.error(f"Error in hybrid search: {str(e)}")
+        log.error(f"Error in hybrid search: {str(e)}")
         # Fallback to semantic search only
         return await semantic_search_todos(query, user_id, top_k, **filters)

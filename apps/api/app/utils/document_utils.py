@@ -12,7 +12,7 @@ from uuid import uuid4
 
 import pypandoc
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.services.upload_service import upload_file_to_cloudinary
 
 
@@ -64,16 +64,16 @@ class DocumentProcessor:
         self.temp_path = os.path.join(temp_dir, self.output_filename)
 
         try:
-            logger.info(f"Creating temporary file: {self.temp_path}")
+            log.info(f"Creating temporary file: {self.temp_path}")
             yield self.temp_path
         finally:
             # Clean up temporary file
             if self.temp_path and os.path.exists(self.temp_path):
                 try:
                     os.remove(self.temp_path)
-                    logger.info(f"Cleaned up temporary file: {self.temp_path}")
+                    log.info(f"Cleaned up temporary file: {self.temp_path}")
                 except Exception as e:
-                    logger.warning(
+                    log.warning(
                         f"Failed to clean up temporary file {self.temp_path}: {e}"
                     )
 
@@ -87,6 +87,11 @@ class DocumentProcessor:
         Returns:
             Dictionary with generation results including file path and optional cloudinary URL
         """
+        log.set(
+            filename=self.output_filename,
+            format=self.format,
+            upload_to_cloudinary=self.upload_to_cloudinary,
+        )
         async with self.create_temp_file() as temp_path:
             if self.is_plain_text:
                 await self._write_plain_text(temp_path, content)
@@ -113,7 +118,7 @@ class DocumentProcessor:
     async def _write_plain_text(self, temp_path: str, content: str) -> None:
         """Write content directly to file for plain text documents."""
         await asyncio.to_thread(self._write_file_sync, temp_path, content)
-        logger.info(f"Generated plain text document: {temp_path}")
+        log.info(f"Generated plain text document: {temp_path}")
 
     def _write_file_sync(self, temp_path: str, content: str) -> None:
         """Synchronous file writing helper."""
@@ -143,7 +148,7 @@ class DocumentProcessor:
             outputfile=temp_path,
             extra_args=extra_args,
         )
-        logger.info(f"Generated formatted document: {temp_path}")
+        log.info(f"Generated formatted document: {temp_path}")
 
     async def _configure_pdf_args(self, extra_args: list) -> None:
         """Configure PDF-specific arguments."""
@@ -208,10 +213,10 @@ class DocumentProcessor:
                 file_path=temp_path,
                 public_id=f"{uuid4()}_{self.output_filename}",
             )
-            logger.info(f"Uploaded to Cloudinary: {cloudinary_url}")
+            log.info(f"Uploaded to Cloudinary: {cloudinary_url}")
             return cloudinary_url
         except Exception as e:
-            logger.error(f"Failed to upload to Cloudinary: {e}")
+            log.error(f"Failed to upload to Cloudinary: {e}")
             raise
 
 

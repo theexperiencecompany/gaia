@@ -2,7 +2,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.notifications import (
     ALL_AUTO_INJECTED_CHANNELS,
     CHANNEL_TYPE_INAPP,
@@ -74,12 +74,12 @@ class NotificationOrchestrator:
     def register_channel_adapter(self, adapter: ChannelAdapter) -> None:
         """Register a new channel adapter"""
         self.channel_adapters[adapter.channel_type] = adapter
-        logger.info(f"Registered channel adapter: {adapter.channel_type}")
+        log.info(f"Registered channel adapter: {adapter.channel_type}")
 
     def register_action_handler(self, handler: ActionHandler) -> None:
         """Register a new action handler"""
         self.action_handlers[handler.action_type] = handler
-        logger.info(f"Registered action handler: {handler.action_type}")
+        log.info(f"Registered action handler: {handler.action_type}")
 
     # NOTIFICATION CREATION & MANAGEMENT
     async def create_notification(
@@ -94,7 +94,22 @@ class NotificationOrchestrator:
         Returns:
             NotificationRecord if created successfully, None if duplicate
         """
-        logger.info(f"Creating notification {request.id} for user {request.user_id}")
+        channels_requested = [ch.channel_type for ch in request.channels]
+        log.set(
+            notification={
+                "id": request.id,
+                "user_id": request.user_id,
+                "notification_type": request.type.value if request.type else None,
+                "source": request.source,
+                "title": request.content.title if request.content else None,
+                "body_preview": (request.content.body or "")[:80]
+                if request.content
+                else None,
+                "channels": channels_requested,
+                "operation": "create_notification",
+            }
+        )
+        log.info(f"Creating notification {request.id} for user {request.user_id}")
 
         # Create notification record
         notification_record = NotificationRecord(
@@ -121,7 +136,7 @@ class NotificationOrchestrator:
         Args:
             notification: The notification record to deliver
         """
-        logger.info(f"Delivering notification {notification.id}")
+        log.info(f"Delivering notification {notification.id}")
 
         delivery_tasks = []
         explicitly_requested = {
@@ -141,7 +156,7 @@ class NotificationOrchestrator:
                 if platform != CHANNEL_TYPE_INAPP and not channel_prefs.get(
                     platform, True
                 ):
-                    logger.info(
+                    log.info(
                         f"Skipping {platform} delivery for {notification.user_id}: disabled by preference"
                     )
                     continue
@@ -163,7 +178,7 @@ class NotificationOrchestrator:
                 if isinstance(result, ChannelDeliveryStatus):
                     channel_statuses.append(result)
                 elif isinstance(result, Exception):
-                    logger.error(f"Delivery failed: {result}")
+                    log.error(f"Delivery failed: {result}")
 
             # Compute overall status: DELIVERED only if at least one channel
             # actually succeeded (i.e. not failed and not skipped).
@@ -176,6 +191,16 @@ class NotificationOrchestrator:
                 NotificationStatus.DELIVERED
                 if delivered_channels
                 else NotificationStatus.FAILED
+            )
+            log.set(
+                notification={
+                    "id": notification.id,
+                    "user_id": notification.user_id,
+                    "delivery_status": overall_status.value,
+                    "channels_attempted": [s.channel_type for s in channel_statuses],
+                    "channels_delivered": [s.channel_type for s in delivered_channels],
+                    "operation": "deliver_notification",
+                }
             )
             now = datetime.now(timezone.utc)
 
@@ -214,7 +239,7 @@ class NotificationOrchestrator:
         except Exception as e:
             # Default to all DISABLED on error — better to skip delivery than
             # to spam users who have opted out when the DB is unavailable.
-            logger.warning(f"Failed to fetch channel prefs for {user_id}: {e}")
+            log.warning(f"Failed to fetch channel prefs for {user_id}: {e}")
             return {k: False for k in DEFAULT_CHANNEL_PREFERENCES}
 
     async def _deliver_via_channel(
@@ -234,7 +259,7 @@ class NotificationOrchestrator:
             content = await adapter.transform(notification.original_request)
             return await adapter.deliver(content, notification.user_id)
         except Exception as e:
-            logger.error(f"Channel delivery failed: {e}")
+            log.error(f"Channel delivery failed: {e}")
             return ChannelDeliveryStatus(
                 channel_type=adapter.channel_type,
                 status=NotificationStatus.PENDING,
@@ -261,7 +286,13 @@ class NotificationOrchestrator:
         Returns:
             ActionResult containing execution status and results
         """
-        logger.info(f"Executing action {action_id} for notification {notification_id}")
+        log.set(
+            action_id=action_id,
+            notification_id=notification_id,
+            user_id=user_id,
+            operation="execute_action",
+        )
+        log.info(f"Executing action {action_id} for notification {notification_id}")
 
         # Get notification
         notification = await self.storage.get_notification(notification_id, user_id)
@@ -321,7 +352,7 @@ class NotificationOrchestrator:
             await self.storage.update_notification(
                 notification_id, result.update_notification
             )
-            logger.info(
+            log.info(
                 f"Broadcasting notification {notification.id} to user {notification.user_id}"
             )
             # Broadcast update to user via websocket
@@ -354,9 +385,7 @@ class NotificationOrchestrator:
         if not notification:
             return None
 
-        logger.info(
-            f"Marking notification {notification_id} as read for user {user_id}"
-        )
+        log.info(f"Marking notification {notification_id} as read for user {user_id}")
 
         await self.storage.update_notification(
             notification_id,
@@ -393,7 +422,7 @@ class NotificationOrchestrator:
         if not notification:
             return False
 
-        logger.info(f"Archiving notification {notification_id} for user {user_id}")
+        log.info(f"Archiving notification {notification_id} for user {user_id}")
 
         await self.storage.update_notification(
             notification_id,
@@ -483,7 +512,7 @@ class NotificationOrchestrator:
 
                 results[notification_id] = success
             except Exception as e:
-                logger.error(f"Bulk action failed for {notification_id}: {e}")
+                log.error(f"Bulk action failed for {notification_id}: {e}")
                 results[notification_id] = False
 
         return results

@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Optional
 
 import cloudinary
 import cloudinary.uploader
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.chroma.chromadb import ChromaClient
 from app.db.mongodb.collections import files_collection
 from app.db.utils import serialize_document
@@ -45,25 +45,33 @@ async def upload_file_service(
         HTTPException: If file upload fails
     """
     if not file.filename:
-        logger.error("Missing filename in file upload")
+        log.error("Missing filename in file upload")
         raise HTTPException(
             status_code=400, detail="Invalid file name. Filename is required."
         )
     if not file.content_type:
-        logger.error("Missing content_type in file upload")
+        log.error("Missing content_type in file upload")
         raise HTTPException(
             status_code=400, detail="Invalid file type. Content type is required."
         )
 
     file_id = str(uuid.uuid4())
     public_id = f"file_{file_id}_{file.filename.replace(' ', '_')}"
+    log.set(
+        service="file_service",
+        operation="upload",
+        user_id=user_id,
+        filename=file.filename,
+        content_type=file.content_type,
+        file_id=file_id,
+    )
 
     try:
         content = await file.read()
 
         file_size = len(content)
         if file_size > 10 * 1024 * 1024:
-            logger.error("File size exceeds the 10 MB limit")
+            log.error("File size exceeds the 10 MB limit")
             raise HTTPException(
                 status_code=400, detail="File size exceeds the 10 MB limit"
             )
@@ -89,7 +97,7 @@ async def upload_file_service(
 
         file_url = upload_result.get("secure_url")
         if not file_url:
-            logger.error("Missing secure_url in Cloudinary upload response")
+            log.error("Missing secure_url in Cloudinary upload response")
             raise HTTPException(
                 status_code=500, detail="Invalid response from file upload service"
             )
@@ -137,7 +145,7 @@ async def upload_file_service(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to upload file: {str(e)}", exc_info=True)
+        log.error(f"Failed to upload file: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Failed to upload file: {str(e)}")
 
 
@@ -159,7 +167,7 @@ def _process_file_summary(
         content_model_dict = file_summary.model_dump(mode="json")
         return content_str, content_model_dict
     else:
-        logger.error("Invalid file description format")
+        log.error("Invalid file description format")
         raise HTTPException(status_code=400, detail="Invalid file description format")
 
 
@@ -235,10 +243,10 @@ async def _store_in_chromadb(
             ids=ids,
             documents=documents,
         )
-        logger.info(f"File with id {file_id} indexed in ChromaDB")
+        log.info(f"File with id {file_id} indexed in ChromaDB")
     except Exception as chroma_err:
         # Log but don't fail if ChromaDB indexing fails
-        logger.error(
+        log.error(
             f"Failed to index file in ChromaDB: {str(chroma_err)}",
             exc_info=True,
         )
@@ -260,10 +268,10 @@ async def update_file_in_chromadb(
                 collection_name="documents"
             )
             await chroma_documents_collection.adelete(ids=[file_id])
-            logger.info(f"Removed old file data for {file_id} from ChromaDB")
+            log.info(f"Removed old file data for {file_id} from ChromaDB")
         except Exception as delete_err:
             # Just log and continue with the new insertion
-            logger.warning(
+            log.warning(
                 f"Could not delete old file data from ChromaDB: {str(delete_err)}"
             )
 
@@ -279,7 +287,7 @@ async def update_file_in_chromadb(
 
     except Exception as chroma_err:
         # Log but don't fail if ChromaDB update fails
-        logger.error(
+        log.error(
             f"Failed to update file in ChromaDB: {str(chroma_err)}",
             exc_info=True,
         )
@@ -330,7 +338,7 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
         }
 
         if explicit_file_ids:
-            logger.info(f"Fetching {len(explicit_file_ids)} files by ID")
+            log.info(f"Fetching {len(explicit_file_ids)} files by ID")
 
             # Find which IDs aren't in the file_data_map
             missing_ids = [
@@ -404,13 +412,13 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
                 for file in relevant_files:
                     file["score"] = file.get("similarity_score", 0)
             except Exception as e:
-                logger.error(
+                log.error(
                     f"Error searching documents with ChromaDB: {str(e)}", exc_info=True
                 )
                 relevant_files = []
 
             if relevant_files:
-                logger.info(f"Found {len(relevant_files)} semantically relevant files")
+                log.info(f"Found {len(relevant_files)} semantically relevant files")
 
                 # Add relevant files that weren't already included via explicit IDs
                 for file in relevant_files:
@@ -426,7 +434,7 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
                                 "_id": file_id,  # Use file_id as _id for consistency
                             }
                         )
-                logger.info(f"Added {len(relevant_files)} semantically relevant files")
+                log.info(f"Added {len(relevant_files)} semantically relevant files")
 
         # 3. Format and add file information to the message context
         if included_files:
@@ -469,13 +477,13 @@ async def fetch_files(context: Dict[str, Any]) -> Dict[str, Any]:
             context["last_message"]["content"] += formatted_files
             context["files_data"] = included_files
             context["files_added"] = True
-            logger.info(f"Added {len(included_files)} files to message context")
+            log.info(f"Added {len(included_files)} files to message context")
         else:
             context["files_added"] = False
-            logger.info("No relevant files found")
+            log.info("No relevant files found")
 
     except Exception as e:
-        logger.error(f"Error processing files: {str(e)}", exc_info=True)
+        log.error(f"Error processing files: {str(e)}", exc_info=True)
         context["files_added"] = False
         context["file_error"] = str(e)
 
@@ -502,10 +510,13 @@ async def delete_file_service(file_id: str, user_id: Optional[str]) -> dict:
     Raises:
         HTTPException: If the file is not found or deletion fails
     """
-    logger.info(f"Deleting file with id: {file_id} for user: {user_id}")
+    log.info(f"Deleting file with id: {file_id} for user: {user_id}")
+    log.set(
+        service="file_service", operation="delete", file_id=file_id, user_id=user_id
+    )
 
     if user_id is None:
-        logger.error("User ID is required to delete a file")
+        log.error("User ID is required to delete a file")
         raise HTTPException(status_code=400, detail="User ID is required")
 
     # Retrieve file metadata before deletion
@@ -513,7 +524,7 @@ async def delete_file_service(file_id: str, user_id: Optional[str]) -> dict:
         {"file_id": file_id, "user_id": user_id}
     )
     if not file_data:
-        logger.error(f"File with id {file_id} not found for user {user_id}")
+        log.error(f"File with id {file_id} not found for user {user_id}")
         raise HTTPException(
             status_code=404, detail="File not found"
         )  # Get the conversation_id for cache invalidation
@@ -521,12 +532,12 @@ async def delete_file_service(file_id: str, user_id: Optional[str]) -> dict:
     # Get the public_id for cloudinary deletion
     public_id = file_data.get("public_id")
     if not public_id:
-        logger.warning(f"File {file_id} has no public_id for Cloudinary deletion")
+        log.warning(f"File {file_id} has no public_id for Cloudinary deletion")
 
     # Delete from MongoDB
     result = await files_collection.delete_one({"file_id": file_id, "user_id": user_id})
     if result.deleted_count == 0:
-        logger.error("File not found for deletion in MongoDB")
+        log.error("File not found for deletion in MongoDB")
         raise HTTPException(status_code=404, detail="File not found")
 
     # Delete from Cloudinary if public_id exists
@@ -534,27 +545,25 @@ async def delete_file_service(file_id: str, user_id: Optional[str]) -> dict:
         try:
             cloudinary_result = cloudinary.uploader.destroy(public_id)
             if cloudinary_result.get("result") != "ok":
-                logger.warning(
+                log.warning(
                     f"Failed to delete file from Cloudinary: {cloudinary_result}"
                 )
         except Exception as e:
             # Log but don't fail if Cloudinary deletion fails
-            logger.error(
-                f"Error deleting file from Cloudinary: {str(e)}", exc_info=True
-            )
+            log.error(f"Error deleting file from Cloudinary: {str(e)}", exc_info=True)
 
     try:
         chroma_documents_collection = await ChromaClient.get_langchain_client(
             collection_name="documents"
         )
         await chroma_documents_collection.adelete(ids=[file_id])
-        logger.info(f"File with id {file_id} deleted from ChromaDB")
+        log.info(f"File with id {file_id} deleted from ChromaDB")
     except Exception as e:
         # Log the error but don't fail the request if ChromaDB deletion fails
-        logger.error(f"Failed to delete file from ChromaDB: {str(e)}")
+        log.error(f"Failed to delete file from ChromaDB: {str(e)}")
 
     # Cache invalidation is handled by the CacheInvalidator decorator
-    logger.info(f"File {file_id} successfully deleted")
+    log.info(f"File {file_id} successfully deleted")
 
     return {
         "message": "File deleted successfully",
@@ -592,14 +601,17 @@ async def update_file_service(
     Raises:
         HTTPException: If the file is not found or update fails
     """
-    logger.info(f"Updating file with id: {file_id} for user: {user_id}")
+    log.info(f"Updating file with id: {file_id} for user: {user_id}")
+    log.set(
+        service="file_service", operation="update", file_id=file_id, user_id=user_id
+    )
 
     # Get the current file data
     file_data = await files_collection.find_one(
         {"file_id": file_id, "user_id": user_id}
     )
     if not file_data:
-        logger.error(f"File with id {file_id} not found for user {user_id}")
+        log.error(f"File with id {file_id} not found for user {user_id}")
         raise HTTPException(status_code=404, detail="File not found")
 
     # Store original conversation ID if not provided in update
@@ -629,9 +641,7 @@ async def update_file_service(
             update_data["description"] = summary
             update_data["page_wise_summary"] = page_wise_summary
         except Exception as e:
-            logger.error(
-                f"Failed to generate file description: {str(e)}", exc_info=True
-            )
+            log.error(f"Failed to generate file description: {str(e)}", exc_info=True)
             raise HTTPException(
                 status_code=500, detail=f"Failed to process file: {str(e)}"
             )
@@ -645,14 +655,14 @@ async def update_file_service(
     )
 
     if result.modified_count == 0:
-        logger.warning(f"No changes made to file {file_id}")
+        log.warning(f"No changes made to file {file_id}")
 
     # Get the updated file data
     updated_file = await files_collection.find_one(
         {"file_id": file_id, "user_id": user_id}
     )
     if not updated_file:
-        logger.error(f"Updated file {file_id} not found")
+        log.error(f"Updated file {file_id} not found")
         raise HTTPException(status_code=404, detail="File not found after update")
 
     # If description was updated, update ChromaDB
@@ -673,9 +683,7 @@ async def update_file_service(
 
         except Exception as err:
             # Log but don't fail if ChromaDB update fails
-            logger.error(
-                f"Failed to update file in ChromaDB: {str(err)}", exc_info=True
-            )
+            log.error(f"Failed to update file in ChromaDB: {str(err)}", exc_info=True)
 
     # Convert ObjectId to string for serialization
     if "_id" in updated_file:
@@ -718,14 +726,14 @@ async def get_files(
         query = {"user_id": user_id}
 
     # Cache miss or cache disabled, fetch from database
-    logger.info(
+    log.info(
         f"Fetching files from database for user: {user_id}"
         + (f", conversation: {conversation_id}" if conversation_id else "")
     )
 
     files = await files_collection.find(query).to_list(length=None)
 
-    logger.info(f"Found {len(files)} files for user: {user_id}")
+    log.info(f"Found {len(files)} files for user: {user_id}")
 
     # Convert ObjectId to string for serialization
     return [deserialize_file(file) for file in files]
@@ -743,7 +751,7 @@ def deserialize_file(file: dict) -> FileData:
     """
     file_id = file.get("file_id", "") or file.get("fileId", "")
     if not file_id:
-        logger.error("Missing file_id in file document")
+        log.error("Missing file_id in file document")
         raise HTTPException(status_code=400, detail="Invalid file document")
 
     return FileData(

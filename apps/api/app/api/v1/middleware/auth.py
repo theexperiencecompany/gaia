@@ -8,8 +8,8 @@ from datetime import timezone as tz
 from typing import Any, Awaitable, Callable, Dict, Optional
 
 from app.api.v1.middleware.agent_auth import verify_agent_token
-from app.config.loggers import auth_logger as logger
 from app.config.settings import settings
+from shared.py.wide_events import log
 from app.db.mongodb.collections import users_collection
 from app.utils.auth_utils import authenticate_workos_session
 from bson import ObjectId
@@ -110,9 +110,16 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     # If session was refreshed, store new session token
                     if new_session:
                         request.state.new_session = new_session
+                else:
+                    # Session token was present but authentication failed (expired, invalid, etc.)
+                    # Store failure reason in request state so route handlers can log it.
+                    # NOTE: log.set() cannot be used here because WorkOSAuthMiddleware runs
+                    # outside LoggingMiddleware's context (Starlette copies context at call_next),
+                    # so any wide event fields set here would be wiped by log.reset() below.
+                    request.state.auth_failure = "invalid_or_expired_session"
 
             except Exception as e:
-                logger.error(f"Authentication middleware error: {e}")
+                log.error(f"Authentication middleware error: {e}")
                 # Don't block request on auth failures - routes can handle this
         if (
             not request.state.authenticated
@@ -131,7 +138,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
                     try:
                         user_id = ObjectId(user_id)
                     except Exception as e:
-                        logger.error(f"Invalid user_id format: {user_id} - {e}")
+                        log.error(f"Invalid user_id format: {user_id} - {e}")
                         user_data = None
                     else:
                         user_data = await users_collection.find_one({"_id": user_id})
@@ -194,7 +201,7 @@ class WorkOSAuthMiddleware(BaseHTTPMiddleware):
 
                 return user_info, new_session
             except Exception as e:
-                logger.error(f"Error in middleware additional processing: {e}")
+                log.error(f"Error in middleware additional processing: {e}")
                 return None, new_session
 
         return None, new_session

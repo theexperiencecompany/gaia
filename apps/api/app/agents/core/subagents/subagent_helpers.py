@@ -12,7 +12,7 @@ from typing import Optional
 
 from app.agents.prompts.custom_mcp_prompts import CUSTOM_MCP_SUBAGENT_PROMPT
 from app.agents.skills.discovery import get_available_skills_text
-from app.config.loggers import common_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_id
 from app.services.memory_service import memory_service
 from app.services.provider_metadata_service import get_provider_metadata
@@ -52,7 +52,7 @@ async def build_subagent_system_prompt(
         if integration_id:
             return base_system_prompt or CUSTOM_MCP_SUBAGENT_PROMPT
 
-        logger.warning(f"Integration {integration_id} not found")
+        log.warning(f"Integration {integration_id} not found")
         return base_system_prompt or ""
 
     # Use provided system prompt or get from integration config
@@ -80,12 +80,12 @@ async def build_subagent_system_prompt(
                         + "\n"
                     )
                     system_prompt = system_prompt + provider_context
-                    logger.debug(
+                    log.debug(
                         f"Injected {integration.provider} metadata into system prompt: "
                         f"{list(metadata.keys())}"
                     )
         except Exception as e:
-            logger.warning(f"Failed to inject provider metadata: {e}")
+            log.warning(f"Failed to inject provider metadata: {e}")
 
     return system_prompt
 
@@ -184,7 +184,7 @@ async def create_agent_context_message(
             else:
                 context_parts.append(f"User Local Time: {formatted_user_time}")
         except Exception as e:
-            logger.warning(f"Error parsing user_time: {e}")
+            log.warning(f"Error parsing user_time: {e}")
 
     # Search for memories and skills concurrently
     memories_section = ""
@@ -200,12 +200,12 @@ async def create_agent_context_message(
             if results:
                 memories = getattr(results, "memories", None)
                 if memories:
-                    logger.info(f"Added {len(memories)} memories to subagent context")
+                    log.info(f"Added {len(memories)} memories to subagent context")
                     return "\n\nBased on our previous conversations:\n" + "\n".join(
                         f"- {mem.content}" for mem in memories
                     )
         except Exception as e:
-            logger.warning(f"Error retrieving memories for subagent: {e}")
+            log.warning(f"Error retrieving memories for subagent: {e}")
         return ""
 
     async def _fetch_skills() -> str:
@@ -218,10 +218,10 @@ async def create_agent_context_message(
                 agent_name=agent_for_skills,
             )
             if skills_text:
-                logger.info(f"Injected installable skills for {agent_for_skills}")
+                log.info(f"Injected installable skills for {agent_for_skills}")
                 return f"\n\n{skills_text}"
         except Exception as e:
-            logger.warning(f"Error injecting installable skills: {e}")
+            log.warning(f"Error injecting installable skills: {e}")
         return ""
 
     memories_section, skills_section = await asyncio.gather(

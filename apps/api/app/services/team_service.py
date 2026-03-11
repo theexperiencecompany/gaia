@@ -4,7 +4,7 @@ Team service with Redis caching and proper error handling.
 
 from typing import List
 
-from app.config.loggers import common_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import DEFAULT_CACHE_TTL, TEAM_CACHE_PREFIX
 from app.db.mongodb.collections import team_collection
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -21,11 +21,12 @@ class TeamService:
     @staticmethod
     async def get_all_team_members() -> List[TeamMember]:
         """Get all team members with caching."""
+        log.set(service="team_service", operation="get_all_team_members")
         try:
             # Try to get from cache first
             cached_members = await get_cache(TEAM_LIST_CACHE_KEY)
             if cached_members:
-                logger.debug("Retrieved team members from cache")
+                log.debug("Retrieved team members from cache")
                 return [TeamMember(**member) for member in cached_members]
 
             # Fetch from database
@@ -39,12 +40,12 @@ class TeamService:
             # Cache the result
             cache_data = [member.model_dump() for member in members]
             await set_cache(TEAM_LIST_CACHE_KEY, cache_data, DEFAULT_CACHE_TTL)
-            logger.debug(f"Cached {len(members)} team members")
+            log.debug(f"Cached {len(members)} team members")
 
             return members
 
         except Exception as e:
-            logger.error(f"Error fetching team members: {str(e)}")
+            log.error(f"Error fetching team members: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve team members",
@@ -66,7 +67,7 @@ class TeamService:
             # Try cache first
             cached_member = await get_cache(cache_key)
             if cached_member:
-                logger.debug(f"Retrieved team member {member_id} from cache")
+                log.debug(f"Retrieved team member {member_id} from cache")
                 return TeamMember(**cached_member)
 
             # Fetch from database
@@ -81,14 +82,14 @@ class TeamService:
 
             # Cache the result
             await set_cache(cache_key, member.model_dump(), DEFAULT_CACHE_TTL)
-            logger.debug(f"Cached team member {member_id}")
+            log.debug(f"Cached team member {member_id}")
 
             return member
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error fetching team member {member_id}: {str(e)}")
+            log.error(f"Error fetching team member {member_id}: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to retrieve team member",
@@ -97,6 +98,7 @@ class TeamService:
     @staticmethod
     async def create_team_member(member_data: TeamMemberCreate) -> TeamMember:
         """Create a new team member and invalidate cache."""
+        log.set(service="team_service", operation="create_team_member")
         try:
             # Insert into database
             member_dict = member_data.model_dump()
@@ -116,14 +118,14 @@ class TeamService:
 
             # Invalidate list cache
             await delete_cache(TEAM_LIST_CACHE_KEY)
-            logger.debug("Invalidated team list cache after creation")
+            log.debug("Invalidated team list cache after creation")
 
             return created_member
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error creating team member: {str(e)}")
+            log.error(f"Error creating team member: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to create team member",
@@ -179,14 +181,14 @@ class TeamService:
             cache_key = f"{TEAM_CACHE_PREFIX}:member:{member_id}"
             await delete_cache(cache_key)
             await delete_cache(TEAM_LIST_CACHE_KEY)
-            logger.debug(f"Invalidated cache for team member {member_id}")
+            log.debug(f"Invalidated cache for team member {member_id}")
 
             return updated_member
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error updating team member {member_id}: {str(e)}")
+            log.error(f"Error updating team member {member_id}: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to update team member",
@@ -216,12 +218,12 @@ class TeamService:
             cache_key = f"{TEAM_CACHE_PREFIX}:member:{member_id}"
             await delete_cache(cache_key)
             await delete_cache(TEAM_LIST_CACHE_KEY)
-            logger.debug(f"Invalidated cache for deleted team member {member_id}")
+            log.debug(f"Invalidated cache for deleted team member {member_id}")
 
         except HTTPException:
             raise
         except Exception as e:
-            logger.error(f"Error deleting team member {member_id}: {str(e)}")
+            log.error(f"Error deleting team member {member_id}: {str(e)}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Failed to delete team member",
