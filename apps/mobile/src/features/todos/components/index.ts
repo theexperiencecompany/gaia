@@ -2,6 +2,7 @@ export * from "./create-project-modal";
 export * from "./create-todo-modal";
 export * from "./label-chip";
 export * from "./label-filter-view";
+export * from "./priority-filter-view";
 export * from "./label-picker-sheet";
 export * from "./project-detail-view";
 export * from "./project-list-sheet";

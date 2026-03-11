@@ -73,6 +73,7 @@ export default function AppLayout() {
               headerShown: false,
               contentStyle: { backgroundColor: "#060a14" },
               animation: "slide_from_right",
+              animationDuration: 280,
             }}
           >
             <Stack.Screen
@@ -80,18 +81,51 @@ export default function AppLayout() {
               options={{ animation: "none", animationDuration: 0 }}
             />
             <Stack.Screen name="c/[id]" options={{ animation: "none" }} />
-            <Stack.Screen name="workflows/[id]" />
-            <Stack.Screen name="todos/project/[projectId]" />
-            <Stack.Screen name="settings/index" />
-            <Stack.Screen name="settings/usage" />
-            <Stack.Screen name="skills/index" />
-            <Stack.Screen name="tools/index" />
-            <Stack.Screen name="calendar/index" />
-            <Stack.Screen name="memory/index" />
+            <Stack.Screen
+              name="workflows/[id]"
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="todos/project/[projectId]"
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="settings/index"
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="settings/usage"
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="skills/index"
+              options={{ animation: "slide_from_bottom", presentation: "modal" }}
+            />
+            <Stack.Screen
+              name="tools/index"
+              options={{ animation: "slide_from_bottom", presentation: "modal" }}
+            />
+            <Stack.Screen
+              name="calendar/index"
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="memory/index"
+              options={{ animation: "slide_from_right" }}
+            />
             <Stack.Screen name="test/index" />
-            <Stack.Screen name="search/index" />
-            <Stack.Screen name="notes/index" />
-            <Stack.Screen name="profile-card/index" />
+            <Stack.Screen
+              name="search/index"
+              options={{ animation: "fade" }}
+            />
+            <Stack.Screen
+              name="notes/index"
+              options={{ animation: "slide_from_right" }}
+            />
+            <Stack.Screen
+              name="profile-card/index"
+              options={{ animation: "slide_from_bottom", presentation: "modal" }}
+            />
             <Stack.Screen
               name="onboarding/index"
               options={{ animation: "fade" }}

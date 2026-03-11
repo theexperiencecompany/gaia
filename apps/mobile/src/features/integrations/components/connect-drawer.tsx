@@ -151,7 +151,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
         const authType = integration.authType;
 
         // Bearer token / API key integrations: show the token input sheet
-        if (authType === "bearer" || authType === "api_key") {
+        if (authType === "bearer") {
           bearerTokenSheetRef.current?.open({
             integrationId: integration.id,
             integrationName: integration.name,
