@@ -94,11 +94,13 @@ function DeepLinkHandler() {
 
     const subscription = Linking.addEventListener("url", handleUrl);
 
-    Linking.getInitialURL().then((url) => {
-      if (url) {
-        handleUrl({ url });
-      }
-    });
+    Linking.getInitialURL()
+      .then((url) => {
+        if (url) {
+          handleUrl({ url });
+        }
+      })
+      .catch(() => undefined);
 
     return () => {
       subscription.remove();
