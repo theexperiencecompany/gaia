@@ -24,6 +24,7 @@
     "./types/notes": "./src/types/notes.ts",
     "./types/memory": "./src/types/memory.ts",
     "./types/chat": "./src/types/chat.ts",
+    "./types/models": "./src/types/models.ts",
     "./api": "./src/api/index.ts",
     "./api/apiClient": "./src/api/apiClient.ts",
     "./api/workflows": "./src/api/workflowsApi.ts",
@@ -31,7 +32,9 @@
     "./api/integrations": "./src/api/integrationsApi.ts",
     "./api/notifications": "./src/api/notificationsApi.ts",
     "./api/conversations": "./src/api/conversationsApi.ts",
-    "./utils/dateUtils": "./src/utils/dateUtils.ts"
+    "./utils/dateUtils": "./src/utils/dateUtils.ts",
+    "./utils/auth": "./src/utils/auth.ts",
+    "./hooks": "./src/hooks/index.ts"
   },
   "scripts": {
     "build": "tsc",

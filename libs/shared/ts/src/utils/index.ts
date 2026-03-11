@@ -1,3 +1,4 @@
+export * from "./auth";
 export * from "./dateUtils";
 export * from "./formatters";
 export * from "./messageBreakUtils";
