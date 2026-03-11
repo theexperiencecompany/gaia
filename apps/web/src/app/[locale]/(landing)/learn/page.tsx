@@ -1,11 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 import JsonLd from "@/components/seo/JsonLd";
-import {
-  getAllGlossaryTerms,
-  getGlossaryTermsByCategory,
-} from "@/features/glossary/data/glossaryData";
+import { getAllTranslatedGlossaryTerms } from "@/features/glossary/data/getTranslatedGlossary";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { getAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -14,33 +13,53 @@ import {
   siteConfig,
 } from "@/lib/seo";
 
-export const metadata: Metadata = generatePageMetadata({
-  title: "AI & Productivity Glossary - Learn Key Concepts",
-  description:
-    "Learn essential AI, automation, and productivity concepts. Understand how AI agents, LangGraph, MCP, vector embeddings, and workflow automation power modern productivity tools like GAIA.",
-  path: "/learn",
-  keywords: [
-    "AI glossary",
-    "AI terminology",
-    "productivity glossary",
-    "AI concepts explained",
-    "automation glossary",
-    "AI agent definition",
-    "LangGraph explained",
-    "MCP explained",
-    "workflow automation glossary",
-  ],
-});
+interface PageProps {
+  readonly params: Promise<{
+    readonly locale: string;
+  }>;
+}
 
-const CATEGORY_LABELS: Record<string, string> = {
-  "ai-concepts": "AI & Machine Learning",
-  productivity: "Productivity Methods",
-  automation: "Automation & Workflows",
-  email: "Email Management",
-  calendar: "Calendar & Time Management",
-  "task-management": "Task Management",
-  "knowledge-management": "Knowledge & Notes",
-  development: "Development & Integrations",
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "glossary" });
+
+  const metadata = generatePageMetadata({
+    title: t("hub_meta_title"),
+    description: t("hub_meta_description"),
+    path: "/learn",
+    keywords: [
+      "AI glossary",
+      "AI terminology",
+      "productivity glossary",
+      "AI concepts explained",
+      "automation glossary",
+      "AI agent definition",
+      "LangGraph explained",
+      "MCP explained",
+      "workflow automation glossary",
+    ],
+  });
+
+  return {
+    ...metadata,
+    alternates: {
+      ...metadata.alternates,
+      languages: getAlternates("/learn"),
+    },
+  };
+}
+
+const CATEGORY_KEYS: Record<string, string> = {
+  "ai-concepts": "category_ai_concepts",
+  productivity: "category_productivity",
+  automation: "category_automation",
+  email: "category_email",
+  calendar: "category_calendar",
+  "task-management": "category_task_management",
+  "knowledge-management": "category_knowledge_management",
+  development: "category_development",
 };
 
 const CATEGORY_ORDER = [
@@ -54,17 +73,21 @@ const CATEGORY_ORDER = [
   "development",
 ];
 
-export default function LearnHubPage() {
-  const allTerms = getAllGlossaryTerms();
+export default async function LearnHubPage({ params }: PageProps) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const t = await getTranslations({ locale, namespace: "glossary" });
+
+  const allTerms = await getAllTranslatedGlossaryTerms(locale);
 
   const webPageSchema = generateWebPageSchema(
-    "AI & Productivity Glossary",
-    "Learn essential AI, automation, and productivity concepts used in modern tools like GAIA.",
+    t("hub_title"),
+    t("hub_subtitle"),
     `${siteConfig.url}/learn`,
     [
       { name: "Home", url: siteConfig.url },
       {
-        name: "Glossary",
+        name: t("breadcrumb"),
         url: `${siteConfig.url}/learn`,
       },
     ],
@@ -72,14 +95,14 @@ export default function LearnHubPage() {
 
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
-    { name: "Glossary", url: `${siteConfig.url}/learn` },
+    { name: t("breadcrumb"), url: `${siteConfig.url}/learn` },
   ]);
 
   const itemListSchema = generateItemListSchema(
-    allTerms.map((t) => ({
-      name: t.term,
-      url: `${siteConfig.url}/learn/${t.slug}`,
-      description: t.definition,
+    allTerms.map((term) => ({
+      name: term.term,
+      url: `${siteConfig.url}/learn/${term.slug}`,
+      description: term.definition,
     })),
     "Article",
   );
@@ -91,23 +114,23 @@ export default function LearnHubPage() {
       <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
         <header className="mb-16 text-center">
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            AI &amp; Productivity Glossary
+            {t("hub_title")}
           </h1>
           <p className="mx-auto max-w-2xl text-xl text-zinc-400">
-            Understand the key concepts behind AI agents, automation, and modern
-            productivity tools. Learn how GAIA uses these technologies to manage
-            your digital workflow.
+            {t("hub_subtitle")}
           </p>
         </header>
 
         {CATEGORY_ORDER.map((categoryKey) => {
-          const terms = getGlossaryTermsByCategory(categoryKey);
+          const terms = allTerms.filter(
+            (term) => term.category === categoryKey,
+          );
           if (terms.length === 0) return null;
 
           return (
             <section key={categoryKey} className="mb-14">
               <h2 className="mb-6 text-2xl font-semibold text-white">
-                {CATEGORY_LABELS[categoryKey] ?? categoryKey}
+                {t(CATEGORY_KEYS[categoryKey] as Parameters<typeof t>[0])}
               </h2>
 
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

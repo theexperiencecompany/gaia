@@ -2,10 +2,12 @@ import { Button } from "@heroui/button";
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import JsonLd from "@/components/seo/JsonLd";
-import { getAllCombos } from "@/features/integrations/data/combosData";
+import { getTranslatedCombos } from "@/features/integrations/data/getTranslatedCombo";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { getAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -14,22 +16,42 @@ import {
   siteConfig,
 } from "@/lib/seo";
 
-export const metadata: Metadata = generatePageMetadata({
-  title: "Automate Any Two Tools Together with GAIA",
-  description:
-    "Browse 240+ automation combos. Connect Gmail + Slack, Notion + Todoist, GitHub + Linear, and more — GAIA handles the workflows between your tools automatically.",
-  path: "/automate",
-  keywords: [
-    "automate tools together",
-    "tool automation combos",
-    "Gmail Slack automation",
-    "Notion Todoist automation",
-    "GitHub Linear automation",
-    "AI workflow automation",
-    "connect two apps AI",
-    "productivity tool automation",
-  ],
-});
+interface PageProps {
+  readonly params: Promise<{
+    readonly locale: string;
+  }>;
+}
+
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "automate" });
+
+  const metadata = generatePageMetadata({
+    title: t("hub_meta_title"),
+    description: t("hub_meta_description"),
+    path: "/automate",
+    keywords: [
+      "automate tools together",
+      "tool automation combos",
+      "Gmail Slack automation",
+      "Notion Todoist automation",
+      "GitHub Linear automation",
+      "AI workflow automation",
+      "connect two apps AI",
+      "productivity tool automation",
+    ],
+  });
+
+  return {
+    ...metadata,
+    alternates: {
+      ...metadata.alternates,
+      languages: getAlternates("/automate"),
+    },
+  };
+}
 
 const TOOL_DOMAINS: Record<string, string> = {
   airtable: "airtable.com",
@@ -85,27 +107,34 @@ function ToolFavicon({
   );
 }
 
-export default function AutomateHubPage() {
-  const allCombos = getAllCombos().filter((c) => !c.canonicalSlug);
+export default async function AutomateHubPage({ params }: PageProps) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const t = await getTranslations({ locale, namespace: "automate" });
+  const tCommon = await getTranslations({ locale, namespace: "common" });
+
+  const allCombos = (await getTranslatedCombos(locale)).filter(
+    (c) => !c.canonicalSlug,
+  );
 
   const webPageSchema = generateWebPageSchema(
-    "Automate Any Two Tools Together with GAIA",
-    "Browse 240+ automation combos. GAIA handles the workflows between your tools automatically.",
+    t("hub_title"),
+    t("hub_subtitle"),
     `${siteConfig.url}/automate`,
     [
       { name: "Home", url: siteConfig.url },
-      { name: "Automate", url: `${siteConfig.url}/automate` },
+      { name: t("breadcrumb"), url: `${siteConfig.url}/automate` },
     ],
   );
 
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
-    { name: "Automate", url: `${siteConfig.url}/automate` },
+    { name: t("breadcrumb"), url: `${siteConfig.url}/automate` },
   ]);
 
   const itemListSchema = generateItemListSchema(
     allCombos.slice(0, 50).map((c) => ({
-      name: `Automate ${c.toolA} + ${c.toolB}`,
+      name: `${t("automate_with_gaia", { toolA: c.toolA, toolB: c.toolB })}`,
       url: `${siteConfig.url}/automate/${c.slug}`,
       description: c.tagline,
     })),
@@ -128,14 +157,13 @@ export default function AutomateHubPage() {
       <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
         <header className="mb-16 text-center">
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            Automate Any Two Tools Together
+            {t("hub_title")}
           </h1>
           <p className="mx-auto max-w-2xl text-xl text-zinc-400">
-            Pick two tools you use. GAIA connects them and handles the workflows
-            between them — automatically, without code.
+            {t("hub_subtitle")}
           </p>
           <p className="mt-3 text-sm text-zinc-500">
-            {allCombos.length} automation combos
+            {t("combos_count", { count: allCombos.length })}
           </p>
         </header>
 
@@ -194,13 +222,11 @@ export default function AutomateHubPage() {
         {/* CTA */}
         <div className="mt-8 rounded-3xl bg-zinc-800 p-8 text-center">
           <h2 className="mb-3 text-2xl font-semibold text-white">
-            Don&apos;t see your combo?
+            {t("dont_see_your_combo")}
           </h2>
-          <p className="mb-6 text-zinc-400">
-            Browse the full integration marketplace or connect any tool via MCP.
-          </p>
+          <p className="mb-6 text-zinc-400">{t("dont_see_your_combo_desc")}</p>
           <Button href="/marketplace" as="a" color="primary">
-            Browse marketplace
+            {tCommon("browse_marketplace")}
           </Button>
         </div>
       </div>

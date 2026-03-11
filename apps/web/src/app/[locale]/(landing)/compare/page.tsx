@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
+import { getTranslations, setRequestLocale } from "next-intl/server";
 
 import JsonLd from "@/components/seo/JsonLd";
 import {
   CATEGORY_ORDER,
   COMPARISON_CATEGORIES,
 } from "@/features/comparisons/data/categories";
-import { getAllComparisons } from "@/features/comparisons/data/comparisonsData";
+import { getTranslatedComparisons } from "@/features/comparisons/data/getTranslatedComparison";
 import FinalSection from "@/features/landing/components/sections/FinalSection";
+import { getAlternates } from "@/i18n/getAlternates";
 import {
   generateBreadcrumbSchema,
   generateItemListSchema,
@@ -17,44 +19,68 @@ import {
   siteConfig,
 } from "@/lib/seo";
 
-export const metadata: Metadata = generatePageMetadata({
-  title: "GAIA vs Competitors - AI Assistant Comparisons",
-  description:
-    "See how GAIA compares to ChatGPT, Gemini, Claude, Motion, n8n, Zapier, Reclaim, and more. Honest, detailed comparisons to help you choose the right AI productivity tool.",
-  path: "/compare",
-  keywords: [
-    "GAIA comparisons",
-    "AI assistant comparison",
-    "ChatGPT alternative",
-    "Zapier alternative",
-    "n8n alternative",
-    "Motion alternative",
-    "AI productivity tools",
-    "best AI assistant",
-  ],
-});
+interface PageProps {
+  readonly params: Promise<{
+    readonly locale: string;
+  }>;
+}
 
-export default function ComparisonsHubPage() {
-  const comparisons = getAllComparisons();
+export async function generateMetadata({
+  params,
+}: PageProps): Promise<Metadata> {
+  const { locale } = await params;
+  const t = await getTranslations({ locale, namespace: "comparisons" });
+
+  const metadata = generatePageMetadata({
+    title: t("hub_meta_title"),
+    description: t("hub_meta_description"),
+    path: "/compare",
+    keywords: [
+      "GAIA comparisons",
+      "AI assistant comparison",
+      "ChatGPT alternative",
+      "Zapier alternative",
+      "n8n alternative",
+      "Motion alternative",
+      "AI productivity tools",
+      "best AI assistant",
+    ],
+  });
+
+  return {
+    ...metadata,
+    alternates: {
+      ...metadata.alternates,
+      languages: getAlternates("/compare"),
+    },
+  };
+}
+
+export default async function ComparisonsHubPage({ params }: PageProps) {
+  const { locale } = await params;
+  setRequestLocale(locale);
+  const t = await getTranslations({ locale, namespace: "comparisons" });
+
+  const comparisons = await getTranslatedComparisons(locale);
 
   const webPageSchema = generateWebPageSchema(
-    "GAIA vs Competitors",
-    "See how GAIA compares to other AI tools and productivity platforms.",
+    t("hub_title"),
+    t("hub_subtitle"),
     `${siteConfig.url}/compare`,
     [
       { name: "Home", url: siteConfig.url },
-      { name: "Comparisons", url: `${siteConfig.url}/compare` },
+      { name: t("breadcrumb"), url: `${siteConfig.url}/compare` },
     ],
   );
 
   const breadcrumbSchema = generateBreadcrumbSchema([
     { name: "Home", url: siteConfig.url },
-    { name: "Comparisons", url: `${siteConfig.url}/compare` },
+    { name: t("breadcrumb"), url: `${siteConfig.url}/compare` },
   ]);
 
   const itemListSchema = generateItemListSchema(
     comparisons.map((c) => ({
-      name: `GAIA vs ${c.name}`,
+      name: `${t("gaia_vs", { name: c.name })}`,
       url: `${siteConfig.url}/compare/${c.slug}`,
       description: c.description,
     })),
@@ -83,12 +109,10 @@ export default function ComparisonsHubPage() {
       <div className="mx-auto max-w-5xl px-6 pt-36 pb-24">
         <header className="mb-16 text-center">
           <h1 className="mb-4 font-serif text-5xl font-normal text-white md:text-6xl">
-            How GAIA Compares
+            {t("hub_title")}
           </h1>
           <p className="mx-auto max-w-2xl text-xl text-zinc-400">
-            Honest, detailed comparisons to help you choose the right AI
-            productivity tool. See where GAIA excels and where others might fit
-            better.
+            {t("hub_subtitle")}
           </p>
         </header>
 
@@ -130,7 +154,7 @@ export default function ComparisonsHubPage() {
                     </div>
                   </div>
                   <h3 className="text-lg font-medium text-white transition-colors group-hover:text-primary">
-                    GAIA vs {comparison.name}
+                    {t("gaia_vs", { name: comparison.name })}
                   </h3>
                   <p className="text-sm text-zinc-500">{comparison.tagline}</p>
                   <p className="line-clamp-2 text-sm leading-relaxed text-zinc-400">
