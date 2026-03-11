@@ -29,6 +29,11 @@ class VoiceAgentSettings(BaseAppSettings):
     ELEVENLABS_VOICE_ID: Optional[str] = None
     ELEVENLABS_TTS_MODEL: str = "eleven_turbo_v2_5"
 
+    # ElevenLabs TTS latency tuning
+    ELEVENLABS_STREAMING_LATENCY: int = 4
+    ELEVENLABS_AUTO_MODE: bool = True
+    ELEVENLABS_CHUNK_LENGTH_SCHEDULE: list[int] = [50, 80, 120]
+
     # Deepgram STT (used by livekit-plugins-deepgram)
     DEEPGRAM_API_KEY: Optional[str] = None
 
