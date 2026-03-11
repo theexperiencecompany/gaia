@@ -1,15 +1,11 @@
-import { ActivityIndicator, Pressable, ScrollView, View } from "react-native";
+import { CloseButton, Skeleton, Surface } from "heroui-native";
+import { ActivityIndicator, ScrollView, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
   LinearTransition,
 } from "react-native-reanimated";
-import {
-  AppIcon,
-  Cancel01Icon,
-  File01Icon,
-  Image01Icon,
-} from "@/components/icons";
+import { AppIcon, File01Icon, Image01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 
@@ -47,76 +43,80 @@ function AttachmentChip({ attachment, onRemove }: AttachmentChipProps) {
       entering={FadeIn.duration(200)}
       exiting={FadeOut.duration(150)}
       layout={LinearTransition.springify()}
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        backgroundColor: "#3f3f46",
-        borderRadius: 10,
-        paddingLeft: spacing.sm,
-        paddingRight: spacing.xs,
-        paddingVertical: spacing.xs,
-        gap: spacing.xs,
-        maxWidth: 200,
-      }}
     >
-      {attachment.isUploading ? (
-        <ActivityIndicator size="small" color="#a1a1aa" />
-      ) : (
-        <AppIcon
-          icon={isImage ? Image01Icon : File01Icon}
-          size={iconSize.sm}
-          color={attachment.error ? "#ef4444" : "#a1a1aa"}
-        />
-      )}
-
-      <View style={{ flex: 1, minWidth: 0 }}>
-        <Text
-          style={{
-            fontSize: fontSize.xs,
-            color: attachment.error ? "#ef4444" : "#e4e4e7",
-            fontWeight: "400",
-          }}
-          numberOfLines={1}
-        >
-          {attachment.name}
-        </Text>
-        {attachment.size !== undefined && !attachment.error && (
-          <Text
-            style={{
-              fontSize: fontSize.xs - 1,
-              color: "#71717a",
-            }}
-            numberOfLines={1}
-          >
-            {formatSize(attachment.size)}
-          </Text>
-        )}
-        {attachment.error && (
-          <Text
-            style={{
-              fontSize: fontSize.xs - 1,
-              color: "#ef4444",
-            }}
-            numberOfLines={1}
-          >
-            {attachment.error}
-          </Text>
-        )}
-      </View>
-
-      <Pressable
-        onPress={() => onRemove(attachment.localId)}
-        hitSlop={8}
+      <Surface
         style={{
-          width: 20,
-          height: 20,
-          borderRadius: 10,
+          flexDirection: "row",
           alignItems: "center",
-          justifyContent: "center",
+          backgroundColor: "#3f3f46",
+          borderRadius: 10,
+          paddingLeft: spacing.sm,
+          paddingRight: spacing.xs,
+          paddingVertical: spacing.xs,
+          gap: spacing.xs,
+          maxWidth: 200,
         }}
       >
-        <AppIcon icon={Cancel01Icon} size={iconSize.sm - 2} color="#a1a1aa" />
-      </Pressable>
+        <Skeleton
+          isLoading={attachment.isUploading}
+          style={{
+            width: iconSize.sm,
+            height: iconSize.sm,
+            borderRadius: iconSize.sm / 2,
+          }}
+        >
+          {attachment.isUploading ? (
+            <ActivityIndicator size="small" color="#a1a1aa" />
+          ) : (
+            <AppIcon
+              icon={isImage ? Image01Icon : File01Icon}
+              size={iconSize.sm}
+              color={attachment.error ? "#ef4444" : "#a1a1aa"}
+            />
+          )}
+        </Skeleton>
+
+        <View style={{ flex: 1, minWidth: 0 }}>
+          <Text
+            style={{
+              fontSize: fontSize.xs,
+              color: attachment.error ? "#ef4444" : "#e4e4e7",
+              fontWeight: "400",
+            }}
+            numberOfLines={1}
+          >
+            {attachment.name}
+          </Text>
+          {attachment.size !== undefined && !attachment.error && (
+            <Text
+              style={{
+                fontSize: fontSize.xs - 1,
+                color: "#71717a",
+              }}
+              numberOfLines={1}
+            >
+              {formatSize(attachment.size)}
+            </Text>
+          )}
+          {attachment.error && (
+            <Text
+              style={{
+                fontSize: fontSize.xs - 1,
+                color: "#ef4444",
+              }}
+              numberOfLines={1}
+            >
+              {attachment.error}
+            </Text>
+          )}
+        </View>
+
+        <CloseButton
+          onPress={() => onRemove(attachment.localId)}
+          size="sm"
+          hitSlop={8}
+        />
+      </Surface>
     </Animated.View>
   );
 }

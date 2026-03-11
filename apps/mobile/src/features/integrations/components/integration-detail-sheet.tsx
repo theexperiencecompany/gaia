@@ -1,11 +1,11 @@
 import { BottomSheetScrollView } from "@gorhom/bottom-sheet";
 import { Image } from "expo-image";
+import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
   useImperativeHandle,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -416,25 +416,16 @@ export const IntegrationDetailSheet = forwardRef<
   IntegrationDetailSheetRef,
   IntegrationDetailSheetProps
 >(({ onConnect, onDisconnect, onDelete, onEdit, onRefresh }, ref) => {
-  const bottomSheetRef = useRef<BottomSheet>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [integration, setIntegration] = useState<Integration | null>(null);
 
-  // Bearer token state
   const [showTokenInput, setShowTokenInput] = useState(false);
   const [bearerToken, setBearerToken] = useState("");
-
-  // Description expand state
   const [descExpanded, setDescExpanded] = useState(false);
-
-  // Tools collapse state
   const [toolsExpanded, setToolsExpanded] = useState(false);
-
-  // Async operation state
   const [isConnecting, setIsConnecting] = useState(false);
   const [isDisconnecting, setIsDisconnecting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Test connection state
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<TestConnectionResponse | null>(
     null,
@@ -457,11 +448,12 @@ export const IntegrationDetailSheet = forwardRef<
     setTestResult(null);
     setTestError(null);
   }, []);
+
   useImperativeHandle(ref, () => ({
     open: (i: Integration) => {
       setIntegration(i);
       reset();
-      bottomSheetRef.current?.expand();
+      setIsOpen(true);
     },
     close: () => setIsOpen(false),
   }));
@@ -480,7 +472,7 @@ export const IntegrationDetailSheet = forwardRef<
       if (result.success) {
         onConnect?.(integration.id);
         onRefresh?.();
-        bottomSheetRef.current?.close();
+        setIsOpen(false);
       } else if (!result.cancelled) {
         Alert.alert("Error", result.error ?? "Failed to connect integration");
       }
@@ -506,7 +498,7 @@ export const IntegrationDetailSheet = forwardRef<
               if (success) {
                 onDisconnect?.(integration.id);
                 onRefresh?.();
-                bottomSheetRef.current?.close();
+                setIsOpen(false);
               } else {
                 Alert.alert("Error", "Failed to disconnect integration");
               }
@@ -550,7 +542,7 @@ export const IntegrationDetailSheet = forwardRef<
               await deleteCustomIntegration(integration.id);
               onDelete?.(integration.id);
               onRefresh?.();
-              bottomSheetRef.current?.close();
+              setIsOpen(false);
             } catch {
               Alert.alert("Error", "Failed to delete integration");
             } finally {
@@ -565,520 +557,561 @@ export const IntegrationDetailSheet = forwardRef<
   const handleEdit = useCallback(() => {
     if (!integration) return;
     onEdit?.(integration);
-    bottomSheetRef.current?.close();
+    setIsOpen(false);
   }, [integration, onEdit]);
 
-  if (!integration) return null;
-
-  const isConnected = integration.status === "connected";
-  const isError = integration.status === "error";
-  const isCustom = integration.source === "custom";
-  const authType = integration.authType ?? "oauth";
-  const managedBy = integration.managedBy ?? "self";
-  const tools = integration.tools ?? [];
-  const TOOLS_INITIAL_COUNT = 5;
-  const visibleTools = toolsExpanded
-    ? tools
-    : tools.slice(0, TOOLS_INITIAL_COUNT);
-  const hasMoreTools = tools.length > TOOLS_INITIAL_COUNT;
-
-  const descriptionIsLong = integration.description.length > 120;
-  const displayedDescription =
-    descExpanded || !descriptionIsLong
-      ? integration.description
-      : `${integration.description.slice(0, 120)}...`;
-
-  const logoUri = getLogoUri(integration);
-  const firstLetter = (integration.name ?? "?")[0].toUpperCase();
-
   return (
-    <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={snapPoints}
-      enablePanDownToClose
-      backgroundStyle={{ backgroundColor: "#0b0c0f" }}
-      handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
-    >
-      <BottomSheetScrollView
-        contentContainerStyle={{
-          padding: spacing.lg,
-          gap: spacing.lg,
-          paddingBottom: spacing.xl * 2,
-        }}
-      >
-        {/* ─── Header: Logo + Name ─────────────────────────────────────── */}
-        <View style={{ alignItems: "center", gap: spacing.md }}>
-          {/* Large 80x80 circular logo */}
-          <View
-            style={{
-              width: 80,
-              height: 80,
-              borderRadius: 40,
-              backgroundColor: "rgba(255,255,255,0.07)",
-              alignItems: "center",
-              justifyContent: "center",
-              overflow: "hidden",
-            }}
-          >
-            {logoUri ? (
-              <Image
-                source={{ uri: logoUri }}
-                style={{ width: 54, height: 54 }}
-                contentFit="contain"
-              />
-            ) : (
-              <Text style={{ fontSize: fontSize["2xl"], color: "#a1a1aa" }}>
-                {firstLetter}
-              </Text>
-            )}
-          </View>
-
-          {/* Name */}
-          <Text
-            style={{
-              fontSize: fontSize["2xl"],
-              fontWeight: "700",
-              color: "#f4f4f5",
-              textAlign: "center",
-            }}
-          >
-            {integration.name}
-          </Text>
-
-          {/* Status pill */}
-          <StatusPill status={integration.status} />
-
-          {/* Badges row */}
-          <View
-            style={{
-              flexDirection: "row",
-              flexWrap: "wrap",
-              gap: spacing.sm,
-              justifyContent: "center",
-            }}
-          >
-            <Badge
-              label={getCategoryLabel(integration.category)}
-              color="#a1a1aa"
-              bg="rgba(255,255,255,0.07)"
-            />
-            {authType !== "none" && (
-              <Badge
-                label={getAuthTypeLabel(authType)}
-                color="#00bbff"
-                bg="rgba(0,187,255,0.1)"
-              />
-            )}
-            {managedBy && managedBy !== "self" && (
-              <Badge
-                label={getManagedByLabel(managedBy)}
-                color="#c084fc"
-                bg="rgba(192,132,252,0.1)"
-              />
-            )}
-            {isCustom && (
-              <Badge label="Custom" color="#f59e0b" bg="rgba(245,158,11,0.1)" />
-            )}
-          </View>
-        </View>
-
-        {/* ─── Description ─────────────────────────────────────────────── */}
-        {integration.description ? (
-          <View style={{ gap: spacing.xs }}>
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                color: "#a1a1aa",
-                lineHeight: 20,
+    <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={snapPoints}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#0b0c0f" }}
+          handleIndicatorStyle={{ backgroundColor: "#3a3a3c", width: 40 }}
+        >
+          {integration ? (
+            <BottomSheetScrollView
+              contentContainerStyle={{
+                padding: spacing.lg,
+                gap: spacing.lg,
+                paddingBottom: spacing.xl * 2,
               }}
             >
-              {displayedDescription}
-            </Text>
-            {descriptionIsLong && (
-              <Pressable onPress={() => setDescExpanded((v) => !v)} hitSlop={8}>
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: "#00bbff",
-                    fontWeight: "500",
-                  }}
-                >
-                  {descExpanded ? "Show less" : "Show more"}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        ) : null}
+              {(() => {
+                const isConnected = integration.status === "connected";
+                const isError = integration.status === "error";
+                const isCustom = integration.source === "custom";
+                const authType = integration.authType ?? "oauth";
+                const managedBy = integration.managedBy ?? "self";
+                const tools = integration.tools ?? [];
+                const TOOLS_INITIAL_COUNT = 5;
+                const visibleTools = toolsExpanded
+                  ? tools
+                  : tools.slice(0, TOOLS_INITIAL_COUNT);
+                const hasMoreTools = tools.length > TOOLS_INITIAL_COUNT;
+                const descriptionIsLong = integration.description.length > 120;
+                const displayedDescription =
+                  descExpanded || !descriptionIsLong
+                    ? integration.description
+                    : `${integration.description.slice(0, 120)}...`;
+                const logoUri = getLogoUri(integration);
+                const firstLetter = (integration.name ?? "?")[0].toUpperCase();
 
-        {/* ─── Bearer token input (when connecting with bearer) ─────── */}
-        {showTokenInput && !isConnected && (
-          <View
-            style={{
-              gap: spacing.sm,
-              backgroundColor: "rgba(255,255,255,0.04)",
-              borderRadius: moderateScale(12, 0.5),
-              padding: spacing.md,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                color: "#a1a1aa",
-                fontWeight: "500",
-              }}
-            >
-              API Token
-            </Text>
-            <TextInput
-              value={bearerToken}
-              onChangeText={setBearerToken}
-              placeholder="Paste your bearer token..."
-              placeholderTextColor="#52525b"
-              secureTextEntry
-              autoFocus
-              style={{
-                borderWidth: 1,
-                borderColor: bearerToken ? "rgba(0,187,255,0.4)" : "#3f3f46",
-                borderRadius: moderateScale(10, 0.5),
-                padding: spacing.md,
-                color: "#fff",
-                fontSize: fontSize.sm,
-                backgroundColor: "#1c1c1e",
-              }}
-            />
-          </View>
-        )}
+                return (
+                  <>
+                    {/* ─── Header: Logo + Name ───────────────────────────── */}
+                    <View style={{ alignItems: "center", gap: spacing.md }}>
+                      <View
+                        style={{
+                          width: 80,
+                          height: 80,
+                          borderRadius: 40,
+                          backgroundColor: "rgba(255,255,255,0.07)",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {logoUri ? (
+                          <Image
+                            source={{ uri: logoUri }}
+                            style={{ width: 54, height: 54 }}
+                            contentFit="contain"
+                          />
+                        ) : (
+                          <Text
+                            style={{
+                              fontSize: fontSize["2xl"],
+                              color: "#a1a1aa",
+                            }}
+                          >
+                            {firstLetter}
+                          </Text>
+                        )}
+                      </View>
 
-        {/* ─── Update token option (connected + bearer) ──────────────── */}
-        {isConnected && authType === "bearer" && !showTokenInput && (
-          <Pressable
-            onPress={() => setShowTokenInput(true)}
-            style={({ pressed }) => ({
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
-              padding: spacing.md,
-              borderRadius: moderateScale(12, 0.5),
-              backgroundColor: pressed
-                ? "rgba(255,255,255,0.06)"
-                : "rgba(255,255,255,0.04)",
-              borderWidth: 1,
-              borderColor: "rgba(255,255,255,0.08)",
-            })}
-          >
-            <AppIcon icon={LinkSquare02Icon} size={16} color="#00bbff" />
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                color: "#00bbff",
-                fontWeight: "500",
-              }}
-            >
-              Update API Token
-            </Text>
-          </Pressable>
-        )}
+                      <Text
+                        style={{
+                          fontSize: fontSize["2xl"],
+                          fontWeight: "700",
+                          color: "#f4f4f5",
+                          textAlign: "center",
+                        }}
+                      >
+                        {integration.name}
+                      </Text>
 
-        {/* ─── Primary connect/disconnect action ───────────────────────── */}
-        <View style={{ gap: spacing.sm }}>
-          {isConnected || isError ? (
-            <Pressable
-              onPress={handleDisconnect}
-              disabled={isDisconnecting}
-              style={({ pressed }) => ({
-                padding: spacing.md,
-                borderRadius: moderateScale(14, 0.5),
-                backgroundColor: pressed
-                  ? "rgba(239,68,68,0.15)"
-                  : "rgba(239,68,68,0.1)",
-                borderWidth: 1,
-                borderColor: "rgba(239,68,68,0.3)",
-                alignItems: "center",
-                flexDirection: "row",
-                justifyContent: "center",
-                gap: spacing.sm,
-                opacity: isDisconnecting ? 0.6 : 1,
-              })}
-            >
-              {isDisconnecting ? (
-                <ActivityIndicator size="small" color="#ef4444" />
-              ) : null}
-              <Text
-                style={{
-                  color: "#ef4444",
-                  fontSize: fontSize.sm,
-                  fontWeight: "600",
-                }}
-              >
-                {isDisconnecting ? "Disconnecting..." : "Disconnect"}
-              </Text>
-            </Pressable>
-          ) : (
-            <Pressable
-              onPress={handleConnect}
-              disabled={isConnecting}
-              style={({ pressed }) => ({
-                padding: spacing.md,
-                borderRadius: moderateScale(14, 0.5),
-                backgroundColor: pressed ? "#009dd4" : "#00bbff",
-                alignItems: "center",
-                flexDirection: "row",
-                justifyContent: "center",
-                gap: spacing.sm,
-                opacity: isConnecting ? 0.7 : 1,
-              })}
-            >
-              {isConnecting ? (
-                <ActivityIndicator size="small" color="#000" />
-              ) : null}
-              <Text
-                style={{
-                  color: "#000",
-                  fontSize: fontSize.sm,
-                  fontWeight: "700",
-                }}
-              >
-                {isConnecting
-                  ? "Connecting..."
-                  : showTokenInput
-                    ? "Save Token & Connect"
-                    : "Connect"}
-              </Text>
-            </Pressable>
-          )}
+                      <StatusPill status={integration.status} />
 
-          {/* Test connection (for connected integrations) */}
-          {isConnected && (
-            <Pressable
-              onPress={handleTestConnection}
-              disabled={isTesting}
-              style={({ pressed }) => ({
-                padding: spacing.md,
-                borderRadius: moderateScale(14, 0.5),
-                backgroundColor: pressed
-                  ? "rgba(255,255,255,0.07)"
-                  : "rgba(255,255,255,0.04)",
-                borderWidth: 1,
-                borderColor: "rgba(255,255,255,0.1)",
-                alignItems: "center",
-                flexDirection: "row",
-                justifyContent: "center",
-                gap: spacing.sm,
-                opacity: isTesting ? 0.6 : 1,
-              })}
-            >
-              {isTesting ? (
-                <ActivityIndicator size="small" color="#a1a1aa" />
-              ) : (
-                <AppIcon icon={Wrench01Icon} size={15} color="#a1a1aa" />
-              )}
-              <Text
-                style={{
-                  color: "#a1a1aa",
-                  fontSize: fontSize.sm,
-                  fontWeight: "500",
-                }}
-              >
-                {isTesting ? "Testing..." : "Test Connection"}
-              </Text>
-            </Pressable>
-          )}
-        </View>
+                      <View
+                        style={{
+                          flexDirection: "row",
+                          flexWrap: "wrap",
+                          gap: spacing.sm,
+                          justifyContent: "center",
+                        }}
+                      >
+                        <Badge
+                          label={getCategoryLabel(integration.category)}
+                          color="#a1a1aa"
+                          bg="rgba(255,255,255,0.07)"
+                        />
+                        {authType !== "none" && (
+                          <Badge
+                            label={getAuthTypeLabel(authType)}
+                            color="#00bbff"
+                            bg="rgba(0,187,255,0.1)"
+                          />
+                        )}
+                        {managedBy && managedBy !== "self" && (
+                          <Badge
+                            label={getManagedByLabel(managedBy)}
+                            color="#c084fc"
+                            bg="rgba(192,132,252,0.1)"
+                          />
+                        )}
+                        {isCustom && (
+                          <Badge
+                            label="Custom"
+                            color="#f59e0b"
+                            bg="rgba(245,158,11,0.1)"
+                          />
+                        )}
+                      </View>
+                    </View>
 
-        {/* ─── Test result banner ───────────────────────────────────────── */}
-        {(isTesting || testResult || testError) && (
-          <TestResultBanner
-            isLoading={isTesting}
-            result={testResult}
-            error={testError}
-          />
-        )}
+                    {/* ─── Description ──────────────────────────────────── */}
+                    {integration.description ? (
+                      <View style={{ gap: spacing.xs }}>
+                        <Text
+                          style={{
+                            fontSize: fontSize.sm,
+                            color: "#a1a1aa",
+                            lineHeight: 20,
+                          }}
+                        >
+                          {displayedDescription}
+                        </Text>
+                        {descriptionIsLong && (
+                          <Pressable
+                            onPress={() => setDescExpanded((v) => !v)}
+                            hitSlop={8}
+                          >
+                            <Text
+                              style={{
+                                fontSize: fontSize.xs,
+                                color: "#00bbff",
+                                fontWeight: "500",
+                              }}
+                            >
+                              {descExpanded ? "Show less" : "Show more"}
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    ) : null}
 
-        {/* ─── Tools list ───────────────────────────────────────────────── */}
-        {tools.length > 0 && (
-          <View
-            style={{
-              backgroundColor: "rgba(255,255,255,0.04)",
-              borderRadius: moderateScale(14, 0.5),
-              padding: spacing.md,
-              gap: spacing.sm,
-            }}
-          >
-            <View
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                justifyContent: "space-between",
-              }}
-            >
-              <View
-                style={{
-                  flexDirection: "row",
-                  alignItems: "center",
-                  gap: spacing.sm,
-                }}
-              >
-                <AppIcon icon={Wrench01Icon} size={14} color="#71717a" />
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    fontWeight: "600",
-                    color: "#71717a",
-                    letterSpacing: 0.5,
-                    textTransform: "uppercase",
-                  }}
-                >
-                  Available Tools
-                </Text>
-                <View
-                  style={{
-                    backgroundColor: "rgba(0,187,255,0.12)",
-                    borderRadius: 999,
-                    minWidth: 20,
-                    height: 18,
-                    alignItems: "center",
-                    justifyContent: "center",
-                    paddingHorizontal: 6,
-                  }}
-                >
-                  <Text
-                    style={{
-                      fontSize: fontSize.xs - 1,
-                      color: "#00bbff",
-                      fontWeight: "600",
-                    }}
-                  >
-                    {tools.length}
-                  </Text>
-                </View>
-              </View>
-            </View>
+                    {/* ─── Bearer token input ────────────────────────────── */}
+                    {showTokenInput && !isConnected && (
+                      <View
+                        style={{
+                          gap: spacing.sm,
+                          backgroundColor: "rgba(255,255,255,0.04)",
+                          borderRadius: moderateScale(12, 0.5),
+                          padding: spacing.md,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: fontSize.sm,
+                            color: "#a1a1aa",
+                            fontWeight: "500",
+                          }}
+                        >
+                          API Token
+                        </Text>
+                        <TextInput
+                          value={bearerToken}
+                          onChangeText={setBearerToken}
+                          placeholder="Paste your bearer token..."
+                          placeholderTextColor="#52525b"
+                          secureTextEntry
+                          autoFocus
+                          style={{
+                            borderWidth: 1,
+                            borderColor: bearerToken
+                              ? "rgba(0,187,255,0.4)"
+                              : "#3f3f46",
+                            borderRadius: moderateScale(10, 0.5),
+                            padding: spacing.md,
+                            color: "#fff",
+                            fontSize: fontSize.sm,
+                            backgroundColor: "#1c1c1e",
+                          }}
+                        />
+                      </View>
+                    )}
 
-            <View style={{ gap: 2 }}>
-              {visibleTools.map((tool) => (
-                <ToolItem
-                  key={tool.name}
-                  name={tool.name}
-                  description={tool.description}
-                />
-              ))}
-            </View>
+                    {/* ─── Update token option ───────────────────────────── */}
+                    {isConnected &&
+                      authType === "bearer" &&
+                      !showTokenInput && (
+                        <Pressable
+                          onPress={() => setShowTokenInput(true)}
+                          style={({ pressed }) => ({
+                            flexDirection: "row",
+                            alignItems: "center",
+                            gap: spacing.sm,
+                            padding: spacing.md,
+                            borderRadius: moderateScale(12, 0.5),
+                            backgroundColor: pressed
+                              ? "rgba(255,255,255,0.06)"
+                              : "rgba(255,255,255,0.04)",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.08)",
+                          })}
+                        >
+                          <AppIcon
+                            icon={LinkSquare02Icon}
+                            size={16}
+                            color="#00bbff"
+                          />
+                          <Text
+                            style={{
+                              fontSize: fontSize.sm,
+                              color: "#00bbff",
+                              fontWeight: "500",
+                            }}
+                          >
+                            Update API Token
+                          </Text>
+                        </Pressable>
+                      )}
 
-            {hasMoreTools && (
-              <Pressable
-                onPress={() => setToolsExpanded((v) => !v)}
-                style={({ pressed }) => ({
-                  paddingVertical: spacing.xs,
-                  alignItems: "center",
-                  opacity: pressed ? 0.7 : 1,
-                })}
-              >
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: "#00bbff",
-                    fontWeight: "500",
-                  }}
-                >
-                  {toolsExpanded
-                    ? "Show less"
-                    : `Show ${tools.length - TOOLS_INITIAL_COUNT} more tools`}
-                </Text>
-              </Pressable>
-            )}
-          </View>
-        )}
+                    {/* ─── Primary connect/disconnect action ────────────── */}
+                    <View style={{ gap: spacing.sm }}>
+                      {isConnected || isError ? (
+                        <Pressable
+                          onPress={handleDisconnect}
+                          disabled={isDisconnecting}
+                          style={({ pressed }) => ({
+                            padding: spacing.md,
+                            borderRadius: moderateScale(14, 0.5),
+                            backgroundColor: pressed
+                              ? "rgba(239,68,68,0.15)"
+                              : "rgba(239,68,68,0.1)",
+                            borderWidth: 1,
+                            borderColor: "rgba(239,68,68,0.3)",
+                            alignItems: "center",
+                            flexDirection: "row",
+                            justifyContent: "center",
+                            gap: spacing.sm,
+                            opacity: isDisconnecting ? 0.6 : 1,
+                          })}
+                        >
+                          {isDisconnecting ? (
+                            <ActivityIndicator size="small" color="#ef4444" />
+                          ) : null}
+                          <Text
+                            style={{
+                              color: "#ef4444",
+                              fontSize: fontSize.sm,
+                              fontWeight: "600",
+                            }}
+                          >
+                            {isDisconnecting
+                              ? "Disconnecting..."
+                              : "Disconnect"}
+                          </Text>
+                        </Pressable>
+                      ) : (
+                        <Pressable
+                          onPress={handleConnect}
+                          disabled={isConnecting}
+                          style={({ pressed }) => ({
+                            padding: spacing.md,
+                            borderRadius: moderateScale(14, 0.5),
+                            backgroundColor: pressed ? "#009dd4" : "#00bbff",
+                            alignItems: "center",
+                            flexDirection: "row",
+                            justifyContent: "center",
+                            gap: spacing.sm,
+                            opacity: isConnecting ? 0.7 : 1,
+                          })}
+                        >
+                          {isConnecting ? (
+                            <ActivityIndicator size="small" color="#000" />
+                          ) : null}
+                          <Text
+                            style={{
+                              color: "#000",
+                              fontSize: fontSize.sm,
+                              fontWeight: "700",
+                            }}
+                          >
+                            {isConnecting
+                              ? "Connecting..."
+                              : showTokenInput
+                                ? "Save Token & Connect"
+                                : "Connect"}
+                          </Text>
+                        </Pressable>
+                      )}
 
-        {/* ─── Custom integration actions (edit / delete) ───────────────── */}
-        {isCustom && (
-          <View
-            style={{
-              gap: spacing.sm,
-              borderTopWidth: 1,
-              borderTopColor: "rgba(255,255,255,0.07)",
-              paddingTop: spacing.md,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: fontSize.xs,
-                fontWeight: "600",
-                color: "#71717a",
-                letterSpacing: 0.5,
-                textTransform: "uppercase",
-              }}
-            >
-              Manage
-            </Text>
-            <View style={{ flexDirection: "row", gap: spacing.sm }}>
-              <Pressable
-                onPress={handleEdit}
-                style={({ pressed }) => ({
-                  flex: 1,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: spacing.xs,
-                  padding: spacing.md,
-                  borderRadius: moderateScale(12, 0.5),
-                  backgroundColor: pressed
-                    ? "rgba(255,255,255,0.07)"
-                    : "rgba(255,255,255,0.04)",
-                  borderWidth: 1,
-                  borderColor: "rgba(255,255,255,0.1)",
-                })}
-              >
-                <AppIcon icon={Edit02Icon} size={14} color="#a1a1aa" />
-                <Text
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: "#a1a1aa",
-                    fontWeight: "500",
-                  }}
-                >
-                  Edit
-                </Text>
-              </Pressable>
+                      {isConnected && (
+                        <Pressable
+                          onPress={handleTestConnection}
+                          disabled={isTesting}
+                          style={({ pressed }) => ({
+                            padding: spacing.md,
+                            borderRadius: moderateScale(14, 0.5),
+                            backgroundColor: pressed
+                              ? "rgba(255,255,255,0.07)"
+                              : "rgba(255,255,255,0.04)",
+                            borderWidth: 1,
+                            borderColor: "rgba(255,255,255,0.1)",
+                            alignItems: "center",
+                            flexDirection: "row",
+                            justifyContent: "center",
+                            gap: spacing.sm,
+                            opacity: isTesting ? 0.6 : 1,
+                          })}
+                        >
+                          {isTesting ? (
+                            <ActivityIndicator size="small" color="#a1a1aa" />
+                          ) : (
+                            <AppIcon
+                              icon={Wrench01Icon}
+                              size={15}
+                              color="#a1a1aa"
+                            />
+                          )}
+                          <Text
+                            style={{
+                              color: "#a1a1aa",
+                              fontSize: fontSize.sm,
+                              fontWeight: "500",
+                            }}
+                          >
+                            {isTesting ? "Testing..." : "Test Connection"}
+                          </Text>
+                        </Pressable>
+                      )}
+                    </View>
 
-              <Pressable
-                onPress={handleDelete}
-                disabled={isDeleting}
-                style={({ pressed }) => ({
-                  flex: 1,
-                  flexDirection: "row",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  gap: spacing.xs,
-                  padding: spacing.md,
-                  borderRadius: moderateScale(12, 0.5),
-                  backgroundColor: pressed
-                    ? "rgba(239,68,68,0.12)"
-                    : "rgba(239,68,68,0.07)",
-                  borderWidth: 1,
-                  borderColor: "rgba(239,68,68,0.2)",
-                  opacity: isDeleting ? 0.6 : 1,
-                })}
-              >
-                {isDeleting ? (
-                  <ActivityIndicator size="small" color="#ef4444" />
-                ) : (
-                  <AppIcon icon={Delete02Icon} size={14} color="#ef4444" />
-                )}
-                <Text
-                  style={{
-                    fontSize: fontSize.sm,
-                    color: "#ef4444",
-                    fontWeight: "500",
-                  }}
-                >
-                  Delete
-                </Text>
-              </Pressable>
-            </View>
-          </View>
-        )}
-      </BottomSheetScrollView>{" "}
+                    {/* ─── Test result banner ────────────────────────────── */}
+                    {(isTesting || testResult || testError) && (
+                      <TestResultBanner
+                        isLoading={isTesting}
+                        result={testResult}
+                        error={testError}
+                      />
+                    )}
+
+                    {/* ─── Tools list ────────────────────────────────────── */}
+                    {tools.length > 0 && (
+                      <View
+                        style={{
+                          backgroundColor: "rgba(255,255,255,0.04)",
+                          borderRadius: moderateScale(14, 0.5),
+                          padding: spacing.md,
+                          gap: spacing.sm,
+                        }}
+                      >
+                        <View
+                          style={{
+                            flexDirection: "row",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                          }}
+                        >
+                          <View
+                            style={{
+                              flexDirection: "row",
+                              alignItems: "center",
+                              gap: spacing.sm,
+                            }}
+                          >
+                            <AppIcon
+                              icon={Wrench01Icon}
+                              size={14}
+                              color="#71717a"
+                            />
+                            <Text
+                              style={{
+                                fontSize: fontSize.xs,
+                                fontWeight: "600",
+                                color: "#71717a",
+                                letterSpacing: 0.5,
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              Available Tools
+                            </Text>
+                            <View
+                              style={{
+                                backgroundColor: "rgba(0,187,255,0.12)",
+                                borderRadius: 999,
+                                minWidth: 20,
+                                height: 18,
+                                alignItems: "center",
+                                justifyContent: "center",
+                                paddingHorizontal: 6,
+                              }}
+                            >
+                              <Text
+                                style={{
+                                  fontSize: fontSize.xs - 1,
+                                  color: "#00bbff",
+                                  fontWeight: "600",
+                                }}
+                              >
+                                {tools.length}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+
+                        <View style={{ gap: 2 }}>
+                          {visibleTools.map((tool) => (
+                            <ToolItem
+                              key={tool.name}
+                              name={tool.name}
+                              description={tool.description}
+                            />
+                          ))}
+                        </View>
+
+                        {hasMoreTools && (
+                          <Pressable
+                            onPress={() => setToolsExpanded((v) => !v)}
+                            style={({ pressed }) => ({
+                              paddingVertical: spacing.xs,
+                              alignItems: "center",
+                              opacity: pressed ? 0.7 : 1,
+                            })}
+                          >
+                            <Text
+                              style={{
+                                fontSize: fontSize.xs,
+                                color: "#00bbff",
+                                fontWeight: "500",
+                              }}
+                            >
+                              {toolsExpanded
+                                ? "Show less"
+                                : `Show ${tools.length - TOOLS_INITIAL_COUNT} more tools`}
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    )}
+
+                    {/* ─── Custom integration actions ────────────────────── */}
+                    {isCustom && (
+                      <View
+                        style={{
+                          gap: spacing.sm,
+                          borderTopWidth: 1,
+                          borderTopColor: "rgba(255,255,255,0.07)",
+                          paddingTop: spacing.md,
+                        }}
+                      >
+                        <Text
+                          style={{
+                            fontSize: fontSize.xs,
+                            fontWeight: "600",
+                            color: "#71717a",
+                            letterSpacing: 0.5,
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Manage
+                        </Text>
+                        <View style={{ flexDirection: "row", gap: spacing.sm }}>
+                          <Pressable
+                            onPress={handleEdit}
+                            style={({ pressed }) => ({
+                              flex: 1,
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: spacing.xs,
+                              padding: spacing.md,
+                              borderRadius: moderateScale(12, 0.5),
+                              backgroundColor: pressed
+                                ? "rgba(255,255,255,0.07)"
+                                : "rgba(255,255,255,0.04)",
+                              borderWidth: 1,
+                              borderColor: "rgba(255,255,255,0.1)",
+                            })}
+                          >
+                            <AppIcon
+                              icon={Edit02Icon}
+                              size={14}
+                              color="#a1a1aa"
+                            />
+                            <Text
+                              style={{
+                                fontSize: fontSize.sm,
+                                color: "#a1a1aa",
+                                fontWeight: "500",
+                              }}
+                            >
+                              Edit
+                            </Text>
+                          </Pressable>
+
+                          <Pressable
+                            onPress={handleDelete}
+                            disabled={isDeleting}
+                            style={({ pressed }) => ({
+                              flex: 1,
+                              flexDirection: "row",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: spacing.xs,
+                              padding: spacing.md,
+                              borderRadius: moderateScale(12, 0.5),
+                              backgroundColor: pressed
+                                ? "rgba(239,68,68,0.12)"
+                                : "rgba(239,68,68,0.07)",
+                              borderWidth: 1,
+                              borderColor: "rgba(239,68,68,0.2)",
+                              opacity: isDeleting ? 0.6 : 1,
+                            })}
+                          >
+                            {isDeleting ? (
+                              <ActivityIndicator size="small" color="#ef4444" />
+                            ) : (
+                              <AppIcon
+                                icon={Delete02Icon}
+                                size={14}
+                                color="#ef4444"
+                              />
+                            )}
+                            <Text
+                              style={{
+                                fontSize: fontSize.sm,
+                                color: "#ef4444",
+                                fontWeight: "500",
+                              }}
+                            >
+                              Delete
+                            </Text>
+                          </Pressable>
+                        </View>
+                      </View>
+                    )}
+                  </>
+                );
+              })()}
+            </BottomSheetScrollView>
+          ) : null}
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
     </BottomSheet>
   );
 });

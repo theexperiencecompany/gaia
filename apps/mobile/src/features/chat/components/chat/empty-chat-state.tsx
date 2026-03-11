@@ -1,6 +1,7 @@
 import { Image } from "expo-image";
+import { PressableFeedback } from "heroui-native";
 import { useMemo } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { ScrollView, View } from "react-native";
 import Animated, { FadeInDown, FadeInUp } from "react-native-reanimated";
 import type { AnyIcon } from "@/components/icons";
 import {
@@ -69,21 +70,19 @@ function SuggestionChipItem({
 
   return (
     <Animated.View entering={FadeInDown.delay(300 + index * 60).springify()}>
-      <Pressable
+      <PressableFeedback
         onPress={onPress}
-        style={({ pressed }) => ({
+        style={{
           flexDirection: "row",
           alignItems: "center",
           gap: spacing.xs,
-          backgroundColor: pressed
-            ? "rgba(255,255,255,0.06)"
-            : "rgba(255,255,255,0.04)",
+          backgroundColor: "rgba(255,255,255,0.04)",
           borderWidth: 1,
           borderColor: "rgba(255,255,255,0.08)",
           borderRadius: moderateScale(20, 0.5),
           paddingHorizontal: spacing.md,
           paddingVertical: spacing.sm,
-        })}
+        }}
       >
         {iconComponent && (
           <View
@@ -113,7 +112,7 @@ function SuggestionChipItem({
         >
           {label}
         </Text>
-      </Pressable>
+      </PressableFeedback>
     </Animated.View>
   );
 }

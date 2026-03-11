@@ -1,4 +1,5 @@
-import { Image, Text, View } from "react-native";
+import { Image, View } from "react-native";
+import { Text } from "@/components/ui/text";
 
 interface AuthHeaderProps {
   title: string;
@@ -14,9 +15,7 @@ export function AuthHeader({ title }: AuthHeaderProps) {
           resizeMode="contain"
         />
       </View>
-      <Text className="text-2xl font-bold text-foreground text-center">
-        {title}
-      </Text>
+      <Text className="text-2xl font-bold text-center">{title}</Text>
     </View>
   );
 }

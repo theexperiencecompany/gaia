@@ -1,3 +1,4 @@
+import { Card } from "heroui-native";
 import { useEffect } from "react";
 import { View } from "react-native";
 import Animated, {
@@ -50,17 +51,15 @@ export function ThinkingCard() {
   const { spacing, fontSize } = useResponsive();
 
   return (
-    <View
+    <Card
+      variant="secondary"
+      animation="disable-all"
       style={{
         flexDirection: "row",
         alignItems: "center",
         paddingVertical: spacing.sm,
         paddingHorizontal: spacing.md,
         gap: spacing.sm,
-        backgroundColor: "rgba(255,255,255,0.04)",
-        borderRadius: 12,
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.06)",
       }}
     >
       <Text
@@ -82,6 +81,6 @@ export function ThinkingCard() {
         <AnimatedDot delay={150} />
         <AnimatedDot delay={300} />
       </View>
-    </View>
+    </Card>
   );
 }

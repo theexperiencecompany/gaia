@@ -1,4 +1,4 @@
-import { Avatar, Card } from "heroui-native";
+import { Avatar, Card, ListGroup, Separator } from "heroui-native";
 import { View } from "react-native";
 import {
   AppIcon,
@@ -24,11 +24,11 @@ function getInitials(name?: string): string {
   return name[0].toUpperCase();
 }
 
-function ContactRow({ contact }: { contact: ContactData }) {
+function ContactItem({ contact }: { contact: ContactData }) {
   const initials = getInitials(contact.name);
 
   return (
-    <View className="flex-row items-center gap-3 py-2.5 border-b border-white/8 last:border-b-0">
+    <ListGroup.Item>
       <Avatar
         alt={contact.name ?? initials}
         size="sm"
@@ -39,27 +39,29 @@ function ContactRow({ contact }: { contact: ContactData }) {
         </Avatar.Fallback>
       </Avatar>
       <View className="flex-1 min-w-0">
-        <Text className="text-sm font-medium text-white" numberOfLines={1}>
+        <ListGroup.ItemText numberOfLines={1}>
           {contact.name || contact.email || "Unknown"}
-        </Text>
+        </ListGroup.ItemText>
         <View className="flex-row flex-wrap gap-x-3 mt-0.5">
           {contact.email && (
             <View className="flex-row items-center gap-1">
               <AppIcon icon={Mail01Icon} size={11} color="#8e8e93" />
-              <Text className="text-xs text-[#8e8e93]" numberOfLines={1}>
+              <ListGroup.ItemDescription numberOfLines={1}>
                 {contact.email}
-              </Text>
+              </ListGroup.ItemDescription>
             </View>
           )}
           {contact.phone && (
             <View className="flex-row items-center gap-1">
               <AppIcon icon={Call02Icon} size={11} color="#8e8e93" />
-              <Text className="text-xs text-[#8e8e93]">{contact.phone}</Text>
+              <ListGroup.ItemDescription>
+                {contact.phone}
+              </ListGroup.ItemDescription>
             </View>
           )}
         </View>
       </View>
-    </View>
+    </ListGroup.Item>
   );
 }
 
@@ -76,14 +78,14 @@ export function ContactListCard({ data }: { data: ContactData[] }) {
             </Text>
           </View>
         </View>
-        <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
+        <ListGroup className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
           {data.map((contact, index) => (
-            <ContactRow
-              key={contact.email || contact.resource_name || String(index)}
-              contact={contact}
-            />
+            <View key={contact.email || contact.resource_name || String(index)}>
+              {index > 0 && <Separator />}
+              <ContactItem contact={contact} />
+            </View>
           ))}
-        </View>
+        </ListGroup>
       </Card.Body>
     </Card>
   );

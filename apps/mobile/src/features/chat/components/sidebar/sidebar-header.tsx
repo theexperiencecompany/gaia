@@ -1,5 +1,5 @@
-import { Button } from "heroui-native";
-import { Image, Pressable, TextInput, View } from "react-native";
+import { Button, PressableFeedback, Surface } from "heroui-native";
+import { Image, TextInput, View } from "react-native";
 import {
   AppIcon,
   ArrowLeft01Icon,
@@ -25,7 +25,8 @@ export function SidebarHeader({
   const { spacing, fontSize, iconSize, moderateScale } = useResponsive();
 
   return (
-    <View
+    <Surface
+      variant="transparent"
       style={{
         paddingHorizontal: spacing.md,
         paddingTop: spacing.lg,
@@ -42,20 +43,17 @@ export function SidebarHeader({
         }}
       >
         {onClose ? (
-          <Pressable
+          <PressableFeedback
             onPress={onClose}
-            style={({ pressed }) => ({
-              opacity: pressed ? 0.6 : 1,
-              padding: 4,
-            })}
             hitSlop={8}
+            style={{ padding: 4 }}
           >
             <AppIcon
               icon={ArrowLeft01Icon}
               size={iconSize.sm}
               color="#a1a1aa"
             />
-          </Pressable>
+          </PressableFeedback>
         ) : (
           <Image
             source={require("@shared/assets/logo/logo.webp")}
@@ -96,7 +94,7 @@ export function SidebarHeader({
             <AppIcon icon={Search01Icon} size={iconSize.sm} color="#6b6b6e" />
           </View>
           {searchQuery.length > 0 && (
-            <Pressable
+            <PressableFeedback
               onPress={() => onSearchChange("")}
               style={{
                 position: "absolute",
@@ -112,7 +110,7 @@ export function SidebarHeader({
                 size={iconSize.sm - 2}
                 color="#6b6b6e"
               />
-            </Pressable>
+            </PressableFeedback>
           )}
         </View>
 
@@ -120,6 +118,6 @@ export function SidebarHeader({
           <AppIcon icon={PencilEdit02Icon} size={iconSize.sm} color="#ffffff" />
         </Button>
       </View>
-    </View>
+    </Surface>
   );
 }

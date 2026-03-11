@@ -1,4 +1,4 @@
-import { Button, Card } from "heroui-native";
+import { Button, Card, Chip } from "heroui-native";
 import { useMemo, useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import {
@@ -709,13 +709,19 @@ export function WorkflowDraftCard({ data }: { data: unknown }) {
       <Card.Body className="py-3 px-4">
         {/* Draft badge */}
         <View className="flex-row items-center justify-between mb-3">
-          <View className="rounded-full bg-yellow-500/20 px-2.5 py-0.5">
-            <Text className="text-[11px] font-semibold text-yellow-400">
-              DRAFT
-            </Text>
-          </View>
-          <View
-            className={`flex-row items-center gap-1 rounded-full px-2.5 py-1 ${trigger.bg}`}
+          <Chip variant="soft" color="warning" size="sm">
+            <Chip.Label className="font-semibold">DRAFT</Chip.Label>
+          </Chip>
+          <Chip
+            variant="soft"
+            color={
+              draft.trigger_type === "scheduled"
+                ? "accent"
+                : draft.trigger_type === "integration"
+                  ? "default"
+                  : "default"
+            }
+            size="sm"
           >
             <AppIcon
               icon={TriggerIcon}
@@ -729,10 +735,8 @@ export function WorkflowDraftCard({ data }: { data: unknown }) {
               }
               strokeWidth={2}
             />
-            <Text className={`text-[11px] font-medium ${trigger.color}`}>
-              {trigger.label}
-            </Text>
-          </View>
+            <Chip.Label>{trigger.label}</Chip.Label>
+          </Chip>
         </View>
 
         {/* Icon + Title */}
@@ -840,17 +844,15 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
           </View>
 
           {/* Created badge */}
-          <View className="flex-row items-center gap-1 rounded-full bg-green-500/15 px-2.5 py-1 shrink-0">
+          <Chip variant="soft" color="success" size="sm" className="shrink-0">
             <AppIcon
               icon={CheckmarkCircle02Icon}
               size={11}
               color="#22c55e"
               strokeWidth={2}
             />
-            <Text className="text-[11px] font-medium text-green-400">
-              Created
-            </Text>
-          </View>
+            <Chip.Label>Created</Chip.Label>
+          </Chip>
         </View>
 
         {/* Description */}
@@ -865,8 +867,17 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
 
         {/* Trigger chip */}
         {triggerConfig?.type && (
-          <View
-            className={`self-start flex-row items-center gap-1.5 rounded-full px-2.5 py-1 ${trigger.bg} mb-3`}
+          <Chip
+            variant="soft"
+            color={
+              triggerConfig.type === "scheduled"
+                ? "accent"
+                : triggerConfig.type === "integration"
+                  ? "default"
+                  : "default"
+            }
+            size="sm"
+            className="mb-3"
           >
             <AppIcon
               icon={TriggerIcon}
@@ -880,10 +891,8 @@ export function WorkflowCreatedCard({ data }: { data: unknown }) {
               }
               strokeWidth={2}
             />
-            <Text className={`text-[11px] font-medium ${trigger.color}`}>
-              {trigger.label}
-            </Text>
-          </View>
+            <Chip.Label>{trigger.label}</Chip.Label>
+          </Chip>
         )}
 
         {/* Activated status */}
@@ -1024,19 +1033,16 @@ export function RateLimitCard({ data }: { data: unknown }) {
             </View>
           </View>
 
-          <View
-            className={`rounded-full px-2.5 py-1 shrink-0 ${
-              isUpgradeRequired ? "bg-yellow-500/15" : "bg-red-500/15"
-            }`}
+          <Chip
+            variant="soft"
+            color={isUpgradeRequired ? "warning" : "danger"}
+            size="sm"
+            className="shrink-0"
           >
-            <Text
-              className={`text-[11px] font-semibold ${
-                isUpgradeRequired ? "text-yellow-400" : "text-red-400"
-              }`}
-            >
+            <Chip.Label className="font-semibold">
               {isUpgradeRequired ? planName : "Limit Hit"}
-            </Text>
-          </View>
+            </Chip.Label>
+          </Chip>
         </View>
 
         {/* Divider */}
@@ -1212,11 +1218,16 @@ export function ArtifactCard({ data }: { data: unknown }) {
                         artifact.path ||
                         `Artifact ${index + 1}`}
                     </Text>
-                    <View className="rounded-full bg-primary/20 px-2 py-0.5 shrink-0">
-                      <Text className="text-[10px] font-medium text-primary">
+                    <Chip
+                      variant="soft"
+                      color="accent"
+                      size="sm"
+                      className="shrink-0"
+                    >
+                      <Chip.Label className="font-medium">
                         {extLabel}
-                      </Text>
-                    </View>
+                      </Chip.Label>
+                    </Chip>
                   </View>
                   <Text
                     className="text-[11px] text-[#8e8e93] mt-0.5"

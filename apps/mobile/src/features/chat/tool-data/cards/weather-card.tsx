@@ -1,6 +1,6 @@
-import { Card } from "heroui-native";
+import { Card, PressableFeedback } from "heroui-native";
 import { useMemo, useState } from "react";
-import { Pressable, View } from "react-native";
+import { View } from "react-native";
 import {
   type AnyIcon,
   AppIcon,
@@ -221,14 +221,14 @@ export function WeatherCard({ data }: { data: WeatherData }) {
             </View>
           </View>
           {hasRichData && (
-            <Pressable
+            <PressableFeedback
               onPress={() => setUseFahrenheit((p) => !p)}
-              className="rounded-full bg-white/10 px-2.5 py-1 active:opacity-70"
+              className="rounded-full bg-white/10 px-2.5 py-1"
             >
               <Text className="text-xs text-muted font-medium">
                 °{useFahrenheit ? "C" : "F"}
               </Text>
-            </Pressable>
+            </PressableFeedback>
           )}
         </View>
 

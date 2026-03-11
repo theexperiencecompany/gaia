@@ -1,11 +1,17 @@
 import { Image } from "expo-image";
 import { useFocusEffect, useRouter } from "expo-router";
+import {
+  Button,
+  Card,
+  Chip,
+  Skeleton,
+  SkeletonGroup,
+  Surface,
+} from "heroui-native";
 import { useCallback, useMemo, useRef, useState } from "react";
 import {
-  ActivityIndicator,
   Alert,
   FlatList,
-  Pressable,
   RefreshControl,
   ScrollView,
   View,
@@ -25,8 +31,6 @@ import {
   AppEmptyStateCard,
   AppFilterChipGroup,
   AppSearchInput,
-  AppSectionCard,
-  AppStatusChip,
 } from "@/shared/components/ui";
 import {
   connectIntegration,
@@ -192,30 +196,14 @@ function AuthTypeBadge({
 }: {
   authType?: "oauth" | "bearer" | "none";
 }) {
-  const { fontSize } = useResponsive();
   if (!authType || authType === "none") return null;
 
   const label =
     authType === "oauth" ? "OAuth" : authType === "bearer" ? "Bearer" : "MCP";
   return (
-    <View
-      style={{
-        backgroundColor: "rgba(255,255,255,0.06)",
-        borderRadius: 4,
-        paddingHorizontal: 5,
-        paddingVertical: 2,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: fontSize.xs - 2,
-          color: "#636369",
-          fontWeight: "500",
-        }}
-      >
-        {label}
-      </Text>
-    </View>
+    <Chip size="sm" variant="flat" color="default" animation="disable-all">
+      <Chip.Label>{label}</Chip.Label>
+    </Chip>
   );
 }
 
@@ -224,111 +212,50 @@ function ManagedByBadge({
 }: {
   managedBy?: "self" | "composio" | "mcp" | "internal";
 }) {
-  const { fontSize } = useResponsive();
   if (!managedBy || managedBy === "self" || managedBy === "internal")
     return null;
 
   const label = managedBy === "composio" ? "Composio" : "MCP";
   return (
-    <View
-      style={{
-        backgroundColor: "rgba(167,139,250,0.1)",
-        borderRadius: 4,
-        paddingHorizontal: 5,
-        paddingVertical: 2,
-      }}
-    >
-      <Text
-        style={{
-          fontSize: fontSize.xs - 2,
-          color: "#a78bfa",
-          fontWeight: "500",
-        }}
-      >
-        {label}
-      </Text>
-    </View>
+    <Chip size="sm" variant="soft" color="accent" animation="disable-all">
+      <Chip.Label>{label}</Chip.Label>
+    </Chip>
   );
 }
 
 function StatusPill({
   status,
   isConnecting,
-  moderateScale,
-  spacing,
-  fontSize,
 }: {
   status: Integration["status"];
   isConnecting: boolean;
-  moderateScale: (size: number, factor?: number) => number;
-  spacing: Record<string, number>;
-  fontSize: Record<string, number>;
 }) {
   if (isConnecting) {
-    return <ActivityIndicator size="small" color="#8e8e93" />;
+    return <Skeleton className="h-6 w-20 rounded-full" />;
   }
 
   if (status === "connected") {
     return (
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 4,
-          backgroundColor: "rgba(52,199,89,0.12)",
-          borderRadius: moderateScale(20, 0.5),
-          paddingHorizontal: spacing.sm + 2,
-          paddingVertical: 5,
-        }}
-      >
+      <Chip size="sm" variant="soft" color="success" animation="disable-all">
         <AppIcon icon={CheckmarkCircle02Icon} size={11} color="#34c759" />
-        <Text
-          style={{ fontSize: fontSize.xs, color: "#34c759", fontWeight: "500" }}
-        >
-          Connected
-        </Text>
-      </View>
+        <Chip.Label>Connected</Chip.Label>
+      </Chip>
     );
   }
 
   if (status === "error") {
     return (
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 4,
-          backgroundColor: "rgba(239,68,68,0.12)",
-          borderRadius: moderateScale(20, 0.5),
-          paddingHorizontal: spacing.sm + 2,
-          paddingVertical: 5,
-        }}
-      >
+      <Chip size="sm" variant="soft" color="danger" animation="disable-all">
         <AppIcon icon={InformationCircleIcon} size={11} color="#ef4444" />
-        <Text
-          style={{ fontSize: fontSize.xs, color: "#ef4444", fontWeight: "500" }}
-        >
-          Error
-        </Text>
-      </View>
+        <Chip.Label>Error</Chip.Label>
+      </Chip>
     );
   }
 
   return (
-    <View
-      style={{
-        backgroundColor: "rgba(255,255,255,0.06)",
-        borderRadius: moderateScale(20, 0.5),
-        paddingHorizontal: spacing.sm + 2,
-        paddingVertical: 5,
-      }}
-    >
-      <Text
-        style={{ fontSize: fontSize.xs, color: "#636369", fontWeight: "500" }}
-      >
-        Not Connected
-      </Text>
-    </View>
+    <Chip size="sm" variant="flat" color="default" animation="disable-all">
+      <Chip.Label>Not Connected</Chip.Label>
+    </Chip>
   );
 }
 
@@ -345,20 +272,15 @@ function IntegrationRow({
   const toolCount = integration.tools?.length ?? 0;
 
   return (
-    <Pressable
-      onPress={() => onPress(integration)}
-      style={({ pressed }) => ({
+    <Surface
+      onPress={() => void onPress(integration)}
+      className="rounded-2xl border border-white/[0.06]"
+      style={{
         flexDirection: "row",
         alignItems: "center",
         paddingHorizontal: spacing.md,
         paddingVertical: spacing.sm + 2,
-        backgroundColor: pressed
-          ? "rgba(255,255,255,0.04)"
-          : "rgba(255,255,255,0.02)",
-        borderRadius: moderateScale(14, 0.5),
-        borderWidth: 1,
-        borderColor: "rgba(255,255,255,0.06)",
-      })}
+      }}
     >
       {/* Circular logo with fallback initial */}
       <View style={{ marginRight: spacing.sm + 4 }}>
@@ -387,24 +309,9 @@ function IntegrationRow({
           >
             {integration.name}
           </Text>
-          <View
-            style={{
-              backgroundColor: "rgba(0,187,255,0.1)",
-              borderRadius: 4,
-              paddingHorizontal: 5,
-              paddingVertical: 2,
-            }}
-          >
-            <Text
-              style={{
-                fontSize: fontSize.xs - 2,
-                color: "#00bbff",
-                fontWeight: "500",
-              }}
-            >
-              {getCategoryLabel(integration.category)}
-            </Text>
-          </View>
+          <Chip size="sm" variant="flat" color="accent" animation="disable-all">
+            <Chip.Label>{getCategoryLabel(integration.category)}</Chip.Label>
+          </Chip>
         </View>
 
         {/* Row 2: auth type + managed by */}
@@ -428,60 +335,30 @@ function IntegrationRow({
 
       {/* Right side: status + action button */}
       <View style={{ alignItems: "flex-end", gap: 6 }}>
-        <StatusPill
-          status={integration.status}
-          isConnecting={isConnecting}
-          moderateScale={moderateScale}
-          spacing={spacing}
-          fontSize={fontSize}
-        />
+        <StatusPill status={integration.status} isConnecting={isConnecting} />
         {!isConnecting && isConnected ? (
-          <Pressable
-            onPress={() => onPress(integration)}
-            style={({ pressed }) => ({
-              borderRadius: moderateScale(12, 0.5),
-              paddingHorizontal: spacing.sm + 2,
-              paddingVertical: 4,
-              borderWidth: 1,
-              borderColor: "rgba(239,68,68,0.4)",
-              backgroundColor: pressed ? "rgba(239,68,68,0.12)" : "transparent",
-            })}
+          <Button
+            size="sm"
+            variant="flat"
+            color="danger"
+            onPress={() => void onPress(integration)}
+            style={{ borderRadius: moderateScale(12, 0.5) }}
           >
-            <Text
-              style={{
-                fontSize: fontSize.xs - 1,
-                color: "#ef4444",
-                fontWeight: "500",
-              }}
-            >
-              Disconnect
-            </Text>
-          </Pressable>
+            <Button.Label>Disconnect</Button.Label>
+          </Button>
         ) : !isConnecting && isAvailable && integration.status !== "created" ? (
-          <Pressable
-            onPress={() => onPress(integration)}
-            style={({ pressed }) => ({
-              borderRadius: moderateScale(12, 0.5),
-              paddingHorizontal: spacing.sm + 2,
-              paddingVertical: 4,
-              borderWidth: 1,
-              borderColor: "rgba(0,187,255,0.4)",
-              backgroundColor: pressed ? "rgba(0,187,255,0.12)" : "transparent",
-            })}
+          <Button
+            size="sm"
+            variant="flat"
+            color="accent"
+            onPress={() => void onPress(integration)}
+            style={{ borderRadius: moderateScale(12, 0.5) }}
           >
-            <Text
-              style={{
-                fontSize: fontSize.xs - 1,
-                color: "#00bbff",
-                fontWeight: "500",
-              }}
-            >
-              Connect
-            </Text>
-          </Pressable>
+            <Button.Label>Connect</Button.Label>
+          </Button>
         ) : null}
       </View>
-    </Pressable>
+    </Surface>
   );
 }
 
@@ -756,15 +633,6 @@ export function IntegrationsScreen() {
         }
         setConnectingId(null);
       }
-
-      setConnectingId(integration.id);
-      const result = await connectIntegration(integration.id);
-      if (result.success) {
-        await load();
-      } else if (!result.cancelled) {
-        Alert.alert("Error", result.error ?? "Failed to connect integration");
-      }
-      setConnectingId(null);
     },
     [connectingId, load],
   );
@@ -804,20 +672,27 @@ export function IntegrationsScreen() {
     () => (
       <View style={{ gap: spacing.md, paddingBottom: spacing.md }}>
         <View style={{ paddingHorizontal: spacing.md }}>
-          <AppSectionCard
-            className="rounded-2xl bg-[#17191f]"
-            bodyClassName="flex-row items-center justify-between px-4 py-3"
+          <Card
+            variant="secondary"
+            animation="disable-all"
+            className="rounded-2xl"
           >
-            <Text style={{ fontSize: fontSize.xs, color: "#d4d4d8" }}>
-              {connectedCount} of {integrations.length} connected
-            </Text>
-            {selectedCategory !== "all" ? (
-              <AppStatusChip
-                label={getCategoryLabel(selectedCategory)}
-                tone="accent"
-              />
-            ) : null}
-          </AppSectionCard>
+            <Card.Body className="flex-row items-center justify-between px-4 py-3">
+              <Text style={{ fontSize: fontSize.xs, color: "#d4d4d8" }}>
+                {connectedCount} of {integrations.length} connected
+              </Text>
+              {selectedCategory !== "all" ? (
+                <Chip
+                  size="sm"
+                  variant="soft"
+                  color="accent"
+                  animation="disable-all"
+                >
+                  <Chip.Label>{getCategoryLabel(selectedCategory)}</Chip.Label>
+                </Chip>
+              ) : null}
+            </Card.Body>
+          </Card>
         </View>
 
         {availableCategories.length > 0 ? (
@@ -861,20 +736,24 @@ export function IntegrationsScreen() {
             paddingVertical: spacing.xl * 2,
           }}
         >
-          <AppSectionCard
-            className="rounded-2xl bg-[#17191f]"
-            bodyClassName="items-center px-6 py-10"
-          >
-            <ActivityIndicator color="#00bbff" />
-            <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
-              Loading integrations...
-            </Text>
-          </AppSectionCard>
+          <SkeletonGroup>
+            <Card
+              variant="secondary"
+              animation="disable-all"
+              className="rounded-2xl"
+            >
+              <Card.Body className="items-center gap-4 px-6 py-10">
+                <Skeleton className="h-4 w-40 rounded-xl" />
+                <Skeleton className="h-4 w-56 rounded-xl" />
+                <Skeleton className="h-4 w-32 rounded-xl" />
+              </Card.Body>
+            </Card>
+          </SkeletonGroup>
         </View>
       ) : (
         <EmptyState query={searchQuery} />
       ),
-    [fontSize.sm, isLoading, searchQuery, spacing.md, spacing.xl],
+    [isLoading, searchQuery, spacing.md, spacing.xl],
   );
 
   return (
@@ -896,19 +775,14 @@ export function IntegrationsScreen() {
               gap: spacing.sm,
             }}
           >
-            <Pressable
+            <Button
+              size="sm"
+              variant="ghost"
               onPress={() => router.back()}
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                backgroundColor: "rgba(255,255,255,0.06)",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
+              className="h-9 w-9 rounded-full"
             >
               <AppIcon icon={ArrowLeft01Icon} size={18} color="#ffffff" />
-            </Pressable>
+            </Button>
 
             <Text
               style={{
@@ -923,31 +797,15 @@ export function IntegrationsScreen() {
             </Text>
 
             {/* Add custom integration button */}
-            <Pressable
+            <Button
+              size="sm"
+              variant="primary"
+              color="accent"
               onPress={() => createSheetRef.current?.open()}
-              style={({ pressed }) => ({
-                flexDirection: "row",
-                alignItems: "center",
-                gap: 5,
-                paddingHorizontal: spacing.sm + 4,
-                paddingVertical: 7,
-                borderRadius: moderateScale(20, 0.5),
-                backgroundColor: pressed
-                  ? "rgba(0,170,230,0.9)"
-                  : "rgba(0,187,255,0.85)",
-              })}
             >
               <AppIcon icon={PlusSignIcon} size={14} color="#fff" />
-              <Text
-                style={{
-                  fontSize: fontSize.xs,
-                  fontWeight: "600",
-                  color: "#fff",
-                }}
-              >
-                Add MCP
-              </Text>
-            </Pressable>
+              <Button.Label>Add MCP</Button.Label>
+            </Button>
           </View>
         </View>
 

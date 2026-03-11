@@ -1,5 +1,5 @@
-import { Card } from "heroui-native";
-import { Linking, Pressable, View } from "react-native";
+import { Button, Card, Chip, Separator } from "heroui-native";
+import { Linking, View } from "react-native";
 import { AppIcon, Download02Icon, File01Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 
@@ -18,24 +18,26 @@ function getFileExtension(filename: string): string {
   return filename.split(".").pop()?.toLowerCase() ?? "";
 }
 
-function getExtensionColor(ext: string): { bg: string; text: string } {
+type ExtColors = {
+  variant: "primary" | "secondary" | "success" | "warning" | "danger";
+  color: "accent" | "default" | "success" | "warning" | "danger";
+};
+
+function getExtensionChipProps(ext: string): ExtColors {
   switch (ext) {
     case "pdf":
-      return { bg: "bg-red-500/15", text: "text-red-400" };
+      return { variant: "secondary", color: "danger" };
     case "doc":
     case "docx":
-      return { bg: "bg-[#00bbff]/15", text: "text-[#00bbff]" };
-    case "txt":
-      return { bg: "bg-white/10", text: "text-muted" };
-    case "md":
-      return { bg: "bg-purple-500/15", text: "text-purple-400" };
+      return { variant: "primary", color: "accent" };
     case "xls":
     case "xlsx":
-      return { bg: "bg-green-500/15", text: "text-green-400" };
     case "csv":
-      return { bg: "bg-green-500/15", text: "text-green-400" };
+      return { variant: "secondary", color: "success" };
+    case "md":
+      return { variant: "secondary", color: "warning" };
     default:
-      return { bg: "bg-white/10", text: "text-muted" };
+      return { variant: "secondary", color: "default" };
   }
 }
 
@@ -43,7 +45,7 @@ export function DocumentCard({ data }: { data: DocumentData }) {
   const displayName = data.title || data.filename || "Untitled Document";
   const filename = data.filename || "";
   const ext = filename ? getFileExtension(filename) : data.type || "";
-  const extColors = getExtensionColor(ext);
+  const chipProps = getExtensionChipProps(ext);
   const showFilename =
     data.title && data.filename && data.title !== data.filename;
 
@@ -72,13 +74,14 @@ export function DocumentCard({ data }: { data: DocumentData }) {
                 {displayName}
               </Text>
               {!!ext && (
-                <View className={`rounded-full px-2 py-0.5 ${extColors.bg}`}>
-                  <Text
-                    className={`text-[10px] font-semibold ${extColors.text}`}
-                  >
-                    {ext.toUpperCase()}
-                  </Text>
-                </View>
+                <Chip
+                  size="xs"
+                  variant={chipProps.variant}
+                  color={chipProps.color}
+                  animation="disable-all"
+                >
+                  <Chip.Label>{ext.toUpperCase()}</Chip.Label>
+                </Chip>
               )}
             </View>
             {showFilename && (
@@ -99,15 +102,19 @@ export function DocumentCard({ data }: { data: DocumentData }) {
 
           {/* Download button */}
           {!!data.url && (
-            <Pressable
-              onPress={handleDownload}
-              className="flex-row items-center gap-1.5 rounded-xl bg-[#00bbff]/10 px-3 py-2 active:opacity-70 flex-shrink-0"
-            >
-              <AppIcon icon={Download02Icon} size={14} color="#00bbff" />
-              <Text className="text-xs font-medium text-[#00bbff]">
-                Download
-              </Text>
-            </Pressable>
+            <>
+              <Separator orientation="vertical" className="h-8 mx-1" />
+              <Button
+                size="sm"
+                variant="secondary"
+                color="accent"
+                onPress={handleDownload}
+                className="flex-shrink-0 rounded-xl"
+              >
+                <AppIcon icon={Download02Icon} size={14} color="#00bbff" />
+                <Button.Label className="text-[#00bbff]">Download</Button.Label>
+              </Button>
+            </>
           )}
         </View>
       </Card.Body>

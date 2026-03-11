@@ -2,6 +2,7 @@ import {
   BottomSheetFlatList,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
+import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
@@ -22,7 +23,6 @@ import { Text } from "@/components/ui/text";
 import { getToolCategoryIcon } from "@/features/chat/utils/tool-icons";
 import { apiService } from "@/lib/api";
 import { useResponsive } from "@/lib/responsive";
-import { BottomSheet } from "@/shared/components/ui/bottom-sheet";
 
 interface ToolInfo {
   name: string;

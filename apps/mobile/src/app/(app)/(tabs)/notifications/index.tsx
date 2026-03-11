@@ -1,4 +1,3 @@
-import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useRef, useState } from "react";
 import { Pressable, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -17,6 +16,7 @@ import {
   useInappNotifications,
   useNotificationActions,
 } from "@/features/notifications";
+import type { NotificationPreferencesSheetRef } from "@/features/notifications/components/NotificationPreferencesSheet";
 import { NotificationPreferencesSheet } from "@/features/notifications/components/NotificationPreferencesSheet";
 import { useResponsive } from "@/lib/responsive";
 
@@ -34,7 +34,7 @@ export default function NotificationsScreen() {
   const [activeTab, setActiveTab] = useState<NotificationsTab>("unread");
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const prefsSheetRef = useRef<BottomSheetModal>(null);
+  const prefsSheetRef = useRef<NotificationPreferencesSheetRef>(null);
 
   const {
     unreadNotifications,
@@ -184,7 +184,7 @@ export default function NotificationsScreen() {
               <View style={{ flex: 1 }} />
 
               <Pressable
-                onPress={() => prefsSheetRef.current?.present()}
+                onPress={() => prefsSheetRef.current?.open()}
                 style={{ marginRight: spacing.sm, opacity: 0.7 }}
               >
                 <AppIcon icon={Settings01Icon} size={20} color="#8e8e93" />

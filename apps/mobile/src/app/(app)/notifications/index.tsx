@@ -1,4 +1,3 @@
-import type { BottomSheetModal } from "@gorhom/bottom-sheet";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
@@ -22,6 +21,7 @@ import {
   useNotificationActions,
   useRealtimeNotifications,
 } from "@/features/notifications";
+import type { NotificationPreferencesSheetRef } from "@/features/notifications/components/NotificationPreferencesSheet";
 import { NotificationPreferencesSheet } from "@/features/notifications/components/NotificationPreferencesSheet";
 import type { NotificationSnoozeSheetRef } from "@/features/notifications/components/NotificationSnoozeSheet";
 import { NotificationSnoozeSheet } from "@/features/notifications/components/NotificationSnoozeSheet";
@@ -48,7 +48,7 @@ export default function NotificationsScreen() {
   const [activeTab, setActiveTab] = useState<NotificationsTab>("unread");
   const [isSelectMode, setIsSelectMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const prefsSheetRef = useRef<BottomSheetModal>(null);
+  const prefsSheetRef = useRef<NotificationPreferencesSheetRef>(null);
   const snoozeSheetRef = useRef<NotificationSnoozeSheetRef>(null);
 
   const {
@@ -276,7 +276,7 @@ export default function NotificationsScreen() {
               <View style={{ flex: 1 }} />
 
               <Pressable
-                onPress={() => prefsSheetRef.current?.present()}
+                onPress={() => prefsSheetRef.current?.open()}
                 style={{ marginRight: spacing.sm, opacity: 0.7 }}
               >
                 <AppIcon icon={Settings01Icon} size={20} color="#8e8e93" />

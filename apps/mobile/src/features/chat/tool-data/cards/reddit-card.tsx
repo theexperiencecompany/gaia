@@ -1,4 +1,10 @@
-import { Card } from "heroui-native";
+import {
+  Button,
+  Card,
+  Chip,
+  PressableFeedback,
+  Separator,
+} from "heroui-native";
 import { useState } from "react";
 import { Linking, Pressable, View } from "react-native";
 import {
@@ -132,12 +138,14 @@ function PostMeta({
   return (
     <View className="flex-row items-center gap-1.5 flex-wrap mb-1">
       {subreddit && (
-        <Text
-          className="text-xs font-semibold"
-          style={{ color: REDDIT_ORANGE }}
+        <Chip
+          size="xs"
+          variant="secondary"
+          color="default"
+          animation="disable-all"
         >
-          {subreddit}
-        </Text>
+          <Chip.Label style={{ color: REDDIT_ORANGE }}>{subreddit}</Chip.Label>
+        </Chip>
       )}
       {author && (
         <>
@@ -204,46 +212,46 @@ function SearchView({ posts }: { posts: RedditSearchData[] }) {
   return (
     <>
       <View className="flex-row items-center justify-between mb-2">
-        <View className="rounded-full bg-white/10 px-2 py-0.5">
-          <Text className="text-[10px] text-muted">
+        <Chip
+          size="xs"
+          variant="secondary"
+          color="default"
+          animation="disable-all"
+        >
+          <Chip.Label>
             {posts.length} post{posts.length !== 1 ? "s" : ""}
-          </Text>
-        </View>
+          </Chip.Label>
+        </Chip>
       </View>
 
       <View className="rounded-xl bg-white/5 border border-white/10 overflow-hidden">
         {preview.map((post, index) => (
-          <Pressable
-            key={post.id ?? post.title ?? String(index)}
-            onPress={() => openRedditLink(post.permalink, post.url)}
-            className="p-3 active:opacity-70"
-            style={
-              index < preview.length - 1
-                ? {
-                    borderBottomWidth: 1,
-                    borderBottomColor: "rgba(255,255,255,0.08)",
-                  }
-                : undefined
-            }
-          >
-            <PostMeta
-              subreddit={post.subreddit}
-              author={post.author}
-              createdUtc={post.created_utc}
-            />
-            <Text
-              className="text-sm font-medium text-foreground"
-              numberOfLines={2}
+          <View key={post.id ?? post.title ?? String(index)}>
+            <PressableFeedback
+              onPress={() => openRedditLink(post.permalink, post.url)}
             >
-              {post.title}
-            </Text>
-            {post.selftext ? (
-              <Text className="text-xs text-muted mt-1" numberOfLines={2}>
-                {post.selftext}
-              </Text>
-            ) : null}
-            <PostStats score={post.score} numComments={post.num_comments} />
-          </Pressable>
+              <View className="p-3">
+                <PostMeta
+                  subreddit={post.subreddit}
+                  author={post.author}
+                  createdUtc={post.created_utc}
+                />
+                <Text
+                  className="text-sm font-medium text-foreground"
+                  numberOfLines={2}
+                >
+                  {post.title}
+                </Text>
+                {post.selftext ? (
+                  <Text className="text-xs text-muted mt-1" numberOfLines={2}>
+                    {post.selftext}
+                  </Text>
+                ) : null}
+                <PostStats score={post.score} numComments={post.num_comments} />
+              </View>
+            </PressableFeedback>
+            {index < preview.length - 1 && <Separator className="mx-3" />}
+          </View>
         ))}
       </View>
 
@@ -288,11 +296,17 @@ function PostView({ post }: { post: RedditPostData }) {
           </Text>
         </Pressable>
         {hasFlair && (
-          <View className="rounded-md bg-blue-900/40 px-1.5 py-0.5 flex-shrink-0">
-            <Text className="text-[10px] text-blue-300 font-medium">
+          <Chip
+            size="xs"
+            variant="secondary"
+            color="default"
+            animation="disable-all"
+            className="flex-shrink-0"
+          >
+            <Chip.Label className="text-blue-300">
               {post.link_flair_text}
-            </Text>
-          </View>
+            </Chip.Label>
+          </Chip>
         )}
       </View>
 
@@ -330,18 +344,22 @@ function PostView({ post }: { post: RedditPostData }) {
         </Pressable>
       )}
 
-      <View className="flex-row items-center justify-between mt-2">
+      <Separator className="mt-2 mb-1" />
+
+      <View className="flex-row items-center justify-between mt-1">
         <PostStats
           score={post.score}
           upvoteRatio={post.upvote_ratio}
           numComments={post.num_comments}
         />
-        <Pressable
+        <Button
+          size="xs"
+          variant="ghost"
+          color="default"
           onPress={() => openRedditLink(post.permalink, post.url)}
-          className="active:opacity-70"
         >
-          <Text className="text-xs text-muted">View on Reddit →</Text>
-        </Pressable>
+          <Button.Label className="text-muted">View on Reddit →</Button.Label>
+        </Button>
       </View>
     </View>
   );
@@ -357,11 +375,16 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
   return (
     <>
       <View className="flex-row items-center justify-between mb-2">
-        <View className="rounded-full bg-white/10 px-2 py-0.5">
-          <Text className="text-[10px] text-muted">
+        <Chip
+          size="xs"
+          variant="secondary"
+          color="default"
+          animation="disable-all"
+        >
+          <Chip.Label>
             {comments.length} comment{comments.length !== 1 ? "s" : ""}
-          </Text>
-        </View>
+          </Chip.Label>
+        </Chip>
       </View>
 
       <View className="gap-2">
@@ -383,11 +406,14 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
                   u/{comment.author}
                 </Text>
                 {comment.is_submitter && (
-                  <View className="rounded bg-blue-900/40 px-1.5 py-0.5">
-                    <Text className="text-[10px] font-medium text-blue-400">
-                      OP
-                    </Text>
-                  </View>
+                  <Chip
+                    size="xs"
+                    variant="secondary"
+                    color="default"
+                    animation="disable-all"
+                  >
+                    <Chip.Label className="text-blue-400">OP</Chip.Label>
+                  </Chip>
                 )}
                 {comment.created_utc !== undefined && (
                   <>
@@ -422,20 +448,23 @@ function CommentsView({ comments }: { comments: RedditCommentData[] }) {
 
             {/* Link */}
             {comment.permalink && (
-              <Pressable
-                onPress={() =>
-                  comment.permalink &&
-                  Linking.openURL(`https://reddit.com${comment.permalink}`)
-                }
-                className="mt-2 active:opacity-70"
-              >
-                <Text
-                  className="text-xs font-medium"
-                  style={{ color: REDDIT_ORANGE }}
+              <>
+                <Separator className="mt-2 mb-2" />
+                <Pressable
+                  onPress={() =>
+                    comment.permalink &&
+                    Linking.openURL(`https://reddit.com${comment.permalink}`)
+                  }
+                  className="active:opacity-70"
                 >
-                  View on Reddit →
-                </Text>
-              </Pressable>
+                  <Text
+                    className="text-xs font-medium"
+                    style={{ color: REDDIT_ORANGE }}
+                  >
+                    View on Reddit →
+                  </Text>
+                </Pressable>
+              </>
             )}
           </View>
         ))}
@@ -493,6 +522,8 @@ function CreatedView({
         </Text>
       )}
 
+      <Separator className="mb-2" />
+
       <View className="flex-row items-center justify-between">
         {(permalink || url) && (
           <Pressable
@@ -508,11 +539,15 @@ function CreatedView({
             <AppIcon icon={LinkSquare02Icon} size={12} color={REDDIT_ORANGE} />
           </Pressable>
         )}
-        <View className="rounded-md bg-green-900/30 px-2 py-0.5 ml-auto">
-          <Text className="text-[10px] text-green-300 font-medium">
-            Just now
-          </Text>
-        </View>
+        <Chip
+          size="xs"
+          variant="secondary"
+          color="success"
+          animation="disable-all"
+          className="ml-auto"
+        >
+          <Chip.Label>Just now</Chip.Label>
+        </Chip>
       </View>
     </View>
   );

@@ -1,4 +1,4 @@
-import { Card } from "heroui-native";
+import { Card, Chip } from "heroui-native";
 import { View } from "react-native";
 import {
   AppIcon,
@@ -118,15 +118,23 @@ export function NotificationCard({ data }: { data: NotificationData }) {
           <AppIcon icon={Notification01Icon} size={14} color="#8e8e93" />
           <Text className="text-xs text-[#8e8e93]">Notifications</Text>
           <View className="flex-row items-center gap-1.5 ml-auto">
-            <View className="rounded-full bg-white/10 px-2 py-0.5">
-              <Text className="text-[10px] text-[#8e8e93]">{count} total</Text>
-            </View>
+            <Chip
+              size="xs"
+              variant="secondary"
+              color="default"
+              animation="disable-all"
+            >
+              <Chip.Label>{count} total</Chip.Label>
+            </Chip>
             {unreadCount > 0 && (
-              <View className="rounded-full bg-[#00bbff]/15 px-2 py-0.5">
-                <Text className="text-[10px] text-[#00bbff] font-medium">
-                  {unreadCount} unread
-                </Text>
-              </View>
+              <Chip
+                size="xs"
+                variant="primary"
+                color="accent"
+                animation="disable-all"
+              >
+                <Chip.Label>{unreadCount} unread</Chip.Label>
+              </Chip>
             )}
           </View>
         </View>

@@ -1,14 +1,9 @@
-import BottomSheet, {
+import {
   BottomSheetScrollView,
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
-import {
-  forwardRef,
-  useCallback,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from "react";
+import { BottomSheet } from "heroui-native";
+import { forwardRef, useCallback, useImperativeHandle, useState } from "react";
 import { Pressable, View } from "react-native";
 import { AppIcon, Cancel01Icon, Tick02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -31,7 +26,7 @@ export const NoteEditorSheet = forwardRef<
   NoteEditorSheetRef,
   NoteEditorSheetProps
 >(({ onSaveCreate, onSaveUpdate }, ref) => {
-  const bottomSheetRef = useRef<BottomSheet>(null);
+  const [isOpen, setIsOpen] = useState(false);
   const [editingNote, setEditingNote] = useState<Note | null>(null);
   const [title, setTitle] = useState("");
   const [content, setContent] = useState("");
@@ -48,16 +43,16 @@ export const NoteEditorSheet = forwardRef<
   useImperativeHandle(ref, () => ({
     openCreate: () => {
       reset();
-      bottomSheetRef.current?.expand();
+      setIsOpen(true);
     },
     openEdit: (note: Note) => {
       setEditingNote(note);
       setTitle(note.title);
       setContent(note.content);
       setIsSaving(false);
-      bottomSheetRef.current?.expand();
+      setIsOpen(true);
     },
-    close: () => bottomSheetRef.current?.close(),
+    close: () => setIsOpen(false),
   }));
 
   const handleSave = useCallback(async () => {
@@ -71,7 +66,7 @@ export const NoteEditorSheet = forwardRef<
         await onSaveCreate({ title, content });
       }
       notificationHaptic("success");
-      bottomSheetRef.current?.close();
+      setIsOpen(false);
       reset();
     } finally {
       setIsSaving(false);
@@ -87,148 +82,157 @@ export const NoteEditorSheet = forwardRef<
   ]);
 
   const handleCancel = useCallback(() => {
-    bottomSheetRef.current?.close();
+    setIsOpen(false);
     reset();
   }, [reset]);
 
   return (
     <BottomSheet
-      ref={bottomSheetRef}
-      index={-1}
-      snapPoints={["60%", "95%"]}
-      enablePanDownToClose
-      backgroundStyle={{ backgroundColor: "#1c1c1e" }}
-      handleIndicatorStyle={{ backgroundColor: "#3f3f46" }}
-      onClose={reset}
+      isOpen={isOpen}
+      onOpenChange={(open) => {
+        setIsOpen(open);
+        if (!open) reset();
+      }}
     >
-      <BottomSheetScrollView
-        contentContainerStyle={{
-          padding: spacing.md,
-          gap: spacing.md,
-          paddingBottom: 48,
-        }}
-        keyboardShouldPersistTaps="handled"
-      >
-        {/* Header row */}
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "space-between",
-          }}
+      <BottomSheet.Portal>
+        <BottomSheet.Overlay />
+        <BottomSheet.Content
+          snapPoints={["60%", "95%"]}
+          enableDynamicSizing={false}
+          enablePanDownToClose
+          backgroundStyle={{ backgroundColor: "#1c1c1e" }}
+          handleIndicatorStyle={{ backgroundColor: "#3f3f46", width: 40 }}
         >
-          <Text
-            style={{
-              fontSize: fontSize.lg,
-              fontWeight: "600",
-              color: "#f4f4f5",
+          <BottomSheetScrollView
+            contentContainerStyle={{
+              padding: spacing.md,
+              gap: spacing.md,
+              paddingBottom: 48,
             }}
+            keyboardShouldPersistTaps="handled"
           >
-            {editingNote ? "Edit Note" : "New Note"}
-          </Text>
-          <View style={{ flexDirection: "row", gap: 8 }}>
-            <Pressable
-              onPress={handleCancel}
+            {/* Header row */}
+            <View
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
+                flexDirection: "row",
                 alignItems: "center",
-                justifyContent: "center",
-                backgroundColor: "rgba(255,255,255,0.06)",
+                justifyContent: "space-between",
               }}
             >
-              <AppIcon icon={Cancel01Icon} size={16} color="#a1a1aa" />
-            </Pressable>
+              <Text
+                style={{
+                  fontSize: fontSize.lg,
+                  fontWeight: "600",
+                  color: "#f4f4f5",
+                }}
+              >
+                {editingNote ? "Edit Note" : "New Note"}
+              </Text>
+              <View style={{ flexDirection: "row", gap: 8 }}>
+                <Pressable
+                  onPress={handleCancel}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "rgba(255,255,255,0.06)",
+                  }}
+                >
+                  <AppIcon icon={Cancel01Icon} size={16} color="#a1a1aa" />
+                </Pressable>
+                <Pressable
+                  onPress={() => {
+                    void handleSave();
+                  }}
+                  disabled={isSaving}
+                  style={{
+                    width: 32,
+                    height: 32,
+                    borderRadius: 8,
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: isSaving
+                      ? "rgba(22,193,255,0.06)"
+                      : "rgba(22,193,255,0.15)",
+                  }}
+                >
+                  <AppIcon
+                    icon={Tick02Icon}
+                    size={16}
+                    color={isSaving ? "#52525b" : "#16c1ff"}
+                  />
+                </Pressable>
+              </View>
+            </View>
+
+            {/* Title input */}
+            <BottomSheetTextInput
+              value={title}
+              onChangeText={setTitle}
+              placeholder="Note title"
+              placeholderTextColor="#52525b"
+              style={{
+                fontSize: fontSize.xl,
+                fontWeight: "600",
+                color: "#f4f4f5",
+                borderBottomWidth: 1,
+                borderBottomColor: "#3f3f46",
+                paddingVertical: 8,
+              }}
+              returnKeyType="next"
+            />
+
+            {/* Content input */}
+            <BottomSheetTextInput
+              value={content}
+              onChangeText={setContent}
+              placeholder="Start writing..."
+              placeholderTextColor="#52525b"
+              multiline
+              style={{
+                fontSize: fontSize.base,
+                color: "#e4e4e7",
+                minHeight: 180,
+                textAlignVertical: "top",
+                lineHeight: fontSize.base * 1.6,
+              }}
+            />
+
+            {/* Save button */}
             <Pressable
               onPress={() => {
                 void handleSave();
               }}
               disabled={isSaving}
               style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
                 alignItems: "center",
                 justifyContent: "center",
+                paddingVertical: spacing.md,
+                borderRadius: 12,
                 backgroundColor: isSaving
                   ? "rgba(22,193,255,0.06)"
-                  : "rgba(22,193,255,0.15)",
+                  : "rgba(22,193,255,0.12)",
+                borderWidth: 1,
+                borderColor: isSaving
+                  ? "rgba(22,193,255,0.1)"
+                  : "rgba(22,193,255,0.25)",
               }}
             >
-              <AppIcon
-                icon={Tick02Icon}
-                size={16}
-                color={isSaving ? "#52525b" : "#16c1ff"}
-              />
+              <Text
+                style={{
+                  fontSize: fontSize.base,
+                  fontWeight: "600",
+                  color: isSaving ? "#52525b" : "#16c1ff",
+                }}
+              >
+                {isSaving ? "Saving..." : "Save"}
+              </Text>
             </Pressable>
-          </View>
-        </View>
-
-        {/* Title input */}
-        <BottomSheetTextInput
-          value={title}
-          onChangeText={setTitle}
-          placeholder="Note title"
-          placeholderTextColor="#52525b"
-          style={{
-            fontSize: fontSize.xl,
-            fontWeight: "600",
-            color: "#f4f4f5",
-            borderBottomWidth: 1,
-            borderBottomColor: "#3f3f46",
-            paddingVertical: 8,
-          }}
-          returnKeyType="next"
-        />
-
-        {/* Content input */}
-        <BottomSheetTextInput
-          value={content}
-          onChangeText={setContent}
-          placeholder="Start writing..."
-          placeholderTextColor="#52525b"
-          multiline
-          style={{
-            fontSize: fontSize.base,
-            color: "#e4e4e7",
-            minHeight: 180,
-            textAlignVertical: "top",
-            lineHeight: fontSize.base * 1.6,
-          }}
-        />
-
-        {/* Save button */}
-        <Pressable
-          onPress={() => {
-            void handleSave();
-          }}
-          disabled={isSaving}
-          style={{
-            alignItems: "center",
-            justifyContent: "center",
-            paddingVertical: spacing.md,
-            borderRadius: 12,
-            backgroundColor: isSaving
-              ? "rgba(22,193,255,0.06)"
-              : "rgba(22,193,255,0.12)",
-            borderWidth: 1,
-            borderColor: isSaving
-              ? "rgba(22,193,255,0.1)"
-              : "rgba(22,193,255,0.25)",
-          }}
-        >
-          <Text
-            style={{
-              fontSize: fontSize.base,
-              fontWeight: "600",
-              color: isSaving ? "#52525b" : "#16c1ff",
-            }}
-          >
-            {isSaving ? "Saving..." : "Save"}
-          </Text>
-        </Pressable>
-      </BottomSheetScrollView>
+          </BottomSheetScrollView>
+        </BottomSheet.Content>
+      </BottomSheet.Portal>
     </BottomSheet>
   );
 });

@@ -1,4 +1,4 @@
-import { Card } from "heroui-native";
+import { Card, Checkbox, Chip } from "heroui-native";
 import { View } from "react-native";
 import { Text } from "@/components/ui/text";
 
@@ -20,20 +20,6 @@ export interface TodoProgressSnapshot {
 }
 
 export type TodoProgressData = Record<string, TodoProgressSnapshot>;
-
-const STATUS_SYMBOL: Record<TodoProgressStatus, string> = {
-  completed: "✓",
-  in_progress: "›",
-  pending: "○",
-  cancelled: "✕",
-};
-
-const STATUS_TEXT_CLASS: Record<TodoProgressStatus, string> = {
-  completed: "text-emerald-400",
-  in_progress: "text-primary",
-  pending: "text-zinc-500",
-  cancelled: "text-zinc-600",
-};
 
 function toTitleCase(str: string): string {
   return str
@@ -72,12 +58,14 @@ function SourceSection({
         <Text className="text-xs font-medium text-zinc-400">
           {toTitleCase(source)}
         </Text>
-        <Text className="text-xs text-zinc-500">
-          {completedCount}/{todos.length}
-        </Text>
+        <Chip size="sm" variant="soft" color="default" animation="disable-all">
+          <Chip.Label>
+            {completedCount}/{todos.length}
+          </Chip.Label>
+        </Chip>
       </View>
 
-      {/* Progress bar */}
+      {/* Progress bar — kept as custom View for precise control */}
       <View className="h-1.5 w-full rounded-full bg-zinc-700 mb-2 overflow-hidden">
         <View
           className={`h-1.5 rounded-full ${getProgressBarColor(pct)}`}
@@ -86,21 +74,22 @@ function SourceSection({
       </View>
 
       {/* Task list */}
-      <View className="gap-1">
+      <View className="gap-1.5">
         {todos.map((todo) => (
           <View
             key={`${source}-${todo.id}`}
-            className="flex-row items-start gap-2"
+            className="flex-row items-center gap-2"
           >
-            <Text
-              className={`text-xs w-3 shrink-0 mt-0.5 ${
+            <Checkbox
+              isSelected={todo.status === "completed"}
+              isDisabled
+              animation="disable-all"
+              className={
                 todo.status === "in_progress" && isStreaming
-                  ? "text-primary"
-                  : STATUS_TEXT_CLASS[todo.status]
-              }`}
-            >
-              {STATUS_SYMBOL[todo.status] ?? "○"}
-            </Text>
+                  ? "opacity-70"
+                  : undefined
+              }
+            />
             <Text
               className={`text-xs flex-1 leading-relaxed ${
                 todo.status === "cancelled"
@@ -144,9 +133,16 @@ export function TodoProgressCard({
           <Text className="text-xs text-muted">
             {isStreaming ? "Processing tasks..." : "Task Progress"}
           </Text>
-          <Text className="text-xs text-muted">
-            {totalCompleted}/{allTodos.length} complete
-          </Text>
+          <Chip
+            size="sm"
+            variant="soft"
+            color="default"
+            animation="disable-all"
+          >
+            <Chip.Label>
+              {totalCompleted}/{allTodos.length} complete
+            </Chip.Label>
+          </Chip>
         </View>
 
         {activeSources.map(([source, snapshot]) => (

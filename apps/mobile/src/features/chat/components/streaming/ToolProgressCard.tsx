@@ -1,3 +1,4 @@
+import { Card, Chip } from "heroui-native";
 import { useEffect, useRef, useState } from "react";
 import { View } from "react-native";
 import Animated, {
@@ -115,7 +116,9 @@ export function ToolProgressCard({
   const message = progressMessage || displayName;
 
   return (
-    <View
+    <Card
+      variant="secondary"
+      animation="disable-all"
       style={{
         flexDirection: "row",
         alignItems: "center",
@@ -123,8 +126,6 @@ export function ToolProgressCard({
         paddingHorizontal: spacing.md,
         gap: spacing.sm,
         backgroundColor: "rgba(0,187,255,0.06)",
-        borderRadius: 12,
-        borderWidth: 1,
         borderColor: "rgba(0,187,255,0.15)",
       }}
     >
@@ -138,7 +139,7 @@ export function ToolProgressCard({
       </Animated.View>
 
       <View style={{ flex: 1 }}>
-        <Text
+        <Card.Title
           style={{
             fontSize: fontSize.sm,
             color: "#ffffff",
@@ -147,19 +148,14 @@ export function ToolProgressCard({
           numberOfLines={2}
         >
           {message}
-        </Text>
+        </Card.Title>
       </View>
 
       {elapsed > 0 && (
-        <Text
-          style={{
-            fontSize: fontSize.xs,
-            color: "#8e8e93",
-          }}
-        >
-          {elapsed}s
-        </Text>
+        <Chip size="sm" variant="soft" color="default" animation="disable-all">
+          <Chip.Label>{elapsed}s</Chip.Label>
+        </Chip>
       )}
-    </View>
+    </Card>
   );
 }

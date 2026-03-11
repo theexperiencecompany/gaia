@@ -1,19 +1,13 @@
-import {
-  BottomSheetBackdrop,
-  type BottomSheetBackdropProps,
-  BottomSheetModal,
-  BottomSheetView,
-} from "@gorhom/bottom-sheet";
 import DateTimePicker, {
   type DateTimePickerEvent,
 } from "@react-native-community/datetimepicker";
 import * as Haptics from "expo-haptics";
+import { BottomSheet } from "heroui-native";
 import {
   forwardRef,
   useCallback,
   useImperativeHandle,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import { Platform, Pressable, View } from "react-native";
@@ -76,21 +70,10 @@ function buildSnoozeOptions(): SnoozeOption[] {
   ];
 }
 
-function renderBackdrop(props: BottomSheetBackdropProps) {
-  return (
-    <BottomSheetBackdrop
-      {...props}
-      disappearsOnIndex={-1}
-      appearsOnIndex={0}
-      opacity={0.6}
-    />
-  );
-}
-
 export const NotificationSnoozeSheet = forwardRef<NotificationSnoozeSheetRef>(
   function NotificationSnoozeSheet(_props, ref) {
     const { spacing, fontSize, moderateScale } = useResponsive();
-    const sheetRef = useRef<BottomSheetModal>(null);
+    const [isOpen, setIsOpen] = useState(false);
     const snapPoints = useMemo(() => ["55%"], []);
 
     const [notificationId, setNotificationId] = useState<string | null>(null);
@@ -111,10 +94,10 @@ export const NotificationSnoozeSheet = forwardRef<NotificationSnoozeSheetRef>(
           d.setHours(d.getHours() + 1);
           return d;
         });
-        sheetRef.current?.present();
+        setIsOpen(true);
       },
       close: () => {
-        sheetRef.current?.dismiss();
+        setIsOpen(false);
       },
     }));
 
@@ -130,7 +113,7 @@ export const NotificationSnoozeSheet = forwardRef<NotificationSnoozeSheetRef>(
           );
         } finally {
           setIsSnoozin(false);
-          sheetRef.current?.dismiss();
+          setIsOpen(false);
         }
       },
       [notificationId, isSnoozin],
@@ -148,179 +131,184 @@ export const NotificationSnoozeSheet = forwardRef<NotificationSnoozeSheetRef>(
     const snoozeOptions = useMemo(() => buildSnoozeOptions(), []);
 
     return (
-      <BottomSheetModal
-        ref={sheetRef}
-        snapPoints={snapPoints}
-        backdropComponent={renderBackdrop}
-        backgroundStyle={{ backgroundColor: "#131416" }}
-        handleIndicatorStyle={{ backgroundColor: "#48484a" }}
-      >
-        <BottomSheetView
-          style={{
-            paddingHorizontal: spacing.md,
-            paddingBottom: spacing.xl,
-          }}
-        >
-          {/* Header */}
-          <View
-            style={{
-              flexDirection: "row",
-              alignItems: "center",
-              gap: spacing.sm,
-              paddingVertical: spacing.md,
-              marginBottom: spacing.sm,
-            }}
+      <BottomSheet isOpen={isOpen} onOpenChange={setIsOpen}>
+        <BottomSheet.Portal>
+          <BottomSheet.Overlay />
+          <BottomSheet.Content
+            snapPoints={snapPoints}
+            enableDynamicSizing={false}
+            enablePanDownToClose
+            backgroundStyle={{ backgroundColor: "#131416" }}
+            handleIndicatorStyle={{ backgroundColor: "#48484a", width: 40 }}
           >
-            <AppIcon icon={AlarmClockIcon} size={18} color="#fbbf24" />
-            <Text
+            <View
               style={{
-                fontSize: fontSize.base,
-                fontWeight: "600",
-                color: "#e8ebef",
-                flex: 1,
+                paddingHorizontal: spacing.md,
+                paddingBottom: spacing.xl,
               }}
             >
-              Snooze Notification
-            </Text>
-            <Pressable
-              onPress={() => sheetRef.current?.dismiss()}
-              hitSlop={8}
-              style={{ opacity: 0.6 }}
-            >
-              <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
-            </Pressable>
-          </View>
-
-          {/* Preset options */}
-          <View style={{ gap: spacing.sm }}>
-            {snoozeOptions.map((option) => (
-              <Pressable
-                key={option.label}
-                disabled={isSnoozin}
-                onPress={() => void handleSnooze(option.getDate())}
+              {/* Header */}
+              <View
                 style={{
                   flexDirection: "row",
                   alignItems: "center",
-                  backgroundColor: "#1c1f26",
-                  borderRadius: moderateScale(12, 0.5),
-                  paddingHorizontal: spacing.md,
-                  paddingVertical: spacing.sm + 2,
                   gap: spacing.sm,
-                  opacity: isSnoozin ? 0.5 : 1,
+                  paddingVertical: spacing.md,
+                  marginBottom: spacing.sm,
                 }}
               >
-                <View style={{ flex: 1 }}>
-                  <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      fontWeight: "500",
-                      color: "#e8ebef",
-                    }}
-                  >
-                    {option.label}
-                  </Text>
-                  <Text
-                    style={{
-                      fontSize: fontSize.xs,
-                      color: "#8e8e93",
-                      marginTop: 2,
-                    }}
-                  >
-                    {option.description}
-                  </Text>
-                </View>
-                <AppIcon icon={AlarmClockIcon} size={16} color="#fbbf24" />
-              </Pressable>
-            ))}
-
-            {/* Custom time option */}
-            <Pressable
-              onPress={() => setShowCustomPicker((prev) => !prev)}
-              style={{
-                flexDirection: "row",
-                alignItems: "center",
-                backgroundColor: showCustomPicker
-                  ? "rgba(251,191,36,0.12)"
-                  : "#1c1f26",
-                borderRadius: moderateScale(12, 0.5),
-                paddingHorizontal: spacing.md,
-                paddingVertical: spacing.sm + 2,
-                gap: spacing.sm,
-                borderWidth: showCustomPicker ? 1 : 0,
-                borderColor: showCustomPicker
-                  ? "rgba(251,191,36,0.4)"
-                  : "transparent",
-              }}
-            >
-              <View style={{ flex: 1 }}>
+                <AppIcon icon={AlarmClockIcon} size={18} color="#fbbf24" />
                 <Text
                   style={{
-                    fontSize: fontSize.sm,
-                    fontWeight: "500",
-                    color: showCustomPicker ? "#fbbf24" : "#e8ebef",
+                    fontSize: fontSize.base,
+                    fontWeight: "600",
+                    color: "#e8ebef",
+                    flex: 1,
                   }}
                 >
-                  Custom time
+                  Snooze Notification
                 </Text>
-                <Text
-                  style={{
-                    fontSize: fontSize.xs,
-                    color: "#8e8e93",
-                    marginTop: 2,
-                  }}
-                >
-                  Pick a specific date and time
-                </Text>
-              </View>
-              <AppIcon icon={AlarmClockIcon} size={16} color="#8e8e93" />
-            </Pressable>
-
-            {/* Inline date/time picker for custom option */}
-            {showCustomPicker && (
-              <View
-                style={{
-                  backgroundColor: "#1c1f26",
-                  borderRadius: moderateScale(12, 0.5),
-                  padding: spacing.sm,
-                  gap: spacing.sm,
-                }}
-              >
-                <DateTimePicker
-                  value={customDate}
-                  mode="datetime"
-                  display={Platform.OS === "ios" ? "spinner" : "default"}
-                  minimumDate={new Date()}
-                  onChange={handleCustomDateChange}
-                  themeVariant="dark"
-                  style={{ flex: 1 }}
-                  textColor="#e8ebef"
-                />
                 <Pressable
-                  disabled={isSnoozin}
-                  onPress={() => void handleSnooze(customDate)}
-                  style={{
-                    backgroundColor: "rgba(251,191,36,0.15)",
-                    borderRadius: 10,
-                    paddingVertical: spacing.sm + 2,
-                    alignItems: "center",
-                    opacity: isSnoozin ? 0.5 : 1,
-                  }}
+                  onPress={() => setIsOpen(false)}
+                  hitSlop={8}
+                  style={{ opacity: 0.6 }}
                 >
-                  <Text
-                    style={{
-                      fontSize: fontSize.sm,
-                      fontWeight: "600",
-                      color: "#fbbf24",
-                    }}
-                  >
-                    {isSnoozin ? "Snoozing..." : "Snooze until this time"}
-                  </Text>
+                  <AppIcon icon={Cancel01Icon} size={18} color="#8e8e93" />
                 </Pressable>
               </View>
-            )}
-          </View>
-        </BottomSheetView>
-      </BottomSheetModal>
+
+              {/* Preset options */}
+              <View style={{ gap: spacing.sm }}>
+                {snoozeOptions.map((option) => (
+                  <Pressable
+                    key={option.label}
+                    disabled={isSnoozin}
+                    onPress={() => void handleSnooze(option.getDate())}
+                    style={{
+                      flexDirection: "row",
+                      alignItems: "center",
+                      backgroundColor: "#1c1f26",
+                      borderRadius: moderateScale(12, 0.5),
+                      paddingHorizontal: spacing.md,
+                      paddingVertical: spacing.sm + 2,
+                      gap: spacing.sm,
+                      opacity: isSnoozin ? 0.5 : 1,
+                    }}
+                  >
+                    <View style={{ flex: 1 }}>
+                      <Text
+                        style={{
+                          fontSize: fontSize.sm,
+                          fontWeight: "500",
+                          color: "#e8ebef",
+                        }}
+                      >
+                        {option.label}
+                      </Text>
+                      <Text
+                        style={{
+                          fontSize: fontSize.xs,
+                          color: "#8e8e93",
+                          marginTop: 2,
+                        }}
+                      >
+                        {option.description}
+                      </Text>
+                    </View>
+                    <AppIcon icon={AlarmClockIcon} size={16} color="#fbbf24" />
+                  </Pressable>
+                ))}
+
+                {/* Custom time option */}
+                <Pressable
+                  onPress={() => setShowCustomPicker((prev) => !prev)}
+                  style={{
+                    flexDirection: "row",
+                    alignItems: "center",
+                    backgroundColor: showCustomPicker
+                      ? "rgba(251,191,36,0.12)"
+                      : "#1c1f26",
+                    borderRadius: moderateScale(12, 0.5),
+                    paddingHorizontal: spacing.md,
+                    paddingVertical: spacing.sm + 2,
+                    gap: spacing.sm,
+                    borderWidth: showCustomPicker ? 1 : 0,
+                    borderColor: showCustomPicker
+                      ? "rgba(251,191,36,0.4)"
+                      : "transparent",
+                  }}
+                >
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{
+                        fontSize: fontSize.sm,
+                        fontWeight: "500",
+                        color: showCustomPicker ? "#fbbf24" : "#e8ebef",
+                      }}
+                    >
+                      Custom time
+                    </Text>
+                    <Text
+                      style={{
+                        fontSize: fontSize.xs,
+                        color: "#8e8e93",
+                        marginTop: 2,
+                      }}
+                    >
+                      Pick a specific date and time
+                    </Text>
+                  </View>
+                  <AppIcon icon={AlarmClockIcon} size={16} color="#8e8e93" />
+                </Pressable>
+
+                {/* Inline date/time picker for custom option */}
+                {showCustomPicker && (
+                  <View
+                    style={{
+                      backgroundColor: "#1c1f26",
+                      borderRadius: moderateScale(12, 0.5),
+                      padding: spacing.sm,
+                      gap: spacing.sm,
+                    }}
+                  >
+                    <DateTimePicker
+                      value={customDate}
+                      mode="datetime"
+                      display={Platform.OS === "ios" ? "spinner" : "default"}
+                      minimumDate={new Date()}
+                      onChange={handleCustomDateChange}
+                      themeVariant="dark"
+                      style={{ flex: 1 }}
+                      textColor="#e8ebef"
+                    />
+                    <Pressable
+                      disabled={isSnoozin}
+                      onPress={() => void handleSnooze(customDate)}
+                      style={{
+                        backgroundColor: "rgba(251,191,36,0.15)",
+                        borderRadius: 10,
+                        paddingVertical: spacing.sm + 2,
+                        alignItems: "center",
+                        opacity: isSnoozin ? 0.5 : 1,
+                      }}
+                    >
+                      <Text
+                        style={{
+                          fontSize: fontSize.sm,
+                          fontWeight: "600",
+                          color: "#fbbf24",
+                        }}
+                      >
+                        {isSnoozin ? "Snoozing..." : "Snooze until this time"}
+                      </Text>
+                    </Pressable>
+                  </View>
+                )}
+              </View>
+            </View>
+          </BottomSheet.Content>
+        </BottomSheet.Portal>
+      </BottomSheet>
     );
   },
 );

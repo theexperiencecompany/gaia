@@ -1,7 +1,7 @@
 import * as Haptics from "expo-haptics";
-import { Button } from "heroui-native";
+import { Button, PressableFeedback } from "heroui-native";
 import { useCallback, useRef, useState } from "react";
-import { Keyboard, Pressable, TextInput, View } from "react-native";
+import { Keyboard, TextInput, View } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -310,7 +310,7 @@ export function Composer({
           }}
         >
           {matchingCommands.map((command, index) => (
-            <Pressable
+            <PressableFeedback
               key={command}
               onPress={() => runCommand(command)}
               style={{
@@ -324,7 +324,7 @@ export function Composer({
               <Text style={{ color: "#ffffff", fontSize: fontSize.sm }}>
                 /{command}
               </Text>
-            </Pressable>
+            </PressableFeedback>
           ))}
         </View>
       )}
@@ -394,7 +394,7 @@ export function Composer({
               </View>
             </View>
             {onRemoveReply && (
-              <Pressable
+              <PressableFeedback
                 onPress={onRemoveReply}
                 hitSlop={8}
                 style={{
@@ -412,7 +412,7 @@ export function Composer({
                   size={iconSize.sm - 2}
                   color="#8e8e93"
                 />
-              </Pressable>
+              </PressableFeedback>
             )}
           </Animated.View>
         )}
@@ -514,7 +514,7 @@ export function Composer({
 
             <ConnectDrawerTrigger onOpen={dismissKeyboard} />
 
-            <Pressable
+            <PressableFeedback
               onPress={() => modelPickerRef.current?.open()}
               style={{
                 paddingHorizontal: spacing.sm,
@@ -532,7 +532,7 @@ export function Composer({
                   ? `${currentModelName.slice(0, 8)}…`
                   : currentModelName}
               </Text>
-            </Pressable>
+            </PressableFeedback>
           </View>
 
           {/* Right side: send / stop button */}

@@ -1,3 +1,4 @@
+import { Divider, SkeletonGroup, Surface } from "heroui-native";
 import { useCallback, useState } from "react";
 import { RefreshControl, SectionList, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -22,22 +23,11 @@ function groupByDate(events: CalendarEvent[]): CalendarSection[] {
 
 function LoadingSkeleton() {
   return (
-    <View style={{ paddingTop: 8 }}>
+    <SkeletonGroup isLoading className="pt-2 gap-0">
       {[0, 1, 2, 3, 4].map((i) => (
-        <View
-          key={i}
-          style={{
-            backgroundColor: "#18181b",
-            height: 70,
-            borderRadius: 10,
-            borderLeftWidth: 3,
-            borderLeftColor: "#27272a",
-            marginHorizontal: 16,
-            marginVertical: 4,
-          }}
-        />
+        <SkeletonGroup.Item key={i} className="mx-4 my-1 h-[70px] rounded-xl" />
       ))}
-    </View>
+    </SkeletonGroup>
   );
 }
 
@@ -61,13 +51,7 @@ export function CalendarScreen() {
       style={{ flex: 1, backgroundColor: "#0f1011" }}
       edges={["top"]}
     >
-      <View
-        style={{
-          paddingHorizontal: 16,
-          paddingTop: 16,
-          paddingBottom: 12,
-        }}
-      >
+      <Surface variant="transparent" className="px-4 pt-4 pb-3">
         <Text
           style={{
             fontSize: 28,
@@ -77,7 +61,7 @@ export function CalendarScreen() {
         >
           Calendar
         </Text>
-      </View>
+      </Surface>
 
       {isLoading ? (
         <LoadingSkeleton />
@@ -105,7 +89,12 @@ export function CalendarScreen() {
         <SectionList
           sections={sections}
           keyExtractor={(item) => item.id}
-          renderItem={({ item }) => <EventItem event={item} />}
+          renderItem={({ item, index }) => (
+            <>
+              {index > 0 && <Divider className="mx-4 my-0.5" />}
+              <EventItem event={item} />
+            </>
+          )}
           renderSectionHeader={({ section }) => (
             <Text
               style={{

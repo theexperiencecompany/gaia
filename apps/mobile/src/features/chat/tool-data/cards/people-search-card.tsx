@@ -1,4 +1,4 @@
-import { Avatar, Card } from "heroui-native";
+import { Avatar, Card, ListGroup, Separator } from "heroui-native";
 import { View } from "react-native";
 import {
   AppIcon,
@@ -26,7 +26,7 @@ function getInitials(name?: string): string {
   return name[0].toUpperCase();
 }
 
-function PersonRow({ person }: { person: PeopleSearchData }) {
+function PersonItem({ person }: { person: PeopleSearchData }) {
   const initials = getInitials(person.name);
   const subtitle =
     person.role && person.organization
@@ -34,7 +34,7 @@ function PersonRow({ person }: { person: PeopleSearchData }) {
       : person.role || person.organization;
 
   return (
-    <View className="flex-row items-center gap-3 py-2.5 border-b border-white/8 last:border-b-0">
+    <ListGroup.Item>
       <Avatar
         alt={person.name ?? initials}
         size="sm"
@@ -45,32 +45,34 @@ function PersonRow({ person }: { person: PeopleSearchData }) {
         </Avatar.Fallback>
       </Avatar>
       <View className="flex-1 min-w-0">
-        <Text className="text-sm font-medium text-white" numberOfLines={1}>
+        <ListGroup.ItemText numberOfLines={1}>
           {person.name || "Unknown"}
-        </Text>
+        </ListGroup.ItemText>
         {!!subtitle && (
-          <Text className="text-xs text-[#8e8e93] mt-0.5" numberOfLines={1}>
+          <ListGroup.ItemDescription numberOfLines={1}>
             {subtitle}
-          </Text>
+          </ListGroup.ItemDescription>
         )}
         <View className="flex-row flex-wrap gap-x-3 mt-0.5">
           {person.email && (
             <View className="flex-row items-center gap-1">
               <AppIcon icon={Mail01Icon} size={11} color="#8e8e93" />
-              <Text className="text-xs text-[#8e8e93]" numberOfLines={1}>
+              <ListGroup.ItemDescription numberOfLines={1}>
                 {person.email}
-              </Text>
+              </ListGroup.ItemDescription>
             </View>
           )}
           {person.phone && (
             <View className="flex-row items-center gap-1">
               <AppIcon icon={Call02Icon} size={11} color="#8e8e93" />
-              <Text className="text-xs text-[#8e8e93]">{person.phone}</Text>
+              <ListGroup.ItemDescription>
+                {person.phone}
+              </ListGroup.ItemDescription>
             </View>
           )}
         </View>
       </View>
-    </View>
+    </ListGroup.Item>
   );
 }
 
@@ -87,19 +89,21 @@ export function PeopleSearchCard({ data }: { data: PeopleSearchData[] }) {
             </Text>
           </View>
         </View>
-        <View className="rounded-xl bg-white/5 border border-white/8 px-3 overflow-hidden">
+        <ListGroup className="rounded-xl bg-white/5 border border-white/8 overflow-hidden">
           {data.map((person, index) => (
-            <PersonRow
+            <View
               key={
                 person.email ||
                 person.resource_name ||
                 person.name ||
                 String(index)
               }
-              person={person}
-            />
+            >
+              {index > 0 && <Separator />}
+              <PersonItem person={person} />
+            </View>
           ))}
-        </View>
+        </ListGroup>
       </Card.Body>
     </Card>
   );

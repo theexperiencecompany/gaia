@@ -1,3 +1,4 @@
+import { Alert, Card } from "heroui-native";
 import { ActivityIndicator, View } from "react-native";
 import {
   Alert01Icon,
@@ -20,58 +21,32 @@ export function TestConnectionResult({
   result,
   error,
 }: TestConnectionResultProps) {
-  const { fontSize, spacing, moderateScale } = useResponsive();
+  const { fontSize, spacing } = useResponsive();
 
   if (isLoading) {
     return (
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: spacing.sm,
-          backgroundColor: "rgba(255,255,255,0.04)",
-          borderRadius: moderateScale(12, 0.5),
-          padding: spacing.md,
-        }}
-      >
-        <ActivityIndicator size="small" color="#00bbff" />
-        <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
-          Testing connection...
-        </Text>
-      </View>
+      <Card variant="secondary" animation="disable-all" className="rounded-xl">
+        <Card.Body className="flex-row items-center gap-2 py-3">
+          <ActivityIndicator size="small" color="#00bbff" />
+          <Text style={{ fontSize: fontSize.sm, color: "#8e8e93" }}>
+            Testing connection...
+          </Text>
+        </Card.Body>
+      </Card>
     );
   }
 
   if (error) {
     return (
-      <View
-        style={{
-          backgroundColor: "rgba(255,59,48,0.08)",
-          borderRadius: moderateScale(12, 0.5),
-          padding: spacing.md,
-          gap: spacing.sm,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.sm,
-          }}
+      <Alert variant="danger" className="rounded-xl">
+        <AppIcon icon={Alert01Icon} size={16} color="#ff3b30" />
+        <Alert.Title
+          style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#ff3b30" }}
         >
-          <AppIcon icon={Alert01Icon} size={16} color="#ff3b30" />
-          <Text
-            style={{
-              fontSize: fontSize.sm,
-              fontWeight: "600",
-              color: "#ff3b30",
-            }}
-          >
-            Connection Failed
-          </Text>
-        </View>
+          Connection Failed
+        </Alert.Title>
         <Text style={{ fontSize: fontSize.xs, color: "#ff6b6b" }}>{error}</Text>
-      </View>
+      </Alert>
     );
   }
 
@@ -81,33 +56,13 @@ export function TestConnectionResult({
     const toolCount = result.tools_count ?? 0;
 
     return (
-      <View
-        style={{
-          backgroundColor: "rgba(52,199,89,0.08)",
-          borderRadius: moderateScale(12, 0.5),
-          padding: spacing.md,
-          gap: spacing.sm,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.sm,
-          }}
+      <Alert variant="success" className="rounded-xl">
+        <AppIcon icon={CheckmarkCircle02Icon} size={16} color="#34c759" />
+        <Alert.Title
+          style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#34c759" }}
         >
-          <AppIcon icon={CheckmarkCircle02Icon} size={16} color="#34c759" />
-          <Text
-            style={{
-              fontSize: fontSize.sm,
-              fontWeight: "600",
-              color: "#34c759",
-            }}
-          >
-            Connected Successfully
-          </Text>
-        </View>
-
+          Connected Successfully
+        </Alert.Title>
         <View
           style={{
             flexDirection: "row",
@@ -122,75 +77,41 @@ export function TestConnectionResult({
               : `${toolCount} tool${toolCount !== 1 ? "s" : ""} discovered`}
           </Text>
         </View>
-      </View>
+      </Alert>
     );
   }
 
   if (result.status === "requires_oauth") {
     return (
-      <View
-        style={{
-          backgroundColor: "rgba(255,159,10,0.08)",
-          borderRadius: moderateScale(12, 0.5),
-          padding: spacing.md,
-          gap: spacing.sm,
-        }}
-      >
-        <View
-          style={{
-            flexDirection: "row",
-            alignItems: "center",
-            gap: spacing.sm,
-          }}
+      <Alert variant="warning" className="rounded-xl">
+        <AppIcon icon={Alert01Icon} size={16} color="#ff9f0a" />
+        <Alert.Title
+          style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#ff9f0a" }}
         >
-          <AppIcon icon={Alert01Icon} size={16} color="#ff9f0a" />
-          <Text
-            style={{
-              fontSize: fontSize.sm,
-              fontWeight: "600",
-              color: "#ff9f0a",
-            }}
-          >
-            OAuth Required
-          </Text>
-        </View>
+          OAuth Required
+        </Alert.Title>
         <Text style={{ fontSize: fontSize.xs, color: "#c9934a" }}>
           This integration requires OAuth authorization. Save it first, then
           connect from the integrations list.
         </Text>
-      </View>
+      </Alert>
     );
   }
 
   // status === "failed"
   return (
-    <View
-      style={{
-        backgroundColor: "rgba(255,59,48,0.08)",
-        borderRadius: moderateScale(12, 0.5),
-        padding: spacing.md,
-        gap: spacing.sm,
-      }}
-    >
-      <View
-        style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+    <Alert variant="danger" className="rounded-xl">
+      <AppIcon icon={Alert01Icon} size={16} color="#ff3b30" />
+      <Alert.Title
+        style={{ fontSize: fontSize.sm, fontWeight: "600", color: "#ff3b30" }}
       >
-        <AppIcon icon={Alert01Icon} size={16} color="#ff3b30" />
-        <Text
-          style={{
-            fontSize: fontSize.sm,
-            fontWeight: "600",
-            color: "#ff3b30",
-          }}
-        >
-          Connection Failed
-        </Text>
-      </View>
-      {result.error && (
+        Connection Failed
+      </Alert.Title>
+      {result.error ? (
         <Text style={{ fontSize: fontSize.xs, color: "#ff6b6b" }}>
           {result.error}
         </Text>
-      )}
-    </View>
+      ) : null}
+    </Alert>
   );
 }

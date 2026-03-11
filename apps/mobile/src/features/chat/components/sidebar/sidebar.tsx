@@ -1,3 +1,4 @@
+import { Surface } from "heroui-native";
 import { useState } from "react";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ChatHistory } from "./chat-history";
@@ -24,14 +25,16 @@ export function SidebarContent({
       style={{ flex: 1, backgroundColor: "#0f1011" }}
       edges={["top", "bottom"]}
     >
-      <SidebarHeader
-        onNewChat={onNewChat}
-        onClose={onClose}
-        searchQuery={searchQuery}
-        onSearchChange={setSearchQuery}
-      />
-      <ChatHistory onSelectChat={onSelectChat} searchQuery={searchQuery} />
-      <SidebarFooter />
+      <Surface variant="transparent" style={{ flex: 1 }}>
+        <SidebarHeader
+          onNewChat={onNewChat}
+          onClose={onClose}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+        />
+        <ChatHistory onSelectChat={onSelectChat} searchQuery={searchQuery} />
+        <SidebarFooter />
+      </Surface>
     </SafeAreaView>
   );
 }

@@ -1,5 +1,6 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import { Card, Chip, Spinner } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -11,7 +12,6 @@ import {
 import Reanimated, {
   useAnimatedStyle,
   useSharedValue,
-  withRepeat,
   withTiming,
 } from "react-native-reanimated";
 import {
@@ -30,9 +30,6 @@ import { THEME } from "../code-block/syntax-theme";
 // -- Constants ----------------------------------------------------------------
 
 const COLORS = {
-  cardBg: "#171920",
-  headerBg: "#181825",
-  headerBorder: "#313244",
   codeBg: THEME.background,
   codeHeaderBg: THEME.headerBg,
   codeHeaderBorder: THEME.headerBorder,
@@ -47,7 +44,6 @@ const COLORS = {
   runningColor: "#60a5fa",
   successColor: "#34d399",
   errorColor: "#f87171",
-  divider: "rgba(255,255,255,0.08)",
   toggleText: "#60a5fa",
 } as const;
 
@@ -72,119 +68,36 @@ interface CodeExecutionCardProps {
   toolData: CodeExecutionData;
 }
 
-// -- Spinner ------------------------------------------------------------------
-
-function SpinnerIcon({ size, color }: { size: number; color: string }) {
-  const rotation = useSharedValue(0);
-
-  useEffect(() => {
-    rotation.value = withRepeat(withTiming(360, { duration: 900 }), -1, false);
-  }, [rotation]);
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ rotate: `${rotation.value}deg` }],
-  }));
-
-  return (
-    <Reanimated.View style={animatedStyle}>
-      <View
-        style={{
-          width: size,
-          height: size,
-          borderRadius: size / 2,
-          borderWidth: 2,
-          borderColor: color,
-          borderTopColor: "transparent",
-        }}
-      />
-    </Reanimated.View>
-  );
-}
-
 // -- Status badge -------------------------------------------------------------
 
 function StatusBadge({ status }: { status: CodeExecutionData["status"] }) {
   if (status === "running") {
     return (
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 5,
-          backgroundColor: "rgba(96,165,250,0.12)",
-          borderRadius: 12,
-          paddingHorizontal: 8,
-          paddingVertical: 3,
-        }}
-      >
-        <SpinnerIcon size={10} color={COLORS.runningColor} />
-        <Text
-          style={{
-            fontSize: 10,
-            color: COLORS.runningColor,
-            fontWeight: "600",
-          }}
-        >
-          Running
-        </Text>
-      </View>
+      <Chip variant="soft" color="accent" size="sm">
+        <Spinner size="sm" color="accent" className="mr-1" />
+        <Chip.Label>Running</Chip.Label>
+      </Chip>
     );
   }
 
   if (status === "success") {
     return (
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          gap: 5,
-          backgroundColor: "rgba(52,211,153,0.12)",
-          borderRadius: 12,
-          paddingHorizontal: 8,
-          paddingVertical: 3,
-        }}
-      >
+      <Chip variant="soft" color="success" size="sm">
         <AppIcon
           icon={CheckmarkCircle01Icon}
           size={10}
           color={COLORS.successColor}
         />
-        <Text
-          style={{
-            fontSize: 10,
-            color: COLORS.successColor,
-            fontWeight: "600",
-          }}
-        >
-          Success
-        </Text>
-      </View>
+        <Chip.Label>Success</Chip.Label>
+      </Chip>
     );
   }
 
   return (
-    <View
-      style={{
-        flexDirection: "row",
-        alignItems: "center",
-        gap: 5,
-        backgroundColor: "rgba(248,113,113,0.12)",
-        borderRadius: 12,
-        paddingHorizontal: 8,
-        paddingVertical: 3,
-      }}
-    >
+    <Chip variant="soft" color="danger" size="sm">
       <AppIcon icon={Cancel01Icon} size={10} color={COLORS.errorColor} />
-      <Text
-        style={{
-          fontSize: 10,
-          color: COLORS.errorColor,
-          fontWeight: "600",
-        }}
-      >
-        Error
-      </Text>
-    </View>
+      <Chip.Label>Error</Chip.Label>
+    </Chip>
   );
 }
 
@@ -415,29 +328,9 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
   }, []);
 
   return (
-    <View
-      style={{
-        backgroundColor: COLORS.cardBg,
-        borderRadius: 16,
-        overflow: "hidden",
-        borderWidth: 1,
-        borderColor: COLORS.divider,
-        marginVertical: 4,
-      }}
-    >
+    <Card variant="secondary" className="mx-4 my-1 rounded-2xl bg-[#171920]">
       {/* Header */}
-      <View
-        style={{
-          flexDirection: "row",
-          alignItems: "center",
-          justifyContent: "space-between",
-          paddingHorizontal: 14,
-          paddingVertical: 10,
-          backgroundColor: COLORS.headerBg,
-          borderBottomWidth: 1,
-          borderBottomColor: COLORS.headerBorder,
-        }}
-      >
+      <Card.Header className="flex-row items-center justify-between px-4 pt-3 pb-2 border-b border-white/8">
         <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
           <View
             style={{
@@ -451,14 +344,15 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
           >
             <AppIcon icon={CodeIcon} size={14} color={COLORS.runningColor} />
           </View>
-          <Text style={{ fontSize: 13, fontWeight: "600", color: COLORS.text }}>
+          <Card.Title className="text-sm font-semibold">
             Code Execution
-          </Text>
+          </Card.Title>
         </View>
         <StatusBadge status={status} />
-      </View>
+      </Card.Header>
 
-      <View style={{ padding: 12, gap: 10 }}>
+      {/* Body */}
+      <Card.Body className="px-4 py-3 gap-3">
         {/* Code snippet section */}
         {hasCode && (
           <View style={{ gap: 6 }}>
@@ -491,7 +385,9 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
 
         {/* Divider between code and output */}
         {hasCode && (hasOutput || hasError) && (
-          <View style={{ height: 1, backgroundColor: COLORS.divider }} />
+          <View
+            style={{ height: 1, backgroundColor: "rgba(255,255,255,0.08)" }}
+          />
         )}
 
         {/* Output section */}
@@ -595,7 +491,7 @@ export function CodeExecutionCard({ toolData }: CodeExecutionCardProps) {
             {hasOutput && <CopyButton text={output as string} />}
           </View>
         )}
-      </View>
-    </View>
+      </Card.Body>
+    </Card>
   );
 }

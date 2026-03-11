@@ -1,3 +1,4 @@
+import { Divider, Surface } from "heroui-native";
 import { View } from "react-native";
 import { AppIcon, LinkBackwardIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
@@ -23,13 +24,11 @@ export function MessageReplyQuote({
   const label = replyToMessage.role === "user" ? "You" : "GAIA";
 
   return (
-    <View
+    <Surface
       style={{
         backgroundColor: isUserMessage
           ? "rgba(0,0,0,0.2)"
           : "rgba(255,255,255,0.06)",
-        borderLeftWidth: 3,
-        borderLeftColor: "#6366f1",
         borderRadius: 8,
         borderTopLeftRadius: 2,
         borderBottomLeftRadius: 2,
@@ -39,8 +38,19 @@ export function MessageReplyQuote({
         flexDirection: "row",
         alignItems: "flex-start",
         gap: spacing.xs,
+        overflow: "hidden",
       }}
     >
+      <Divider
+        orientation="vertical"
+        thickness={3}
+        style={{
+          backgroundColor: "#6366f1",
+          alignSelf: "stretch",
+          marginRight: spacing.xs,
+        }}
+      />
+
       <AppIcon
         icon={LinkBackwardIcon}
         size={iconSize.sm - 4}
@@ -68,6 +78,6 @@ export function MessageReplyQuote({
           {preview}
         </Text>
       </View>
-    </View>
+    </Surface>
   );
 }

@@ -1,13 +1,8 @@
 import * as Clipboard from "expo-clipboard";
 import * as Haptics from "expo-haptics";
+import { Button, Card, Chip } from "heroui-native";
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  Animated,
-  Pressable,
-  Text as RNText,
-  ScrollView,
-  View,
-} from "react-native";
+import { Animated, Text as RNText, ScrollView, View } from "react-native";
 import { AppIcon, Copy01Icon, Tick02Icon } from "@/components/icons";
 import { THEME } from "./syntax-theme";
 import { tokenizeLine } from "./tokenizer";
@@ -95,7 +90,7 @@ function CopyButton({ code }: { code: string }) {
   }, [copied, code, fadeAnim]);
 
   return (
-    <Pressable onPress={handleCopy} style={{ padding: 6 }} hitSlop={8}>
+    <Button variant="ghost" size="sm" isIconOnly onPress={handleCopy}>
       <Animated.View style={{ opacity: fadeAnim }}>
         <AppIcon
           icon={copied ? Tick02Icon : Copy01Icon}
@@ -103,7 +98,7 @@ function CopyButton({ code }: { code: string }) {
           color={copied ? "#34c759" : "#71717a"}
         />
       </Animated.View>
-    </Pressable>
+    </Button>
   );
 }
 
@@ -161,7 +156,7 @@ export function CodeBlock({
     : 0;
 
   return (
-    <View
+    <Card
       style={{
         backgroundColor: COLORS.blockBg,
         borderRadius: 8,
@@ -170,7 +165,7 @@ export function CodeBlock({
       }}
     >
       {/* Header */}
-      <View
+      <Card.Header
         style={{
           flexDirection: "row",
           justifyContent: "space-between",
@@ -182,55 +177,58 @@ export function CodeBlock({
           borderBottomColor: COLORS.blockHeaderBorder,
         }}
       >
-        <RNText
-          style={{
-            fontFamily: FONT.mono,
-            fontSize: 11,
-            color: COLORS.muted,
-            textTransform: "lowercase",
-          }}
-        >
-          {lang}
-        </RNText>
+        <Chip variant="soft" color="default" size="sm" animation="disable-all">
+          <Chip.Label
+            style={{
+              fontFamily: FONT.mono,
+              fontSize: 11,
+              textTransform: "lowercase",
+            }}
+          >
+            {lang}
+          </Chip.Label>
+        </Chip>
         <CopyButton code={code} />
-      </View>
+      </Card.Header>
 
       {/* Code body — horizontal scroll for long lines */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={{ padding: 12 }}
-      >
-        <View>
-          {displayLines.map((line, lineIdx) => {
-            const lineKey = `line-${lineIdx}`;
-            return (
-              <View
-                key={lineKey}
-                style={{ flexDirection: "row", alignItems: "flex-start" }}
-              >
-                {showLineNumbers ? (
-                  <RNText
-                    style={{
-                      fontFamily: FONT.mono,
-                      fontSize: 13,
-                      lineHeight: 20,
-                      color: THEME.gutterText,
-                      width: lineNumberWidth,
-                      textAlign: "right",
-                      marginRight: 12,
-                      userSelect: "none",
-                    }}
-                  >
-                    {lineIdx + 1}
-                  </RNText>
-                ) : null}
-                <SyntaxLine line={line} language={language ?? ""} />
-              </View>
-            );
-          })}
-        </View>
-      </ScrollView>
-    </View>
+      <Card.Body style={{ padding: 0 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={{ padding: 12 }}
+        >
+          <View>
+            {displayLines.map((line, lineIdx) => {
+              const lineKey = `line-${lineIdx}`;
+              return (
+                <View
+                  key={lineKey}
+                  style={{ flexDirection: "row", alignItems: "flex-start" }}
+                >
+                  {showLineNumbers ? (
+                    <RNText
+                      style={{
+                        fontFamily: FONT.mono,
+                        fontSize: 13,
+                        lineHeight: 20,
+                        color: THEME.gutterText,
+                        width: lineNumberWidth,
+                        textAlign: "right",
+                        marginRight: 12,
+                        userSelect: "none",
+                      }}
+                    >
+                      {lineIdx + 1}
+                    </RNText>
+                  ) : null}
+                  <SyntaxLine line={line} language={language ?? ""} />
+                </View>
+              );
+            })}
+          </View>
+        </ScrollView>
+      </Card.Body>
+    </Card>
   );
 }
