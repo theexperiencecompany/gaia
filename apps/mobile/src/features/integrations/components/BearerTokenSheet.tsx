@@ -6,6 +6,7 @@ import {
   BottomSheetTextInput,
 } from "@gorhom/bottom-sheet";
 import { Image } from "expo-image";
+import * as Linking from "expo-linking";
 import {
   forwardRef,
   useCallback,
@@ -15,7 +16,7 @@ import {
   useState,
 } from "react";
 import { ActivityIndicator, Pressable, View } from "react-native";
-import { AppIcon, Cancel01Icon, ShieldUserIcon } from "@/components/icons";
+import { AppIcon, Cancel01Icon, LinkSquare02Icon, ShieldUserIcon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import { connectIntegrationWithToken } from "../api/integrations-api";
@@ -74,6 +75,7 @@ export interface BearerTokenSheetConfig {
   integrationId: string;
   integrationName: string;
   iconUrl?: string;
+  docsUrl?: string;
 }
 
 export interface BearerTokenSheetRef {
@@ -97,6 +99,7 @@ export const BearerTokenSheet = forwardRef<
   const [showToken, setShowToken] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isSuccess, setIsSuccess] = useState(false);
 
   const snapPoints = useMemo(() => ["55%"], []);
 
@@ -107,6 +110,7 @@ export const BearerTokenSheet = forwardRef<
       setShowToken(false);
       setError(null);
       setIsLoading(false);
+      setIsSuccess(false);
       bottomSheetRef.current?.present();
     },
     close: () => {
@@ -119,6 +123,7 @@ export const BearerTokenSheet = forwardRef<
     setShowToken(false);
     setError(null);
     setIsLoading(false);
+    setIsSuccess(false);
     setConfig(null);
   }, []);
 
@@ -135,13 +140,22 @@ export const BearerTokenSheet = forwardRef<
 
     if (result.success) {
       setIsLoading(false);
-      bottomSheetRef.current?.dismiss();
+      setIsSuccess(true);
       onSuccess?.(config.integrationId);
+      setTimeout(() => {
+        bottomSheetRef.current?.dismiss();
+      }, 1200);
     } else {
       setIsLoading(false);
       setError(result.error ?? "Connection failed. Please check your token.");
     }
   }, [config, token, isLoading, onSuccess]);
+
+  const handleOpenDocs = useCallback(() => {
+    if (config?.docsUrl) {
+      void Linking.openURL(config.docsUrl);
+    }
+  }, [config?.docsUrl]);
 
   const renderBackdrop = useCallback(
     (props: BottomSheetBackdropProps) => (
@@ -265,91 +279,143 @@ export const BearerTokenSheet = forwardRef<
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
-        {/* Instructions */}
-        <Text
-          style={{
-            fontSize: fontSize.sm,
-            color: "#a1a1aa",
-            lineHeight: 20,
-          }}
-        >
-          Enter your API token for{" "}
-          <Text style={{ color: "#f4f4f5", fontWeight: "500" }}>
-            {config?.integrationName ?? "this integration"}
-          </Text>
-          . You can find this in{" "}
-          <Text style={{ color: "#f4f4f5", fontWeight: "500" }}>
-            {config?.integrationName ?? "the integration"}
-            &apos;s settings
-          </Text>
-          .
-        </Text>
-
-        {/* Token Input */}
-        <View
-          style={{
-            backgroundColor: "rgba(255,255,255,0.06)",
-            borderRadius: moderateScale(12, 0.5),
-            paddingHorizontal: spacing.md,
-            paddingVertical: spacing.sm + 2,
-            gap: 4,
-            borderWidth: 1,
-            borderColor: error
-              ? "rgba(239,68,68,0.4)"
-              : token.trim()
-                ? "rgba(0,187,255,0.3)"
-                : "transparent",
-          }}
-        >
-          <Text
+        {/* Success state */}
+        {isSuccess && (
+          <View
             style={{
-              fontSize: fontSize.xs,
-              color: "#8e8e93",
-              fontWeight: "500",
+              backgroundColor: "rgba(34,197,94,0.08)",
+              borderRadius: moderateScale(12, 0.5),
+              borderWidth: 1,
+              borderColor: "rgba(34,197,94,0.25)",
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.md,
+              alignItems: "center",
+              gap: 4,
             }}
           >
-            API Key / Bearer Token
-          </Text>
-          <View
-            style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
-          >
-            <AppIcon icon={ShieldUserIcon} size={15} color="#6f737c" />
-            <BottomSheetTextInput
-              style={inputStyle}
-              placeholder="sk-... or your API token"
-              placeholderTextColor="#6f737c"
-              value={token}
-              onChangeText={(v) => {
-                setToken(v);
-                if (error) setError(null);
+            <Text
+              style={{
+                fontSize: fontSize.sm,
+                color: "#22c55e",
+                fontWeight: "600",
               }}
-              secureTextEntry={!showToken}
-              editable={!isLoading}
-              autoCapitalize="none"
-              autoCorrect={false}
-              returnKeyType="done"
-              onSubmitEditing={() => void handleConnect()}
-            />
-            <Pressable
-              onPress={() => setShowToken((s) => !s)}
-              hitSlop={8}
-              style={{ opacity: isLoading ? 0.4 : 1 }}
             >
-              <Text
-                style={{
-                  fontSize: fontSize.xs,
-                  color: "#6f737c",
-                  fontWeight: "500",
-                }}
-              >
-                {showToken ? "Hide" : "Show"}
-              </Text>
-            </Pressable>
+              Connected successfully!
+            </Text>
+            <Text style={{ fontSize: fontSize.xs, color: "#86efac" }}>
+              {config?.integrationName ?? "Integration"} is now connected.
+            </Text>
           </View>
-        </View>
+        )}
+
+        {/* Instructions */}
+        {!isSuccess && (
+          <Text
+            style={{
+              fontSize: fontSize.sm,
+              color: "#a1a1aa",
+              lineHeight: 20,
+            }}
+          >
+            Enter your API key for{" "}
+            <Text style={{ color: "#f4f4f5", fontWeight: "500" }}>
+              {config?.integrationName ?? "this integration"}
+            </Text>
+            . You can find it in the integration&apos;s developer settings.
+          </Text>
+        )}
+
+        {/* Docs link */}
+        {!isSuccess && config?.docsUrl && (
+          <Pressable
+            onPress={handleOpenDocs}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              gap: 6,
+              opacity: pressed ? 0.6 : 1,
+            })}
+          >
+            <AppIcon icon={LinkSquare02Icon} size={14} color="#00bbff" />
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: "#00bbff",
+                fontWeight: "500",
+              }}
+            >
+              How to get your API key
+            </Text>
+          </Pressable>
+        )}
+
+        {/* Token Input */}
+        {!isSuccess && (
+          <View
+            style={{
+              backgroundColor: "rgba(255,255,255,0.06)",
+              borderRadius: moderateScale(12, 0.5),
+              paddingHorizontal: spacing.md,
+              paddingVertical: spacing.sm + 2,
+              gap: 4,
+              borderWidth: 1,
+              borderColor: error
+                ? "rgba(239,68,68,0.4)"
+                : token.trim()
+                  ? "rgba(0,187,255,0.3)"
+                  : "transparent",
+            }}
+          >
+            <Text
+              style={{
+                fontSize: fontSize.xs,
+                color: "#8e8e93",
+                fontWeight: "500",
+              }}
+            >
+              API Key / Bearer Token
+            </Text>
+            <View
+              style={{ flexDirection: "row", alignItems: "center", gap: spacing.sm }}
+            >
+              <AppIcon icon={ShieldUserIcon} size={15} color="#6f737c" />
+              <BottomSheetTextInput
+                style={inputStyle}
+                placeholder="sk-... or your API token"
+                placeholderTextColor="#6f737c"
+                value={token}
+                onChangeText={(v) => {
+                  setToken(v);
+                  if (error) setError(null);
+                }}
+                secureTextEntry={!showToken}
+                editable={!isLoading}
+                autoCapitalize="none"
+                autoCorrect={false}
+                returnKeyType="done"
+                onSubmitEditing={() => void handleConnect()}
+              />
+              <Pressable
+                onPress={() => setShowToken((s) => !s)}
+                hitSlop={8}
+                style={{ opacity: isLoading ? 0.4 : 1 }}
+              >
+                <Text
+                  style={{
+                    fontSize: fontSize.xs,
+                    color: "#6f737c",
+                    fontWeight: "500",
+                  }}
+                >
+                  {showToken ? "Hide" : "Show"}
+                </Text>
+              </Pressable>
+            </View>
+          </View>
+        )}
 
         {/* Inline error */}
-        {error && (
+        {!isSuccess && error && (
           <View
             style={{
               backgroundColor: "rgba(239,68,68,0.08)",
@@ -373,38 +439,40 @@ export const BearerTokenSheet = forwardRef<
         )}
 
         {/* Connect Button */}
-        <Pressable
-          onPress={() => void handleConnect()}
-          disabled={isLoading || !token.trim()}
-          style={({ pressed }) => ({
-            flexDirection: "row",
-            alignItems: "center",
-            justifyContent: "center",
-            gap: 8,
-            paddingVertical: spacing.md,
-            borderRadius: moderateScale(12, 0.5),
-            backgroundColor:
-              !token.trim() || isLoading
-                ? "rgba(0,187,255,0.3)"
-                : pressed
-                  ? "rgba(0,170,230,0.9)"
-                  : "rgba(0,187,255,0.85)",
-          })}
-        >
-          {isLoading ? (
-            <ActivityIndicator size="small" color="#fff" />
-          ) : (
-            <Text
-              style={{
-                fontSize: fontSize.sm,
-                fontWeight: "600",
-                color: "#fff",
-              }}
-            >
-              Connect
-            </Text>
-          )}
-        </Pressable>
+        {!isSuccess && (
+          <Pressable
+            onPress={() => void handleConnect()}
+            disabled={isLoading || !token.trim()}
+            style={({ pressed }) => ({
+              flexDirection: "row",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              paddingVertical: spacing.md,
+              borderRadius: moderateScale(12, 0.5),
+              backgroundColor:
+                !token.trim() || isLoading
+                  ? "rgba(0,187,255,0.3)"
+                  : pressed
+                    ? "rgba(0,170,230,0.9)"
+                    : "rgba(0,187,255,0.85)",
+            })}
+          >
+            {isLoading ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text
+                style={{
+                  fontSize: fontSize.sm,
+                  fontWeight: "600",
+                  color: "#fff",
+                }}
+              >
+                Connect {config?.integrationName ?? ""}
+              </Text>
+            )}
+          </Pressable>
+        )}
       </BottomSheetScrollView>
     </BottomSheetModal>
   );

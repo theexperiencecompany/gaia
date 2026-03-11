@@ -28,6 +28,7 @@ interface NotificationCardProps {
   onMarkAsRead: (notificationId: string) => void;
   onDismiss?: (notificationId: string) => void;
   onArchive?: (notificationId: string) => void;
+  onSnooze?: (notificationId: string) => void;
   onActionPress: (
     notification: InAppNotification,
     action: InAppNotificationAction,
@@ -129,6 +130,7 @@ export function NotificationCard({
   onMarkAsRead,
   onDismiss,
   onArchive,
+  onSnooze,
   onActionPress,
   isMarkingAsRead = false,
   isActionLoading,
@@ -163,6 +165,12 @@ export function NotificationCard({
     swipeableRef.current?.close();
     onArchive?.(notification.id);
   }, [onArchive, notification.id]);
+
+  const handleSnooze = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    swipeableRef.current?.close();
+    onSnooze?.(notification.id);
+  }, [onSnooze, notification.id]);
 
   const handleTap = useCallback(() => {
     if (isSelectMode) {
@@ -229,12 +237,15 @@ export function NotificationCard({
     [handleMarkAsRead, moderateScale, fontSize.xs],
   );
 
-  // Swipe left → archive (blue)
+  // Swipe left → snooze (amber) + archive/dismiss (blue/red)
   const renderRightActions = useCallback(
     (progress: Animated.AnimatedInterpolation<number>) => {
+      const hasSnoozeAction = !!onSnooze;
+      const totalWidth = hasSnoozeAction ? 164 : 80;
+
       const translateX = progress.interpolate({
         inputRange: [0, 1],
-        outputRange: [80, 0],
+        outputRange: [totalWidth, 0],
       });
 
       return (
@@ -243,9 +254,30 @@ export function NotificationCard({
             transform: [{ translateX }],
             justifyContent: "center",
             alignItems: "flex-start",
-            width: 80,
+            width: totalWidth,
+            flexDirection: "row",
+            gap: hasSnoozeAction ? 8 : 0,
           }}
         >
+          {hasSnoozeAction && (
+            <Pressable
+              onPress={handleSnooze}
+              style={{
+                width: 64,
+                height: "100%",
+                backgroundColor: "rgba(251,191,36,0.18)",
+                borderRadius: moderateScale(16, 0.5),
+                justifyContent: "center",
+                alignItems: "center",
+                gap: 4,
+              }}
+            >
+              <AppIcon icon={AlarmClockIcon} size={18} color="#fbbf24" />
+              <Text style={{ fontSize: fontSize.xs - 1, color: "#fbbf24" }}>
+                Snooze
+              </Text>
+            </Pressable>
+          )}
           <Pressable
             onPress={onArchive ? handleArchive : handleDismiss}
             style={{
@@ -283,7 +315,15 @@ export function NotificationCard({
         </Animated.View>
       );
     },
-    [handleArchive, handleDismiss, onArchive, moderateScale, fontSize.xs],
+    [
+      handleArchive,
+      handleDismiss,
+      handleSnooze,
+      onArchive,
+      onSnooze,
+      moderateScale,
+      fontSize.xs,
+    ],
   );
 
   const hasActions =
@@ -298,7 +338,7 @@ export function NotificationCard({
       rightThreshold={60}
       renderLeftActions={isUnread ? renderLeftActions : undefined}
       renderRightActions={
-        onArchive || onDismiss ? renderRightActions : undefined
+        onArchive || onDismiss || onSnooze ? renderRightActions : undefined
       }
       onSwipeableOpen={(direction) => {
         if (direction === "left" && isUnread) {
@@ -313,7 +353,21 @@ export function NotificationCard({
         }
       }}
     >
-      <Pressable onPress={handleTap} onLongPress={handleLongPress}>
+      <Pressable
+        onPress={handleTap}
+        onLongPress={handleLongPress}
+        accessible={true}
+        accessibilityRole="button"
+        accessibilityLabel={notification.content.title}
+        accessibilityHint={
+          isSelectMode
+            ? isSelected
+              ? "Double tap to deselect"
+              : "Double tap to select"
+            : "Double tap to open notification"
+        }
+        accessibilityState={{ selected: isSelected }}
+      >
         <View
           style={{
             borderRadius: moderateScale(16, 0.5),
@@ -429,6 +483,9 @@ export function NotificationCard({
                   onPress={handleMarkAsRead}
                   hitSlop={10}
                   style={{ opacity: isMarkingAsRead ? 0.4 : 0.6 }}
+                  accessibilityRole="button"
+                  accessibilityLabel="Mark as read"
+                  accessibilityState={{ disabled: isMarkingAsRead }}
                 >
                   <AppIcon icon={Tick02Icon} size={15} color="#8e8e93" />
                 </Pressable>
@@ -472,6 +529,14 @@ export function NotificationCard({
                         key={action.id}
                         disabled={actionLoading || action.disabled || isExecuted}
                         onPress={() => onActionPress(notification, action)}
+                        accessibilityRole="button"
+                        accessibilityLabel={action.label}
+                        accessibilityState={{
+                          disabled:
+                            actionLoading ||
+                            action.disabled === true ||
+                            isExecuted,
+                        }}
                         style={{
                           borderRadius: 8,
                           paddingHorizontal: spacing.sm + 4,

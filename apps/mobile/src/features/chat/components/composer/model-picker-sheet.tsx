@@ -1,4 +1,5 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { selectionHaptic } from "@/lib/haptics";
 import {
   BottomSheetBackdrop,
   type BottomSheetBackdropProps,
@@ -187,6 +188,7 @@ export const ModelPickerSheet = forwardRef<
   const handleSelect = useCallback(
     (model: ModelInfo) => {
       if (isPending) return;
+      selectionHaptic();
       selectModel(model.model_id);
       void AsyncStorage.setItem(MODEL_STORAGE_KEY, model.model_id);
       onSelectModel?.(model.model_id);

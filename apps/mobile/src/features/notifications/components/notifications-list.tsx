@@ -21,6 +21,7 @@ interface NotificationsListProps {
   onMarkAsRead: (notificationId: string) => void;
   onDismiss?: (notificationId: string) => void;
   onArchive?: (notificationId: string) => void;
+  onSnooze?: (notificationId: string) => void;
   onActionPress: (
     notification: InAppNotification,
     action: InAppNotificationAction,
@@ -133,6 +134,7 @@ export function NotificationsList({
   onMarkAsRead,
   onDismiss,
   onArchive,
+  onSnooze,
   onActionPress,
   isMarkingAsRead = false,
   isActionLoading,
@@ -295,6 +297,7 @@ export function NotificationsList({
               onMarkAsRead={onMarkAsRead}
               onDismiss={onDismiss}
               onArchive={onArchive}
+              onSnooze={onSnooze}
               onActionPress={onActionPress}
               isMarkingAsRead={isMarkingAsRead}
               isActionLoading={(actionId) =>

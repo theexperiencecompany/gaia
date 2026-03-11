@@ -32,10 +32,15 @@ import { haptics } from "@/lib/haptics";
 import { Text } from "@/components/ui/text";
 import {
   connectIntegration,
+  connectIntegrationWithToken,
   disconnectIntegration,
   fetchIntegrationsConfig,
 } from "../api";
 import type { IntegrationWithStatus } from "../types";
+import {
+  BearerTokenSheet,
+  type BearerTokenSheetRef,
+} from "./BearerTokenSheet";
 
 const FILTER_OPTIONS = [
   "All",
@@ -57,6 +62,7 @@ interface ConnectDrawerProps {
 export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
   ({ onOpen }, ref) => {
     const bottomSheetRef = useRef<BottomSheetModal>(null);
+    const bearerTokenSheetRef = useRef<BearerTokenSheetRef>(null);
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedFilter, setSelectedFilter] = useState("All");
     const [integrations, setIntegrations] = useState<IntegrationWithStatus[]>(
@@ -119,6 +125,15 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
       return matchesSearch && matchesFilter;
     });
 
+    const handleBearerTokenSuccess = useCallback(
+      async (integrationId: string) => {
+        void haptics.success();
+        await refreshIntegrations();
+        setConnectingId(null);
+      },
+      [],
+    );
+
     const handleConnect = async (integration: IntegrationWithStatus) => {
       if (connectingId) return;
 
@@ -133,6 +148,34 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
         }
         setConnectingId(null);
       } else {
+        const authType = integration.authType;
+
+        // Bearer token / API key integrations: show the token input sheet
+        if (authType === "bearer" || authType === "api_key") {
+          bearerTokenSheetRef.current?.open({
+            integrationId: integration.id,
+            integrationName: integration.name,
+            iconUrl: integration.iconUrl,
+          });
+          return;
+        }
+
+        // Integrations with no auth: connect directly
+        if (authType === "none" || !integration.requiresAuth) {
+          setConnectingId(integration.id);
+          try {
+            await connectIntegrationWithToken(integration.id, "");
+            void haptics.success();
+            await refreshIntegrations();
+          } catch {
+            void haptics.error();
+            Alert.alert("Error", "Failed to connect integration");
+          }
+          setConnectingId(null);
+          return;
+        }
+
+        // OAuth integrations: open browser flow
         setConnectingId(integration.id);
         const result = await connectIntegration(integration.id);
 
@@ -242,6 +285,11 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
     );
 
     return (
+      <>
+      <BearerTokenSheet
+        ref={bearerTokenSheetRef}
+        onSuccess={handleBearerTokenSuccess}
+      />
       <BottomSheetModal
         ref={bottomSheetRef}
         snapPoints={snapPoints}
@@ -305,6 +353,7 @@ export const ConnectDrawer = forwardRef<ConnectDrawerRef, ConnectDrawerProps>(
           showsVerticalScrollIndicator={false}
         />
       </BottomSheetModal>
+      </>
     );
   },
 );

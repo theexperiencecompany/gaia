@@ -40,6 +40,9 @@ import {
 
 const DEFAULT_COMMANDS = [
   "new",
+  "clear",
+  "help",
+  "model",
   "integrations",
   "notifications",
   "settings",

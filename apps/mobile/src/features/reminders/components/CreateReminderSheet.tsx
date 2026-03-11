@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { HugeiconsIcon, Cancel01Icon, CheckmarkCircle02Icon } from "@/components/icons";
+import { impactHaptic, notificationHaptic } from "@/lib/haptics";
 import { Text } from "@/components/ui/text";
 import { useResponsive } from "@/lib/responsive";
 import type { ReminderCreate } from "../api/reminders-api";
@@ -238,6 +239,8 @@ export function CreateReminderSheet({
     const cronExpression = toCronExpression(schedule);
     if (!cronExpression.trim()) return;
 
+    impactHaptic("medium");
+
     await onCreated({
       title: title.trim(),
       description: description.trim() || undefined,
@@ -245,6 +248,7 @@ export function CreateReminderSheet({
       timezone,
     });
 
+    notificationHaptic("success");
     handleClose();
   }, [title, description, schedule, timezone, onCreated, handleClose]);
 

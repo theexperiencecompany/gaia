@@ -10,6 +10,7 @@ import { forwardRef, useCallback, useMemo, useState } from "react";
 import { Alert, Pressable, Share, View } from "react-native";
 import {
   AppIcon,
+  BubbleChatAddIcon,
   Copy01Icon,
   Delete02Icon,
   LinkBackwardIcon,
@@ -19,6 +20,7 @@ import {
   ThumbsUpIcon,
 } from "@/components/icons";
 import { Text } from "@/components/ui/text";
+import { chatApi } from "../../api/chat-api";
 
 export interface MessageActionConfig {
   messageId: string;
@@ -37,6 +39,7 @@ interface MessageActionSheetProps {
   onRetry: (messageId: string, conversationId: string) => void;
   onReply: (messageId: string, conversationId: string) => void;
   onRegenerate?: (messageId: string, conversationId: string) => void;
+  onBranch?: (messageId: string, conversationId: string) => void;
 }
 
 interface ActionRowProps {
@@ -83,7 +86,7 @@ function SectionDivider() {
 export const MessageActionSheet = forwardRef<
   BottomSheetModal,
   MessageActionSheetProps
->(({ config, onDelete, onPin, onRetry, onReply, onRegenerate }, ref) => {
+>(({ config, onDelete, onPin, onRetry, onReply, onRegenerate, onBranch }, ref) => {
   const snapPoints = useMemo(() => ["50%"], []);
   const [selectedReaction, setSelectedReaction] = useState<ReactionType | null>(null);
 
@@ -153,12 +156,27 @@ export const MessageActionSheet = forwardRef<
     );
   }, [config, onDelete, dismiss]);
 
+  const handleBranch = useCallback(() => {
+    if (!config) return;
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    onBranch?.(config.messageId, config.conversationId);
+    dismiss();
+  }, [config, onBranch, dismiss]);
+
   const handleReaction = useCallback(
     (reaction: ReactionType) => {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setSelectedReaction((prev) => (prev === reaction ? null : reaction));
+      const newReaction = selectedReaction === reaction ? null : reaction;
+      setSelectedReaction(newReaction);
+      if (config && newReaction) {
+        void chatApi.submitMessageFeedback(
+          config.conversationId,
+          config.messageId,
+          newReaction,
+        );
+      }
     },
-    [],
+    [config, selectedReaction],
   );
 
   const renderBackdrop = useCallback(
@@ -313,17 +331,21 @@ export const MessageActionSheet = forwardRef<
           />
         )}
 
+        <ActionRow
+          icon={<AppIcon icon={BubbleChatAddIcon} size={20} color="#a1a1aa" />}
+          label="Branch Conversation"
+          onPress={handleBranch}
+        />
+
         <SectionDivider />
 
-        {/* Section 3 — Management (user messages only) */}
-        {config?.isUser ? (
-          <ActionRow
-            icon={<AppIcon icon={Delete02Icon} size={20} color="#ef4444" />}
-            label="Delete"
-            onPress={handleDelete}
-            destructive
-          />
-        ) : null}
+        {/* Section 3 — Management */}
+        <ActionRow
+          icon={<AppIcon icon={Delete02Icon} size={20} color="#ef4444" />}
+          label="Delete"
+          onPress={handleDelete}
+          destructive
+        />
       </BottomSheetScrollView>
     </BottomSheetModal>
   );

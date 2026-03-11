@@ -8,6 +8,7 @@ import {
   TextInput,
   View,
 } from "react-native";
+import { impactHaptic, notificationHaptic } from "@/lib/haptics";
 import {
   Calendar03Icon,
   Cancel01Icon,
@@ -100,6 +101,7 @@ export function CreateTodoModal({
       .map((l) => l.trim())
       .filter(Boolean);
 
+    impactHaptic("medium");
     setIsSubmitting(true);
     try {
       onCreated({
@@ -110,6 +112,7 @@ export function CreateTodoModal({
         labels,
         project_id: selectedProjectId,
       });
+      notificationHaptic("success");
       setTitle("");
       setDescription("");
       setPriority(Priority.NONE);

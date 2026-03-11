@@ -1,7 +1,7 @@
-import * as Haptics from "expo-haptics";
 import { useRouter } from "expo-router";
 import { useCallback } from "react";
 import { Alert, Pressable, View } from "react-native";
+import { impactHaptic, longPressHaptic, notificationHaptic } from "@/lib/haptics";
 import {
   ArrowRight01Icon,
   Calendar03Icon,
@@ -108,7 +108,11 @@ export function TodoItem({
   const totalSubtasks = todo.subtasks?.length ?? 0;
 
   const handleToggle = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (todo.completed) {
+      impactHaptic("medium");
+    } else {
+      notificationHaptic("success");
+    }
     onToggleComplete(todo);
   }, [onToggleComplete, todo]);
 
@@ -121,11 +125,12 @@ export function TodoItem({
   }, [selectionMode, onSelect, onPress, todo]);
 
   const handleLongPress = useCallback(() => {
-    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    longPressHaptic();
     onLongPress?.(todo);
   }, [onLongPress, todo]);
 
   const handleDeletePress = useCallback(() => {
+    notificationHaptic("warning");
     Alert.alert(
       "Delete Task",
       `Are you sure you want to delete "${todo.title}"?`,
@@ -151,6 +156,17 @@ export function TodoItem({
     <Pressable
       onPress={handlePress}
       onLongPress={selectionMode ? undefined : (onLongPress ? handleLongPress : onDelete ? handleDeletePress : undefined)}
+      accessible={true}
+      accessibilityRole="button"
+      accessibilityLabel={todo.title}
+      accessibilityHint={
+        selectionMode
+          ? isSelected
+            ? "Double tap to deselect"
+            : "Double tap to select"
+          : "Double tap to open task details"
+      }
+      accessibilityState={{ selected: isSelected }}
       style={{
         flexDirection: "row",
         alignItems: "flex-start",

@@ -1,10 +1,7 @@
 import { useCallback, useState } from "react";
-import {
-  FlatList,
-  RefreshControl,
-  View,
-} from "react-native";
+import { FlatList, RefreshControl, View } from "react-native";
 import { EmptyState } from "@/components/EmptyState";
+import { CheckmarkCircle02Icon } from "@/components/icons";
 import { Text } from "@/components/ui/text";
 import {
   type RealtimeNotification,
@@ -128,7 +125,8 @@ export function NotificationsList() {
         }
         ListEmptyComponent={
           <EmptyState
-            icon="✓"
+            icon={CheckmarkCircle02Icon}
+            iconColor="#22c55e"
             title="You're all caught up"
             description="No new notifications in this session"
           />
