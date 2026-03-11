@@ -184,135 +184,135 @@ class CustomLLM(LLM):
                 json=request_body,
                 timeout=timeout,
             ) as resp:
-                    resp.raise_for_status()
+                resp.raise_for_status()
 
-                    text_buffer: list[str] = []
+                text_buffer: list[str] = []
 
-                    async for raw in resp.content:
-                        if not raw:
-                            continue
-                        try:
-                            line = raw.decode("utf-8").strip()
-                        except UnicodeDecodeError as ude:
-                            logger.warning("SSE line UTF-8 decode error, skipping: %s", ude)
-                            continue
-                        if not line or not line.startswith("data:") or line.startswith(":"):
-                            continue
+                async for raw in resp.content:
+                    if not raw:
+                        continue
+                    try:
+                        line = raw.decode("utf-8").strip()
+                    except UnicodeDecodeError as ude:
+                        logger.warning("SSE line UTF-8 decode error, skipping: %s", ude)
+                        continue
+                    if not line or not line.startswith("data:") or line.startswith(":"):
+                        continue
 
-                        data = line[5:].strip()
-                        if data == "[DONE]":
-                            if text_buffer:
-                                chunk = "".join(text_buffer).strip()
-                                if chunk:
-                                    yield ChatChunk(
-                                        id="custom", delta=ChoiceDelta(content=chunk)
-                                    )
-                                    text_buffer.clear()
-                            break
-
-                        try:
-                            event_data = json.loads(data)
-                        except json.JSONDecodeError as exc:
-                            logger.debug("Skipping malformed SSE line: %s", exc)
-                            continue
-
-                        if not isinstance(event_data, dict):
-                            continue
-
-                        conv_id = event_data.get("conversation_id")
-                        if isinstance(conv_id, str) and conv_id:
-                            await self.set_conversation_id(conv_id)
-                            continue
-
-                        # Handle conversation description (title)
-                        conv_desc = event_data.get("conversation_description")
-                        if isinstance(conv_desc, str) and conv_desc:
-                            await self.set_conversation_description(conv_desc)
-                            continue
-
-                        # Route non-TTS events to LiveKit topics.
-                        # Use fire-and-forget (create_task) to avoid blocking TTS.
-                        if "error" in event_data and isinstance(event_data["error"], str):
-                            await self._publish_event(
-                                "stream-error", {"error": event_data["error"]}
-                            )
-                            continue
-
-                        if "progress" in event_data and isinstance(event_data["progress"], dict):
-                            self._track_task(
-                                self._publish_event("stream-progress", event_data["progress"])
-                            )
-                            continue
-
-                        if "tool_data" in event_data and isinstance(event_data["tool_data"], dict):
-                            self._track_task(
-                                self._publish_event("stream-tool-data", event_data["tool_data"])
-                            )
-                            continue
-
-                        if "tool_output" in event_data and isinstance(event_data["tool_output"], dict):
-                            self._track_task(
-                                self._publish_event("stream-tool-output", event_data["tool_output"])
-                            )
-                            continue
-
-                        if "todo_progress" in event_data and isinstance(event_data["todo_progress"], dict):
-                            self._track_task(
-                                self._publish_event("stream-todo-progress", event_data["todo_progress"])
-                            )
-                            continue
-
-                        if "follow_up_actions" in event_data and isinstance(event_data["follow_up_actions"], list):
-                            self._track_task(
-                                self._publish_event(
-                                    "stream-follow-up-actions",
-                                    {"actions": event_data["follow_up_actions"]},
-                                )
-                            )
-                            continue
-
-                        piece = event_data.get("response", "")
-                        if not piece:
-                            continue
-
-                        if isinstance(piece, str):
-                            piece = re.sub(r"(_BREAK|_MESSAGE|NEW|<|>)", " ", piece)
-
-                        if not piece:
-                            continue
-
-                        if isinstance(piece, str):
-                            text_buffer.append(piece)
-                        elif isinstance(piece, (list, tuple, set)):
-                            text_buffer.append("".join(str(x) for x in piece))
-                        else:
-                            text_buffer.append(str(piece))
-                        joined = "".join(text_buffer)
-
-                        should_flush = False
-
-                        if joined[-1] in _SENTENCE_ENDINGS and len(joined) >= _MIN_FLUSH_CHARS:
-                            should_flush = True
-                        elif joined[-1] in _CLAUSE_ENDINGS and len(joined) >= _COMMA_FLUSH_CHARS:
-                            should_flush = True
-                        elif len(joined) >= _HARD_FLUSH_CHARS:
-                            should_flush = True
-
-                        if should_flush:
-                            out = joined.strip()
-                            text_buffer.clear()
-                            if len(out) >= 15:
+                    data = line[5:].strip()
+                    if data == "[DONE]":
+                        if text_buffer:
+                            chunk = "".join(text_buffer).strip()
+                            if chunk:
                                 yield ChatChunk(
-                                    id="custom", delta=ChoiceDelta(content=out)
+                                    id="custom", delta=ChoiceDelta(content=chunk)
                                 )
-                        # NOTE: No sleep here — ElevenLabs turbo handles pacing internally.
+                                text_buffer.clear()
+                        break
 
-                    if text_buffer:
-                        tail = "".join(text_buffer).strip()
-                        if len(tail) >= 1:
-                            yield ChatChunk(
-                                id="custom", delta=ChoiceDelta(content=tail)
+                    try:
+                        event_data = json.loads(data)
+                    except json.JSONDecodeError as exc:
+                        logger.debug("Skipping malformed SSE line: %s", exc)
+                        continue
+
+                    if not isinstance(event_data, dict):
+                        continue
+
+                    conv_id = event_data.get("conversation_id")
+                    if isinstance(conv_id, str) and conv_id:
+                        await self.set_conversation_id(conv_id)
+                        continue
+
+                    # Handle conversation description (title)
+                    conv_desc = event_data.get("conversation_description")
+                    if isinstance(conv_desc, str) and conv_desc:
+                        await self.set_conversation_description(conv_desc)
+                        continue
+
+                    # Route non-TTS events to LiveKit topics.
+                    # Use fire-and-forget (create_task) to avoid blocking TTS.
+                    if "error" in event_data and isinstance(event_data["error"], str):
+                        await self._publish_event(
+                            "stream-error", {"error": event_data["error"]}
+                        )
+                        continue
+
+                    if "progress" in event_data and isinstance(event_data["progress"], dict):
+                        self._track_task(
+                            self._publish_event("stream-progress", event_data["progress"])
+                        )
+                        continue
+
+                    if "tool_data" in event_data and isinstance(event_data["tool_data"], dict):
+                        self._track_task(
+                            self._publish_event("stream-tool-data", event_data["tool_data"])
+                        )
+                        continue
+
+                    if "tool_output" in event_data and isinstance(event_data["tool_output"], dict):
+                        self._track_task(
+                            self._publish_event("stream-tool-output", event_data["tool_output"])
+                        )
+                        continue
+
+                    if "todo_progress" in event_data and isinstance(event_data["todo_progress"], dict):
+                        self._track_task(
+                            self._publish_event("stream-todo-progress", event_data["todo_progress"])
+                        )
+                        continue
+
+                    if "follow_up_actions" in event_data and isinstance(event_data["follow_up_actions"], list):
+                        self._track_task(
+                            self._publish_event(
+                                "stream-follow-up-actions",
+                                {"actions": event_data["follow_up_actions"]},
                             )
+                        )
+                        continue
+
+                    piece = event_data.get("response", "")
+                    if not piece:
+                        continue
+
+                    if isinstance(piece, str):
+                        piece = re.sub(r"(_BREAK|_MESSAGE|NEW|<|>)", " ", piece)
+
+                    if not piece:
+                        continue
+
+                    if isinstance(piece, str):
+                        text_buffer.append(piece)
+                    elif isinstance(piece, (list, tuple, set)):
+                        text_buffer.append("".join(str(x) for x in piece))
+                    else:
+                        text_buffer.append(str(piece))
+                    joined = "".join(text_buffer)
+
+                    should_flush = False
+
+                    if joined[-1] in _SENTENCE_ENDINGS and len(joined) >= _MIN_FLUSH_CHARS:
+                        should_flush = True
+                    elif joined[-1] in _CLAUSE_ENDINGS and len(joined) >= _COMMA_FLUSH_CHARS:
+                        should_flush = True
+                    elif len(joined) >= _HARD_FLUSH_CHARS:
+                        should_flush = True
+
+                    if should_flush:
+                        out = joined.strip()
+                        text_buffer.clear()
+                        if len(out) >= 15:
+                            yield ChatChunk(
+                                id="custom", delta=ChoiceDelta(content=out)
+                            )
+                    # NOTE: No sleep here — ElevenLabs turbo handles pacing internally.
+
+                if text_buffer:
+                    tail = "".join(text_buffer).strip()
+                    if len(tail) >= 1:
+                        yield ChatChunk(
+                            id="custom", delta=ChoiceDelta(content=tail)
+                        )
 
         yield gen()
 
