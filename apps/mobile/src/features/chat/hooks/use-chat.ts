@@ -200,7 +200,7 @@ export function useChat(
             selectedTool,
             toolCategory,
             workflowId: selectedWorkflow?.id ?? null,
-            replyToMessageId: replyToMessage?.id ?? null,
+            replyToMessage: replyToMessage ?? null,
           },
           {
             onConversationCreated: (

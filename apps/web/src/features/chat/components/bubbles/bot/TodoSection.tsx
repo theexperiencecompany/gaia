@@ -10,7 +10,7 @@ import {
   PlayIcon,
   Tick02Icon,
 } from "@icons";
-import { formatDueDate } from "@shared/tool-utils";
+import { formatToolDueDate } from "@shared/tool-utils";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -306,7 +306,7 @@ export default function TodoSection({
                           }`}
                         >
                           <CalendarIcon className="h-3 w-3" />
-                          {formatDueDate(todo.due_date)}
+                          {formatToolDueDate(todo.due_date)}
                         </span>
                       )}
 

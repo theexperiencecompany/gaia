@@ -35,6 +35,8 @@ export interface ApiMessage {
   fileData: ApiFileData[];
   tool_data?: ApiToolData[];
   metadata?: Record<string, unknown>;
+  replyToMessage?: ReplyToMessageData | null;
+  reply_to_message?: ReplyToMessageData | null;
 }
 
 export interface ApiConversationDetail {
@@ -93,6 +95,8 @@ export interface ConversationDetail {
 function normalizeMessage(apiMsg: ApiMessage): Message {
   const imageData = apiMsg.metadata?.image_data as ImageData | undefined;
   const memoryData = apiMsg.metadata?.memory_data as MemoryData | undefined;
+  const replyToMessage =
+    apiMsg.replyToMessage ?? apiMsg.reply_to_message ?? null;
 
   return {
     id: apiMsg.message_id,
@@ -105,6 +109,7 @@ function normalizeMessage(apiMsg: ApiMessage): Message {
     imageData: imageData ?? null,
     memoryData: memoryData ?? null,
     metadata: apiMsg.metadata,
+    replyToMessage,
   };
 }
 
@@ -245,7 +250,7 @@ export async function cancelStream(streamId: string): Promise<boolean> {
     await apiService.post(`/cancel-stream/${streamId}`, {});
     return true;
   } catch (error) {
-    console.debug("Error cancelling stream:", error);
+    console.warn("Error cancelling stream:", error);
     return false;
   }
 }

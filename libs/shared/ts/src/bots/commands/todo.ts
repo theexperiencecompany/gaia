@@ -40,7 +40,7 @@ export const todoCommand: BotCommand = {
       options: [
         {
           name: "title",
-          description: "Todo title",
+          description: "BotTodo title",
           required: true,
           type: "string",
         },
@@ -56,7 +56,7 @@ export const todoCommand: BotCommand = {
         },
         {
           name: "description",
-          description: "Todo description",
+          description: "BotTodo description",
           type: "string",
         },
       ],
@@ -67,7 +67,7 @@ export const todoCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "Todo ID",
+          description: "BotTodo ID",
           required: true,
           type: "string",
         },
@@ -79,7 +79,7 @@ export const todoCommand: BotCommand = {
       options: [
         {
           name: "id",
-          description: "Todo ID",
+          description: "BotTodo ID",
           required: true,
           type: "string",
         },

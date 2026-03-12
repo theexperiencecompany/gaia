@@ -10,7 +10,7 @@
  * the weekday name for dates within the next 7 days,
  * or a short "Mon D" format for all other dates.
  */
-export function formatDueDate(date: string): string {
+export function formatToolDueDate(date: string): string {
   const dueDate = new Date(date);
   const now = new Date();
   const daysDiff = Math.floor(

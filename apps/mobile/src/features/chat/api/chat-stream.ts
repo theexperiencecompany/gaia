@@ -1,5 +1,10 @@
 import { createSSEConnection, type SSEEvent } from "@/lib/sse-client";
-import type { ApiFileData, ImageData, Message } from "./chat-api";
+import type {
+  ApiFileData,
+  ImageData,
+  Message,
+  ReplyToMessageData,
+} from "./chat-api";
 
 export interface StreamCallbacks {
   onChunk: (text: string) => void;
@@ -11,6 +16,7 @@ export interface StreamCallbacks {
   ) => void;
   onProgress?: (message: string, toolName?: string) => void;
   onFollowUpActions?: (actions: string[]) => void;
+  onImageGenerationStarted?: (prompt: string) => void;
   onImageData?: (data: ImageData) => void;
   onDone: () => void;
   onError?: (error: Error) => void;
@@ -25,7 +31,7 @@ export interface ChatStreamRequest {
   selectedTool?: string | null;
   toolCategory?: string | null;
   workflowId?: string | null;
-  replyToMessageId?: string | null;
+  replyToMessage?: ReplyToMessageData | null;
 }
 
 interface StreamEventData {
@@ -79,7 +85,7 @@ export async function fetchChatStream(
     selectedTool = null,
     toolCategory = null,
     workflowId = null,
-    replyToMessageId = null,
+    replyToMessage = null,
   } = request;
 
   const formattedMessages = messages
@@ -98,7 +104,7 @@ export async function fetchChatStream(
     selectedTool,
     toolCategory,
     workflow_id: workflowId || null,
-    reply_to_message_id: replyToMessageId || null,
+    replyToMessage: replyToMessage || null,
     messages: formattedMessages,
   };
 
@@ -154,10 +160,7 @@ export async function fetchChatStream(
 
         if (parsed.status === "generating_image") {
           callbacks.onProgress?.("Generating image...");
-          callbacks.onImageData?.({
-            url: "",
-            prompt: parsed.prompt ?? "",
-          });
+          callbacks.onImageGenerationStarted?.(parsed.prompt ?? "");
         }
       },
       onError: (error) => {

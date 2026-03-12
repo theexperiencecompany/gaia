@@ -49,7 +49,7 @@ export async function handleWorkflowExecute(
       { workflow_id: workflowId, inputs },
       ctx,
     );
-    return `✅ Workflow execution started!\nExecution ID: ${response.execution_id}\nStatus: ${response.status}`;
+    return `✅ BotWorkflow execution started!\nExecution ID: ${response.execution_id}\nStatus: ${response.status}`;
   } catch (error: unknown) {
     return formatBotError(error);
   }
@@ -83,7 +83,7 @@ export async function handleTodoCreate(
       },
       ctx,
     );
-    return `✅ Todo created!\n\n${formatTodo(todo)}`;
+    return `✅ BotTodo created!\n\n${formatTodo(todo)}`;
   } catch (error: unknown) {
     return formatBotError(error);
   }
@@ -96,7 +96,7 @@ export async function handleTodoComplete(
 ): Promise<string> {
   try {
     const todo = await gaia.completeTodo(todoId, ctx);
-    return `✅ Todo marked as complete: ${todo.title}`;
+    return `✅ BotTodo marked as complete: ${todo.title}`;
   } catch (error: unknown) {
     return formatBotError(error);
   }
@@ -142,7 +142,7 @@ export async function handleWorkflowCreate(
       { name, description: description || "" },
       ctx,
     );
-    return `✅ Workflow created!\n\n${formatWorkflow(workflow)}`;
+    return `✅ BotWorkflow created!\n\n${formatWorkflow(workflow)}`;
   } catch (error: unknown) {
     return formatBotError(error);
   }
@@ -155,7 +155,7 @@ export async function handleTodoDelete(
 ): Promise<string> {
   try {
     await gaia.deleteTodo(todoId, ctx);
-    return "✅ Todo deleted successfully";
+    return "✅ BotTodo deleted successfully";
   } catch (error: unknown) {
     return formatBotError(error);
   }
@@ -195,7 +195,7 @@ export async function handleWorkflowDelete(
 ): Promise<string> {
   try {
     await gaia.deleteWorkflow(workflowId, ctx);
-    return "✅ Workflow deleted successfully";
+    return "✅ BotWorkflow deleted successfully";
   } catch (error: unknown) {
     return formatBotError(error);
   }
