@@ -1,4 +1,4 @@
-import { createLibrary, defineComponent } from "@openuidev/react-lang";
+import type { Library } from "@openuidev/react-lang";
 import React from "react";
 import { z } from "zod";
 import CalendarListCard from "@/features/calendar/components/CalendarListCard";
@@ -8,12 +8,13 @@ import type { CalendarFetchData } from "@/types/features/calendarTypes";
 import type { SearchResults } from "@/types/features/searchTypes";
 import type { WeatherData } from "@/types/features/weatherTypes";
 
-// Note: `as never` casts on `props` are needed because the project uses zod@3.25
-// (v3 compat bridge for v4) while @openuidev/react-lang bundles zod@4.
-// The runtime schemas are fully compatible; only the type signatures differ.
-// TODO: Remove `as never` casts once zod versions are aligned.
+// We build the Library object manually instead of using defineComponent/createLibrary
+// because those functions call `schema.register(z.globalRegistry)` which requires
+// zod v4. The project uses zod@3.25 (v3 compat bridge) whose default import lacks
+// globalRegistry. The Renderer only needs `library.components[name].component` and
+// `library.components[name].props.shape` — both work with zod 3.25 schemas.
 
-// --- Weather ---
+// --- Zod Schemas ---
 
 const weatherConditionSchema = z.object({
   id: z.number(),
@@ -74,19 +75,6 @@ const weatherDataSchema = z.object({
   forecast: z.array(forecastDaySchema).optional(),
 });
 
-const WeatherCardComponent = defineComponent({
-  name: "WeatherCard",
-  props: weatherDataSchema as never,
-  description:
-    "Displays current weather conditions with temperature, forecast, and details for a location.",
-  component: ({ props }) => {
-    const data = props as unknown as WeatherData;
-    return React.createElement(WeatherCard, { weatherData: data });
-  },
-});
-
-// --- Calendar Events ---
-
 const calendarEventSchema = z.object({
   summary: z.string(),
   start_time: z.string(),
@@ -98,19 +86,6 @@ const calendarEventSchema = z.object({
 const calendarListSchema = z.object({
   events: z.array(calendarEventSchema),
 });
-
-const CalendarListCardComponent = defineComponent({
-  name: "CalendarListCard",
-  props: calendarListSchema as never,
-  description:
-    "Displays a list of calendar events with times, names, and calendar colors.",
-  component: ({ props }) => {
-    const { events } = props as unknown as { events: CalendarFetchData[] };
-    return React.createElement(CalendarListCard, { events });
-  },
-});
-
-// --- Search Results ---
 
 const webResultSchema = z.object({
   title: z.string(),
@@ -140,25 +115,62 @@ const searchResultsSchema = z.object({
   request_id: z.string().optional(),
 });
 
-const SearchResultsTabsComponent = defineComponent({
-  name: "SearchResultsTabs",
-  props: searchResultsSchema as never,
-  description:
-    "Displays search results in tabs: web results, image gallery, and news articles.",
-  component: ({ props }) => {
-    const data = props as unknown as SearchResults;
-    return React.createElement(SearchResultsTabs, { search_results: data });
+// --- Component Definitions ---
+
+const components = {
+  WeatherCard: {
+    name: "WeatherCard",
+    props: weatherDataSchema,
+    description:
+      "Displays current weather conditions with temperature, forecast, and details for a location.",
+    component: ({
+      props,
+    }: {
+      props: Record<string, unknown>;
+      renderNode: unknown;
+    }) => {
+      return React.createElement(WeatherCard, {
+        weatherData: props as unknown as WeatherData,
+      });
+    },
   },
-});
+  CalendarListCard: {
+    name: "CalendarListCard",
+    props: calendarListSchema,
+    description:
+      "Displays a list of calendar events with times, names, and calendar colors.",
+    component: ({
+      props,
+    }: {
+      props: Record<string, unknown>;
+      renderNode: unknown;
+    }) => {
+      const { events } = props as unknown as { events: CalendarFetchData[] };
+      return React.createElement(CalendarListCard, { events });
+    },
+  },
+  SearchResultsTabs: {
+    name: "SearchResultsTabs",
+    props: searchResultsSchema,
+    description:
+      "Displays search results in tabs: web results, image gallery, and news articles.",
+    component: ({
+      props,
+    }: {
+      props: Record<string, unknown>;
+      renderNode: unknown;
+    }) => {
+      return React.createElement(SearchResultsTabs, {
+        search_results: props as unknown as SearchResults,
+      });
+    },
+  },
+};
 
-// --- Library ---
+// --- Library (manually constructed to avoid zod v4 globalRegistry dependency) ---
 
-export const gaiaLibrary = createLibrary({
-  components: [
-    WeatherCardComponent,
-    CalendarListCardComponent,
-    SearchResultsTabsComponent,
-  ],
+export const gaiaLibrary: Library = {
+  components: components as unknown as Library["components"],
   componentGroups: [
     {
       name: "Data Display",
@@ -169,5 +181,13 @@ export const gaiaLibrary = createLibrary({
       ],
     },
   ],
-  root: "Stack",
-});
+  root: undefined,
+  prompt() {
+    // We maintain the backend prompt manually in openui_prompts.py
+    // since the auto-generation requires zod v4 globalRegistry.
+    return "";
+  },
+  toJSONSchema() {
+    return {};
+  },
+};
