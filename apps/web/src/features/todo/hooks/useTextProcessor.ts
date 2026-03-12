@@ -1,9 +1,8 @@
 "use client";
 
+import { Priority } from "@shared/types";
 import { addDays } from "date-fns";
 import { useMemo } from "react";
-
-import { Priority } from "@/types/features/todoTypes";
 
 export interface TextProcessorCommands {
   project?: { name: string; id?: string };

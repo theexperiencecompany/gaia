@@ -465,7 +465,7 @@ OAUTH_INTEGRATIONS: List[OAuthIntegration] = [
                 "GMAIL_CUSTOM_GATHER_CONTEXT",
                 "GMAIL_FETCH_EMAILS",
                 "GMAIL_CREATE_EMAIL_DRAFT",
-                "GMAIL_SEARCH_EMAILS",
+                "GMAIL_FETCH_MESSAGE_BY_MESSAGE_ID",
                 "GMAIL_FETCH_MESSAGE_BY_THREAD_ID",
                 "GMAIL_GET_CONTACT_LIST",
             ],
