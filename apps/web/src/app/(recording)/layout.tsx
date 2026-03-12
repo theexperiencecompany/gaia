@@ -28,6 +28,15 @@ export default function RecordingLayout({ children }: { children: ReactNode }) {
             [data-recording-phase] .imessage-bubble > div {
               max-width: none !important;
             }
+
+            /* TodoSection cards have hard-coded min-w-[400px] / min-w-[450px]
+               which overflow the 390px recording viewport. Constrain to viewport. */
+            [data-recording-phase] .min-w-\\[400px\\],
+            [data-recording-phase] .min-w-\\[450px\\] {
+              min-width: 0 !important;
+              max-width: calc(100vw - 24px) !important;
+              width: auto !important;
+            }
           `}</style>
           {children}
         </QueryProvider>

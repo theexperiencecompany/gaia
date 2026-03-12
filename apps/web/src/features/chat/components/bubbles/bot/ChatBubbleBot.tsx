@@ -93,7 +93,7 @@ export default function ChatBubbleBot(
       >
         <div className="flex items-end gap-1">
           <div className="relative bottom-0 min-w-10 shrink-0">
-            {showBubbleChrome && (
+            {showBubbleChrome && isLastMessage !== false && (
               <Image
                 alt="GAIA Logo"
                 src={"/images/logos/logo.webp"}

@@ -33,7 +33,6 @@ export default function RecordingChatLayout({
 }: RecordingChatLayoutProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  // Auto-scroll to bottom as messages appear
   useEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
@@ -44,14 +43,20 @@ export default function RecordingChatLayout({
     ? [...messages, partialMessage]
     : messages;
 
+  // Index of last bot message in the full list — only that one shows the logo
+  const lastBotIdx = allMessages.reduce(
+    (last, msg, i) => (msg.type === "bot" ? i : last),
+    -1,
+  );
+
   return (
     <div className="flex flex-col h-full bg-background overflow-hidden">
       <div
         ref={scrollRef}
-        className="flex-1 overflow-y-auto px-4 py-6 space-y-4"
+        className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-4 space-y-4"
         style={{ scrollbarWidth: "none" }}
       >
-        {allMessages.map((msg) =>
+        {allMessages.map((msg, i) =>
           msg.type === "user" ? (
             <ChatBubbleUser
               key={msg.message_id}
@@ -62,13 +67,15 @@ export default function RecordingChatLayout({
             <ChatBubbleBot
               key={msg.message_id}
               {...getMessageProps(msg, "bot", noopOptions)}
+              loading={msg === partialMessage ? loadingState.isLoading : (msg.loading ?? false)}
+              isLastMessage={i === lastBotIdx}
               onRetry={noop}
               disableActions
             />
           ),
         )}
 
-        {loadingState.isLoading && (
+        {loadingState.isLoading && !partialMessage && (
           <LoadingIndicator
             loadingText={loadingState.loadingText}
             loadingTextKey={loadingState.loadingTextKey}

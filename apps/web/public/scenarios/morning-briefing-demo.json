@@ -7,20 +7,21 @@
     {
       "type": "user_message",
       "text": "What's my day looking like? Give me a full briefing.",
-      "typingSpeed": 42,
-      "pauseAfter": 700
+      "typingSpeed": 38,
+      "pauseAfter": 600
     },
     {
-      "type": "thinking",
-      "content": "The user wants a morning briefing. I should check their calendar for today's meetings, review priority tasks from Todoist, and search for any relevant updates in their space. Let me pull all three and compile a concise but complete summary.",
-      "duration": 2600,
-      "pauseAfter": 300
+      "type": "loading",
+      "text": "Analyzing your day...",
+      "toolInfo": { "toolCategory": "general", "showCategory": false },
+      "duration": 1800,
+      "pauseAfter": 200
     },
     {
       "type": "loading",
       "text": "Fetching today's calendar...",
       "toolInfo": { "toolCategory": "google_calendar", "showCategory": true },
-      "duration": 1400,
+      "duration": 1300,
       "pauseAfter": 200
     },
     {
@@ -35,19 +36,19 @@
               "tool_category": "google_calendar",
               "message": "Fetched 3 events for today, March 12",
               "inputs": { "date": "2026-03-12", "calendar_id": "primary" },
-              "output": "10:00 AM — Engineering Standup (30 min) · 2:00 PM — 1:1 with Alex (45 min) · 4:30 PM — Product Review (60 min)"
+              "output": "10:00 AM — Engineering Standup · 2:00 PM — 1:1 with Alex · 4:30 PM — Product Review"
             }
           ],
           "timestamp": null
         }
       ],
-      "pauseAfter": 300
+      "pauseAfter": 250
     },
     {
       "type": "loading",
       "text": "Checking your tasks...",
       "toolInfo": { "toolCategory": "todoist", "showCategory": true },
-      "duration": 1100,
+      "duration": 1000,
       "pauseAfter": 200
     },
     {
@@ -62,19 +63,19 @@
               "tool_category": "todoist",
               "message": "Found 5 tasks — 2 high priority, 1 overdue",
               "inputs": { "filter": "today | overdue", "limit": 10 },
-              "output": "2 high priority tasks due today, 1 overdue from yesterday, 2 upcoming"
+              "output": "2 high priority tasks due today, 1 overdue from yesterday"
             }
           ],
           "timestamp": null
         }
       ],
-      "pauseAfter": 300
+      "pauseAfter": 250
     },
     {
       "type": "loading",
       "text": "Searching for relevant updates...",
       "toolInfo": { "toolCategory": "search", "showCategory": true },
-      "duration": 1500,
+      "duration": 1400,
       "pauseAfter": 200
     },
     {
@@ -95,12 +96,12 @@
           "timestamp": null
         }
       ],
-      "pauseAfter": 600
+      "pauseAfter": 500
     },
     {
       "type": "bot_message",
-      "text": "Good morning! Here's your full briefing for **Thursday, March 12th**.\n\n**📅 Your day — 3 meetings**\nYou have a clear morning to focus before your 10:00 AM standup. After that, a 1:1 with Alex at 2:00 PM, then product review at 4:30 PM.\n\n**✅ Priority tasks**\nTwo high-priority items due today: **Finalize Q1 roadmap** and **Review PR #234**. One task is overdue — **Update deployment docs** from yesterday.\n\n**📰 What's happening**\nAnthropic released Claude 4 with a 500K context window this morning. Could be relevant for your product review — worth a quick read.\n\nWant me to block focus time before standup, or tackle the overdue task first?",
-      "streamingSpeed": 13,
+      "text": "Good morning! Here's your briefing for **Thursday, March 12th**.\n\n**📅 Your day — 3 meetings**\nClear morning to focus, then standup at 10:00 AM. 1:1 with Alex at 2:00 PM, product review at 4:30 PM.\n\n**✅ Priority tasks**\nTwo high-priority items due today: **Finalize Q1 roadmap** and **Review PR #234**. One overdue — **Update deployment docs** from yesterday.\n\n**📰 What's happening**\nAnthropic released Claude 4 with a 500K context window this morning — worth a read before product review.\n\nWant me to block focus time, or tackle the overdue task first?",
+      "streamingSpeed": 7,
       "tool_data": [
         {
           "tool_name": "calendar_options",
@@ -180,7 +181,7 @@
               {
                 "title": "Anthropic releases Claude 4 with 500K context window and new pricing",
                 "url": "https://techcrunch.com/2026/03/12/anthropic-claude-4-announcement",
-                "snippet": "Anthropic today announced Claude 4, featuring a 500,000 token context window and revised API pricing starting at $0.25 per million tokens for the Haiku tier, a 60% reduction from previous rates."
+                "snippet": "Anthropic today announced Claude 4, featuring a 500,000 token context window and revised API pricing starting at $0.25 per million tokens for the Haiku tier."
               },
               {
                 "title": "GitHub Copilot adds autonomous multi-file editing in latest update",
