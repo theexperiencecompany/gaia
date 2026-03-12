@@ -273,11 +273,9 @@ services:
 
   # Container metrics (CPU, memory, network, disk I/O per container)
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
     container_name: cadvisor
     privileged: true
-    devices:
-      - /dev/kmsg
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -287,9 +285,15 @@ services:
     command:
       - "--docker_only=true"
       - "--store_container_labels=false"
+      - "--housekeeping_interval=30s"
     restart: unless-stopped
     networks:
       - gaia_network
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+          cpus: "0.25"
 
   # Host machine metrics (CPU, memory, disk, network)
   node_exporter:
@@ -358,11 +362,13 @@ services:
   promtail:
     image: grafana/promtail:3.3.2
     container_name: promtail
+    # Run as root so Promtail can read the Docker socket (owned by root:docker).
+    # Promtail 3.x defaults to uid 10001 which lacks socket access.
+    user: root
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
-      # In prod the API always runs in Docker, so this mount is a no-op safety fallback
-      - ../../apps/api/logs:/var/log/gaia-api:ro
+      - promtail_positions:/tmp
     command: -config.file=/etc/promtail/config.yaml -config.expand-env=true
     environment:
       LOKI_PUSH_URL: ${LOKI_PUSH_URL:-http://loki:3100/loki/api/v1/push}
@@ -411,6 +417,7 @@ volumes:
   loki_data:
   grafana_data:
   prometheus_data:
+  promtail_positions:
 
 networks:
   gaia_network:

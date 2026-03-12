@@ -27,10 +27,6 @@ scrape_configs:
     static_configs:
       - targets: ["redis_exporter:9121"]
 
-  - job_name: mongodb
-    static_configs:
-      - targets: ["mongodb_exporter:9216"]
-
   - job_name: rabbitmq
     static_configs:
       - targets: ["rabbitmq:15692"]

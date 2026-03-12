@@ -289,11 +289,9 @@ services:
 
   # cAdvisor — Docker container CPU / memory / network / disk metrics
   cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    image: gcr.io/cadvisor/cadvisor:v0.52.1
     container_name: cadvisor
     privileged: true
-    devices:
-      - /dev/kmsg
     volumes:
       - /:/rootfs:ro
       - /var/run:/var/run:ro
@@ -303,6 +301,7 @@ services:
     command:
       - "--docker_only=true"
       - "--store_container_labels=false"
+      - "--housekeeping_interval=30s"
     restart: unless-stopped
     networks:
       - gaia_network
@@ -413,6 +412,7 @@ services:
   promtail:
     image: grafana/promtail:3.3.2
     container_name: promtail
+    user: root
     volumes:
       - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
       - /var/run/docker.sock:/var/run/docker.sock
