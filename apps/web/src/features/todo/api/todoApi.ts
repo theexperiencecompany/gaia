@@ -31,7 +31,7 @@ export const todoApi = {
   getAllTodos: async (filters?: TodoFilters): Promise<Todo[]> => {
     try {
       const response = await apiService.get<TodoListResponse | Todo[]>(
-        `/todos${buildQueryString(filters)}`,
+        `/todos${buildQueryString(filters as Record<string, string | number | boolean | null | undefined>)}`,
       );
       return normalizeListResponse(response);
     } catch (error) {

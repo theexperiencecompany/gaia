@@ -97,7 +97,12 @@ class CustomToolsRegistry:
         Args:
             composio: The Composio client instance
         """
+        if self._composio is composio and self._registered_toolkits:
+            return
+
         self._composio = composio
+        self._tools_by_toolkit.clear()
+        self._registered_toolkits.clear()
 
         self._register_all_tools()
 
