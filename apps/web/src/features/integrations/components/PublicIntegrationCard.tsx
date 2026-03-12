@@ -142,15 +142,17 @@ export const PublicIntegrationCard: React.FC<PublicIntegrationCardProps> = ({
               <GitForkIcon width={18} height={18} />
               <span>{formatCloneCount(integration.cloneCount)}</span>
             </div>
-            <div className="flex items-center gap-1">
-              <DateTimeIcon width={18} height={18} />
-              <span>
-                {formatDistanceToNow(new Date(integration.publishedAt), {
-                  addSuffix: false,
-                })}{" "}
-                ago
-              </span>
-            </div>
+            {integration.publishedAt && (
+              <div className="flex items-center gap-1">
+                <DateTimeIcon width={18} height={18} />
+                <span>
+                  {formatDistanceToNow(new Date(integration.publishedAt), {
+                    addSuffix: false,
+                  })}{" "}
+                  ago
+                </span>
+              </div>
+            )}
           </div>
         </div>
       </div>

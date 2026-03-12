@@ -211,6 +211,10 @@ class PublicIntegrationDetailResponse(CamelModel, CloneCountMixin):
     tool_count: int = 0
     published_at: Optional[datetime] = None
 
+    # Source type (platform or custom)
+    source: Optional[Literal["platform", "custom"]] = None
+    auth_type: Optional[Literal["none", "oauth", "bearer"]] = None
+
 
 class AddIntegrationResponse(CamelModel):
     """Response for adding a public integration to user's workspace."""

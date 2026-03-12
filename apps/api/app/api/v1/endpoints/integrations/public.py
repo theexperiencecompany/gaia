@@ -18,6 +18,7 @@ from app.services.integrations.integration_connection_service import (
     connect_mcp_integration,
 )
 from app.services.integrations.user_integrations import add_user_integration
+from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.helpers.integration_helpers import (
     build_public_integration_pipeline,
     format_public_integration_response,
@@ -33,16 +34,54 @@ router = APIRouter()
 async def get_public_integration(
     identifier: str,
 ) -> PublicIntegrationDetailResponse:
-    """Get public integration details by slug."""
+    """Get public integration details by slug or native integration ID."""
     try:
         log.set(operation="get_public_integration", integration_id=identifier)
+
+        # 1. Check platform (native) integrations first — in-memory, instant
+        # Platform integrations use their ID as slug (e.g., "googlecalendar", "slack")
+        native = next(
+            (
+                i
+                for i in OAUTH_INTEGRATIONS
+                if i.id == identifier and i.managed_by != "internal"
+            ),
+            None,
+        )
+        if native:
+            auth_type = None
+            if native.mcp_config:
+                auth_type = native.mcp_config.auth_type
+            elif native.managed_by in ("self", "composio"):
+                auth_type = "oauth"
+
+            log.set(integration_name=native.name)
+            log.set(outcome="success")
+            return PublicIntegrationDetailResponse(
+                integration_id=native.id,
+                slug=native.id,
+                name=native.name,
+                description=native.description,
+                category=native.category,
+                icon_url=None,
+                creator=None,
+                mcp_config=None,
+                tools=[],
+                clone_count=0,
+                tool_count=0,
+                published_at=None,
+                source="platform",
+                auth_type=auth_type,
+            )
+
+        # 2. Fall back to MongoDB (community/published integrations)
         slug_parts = parse_integration_slug(identifier)
         short_id = slug_parts.get("shortid")
 
         if not short_id:
             raise HTTPException(
                 status_code=404,
-                detail="Invalid slug format. Expected: {name}-mcp-{category}-{id}",
+                detail="Integration not found",
             )
 
         pipeline = build_public_integration_pipeline(short_id)

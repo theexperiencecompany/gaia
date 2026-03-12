@@ -169,4 +169,5 @@ def format_public_integration_response(doc: dict) -> dict:
         "clone_count": doc.get("clone_count", 0),
         "tool_count": len(tools),
         "published_at": doc.get("published_at"),
+        "source": "custom",  # MongoDB integrations are always custom
     }

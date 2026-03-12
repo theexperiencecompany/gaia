@@ -83,17 +83,50 @@ async function getAllIntegrations() {
   }
 }
 
+async function getNativeIntegrationSlugs(): Promise<string[]> {
+  const baseUrl = getServerApiBaseUrl();
+  if (!baseUrl) return [];
+
+  try {
+    const response = await fetch(`${baseUrl}/integrations/config`, {
+      next: { revalidate: 60 },
+    });
+    if (!response.ok) return [];
+    const data = await response.json();
+    return (data.integrations as Array<{ slug?: string; available?: boolean }>)
+      .filter((i) => i.slug && i.available !== false)
+      .map((i) => i.slug as string);
+  } catch (error) {
+    console.error(
+      "[SSG Marketplace] Failed to fetch native integration slugs:",
+      error,
+    );
+    return [];
+  }
+}
+
 /**
- * Generate static params for all public integrations.
+ * Generate static params for all public integrations (community + native).
  * This enables search engines to crawl and index all integration pages.
  * Uses slug for SEO-friendly URLs.
  */
 export async function generateStaticParams() {
-  const integrations = await getAllIntegrations();
-  console.log(`[SSG Marketplace] Generating ${integrations.length} pages`);
-  return integrations.map((i: { slug: string }) => ({
-    slug: i.slug, // Always provided by backend
-  }));
+  const [communityIntegrations, nativeSlugs] = await Promise.all([
+    getAllIntegrations(),
+    getNativeIntegrationSlugs(),
+  ]);
+
+  const communitySlugs = communityIntegrations.map(
+    (i: { slug: string }) => i.slug,
+  );
+
+  // Deduplicate by slug
+  const allSlugs = [...new Set([...communitySlugs, ...nativeSlugs])];
+
+  console.log(
+    `[SSG Marketplace] Generating ${allSlugs.length} pages (${communitySlugs.length} community + ${nativeSlugs.length} native)`,
+  );
+  return allSlugs.map((slug) => ({ slug }));
 }
 
 export const dynamicParams = true;

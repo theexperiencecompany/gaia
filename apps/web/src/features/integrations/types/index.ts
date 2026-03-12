@@ -214,7 +214,7 @@ export interface CommunityIntegration {
   cloneCount: number;
   toolCount: number;
   tools: Array<{ name: string; description: string | null }>;
-  publishedAt: string;
+  publishedAt: string | null;
   creator: CommunityIntegrationCreator | null;
 }
 
@@ -229,5 +229,7 @@ export interface PublicIntegrationResponse extends CommunityIntegration {
     serverUrl: string;
     requiresAuth: boolean;
     authType: string | null;
-  };
+  } | null;
+  source?: "platform" | "custom";
+  authType?: "oauth" | "bearer" | "none" | null;
 }
