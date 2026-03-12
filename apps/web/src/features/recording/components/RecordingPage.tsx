@@ -8,50 +8,70 @@ import RecordingChatLayout from "./RecordingChatLayout";
 
 interface RecordingPageProps {
   scenarioId: string;
+  scenarioData?: unknown;
 }
 
-type PageState =
-  | { status: "loading" }
-  | { status: "error"; message: string }
-  | { status: "ready"; scenario: Scenario };
+function parseScenario(
+  data: unknown,
+): { scenario: Scenario } | { error: string } {
+  const result = ScenarioSchema.safeParse(data);
+  if (!result.success) {
+    return {
+      error: result.error.issues
+        .map((i) => `${i.path.join(".")}: ${i.message}`)
+        .join(", "),
+    };
+  }
+  return { scenario: result.data };
+}
 
-export default function RecordingPage({ scenarioId }: RecordingPageProps) {
-  const [pageState, setPageState] = useState<PageState>({ status: "loading" });
+export default function RecordingPage({
+  scenarioId,
+  scenarioData,
+}: RecordingPageProps) {
+  const [state, setState] = useState<
+    | { status: "loading" }
+    | { status: "error"; message: string }
+    | { status: "ready"; scenario: Scenario }
+  >(() => {
+    // If server passed data, parse immediately — no loading flash
+    if (scenarioData !== null && scenarioData !== undefined) {
+      const parsed = parseScenario(scenarioData);
+      if ("error" in parsed)
+        return { status: "error", message: `Invalid scenario: ${parsed.error}` };
+      return { status: "ready", scenario: parsed.scenario };
+    }
+    return { status: "loading" };
+  });
 
+  // Client-side fallback fetch only if server didn't pre-load
   useEffect(() => {
+    if (state.status !== "loading") return;
     fetch(`/scenarios/${scenarioId}.json`)
       .then((res) => {
         if (!res.ok)
-          throw new Error(
-            `Scenario "${scenarioId}" not found (${res.status})`,
-          );
+          throw new Error(`Scenario "${scenarioId}" not found (${res.status})`);
         return res.json();
       })
       .then((data) => {
-        const result = ScenarioSchema.safeParse(data);
-        if (!result.success) {
-          throw new Error(
-            `Invalid scenario: ${result.error.issues
-              .map((i) => `${i.path.join(".")}: ${i.message}`)
-              .join(", ")}`,
-          );
+        const parsed = parseScenario(data);
+        if ("error" in parsed) {
+          setState({ status: "error", message: `Invalid scenario: ${parsed.error}` });
+        } else {
+          setState({ status: "ready", scenario: parsed.scenario });
         }
-        setPageState({ status: "ready", scenario: result.data });
       })
       .catch((err: Error) => {
-        setPageState({ status: "error", message: err.message });
+        setState({ status: "error", message: err.message });
       });
-  }, [scenarioId]);
+  }, [scenarioId, state.status]);
 
-  if (pageState.status === "loading") {
-    return (
-      <div className="flex items-center justify-center h-screen bg-background text-muted-foreground text-sm">
-        Loading scenario...
-      </div>
-    );
+  if (state.status === "loading") {
+    // Blank — server should have pre-loaded; this is a fallback during hydration
+    return <div className="h-screen bg-background" />;
   }
 
-  if (pageState.status === "error") {
+  if (state.status === "error") {
     return (
       <div className="flex items-center justify-center h-screen bg-background p-8">
         <div className="text-sm font-mono max-w-md space-y-3">
@@ -65,13 +85,13 @@ export default function RecordingPage({ scenarioId }: RecordingPageProps) {
               /public/scenarios/{scenarioId}.json
             </span>
           </p>
-          <p className="text-red-400 mt-4">{pageState.message}</p>
+          <p className="text-red-400 mt-4">{state.message}</p>
         </div>
       </div>
     );
   }
 
-  return <RecordingScenarioRunner scenario={pageState.scenario} />;
+  return <RecordingScenarioRunner scenario={state.scenario} />;
 }
 
 function RecordingScenarioRunner({ scenario }: { scenario: Scenario }) {
@@ -90,9 +110,9 @@ function RecordingScenarioRunner({ scenario }: { scenario: Scenario }) {
     }
   }, [phase]);
 
-  // Auto-play with delay to give Playwright time to start recording
+  // Auto-play with short delay to let Playwright start recording
   useEffect(() => {
-    const id = setTimeout(() => play(), 800);
+    const id = setTimeout(() => play(), 500);
     return () => clearTimeout(id);
   }, [play]);
 

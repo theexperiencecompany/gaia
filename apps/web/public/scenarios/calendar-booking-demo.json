@@ -47,7 +47,7 @@
           "tool_category": "google_calendar",
           "data": [
             {
-              "title": "Meeting with Sarah",
+              "summary": "Meeting with Sarah",
               "start": "2026-03-13T14:00:00",
               "end": "2026-03-13T15:00:00",
               "attendees": ["sarah@example.com"]

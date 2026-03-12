@@ -1,0 +1,204 @@
+{
+  "id": "morning-briefing-demo",
+  "title": "Morning Briefing — Full Day Overview",
+  "viewport": { "width": 390, "height": 844 },
+  "settings": { "theme": "dark" },
+  "states": [
+    {
+      "type": "user_message",
+      "text": "What's my day looking like? Give me a full briefing.",
+      "typingSpeed": 42,
+      "pauseAfter": 700
+    },
+    {
+      "type": "thinking",
+      "content": "The user wants a morning briefing. I should check their calendar for today's meetings, review priority tasks from Todoist, and search for any relevant updates in their space. Let me pull all three and compile a concise but complete summary.",
+      "duration": 2600,
+      "pauseAfter": 300
+    },
+    {
+      "type": "loading",
+      "text": "Fetching today's calendar...",
+      "toolInfo": { "toolCategory": "google_calendar", "showCategory": true },
+      "duration": 1400,
+      "pauseAfter": 200
+    },
+    {
+      "type": "tool_calls",
+      "entries": [
+        {
+          "tool_name": "tool_calls_data",
+          "tool_category": "google_calendar",
+          "data": [
+            {
+              "tool_name": "get_calendar_events",
+              "tool_category": "google_calendar",
+              "message": "Fetched 3 events for today, March 12",
+              "inputs": { "date": "2026-03-12", "calendar_id": "primary" },
+              "output": "10:00 AM — Engineering Standup (30 min) · 2:00 PM — 1:1 with Alex (45 min) · 4:30 PM — Product Review (60 min)"
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "pauseAfter": 300
+    },
+    {
+      "type": "loading",
+      "text": "Checking your tasks...",
+      "toolInfo": { "toolCategory": "todoist", "showCategory": true },
+      "duration": 1100,
+      "pauseAfter": 200
+    },
+    {
+      "type": "tool_calls",
+      "entries": [
+        {
+          "tool_name": "tool_calls_data",
+          "tool_category": "todoist",
+          "data": [
+            {
+              "tool_name": "get_tasks",
+              "tool_category": "todoist",
+              "message": "Found 5 tasks — 2 high priority, 1 overdue",
+              "inputs": { "filter": "today | overdue", "limit": 10 },
+              "output": "2 high priority tasks due today, 1 overdue from yesterday, 2 upcoming"
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "pauseAfter": 300
+    },
+    {
+      "type": "loading",
+      "text": "Searching for relevant updates...",
+      "toolInfo": { "toolCategory": "search", "showCategory": true },
+      "duration": 1500,
+      "pauseAfter": 200
+    },
+    {
+      "type": "tool_calls",
+      "entries": [
+        {
+          "tool_name": "tool_calls_data",
+          "tool_category": "search",
+          "data": [
+            {
+              "tool_name": "web_search",
+              "tool_category": "search",
+              "message": "Searched: AI developer tools news March 2026",
+              "inputs": { "query": "AI developer tools product updates March 2026" },
+              "output": "Found 6 relevant results"
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "pauseAfter": 600
+    },
+    {
+      "type": "bot_message",
+      "text": "Good morning! Here's your full briefing for **Thursday, March 12th**.\n\n**📅 Your day — 3 meetings**\nYou have a clear morning to focus before your 10:00 AM standup. After that, a 1:1 with Alex at 2:00 PM, then product review at 4:30 PM.\n\n**✅ Priority tasks**\nTwo high-priority items due today: **Finalize Q1 roadmap** and **Review PR #234**. One task is overdue — **Update deployment docs** from yesterday.\n\n**📰 What's happening**\nAnthropic released Claude 4 with a 500K context window this morning. Could be relevant for your product review — worth a quick read.\n\nWant me to block focus time before standup, or tackle the overdue task first?",
+      "streamingSpeed": 13,
+      "tool_data": [
+        {
+          "tool_name": "calendar_options",
+          "tool_category": "google_calendar",
+          "data": [
+            {
+              "summary": "Engineering Standup",
+              "start": "2026-03-12T10:00:00",
+              "end": "2026-03-12T10:30:00",
+              "description": "Daily team sync — review blockers and sprint progress",
+              "attendees": [
+                "alex@company.com",
+                "priya@company.com",
+                "ravi@company.com",
+                "morgan@company.com"
+              ]
+            }
+          ],
+          "timestamp": null
+        },
+        {
+          "tool_name": "todo_data",
+          "tool_category": "todoist",
+          "data": {
+            "action": "list",
+            "todos": [
+              {
+                "id": "mb-1",
+                "title": "Finalize Q1 roadmap",
+                "completed": false,
+                "priority": "high",
+                "due_date": "2026-03-12",
+                "labels": ["planning", "urgent"],
+                "subtasks": [],
+                "created_at": "2026-03-10T09:00:00Z",
+                "updated_at": "2026-03-11T14:30:00Z"
+              },
+              {
+                "id": "mb-2",
+                "title": "Review PR #234 — auth refactor",
+                "completed": false,
+                "priority": "high",
+                "due_date": "2026-03-12",
+                "labels": ["engineering", "review"],
+                "subtasks": [],
+                "created_at": "2026-03-11T10:00:00Z",
+                "updated_at": "2026-03-11T10:00:00Z"
+              },
+              {
+                "id": "mb-3",
+                "title": "Update deployment docs",
+                "completed": false,
+                "priority": "medium",
+                "due_date": "2026-03-11",
+                "labels": ["docs"],
+                "subtasks": [],
+                "created_at": "2026-03-09T08:00:00Z",
+                "updated_at": "2026-03-11T08:00:00Z"
+              }
+            ],
+            "stats": {
+              "total": 5,
+              "completed": 0,
+              "pending": 5,
+              "overdue": 1,
+              "today": 2,
+              "upcoming": 2
+            }
+          },
+          "timestamp": null
+        },
+        {
+          "tool_name": "search_results",
+          "tool_category": "search",
+          "data": {
+            "results": [
+              {
+                "title": "Anthropic releases Claude 4 with 500K context window and new pricing",
+                "url": "https://techcrunch.com/2026/03/12/anthropic-claude-4-announcement",
+                "snippet": "Anthropic today announced Claude 4, featuring a 500,000 token context window and revised API pricing starting at $0.25 per million tokens for the Haiku tier, a 60% reduction from previous rates."
+              },
+              {
+                "title": "GitHub Copilot adds autonomous multi-file editing in latest update",
+                "url": "https://github.blog/2026-03-12-copilot-autonomous-editing",
+                "snippet": "GitHub Copilot's latest release introduces multi-file autonomous editing and a new CLI agent mode that can plan and execute terminal commands with user approval."
+              }
+            ]
+          },
+          "timestamp": null
+        }
+      ],
+      "follow_up_actions": [
+        "Block focus time before standup",
+        "Mark overdue task done",
+        "Show full calendar",
+        "Set a reminder"
+      ],
+      "pauseAfter": 2500
+    }
+  ]
+}
