@@ -1,0 +1,69 @@
+{
+  "id": "todo-management-demo",
+  "title": "Task Management Flow",
+  "viewport": { "width": 390, "height": 844 },
+  "settings": { "theme": "dark" },
+  "states": [
+    {
+      "type": "user_message",
+      "text": "What are my high priority tasks this week?",
+      "typingSpeed": 45,
+      "pauseAfter": 500
+    },
+    {
+      "type": "loading",
+      "text": "Fetching your tasks...",
+      "duration": 1200,
+      "pauseAfter": 200
+    },
+    {
+      "type": "bot_message",
+      "text": "You have **3 high priority tasks** this week:",
+      "streamingSpeed": 20,
+      "tool_data": [
+        {
+          "tool_name": "todo_data",
+          "tool_category": "todoist",
+          "data": {
+            "action": "list",
+            "todos": [
+              {
+                "id": "t1",
+                "title": "Prepare Q1 investor update",
+                "completed": false,
+                "priority": "HIGH",
+                "due_date": "2026-03-14",
+                "labels": ["finance", "board"],
+                "subtasks": [],
+                "workflow": null
+              },
+              {
+                "id": "t2",
+                "title": "Review product roadmap",
+                "completed": false,
+                "priority": "HIGH",
+                "due_date": "2026-03-13",
+                "labels": ["product"],
+                "subtasks": [],
+                "workflow": null
+              },
+              {
+                "id": "t3",
+                "title": "Follow up with design agency",
+                "completed": false,
+                "priority": "HIGH",
+                "due_date": "2026-03-15",
+                "labels": ["design"],
+                "subtasks": [],
+                "workflow": null
+              }
+            ]
+          },
+          "timestamp": null
+        }
+      ],
+      "follow_up_actions": ["Mark first task done", "Add subtasks", "Reschedule"],
+      "pauseAfter": 2000
+    }
+  ]
+}

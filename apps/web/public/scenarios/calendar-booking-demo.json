@@ -1,0 +1,63 @@
+{
+  "id": "calendar-booking-demo",
+  "title": "Calendar Booking Flow",
+  "viewport": { "width": 390, "height": 844 },
+  "settings": { "theme": "dark" },
+  "states": [
+    {
+      "type": "user_message",
+      "text": "Book a meeting with Sarah tomorrow at 2pm",
+      "typingSpeed": 50,
+      "pauseAfter": 600
+    },
+    {
+      "type": "loading",
+      "text": "Checking calendar...",
+      "toolInfo": { "toolCategory": "google_calendar", "showCategory": true },
+      "duration": 1400,
+      "pauseAfter": 200
+    },
+    {
+      "type": "tool_calls",
+      "entries": [
+        {
+          "tool_name": "tool_calls_data",
+          "tool_category": "google_calendar",
+          "data": [
+            {
+              "tool_name": "check_availability",
+              "tool_category": "google_calendar",
+              "message": "Checked Sarah's availability for tomorrow 2-3 PM",
+              "inputs": { "date": "2026-03-13", "time": "14:00", "attendee": "sarah@example.com" },
+              "output": "Sarah is available 2:00 PM – 3:00 PM"
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "pauseAfter": 500
+    },
+    {
+      "type": "bot_message",
+      "text": "Done! I've booked a meeting with Sarah tomorrow from **2:00 – 3:00 PM** and sent her a calendar invite.",
+      "streamingSpeed": 18,
+      "tool_data": [
+        {
+          "tool_name": "calendar_options",
+          "tool_category": "google_calendar",
+          "data": [
+            {
+              "title": "Meeting with Sarah",
+              "start": "2026-03-13T14:00:00",
+              "end": "2026-03-13T15:00:00",
+              "attendees": ["sarah@example.com"]
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "follow_up_actions": ["Add agenda", "Invite others", "Set reminder"],
+      "pauseAfter": 2000
+    }
+  ]
+}

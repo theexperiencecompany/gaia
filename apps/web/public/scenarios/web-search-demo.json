@@ -1,0 +1,68 @@
+{
+  "id": "web-search-demo",
+  "title": "Web Search Flow",
+  "viewport": { "width": 390, "height": 844 },
+  "settings": { "theme": "dark" },
+  "states": [
+    {
+      "type": "user_message",
+      "text": "What happened in AI this week?",
+      "typingSpeed": 55,
+      "pauseAfter": 500
+    },
+    {
+      "type": "loading",
+      "text": "Searching the web...",
+      "duration": 1800,
+      "pauseAfter": 200
+    },
+    {
+      "type": "tool_calls",
+      "entries": [
+        {
+          "tool_name": "tool_calls_data",
+          "tool_category": "search",
+          "data": [
+            {
+              "tool_name": "web_search",
+              "tool_category": "search",
+              "message": "Searched: AI news this week",
+              "inputs": { "query": "AI artificial intelligence news this week 2026" },
+              "output": "Found 8 relevant results"
+            }
+          ],
+          "timestamp": null
+        }
+      ],
+      "pauseAfter": 400
+    },
+    {
+      "type": "bot_message",
+      "text": "Here's what happened in AI this week:\n\n**1. New reasoning model releases** — Several labs shipped new models with improved reasoning capabilities.\n\n**2. Open source momentum** — Multiple open-weight models topped benchmarks.\n\n**3. Enterprise adoption** — Fortune 500 AI adoption hit a new high.",
+      "streamingSpeed": 12,
+      "tool_data": [
+        {
+          "tool_name": "search_results",
+          "tool_category": "search",
+          "data": {
+            "results": [
+              {
+                "title": "New AI reasoning models ship from major labs",
+                "url": "https://example.com/ai-news-1",
+                "snippet": "Multiple leading AI laboratories released new reasoning-focused models this week..."
+              },
+              {
+                "title": "Open source AI models break new benchmarks",
+                "url": "https://example.com/ai-news-2",
+                "snippet": "The open source AI ecosystem continued its rapid growth..."
+              }
+            ]
+          },
+          "timestamp": null
+        }
+      ],
+      "follow_up_actions": ["Summarize further", "Find more sources"],
+      "pauseAfter": 2000
+    }
+  ]
+}
