@@ -36,6 +36,41 @@ from app.services.payments.payment_service import payment_service
 from app.utils.chat_utils import create_conversation, generate_and_update_description
 from langchain_core.callbacks import UsageMetadataCallbackHandler
 
+_RETRYABLE_MODEL_ERROR_MARKERS = (
+    "503 service unavailable",
+    '"code": 503',
+    '"status": "unavailable"',
+    "currently experiencing high demand",
+    "resource exhausted",
+    "rate limit",
+)
+
+
+def _is_retryable_model_error_message(message: str) -> bool:
+    lower_message = message.lower()
+    return any(marker in lower_message for marker in _RETRYABLE_MODEL_ERROR_MARKERS)
+
+
+def _extract_stream_error_message(chunk: str) -> Optional[str]:
+    if not chunk.startswith("data: "):
+        return None
+
+    try:
+        payload = json.loads(chunk[6:])
+    except json.JSONDecodeError:
+        return None
+
+    error = payload.get("error")
+    return error if isinstance(error, str) else None
+
+
+def _build_stream_model_attempts(
+    user_model_config: Optional[ModelConfig],
+) -> List[Optional[ModelConfig]]:
+    if user_model_config is None:
+        return [None, None]
+    return [user_model_config, None]
+
 
 async def run_chat_stream_background(
     stream_id: str,
@@ -369,56 +404,98 @@ async def _run_chat_stream(
             init_data = f"data: {json.dumps({'user_message_id': user_message_id, 'bot_message_id': bot_message_id, 'stream_id': stream_id})}\n\n"
         await stream_manager.publish_chunk(stream_id, init_data)
 
-        # Stream response from agent
-        async for chunk in await call_agent(
-            request=body,
-            user=user,
-            conversation_id=conversation_id,
-            user_time=user_time,
-            user_model_config=user_model_config,
-            usage_metadata_callback=usage_metadata_callback,
-            stream_id=stream_id,
-        ):
-            if await stream_manager.is_cancelled(stream_id):
-                is_cancelled = True
-                log.info(f"Stream {stream_id} cancelled by user")
-                break
+        # Stream response from agent (with one transient retry)
+        model_attempts = _build_stream_model_attempts(user_model_config)
+        stream_completed = False
 
-            # Skip [DONE] marker - we send it after description generation
-            if chunk == "data: [DONE]\n\n":
-                continue
-
-            description_task = await _publish_description_if_ready(
-                stream_id, description_task
-            )
-
-            # Process complete message marker (internal, not sent to client)
-            if chunk.startswith("nostream: "):
-                nostream_json = json.loads(chunk.replace("nostream: ", ""))
-                if (
-                    isinstance(nostream_json, dict)
-                    and "complete_message" in nostream_json
+        for attempt_index, attempt_model in enumerate(model_attempts, start=1):
+            emitted_agent_output = False
+            try:
+                async for chunk in await call_agent(
+                    request=body,
+                    user=user,
+                    conversation_id=conversation_id,
+                    user_time=user_time,
+                    user_model_config=attempt_model,
+                    usage_metadata_callback=usage_metadata_callback,
+                    stream_id=stream_id,
                 ):
-                    complete_message = str(nostream_json["complete_message"])
-                else:
-                    complete_message = ""
-                continue
+                    if await stream_manager.is_cancelled(stream_id):
+                        is_cancelled = True
+                        log.info(f"Stream {stream_id} cancelled by user")
+                        break
 
-            if chunk.startswith("data: "):
-                try:
-                    follow_up_actions, _ = await _process_data_chunk(
-                        stream_id,
-                        chunk,
-                        tool_data,
-                        tool_outputs,
-                        todo_progress_accumulated,
-                        follow_up_actions,
+                    # Skip [DONE] marker - we send it after description generation
+                    if chunk == "data: [DONE]\n\n":
+                        continue
+
+                    # If the stream emitted an error payload before any output,
+                    # retry once to handle transient provider overload (503/429).
+                    chunk_error = _extract_stream_error_message(chunk)
+                    if (
+                        chunk_error
+                        and _is_retryable_model_error_message(chunk_error)
+                        and attempt_index < len(model_attempts)
+                        and not emitted_agent_output
+                        and not complete_message
+                    ):
+                        raise RuntimeError(chunk_error)
+
+                    emitted_agent_output = True
+
+                    description_task = await _publish_description_if_ready(
+                        stream_id, description_task
                     )
-                except Exception as e:
-                    log.error(f"Error processing chunk: {e}")
-                    await stream_manager.publish_chunk(stream_id, chunk)
-            else:
-                await stream_manager.publish_chunk(stream_id, chunk)
+
+                    # Process complete message marker (internal, not sent to client)
+                    if chunk.startswith("nostream: "):
+                        nostream_json = json.loads(chunk.replace("nostream: ", ""))
+                        if (
+                            isinstance(nostream_json, dict)
+                            and "complete_message" in nostream_json
+                        ):
+                            complete_message = str(nostream_json["complete_message"])
+                        else:
+                            complete_message = ""
+                        continue
+
+                    if chunk.startswith("data: "):
+                        try:
+                            follow_up_actions, _ = await _process_data_chunk(
+                                stream_id,
+                                chunk,
+                                tool_data,
+                                tool_outputs,
+                                todo_progress_accumulated,
+                                follow_up_actions,
+                            )
+                        except Exception as e:
+                            log.error(f"Error processing chunk: {e}")
+                            await stream_manager.publish_chunk(stream_id, chunk)
+                    else:
+                        await stream_manager.publish_chunk(stream_id, chunk)
+
+                stream_completed = True
+                break
+            except Exception as e:
+                should_retry = (
+                    attempt_index < len(model_attempts)
+                    and not emitted_agent_output
+                    and not complete_message
+                    and _is_retryable_model_error_message(str(e))
+                )
+                if should_retry:
+                    wait_seconds = min(1.5 * attempt_index, 4.0)
+                    log.warning(
+                        f"Retrying stream {stream_id} after transient model error "
+                        f"(attempt {attempt_index + 1}/{len(model_attempts)}): {e}"
+                    )
+                    await asyncio.sleep(wait_seconds)
+                    continue
+                raise
+
+        if not stream_completed:
+            raise RuntimeError("Streaming failed before completion")
 
         usage_metadata = usage_metadata_callback.usage_metadata or {}
         total_input, total_output = _aggregate_usage_metadata(usage_metadata)

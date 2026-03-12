@@ -108,7 +108,7 @@ export function parseDate2(isoDateString: string): string {
  * @param dateString - Date string in ISO format (YYYY-MM-DD) or any valid date format
  * @returns Human-readable date string
  */
-export function formatRelativeDate(dateString: string): string {
+export function formatReadableDate(dateString: string): string {
   try {
     // Try to parse the date string
     let date: Date;

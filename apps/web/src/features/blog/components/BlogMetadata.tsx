@@ -1,5 +1,5 @@
 import type { Author } from "@/types";
-import { formatRelativeDate } from "@/utils/date/dateUtils";
+import { formatReadableDate } from "@/utils/date/dateUtils";
 
 import { AuthorTooltip } from "./AuthorTooltip";
 import CopyLinkButton from "./CopyLinkButton";
@@ -50,7 +50,7 @@ export default function BlogMetadata({
       <div>
         <div className="text-muted-foreground flex items-center text-sm">
           <span className="text-foreground-500">
-            {formatRelativeDate(date)}
+            {formatReadableDate(date)}
           </span>
         </div>
       </div>

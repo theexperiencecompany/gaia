@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { chatApi } from "@/features/chat/api/chatApi";
 import { VoiceApp } from "@/features/chat/components/composer/VoiceModeOverlay";
 import { FileDropModal } from "@/features/chat/components/files/FileDropModal";
@@ -122,6 +122,10 @@ const ChatPage = React.memo(function MainChat() {
     }
   }, [queryParam, appendToInputRef, router]);
 
+  const handleVoiceEndCall = useCallback(() => {
+    setVoiceModeActive(false);
+  }, []);
+
   // Common composer props
   const composerProps = {
     inputRef,
@@ -140,7 +144,7 @@ const ChatPage = React.memo(function MainChat() {
       <FileDropModal isDragging={isDragging} />
 
       {voiceModeActive ? (
-        <VoiceApp onEndCall={() => setVoiceModeActive(false)} />
+        <VoiceApp onEndCall={handleVoiceEndCall} />
       ) : hasMessages ? (
         <>
           <ChatWithMessages

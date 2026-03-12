@@ -8,6 +8,7 @@ These functions are tightly coupled to agent-specific logic and LangGraph execut
 
 import json
 import re
+import warnings
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Optional
 
@@ -15,6 +16,7 @@ from langchain_core.callbacks import BaseCallbackHandler, UsageMetadataCallbackH
 from langchain_core.messages import AIMessageChunk, ToolMessage
 from langsmith import traceable
 from opik.integrations.langchain import OpikTracer
+from pydantic.warnings import PydanticDeprecatedSince20
 from posthog.ai.langchain import CallbackHandler as PostHogCallbackHandler
 
 from app.agents.tools.core.registry import get_tool_registry
@@ -44,6 +46,13 @@ from app.utils.agent_utils import (
     format_tool_call_entry,
     parse_subagent_id,
     process_custom_event_for_tools,
+)
+
+warnings.filterwarnings(
+    "ignore",
+    message="The `dict` method is deprecated; use `model_dump` instead.",
+    category=PydanticDeprecatedSince20,
+    module=r"opik\.integrations\.langchain\.opik_tracer",
 )
 
 
