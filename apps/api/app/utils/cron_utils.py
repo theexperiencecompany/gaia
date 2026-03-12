@@ -9,7 +9,7 @@ from typing import Optional
 import pytz
 from croniter import croniter
 
-from app.config.loggers import app_logger
+from shared.py.wide_events import log
 
 
 class CronError(Exception):
@@ -94,6 +94,7 @@ def get_next_run_time(
     if not validate_cron_expression(cron_expr):
         raise CronError(f"Invalid cron expression: {cron_expr}")
 
+    log.set(cron_expr=cron_expr, user_timezone=user_timezone)
     # Handle timezone-aware calculation
     if user_timezone and user_timezone != "UTC":
         try:
@@ -115,7 +116,7 @@ def get_next_run_time(
             return next_time.astimezone(timezone.utc)
 
         except Exception as e:
-            app_logger.debug(f"Timezone conversion failed, falling back to UTC: {e}")
+            log.debug(f"Timezone conversion failed, falling back to UTC: {e}")
 
     # Default UTC calculation
     if base_time is None:

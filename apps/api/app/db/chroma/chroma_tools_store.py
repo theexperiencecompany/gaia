@@ -5,8 +5,8 @@ import inspect
 from typing import Any
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.loggers import chroma_logger as logger
 from app.config.oauth_config import get_subagent_integrations
+from shared.py.wide_events import log
 from app.core.lazy_loader import MissingKeyStrategy, lazy_provider, providers
 from app.db.chroma.chromadb import ChromaClient
 from app.db.redis import delete_cache, get_cache, set_cache
@@ -23,7 +23,7 @@ async def _compute_tool_hash(tool: Any) -> str:
         code_source = "\n".join(line.rstrip() for line in code_source.split("\n"))
         content = f"{tool.description}::{code_source}"
     except (OSError, TypeError, AttributeError):
-        logger.debug(
+        log.debug(
             f"Source unavailable for {getattr(tool, 'name', 'unknown')}, using description hash"
         )
         content = f"{tool.name}::{tool.description}"
@@ -154,7 +154,7 @@ async def _get_existing_tools_from_chroma(
                         "namespace": namespace,
                     }
     except Exception as e:
-        logger.warning(f"Error fetching existing tools: {e}, will register all tools")
+        log.warning(f"Error fetching existing tools: {e}, will register all tools")
 
     return existing_tools
 
@@ -265,12 +265,12 @@ async def _execute_batch_operations(store, put_ops: list[PutOp], batch_size: int
     for i in range(0, total_ops, batch_size):
         batch = put_ops[i : i + batch_size]
         await store.abatch(batch)
-        logger.info(
+        log.info(
             f"Processed batch {i // batch_size + 1}/"
             f"{(total_ops + batch_size - 1) // batch_size}"
         )
 
-    logger.info(f"Successfully updated {total_ops} tools in ChromaDB")
+    log.info(f"Successfully updated {total_ops} tools in ChromaDB")
 
 
 async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
@@ -292,9 +292,7 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     namespace = tools_with_space[0][1]
 
     if not namespace or len(namespace) > 512 or "::" in namespace:
-        logger.error(
-            f"Invalid namespace: '{namespace}' (empty, too long, or contains ::)"
-        )
+        log.error(f"Invalid namespace: '{namespace}' (empty, too long, or contains ::)")
         return
 
     # Compute hash of incoming tools for cache check
@@ -308,12 +306,12 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     cache_key = f"chroma:indexed:{namespace}"
     cached_hash = await get_cache(cache_key)
     if cached_hash == tools_hash:
-        logger.debug(f"Namespace '{namespace}' unchanged (Redis cache hit)")
+        log.debug(f"Namespace '{namespace}' unchanged (Redis cache hit)")
         return
 
     store = await providers.aget("chroma_tools_store")
     if store is None:
-        logger.warning("ChromaDB store not available, skipping tool indexing")
+        log.warning("ChromaDB store not available, skipping tool indexing")
         return
 
     collection = await store._get_collection()
@@ -333,12 +331,12 @@ async def index_tools_to_store(tools_with_space: list[tuple[Any, str]]):
     tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
 
     if not tools_to_upsert and not tools_to_delete:
-        logger.info(f"Namespace '{namespace}' is up-to-date, no changes needed")
+        log.info(f"Namespace '{namespace}' is up-to-date, no changes needed")
         # Cache the hash even if no changes (first time seeing this namespace)
         await set_cache(cache_key, tools_hash, ttl=86400)
         return
 
-    logger.info(
+    log.info(
         f"Updating namespace '{namespace}': {len(tools_to_upsert)} to upsert, "
         f"{len(tools_to_delete)} to delete"
     )
@@ -364,7 +362,7 @@ async def delete_tools_by_namespace(namespace: str) -> int:
 
     store = await providers.aget("chroma_tools_store")
     if not store:
-        logger.warning("ChromaDB store not available for cleanup")
+        log.warning("ChromaDB store not available for cleanup")
         return 0
 
     collection = await store._get_collection()
@@ -378,7 +376,7 @@ async def delete_tools_by_namespace(namespace: str) -> int:
 
     if ids_to_delete:
         await collection.delete(ids=ids_to_delete)
-        logger.info(f"Deleted {len(ids_to_delete)} tools from namespace '{namespace}'")
+        log.info(f"Deleted {len(ids_to_delete)} tools from namespace '{namespace}'")
 
     # Invalidate Redis cache for this namespace (unified format)
     await delete_cache(f"chroma:indexed:{namespace}")
@@ -428,7 +426,8 @@ async def initialize_chroma_tools_store():
     managed_namespaces = {
         tool_data["namespace"] for tool_data in current_tools.values()
     }
-    logger.info(f"Managing namespaces at init: {managed_namespaces}")
+    log.set(db={"operation": "init_tools_store", "collection": "langgraph_tools_store"})
+    log.info(f"Managing namespaces at init: {managed_namespaces}")
 
     existing_tools = await _get_existing_tools_from_chroma(
         collection, managed_namespaces
@@ -437,10 +436,10 @@ async def initialize_chroma_tools_store():
     tools_to_upsert, tools_to_delete = _compute_tool_diff(current_tools, existing_tools)
 
     if not tools_to_upsert and not tools_to_delete:
-        logger.info("ChromaDB tools store is up-to-date, no changes needed")
+        log.info("ChromaDB tools store is up-to-date, no changes needed")
         return store
 
-    logger.info(
+    log.info(
         f"Updating ChromaDB tools store: {len(tools_to_upsert)} to upsert, "
         f"{len(tools_to_delete)} to delete"
     )

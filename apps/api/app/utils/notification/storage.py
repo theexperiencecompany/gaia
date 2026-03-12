@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import (
     notifications_collection,
 )
@@ -78,25 +78,30 @@ class MongoDBNotificationStorage:
     ) -> None:
         """Update a notification's fields"""
         updates["updated_at"] = datetime.now(timezone.utc)
+        log.set(
+            notification_id=notification_id,
+            operation="update_notification",
+            update_fields=list(updates.keys()),
+        )
 
         # Debug logging
-        logger.info(f"Updating notification {notification_id} with updates: {updates}")
+        log.info(f"Updating notification {notification_id} with updates: {updates}")
 
         result = await notifications_collection.update_one(
             {"id": notification_id}, {"$set": updates}
         )
 
         # Log the result
-        logger.info(
+        log.info(
             f"Update result - matched: {result.matched_count}, modified: {result.modified_count}"
         )
 
         if result.matched_count == 0:
-            logger.warning(f"No notification found with id: {notification_id}")
+            log.warning(f"No notification found with id: {notification_id}")
         elif result.modified_count == 0:
-            logger.warning(f"Notification {notification_id} found but not modified")
+            log.warning(f"Notification {notification_id} found but not modified")
         else:
-            logger.info(f"Successfully updated notification {notification_id}")
+            log.info(f"Successfully updated notification {notification_id}")
 
     async def get_user_notifications(
         self,

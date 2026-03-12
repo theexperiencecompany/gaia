@@ -17,7 +17,7 @@ from app.agents.middleware.subagent import SubagentMiddleware
 from app.agents.middleware.vfs_compaction import VFSCompactionMiddleware
 from app.agents.middleware.vfs_summarization import VFSArchivingSummarizationMiddleware
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.summarization import (
     COMPACTION_THRESHOLD,
@@ -51,9 +51,7 @@ def get_summarization_llm() -> BaseChatModel | None:
         return _summarization_llm
 
     if not settings.GOOGLE_API_KEY:
-        logger.warning(
-            "Google API key not configured. Summarization middleware disabled."
-        )
+        log.warning("Google API key not configured. Summarization middleware disabled.")
         return None
 
     _summarization_llm = ChatGoogleGenerativeAI(
@@ -123,7 +121,7 @@ def create_middleware_stack(
             tool_runtime_config=subagent_tool_runtime_config,
         )
         middleware.append(subagent)
-        logger.debug("SubagentMiddleware enabled with spawn_subagent tool")
+        log.debug("SubagentMiddleware enabled with spawn_subagent tool")
 
     # Summarization middleware (requires Gemini API key)
     if enable_summarization:
@@ -137,7 +135,7 @@ def create_middleware_stack(
                 excluded_tools=summarization_excluded_tools,
             )
             middleware.append(summarization)
-            logger.debug(
+            log.debug(
                 f"Summarization middleware enabled: trigger={summarization_trigger}, keep={summarization_keep}"
             )
 
@@ -149,7 +147,7 @@ def create_middleware_stack(
             excluded_tools=compaction_excluded_tools,
         )
         middleware.append(compaction)
-        logger.debug(f"Compaction middleware enabled: threshold={compaction_threshold}")
+        log.debug(f"Compaction middleware enabled: threshold={compaction_threshold}")
 
     return middleware
 

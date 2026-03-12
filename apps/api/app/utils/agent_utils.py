@@ -7,7 +7,7 @@ from uuid import uuid4
 from langchain_core.messages import ToolCall
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.loggers import llm_logger as logger
+from shared.py.wide_events import log
 from app.models.chat_models import (
     MessageModel,
     ToolDataEntry,
@@ -230,7 +230,7 @@ def process_custom_event_for_tools(payload) -> dict:
         new_data = extract_tool_data(serialized)
         return new_data if new_data else {}
     except Exception as e:
-        logger.error(f"Error extracting tool data: {e}")
+        log.error(f"Error extracting tool data: {e}")
         return {}
 
 
@@ -249,6 +249,7 @@ async def store_agent_progress(
         current_message: Current accumulated LLM response
         current_tool_data: Current accumulated tool outputs (can contain both unified tool_data and legacy individual fields)
     """
+    log.set(conversation_id=conversation_id, user_id=user_id)
     try:
         # Check if there's meaningful content
         has_tool_data = False
@@ -314,4 +315,4 @@ async def store_agent_progress(
 
     except Exception as e:
         # Don't break agent execution for storage failures
-        logger.error(f"Failed to store agent progress: {str(e)}")
+        log.error(f"Failed to store agent progress: {str(e)}")

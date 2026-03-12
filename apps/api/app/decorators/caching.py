@@ -29,7 +29,7 @@ import functools
 import inspect
 from typing import Any, Awaitable, Callable, Dict, Generic, List, Optional, TypeVar
 
-from app.config.loggers import redis_logger as logger
+from shared.py.wide_events import log
 from app.db.redis import ONE_YEAR_TTL, delete_cache, get_cache, set_cache
 from app.utils.cache_utils import create_cache_key_hash
 
@@ -200,7 +200,7 @@ class Cacheable(Generic[T]):
             # Check if the value is already cached
             cached_value = await get_cache(cache_key, self.model)
             if cached_value is not None:
-                logger.debug(f"Cache hit for key: {cache_key}")
+                log.debug(f"Cache hit for key: {cache_key}")
                 if self.deserializer:
                     cached_value = self.deserializer(cached_value)
                 return cached_value
@@ -218,8 +218,8 @@ class Cacheable(Generic[T]):
             if self.serializer:
                 serialized_result = self.serializer(result)
 
-            logger.debug(f"Cache miss for key: {cache_key}")
-            logger.debug(f"Setting cache for key: {cache_key}")
+            log.debug(f"Cache miss for key: {cache_key}")
+            log.debug(f"Setting cache for key: {cache_key}")
 
             # Let set_cache handle Pydantic serialization
             await set_cache(
@@ -337,7 +337,7 @@ class CacheInvalidator:
                     for pattern in self.key_patterns
                 ]
 
-            logger.debug(f"Cache invalidation for keys: {cache_keys}")
+            log.debug(f"Cache invalidation for keys: {cache_keys}")
 
             # Invalidate the cache
             await asyncio.gather(*[delete_cache(key) for key in cache_keys])

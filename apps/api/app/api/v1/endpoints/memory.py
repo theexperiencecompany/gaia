@@ -11,6 +11,7 @@ from app.models.memory_models import (
     MemorySearchResult,
 )
 from app.services.memory_service import memory_service
+from shared.py.wide_events import log
 
 router = APIRouter()
 
@@ -32,7 +33,19 @@ async def get_all_memories(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
+    log.set(
+        user={"id": user_id, "plan": user.get("plan")},
+        memory={"operation": "get_all"},
+    )
+
     result = await memory_service.get_all_memories(user_id=user_id)
+
+    log.set(
+        memory={
+            "operation": "get_all",
+            "result_count": len(result.memories) if result.memories else 0,
+        }
+    )
 
     return result
 
@@ -57,12 +70,22 @@ async def create_memory(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
+    log.set(
+        user={"id": user_id},
+        memory={
+            "operation": "create",
+            "content_length": len(request.content) if request.content else 0,
+        },
+    )
+
     memory_entry = await memory_service.store_memory(
         message=request.content,
         user_id=user_id,
         metadata=request.metadata,
         async_mode=False,
     )
+
+    log.set(memory={"operation": "create", "success": memory_entry is not None})
 
     if memory_entry:
         return CreateMemoryResponse(
@@ -94,7 +117,14 @@ async def delete_memory(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
+    log.set(
+        user={"id": user_id},
+        memory={"operation": "delete", "memory_id": memory_id},
+    )
+
     success = await memory_service.delete_memory(memory_id=memory_id, user_id=user_id)
+
+    log.set(memory={"operation": "delete", "memory_id": memory_id, "success": success})
 
     if success:
         return DeleteMemoryResponse(success=True, message="Memory deleted successfully")
@@ -120,9 +150,16 @@ async def clear_all_memories(
     if not user_id:
         raise HTTPException(status_code=400, detail="User ID not found")
 
+    log.set(
+        user={"id": user_id},
+        memory={"operation": "delete_all"},
+    )
+
     try:
         # Use the new delete_all_memories method from v2 API
         success = await memory_service.delete_all_memories(user_id=user_id)
+
+        log.set(memory={"operation": "delete_all", "success": success})
 
         if success:
             return DeleteMemoryResponse(

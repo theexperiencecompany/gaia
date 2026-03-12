@@ -18,7 +18,7 @@ from typing import List, Optional
 from uuid import uuid4
 
 from app.agents.skills.models import Skill, SkillSource
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import (
     USER_SKILLS_CACHE_KEY,
     USER_SKILLS_CACHE_TTL,
@@ -97,6 +97,13 @@ async def install_skill(
     Returns:
         The created Skill with assigned ID
     """
+    log.set(
+        user_id=user_id,
+        skill_name=name,
+        skill_target=target,
+        skill_source=source.value,
+        skill_op="install_skill",
+    )
     collection = _get_collection()
 
     # Check for duplicate by name + user_id + target
@@ -135,7 +142,7 @@ async def install_skill(
     doc = _skill_to_doc(skill)
     await collection.insert_one(doc)
 
-    logger.info(
+    log.info(
         f"[skills] Installed '{name}' for user {user_id} "
         f"(target={target}, source={source.value})"
     )
@@ -155,10 +162,11 @@ async def uninstall_skill(user_id: str, skill_id: str) -> bool:
     Returns:
         True if deleted, False if not found
     """
+    log.set(user_id=user_id, skill_id=skill_id, skill_op="uninstall_skill")
     collection = _get_collection()
     result = await collection.delete_one({"_id": skill_id, "user_id": user_id})
     if result.deleted_count > 0:
-        logger.info(f"[skills] Uninstalled skill {skill_id} for user {user_id}")
+        log.info(f"[skills] Uninstalled skill {skill_id} for user {user_id}")
         return True
     return False
 
@@ -228,6 +236,7 @@ async def get_skills_for_agent(user_id: str, agent_name: str) -> List[Skill]:
     Returns:
         List of enabled skills available to this agent
     """
+    log.set(user_id=user_id, agent_name=agent_name, skill_op="get_skills_for_agent")
     collection = _get_collection()
 
     query = {

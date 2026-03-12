@@ -26,7 +26,7 @@ from app.agents.prompts.todo_prompts import (
     TODO_SYSTEM_PROMPT,
     UPDATE_TASKS_DESCRIPTION,
 )
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.override.langgraph_bigtool.utils import State
 from langchain.tools import InjectedToolCallId
 from langchain_core.messages import SystemMessage, ToolMessage
@@ -56,7 +56,7 @@ class TaskInput(TypedDict):
     content: str
 
 
-class TaskUpdate(TypedDict):
+class TaskUpdate(TypedDict, total=False):
     """Input schema for a single task update or new task addition.
 
     To update an existing task: provide task_id and status.
@@ -85,7 +85,7 @@ def _emit_todo_progress(todos: list[Todo], source: str) -> None:
         writer = get_stream_writer()
         writer(payload)
     except Exception as e:
-        logger.warning(f"Stream writer not available for todo_progress: {e}")
+        log.warning(f"Stream writer not available for todo_progress: {e}")
 
 
 def _format_todos(todos: list[Todo]) -> str:

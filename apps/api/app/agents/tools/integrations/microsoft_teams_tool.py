@@ -5,7 +5,7 @@ from typing import Any, Dict, List
 import httpx
 from composio import Composio
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.models.common_models import GatherContextInput
 
 
@@ -22,6 +22,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
 
         Zero required parameters. Returns current Teams state for situational awareness.
         """
+        log.set(tool={"integration": "microsoft_teams", "action": "gather_context"})
         token = auth_credentials.get("access_token")
         if not token:
             raise ValueError("Missing access_token in auth_credentials")
@@ -44,7 +45,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
                 "email": me.get("mail") or me.get("userPrincipalName"),
             }
         except Exception as e:
-            logger.debug(f"Teams /me fetch failed: {e}")
+            log.debug(f"Teams /me fetch failed: {e}")
 
         teams: List[Dict[str, Any]] = []
         try:
@@ -64,7 +65,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
                 for t in resp.json().get("value", [])
             ]
         except Exception as e:
-            logger.debug(f"Teams joinedTeams fetch failed: {e}")
+            log.debug(f"Teams joinedTeams fetch failed: {e}")
 
         chats: List[Dict[str, Any]] = []
         unread_count = 0
@@ -102,7 +103,7 @@ def register_microsoft_teams_custom_tools(composio: Composio) -> List[str]:
                 for c in raw_chats
             ]
         except Exception as e:
-            logger.debug(f"Teams chats fetch failed: {e}")
+            log.debug(f"Teams chats fetch failed: {e}")
 
         return {
             "user": user_info,

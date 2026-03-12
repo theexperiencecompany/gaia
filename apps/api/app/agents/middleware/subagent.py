@@ -18,7 +18,7 @@ from app.agents.tools.core.retrieval import (
     get_retrieve_tools_function,
 )
 from app.agents.tools.core.tool_runtime_config import ToolRuntimeConfig
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.llm import SUBAGENT_RECURSION_LIMIT
 from langchain.agents.middleware.types import (
     AgentMiddleware,
@@ -128,7 +128,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
             except asyncio.CancelledError:
                 raise
             except Exception as e:
-                logger.error("Subagent execution failed: {}", str(e))
+                log.error(f"Subagent execution failed: {e}")
                 return Command(
                     update={
                         "messages": [
@@ -274,7 +274,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                             bound_tool_names,
                         )
                         if newly_bound:
-                            logger.info(
+                            log.info(
                                 f"Subagent bound {len(newly_bound)} tools: {newly_bound}"
                             )
                         content = (
@@ -283,7 +283,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                     except asyncio.CancelledError:
                         raise
                     except Exception as e:
-                        logger.error("Subagent retrieve_tools error: {}", str(e))
+                        log.error(f"Subagent retrieve_tools error: {e}")
                         content = f"retrieve_tools error: {e}"
 
                     messages.append(
@@ -322,7 +322,7 @@ class SubagentMiddleware(AgentMiddleware[SubagentState, Any]):
                 except asyncio.CancelledError:
                     raise
                 except Exception:
-                    logger.exception(
+                    log.exception(
                         "Subagent tool invocation failed for tool '{}' (tool_call_id={})",
                         name,
                         tc_id,

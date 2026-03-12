@@ -7,7 +7,7 @@ while preserving all other message types in their original order.
 
 from typing import TypeVar
 
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from langchain_core.messages import AIMessage, AnyMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langgraph.graph import MessagesState
@@ -67,5 +67,5 @@ def filter_messages_node(state: T, config: RunnableConfig, store: BaseStore) -> 
         return {**state, "messages": filtered_messages}  # type: ignore[return-value]
 
     except Exception as e:
-        logger.error(f"Error in filter messages node: {e}")
+        log.error(f"Error in filter messages node: {e}")
         return state

@@ -23,8 +23,8 @@ Performance:
 """
 
 import pymongo
-from app.config.loggers import app_logger as logger  # Cache for lazy-loaded collections
 from pymongo.server_api import ServerApi
+from shared.py.wide_events import log
 
 # Cache for async (Motor) collections
 _collections_cache = {}
@@ -40,18 +40,18 @@ def _get_mongodb_instance():
     """Get or create async MongoDB instance (Motor)."""
     global _mongodb_instance
     if _mongodb_instance is None:
-        logger.info("Initializing MongoDB instance (lazy loading)")
+        log.info("Initializing MongoDB instance (lazy loading)")
         from app.db.mongodb.mongodb import init_mongodb
 
         _mongodb_instance = init_mongodb()
-        logger.info("MongoDB instance initialized")
+        log.info("MongoDB instance initialized")
     return _mongodb_instance
 
 
 def _get_collection(collection_name: str):
     """Get async collection with lazy loading and caching."""
     if collection_name not in _collections_cache:
-        logger.info(f"Creating async collection '{collection_name}' (lazy loading)")
+        log.info(f"Creating async collection '{collection_name}' (lazy loading)")
         mongodb_instance = _get_mongodb_instance()
         _collections_cache[collection_name] = mongodb_instance.get_collection(
             collection_name
@@ -65,10 +65,10 @@ def _get_sync_db():
     if _sync_db is None:
         from app.config.settings import settings
 
-        logger.info("Initializing sync MongoDB client (PyMongo)")
+        log.info("Initializing sync MongoDB client (PyMongo)")
         _sync_client = pymongo.MongoClient(settings.MONGO_DB, server_api=ServerApi("1"))
         _sync_db = _sync_client.get_database("GAIA")
-        logger.info("Sync MongoDB client initialized")
+        log.info("Sync MongoDB client initialized")
     return _sync_db
 
 
@@ -86,7 +86,7 @@ def get_sync_collection(collection_name: str):
         A PyMongo Collection object (sync)
     """
     if collection_name not in _sync_collections_cache:
-        logger.info(f"Creating sync collection '{collection_name}' (lazy loading)")
+        log.info(f"Creating sync collection '{collection_name}' (lazy loading)")
         db = _get_sync_db()
         _sync_collections_cache[collection_name] = db.get_collection(collection_name)
     return _sync_collections_cache[collection_name]

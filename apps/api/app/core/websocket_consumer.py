@@ -8,7 +8,7 @@ from typing import Optional
 from aio_pika import connect_robust
 from aio_pika.abc import AbstractIncomingMessage
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.core.websocket_manager import websocket_manager
 
@@ -37,10 +37,10 @@ class WebSocketEventConsumer:
             # Start consuming
             await self.queue.consume(self._handle_websocket_message)
 
-            logger.info("WebSocket event consumer started on queue: websocket-events")
+            log.info("WebSocket event consumer started on queue: websocket-events")
 
         except Exception as e:
-            logger.error(f"Failed to start WebSocket event consumer: {e}")
+            log.error(f"Failed to start WebSocket event consumer: {e}")
             raise
 
     async def stop(self) -> None:
@@ -55,10 +55,10 @@ class WebSocketEventConsumer:
             if self.connection:
                 await self.connection.close()
 
-            logger.info("WebSocket event consumer stopped")
+            log.info("WebSocket event consumer stopped")
 
         except Exception as e:
-            logger.error(f"Error stopping WebSocket event consumer: {e}")
+            log.error(f"Error stopping WebSocket event consumer: {e}")
 
     async def _handle_websocket_message(self, message: AbstractIncomingMessage) -> None:
         """Handle incoming WebSocket broadcast messages from RabbitMQ"""
@@ -68,7 +68,7 @@ class WebSocketEventConsumer:
                 data = json.loads(message.body.decode())
 
                 if data.get("type") != "websocket_broadcast":
-                    logger.warning(
+                    log.warning(
                         f"Received unknown WebSocket message type: {data.get('type')}"
                     )
                     return
@@ -76,8 +76,11 @@ class WebSocketEventConsumer:
                 user_id = data.get("user_id")
                 ws_message = data.get("message")
 
+                if user_id:
+                    log.set(websocket={"user_id": user_id})
+
                 if not user_id or not ws_message:
-                    logger.error(
+                    log.error(
                         "Invalid WebSocket broadcast message: missing user_id or message"
                     )
                     return
@@ -89,7 +92,7 @@ class WebSocketEventConsumer:
                         try:
                             await websocket.send_json(ws_message)
                         except Exception as e:
-                            logger.warning(
+                            log.warning(
                                 f"Failed to send WebSocket message to user {user_id}: {e}"
                             )
                             disconnected.add(websocket)
@@ -98,14 +101,14 @@ class WebSocketEventConsumer:
                     for ws in disconnected:
                         websocket_manager.connections[user_id].discard(ws)
 
-                    logger.debug(f"Broadcasted WebSocket message to user {user_id}")
+                    log.debug(f"Broadcasted WebSocket message to user {user_id}")
                 else:
-                    logger.debug(f"No WebSocket connections found for user {user_id}")
+                    log.debug(f"No WebSocket connections found for user {user_id}")
 
             except json.JSONDecodeError as e:
-                logger.error(f"Failed to decode WebSocket message JSON: {e}")
+                log.error(f"Failed to decode WebSocket message JSON: {e}")
             except Exception as e:
-                logger.error(f"Failed to process WebSocket message: {e}")
+                log.error(f"Failed to process WebSocket message: {e}")
 
 
 # Global instance

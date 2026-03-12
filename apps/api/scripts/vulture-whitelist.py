@@ -1,5 +1,5 @@
 # Vulture whitelist — suppress known false positives
-# Add entries as: `variable_name  # noqa`
+# Add entries as: `variable_name`
 # See: https://github.com/jendrikseipp/vulture#whitelisting
 # type: ignore  # mypy: vulture uses _ as a placeholder
 

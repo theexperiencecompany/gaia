@@ -32,7 +32,7 @@ from app.agents.tools.core.tool_runtime_config import (
 from app.agents.tools.memory_tools import search_memory
 from app.agents.tools.todo_tools import create_todo_pre_model_hook, create_todo_tools
 from app.agents.tools.vfs_tools import vfs_cmd, vfs_read
-from app.config.loggers import langchain_logger as logger
+from shared.py.wide_events import log
 from app.override.langgraph_bigtool.create_agent import create_agent
 from app.override.langgraph_bigtool.hooks import HookType
 from langchain_core.language_models import LanguageModelLike
@@ -73,7 +73,8 @@ class SubAgentFactory:
         from app.agents.tools.research_tool import deep_research
         from app.agents.tools.webpage_tool import fetch_webpages, web_search_tool
 
-        logger.info(
+        log.set(subagent={"name": name, "provider": provider})
+        log.info(
             f"Creating {provider} sub-agent graph using tool space '{tool_space}' with "
             + ("direct tools binding" if use_direct_tools else "retrieve tools")
         )
@@ -160,7 +161,7 @@ class SubAgentFactory:
             else None
         )
         if valid_auto_bind and not disable_retrieve_tools:
-            logger.info(
+            log.info(
                 f"Auto-binding {len(valid_auto_bind)} tools for {provider}: {valid_auto_bind}"
             )
 
@@ -201,9 +202,9 @@ class SubAgentFactory:
         try:
             checkpointer_manager = await get_checkpointer_manager()
             checkpointer = checkpointer_manager.get_checkpointer()
-            logger.debug(f"Using PostgreSQL checkpointer for {provider} sub-agent")
+            log.debug(f"Using PostgreSQL checkpointer for {provider} sub-agent")
         except Exception as e:
-            logger.warning(
+            log.warning(
                 f"PostgreSQL checkpointer unavailable for {provider} sub-agent: {e}. Using InMemorySaver."
             )
             checkpointer = InMemorySaver()
@@ -212,7 +213,5 @@ class SubAgentFactory:
             store=store, name=name, checkpointer=checkpointer
         )
 
-        logger.info(
-            f"Successfully created {provider} sub-agent graph with checkpointer"
-        )
+        log.info(f"Successfully created {provider} sub-agent graph with checkpointer")
         return subagent_graph

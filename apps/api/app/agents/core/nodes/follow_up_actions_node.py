@@ -9,7 +9,7 @@ from typing import List, cast
 
 from app.agents.llm.client import get_free_llm_chain, invoke_with_fallback
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.override.langgraph_bigtool.utils import State
 from app.services.integrations.user_integrations import (
     get_user_integration_capabilities,
@@ -51,7 +51,7 @@ async def follow_up_actions_node(
         writer({"main_response_complete": True})
     except Exception as write_error:
         # Stream is closed (user disconnected), no need to continue
-        logger.debug(
+        log.debug(
             f"Stream already closed when sending completion marker: {write_error}"
         )
         return state
@@ -66,7 +66,7 @@ async def follow_up_actions_node(
             try:
                 writer({"follow_up_actions": []})
             except Exception as e:
-                logger.debug(f"Stream closed when sending empty actions: {e}")
+                log.debug(f"Stream closed when sending empty actions: {e}")
             return state
 
         # Get user-specific integration capabilities (cached)
@@ -97,28 +97,35 @@ async def follow_up_actions_node(
             ],
             config=cast(RunnableConfig, {**config, "silent": True}),
         )
+        model_name = (
+            getattr(llm_chain[0], "model_name", None)
+            or getattr(llm_chain[0], "model", None)
+            if llm_chain
+            else None
+        )
+        log.set(agent={"model": model_name})
         try:
             actions = parser.parse(result if isinstance(result, str) else result.text)
         except Exception:
             try:
                 writer({"follow_up_actions": []})
             except Exception as e:
-                logger.debug(f"Stream closed when sending error actions: {e}")
+                log.debug(f"Stream closed when sending error actions: {e}")
             return state
 
         # Always stream follow-up actions, even if empty
         try:
             writer({"follow_up_actions": actions.actions if actions.actions else []})
         except Exception as e:
-            logger.debug(f"Stream closed when sending follow-up actions: {e}")
+            log.debug(f"Stream closed when sending follow-up actions: {e}")
         return state
 
     except Exception as e:
-        logger.error(f"Error in follow-up actions node: {e}")
+        log.error(f"Error in follow-up actions node: {e}")
         try:
             writer({"follow_up_actions": []})
         except Exception as write_error:
-            logger.debug(f"Stream closed in error handler: {write_error}")
+            log.debug(f"Stream closed in error handler: {write_error}")
         return state
 
 

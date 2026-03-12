@@ -4,8 +4,8 @@ Reminder-related ARQ tasks.
 
 from datetime import datetime, timedelta, timezone
 
-from app.config.loggers import arq_worker_logger as logger
 from app.services.reminder_service import reminder_scheduler
+from shared.py.wide_events import log, wide_task
 
 
 async def process_reminder(ctx: dict, reminder_id: str) -> str:
@@ -19,19 +19,12 @@ async def process_reminder(ctx: dict, reminder_id: str) -> str:
     Returns:
         Processing result message
     """
-    logger.info(f"Processing reminder task: {reminder_id}")
-
-    try:
+    async with wide_task("process_reminder", reminder_id=reminder_id):
+        log.info(f"Processing reminder task: {reminder_id}")
         await reminder_scheduler.process_task_execution(reminder_id)
-
         result = f"Successfully processed reminder {reminder_id}"
-        logger.info(result)
+        log.info(result)
         return result
-
-    except Exception as e:
-        error_msg = f"Failed to process reminder {reminder_id}: {str(e)}"
-        logger.error(error_msg)
-        raise
 
 
 async def cleanup_expired_reminders(ctx: dict) -> str:
@@ -44,11 +37,10 @@ async def cleanup_expired_reminders(ctx: dict) -> str:
     Returns:
         Cleanup result message
     """
-    from app.db.mongodb.collections import reminders_collection
+    async with wide_task("cleanup_expired_reminders"):
+        from app.db.mongodb.collections import reminders_collection
 
-    logger.info("Running cleanup of expired reminders")
-
-    try:
+        log.info("Running cleanup of expired reminders")
         cutoff_date = datetime.now(timezone.utc) - timedelta(days=30)
 
         result = await reminders_collection.delete_many(
@@ -57,12 +49,7 @@ async def cleanup_expired_reminders(ctx: dict) -> str:
                 "updated_at": {"$lt": cutoff_date},
             }
         )
-
+        log.set(reminders_deleted=result.deleted_count)
         message = f"Cleaned up {result.deleted_count} expired reminders"
-        logger.info(message)
+        log.info(message)
         return message
-
-    except Exception as e:
-        error_msg = f"Failed to cleanup expired reminders: {str(e)}"
-        logger.error(error_msg)
-        raise

@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.general import NEW_MESSAGE_BREAKER
 from app.db.mongodb.collections import goals_collection
 from app.models.chat_models import (
@@ -22,6 +22,7 @@ async def seed_initial_goal(user_id: str) -> None:
     """
     Create a dummy goal with a full roadmap to showcase features.
     """
+    log.set(operation="seed_initial_goal", user_id=user_id)
     try:
         roadmap_data = {
             "nodes": [
@@ -146,16 +147,17 @@ async def seed_initial_goal(user_id: str) -> None:
             due_date_timezone="UTC",
         )
 
-        logger.info(f"Seeded initial goal for user {user_id}")
+        log.info(f"Seeded initial goal for user {user_id}")
 
     except Exception as e:
-        logger.error(f"Failed to seed initial goal for user {user_id}: {e}")
+        log.error(f"Failed to seed initial goal for user {user_id}: {e}")
 
 
 async def seed_initial_conversation(user_id: str) -> None:
     """
     Seed an initial conversation with Gaia to welcome the user.
     """
+    log.set(operation="seed_initial_conversation", user_id=user_id)
     try:
         # Create a new conversation
         conversation_id = str(uuid4())
@@ -189,10 +191,10 @@ async def seed_initial_conversation(user_id: str) -> None:
         )
 
         await update_messages(update_request, user_dict)
-        logger.info(f"Seeded initial conversation for user {user_id}")
+        log.info(f"Seeded initial conversation for user {user_id}")
 
     except Exception as e:
-        logger.error(f"Failed to seed initial conversation for user {user_id}: {e}")
+        log.error(f"Failed to seed initial conversation for user {user_id}: {e}")
 
 
 async def seed_onboarding_todo(user_id: str) -> None:
@@ -200,6 +202,7 @@ async def seed_onboarding_todo(user_id: str) -> None:
     Create a comprehensive onboarding todo that showcases all todo features.
     This is separate from the goal-linked todo to demonstrate standalone todo functionality.
     """
+    log.set(operation="seed_onboarding_todo", user_id=user_id)
     try:
         due_date = datetime.now(timezone.utc) + timedelta(days=1)
 
@@ -271,7 +274,7 @@ async def seed_onboarding_todo(user_id: str) -> None:
 
         # Create the todo using the service
         await TodoService.create_todo(todo, user_id)
-        logger.info(f"Seeded onboarding todo for user {user_id}")
+        log.info(f"Seeded onboarding todo for user {user_id}")
 
     except Exception as e:
-        logger.error(f"Failed to seed onboarding todo for user {user_id}: {e}")
+        log.error(f"Failed to seed onboarding todo for user {user_id}: {e}")

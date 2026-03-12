@@ -5,7 +5,7 @@ from typing import Optional
 import httpx
 from fastapi import Request
 
-from app.config.loggers import notification_logger as logger
+from shared.py.wide_events import log
 from app.models.notification.notification_models import (
     ActionResult,
     ActionType,
@@ -57,11 +57,16 @@ class ApiCallActionHandler(ActionHandler):
         request: Optional[Request],
     ) -> ActionResult:
         api_config = action.config.api_call
-
-        logger.info(api_config)
+        log.set(
+            operation="execute_api_call_action",
+            action_id=action.id,
+            notification_id=notification.id,
+            user_id=user_id,
+        )
+        log.info(api_config)
 
         if api_config is None:
-            logger.error(
+            log.error(
                 f"API call configuration missing for action {action.id} in notification {notification.id}"
             )
             return ActionResult(
@@ -123,7 +128,7 @@ class ApiCallActionHandler(ActionHandler):
                 )
 
         except httpx.HTTPError as e:
-            logger.error(
+            log.error(
                 f"API call failed for action {action.id} in notification {notification.id}: {str(e)}"
             )
             return ActionResult(
@@ -132,7 +137,7 @@ class ApiCallActionHandler(ActionHandler):
                 error_code="API_ERROR",
             )
         except Exception as e:
-            logger.error(
+            log.error(
                 f"Unexpected error during API call for action {action.id} in notification {notification.id}: {str(e)}"
             )
             return ActionResult(
@@ -162,7 +167,7 @@ class RedirectActionHandler(ActionHandler):
         redirect_config = action.config.redirect
 
         if redirect_config is None:
-            logger.error(
+            log.error(
                 f"Redirect configuration missing for action {action.id} in notification {notification.id}"
             )
             return ActionResult(
@@ -208,7 +213,7 @@ class ModalActionHandler(ActionHandler):
         modal_config = action.config.modal
 
         if modal_config is None:
-            logger.error(
+            log.error(
                 f"Modal configuration missing for action {action.id} in notification {notification.id}"
             )
             return ActionResult(

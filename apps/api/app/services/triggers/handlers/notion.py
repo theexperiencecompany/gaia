@@ -7,7 +7,7 @@ Handles Notion-specific trigger logic.
 import asyncio
 from typing import Any, Dict, List, Literal, Optional, Set, TypedDict
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.db.mongodb.collections import workflows_collection
 from app.models.composio_schemas import (
     NotionAllPageEventsPayload,
@@ -101,7 +101,7 @@ class NotionTriggerHandler(TriggerHandler):
             # Use NOTION_FETCH_DATA tool
             tool = composio_service.get_tool("NOTION_FETCH_DATA", user_id=user_id)
             if not tool:
-                logger.error("Notion FETCH_DATA tool not found")
+                log.error("Notion FETCH_DATA tool not found")
                 return []
 
             # Determine fetch_type based on field_name
@@ -111,7 +111,7 @@ class NotionTriggerHandler(TriggerHandler):
             elif field_name == "page_id":
                 fetch_type = "pages"
             else:
-                logger.warning(f"Unknown Notion field '{field_name}', fetching all")
+                log.warning(f"Unknown Notion field '{field_name}', fetching all")
                 fetch_type = "all"
 
             # Invoke tool with typed input
@@ -121,14 +121,14 @@ class NotionTriggerHandler(TriggerHandler):
                 query=kwargs.get("search"),
             )
 
-            logger.debug(f"Notion fetch input: {input_model.model_dump()}")
+            log.debug(f"Notion fetch input: {input_model.model_dump()}")
 
             result = await asyncio.to_thread(
                 tool.invoke, input_model.model_dump(exclude_none=True)
             )
 
             if not result["successful"]:
-                logger.error(f"Notion API error: {result['error']}")
+                log.error(f"Notion API error: {result['error']}")
                 return []
 
             # Extract and parse data
@@ -143,11 +143,11 @@ class NotionTriggerHandler(TriggerHandler):
                 label = item.title or "Untitled"
                 options.append({"value": item.id, "label": label})
 
-            logger.info(f"Returning {len(options)} Notion {field_name} options")
+            log.info(f"Returning {len(options)} Notion {field_name} options")
             return options
 
         except Exception as e:
-            logger.error(f"Failed to get Notion options for {field_name}: {e}")
+            log.error(f"Failed to get Notion options for {field_name}: {e}")
             return []
 
     async def register(
@@ -186,7 +186,7 @@ class NotionTriggerHandler(TriggerHandler):
             database_ids = trigger_data.database_ids
 
             if not database_ids:
-                logger.warning("No database IDs provided for notion_new_page_in_db")
+                log.warning("No database IDs provided for notion_new_page_in_db")
                 return []
 
             for database_id in database_ids:
@@ -201,7 +201,7 @@ class NotionTriggerHandler(TriggerHandler):
             page_ids = trigger_data.page_ids
 
             if not page_ids:
-                logger.warning("No page IDs provided for notion_page_updated")
+                log.warning("No page IDs provided for notion_page_updated")
                 return []
 
             for page_id in page_ids:
@@ -235,6 +235,7 @@ class NotionTriggerHandler(TriggerHandler):
         self, event_type: str, trigger_id: str, data: Dict[str, Any]
     ) -> List[Workflow]:
         """Find workflows matching a Notion trigger event."""
+        log.set(trigger={"provider": "notion", "event": event_type})
         try:
             # Match by specific trigger ID since these are manually registered
             query = {
@@ -254,7 +255,7 @@ class NotionTriggerHandler(TriggerHandler):
                 elif "all_page_events" in event_type.lower():
                     NotionAllPageEventsPayload.model_validate(data)
             except Exception as e:
-                logger.debug(f"Notion payload validation failed: {e}")
+                log.debug(f"Notion payload validation failed: {e}")
 
             cursor = workflows_collection.find(query)
             workflows: List[Workflow] = []
@@ -267,13 +268,13 @@ class NotionTriggerHandler(TriggerHandler):
                     workflow = Workflow(**workflow_doc)
                     workflows.append(workflow)
                 except Exception as e:
-                    logger.error(f"Error processing workflow document: {e}")
+                    log.error(f"Error processing workflow document: {e}")
                     continue
 
             return workflows
 
         except Exception as e:
-            logger.error(f"Error finding workflows for trigger {trigger_id}: {e}")
+            log.error(f"Error finding workflows for trigger {trigger_id}: {e}")
             return []
 
 

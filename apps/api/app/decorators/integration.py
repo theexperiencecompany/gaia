@@ -7,7 +7,7 @@ This module provides a decorator to check integration requirements before tool e
 from functools import wraps
 from typing import Any, Callable, Optional
 
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.utils.integration_checker import check_and_prompt_integration
 from app.utils.oauth_utils import get_tokens_by_user_id
 
@@ -44,7 +44,7 @@ def require_integration(tool_category: str, tool_name: Optional[str] = None):
                 config = kwargs.get("config")
 
             if not config:
-                logger.warning(
+                log.warning(
                     f"No RunnableConfig found for tool: {tool_name or func.__name__}"
                 )
                 return "Configuration error: Unable to verify integration permissions."
@@ -56,7 +56,7 @@ def require_integration(tool_category: str, tool_name: Optional[str] = None):
             )
 
             if not access_token:
-                logger.warning(
+                log.warning(
                     f"No access token found for tool: {tool_name or func.__name__}"
                 )
                 return "Authentication required: Please ensure you're logged in."

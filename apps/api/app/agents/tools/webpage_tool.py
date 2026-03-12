@@ -4,7 +4,7 @@ import time
 from typing import Annotated, Any, Dict, List, Sequence, Union
 
 from app.agents.templates.fetch_template import FETCH_TEMPLATE
-from app.config.loggers import chat_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_doc, with_rate_limiting
 from app.templates.docstrings.search_tool_docs import (
     WEB_SEARCH_TOOL,
@@ -25,6 +25,7 @@ async def fetch_webpages(
     # state: Annotated[dict, InjectedState],
 ) -> Dict[str, Union[str, Sequence[str]]]:
     try:
+        log.set(tool={"name": "fetch_webpages", "action": "fetch"})
         if not urls:
             return {"error": "No URLs were provided for fetching."}
 
@@ -81,6 +82,7 @@ async def web_search_tool(
     ],
     config: RunnableConfig,
 ) -> Dict[str, Any]:
+    log.set(tool={"name": "web_search_tool", "action": "search"})
     start_time = time.time()
 
     try:
@@ -101,7 +103,7 @@ async def web_search_tool(
         elapsed_time = time.time() - start_time
         formatted_text = f"Web search completed in {elapsed_time:.2f} seconds. Found {len(web_results)} web results, {len(image_results)} images, and {len(video_results)} videos."
 
-        logger.info(formatted_text)
+        log.info(formatted_text)
         writer({"progress": formatted_text})
 
         # Send search data to frontend via writer
@@ -134,19 +136,19 @@ async def web_search_tool(
         }
 
     except (asyncio.TimeoutError, ConnectionError) as e:
-        logger.error(f"Network error in web search: {e}", exc_info=True)
+        log.error(f"Network error in web search: {e}", exc_info=True)
         return {
             "formatted_text": "\n\nConnection timed out during web search. Please try again later.",
             "error": str(e),
         }
     except ValueError as e:
-        logger.error(f"Value error in web search: {e}", exc_info=True)
+        log.error(f"Value error in web search: {e}", exc_info=True)
         return {
             "formatted_text": "\n\nInvalid search parameters. Please try a different query.",
             "error": str(e),
         }
     except Exception as e:
-        logger.error(f"Unexpected error in web search: {e}", exc_info=True)
+        log.error(f"Unexpected error in web search: {e}", exc_info=True)
         return {
             "formatted_text": "\n\nError performing web search. Please try again later.",
             "error": str(e),
@@ -203,7 +205,7 @@ async def web_search_tool(
 #             formatted_results = "No detailed information found from deep research."
 
 #         elapsed_time = time.time() - start_time
-#         logger.info(f"Deep research completed in {elapsed_time:.2f} seconds")
+#         log.info(f"Deep research completed in {elapsed_time:.2f} seconds")
 
 #         # Send deep research data to frontend via writer
 #         writer({"deep_research_results": deep_research_results})
@@ -212,19 +214,19 @@ async def web_search_tool(
 #         return deep_research_results
 
 #     except (asyncio.TimeoutError, ConnectionError) as e:
-#         logger.error(f"Network error in deep research: {e}", exc_info=True)
+#         log.error(f"Network error in deep research: {e}", exc_info=True)
 #         return {
 #             "formatted_text": "\n\nConnection timed out during deep research, falling back to standard results.",
 #             "error": str(e),
 #         }
 #     except ValueError as e:
-#         logger.error(f"Value error in deep research: {e}", exc_info=True)
+#         log.error(f"Value error in deep research: {e}", exc_info=True)
 #         return {
 #             "formatted_text": "\n\nInvalid search parameters, falling back to standard results.",
 #             "error": str(e),
 #         }
 #     except Exception as e:
-#         logger.error(f"Unexpected error in deep research: {e}", exc_info=True)
+#         log.error(f"Unexpected error in deep research: {e}", exc_info=True)
 #         return {
 #             "formatted_text": "\n\nError performing deep research, falling back to standard results.",
 #             "error": str(e),

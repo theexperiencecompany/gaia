@@ -1,10 +1,10 @@
 "use client";
 
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef } from "react";
-
 import { authApi } from "@/features/auth/api/authApi";
 import { useUserActions } from "@/features/auth/hooks/useUser";
+import { usePathname } from "@/i18n/navigation";
 import {
   ANALYTICS_EVENTS,
   identifyUser,

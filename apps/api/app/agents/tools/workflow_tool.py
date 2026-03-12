@@ -33,7 +33,7 @@ from app.utils.workflow_utils import (
     get_user_timezone,
     success_response,
 )
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.decorators import with_rate_limiting
 from app.models.workflow_models import WorkflowExecutionRequest
 from app.services.workflow import WorkflowService
@@ -99,6 +99,7 @@ async def create_workflow(
 
     Just pass user_request and mode. The workflow assistant handles everything else.
     """
+    log.set(tool={"name": "create_workflow", "action": "create"})
     writer = get_stream_writer()
 
     try:
@@ -137,7 +138,7 @@ async def create_workflow(
                 f"Unknown mode: {mode}. Use 'new' or 'from_conversation'.",
             )
 
-        logger.info(f"[create_workflow] Executing with mode={mode}")
+        log.info(f"[create_workflow] Executing with mode={mode}")
 
         # Execute workflow subagent
         subagent_response = await WorkflowSubagentRunner.execute(
@@ -151,14 +152,14 @@ async def create_workflow(
 
         # Parse the response
         result = parse_subagent_response(subagent_response)
-        logger.info(f"[create_workflow] Parsed mode={result.mode}")
+        log.info(f"[create_workflow] Parsed mode={result.mode}")
 
         if result.mode == "finalized" and result.draft:
             draft = result.draft
 
             # Check if we can create directly (simple, unambiguous workflows)
             if can_create_directly(draft):
-                logger.info(
+                log.info(
                     f"[create_workflow] Attempting direct creation for: {draft.title}"
                 )
 
@@ -175,13 +176,13 @@ async def create_workflow(
                     return direct_result
 
                 # Fall through to draft card if direct creation failed
-                logger.info(
+                log.info(
                     "[create_workflow] Direct creation failed, falling back to draft"
                 )
 
             # Stream workflow draft to frontend for user confirmation
             writer(result.draft.to_stream_payload())
-            logger.info(f"[create_workflow] Streamed draft: {result.draft.title}")
+            log.info(f"[create_workflow] Streamed draft: {result.draft.title}")
 
             return success_response(
                 {"status": "draft_sent", "mode": mode},
@@ -207,7 +208,7 @@ async def create_workflow(
         elif result.mode == "parse_error":
             # Subagent returned something we couldn't parse.
             # Let the executor know so it can inform the user or retry.
-            logger.warning(f"[create_workflow] Parse error: {result.parse_error}")
+            log.warning(f"[create_workflow] Parse error: {result.parse_error}")
             return error_response(
                 "parse_error",
                 f"Failed to process the workflow assistant's response: {result.parse_error}. "
@@ -221,7 +222,7 @@ async def create_workflow(
             )
 
     except Exception as e:
-        logger.error(f"[create_workflow] Exception: {e}", exc_info=True)
+        log.error(f"[create_workflow] Exception: {e}", exc_info=True)
         return error_response("subagent_failed", str(e))
 
 
@@ -233,6 +234,7 @@ async def get_workflow(
 ) -> dict:
     """Get detailed information about a specific workflow."""
     try:
+        log.set(tool={"name": "get_workflow", "action": "get"})
         user_id = get_user_id(config)
         workflow = await WorkflowService.get_workflow(workflow_id, user_id)
         if not workflow:
@@ -244,7 +246,7 @@ async def get_workflow(
         return success_response(workflow.model_dump())
 
     except Exception as e:
-        logger.error(f"Error getting workflow {workflow_id}: {e}")
+        log.error(f"Error getting workflow {workflow_id}: {e}")
         return error_response("fetch_failed", str(e))
 
 
@@ -256,6 +258,7 @@ async def execute_workflow(
 ) -> dict:
     """Execute a workflow immediately (run now)."""
     try:
+        log.set(tool={"name": "execute_workflow", "action": "execute"})
         user_id = get_user_id(config)
         result = await WorkflowService.execute_workflow(
             workflow_id, WorkflowExecutionRequest(), user_id
@@ -273,7 +276,7 @@ async def execute_workflow(
         return success_response(data)
 
     except Exception as e:
-        logger.error(f"Error executing workflow {workflow_id}: {e}")
+        log.error(f"Error executing workflow {workflow_id}: {e}")
         return error_response("execution_failed", str(e))
 
 

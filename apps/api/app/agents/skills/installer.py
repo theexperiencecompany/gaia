@@ -20,7 +20,7 @@ from app.agents.skills.parser import (
 )
 from app.agents.skills.registry import get_skill, install_skill, uninstall_skill
 from app.agents.skills.utils import GITHUB_API_BASE, get_github_headers
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.services.vfs.path_resolver import get_custom_skill_path
 
 
@@ -86,7 +86,7 @@ async def _fetch_github_contents(
         raise ValueError(f"Path not found: {owner}/{repo}/{path}")
 
     if resp.status_code == 403:
-        logger.warning("GitHub API rate limit exceeded. Try again later.")
+        log.warning("GitHub API rate limit exceeded. Try again later.")
         raise ValueError(
             "GitHub API rate limit exceeded. Please try again later, or set GITHUB_TOKEN for higher limits (5000/hr vs 60/hr)."
         )
@@ -151,7 +151,15 @@ async def install_from_github(
 
     source_url = f"https://github.com/{owner}/{repo}/tree/main/{base_path}"
 
-    logger.info(f"[skills] Fetching from GitHub: {owner}/{repo}/{base_path}")
+    log.set(
+        user_id=user_id,
+        github_owner=owner,
+        github_repo=repo,
+        github_skill_path=base_path,
+        skill_op="install_from_github",
+        skill_target=target_override,
+    )
+    log.info(f"[skills] Fetching from GitHub: {owner}/{repo}/{base_path}")
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # Fetch the directory contents
@@ -233,7 +241,7 @@ async def install_from_github(
         allowed_tools=metadata.allowed_tools,
     )
 
-    logger.info(
+    log.info(
         f"[skills] Installed '{metadata.name}' from GitHub "
         f"({len(file_list)} files, target={target})"
     )
@@ -316,6 +324,12 @@ async def install_from_inline(
     Returns:
         The installed skill
     """
+    log.set(
+        user_id=user_id,
+        skill_name=name,
+        skill_target=target,
+        skill_op="install_from_inline",
+    )
     # Generate SKILL.md content (with frontmatter for validation)
     skill_md_content = generate_skill_md(
         name=name,
@@ -359,7 +373,7 @@ async def install_from_inline(
         allowed_tools=metadata.allowed_tools,
     )
 
-    logger.info(f"[skills] Created inline skill '{name}' (target={target})")
+    log.info(f"[skills] Created inline skill '{name}' (target={target})")
     return installed
 
 
@@ -377,12 +391,20 @@ async def uninstall_skill_full(user_id: str, skill_id: str) -> bool:
     if not skill:
         return False
 
+    log.set(
+        user_id=user_id,
+        skill_id=skill_id,
+        skill_name=skill.name,
+        skill_vfs_path=skill.vfs_path,
+        skill_op="uninstall_skill_full",
+    )
+
     # Delete VFS directory
     try:
         vfs = await _get_vfs()
         await vfs.delete(skill.vfs_path, user_id=user_id, recursive=True)
     except Exception as e:
-        logger.warning(f"[skills] VFS cleanup failed for {skill_id}: {e}")
+        log.warning(f"[skills] VFS cleanup failed for {skill_id}: {e}")
 
     # Remove from registry
     return await uninstall_skill(user_id, skill_id)

@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from typing import Any, Dict, List, Literal, Optional
 
 from app.agents.tools.core.registry import get_tool_registry
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.constants.cache import ONE_DAY_TTL
 from app.db.mongodb.collections import user_integrations_collection
 from app.db.utils import serialize_document
@@ -41,7 +41,7 @@ async def get_user_integrations(user_id: str) -> UserIntegrationsListResponse:
                     )
                 )
         except Exception as e:
-            logger.warning(f"Failed to parse user integration: {e}")
+            log.warning(f"Failed to parse user integration: {e}")
 
     return UserIntegrationsListResponse(
         integrations=user_integrations,
@@ -72,6 +72,7 @@ async def add_user_integration(
     initial_status: Optional[Literal["created", "connected"]] = None,
 ) -> UserIntegration:
     """Add an integration to user's workspace."""
+    log.set(integration={"provider": integration_id, "action": "add_user_integration"})
     integration = await get_integration_details(integration_id)
     if not integration:
         raise ValueError(f"Integration '{integration_id}' not found")
@@ -101,9 +102,7 @@ async def add_user_integration(
     )
 
     await user_integrations_collection.insert_one(user_integration.model_dump())
-    logger.info(
-        f"User {user_id} added integration {integration_id} with status {status}"
-    )
+    log.info(f"User {user_id} added integration {integration_id} with status {status}")
 
     return user_integration
 
@@ -111,6 +110,9 @@ async def add_user_integration(
 @CacheInvalidator(key_patterns=["tools:user:{user_id}:*", "tool_namespaces:{user_id}"])
 async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     """Remove an integration from user's workspace."""
+    log.set(
+        integration={"provider": integration_id, "action": "remove_user_integration"}
+    )
     result = await user_integrations_collection.delete_one(
         {
             "user_id": user_id,
@@ -119,7 +121,7 @@ async def remove_user_integration(user_id: str, integration_id: str) -> bool:
     )
 
     if result.deleted_count > 0:
-        logger.info(f"User {user_id} removed integration {integration_id}")
+        log.info(f"User {user_id} removed integration {integration_id}")
         return True
 
     return False

@@ -26,11 +26,13 @@ services:
       ]
     environment:
       PYTHONUNBUFFERED: 1
-      FORCE_COLOR: 1
+      FORCE_COLOR: 0
       WORKER_TYPE: main_app
       PYTHONDONTWRITEBYTECODE: 1
       PYTHONPATH: /app/apps/api
       PYTHONIOENCODING: utf-8
+      LOG_FORMAT: json
+      LOG_COLORIZE: "false"
     env_file:
       - ../../apps/api/.env
     ports:
@@ -147,6 +149,8 @@ services:
     environment:
       - WORKER_TYPE=arq_worker
       - PYTHONPATH=/app/apps/api
+      - LOG_FORMAT=json
+      - LOG_COLORIZE=false
     command:
       [
         "python",
@@ -237,12 +241,124 @@ services:
     networks:
       - gaia_network
 
+  # ---------------------------------------------------------------------------
+  # Metrics exporters
+  # ---------------------------------------------------------------------------
+
+  postgres_exporter:
+    image: prometheuscommunity/postgres-exporter:v0.15.0
+    container_name: postgres_exporter
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:postgres@postgres:5432/langgraph?sslmode=disable" # pragma: allowlist secret
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  redis_exporter:
+    image: oliver006/redis_exporter:v1.66.0
+    container_name: redis_exporter
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - gaia_network
+
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    container_name: prometheus
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=30d"
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    mem_limit: 512m
+    cpus: "0.5"
+
+  # ---------------------------------------------------------------------------
+  # Observability stack — Loki (log store) + Promtail (shipper) + Grafana (UI)
+  # Access Grafana at http://<server-ip>:3000  (admin / see GRAFANA_ADMIN_PASSWORD)
+  # ---------------------------------------------------------------------------
+
+  loki:
+    image: grafana/loki:3.3.2
+    container_name: loki
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    restart: unless-stopped
+    networks:
+      - gaia_network
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    mem_limit: 512m
+    cpus: "0.5"
+
+  promtail:
+    image: grafana/promtail:3.3.2
+    container_name: promtail
+    volumes:
+      - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/run/docker.sock:/var/run/docker.sock
+      # In prod the API always runs in Docker, so this mount is a no-op safety fallback
+      - ../../apps/api/logs:/var/log/gaia-api:ro
+    command: -config.file=/etc/promtail/config.yaml
+    restart: unless-stopped
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    mem_limit: 128m
+    cpus: "0.25"
+
+  grafana:
+    image: grafana/grafana:11.4.0
+    container_name: grafana
+    ports:
+      - "${GRAFANA_HOST_PORT:-4000}:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning
+    environment:
+      # IMPORTANT: Set GRAFANA_ADMIN_PASSWORD in your .env file before deploying.
+      # The default "changeme" is intentionally obvious — change it for production.
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-changeme}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      # Set GRAFANA_ROOT_URL if Grafana is behind a reverse proxy (e.g. https://grafana.example.com)
+      GF_SERVER_ROOT_URL: ${GRAFANA_ROOT_URL:-http://localhost:4000}
+    restart: unless-stopped
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - gaia_network
+    mem_limit: 256m
+    cpus: "0.5"
+
 volumes:
   chroma_data:
   pgdata:
   redis_data:
   rabbitmq_data:
   voice_agent_models:
+  loki_data:
+  grafana_data:
+  prometheus_data:
 
 networks:
   gaia_network:

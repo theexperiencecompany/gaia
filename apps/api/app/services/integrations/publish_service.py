@@ -2,7 +2,7 @@
 
 from datetime import datetime, timezone
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.db.chroma.public_integrations_store import (
     index_public_integration,
     remove_public_integration,
@@ -36,6 +36,7 @@ async def publish_custom_integration(
     Returns dict with integration_id and public_url on success.
     Raises PublishError on failure.
     """
+    log.set(integration={"provider": integration_id, "action": "publish"})
     integration = await integrations_collection.find_one(
         {"integration_id": integration_id}
     )
@@ -107,7 +108,7 @@ async def publish_custom_integration(
     )
 
     await delete_cache_by_pattern("marketplace:community:*")
-    logger.info(f"Published integration {integration_id}")
+    log.info(f"Published integration {integration_id}")
 
     return {
         "integration_id": integration_id,
@@ -124,6 +125,7 @@ async def unpublish_custom_integration(
     Returns dict with integration_id on success.
     Raises PublishError on failure.
     """
+    log.set(integration={"provider": integration_id, "action": "unpublish"})
     integration = await integrations_collection.find_one(
         {"integration_id": integration_id}
     )
@@ -149,6 +151,6 @@ async def unpublish_custom_integration(
 
     await remove_public_integration(integration_id)
     await delete_cache_by_pattern("marketplace:community:*")
-    logger.info(f"Unpublished integration {integration_id}")
+    log.info(f"Unpublished integration {integration_id}")
 
     return {"integration_id": integration_id}

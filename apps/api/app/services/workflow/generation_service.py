@@ -15,7 +15,7 @@ from app.agents.templates.workflow_template import (
     WORKFLOW_GENERATION_TEMPLATE,
     workflow_parser,
 )
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.models.workflow_models import (
     GeneratedPromptOutput,
@@ -102,9 +102,9 @@ class WorkflowGenerationService:
     ) -> list:
         """Generate workflow steps using LLM with Pydantic parser."""
         try:
-            logger.info(f"[WorkflowGen] ========== START: {title} ==========")
+            log.info(f"[WorkflowGen] ========== START: {title} ==========")
 
-            logger.info("[WorkflowGen] Getting tool registry...")
+            log.info("[WorkflowGen] Getting tool registry...")
             # Inline import required: top-level causes a circular import via
             # registry → workflow_tool → services.workflow → generation_service
             from app.agents.tools.core.registry import get_tool_registry
@@ -147,13 +147,13 @@ class WorkflowGenerationService:
                 "generate outlines, extract key points, write briefs. No external tool call."
             )
 
-            logger.info(f"[WorkflowGen] Categories: {len(category_names)}")
+            log.info(f"[WorkflowGen] Categories: {len(category_names)}")
 
             trigger_context = generate_trigger_context(trigger_config)
 
             llm = init_llm()
 
-            logger.info("[WorkflowGen] Formatting prompt...")
+            log.info("[WorkflowGen] Formatting prompt...")
             prompt_context = prompt
             if description:
                 prompt_context = (
@@ -168,33 +168,31 @@ class WorkflowGenerationService:
                 tools="\n".join(tools_with_categories),
                 categories=", ".join(category_names),
             )
-            logger.info(f"[WorkflowGen] Prompt: {len(formatted_prompt)} chars")
+            log.info(f"[WorkflowGen] Prompt: {len(formatted_prompt)} chars")
 
-            logger.info("[WorkflowGen] === CALLING LLM ===")
+            log.info("[WorkflowGen] === CALLING LLM ===")
             llm_response = await llm.ainvoke(formatted_prompt)
-            logger.info("[WorkflowGen] === LLM RESPONDED ===")
+            log.info("[WorkflowGen] === LLM RESPONDED ===")
 
             # Parse response
             response_content = getattr(llm_response, "content", str(llm_response))
-            logger.info(f"[WorkflowGen] Response: {len(response_content)} chars")
-            logger.debug(f"[WorkflowGen] Full response:\n{response_content}")
+            log.info(f"[WorkflowGen] Response: {len(response_content)} chars")
+            log.debug(f"[WorkflowGen] Full response:\n{response_content}")
 
-            logger.info("[WorkflowGen] === PARSING ===")
+            log.info("[WorkflowGen] === PARSING ===")
             result = workflow_parser.parse(response_content)
-            logger.info(f"[WorkflowGen] === SUCCESS: {len(result.steps)} steps ===")
+            log.info(f"[WorkflowGen] === SUCCESS: {len(result.steps)} steps ===")
 
             # Enrich with id
             steps_data = enrich_steps(result.steps)
 
-            logger.info(
+            log.info(
                 f"[WorkflowGen] ========== DONE: {len(steps_data)} steps =========="
             )
             return steps_data
 
         except Exception as e:
-            logger.error(
-                f"[WorkflowGen] ========== FAILED: {e} ==========", exc_info=True
-            )
+            log.error(f"[WorkflowGen] ========== FAILED: {e} ==========", exc_info=True)
             return []
 
     @staticmethod

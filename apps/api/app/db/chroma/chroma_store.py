@@ -10,9 +10,10 @@ from collections.abc import Iterable
 from datetime import datetime, timezone
 from typing import Any
 
-from app.config.loggers import chroma_logger as logger
 from chromadb.api import AsyncClientAPI
+from shared.py.wide_events import log
 from chromadb.api.models.AsyncCollection import AsyncCollection
+from chromadb.api.types import EmbeddingFunction
 from langchain_core.embeddings import Embeddings
 from langgraph.store.base import (
     BaseStore,
@@ -30,6 +31,29 @@ from langgraph.store.base import (
     get_text_at_path,
     tokenize_path,
 )
+
+
+class _NoOpEmbeddingFunction(EmbeddingFunction):  # type: ignore[type-arg]
+    """Embedding function that bypasses model loading.
+
+    ChromaStore computes its own embeddings via ``self.embeddings`` and passes
+    them explicitly to ``collection.upsert(embeddings=...)``.  When no
+    embeddings are provided, ChromaDB falls back to its default ONNX-based
+    model which requires downloading and loading ``all-MiniLM-L6-v2``.
+
+    Registering this no-op function on the collection prevents ChromaDB from
+    ever attempting to load the ONNX model, avoiding failures in environments
+    where the model is unavailable (CI, minimal containers, etc.).
+    """
+
+    def __init__(self) -> None:
+        pass
+
+    def __call__(self, input: list[str]) -> Any:
+        return [[0.0] * 384 for _ in input]
+
+
+_NOOP_EF = _NoOpEmbeddingFunction()
 
 
 class ChromaStore(BaseStore):
@@ -83,20 +107,34 @@ class ChromaStore(BaseStore):
             self._tokenized_fields = []
 
     async def _get_collection(self) -> AsyncCollection:
-        """Get or create the ChromaDB collection."""
+        """Get or create the ChromaDB collection.
+
+        Uses ``_NOOP_EF`` as the collection-level embedding function so
+        ChromaDB never attempts to load its default ONNX model.  ChromaStore
+        manages embeddings itself via ``self.embeddings`` and always passes
+        them explicitly to ``collection.upsert()``.
+        """
         if self._collection_cache is None:
             collections = await self.client.list_collections()
             collection_names = [col.name for col in collections]
 
             if self.collection_name not in collection_names:
-                logger.info(f"Creating ChromaDB collection: {self.collection_name}")
+                log.set(
+                    db={
+                        "operation": "create_collection",
+                        "collection": self.collection_name,
+                    }
+                )
+                log.info(f"Creating ChromaDB collection: {self.collection_name}")
                 self._collection_cache = await self.client.create_collection(
                     name=self.collection_name,
                     metadata={"hnsw:space": "cosine"},
+                    embedding_function=_NOOP_EF,
                 )
             else:
                 self._collection_cache = await self.client.get_collection(
-                    name=self.collection_name
+                    name=self.collection_name,
+                    embedding_function=_NOOP_EF,
                 )
 
         return self._collection_cache
@@ -222,7 +260,7 @@ class ChromaStore(BaseStore):
                 else datetime.now(timezone.utc),
             )
         except Exception as e:
-            logger.error(f"Error getting item {doc_id}: {e}")
+            log.error(f"Error getting item {doc_id}: {e}")
             return None
 
     async def _filter_items(
@@ -258,7 +296,7 @@ class ChromaStore(BaseStore):
                 try:
                     value = pickle.loads(document.encode("latin1"))  # nosec B301 - Internal trusted data only
                 except Exception as e:
-                    logger.debug(f"Failed to deserialize document at index {idx}: {e}")
+                    log.debug(f"Failed to deserialize document at index {idx}: {e}")
                     continue
                 if not isinstance(value, dict):
                     continue
@@ -267,7 +305,7 @@ class ChromaStore(BaseStore):
 
             return filtered_ids
         except Exception as e:
-            logger.error(f"Error filtering items: {e}")
+            log.error(f"Error filtering items: {e}")
             return []
 
     def _matches_namespace_prefix(
@@ -419,7 +457,7 @@ class ChromaStore(BaseStore):
                     # Apply pagination
                     results[i] = items[op.offset : op.offset + op.limit]
                 except Exception as e:
-                    logger.error(f"Error in vector search: {e}")
+                    log.error(f"Error in vector search: {e}")
                     results[i] = []
             else:
                 # No query, just return filtered items with pagination
@@ -469,7 +507,7 @@ class ChromaStore(BaseStore):
         try:
             await collection.delete(ids=[doc_id])
         except Exception as e:
-            logger.error(f"Error deleting item {doc_id}: {e}")
+            log.error(f"Error deleting item {doc_id}: {e}")
 
     async def _upsert_item(
         self, doc_id: str, op: PutOp, collection: AsyncCollection
@@ -521,7 +559,7 @@ class ChromaStore(BaseStore):
                 documents=[document],
             )
         except Exception as e:
-            logger.error(f"Error upserting item {doc_id}: {e}")
+            log.error(f"Error upserting item {doc_id}: {e}")
 
     async def _handle_list_namespaces(
         self, op: ListNamespacesOp, collection: AsyncCollection
@@ -553,7 +591,7 @@ class ChromaStore(BaseStore):
             sorted_namespaces = sorted(namespaces)
             return sorted_namespaces[op.offset : op.offset + op.limit]
         except Exception as e:
-            logger.error(f"Error listing namespaces: {e}")
+            log.error(f"Error listing namespaces: {e}")
             return []
 
     def _does_match(

@@ -5,6 +5,7 @@ Router module for image generation and image-to-text endpoints.
 from fastapi import APIRouter, File, Form, UploadFile, Depends
 from fastapi.responses import JSONResponse, StreamingResponse
 
+from shared.py.wide_events import log
 from app.models.message_models import MessageRequest
 from app.services.image_service import (
     api_generate_image,
@@ -21,7 +22,9 @@ router = APIRouter()
 @tiered_rate_limit("generate_image")
 async def image(request: MessageRequest, _user: dict = Depends(get_current_user)):
     """Generate an image based on the text prompt."""
+    log.set(operation="generate", prompt_length=len(request.message))
     response = await api_generate_image(request.message)
+    log.set(outcome="success")
     return JSONResponse(content=response)
 
 
@@ -33,7 +36,14 @@ async def image_to_text(
     _user: dict = Depends(get_current_user),
 ):
     """Extract text from an image using OCR."""
+    log.set(
+        operation="image_to_text",
+        file_name=file.filename,
+        mime_type=file.content_type,
+        prompt_length=len(message),
+    )
     response = await image_to_text_endpoint(message, file)
+    log.set(outcome="success")
     return JSONResponse(content=response)
 
 
@@ -43,6 +53,11 @@ async def image_stream(
     request: MessageRequest, _user: dict = Depends(get_current_user)
 ):
     """Generate an image with streaming response."""
+    log.set(
+        operation="generate_stream",
+        prompt_length=len(request.message),
+        outcome="success",
+    )
     return StreamingResponse(
         generate_image_stream(request.message),
         media_type="text/event-stream",

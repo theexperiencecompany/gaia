@@ -1,7 +1,7 @@
 """Public integration routes (no auth required for SEO/sharing)."""
 
 from app.api.v1.dependencies.oauth_dependencies import get_user_id
-from app.config.loggers import auth_logger as logger
+from shared.py.wide_events import log
 from app.db.chroma.public_integrations_store import search_public_integrations
 from app.db.mongodb.collections import (
     integrations_collection,
@@ -35,6 +35,7 @@ async def get_public_integration(
 ) -> PublicIntegrationDetailResponse:
     """Get public integration details by slug."""
     try:
+        log.set(operation="get_public_integration", integration_id=identifier)
         slug_parts = parse_integration_slug(identifier)
         short_id = slug_parts.get("shortid")
 
@@ -52,12 +53,14 @@ async def get_public_integration(
             raise HTTPException(status_code=404, detail="Integration not found")
 
         response_data = format_public_integration_response(docs[0])
+        log.set(integration_name=response_data.get("name"))
+        log.set(outcome="success")
         return PublicIntegrationDetailResponse(**response_data)
 
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error fetching public integration {identifier}: {e}")
+        log.error(f"Error fetching public integration {identifier}: {e}")
         raise HTTPException(status_code=500, detail="Failed to fetch integration")
 
 
@@ -69,6 +72,12 @@ async def add_public_integration(
 ) -> AddIntegrationResponse:
     """Add a public integration to user's workspace and trigger connection."""
     try:
+        log.set(
+            operation="add_public_integration",
+            integration_id=integration_id,
+            user={"id": user_id},
+            integration={"id": integration_id},
+        )
         original_doc = await integrations_collection.find_one(
             {"integration_id": integration_id, "is_public": True}
         )
@@ -88,7 +97,7 @@ async def add_public_integration(
                     status="connected",
                     message="Integration already connected",
                 )
-            logger.info(f"User {user_id} re-attempting connection to {integration_id}")
+            log.info(f"User {user_id} re-attempting connection to {integration_id}")
         else:
             try:
                 await add_user_integration(
@@ -104,7 +113,7 @@ async def add_public_integration(
                 {"$inc": {"clone_count": 1}},
             )
 
-            logger.info(f"User {user_id} added integration {integration_id}")
+            log.info(f"User {user_id} added integration {integration_id}")
 
         mcp_config = original_doc.get("mcp_config", {})
         server_url = mcp_config.get("server_url")
@@ -132,6 +141,8 @@ async def add_public_integration(
             bearer_token=request.bearer_token,
         )
 
+        log.set(integration_name=integration_name)
+        log.set(outcome="success")
         return AddIntegrationResponse(
             integration_id=integration_id,
             name=integration_name,
@@ -144,7 +155,7 @@ async def add_public_integration(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error adding integration {integration_id}: {e}")
+        log.error(f"Error adding integration {integration_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to add integration")
 
 
@@ -152,11 +163,16 @@ async def add_public_integration(
 async def search_integrations(q: str) -> SearchIntegrationsResponse:
     """Search public integrations using semantic search."""
     try:
+        log.set(operation="search_integrations")
         if not q or not q.strip():
+            log.set(result_count=0)
+            log.set(outcome="success")
             return SearchIntegrationsResponse(integrations=[], query=q)
 
         results = await search_public_integrations(query=q.strip(), limit=20)
         if not results:
+            log.set(result_count=0)
+            log.set(outcome="success")
             return SearchIntegrationsResponse(integrations=[], query=q)
 
         relevance_map = {r["integration_id"]: r["relevance_score"] for r in results}
@@ -194,8 +210,10 @@ async def search_integrations(q: str) -> SearchIntegrationsResponse:
                 )
             )
 
+        log.set(result_count=len(formatted))
+        log.set(outcome="success")
         return SearchIntegrationsResponse(integrations=formatted, query=q)
 
     except Exception as e:
-        logger.error(f"Error searching integrations: {e}")
+        log.error(f"Error searching integrations: {e}")
         raise HTTPException(status_code=500, detail="Failed to search integrations")

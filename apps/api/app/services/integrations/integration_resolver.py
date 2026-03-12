@@ -9,7 +9,7 @@ across mcp_client.py, integrations.py, and integration_service.py.
 from dataclasses import dataclass
 from typing import Optional
 
-from app.config.loggers import common_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import get_integration_by_id
 from app.db.mongodb.collections import integrations_collection
 from app.models.mcp_config import MCPConfig
@@ -53,6 +53,7 @@ class IntegrationResolver:
         Returns:
             ResolvedIntegration if found, None otherwise
         """
+        log.set(integration={"provider": integration_id, "action": "resolve"})
         # Try platform integration first (from code)
         platform_integration = get_integration_by_id(integration_id)
 
@@ -108,7 +109,7 @@ class IntegrationResolver:
 
                 # Warn about inconsistencies and fix them
                 if doc_requires_auth != mcp_requires_auth:
-                    logger.info(
+                    log.info(
                         f"Integration {integration_id}: syncing requires_auth "
                         f"from {doc_requires_auth} to {mcp_requires_auth} (mcp_config is authoritative)"
                     )
@@ -124,7 +125,7 @@ class IntegrationResolver:
                             },
                         )
                     except Exception as sync_err:
-                        logger.warning(
+                        log.warning(
                             f"Failed to sync requires_auth for {integration_id}: {sync_err}"
                         )
 

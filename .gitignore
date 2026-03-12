@@ -91,8 +91,6 @@ dist/
 
 .pnpm-store/
 
-.vscode/settings.json
-
 .cursor
 .hypothesis
 
@@ -118,4 +116,9 @@ postman/
 /config.json
 
 docs/plans/
+# metrics_token is tracked as an empty default file (safe for dev).
+# Populate it with your actual bearer token for production scraping.
 .opencode/plans
+
+.coverage
+i18n.cache

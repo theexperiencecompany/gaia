@@ -1,0 +1,60 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: gaia-api
+    # Two targets: one for Docker (gaia-backend container), one for local dev
+    # (host.docker.internal lets Prometheus reach the host machine's port 8000).
+    # Whichever isn't running will show as DOWN in Prometheus — that's fine.
+    # Bearer token must match METRICS_TOKEN in the API's environment.
+    authorization:
+      credentials_file: /etc/prometheus/metrics_token
+    static_configs:
+      - targets: ["gaia-backend:80"]
+        labels:
+          env: docker
+      - targets: ["host.docker.internal:8000"]
+        labels:
+          env: local
+    metrics_path: /metrics
+
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres_exporter:9187"]
+
+  - job_name: redis
+    static_configs:
+      - targets: ["redis_exporter:9121"]
+
+  - job_name: mongodb
+    static_configs:
+      - targets: ["mongodb_exporter:9216"]
+
+  - job_name: rabbitmq
+    static_configs:
+      - targets: ["rabbitmq:15692"]
+
+  - job_name: cadvisor
+    scrape_interval: 15s
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  - job_name: node
+    static_configs:
+      - targets: ["node_exporter:9100"]
+
+  # Blackbox HTTP probes for services without native Prometheus metrics
+  - job_name: chromadb
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets: ["http://chromadb:8000/api/v2/heartbeat"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox_exporter:9115

@@ -7,7 +7,7 @@ Handles Composio trigger reference counting to prevent premature deletion.
 
 from typing import Any, Dict, List, Optional
 
-from app.config.loggers import general_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import OAUTH_INTEGRATIONS
 from app.db.mongodb.collections import workflows_collection
 from app.models.trigger_config import WorkflowTriggerSchema
@@ -92,7 +92,7 @@ class TriggerService:
             )
             return count
         except Exception as e:
-            logger.error(f"Error counting trigger references for {trigger_id}: {e}")
+            log.error(f"Error counting trigger references for {trigger_id}: {e}")
             return 0
 
     @staticmethod
@@ -131,11 +131,11 @@ class TriggerService:
                 if count == 0:
                     safe_to_delete.append(trigger_id)
                 else:
-                    logger.debug(
+                    log.debug(
                         f"Trigger {trigger_id} still referenced by {count} other workflow(s), skipping deletion"
                     )
             except Exception as e:
-                logger.error(f"Error checking trigger references for {trigger_id}: {e}")
+                log.error(f"Error checking trigger references for {trigger_id}: {e}")
                 # Don't delete if we can't verify - safer to leave orphaned triggers
                 continue
 
@@ -169,7 +169,7 @@ class TriggerService:
         handler = get_handler_by_name(trigger_name)
         if not handler:
             error_msg = f"No handler found for trigger: {trigger_name}"
-            logger.error(error_msg)
+            log.error(error_msg)
             if raise_on_failure:
                 raise TriggerRegistrationError(error_msg, trigger_name)
             return []
@@ -190,15 +190,15 @@ class TriggerService:
             return trigger_ids
         except TypeError as e:
             # Re-raise TypeError for type validation failures
-            logger.error(f"Type validation error registering triggers: {str(e)}")
+            log.error(f"Type validation error registering triggers: {str(e)}")
             raise
         except TriggerRegistrationError:
             # Re-raise our custom exception
             raise
         except Exception as e:
             error_msg = f"Error registering triggers: {type(e).__name__}: {str(e)}"
-            logger.error(error_msg)
-            logger.exception("Full traceback:")
+            log.error(error_msg)
+            log.exception("Full traceback:")
             if raise_on_failure:
                 raise TriggerRegistrationError(error_msg, trigger_name)
             return []
@@ -231,7 +231,7 @@ class TriggerService:
 
         handler = get_handler_by_name(trigger_name)
         if not handler:
-            logger.error(f"No handler found for trigger: {trigger_name}")
+            log.error(f"No handler found for trigger: {trigger_name}")
             return False
 
         try:
@@ -241,19 +241,19 @@ class TriggerService:
             )
 
             if not safe_to_delete:
-                logger.info(
+                log.info(
                     f"No triggers safe to delete - all {len(trigger_ids)} trigger(s) "
                     "are still referenced by other workflows"
                 )
                 return True
 
             if len(safe_to_delete) < len(trigger_ids):
-                logger.info(
+                log.info(
                     f"Only {len(safe_to_delete)} of {len(trigger_ids)} triggers "
                     "are safe to delete (others still referenced)"
                 )
 
             return await handler.unregister(user_id, safe_to_delete)
         except Exception as e:
-            logger.error(f"Error unregistering triggers: {e}")
+            log.error(f"Error unregistering triggers: {e}")
             return False

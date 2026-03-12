@@ -12,7 +12,7 @@ from firecrawl import FirecrawlApp
 from langgraph.config import get_stream_writer
 from tavily import TavilyClient
 
-from app.config.loggers import search_logger as logger
+from shared.py.wide_events import log
 from app.config.settings import settings
 from app.constants.cache import ONE_HOUR_TTL
 from app.decorators.caching import Cacheable
@@ -40,7 +40,7 @@ def get_tavily_client() -> TavilyClient:
         if not settings.TAVILY_API_KEY:
             raise ValueError("TAVILY_API_KEY is not configured")
         _tavily_client = TavilyClient(api_key=settings.TAVILY_API_KEY)
-        logger.info("Initialized Tavily client")
+        log.info("Initialized Tavily client")
     return _tavily_client
 
 
@@ -51,7 +51,7 @@ def get_firecrawl_client() -> FirecrawlApp:
         if not settings.FIRECRAWL_API_KEY:
             raise ValueError("FIRECRAWL_API_KEY is not configured")
         _firecrawl_client = FirecrawlApp(api_key=settings.FIRECRAWL_API_KEY)
-        logger.info("Initialized Firecrawl client")
+        log.info("Initialized Firecrawl client")
     return _firecrawl_client
 
 
@@ -78,6 +78,12 @@ async def fetch_tavily_search(
     Returns:
         The search results as a dictionary, or an empty dict on error.
     """
+    log.set(
+        operation="fetch_tavily_search",
+        search_query=query,
+        search_topic=search_topic,
+        result_count=count,
+    )
     try:
         tavily = get_tavily_client()
 
@@ -96,11 +102,11 @@ async def fetch_tavily_search(
 
         # Perform the search
         result = tavily.search(**search_params)
-        logger.info(f"Fetched Tavily search results for query: {query}")
+        log.info(f"Fetched Tavily search results for query: {query}")
 
         return result
     except Exception as e:
-        logger.error(f"Error calling Tavily API: {e}")
+        log.error(f"Error calling Tavily API: {e}")
         return {}
 
 
@@ -134,7 +140,7 @@ async def perform_search(query: str, count: int) -> dict:
         }
 
     except Exception as e:
-        logger.error(f"Search failed: {e}")
+        log.error(f"Search failed: {e}")
         return {
             "web": [],
             "news": [],
@@ -224,7 +230,7 @@ async def fetch_with_crawl4ai(url: str) -> str:
             result = await asyncio.wait_for(crawler.arun(url=url), timeout=30.0)
 
         if result and result.markdown and result.markdown.strip():
-            logger.info(f"crawl4ai successfully fetched: {url[:60]}")
+            log.info(f"crawl4ai successfully fetched: {url[:60]}")
             return result.markdown
         raise FetchError("crawl4ai returned empty content", url=url)
     except FetchError:
@@ -275,7 +281,7 @@ async def fetch_with_httpx(url: str) -> str:
         if not markdown:
             raise FetchError("httpx+BS4 returned empty content", url=url)
 
-        logger.info(f"httpx fallback successfully fetched: {url[:60]}")
+        log.info(f"httpx fallback successfully fetched: {url[:60]}")
         return markdown[:60_000]  # Cap at 60KB
     except FetchError:
         raise
@@ -295,6 +301,7 @@ async def fetch_page_resilient(url: str) -> str:
     Each tier is independently cached in Redis (1h TTL).
     Raises FetchError only if all three tiers fail.
     """
+    log.set(operation="fetch_page_resilient", target_url=url)
     parsed = urlparse(url)
     if parsed.scheme not in {"http", "https"} or not parsed.hostname:
         raise FetchError("Only absolute http(s) URLs are allowed", url=url)
@@ -331,14 +338,14 @@ async def fetch_page_resilient(url: str) -> str:
         return await fetch_with_firecrawl(url)
     except Exception as e:
         errors.append(f"firecrawl: {e}")
-        logger.warning(f"Firecrawl failed for {url[:60]}, trying crawl4ai: {e}")
+        log.warning(f"Firecrawl failed for {url[:60]}, trying crawl4ai: {e}")
 
     # Tier 2: crawl4ai
     try:
         return await fetch_with_crawl4ai(url)
     except Exception as e:
         errors.append(f"crawl4ai: {e}")
-        logger.warning(f"crawl4ai failed for {url[:60]}, trying httpx: {e}")
+        log.warning(f"crawl4ai failed for {url[:60]}, trying httpx: {e}")
 
     # Tier 3: httpx + BeautifulSoup
     try:
@@ -391,8 +398,8 @@ async def search_with_duckduckgo(query: str, count: int = 5) -> dict:
                 }
             )
 
-        logger.info(f"DuckDuckGo returned {len(results)} results for: {query[:60]}")
+        log.info(f"DuckDuckGo returned {len(results)} results for: {query[:60]}")
         return {"results": results}
     except Exception as e:
-        logger.error(f"DuckDuckGo search failed: {e}")
+        log.error(f"DuckDuckGo search failed: {e}")
         return {"results": []}

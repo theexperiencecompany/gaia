@@ -4,7 +4,7 @@ from typing import Any, Optional
 from bson import ObjectId
 from fastapi import HTTPException
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.config.oauth_config import (
     OAUTH_INTEGRATIONS,
     get_integration_scopes,
@@ -88,26 +88,24 @@ async def store_user_info(name: str, email: str, picture_url: Optional[str]):
                 name=name,
                 signup_method="workos",
             )
-            logger.info(f"Signup tracked in PostHog for new user: {email}")
+            log.info(f"Signup tracked in PostHog for new user: {email}")
         except Exception as e:
-            logger.error(f"Failed to track signup in PostHog for {email}: {str(e)}")
+            log.error(f"Failed to track signup in PostHog for {email}: {str(e)}")
 
         # Send welcome email to new user
         try:
             await send_welcome_email(email, name)
-            logger.info(f"Welcome email sent to new user: {email}")
+            log.info(f"Welcome email sent to new user: {email}")
         except Exception as e:
-            logger.error(f"Failed to send welcome email to {email}: {str(e)}")
+            log.error(f"Failed to send welcome email to {email}: {str(e)}")
             # Don't raise exception - user creation should still succeed
 
         # Add contact to Resend audience
         try:
             await add_contact_to_resend(email, name)
-            logger.info(f"Contact added to Resend audience for new user: {email}")
+            log.info(f"Contact added to Resend audience for new user: {email}")
         except Exception as e:
-            logger.error(
-                f"Failed to add contact to Resend audience for {email}: {str(e)}"
-            )
+            log.error(f"Failed to add contact to Resend audience for {email}: {str(e)}")
             # Don't raise exception - user creation should still succeed
 
         return result.inserted_id
@@ -173,7 +171,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
                     scope in authorized_scopes for scope in required_scopes
                 )
             except Exception as e:
-                logger.debug(f"Token not found for {integration.provider}: {e}")
+                log.debug(f"Token not found for {integration.provider}: {e}")
                 result[integration.id] = False
 
     # Step 2: Batch check Composio integrations not in MongoDB
@@ -186,7 +184,7 @@ async def get_all_integrations_status(user_id: str) -> dict[str, bool]:
             for integration_id, provider in composio_id_to_provider.items():
                 result[integration_id] = status_map.get(provider, False)
         except Exception as e:
-            logger.error(f"Error batch checking Composio integrations: {e}")
+            log.error(f"Error batch checking Composio integrations: {e}")
             for integration_id in composio_id_to_provider.keys():
                 result[integration_id] = False
 
@@ -216,7 +214,7 @@ async def check_integration_status(integration_id: str, user_id: str) -> bool:
         all_statuses = await get_all_integrations_status(user_id)
         return all_statuses.get(integration_id, False)
     except Exception as e:
-        logger.error(f"Error checking integration status for {integration_id}: {e}")
+        log.error(f"Error checking integration status for {integration_id}: {e}")
         return False
 
 
@@ -243,7 +241,7 @@ async def check_multiple_integrations_status(
             for integration_id in integration_ids
         }
     except Exception as e:
-        logger.error(f"Error checking multiple integrations status: {e}")
+        log.error(f"Error checking multiple integrations status: {e}")
         return {integration_id: False for integration_id in integration_ids}
 
 
@@ -262,10 +260,12 @@ async def handle_oauth_connection(
         connected_account_id: The connected account ID from Composio
         background_tasks: FastAPI background tasks
     """
+    log.set(auth={"user_id": user_id, "provider": integration_config.id})
+
     # Setup triggers if available
     if integration_config.associated_triggers:
         composio_service = get_composio_service()
-        logger.info(
+        log.info(
             f"Setting up {len(integration_config.associated_triggers)} triggers "
             f"for user {user_id} and integration {integration_config.id}"
         )
@@ -277,7 +277,7 @@ async def handle_oauth_connection(
 
     # Process Gmail emails to memory if this is a Gmail connection
     if integration_config.id == "gmail":
-        logger.info(f"Starting Gmail email processing for user {user_id}")
+        log.info(f"Starting Gmail email processing for user {user_id}")
 
         # Check if user has completed onboarding and update bio_status to processing
         try:
@@ -296,7 +296,7 @@ async def handle_oauth_connection(
                             }
                         },
                     )
-                    logger.info(
+                    log.info(
                         f"Updated bio_status to processing for user {user_id} "
                         f"(was {current_bio_status})"
                     )
@@ -312,13 +312,13 @@ async def handle_oauth_connection(
                                 },
                             )
                         else:
-                            logger.warning(
+                            log.warning(
                                 f"Cannot broadcast WebSocket update: user_id is not a valid string ({user_id})"
                             )
                     except Exception as ws_error:
-                        logger.warning(f"Failed to send WebSocket update: {ws_error}")
+                        log.warning(f"Failed to send WebSocket update: {ws_error}")
         except Exception as e:
-            logger.error(
+            log.error(
                 f"Error updating bio_status for user {user_id}: {e}", exc_info=True
             )
 
@@ -326,26 +326,26 @@ async def handle_oauth_connection(
         try:
             pool = await RedisPoolManager.get_pool()
             await pool.enqueue_job("process_gmail_emails_to_memory", user_id)
-            logger.info(f"Queued Gmail processing job for user {user_id}")
+            log.info(f"Queued Gmail processing job for user {user_id}")
         except Exception as e:
-            logger.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
+            log.error(f"Failed to queue Gmail processing: {e}", exc_info=True)
 
     # Invalidate OAuth status cache for this user
     try:
         cache_key = f"{OAUTH_STATUS_KEY}:{user_id}"
         await delete_cache(cache_key)
-        logger.info(f"OAuth status cache invalidated for user {user_id}")
+        log.info(f"OAuth status cache invalidated for user {user_id}")
     except Exception as e:
-        logger.warning(f"Failed to invalidate OAuth status cache: {e}")
+        log.warning(f"Failed to invalidate OAuth status cache: {e}")
 
     # Update user_integrations status in MongoDB
     try:
         await update_user_integration_status(
             user_id, integration_config.id, "connected"
         )
-        logger.info(f"Updated user_integrations status for {integration_config.id}")
+        log.info(f"Updated user_integrations status for {integration_config.id}")
     except Exception as e:
-        logger.warning(f"Failed to update user_integrations status: {e}")
+        log.warning(f"Failed to update user_integrations status: {e}")
 
     if integration_config.metadata_config:
         background_tasks.add_task(
@@ -353,7 +353,7 @@ async def handle_oauth_connection(
             user_id=user_id,
             integration_id=integration_config.id,
         )
-        logger.info(
+        log.info(
             f"Queued metadata fetch for user {user_id} and integration {integration_config.id}"
         )
 
@@ -365,7 +365,7 @@ async def handle_oauth_connection(
             integration_id=integration_config.id,
             integration_display_name=integration_config.name,
         )
-        logger.info(
+        log.info(
             f"Queued system workflow provisioning for user {user_id}, "
             f"integration {integration_config.id}"
         )

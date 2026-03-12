@@ -14,7 +14,7 @@ import time
 import traceback
 from typing import Dict
 
-from app.config.loggers import memory_logger as logger
+from shared.py.wide_events import log
 from crawl4ai import AsyncWebCrawler
 
 
@@ -35,7 +35,7 @@ async def crawl_profile_url(
     async with semaphore:
         start_time = time.time()
         try:
-            logger.info(f"Crawling {platform} profile: {url}")
+            log.info(f"Crawling {platform} profile: {url}")
 
             async with AsyncWebCrawler(verbose=False) as crawler:
                 # Add timeout to prevent hanging
@@ -54,7 +54,7 @@ async def crawl_profile_url(
 
                 elapsed = time.time() - start_time
                 content_size = len(result.markdown)
-                logger.info(
+                log.info(
                     f"Successfully crawled {url} in {elapsed:.2f}s ({content_size:,} chars)"
                 )
                 return {
@@ -73,10 +73,10 @@ async def crawl_profile_url(
                 error_msg = f"{error_type}: {repr(e)}"
 
             # Log full traceback for debugging
-            logger.error(
+            log.error(
                 f"Failed to crawl {url} after {elapsed:.2f}s: {error_type}: {error_msg}"
             )
-            logger.debug(f"Full traceback for {url}:\n{traceback.format_exc()}")
+            log.debug(f"Full traceback for {url}:\n{traceback.format_exc()}")
 
             return {
                 "url": url,

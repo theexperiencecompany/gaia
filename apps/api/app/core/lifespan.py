@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from app.config.loggers import app_logger as logger
+from shared.py.wide_events import log
 from app.core.provider_registration import (
     unified_shutdown,
     unified_startup,
@@ -15,11 +15,12 @@ async def lifespan(app: FastAPI):
     Handles startup and shutdown events.
     """
     try:
+        log.set(startup={"service": "gaia-api"})
         await unified_startup("main_app")
         yield
 
     except Exception as e:
-        logger.error(f"Error during startup: {e}")
+        log.error(f"Error during startup: {e}")
         raise RuntimeError("Startup failed") from e
 
     finally:

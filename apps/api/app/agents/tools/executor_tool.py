@@ -10,7 +10,7 @@ from app.agents.core.subagents.subagent_runner import (
 )
 from app.agents.tools.core.registry import get_tool_registry
 from app.api.v1.middleware.tiered_rate_limiter import RateLimitExceededException
-from app.config.loggers import llm_logger as logger
+from shared.py.wide_events import log
 from app.decorators.rate_limiting import LangChainRateLimitException
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
@@ -32,6 +32,7 @@ async def call_executor(
     The executor has access to all tools and integrations.
     """
     try:
+        log.set(tool={"name": "call_executor", "action": "delegate"})
         configurable = config.get("configurable", {})
         user_id = configurable.get("user_id")
         stream_id = configurable.get("stream_id")  # Extract stream_id for cancellation
@@ -42,11 +43,11 @@ async def call_executor(
                 tool_registry = await get_tool_registry()
                 loaded = await tool_registry.load_user_mcp_tools(user_id)
                 if loaded:
-                    logger.info(
+                    log.info(
                         f"Loaded MCP tools for user {user_id}: {list(loaded.keys())}"
                     )
             except Exception as e:
-                logger.warning(f"Failed to load user MCP tools: {e}")
+                log.warning(f"Failed to load user MCP tools: {e}")
 
         # Parse user time
         user_time_str = configurable.get("user_time", "")
@@ -63,7 +64,7 @@ async def call_executor(
         )
 
         if error or ctx is None:
-            logger.error(error or "Failed to prepare executor execution")
+            log.error(error or "Failed to prepare executor execution")
             return f"Error: {error or 'Executor agent not available'}"
 
         # Execute with streaming using shared function
@@ -74,7 +75,7 @@ async def call_executor(
         )
 
     except asyncio.CancelledError:
-        logger.info("Executor call cancelled")
+        log.info("Executor call cancelled")
         raise
     except (LangChainRateLimitException, RateLimitExceededException) as e:
         if isinstance(e, LangChainRateLimitException):
@@ -82,10 +83,10 @@ async def call_executor(
         else:
             detail: dict = e.detail if isinstance(e.detail, dict) else {}
             feature = detail.get("feature", "")
-        logger.warning("Rate limit exceeded for executor task: {}", feature)
+        log.warning(f"Rate limit exceeded for executor task: {feature}")
         return f"Rate limit exceeded for {feature or 'this feature'}. The user has been shown an upgrade prompt."
     except Exception as e:
-        logger.error("Error calling executor: {}", str(e), exc_info=True)
+        log.error(f"Error calling executor: {e}")
         return f"Error executing task: {str(e)}"
 
 
