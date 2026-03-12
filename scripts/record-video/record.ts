@@ -50,6 +50,8 @@ export async function recordScenario(options: RecordOptions): Promise<string> {
   });
 
   const page = await context.newPage();
+  // Disable default page timeout so explicit per-call timeouts are respected
+  page.setDefaultTimeout(0);
   const url = `${devServerUrl}/record/${scenarioId}`;
 
   console.log(`\nRecording: ${url}`);
@@ -57,14 +59,21 @@ export async function recordScenario(options: RecordOptions): Promise<string> {
 
   await page.goto(url, { waitUntil: "domcontentloaded" });
 
-  await page.waitForFunction(() => document.title === "recording:idle", {
-    timeout: 30_000,
-  });
+  // Wait for any recording state — with server-side preloading the page may
+  // transition from "idle" to "started" before we first poll, so accept either.
+  await page.waitForFunction(
+    () => document.title.startsWith("recording:"),
+    { timeout: 30_000 },
+  );
   console.log("✓ Scenario loaded");
 
-  await page.waitForFunction(() => document.title === "recording:started", {
-    timeout: 15_000,
-  });
+  // If already started (idle was missed), that's fine — just proceed.
+  await page.waitForFunction(
+    () =>
+      document.title === "recording:started" ||
+      document.title === "recording:done",
+    { timeout: 15_000 },
+  );
   console.log("✓ Recording started");
 
   await page.waitForFunction(() => document.title === "recording:done", {
