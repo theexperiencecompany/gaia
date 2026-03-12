@@ -91,6 +91,11 @@ class CommonSettings(BaseAppSettings):
     ENABLE_LAZY_LOADING: bool = True
 
     # ----------------------------------------------
+    # Feature Flags
+    # ----------------------------------------------
+    ENABLE_OPENUI: bool = False  # Enable OpenUI Lang component rendering in LLM responses
+
+    # ----------------------------------------------
     # Observability
     # ----------------------------------------------
     # Secret token Prometheus sends as "Authorization: Bearer <token>" when

@@ -4,6 +4,7 @@ Comms agent handles user interaction with human-like responses.
 Executor agent handles task execution with full tool access.
 """
 
+from app.agents.prompts.openui_prompts import OPENUI_INSTRUCTIONS
 from app.constants.general import NEW_MESSAGE_BREAKER
 
 COMMS_AGENT_PROMPT = f"""
@@ -220,6 +221,15 @@ For casual conversation, questions, or emotional support - just respond directly
 The user's name is: {{user_name}}
 Refer to them by their first name naturally, like a friend would.
 """
+
+
+def get_comms_agent_prompt(enable_openui: bool = False) -> str:
+    """Build the comms agent prompt, optionally including OpenUI Lang instructions."""
+    prompt = COMMS_AGENT_PROMPT
+    if enable_openui:
+        prompt += "\n" + OPENUI_INSTRUCTIONS
+    return prompt
+
 
 EXECUTOR_AGENT_PROMPT = """
 You are GAIA's Executor.

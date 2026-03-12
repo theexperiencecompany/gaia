@@ -37,6 +37,7 @@ import { MCPAppRenderer } from "@/features/chat/components/tools/MCPAppRenderer"
 import { getEmojiCount, isOnlyEmojis } from "@/features/chat/utils/emojiUtils";
 import { splitMessageByBreaks } from "@/features/chat/utils/messageBreakUtils";
 import { shouldShowTextBubble } from "@/features/chat/utils/messageContentUtils";
+import { parseOpenUISegments } from "@/features/chat/utils/openUIParser";
 import { parseThinkingFromText } from "@/features/chat/utils/thinkingParser";
 import { IntegrationListSection } from "@/features/integrations";
 import type {
@@ -92,6 +93,7 @@ import type {
   TwitterUserData,
 } from "@/types/features/twitterTypes";
 import MarkdownRenderer from "../../interface/MarkdownRenderer";
+import OpenUIRenderer from "../../interface/OpenUIRenderer";
 import { CalendarDeleteSection } from "./CalendarDeleteSection";
 import { CalendarEditSection } from "./CalendarEditSection";
 import CalendarEventSection from "./CalendarEventSection";
@@ -610,24 +612,50 @@ export default function TextBubble({
           const renderBubbleContent = (
             content: string,
             showDisclaimer: boolean,
-          ) => (
-            <div className="flex flex-col gap-3">
-              <MarkdownRenderer content={content} isStreaming={loading} />
-              {!!disclaimer && showDisclaimer && (
-                <Chip
-                  className="text-xs font-medium text-warning-500"
-                  color="warning"
-                  size="sm"
-                  startContent={
-                    <Alert01Icon className="text-warning-500" height={17} />
-                  }
-                  variant="flat"
-                >
-                  {disclaimer}
-                </Chip>
-              )}
-            </div>
-          );
+          ) => {
+            const segments = parseOpenUISegments(content, !!loading);
+            const hasOpenUI = segments.some((s) => s.type === "openui");
+
+            return (
+              <div className="flex flex-col gap-3">
+                {hasOpenUI ? (
+                  segments.map((seg, segIdx) => {
+                    const segKey = `${seg.type}-${seg.content.length}-${seg.content.slice(0, 20)}`;
+                    return seg.type === "openui" ? (
+                      <OpenUIRenderer
+                        key={segKey}
+                        code={seg.content}
+                        isStreaming={!!loading && !seg.isComplete}
+                      />
+                    ) : (
+                      <MarkdownRenderer
+                        key={segKey}
+                        content={seg.content}
+                        isStreaming={
+                          !!loading && segIdx === segments.length - 1
+                        }
+                      />
+                    );
+                  })
+                ) : (
+                  <MarkdownRenderer content={content} isStreaming={loading} />
+                )}
+                {!!disclaimer && showDisclaimer && (
+                  <Chip
+                    className="text-xs font-medium text-warning-500"
+                    color="warning"
+                    size="sm"
+                    startContent={
+                      <Alert01Icon className="text-warning-500" height={17} />
+                    }
+                    variant="flat"
+                  >
+                    {disclaimer}
+                  </Chip>
+                )}
+              </div>
+            );
+          };
 
           return (
             <div className="flex flex-col">
